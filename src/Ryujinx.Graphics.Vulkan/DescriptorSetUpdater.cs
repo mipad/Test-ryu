@@ -81,7 +81,6 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly ImageRef[] _imageRefs;
         private readonly TextureBuffer[] _bufferTextureRefs;
         private readonly TextureBuffer[] _bufferImageRefs;
-        private readonly Format[] _bufferImageFormats;
 
         private ArrayRef<TextureArray>[] _textureArrayRefs;
         private ArrayRef<ImageArray>[] _imageArrayRefs;
@@ -138,7 +137,6 @@ namespace Ryujinx.Graphics.Vulkan
             _imageRefs = new ImageRef[Constants.MaxImageBindings * 2];
             _bufferTextureRefs = new TextureBuffer[Constants.MaxTextureBindings * 2];
             _bufferImageRefs = new TextureBuffer[Constants.MaxImageBindings * 2];
-            _bufferImageFormats = new Format[Constants.MaxImageBindings * 2];
 
             _textureArrayRefs = Array.Empty<ArrayRef<TextureArray>>();
             _imageArrayRefs = Array.Empty<ArrayRef<ImageArray>>();
@@ -371,29 +369,22 @@ namespace Ryujinx.Graphics.Vulkan
             _dirty = DirtyFlags.All;
         }
 
-        public void SetImage(
-            CommandBufferScoped cbs,
-            ShaderStage stage,
-            int binding,
-            ITexture image,
-            Format imageFormat)
+        public void SetImage(CommandBufferScoped cbs, ShaderStage stage, int binding, ITexture image)
         {
             if (image is TextureBuffer imageBuffer)
             {
                 _bufferImageRefs[binding] = imageBuffer;
-                _bufferImageFormats[binding] = imageFormat;
             }
             else if (image is TextureView view)
             {
                 view.Storage.QueueWriteToReadBarrier(cbs, AccessFlags.ShaderReadBit, stage.ConvertToPipelineStageFlags());
 
-                _imageRefs[binding] = new(stage, view.Storage, view.GetView(imageFormat).GetIdentityImageView());
+                _imageRefs[binding]= new(stage, view.Storage, view.GetIdentityImageView());
             }
             else
             {
                 _imageRefs[binding] = default;
                 _bufferImageRefs[binding] = null;
-                _bufferImageFormats[binding] = default;
             }
 
             SignalDirty(DirtyFlags.Image);
@@ -897,7 +888,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                             for (int i = 0; i < count; i++)
                             {
-                                bufferImages[i] = _bufferImageRefs[binding + i]?.GetBufferView(cbs, _bufferImageFormats[binding + i], true) ?? default;
+                                bufferImages[i] = _bufferImageRefs[binding + i]?.GetBufferView(cbs, true) ?? default;
                             }
 
                             tu.Push<BufferView>(bufferImages[..count]);
