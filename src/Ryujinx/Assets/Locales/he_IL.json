@@ -11,6 +11,8 @@
   "MenuBarFile": "_קובץ",
   "MenuBarFileOpenFromFile": "_טען יישום מקובץ",
   "MenuBarFileOpenUnpacked": "טען משחק _שאינו ארוז",
+  "MenuBarFileLoadDlcFromFolder": "Load DLC From Folder",
+  "MenuBarFileLoadTitleUpdatesFromFolder": "Load Title Updates From Folder",
   "MenuBarFileOpenEmuFolder": "פתח את תיקיית ריוג'ינקס",
   "MenuBarFileOpenLogsFolder": "פתח את תיקיית קבצי הלוג",
   "MenuBarFileExit": "_יציאה",

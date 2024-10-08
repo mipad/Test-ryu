@@ -11,6 +11,8 @@
   "MenuBarFile": "_Fichier",
   "MenuBarFileOpenFromFile": "_Charger un jeu depuis un fichier",
   "MenuBarFileOpenUnpacked": "Charger un jeu extrait",
+  "MenuBarFileLoadDlcFromFolder": "Charger les DLC depuis le dossier des DLC",
+  "MenuBarFileLoadTitleUpdatesFromFolder": "Charger les mises à jour depuis le dossier des mises à jour",
   "MenuBarFileOpenEmuFolder": "Ouvrir le dossier Ryujinx",
   "MenuBarFileOpenLogsFolder": "Ouvrir le dossier des journaux",
   "MenuBarFileExit": "_Quitter",

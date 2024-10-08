@@ -11,6 +11,8 @@
   "MenuBarFile": "_파일",
   "MenuBarFileOpenFromFile": "_파일에서 응용 프로그램 불러오기",
   "MenuBarFileOpenUnpacked": "_압축을 푼 게임 불러오기",
+  "MenuBarFileLoadDlcFromFolder": "폴더에서 DLC 불러오기",
+  "MenuBarFileLoadTitleUpdatesFromFolder": "폴더에서 타이틀 업데이트 불러오기",
   "MenuBarFileOpenEmuFolder": "Ryujinx 폴더 열기",
   "MenuBarFileOpenLogsFolder": "로그 폴더 열기",
   "MenuBarFileExit": "_종료",

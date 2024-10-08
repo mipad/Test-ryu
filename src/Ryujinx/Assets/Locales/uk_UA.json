@@ -11,6 +11,8 @@
   "MenuBarFile": "_Файл",
   "MenuBarFileOpenFromFile": "_Завантажити програму з файлу",
   "MenuBarFileOpenUnpacked": "Завантажити _розпаковану гру",
+  "MenuBarFileLoadDlcFromFolder": "Load DLC From Folder",
+  "MenuBarFileLoadTitleUpdatesFromFolder": "Load Title Updates From Folder",
   "MenuBarFileOpenEmuFolder": "Відкрити теку Ryujinx",
   "MenuBarFileOpenLogsFolder": "Відкрити теку журналів змін",
   "MenuBarFileExit": "_Вихід",

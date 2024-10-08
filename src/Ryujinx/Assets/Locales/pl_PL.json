@@ -11,6 +11,8 @@
   "MenuBarFile": "_Plik",
   "MenuBarFileOpenFromFile": "_Załaduj aplikację z pliku",
   "MenuBarFileOpenUnpacked": "Załaduj _rozpakowaną grę",
+  "MenuBarFileLoadDlcFromFolder": "Load DLC From Folder",
+  "MenuBarFileLoadTitleUpdatesFromFolder": "Load Title Updates From Folder",
   "MenuBarFileOpenEmuFolder": "Otwórz folder Ryujinx",
   "MenuBarFileOpenLogsFolder": "Otwórz folder plików dziennika zdarzeń",
   "MenuBarFileExit": "_Wyjdź",

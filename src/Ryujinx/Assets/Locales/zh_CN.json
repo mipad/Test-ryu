@@ -11,6 +11,8 @@
   "MenuBarFile": "文件(_F)",
   "MenuBarFileOpenFromFile": "加载游戏文件(_L)",
   "MenuBarFileOpenUnpacked": "加载解包后的游戏(_U)",
+  "MenuBarFileLoadDlcFromFolder": "从文件夹加载DLC",
+  "MenuBarFileLoadTitleUpdatesFromFolder": "从文件夹加载游戏更新",
   "MenuBarFileOpenEmuFolder": "打开 Ryujinx 系统目录",
   "MenuBarFileOpenLogsFolder": "打开日志目录",
   "MenuBarFileExit": "退出(_E)",

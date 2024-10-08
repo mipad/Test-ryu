@@ -11,6 +11,8 @@
   "MenuBarFile": "_Dosya",
   "MenuBarFileOpenFromFile": "_Dosyadan Uygulama Aç",
   "MenuBarFileOpenUnpacked": "_Sıkıştırılmamış Oyun Aç",
+  "MenuBarFileLoadDlcFromFolder": "Load DLC From Folder",
+  "MenuBarFileLoadTitleUpdatesFromFolder": "Load Title Updates From Folder",
   "MenuBarFileOpenEmuFolder": "Ryujinx Klasörünü aç",
   "MenuBarFileOpenLogsFolder": "Logs Klasörünü aç",
   "MenuBarFileExit": "_Çıkış",

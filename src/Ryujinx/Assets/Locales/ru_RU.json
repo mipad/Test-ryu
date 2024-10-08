@@ -11,6 +11,8 @@
   "MenuBarFile": "_Файл",
   "MenuBarFileOpenFromFile": "_Добавить приложение из файла",
   "MenuBarFileOpenUnpacked": "Добавить _распакованную игру",
+  "MenuBarFileLoadDlcFromFolder": "Load DLC From Folder",
+  "MenuBarFileLoadTitleUpdatesFromFolder": "Load Title Updates From Folder",
   "MenuBarFileOpenEmuFolder": "Открыть папку Ryujinx",
   "MenuBarFileOpenLogsFolder": "Открыть папку с логами",
   "MenuBarFileExit": "_Выход",

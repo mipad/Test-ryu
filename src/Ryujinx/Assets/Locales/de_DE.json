@@ -11,6 +11,8 @@
   "MenuBarFile": "_Datei",
   "MenuBarFileOpenFromFile": "Datei _öffnen",
   "MenuBarFileOpenUnpacked": "_Entpacktes Spiel öffnen",
+  "MenuBarFileLoadDlcFromFolder": "Load DLC From Folder",
+  "MenuBarFileLoadTitleUpdatesFromFolder": "Load Title Updates From Folder",
   "MenuBarFileOpenEmuFolder": "Ryujinx-Ordner öffnen",
   "MenuBarFileOpenLogsFolder": "Logs-Ordner öffnen",
   "MenuBarFileExit": "_Beenden",

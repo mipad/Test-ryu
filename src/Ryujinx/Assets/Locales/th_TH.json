@@ -11,6 +11,8 @@
   "MenuBarFile": "ไฟล์",
   "MenuBarFileOpenFromFile": "โหลดแอปพลิเคชั่นจากไฟล์",
   "MenuBarFileOpenUnpacked": "โหลดเกมที่คลายแพ็กแล้ว",
+  "MenuBarFileLoadDlcFromFolder": "โหลด DLC จากโฟลเดอร์",
+  "MenuBarFileLoadTitleUpdatesFromFolder": "โหลดไฟล์อัพเดตจากโฟลเดอร์",
   "MenuBarFileOpenEmuFolder": "เปิดโฟลเดอร์ Ryujinx",
   "MenuBarFileOpenLogsFolder": "เปิดโฟลเดอร์ Logs",
   "MenuBarFileExit": "_ออก",

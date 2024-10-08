@@ -11,6 +11,8 @@
   "MenuBarFile": "_ملف",
   "MenuBarFileOpenFromFile": "_تحميل تطبيق من ملف",
   "MenuBarFileOpenUnpacked": "تحميل لُعْبَة غير محزومة",
+  "MenuBarFileLoadDlcFromFolder": "Load DLC From Folder",
+  "MenuBarFileLoadTitleUpdatesFromFolder": "Load Title Updates From Folder",
   "MenuBarFileOpenEmuFolder": "‫فتح مجلد Ryujinx",
   "MenuBarFileOpenLogsFolder": "فتح مجلد السجلات",
   "MenuBarFileExit": "_خروج",

@@ -11,6 +11,8 @@
   "MenuBarFile": "ファイル(_F)",
   "MenuBarFileOpenFromFile": "ファイルからアプリケーションをロード(_L)",
   "MenuBarFileOpenUnpacked": "展開されたゲームをロード",
+  "MenuBarFileLoadDlcFromFolder": "Load DLC From Folder",
+  "MenuBarFileLoadTitleUpdatesFromFolder": "Load Title Updates From Folder",
   "MenuBarFileOpenEmuFolder": "Ryujinx フォルダを開く",
   "MenuBarFileOpenLogsFolder": "ログフォルダを開く",
   "MenuBarFileExit": "終了(_E)",

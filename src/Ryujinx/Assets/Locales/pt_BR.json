@@ -11,6 +11,8 @@
   "MenuBarFile": "_Arquivo",
   "MenuBarFileOpenFromFile": "_Abrir ROM do jogo...",
   "MenuBarFileOpenUnpacked": "Abrir jogo _extraído...",
+  "MenuBarFileLoadDlcFromFolder": "Carregar DLC da Pasta",
+  "MenuBarFileLoadTitleUpdatesFromFolder": "Carregar Atualizações de Jogo da Pasta",
   "MenuBarFileOpenEmuFolder": "Abrir diretório do e_mulador...",
   "MenuBarFileOpenLogsFolder": "Abrir diretório de _logs...",
   "MenuBarFileExit": "_Sair",

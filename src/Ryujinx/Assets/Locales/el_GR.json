@@ -11,6 +11,8 @@
   "MenuBarFile": "_Αρχείο",
   "MenuBarFileOpenFromFile": "_Φόρτωση Αρχείου Εφαρμογής",
   "MenuBarFileOpenUnpacked": "Φόρτωση Απακετάριστου _Παιχνιδιού",
+  "MenuBarFileLoadDlcFromFolder": "Load DLC From Folder",
+  "MenuBarFileLoadTitleUpdatesFromFolder": "Load Title Updates From Folder",
   "MenuBarFileOpenEmuFolder": "Άνοιγμα Φακέλου Ryujinx",
   "MenuBarFileOpenLogsFolder": "Άνοιγμα Φακέλου Καταγραφής",
   "MenuBarFileExit": "_Έξοδος",
