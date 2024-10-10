@@ -558,6 +558,7 @@ namespace Ryujinx.Ava
         public void Stop()
         {
             _isActive = false;
+            DiscordIntegrationModule.SwitchToMainState();
         }
 
         private void Exit()
@@ -571,6 +572,7 @@ namespace Ryujinx.Ava
 
             _isStopped = true;
             _isActive = false;
+            DiscordIntegrationModule.SwitchToMainState();
         }
 
         public void DisposeContext()
@@ -845,12 +847,11 @@ namespace Ryujinx.Ava
                 return false;
             }
 
-            DiscordIntegrationModule.SwitchToPlayingState(Device.Processes.ActiveApplication.ProgramIdText, Device.Processes.ActiveApplication.Name);
+            ApplicationMetadata appMeta = ApplicationLibrary.LoadAndSaveMetaData(Device.Processes.ActiveApplication.ProgramIdText, 
+                appMetadata => appMetadata.UpdatePreGame()
+            );
 
-            ApplicationLibrary.LoadAndSaveMetaData(Device.Processes.ActiveApplication.ProgramIdText, appMetadata =>
-            {
-                appMetadata.UpdatePreGame();
-            });
+            DiscordIntegrationModule.SwitchToPlayingState(appMeta, Device.Processes.ActiveApplication);
 
             return true;
         }
@@ -1009,10 +1010,8 @@ namespace Ryujinx.Ava
 
         private void MainLoop()
         {
-            while (_isActive)
+            while (UpdateFrame())
             {
-                UpdateFrame();
-
                 // Polling becomes expensive if it's not slept.
                 Thread.Sleep(1);
             }
