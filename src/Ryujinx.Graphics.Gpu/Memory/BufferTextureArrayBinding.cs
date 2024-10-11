@@ -35,25 +35,32 @@ namespace Ryujinx.Graphics.Gpu.Memory
         public int Index { get; }
 
         /// <summary>
+        /// The image format for the binding.
+        /// </summary>
+        public Format Format { get; }
+
+        /// <summary>
         /// Create a new buffer texture binding.
         /// </summary>
-        /// <param name="array">Array</param>
         /// <param name="texture">Buffer texture</param>
         /// <param name="range">Physical ranges of memory where the buffer texture data is located</param>
         /// <param name="bindingInfo">Binding info</param>
         /// <param name="index">Index of the binding on the array</param>
+        /// <param name="format">Binding format</param>
         public BufferTextureArrayBinding(
             T array,
             ITexture texture,
             MultiRange range,
             TextureBindingInfo bindingInfo,
-            int index)
+            int index,
+            Format format)
         {
             Array = array;
             Texture = texture;
             Range = range;
             BindingInfo = bindingInfo;
             Index = index;
+            Format = format;
         }
     }
 }

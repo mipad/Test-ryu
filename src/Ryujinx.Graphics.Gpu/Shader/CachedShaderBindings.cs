@@ -86,11 +86,11 @@ namespace Ryujinx.Graphics.Gpu.Shader
                 ImageBindings[i] = stage.Info.Images.Select(descriptor =>
                 {
                     Target target = ShaderTexture.GetTarget(descriptor.Type);
-                    FormatInfo formatInfo = ShaderTexture.GetFormatInfo(descriptor.Format);
+                    Format format = ShaderTexture.GetFormat(descriptor.Format);
 
                     var result = new TextureBindingInfo(
                         target,
-                        formatInfo,
+                        format,
                         descriptor.Set,
                         descriptor.Binding,
                         descriptor.ArrayLength,

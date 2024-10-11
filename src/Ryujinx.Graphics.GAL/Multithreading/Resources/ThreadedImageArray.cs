@@ -27,6 +27,12 @@ namespace Ryujinx.Graphics.GAL.Multithreading.Resources
             _renderer.QueueCommand();
         }
 
+        public void SetFormats(int index, Format[] imageFormats)
+        {
+            _renderer.New<ImageArraySetFormatsCommand>().Set(Ref(this), index, Ref(imageFormats));
+            _renderer.QueueCommand();
+        }
+
         public void SetImages(int index, ITexture[] images)
         {
             _renderer.New<ImageArraySetImagesCommand>().Set(Ref(this), index, Ref(images));

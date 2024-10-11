@@ -509,7 +509,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                     if (binding.IsImage)
                     {
-                        _context.Renderer.Pipeline.SetImage(binding.Stage, binding.BindingInfo.Binding, binding.Texture);
+                        _context.Renderer.Pipeline.SetImage(binding.Stage, binding.BindingInfo.Binding, binding.Texture, binding.Format);
                     }
                     else
                     {
@@ -873,11 +873,12 @@ namespace Ryujinx.Graphics.Gpu.Memory
             ITexture texture,
             MultiRange range,
             TextureBindingInfo bindingInfo,
+            Format format,
             bool isImage)
         {
             _channel.MemoryManager.Physical.BufferCache.CreateBuffer(range, BufferStageUtils.TextureBuffer(stage, bindingInfo.Flags));
 
-            _bufferTextures.Add(new BufferTextureBinding(stage, texture, range, bindingInfo, isImage));
+            _bufferTextures.Add(new BufferTextureBinding(stage, texture, range, bindingInfo, format, isImage));
         }
 
         /// <summary>
@@ -896,11 +897,12 @@ namespace Ryujinx.Graphics.Gpu.Memory
             ITexture texture,
             MultiRange range,
             TextureBindingInfo bindingInfo,
-            int index)
+            int index,
+            Format format)
         {
             _channel.MemoryManager.Physical.BufferCache.CreateBuffer(range, BufferStageUtils.TextureBuffer(stage, bindingInfo.Flags));
 
-            _bufferTextureArrays.Add(new BufferTextureArrayBinding<ITextureArray>(array, texture, range, bindingInfo, index));
+            _bufferTextureArrays.Add(new BufferTextureArrayBinding<ITextureArray>(array, texture, range, bindingInfo, index, format));
         }
 
         /// <summary>
@@ -919,11 +921,12 @@ namespace Ryujinx.Graphics.Gpu.Memory
             ITexture texture,
             MultiRange range,
             TextureBindingInfo bindingInfo,
-            int index)
+            int index,
+            Format format)
         {
             _channel.MemoryManager.Physical.BufferCache.CreateBuffer(range, BufferStageUtils.TextureBuffer(stage, bindingInfo.Flags));
 
-            _bufferImageArrays.Add(new BufferTextureArrayBinding<IImageArray>(array, texture, range, bindingInfo, index));
+            _bufferImageArrays.Add(new BufferTextureArrayBinding<IImageArray>(array, texture, range, bindingInfo, index, format));
         }
 
         /// <summary>

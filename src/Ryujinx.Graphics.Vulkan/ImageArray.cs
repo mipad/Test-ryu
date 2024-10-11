@@ -13,6 +13,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
             public TextureStorage Storage;
             public TextureView View;
+            public GAL.Format ImageFormat;
         }
 
         private readonly TextureRef[] _textureRefs;
@@ -49,6 +50,16 @@ namespace Ryujinx.Graphics.Vulkan
             _cachedSubmissionCount = 0;
 
             _isBuffer = isBuffer;
+        }
+
+        public void SetFormats(int index, GAL.Format[] imageFormats)
+        {
+            for (int i = 0; i < imageFormats.Length; i++)
+            {
+                _textureRefs[index + i].ImageFormat = imageFormats[i];
+            }
+
+            SetDirty();
         }
 
         public void SetImages(int index, ITexture[] images)
@@ -131,7 +142,7 @@ namespace Ryujinx.Graphics.Vulkan
                 ref var texture = ref textures[i];
                 ref var refs = ref _textureRefs[i];
 
-                if (i > 0 && _textureRefs[i - 1].View == refs.View)
+                if (i > 0 && _textureRefs[i - 1].View == refs.View && _textureRefs[i - 1].ImageFormat == refs.ImageFormat)
                 {
                     texture = textures[i - 1];
 
@@ -139,7 +150,7 @@ namespace Ryujinx.Graphics.Vulkan
                 }
 
                 texture.ImageLayout = ImageLayout.General;
-                texture.ImageView = refs.View?.GetIdentityImageView().Get(cbs).Value ?? default;
+                texture.ImageView = refs.View?.GetView(refs.ImageFormat).GetIdentityImageView().Get(cbs).Value ?? default;
 
                 if (texture.ImageView.Handle == 0)
                 {
@@ -156,7 +167,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             for (int i = 0; i < bufferTextures.Length; i++)
             {
-                bufferTextures[i] = _bufferTextureRefs[i]?.GetBufferView(cbs, true) ?? default;
+                bufferTextures[i] = _bufferTextureRefs[i]?.GetBufferView(cbs, _textureRefs[i].ImageFormat, true) ?? default;
             }
 
             return bufferTextures;

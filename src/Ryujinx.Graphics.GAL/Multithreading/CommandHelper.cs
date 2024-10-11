@@ -67,6 +67,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             Register<CounterEventFlushCommand>(CommandType.CounterEventFlush);
 
             Register<ImageArrayDisposeCommand>(CommandType.ImageArrayDispose);
+            Register<ImageArraySetFormatsCommand>(CommandType.ImageArraySetFormats);
             Register<ImageArraySetImagesCommand>(CommandType.ImageArraySetImages);
 
             Register<ProgramDisposeCommand>(CommandType.ProgramDispose);
