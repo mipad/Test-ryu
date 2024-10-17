@@ -14,6 +14,7 @@ using Ryujinx.Common.Configuration.Multiplayer;
 using Ryujinx.Common.GraphicsDriver;
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.Vulkan;
+using Ryujinx.HLE;
 using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE.HOS.Services.Time.TimeZone;
 using Ryujinx.UI.Common.Configuration;
@@ -141,7 +142,7 @@ namespace Ryujinx.Ava.UI.ViewModels
         public bool EnableInternetAccess { get; set; }
         public bool EnableFsIntegrityChecks { get; set; }
         public bool IgnoreMissingServices { get; set; }
-        public bool ExpandDramSize { get; set; }
+        public MemoryConfiguration DramSize { get; set; }
         public bool EnableShaderCache { get; set; }
         public bool EnableTextureRecompression { get; set; }
         public bool EnableMacroHLE { get; set; }
@@ -426,7 +427,7 @@ namespace Ryujinx.Ava.UI.ViewModels
 
             EnableVsync = config.Graphics.EnableVsync;
             EnableFsIntegrityChecks = config.System.EnableFsIntegrityChecks;
-            ExpandDramSize = config.System.ExpandRam;
+            DramSize = config.System.DramSize;
             IgnoreMissingServices = config.System.IgnoreMissingServices;
 
             // CPU
@@ -520,7 +521,7 @@ namespace Ryujinx.Ava.UI.ViewModels
             config.System.SystemTimeOffset.Value = Convert.ToInt64((CurrentDate.ToUnixTimeSeconds() + CurrentTime.TotalSeconds) - DateTimeOffset.Now.ToUnixTimeSeconds());
             config.Graphics.EnableVsync.Value = EnableVsync;
             config.System.EnableFsIntegrityChecks.Value = EnableFsIntegrityChecks;
-            config.System.ExpandRam.Value = ExpandDramSize;
+            config.System.DramSize.Value = DramSize;
             config.System.IgnoreMissingServices.Value = IgnoreMissingServices;
 
             // CPU

@@ -3,6 +3,7 @@ using Ryujinx.Common.Configuration.Hid;
 using Ryujinx.Common.Configuration.Multiplayer;
 using Ryujinx.Common.Logging;
 using Ryujinx.Common.Utilities;
+using Ryujinx.HLE;
 using Ryujinx.UI.Common.Configuration.System;
 using Ryujinx.UI.Common.Configuration.UI;
 using System.Collections.Generic;
@@ -15,7 +16,7 @@ namespace Ryujinx.UI.Common.Configuration
         /// <summary>
         /// The current version of the file format
         /// </summary>
-        public const int CurrentVersion = 51;
+        public const int CurrentVersion = 52;
 
         /// <summary>
         /// Version of the configuration file format
@@ -240,7 +241,7 @@ namespace Ryujinx.UI.Common.Configuration
         /// <summary>
         /// Expands the RAM amount on the emulated system from 4GiB to 8GiB
         /// </summary>
-        public bool ExpandRam { get; set; }
+        public MemoryConfiguration DramSize { get; set; }
 
         /// <summary>
         /// Enable or disable ignoring missing services
