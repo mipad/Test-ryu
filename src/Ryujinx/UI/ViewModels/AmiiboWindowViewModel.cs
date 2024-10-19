@@ -30,7 +30,7 @@ namespace Ryujinx.Ava.UI.ViewModels
         private readonly string _amiiboJsonPath;
         private readonly byte[] _amiiboLogoBytes;
         private readonly HttpClient _httpClient;
-        private readonly StyleableWindow _owner;
+        private readonly AmiiboWindow _owner;
 
         private Bitmap _amiiboImage;
         private List<AmiiboApi> _amiiboList;
@@ -46,7 +46,7 @@ namespace Ryujinx.Ava.UI.ViewModels
 
         private static readonly AmiiboJsonSerializerContext _serializerContext = new(JsonHelper.GetDefaultSerializerOptions());
 
-        public AmiiboWindowViewModel(StyleableWindow owner, string lastScannedAmiiboId, string titleId)
+        public AmiiboWindowViewModel(AmiiboWindow owner, string lastScannedAmiiboId, string titleId)
         {
             _owner = owner;
 
@@ -181,6 +181,22 @@ namespace Ryujinx.Ava.UI.ViewModels
 
                 OnPropertyChanged();
             }
+        }
+
+        public void Scan()
+        {
+            if (AmiiboSelectedIndex > -1)
+            {
+                _owner.ScannedAmiibo = AmiiboList[AmiiboSelectedIndex];
+                _owner.IsScanned = true;
+                _owner.Close();
+            }
+        }
+
+        public void Cancel()
+        {
+            _owner.IsScanned = false;
+            _owner.Close();
         }
 
         public void Dispose()

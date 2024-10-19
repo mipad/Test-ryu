@@ -156,6 +156,8 @@ namespace Ryujinx.Ava.UI.ViewModels
         
         public IEnumerable<LdnGameData> LastLdnGameData;
 
+        public MainWindow Window { get; init; }
+
         internal AppHost AppHost { get; set; }
 
         public MainWindowViewModel()
@@ -1782,7 +1784,7 @@ namespace Ryujinx.Ava.UI.ViewModels
 
         public async Task ExitCurrentState()
         {
-            if (WindowState == WindowState.FullScreen)
+            if (WindowState == MainWindow.FullScreenWindowState)
             {
                 ToggleFullscreen();
             }
@@ -2097,6 +2099,28 @@ namespace Ryujinx.Ava.UI.ViewModels
             }
         }
 
+        public async Task OpenAmiiboWindow()
+        {
+            if (!IsAmiiboRequested)
+                return;
+
+            if (AppHost.Device.System.SearchingForAmiibo(out int deviceId))
+            {
+                string titleId = AppHost.Device.Processes.ActiveApplication.ProgramIdText.ToUpper();
+                AmiiboWindow window = new(ShowAll, LastScannedAmiiboId, titleId);
+
+                await window.ShowDialog(Window);
+
+                if (window.IsScanned)
+                {
+                    ShowAll = window.ViewModel.ShowAllAmiibo;
+                    LastScannedAmiiboId = window.ScannedAmiibo.GetId();
+
+                    AppHost.Device.System.ScanAmiibo(deviceId, LastScannedAmiiboId, window.ViewModel.UseRandomUuid);
+                }
+            }
+        }
+
 
         public void ToggleFullscreen()
         {
@@ -2107,7 +2131,7 @@ namespace Ryujinx.Ava.UI.ViewModels
 
             LastFullscreenToggle = Environment.TickCount64;
 
-            if (WindowState == WindowState.FullScreen)
+            if (WindowState is not WindowState.Normal)
             {
                 WindowState = WindowState.Normal;
 
@@ -2118,7 +2142,7 @@ namespace Ryujinx.Ava.UI.ViewModels
             }
             else
             {
-                WindowState = WindowState.FullScreen;
+                WindowState = MainWindow.FullScreenWindowState;
 
                 if (IsGameRunning)
                 {
@@ -2126,7 +2150,7 @@ namespace Ryujinx.Ava.UI.ViewModels
                 }
             }
 
-            IsFullScreen = WindowState == WindowState.FullScreen;
+            IsFullScreen = WindowState == MainWindow.FullScreenWindowState;
         }
 
         public static void SaveConfig()
