@@ -10,8 +10,10 @@ namespace Ryujinx.Ava.UI.Models
         public string DockedMode { get; }
         public string FifoStatus { get; }
         public string GameStatus { get; }
+        
+        public uint ShaderCount { get; }
 
-        public StatusUpdatedEventArgs(string vSyncMode, string volumeStatus, string dockedMode, string aspectRatio, string gameStatus, string fifoStatus)
+        public StatusUpdatedEventArgs(string vSyncMode, string volumeStatus, string dockedMode, string aspectRatio, string gameStatus, string fifoStatus, uint shaderCount)
         {
             VSyncMode = vSyncMode;
             VolumeStatus = volumeStatus;
@@ -19,6 +21,7 @@ namespace Ryujinx.Ava.UI.Models
             AspectRatio = aspectRatio;
             GameStatus = gameStatus;
             FifoStatus = fifoStatus;
+            ShaderCount = shaderCount;
         }
     }
 }
