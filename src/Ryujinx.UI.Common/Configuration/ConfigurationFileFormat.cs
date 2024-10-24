@@ -164,6 +164,11 @@ namespace Ryujinx.UI.Common.Configuration
         public bool ShowConfirmExit { get; set; }
 
         /// <summary>
+        /// ignore "Applet" dialog
+        /// </summary>
+        public bool IgnoreApplet { get; set; }
+
+        /// <summary>
         /// Enables or disables save window size, position and state on close.
         /// </summary>
         public bool RememberWindowState { get; set; }

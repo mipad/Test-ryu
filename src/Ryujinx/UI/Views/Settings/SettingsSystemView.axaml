@@ -229,16 +229,19 @@
 						</ComboBoxItem>
 					</ComboBox>
                 </StackPanel>
-                    <StackPanel
-                        Margin="10,0,0,0"
-                        HorizontalAlignment="Stretch"
-                        Orientation="Vertical">
-                        <CheckBox
-                            IsChecked="{Binding IgnoreMissingServices}"
-                            ToolTip.Tip="{locale:Locale IgnoreMissingServicesTooltip}">
-                            <TextBlock Text="{locale:Locale SettingsTabSystemIgnoreMissingServices}" />
-                        </CheckBox>
-                    </StackPanel>
+                <StackPanel
+                    Margin="10,0,0,0"
+                    HorizontalAlignment="Stretch"
+                    Orientation="Vertical">
+                    <CheckBox
+                        IsChecked="{Binding IgnoreMissingServices}"
+                        ToolTip.Tip="{locale:Locale IgnoreMissingServicesTooltip}">
+                        <TextBlock Text="{locale:Locale SettingsTabSystemIgnoreMissingServices}" />
+                    </CheckBox>
+                    <CheckBox IsChecked="{Binding IgnoreApplet}">
+                        <TextBlock Text="{locale:Locale SettingsTabSystemIgnoreApplet}" />
+                    </CheckBox>
+                </StackPanel>
             </StackPanel>
         </Border>
     </ScrollViewer>
