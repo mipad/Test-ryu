@@ -6,6 +6,10 @@
   <br>
   <sub><sup><b>(REE-YOU-JINX)</b></sup></sub>
   <br>
+    <a href="https://github.com/KeatonTheBot/Ryujinx/releases/latest">
+        <img src="https://img.shields.io/github/v/release/KeatonTheBot/Ryujinx"
+            alt="Latest Release">
+    </a>
 </h1>
 
 <p align="center">
@@ -16,23 +20,6 @@
   <br />
 </p>
 
-<!--
-<p align="center">
-    <a href="https://github.com/Ryujinx/Ryujinx/actions/workflows/release.yml">
-        <img src="https://github.com/Ryujinx/Ryujinx/actions/workflows/release.yml/badge.svg"
-            alt="">
-    </a>
-    <a href="https://crwd.in/ryujinx">
-        <img src="https://badges.crowdin.net/ryujinx/localized.svg"
-            alt="">
-    </a>
-    <a href="https://discord.com/invite/VkQYXAZ">
-        <img src="https://img.shields.io/discord/410208534861447168?color=5865F2&label=Ryujinx&logo=discord&logoColor=white"
-            alt="Discord">
-    </a>
-    <br>
-    <br>
-    -->
 <p align="center">
     <img src="docs/shell.png">
 </p>
