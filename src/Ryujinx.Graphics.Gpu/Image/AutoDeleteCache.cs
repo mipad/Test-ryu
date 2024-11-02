@@ -48,10 +48,13 @@ namespace Ryujinx.Graphics.Gpu.Image
     {
         private const int MinCountForDeletion = 32;
         private const int MaxCapacity = 2048;
+        private const ulong MiB = 1024 * 1024;
         private const ulong GiB = 1024 * 1024 * 1024;
-        private ulong MaxTextureSizeCapacity = 4UL * GiB;
-        private const ulong MinTextureSizeCapacity = 512 * 1024 * 1024;
+        private ulong MaxTextureSizeCapacity = 4 * GiB;
+        private const ulong MinTextureSizeCapacity = 512 * MiB;
         private const ulong DefaultTextureSizeCapacity = 1 * GiB;
+        private const ulong TextureSizeCapacity4GiBLow = 1536 * MiB;
+        private const ulong TextureSizeCapacity4GiBHigh = 2 * GiB;
         private const ulong TextureSizeCapacity6GiB = 4 * GiB;
         private const ulong TextureSizeCapacity8GiB = 6 * GiB;
         private const ulong TextureSizeCapacity12GiB = 12 * GiB;
@@ -81,11 +84,21 @@ namespace Ryujinx.Graphics.Gpu.Image
         public void Initialize(GpuContext context, ulong cpuMemorySize)
         {
             var cpuMemorySizeGiB = cpuMemorySize / GiB;
+            var MaximumGpuMemory = (ulong)(context.Capabilities.MaximumGpuMemory);
+            var MaximumGpuMemoryGiB = (ulong)(context.Capabilities.MaximumGpuMemory) / GiB;
 
-            if (cpuMemorySizeGiB < 6 || context.Capabilities.MaximumGpuMemory == 0)
+            if (cpuMemorySizeGiB < 6 && MaximumGpuMemoryGiB < 8)
             {
                 _maxCacheMemoryUsage = DefaultTextureSizeCapacity;
                 return;
+            }
+            else if (cpuMemorySizeGiB < 6 && MaximumGpuMemoryGiB >= 8 && MaximumGpuMemoryGiB < 12)
+            {
+                MaxTextureSizeCapacity = TextureSizeCapacity4GiBLow;
+            }
+            else if (cpuMemorySizeGiB < 6 && MaximumGpuMemoryGiB >= 12)
+            {
+                MaxTextureSizeCapacity = TextureSizeCapacity4GiBHigh;
             }
             else if (cpuMemorySizeGiB == 6)
             {
