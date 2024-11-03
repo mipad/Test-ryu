@@ -30,7 +30,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Common
                 MemoryArrange.MemoryArrange4GiBAppletDev => 2048 * MiB,
                 MemoryArrange.MemoryArrange6GiB => 5445 * MiB,
                 MemoryArrange.MemoryArrange8GiB => 7493 * MiB,
-                MemoryArrange.MemoryArrange12GiB => 11139 * MiB,
+                MemoryArrange.MemoryArrange12GiB => 11589 * MiB,
                 _ => throw new ArgumentException($"Invalid memory arrange \"{arrange}\"."),
             };
         }
