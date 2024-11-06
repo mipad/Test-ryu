@@ -262,6 +262,11 @@ namespace Ryujinx.Ava.UI.Views.Main
             }
         }
 
+        public async void OpenXCITrimmerWindow(object sender, RoutedEventArgs e)
+        {
+            await XCITrimmerWindow.Show(ViewModel);
+        }
+
         public async void OpenAboutWindow(object sender, RoutedEventArgs e)
         {
             await AboutWindow.Show();
