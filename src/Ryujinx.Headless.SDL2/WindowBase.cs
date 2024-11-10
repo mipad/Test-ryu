@@ -84,13 +84,15 @@ namespace Ryujinx.Headless.SDL2
 
         private readonly AspectRatio _aspectRatio;
         private readonly bool _enableMouse;
+        private readonly bool _ignoreControllerApplet;
 
         public WindowBase(
             InputManager inputManager,
             GraphicsDebugLevel glLogLevel,
             AspectRatio aspectRatio,
             bool enableMouse,
-            HideCursorMode hideCursorMode)
+            HideCursorMode hideCursorMode,
+            bool ignoreControllerApplet)
         {
             MouseDriver = new SDL2MouseDriver(hideCursorMode);
             _inputManager = inputManager;
@@ -106,6 +108,7 @@ namespace Ryujinx.Headless.SDL2
             _gpuDoneEvent = new ManualResetEvent(false);
             _aspectRatio = aspectRatio;
             _enableMouse = enableMouse;
+            _ignoreControllerApplet = ignoreControllerApplet;
             HostUITheme = new HeadlessHostUiTheme();
 
             SDL2Driver.Instance.Initialize();
@@ -482,6 +485,8 @@ namespace Ryujinx.Headless.SDL2
 
         public bool DisplayMessageDialog(ControllerAppletUIArgs args)
         {
+            if (_ignoreControllerApplet) return false;
+            
             string playerCount = args.PlayerCountMin == args.PlayerCountMax ? $"exactly {args.PlayerCountMin}" : $"{args.PlayerCountMin}-{args.PlayerCountMax}";
 
             string message = $"Application requests {playerCount} player(s) with:\n\n"
