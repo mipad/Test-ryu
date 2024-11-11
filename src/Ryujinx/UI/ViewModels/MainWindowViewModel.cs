@@ -954,6 +954,11 @@ namespace Ryujinx.Ava.UI.ViewModels
         {
             get => FileAssociationHelper.IsTypeAssociationSupported;
         }
+        
+        public bool AreMimeTypesRegistered
+        {
+            get => FileAssociationHelper.AreMimeTypesRegistered;
+        }
 
         public ObservableCollectionExtended<ApplicationData> Applications
         {
