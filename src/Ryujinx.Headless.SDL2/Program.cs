@@ -577,6 +577,9 @@ namespace Ryujinx.Headless.SDL2
                 options.UseHypervisor ?? true,
                 options.MultiplayerLanInterfaceId,
                 Common.Configuration.Multiplayer.MultiplayerMode.Disabled,
+                false,
+                "",
+                "",
                 options.CustomVSyncInterval);
 
             return new Switch(configuration);

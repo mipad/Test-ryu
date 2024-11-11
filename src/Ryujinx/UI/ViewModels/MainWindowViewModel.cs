@@ -118,6 +118,8 @@ namespace Ryujinx.Ava.UI.ViewModels
         public ApplicationData ListSelectedApplication;
         public ApplicationData GridSelectedApplication;
 
+        public IEnumerable<LdnGameData> LastLdnGameData;
+
         internal AppHost AppHost { get; set; }
 
         public MainWindowViewModel()
