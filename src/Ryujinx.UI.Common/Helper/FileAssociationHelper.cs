@@ -76,13 +76,13 @@ namespace Ryujinx.UI.Common.Helper
             {
                 RegistryKey key = Registry.CurrentUser.OpenSubKey(@$"Software\Classes\{ext}");
 
-                if (key is null)
+                var openCmd = key?.OpenSubKey(@"shell\open\command");
+                
+                if (openCmd is null)
                 {
                     return false;
                 }
-
-                var openCmd = key.OpenSubKey(@"shell\open\command");
-
+                
                 string keyValue = (string)openCmd.GetValue("");
 
                 return keyValue is not null && (keyValue.Contains("Ryujinx") || keyValue.Contains(AppDomain.CurrentDomain.FriendlyName));
