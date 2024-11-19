@@ -208,11 +208,10 @@ namespace Ryujinx.Ava.UI.Views.Main
 
         private async void InstallFileTypes_Click(object sender, RoutedEventArgs e)
         {
-            if (FileAssociationHelper.Install())
-            {
+            ViewModel.AreMimeTypesRegistered = FileAssociationHelper.Install();
+            if (ViewModel.AreMimeTypesRegistered)
                 await ContentDialogHelper.CreateInfoDialog(LocaleManager.Instance[LocaleKeys.DialogInstallFileTypesSuccessMessage], string.Empty, LocaleManager.Instance[LocaleKeys.InputDialogOk], string.Empty, string.Empty);
-            }
-            else
+             else
             {
                 await ContentDialogHelper.CreateErrorDialog(LocaleManager.Instance[LocaleKeys.DialogInstallFileTypesErrorMessage]);
             }
@@ -220,10 +219,9 @@ namespace Ryujinx.Ava.UI.Views.Main
 
         private async void UninstallFileTypes_Click(object sender, RoutedEventArgs e)
         {
-            if (FileAssociationHelper.Uninstall())
-            {
+            ViewModel.AreMimeTypesRegistered = !FileAssociationHelper.Uninstall();
+            if (!ViewModel.AreMimeTypesRegistered)
                 await ContentDialogHelper.CreateInfoDialog(LocaleManager.Instance[LocaleKeys.DialogUninstallFileTypesSuccessMessage], string.Empty, LocaleManager.Instance[LocaleKeys.InputDialogOk], string.Empty, string.Empty);
-            }
             else
             {
                 await ContentDialogHelper.CreateErrorDialog(LocaleManager.Instance[LocaleKeys.DialogUninstallFileTypesErrorMessage]);
