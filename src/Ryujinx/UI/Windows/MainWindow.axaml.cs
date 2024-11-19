@@ -361,7 +361,7 @@ namespace Ryujinx.Ava.UI.Windows
                 await Dispatcher.UIThread.InvokeAsync(async () => await UserErrorDialog.ShowUserErrorDialog(UserError.NoKeys));
             }
 
-            if (ConfigurationState.Instance.CheckUpdatesOnStart.Value && Updater.CanUpdate(false))
+            if (ConfigurationState.Instance.CheckUpdatesOnStart.Value && !CommandLineState.HideAvailableUpdates && Updater.CanUpdate(false))
             {
                 await Updater.BeginParse(this, false).ContinueWith(task =>
                 {
