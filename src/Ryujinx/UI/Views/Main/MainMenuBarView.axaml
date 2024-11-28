@@ -187,9 +187,13 @@
                     IsEnabled="{Binding IsGameRunning}" />
             </MenuItem>
             <MenuItem VerticalAlignment="Center" Header="{locale:Locale MenuBarTools}">
+                <MenuItem Header="{locale:Locale MenuBarToolsInstallKeys}" IsEnabled="{Binding EnableNonGameRunningControls}">
+                    <MenuItem Command="{Binding InstallKeysFromFile}" Header="{locale:Locale MenuBarFileToolsInstallKeysFromFile}"/>
+                    <MenuItem Command="{Binding InstallKeysFromFolder}" Header="{locale:Locale MenuBarFileToolsInstallKeysFromFolder}"/>
+                </MenuItem>
                 <MenuItem Header="{locale:Locale MenuBarToolsInstallFirmware}" IsEnabled="{Binding EnableNonGameRunningControls}">
                     <MenuItem Command="{Binding InstallFirmwareFromFile}" Header="{locale:Locale MenuBarFileToolsInstallFirmwareFromFile}" />
-                    <MenuItem Command="{Binding InstallFirmwareFromFolder}" Header="{locale:Locale MenuBarFileToolsInstallFirmwareFromDirectory}" />
+                    <MenuItem Command="{Binding InstallFirmwareFromFolder}" Header="{locale:Locale MenuBarFileToolsInstallFirmwareFromDirectory}"/>
                 </MenuItem>
                 <MenuItem Header="{locale:Locale MenuBarToolsManageFileTypes}" IsVisible="{Binding ManageFileTypesVisible}">
                     <MenuItem Header="{locale:Locale MenuBarToolsInstallFileTypes}" Click="InstallFileTypes_Click"/>
