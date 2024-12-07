@@ -1089,6 +1089,8 @@ namespace Ryujinx.UI.App.Common
 
         private bool AddAndAutoSelectUpdate(TitleUpdateModel update)
         {
+            if (update == null) return false;
+            
             var currentlySelected = TitleUpdates.Items.FirstOrOptional(it =>
                 it.TitleUpdate.TitleIdBase == update.TitleIdBase && it.IsSelected);
 
@@ -1096,7 +1098,7 @@ namespace Ryujinx.UI.App.Common
                                currentlySelected.Value.TitleUpdate.Version < update.Version;
 
             _titleUpdates.AddOrUpdate((update, shouldSelect));
-
+            
             if (currentlySelected.HasValue && shouldSelect)
             {
                 _titleUpdates.AddOrUpdate((currentlySelected.Value.TitleUpdate, false));
@@ -1488,7 +1490,7 @@ namespace Ryujinx.UI.App.Common
 
                 if (TryGetTitleUpdatesFromFile(application.Path, out var bundledUpdates))
                 {
-                    var savedUpdateLookup = savedUpdates.Select(update => update.Item1).ToHashSet();
+                    var savedUpdateLookup = savedUpdates.Select(update => update.Update).ToHashSet();
                     bool updatesChanged = false;
 
                     foreach (var update in bundledUpdates.OrderByDescending(bundled => bundled.Version))
@@ -1496,12 +1498,11 @@ namespace Ryujinx.UI.App.Common
                         if (!savedUpdateLookup.Contains(update))
                         {
                             bool shouldSelect = false;
-                            if (!selectedUpdate.HasValue || selectedUpdate.Value.Item1.Version < update.Version)
+                            if (!selectedUpdate.HasValue || selectedUpdate.Value.Update.Version < update.Version)
                             {
                                 shouldSelect = true;
-                                if (selectedUpdate.HasValue)
-                                    _titleUpdates.AddOrUpdate((selectedUpdate.Value.Item1, false));
-                                selectedUpdate = DynamicData.Kernel.Optional<(TitleUpdateModel, bool IsSelected)>.Create((update, true));
+                                _titleUpdates.AddOrUpdate((selectedUpdate.Value.Update, false));
+                                selectedUpdate = (update, true);
                             }
 
                             modifiedVersion = modifiedVersion || shouldSelect;
