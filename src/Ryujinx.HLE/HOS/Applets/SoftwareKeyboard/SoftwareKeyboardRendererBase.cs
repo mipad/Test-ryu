@@ -5,7 +5,6 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
-using System.Runtime.InteropServices;
 
 namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 {

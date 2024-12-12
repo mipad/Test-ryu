@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Input;
 using Avalonia.Platform;
 using Ryujinx.Common.Configuration;
 using Ryujinx.UI.Common.Configuration;

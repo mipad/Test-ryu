@@ -1,8 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
-using Avalonia.Platform.Storage;
-using Avalonia.Threading;
 using LibHac.Fs;
 using LibHac.Tools.FsSystem.NcaUtils;
 using Ryujinx.Ava.Common;
@@ -17,8 +15,6 @@ using Ryujinx.UI.Common.Helper;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 using Path = System.IO.Path;
 
 namespace Ryujinx.Ava.UI.Controls

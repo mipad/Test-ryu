@@ -7,7 +7,6 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using CompareOp = Ryujinx.Graphics.GAL.CompareOp;
-using Format = Ryujinx.Graphics.GAL.Format;
 using FrontFace = Ryujinx.Graphics.GAL.FrontFace;
 using IndexType = Ryujinx.Graphics.GAL.IndexType;
 using PolygonMode = Ryujinx.Graphics.GAL.PolygonMode;
