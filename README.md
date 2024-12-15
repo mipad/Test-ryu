@@ -12,16 +12,21 @@
     </a>
 </h1>
 
-<p align="center">
-  Ryujinx is an open-source Nintendo Switch emulator, created by gdkchan, written in C#.
+<p>
+  Ryujinx is an open-source Nintendo Switch emulator, originally created by gdkchan, written in C#.
   This emulator aims at providing excellent accuracy and performance, a user-friendly interface and consistent builds.
   It was written from scratch and development on the project began in September 2017.
   Ryujinx is available on Github under the <a href="https://github.com/KeatonTheBot/Ryujinx/blob/master/LICENSE.txt" target="_blank">MIT license</a>.
-  <br />
+  <br><br>
+  On October 1st 2024, Ryujinx was discontinued as the creator was forced to abandon the project.
+  <br><br>
+  This fork is not a Ryujinx revival project or Phoenix project, but it aims to be a middle ground between GreemDev's <a href="https://github.com/GreemDev/Ryujinx">Ryujinx</a> fork and the more preservative <a href="https://github.com/ryujinx-mirror/ryujinx">ryujinx-mirror</a> fork.
+  It brings over many of the front-facing features from the aforementioned forks with <i>additional</i> contributions from KeatonTheBot and others.
+  <br>
 </p>
 
-<p align="center">
-    <img src="docs/shell.png">
+<p>
+  <img src="docs/shell.png">
 </p>
 
 ## Compatibility
@@ -38,12 +43,12 @@ Use the search function to see if a game has been tested already!
 To run this emulator, your PC must be equipped with at least 8GiB of RAM;
 failing to meet this requirement may result in a poor gameplay experience or unexpected crashes.
 
-Avalonia UI comes with translations for various languages. See [Crowdin](https://crwd.in/ryujinx) for more information.
-
 ## Latest build
 
-These builds are compiled automatically for each commit on the master branch.
-While we strive to ensure optimal stability and performance prior to pushing an update, our automated builds **may be unstable or completely broken**.
+<s>These builds are compiled automatically for each commit on the master branch.
+While we strive to ensure optimal stability and performance prior to pushing an update, our automated builds **may be unstable or completely broken**.</s>
+
+Automated builds are temporarily disabled, but Windows x64 builds will be manually compiled and uploaded until the GitHub workflows are fixed.
 
 ## Documentation
 
