@@ -25,6 +25,7 @@
   "MenuBarActions": "_동작",
   "MenuBarOptionsSimulateWakeUpMessage": "깨우기 메시지 시뮬레이션",
   "MenuBarActionsScanAmiibo": "Amiibo 스캔",
+  "MenuBarActionsScanAmiiboBin": "Scan An Amiibo (From Bin)",
   "MenuBarTools": "_도구",
   "MenuBarToolsInstallFirmware": "펌웨어 설치",
   "MenuBarFileToolsInstallFirmwareFromFile": "XCI 또는 ZIP에서 펌웨어 설치",

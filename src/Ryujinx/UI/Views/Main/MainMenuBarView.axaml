@@ -172,6 +172,12 @@
                     Header="{locale:Locale MenuBarActionsScanAmiibo}"
                     IsEnabled="{Binding IsAmiiboRequested}" />
                 <MenuItem
+                    Name="ScanAmiiboMenuItemFromBin"
+                    AttachedToVisualTree="ScanBinAmiiboMenuItem_AttachedToVisualTree"
+                    Click="OpenBinFile"
+                    Header="{locale:Locale MenuBarActionsScanAmiiboBin}"
+                    IsEnabled="{Binding IsAmiiboBinRequested}" />
+                <MenuItem
                     Command="{Binding TakeScreenshot}"
                     Header="{locale:Locale MenuBarFileToolsTakeScreenshot}"
                     InputGesture="{Binding ScreenshotKey}"

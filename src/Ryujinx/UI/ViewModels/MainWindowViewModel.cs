@@ -28,6 +28,7 @@ using Ryujinx.HLE;
 using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE.HOS;
 using Ryujinx.HLE.HOS.Services.Account.Acc;
+using Ryujinx.HLE.HOS.Services.Nfc.AmiiboDecryption;
 using Ryujinx.HLE.UI;
 using Ryujinx.Input.HLE;
 using Ryujinx.Modules;
@@ -35,6 +36,7 @@ using Ryujinx.UI.App.Common;
 using Ryujinx.UI.Common;
 using Ryujinx.UI.Common.Configuration;
 using Ryujinx.UI.Common.Helper;
+using Silk.NET.Vulkan;
 using SkiaSharp;
 using System;
 using System.Collections.Generic;
@@ -69,6 +71,7 @@ namespace Ryujinx.Ava.UI.ViewModels
         private string _volumeStatusText;
         private string _gpuStatusText;
         private bool _isAmiiboRequested;
+        private bool _isAmiiboBinRequested;
         private bool _isGameRunning;
         private bool _isFullScreen;
         private int _progressMaximum;
@@ -294,7 +297,16 @@ namespace Ryujinx.Ava.UI.ViewModels
                 OnPropertyChanged();
             }
         }
+        public bool IsAmiiboBinRequested
+        {
+            get => _isAmiiboBinRequested && _isGameRunning;
+            set
+            {
+                _isAmiiboBinRequested = value;
 
+                OnPropertyChanged();
+            }
+        }
         public bool ShowLoadProgress
         {
             get => _showLoadProgress;
@@ -2000,6 +2012,33 @@ namespace Ryujinx.Ava.UI.ViewModels
                 Title = $"Ryujinx {Program.Version}";
             });
         }
+
+        public async Task OpenBinFile()
+        {
+            if (!IsAmiiboRequested)
+                return;
+
+            if (AppHost.Device.System.SearchingForAmiibo(out int deviceId))
+            {
+                var result = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+                {
+                    Title = LocaleManager.Instance[LocaleKeys.OpenFileDialogTitle],
+                    AllowMultiple = false,
+                    FileTypeFilter = new List<FilePickerFileType>
+                    {
+                        new(LocaleManager.Instance[LocaleKeys.AllSupportedFormats])
+                        {
+                            Patterns = new[] { "*.bin" },
+                        }
+                    }
+                });
+                if (result.Count > 0)
+                {
+                    AppHost.Device.System.ScanAmiiboFromBin(result[0].Path.LocalPath);
+                }
+            }
+        }
+
 
         public void ToggleFullscreen()
         {
