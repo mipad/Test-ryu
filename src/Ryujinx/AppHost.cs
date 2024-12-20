@@ -118,7 +118,7 @@ namespace Ryujinx.Ava
         private bool _dialogShown;
         private readonly bool _isFirmwareTitle;
 
-        private readonly object _lockObject = new();
+        private readonly Lock _lockObject = new();
 
         public event EventHandler AppExit;
         public event EventHandler<StatusInitEventArgs> StatusInitEvent;

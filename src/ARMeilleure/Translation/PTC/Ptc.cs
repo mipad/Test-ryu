@@ -58,7 +58,7 @@ namespace ARMeilleure.Translation.PTC
 
         private readonly ManualResetEvent _waitEvent;
 
-        private readonly object _lock;
+        private readonly Lock _lock = new();
 
         private bool _disposed;
 
@@ -87,8 +87,6 @@ namespace ARMeilleure.Translation.PTC
             _innerHeaderMagic = BinaryPrimitives.ReadUInt64LittleEndian(EncodingCache.UTF8NoBOM.GetBytes(InnerHeaderMagicString).AsSpan());
 
             _waitEvent = new ManualResetEvent(true);
-
-            _lock = new object();
 
             _disposed = false;
 

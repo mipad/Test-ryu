@@ -173,7 +173,7 @@ namespace Ryujinx.HLE.HOS
 
                 if (StrEquals(RomfsDir, modDir.Name))
                 {
-                    var modData = modMetadata.Mods.Find(x => modDir.FullName.Contains(x.Path));
+                    var modData = modMetadata.Mods.FirstOrDefault(x => modDir.FullName.Contains(x.Path));
                     var enabled = modData?.Enabled ?? true;
 
                     mods.RomfsDirs.Add(mod = new Mod<DirectoryInfo>(dir.Name, modDir, enabled));
@@ -181,7 +181,7 @@ namespace Ryujinx.HLE.HOS
                 }
                 else if (StrEquals(ExefsDir, modDir.Name))
                 {
-                    var modData = modMetadata.Mods.Find(x => modDir.FullName.Contains(x.Path));
+                    var modData = modMetadata.Mods.FirstOrDefault(x => modDir.FullName.Contains(x.Path));
                     var enabled = modData?.Enabled ?? true;
 
                     mods.ExefsDirs.Add(mod = new Mod<DirectoryInfo>(dir.Name, modDir, enabled));
@@ -280,7 +280,7 @@ namespace Ryujinx.HLE.HOS
             var fsFile = new FileInfo(Path.Combine(applicationDir.FullName, RomfsContainer));
             if (fsFile.Exists)
             {
-                var modData = modMetadata.Mods.Find(x => fsFile.FullName.Contains(x.Path));
+                var modData = modMetadata.Mods.FirstOrDefault(x => fsFile.FullName.Contains(x.Path));
                 var enabled = modData == null || modData.Enabled;
 
                 mods.RomfsContainers.Add(new Mod<FileInfo>($"<{applicationDir.Name} RomFs>", fsFile, enabled));
@@ -289,7 +289,7 @@ namespace Ryujinx.HLE.HOS
             fsFile = new FileInfo(Path.Combine(applicationDir.FullName, ExefsContainer));
             if (fsFile.Exists)
             {
-                var modData = modMetadata.Mods.Find(x => fsFile.FullName.Contains(x.Path));
+                var modData = modMetadata.Mods.FirstOrDefault(x => fsFile.FullName.Contains(x.Path));
                 var enabled = modData == null || modData.Enabled;
 
                 mods.ExefsContainers.Add(new Mod<FileInfo>($"<{applicationDir.Name} ExeFs>", fsFile, enabled));
@@ -408,7 +408,7 @@ namespace Ryujinx.HLE.HOS
         }
 
         // Assumes searchDirPaths don't overlap
-        private static void CollectMods(Dictionary<ulong, ModCache> modCaches, PatchCache patches, params string[] searchDirPaths)
+        private static void CollectMods(Dictionary<ulong, ModCache> modCaches, PatchCache patches, params ReadOnlySpan<string> searchDirPaths)
         {
             static bool IsPatchesDir(string name) => StrEquals(AmsNsoPatchDir, name) ||
                                                      StrEquals(AmsNroPatchDir, name) ||
@@ -458,7 +458,7 @@ namespace Ryujinx.HLE.HOS
             patches.Initialized = true;
         }
 
-        public void CollectMods(IEnumerable<ulong> applications, params string[] searchDirPaths)
+        public void CollectMods(IEnumerable<ulong> applications, params ReadOnlySpan<string> searchDirPaths)
         {
             Clear();
 
@@ -685,7 +685,7 @@ namespace Ryujinx.HLE.HOS
             ApplyProgramPatches(nroPatches, 0, nro);
         }
 
-        internal bool ApplyNsoPatches(ulong applicationId, params IExecutable[] programs)
+        internal bool ApplyNsoPatches(ulong applicationId, params ReadOnlySpan<IExecutable> programs)
         {
             IEnumerable<Mod<DirectoryInfo>> nsoMods = _patches.NsoPatches;
 
@@ -749,7 +749,7 @@ namespace Ryujinx.HLE.HOS
             }
         }
 
-        private static bool ApplyProgramPatches(IEnumerable<Mod<DirectoryInfo>> mods, int protectedOffset, params IExecutable[] programs)
+        private static bool ApplyProgramPatches(IEnumerable<Mod<DirectoryInfo>> mods, int protectedOffset, params ReadOnlySpan<IExecutable> programs)
         {
             int count = 0;
 
@@ -760,12 +760,18 @@ namespace Ryujinx.HLE.HOS
                 patches[i] = new MemPatch();
             }
 
-            var buildIds = programs.Select(p => p switch
+            var buildIds = new List<string>(programs.Length);
+
+            foreach (IExecutable p in programs)
             {
-                NsoExecutable nso => Convert.ToHexString(nso.BuildId.ItemsRo.ToArray()).TrimEnd('0'),
-                NroExecutable nro => Convert.ToHexString(nro.Header.BuildId).TrimEnd('0'),
-                _ => string.Empty,
-            }).ToList();
+                var buildId = p switch
+                {
+                    NsoExecutable nso => Convert.ToHexString(nso.BuildId.ItemsRo.ToArray()).TrimEnd('0'),
+                    NroExecutable nro => Convert.ToHexString(nro.Header.BuildId).TrimEnd('0'),
+                    _ => string.Empty,
+                };
+                buildIds.Add(buildId);
+            }
 
             int GetIndex(string buildId) => buildIds.FindIndex(id => id == buildId); // O(n) but list is small
 

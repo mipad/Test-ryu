@@ -1,6 +1,8 @@
 using Ryujinx.Common;
 using Ryujinx.Common.Memory;
 using System;
+using System.Buffers;
+using System.Threading;
 
 namespace Ryujinx.Audio.Backends.Common
 {
@@ -11,7 +13,7 @@ namespace Ryujinx.Audio.Backends.Common
     {
         private const int RingBufferAlignment = 2048;
 
-        private readonly object _lock = new();
+        private readonly Lock _lock = new();
 
         private MemoryOwner<byte> _bufferOwner;
         private Memory<byte> _buffer;
