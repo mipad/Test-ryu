@@ -307,6 +307,9 @@ namespace Ryujinx.Ava.UI.ViewModels
                 OnPropertyChanged();
             }
         }
+
+        public bool CanScanAmiiboBinaries => AmiiboBinReader.HasKeyRetailBinPath;
+        
         public bool ShowLoadProgress
         {
             get => _showLoadProgress;

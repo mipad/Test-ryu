@@ -176,6 +176,7 @@
                     AttachedToVisualTree="ScanBinAmiiboMenuItem_AttachedToVisualTree"
                     Click="OpenBinFile"
                     Header="{locale:Locale MenuBarActionsScanAmiiboBin}"
+                    IsVisible="{Binding CanScanAmiiboBinaries}"
                     IsEnabled="{Binding IsAmiiboBinRequested}" />
                 <MenuItem
                     Command="{Binding TakeScreenshot}"
