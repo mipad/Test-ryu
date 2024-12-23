@@ -40,6 +40,8 @@
   "MenuBarViewWindow": "窗口大小",
   "MenuBarViewWindow720": "720p",
   "MenuBarViewWindow1080": "1080p",
+  "MenuBarViewWindow1440": "1440p",
+  "MenuBarViewWindow2160": "2160p",
   "MenuBarHelp": "帮助(_H)",
   "MenuBarHelpCheckForUpdates": "检查更新",
   "MenuBarHelpAbout": "关于",

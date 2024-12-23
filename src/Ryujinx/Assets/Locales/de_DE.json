@@ -40,6 +40,8 @@
   "MenuBarViewWindow": "Fenstergröße",
   "MenuBarViewWindow720": "720p",
   "MenuBarViewWindow1080": "1080p",
+  "MenuBarViewWindow1440": "1440p",
+  "MenuBarViewWindow2160": "2160p",
   "MenuBarHelp": "_Hilfe",
   "MenuBarHelpCheckForUpdates": "Nach Updates suchen",
   "MenuBarHelpAbout": "Über Ryujinx",

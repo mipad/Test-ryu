@@ -249,6 +249,16 @@ namespace Ryujinx.Ava.UI.Views.Main
                         width = 1920;
                         break;
 
+                    case "1440":
+                        height = 1440;
+                        width = 2560;
+                        break;
+
+                    case "2160":
+                        height = 2160;
+                        width = 3840;
+                        break;
+
                     default:
                         throw new ArgumentNullException($"Invalid Tag for {item}");
                 }

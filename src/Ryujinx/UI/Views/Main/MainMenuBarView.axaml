@@ -213,6 +213,8 @@
                 <MenuItem VerticalAlignment="Center" Header="{locale:Locale MenuBarViewWindow}">
                     <MenuItem Header="{locale:Locale MenuBarViewWindow720}" Tag="720" Click="ChangeWindowSize_Click" />
                     <MenuItem Header="{locale:Locale MenuBarViewWindow1080}" Tag="1080" Click="ChangeWindowSize_Click" />
+                    <MenuItem Header="{locale:Locale MenuBarViewWindow1440}" Tag="1440" Click="ChangeWindowSize_Click" />
+                    <MenuItem Header="{locale:Locale MenuBarViewWindow2160}" Tag="2160" Click="ChangeWindowSize_Click" />
                 </MenuItem>
             </MenuItem>
             <MenuItem VerticalAlignment="Center" Header="{locale:Locale MenuBarHelp}">

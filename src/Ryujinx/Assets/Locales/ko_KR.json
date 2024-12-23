@@ -40,6 +40,8 @@
   "MenuBarViewWindow": "창 크기",
   "MenuBarViewWindow720": "720p",
   "MenuBarViewWindow1080": "1080p",
+  "MenuBarViewWindow1440": "1440p",
+  "MenuBarViewWindow2160": "2160p",
   "MenuBarHelp": "도움말(_H)",
   "MenuBarHelpCheckForUpdates": "업데이트 확인",
   "MenuBarHelpAbout": "정보",

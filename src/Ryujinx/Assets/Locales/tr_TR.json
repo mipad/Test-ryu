@@ -40,6 +40,8 @@
   "MenuBarViewWindow": "Pencere Boyutu",
   "MenuBarViewWindow720": "720p",
   "MenuBarViewWindow1080": "1080p",
+  "MenuBarViewWindow1440": "1440p",
+  "MenuBarViewWindow2160": "2160p",
   "MenuBarHelp": "_Yardım",
   "MenuBarHelpCheckForUpdates": "Güncellemeleri Denetle",
   "MenuBarHelpAbout": "Hakkında",
