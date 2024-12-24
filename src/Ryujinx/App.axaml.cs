@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input.Platform;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Styling;
@@ -24,8 +25,11 @@ namespace Ryujinx.Ava
             .ApplicationLifetime.Cast<IClassicDesktopStyleApplicationLifetime>()
             .MainWindow.Cast<MainWindow>();
 
-        public static IClassicDesktopStyleApplicationLifetime DesktopLifetime => Current!
-            .ApplicationLifetime.Cast<IClassicDesktopStyleApplicationLifetime>();
+        public static bool IsClipboardAvailable(out IClipboard clipboard)
+        {
+            clipboard = MainWindow.Clipboard;
+            return clipboard != null;
+        }
 
         public override void Initialize()
         {
