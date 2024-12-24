@@ -4,6 +4,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Gommon;
 using Ryujinx.Ava.Common;
 using Ryujinx.Ava.Common.Locale;
 using Ryujinx.Ava.UI.Helpers;
@@ -19,6 +20,13 @@ namespace Ryujinx.Ava
 {
     public class App : Application
     {
+        public static MainWindow MainWindow => Current!
+            .ApplicationLifetime.Cast<IClassicDesktopStyleApplicationLifetime>()
+            .MainWindow.Cast<MainWindow>();
+
+        public static IClassicDesktopStyleApplicationLifetime DesktopLifetime => Current!
+            .ApplicationLifetime.Cast<IClassicDesktopStyleApplicationLifetime>();
+
         public override void Initialize()
         {
             Name = $"Ryujinx {Program.Version}";

@@ -89,6 +89,9 @@ namespace Ryujinx.Ava.UI.Windows
             Height = ((Height - barHeight) / Program.WindowScaleFactor) + barHeight;
             Width /= Program.WindowScaleFactor;
 
+            ApplicationList.DataContext = DataContext;
+            ApplicationGrid.DataContext = DataContext;
+
             SetWindowSizePosition();
 
             if (Program.PreviewerDetached)
