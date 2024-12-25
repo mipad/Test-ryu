@@ -361,7 +361,7 @@ namespace Ryujinx.Ava.UI.ViewModels
                     value = _processingApplication.Value with { PercentageProgress = null };
 
                 if (value.HasValue)
-                    _displayedXCIFiles.ReplaceWith(value.Value);
+                    _displayedXCIFiles.ReplaceWith(value);
 
                 _processingApplication = value;
                 OnPropertyChanged();
