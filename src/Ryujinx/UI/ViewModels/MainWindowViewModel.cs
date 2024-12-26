@@ -36,7 +36,6 @@ using Ryujinx.UI.App.Common;
 using Ryujinx.UI.Common;
 using Ryujinx.UI.Common.Configuration;
 using Ryujinx.UI.Common.Helper;
-using Silk.NET.Vulkan;
 using SkiaSharp;
 using System;
 using System.Collections.Generic;
