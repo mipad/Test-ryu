@@ -20,7 +20,7 @@
   <br><br>
   On October 1st 2024, Ryujinx was discontinued as the creator was forced to abandon the project.
   <br><br>
-  This fork is not a Ryujinx revival project or Phoenix project, but it aims to be a middle ground between GreemDev's <a href="https://github.com/GreemDev/Ryujinx">Ryujinx</a> fork and the more preservative <a href="https://github.com/ryujinx-mirror/ryujinx">ryujinx-mirror</a> fork.
+  This fork is not a Ryujinx revival project; it aims to be a middle ground between GreemDev's <a href="https://github.com/GreemDev/Ryujinx">Ryujinx</a> fork and the more preservative <a href="https://github.com/ryujinx-mirror/ryujinx">ryujinx-mirror</a> fork.
   It brings over many of the front-facing features from the aforementioned forks with <i>additional</i> contributions from KeatonTheBot and others.
   <br>
 </p>
