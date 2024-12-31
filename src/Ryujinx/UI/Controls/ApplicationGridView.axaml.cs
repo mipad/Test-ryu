@@ -35,14 +35,6 @@ namespace Ryujinx.Ava.UI.Controls
             }
         }
 
-        public void GameList_SelectionChanged(object sender, SelectionChangedEventArgs args)
-        {
-            if (sender is ListBox listBox)
-            {
-                (DataContext as MainWindowViewModel).GridSelectedApplication = listBox.SelectedItem as ApplicationData;
-            }
-        }
-
         private void SearchBox_OnKeyUp(object sender, KeyEventArgs args)
         {
             (DataContext as MainWindowViewModel).SearchText = (sender as TextBox).Text;
