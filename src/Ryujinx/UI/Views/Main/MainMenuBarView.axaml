@@ -177,6 +177,7 @@
                     Click="OpenBinFile"
                     Header="{locale:Locale MenuBarActionsScanAmiiboBin}"
                     IsVisible="{Binding CanScanAmiiboBinaries}"
+                    InputGesture="Ctrl + B"
                     IsEnabled="{Binding IsAmiiboBinRequested}" />
                 <MenuItem
                     Command="{Binding TakeScreenshot}"
