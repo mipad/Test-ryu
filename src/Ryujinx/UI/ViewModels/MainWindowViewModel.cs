@@ -2155,7 +2155,7 @@ namespace Ryujinx.Ava.UI.ViewModels
 
             LastFullscreenToggle = Environment.TickCount64;
 
-            if (WindowState is not WindowState.Normal)
+            if (WindowState == WindowState.FullScreen)
             {
                 WindowState = WindowState.Normal;
 
@@ -2166,7 +2166,7 @@ namespace Ryujinx.Ava.UI.ViewModels
             }
             else
             {
-                WindowState = MainWindow.FullScreenWindowState;
+                WindowState = WindowState.FullScreen;
 
                 if (IsGameRunning)
                 {
@@ -2174,7 +2174,7 @@ namespace Ryujinx.Ava.UI.ViewModels
                 }
             }
 
-            IsFullScreen = WindowState == MainWindow.FullScreenWindowState;
+            IsFullScreen = WindowState == WindowState.FullScreen;
         }
 
         public static void SaveConfig()
