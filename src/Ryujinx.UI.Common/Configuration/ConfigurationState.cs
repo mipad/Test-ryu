@@ -871,7 +871,7 @@ namespace Ryujinx.UI.Common.Configuration
             EnableHardwareAcceleration.Value = true;
             HideCursor.Value = HideCursorMode.OnIdle;
             Graphics.VSyncMode.Value = VSyncMode.Switch;
-            Graphics.CustomVSyncInterval.Value = 120;
+            Graphics.CustomVSyncInterval.Value = 60;
             Graphics.EnableCustomVSyncInterval.Value = false;
             Graphics.EnableShaderCache.Value = true;
             Graphics.EnableTextureRecompression.Value = false;
@@ -1608,7 +1608,7 @@ namespace Ryujinx.UI.Common.Configuration
                     CustomVSyncIntervalDecrement = Key.Unbound,
                 };
 
-                configurationFileFormat.CustomVSyncInterval = 120;
+                configurationFileFormat.CustomVSyncInterval = 60;
 
                 configurationFileUpdated = true;
             }
