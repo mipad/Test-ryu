@@ -157,6 +157,7 @@
   "SettingsTabSystemDramSize4GiB": "4GiB",
   "SettingsTabSystemDramSize6GiB": "6GiB",
   "SettingsTabSystemDramSize8GiB": "8GiB",
+  "SettingsTabSystemDramSize10GiB": "10GiB",
   "SettingsTabSystemDramSize12GiB": "12GiB",
   "SettingsTabSystemIgnoreMissingServices": "누락된 서비스 무시",
   "SettingsTabSystemIgnoreApplet": "애플릿 무시",

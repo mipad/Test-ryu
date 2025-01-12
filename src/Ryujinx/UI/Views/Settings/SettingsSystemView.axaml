@@ -282,6 +282,9 @@
 						<ComboBoxItem>
 							<TextBlock Text="{locale:Locale SettingsTabSystemDramSize8GiB}" />
 						</ComboBoxItem>
+                        <ComboBoxItem>
+                            <TextBlock Text="{locale:Locale SettingsTabSystemDramSize10GiB}" />
+                        </ComboBoxItem>
 						<ComboBoxItem>
 							<TextBlock Text="{locale:Locale SettingsTabSystemDramSize12GiB}" />
 						</ComboBoxItem>

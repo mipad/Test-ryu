@@ -176,6 +176,7 @@
   "SettingsTabSystemDramSize4GiB": "4GiB",
   "SettingsTabSystemDramSize6GiB": "6GiB",
   "SettingsTabSystemDramSize8GiB": "8GiB",
+  "SettingsTabSystemDramSize10GiB": "10GiB",
   "SettingsTabSystemDramSize12GiB": "12GiB",
   "SettingsTabSystemIgnoreMissingServices": "Ignore Missing Services",
   "SettingsTabSystemIgnoreApplet": "Ignore Applet",
