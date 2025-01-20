@@ -8,6 +8,7 @@
     xmlns:viewModels="clr-namespace:Ryujinx.Ava.UI.ViewModels"
     xmlns:models="clr-namespace:Ryujinx.UI.Common.Models;assembly=Ryujinx.UI.Common"
     xmlns:ui="clr-namespace:FluentAvalonia.UI.Controls;assembly=FluentAvalonia"
+    xmlns:pi="using:Projektanker.Icons.Avalonia"
     xmlns:helpers="clr-namespace:Ryujinx.Ava.UI.Helpers"
     Width="500"
     Height="380"
@@ -138,6 +139,15 @@
                                     Spacing="10"
                                     Orientation="Horizontal"
                                     HorizontalAlignment="Right">
+                                    <Button 
+                                        VerticalAlignment="Center"
+                                        HorizontalAlignment="Right"
+                                        Padding="10"
+                                        MinWidth="0"
+                                        MinHeight="0"
+                                        Click="DlcItem_DumpRomfs">
+                                        <ui:SymbolIcon Symbol="MoveToFolder"/>
+                                    </Button>
                                     <Button
                                         VerticalAlignment="Center"
                                         HorizontalAlignment="Right"
