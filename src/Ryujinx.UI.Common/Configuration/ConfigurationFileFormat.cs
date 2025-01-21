@@ -16,7 +16,7 @@ namespace Ryujinx.UI.Common.Configuration
         /// <summary>
         /// The current version of the file format
         /// </summary>
-        public const int CurrentVersion = 56;
+        public const int CurrentVersion = 57;
 
         /// <summary>
         /// Version of the configuration file format
@@ -355,6 +355,11 @@ namespace Ryujinx.UI.Common.Configuration
         /// </summary>
         public bool StartFullscreen { get; set; }
 
+        /// <summary>
+        /// Start games with UI hidden
+        /// </summary>
+        public bool StartNoUI { get; set; }
+        
         /// <summary>
         /// Show console window
         /// </summary>

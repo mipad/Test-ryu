@@ -20,6 +20,7 @@
   "MenuBarOptions": "_Options",
   "MenuBarOptionsToggleFullscreen": "Toggle Fullscreen",
   "MenuBarOptionsStartGamesInFullscreen": "Start Games in Fullscreen Mode",
+  "MenuBarOptionsStartGamesWithoutUI": "Start Games with UI Hidden",
   "MenuBarOptionsStopEmulation": "Stop Emulation",
   "MenuBarOptionsSettings": "_Settings",
   "MenuBarOptionsManageUserProfiles": "_Manage User Profiles",

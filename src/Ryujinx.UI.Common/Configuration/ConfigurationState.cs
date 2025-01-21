@@ -166,6 +166,11 @@ namespace Ryujinx.UI.Common.Configuration
             public ReactiveObject<bool> StartFullscreen { get; private set; }
 
             /// <summary>
+            /// Start games with UI hidden
+            /// </summary>
+            public ReactiveObject<bool> StartNoUI { get; private set; }
+            
+            /// <summary>
             /// Hide / Show Console Window
             /// </summary>
             public ReactiveObject<bool> ShowConsole { get; private set; }
@@ -207,6 +212,7 @@ namespace Ryujinx.UI.Common.Configuration
                 CustomThemePath = new ReactiveObject<string>();
                 BaseStyle = new ReactiveObject<string>();
                 StartFullscreen = new ReactiveObject<bool>();
+                StartNoUI = new ReactiveObject<bool>();
                 GameListViewMode = new ReactiveObject<int>();
                 ShowNames = new ReactiveObject<bool>();
                 GridSize = new ReactiveObject<int>();
@@ -818,6 +824,7 @@ namespace Ryujinx.UI.Common.Configuration
                 ApplicationSort = UI.ApplicationSort,
                 IsAscendingOrder = UI.IsAscendingOrder,
                 StartFullscreen = UI.StartFullscreen,
+                StartNoUI = UI.StartNoUI,
                 ShowConsole = UI.ShowConsole,
                 EnableKeyboard = Hid.EnableKeyboard,
                 EnableMouse = Hid.EnableMouse,
@@ -1615,6 +1622,15 @@ namespace Ryujinx.UI.Common.Configuration
                 configurationFileUpdated = true;
             }
 
+            if (configurationFileFormat.Version < 57)
+            {
+                Ryujinx.Common.Logging.Logger.Warning?.Print(LogClass.Application, $"Outdated configuration version {configurationFileFormat.Version}, migrating to version 55.");
+
+                configurationFileFormat.StartNoUI = false;
+
+                configurationFileUpdated = true;
+            }
+            
             Logger.EnableFileLog.Value = configurationFileFormat.EnableFileLog;
             Graphics.ResScale.Value = configurationFileFormat.ResScale;
             Graphics.ResScaleCustom.Value = configurationFileFormat.ResScaleCustom;
@@ -1697,6 +1713,7 @@ namespace Ryujinx.UI.Common.Configuration
             UI.GridSize.Value = configurationFileFormat.GridSize;
             UI.ApplicationSort.Value = configurationFileFormat.ApplicationSort;
             UI.StartFullscreen.Value = configurationFileFormat.StartFullscreen;
+            UI.StartNoUI.Value = configurationFileFormat.StartNoUI;
             UI.ShowConsole.Value = configurationFileFormat.ShowConsole;
             UI.WindowStartup.WindowSizeWidth.Value = configurationFileFormat.WindowStartup.WindowSizeWidth;
             UI.WindowStartup.WindowSizeHeight.Value = configurationFileFormat.WindowStartup.WindowSizeHeight;
