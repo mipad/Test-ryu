@@ -2097,12 +2097,27 @@ namespace Ryujinx.Ava.UI.ViewModels
             });
         }
 
+        public async Task OpenAmiiboWindow()
+        {
+            if (AppHost.Device.System.SearchingForAmiibo(out int deviceId) && IsGameRunning)
+            {
+                string titleId = AppHost.Device.Processes.ActiveApplication.ProgramIdText.ToUpper();
+                AmiiboWindow window = new(ShowAll, LastScannedAmiiboId, titleId);
+
+                await window.ShowDialog(Window);
+
+                if (window.IsScanned)
+                {
+                    ShowAll = window.ViewModel.ShowAllAmiibo;
+                    LastScannedAmiiboId = window.ScannedAmiibo.GetId();
+
+                    AppHost.Device.System.ScanAmiibo(deviceId, LastScannedAmiiboId, window.ViewModel.UseRandomUuid);
+                }
+            }
+        }
         public async Task OpenBinFile()
         {
-            if (!IsAmiiboRequested)
-                return;
-
-            if (AppHost.Device.System.SearchingForAmiibo(out int deviceId))
+            if (AppHost.Device.System.SearchingForAmiibo(out _) && IsGameRunning)
             {
                 var result = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
                 {
@@ -2119,28 +2134,6 @@ namespace Ryujinx.Ava.UI.ViewModels
                 if (result.Count > 0)
                 {
                     AppHost.Device.System.ScanAmiiboFromBin(result[0].Path.LocalPath);
-                }
-            }
-        }
-
-        public async Task OpenAmiiboWindow()
-        {
-            if (!IsAmiiboRequested)
-                return;
-
-            if (AppHost.Device.System.SearchingForAmiibo(out int deviceId))
-            {
-                string titleId = AppHost.Device.Processes.ActiveApplication.ProgramIdText.ToUpper();
-                AmiiboWindow window = new(ShowAll, LastScannedAmiiboId, titleId);
-
-                await window.ShowDialog(Window);
-
-                if (window.IsScanned)
-                {
-                    ShowAll = window.ViewModel.ShowAllAmiibo;
-                    LastScannedAmiiboId = window.ScannedAmiibo.GetId();
-
-                    AppHost.Device.System.ScanAmiibo(deviceId, LastScannedAmiiboId, window.ViewModel.UseRandomUuid);
                 }
             }
         }
