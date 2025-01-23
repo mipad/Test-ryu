@@ -724,9 +724,8 @@ namespace Ryujinx.HLE.FileSystem
                         {
                             updateNcasItem.Add((nca.Header.ContentType, entry.FullName));
                         }
-                        else
+                        else if (updateNcas.TryAdd(nca.Header.TitleId, new List<(NcaContentType, string)>()))
                         {
-                            updateNcas.Add(nca.Header.TitleId, new List<(NcaContentType, string)>());
                             updateNcas[nca.Header.TitleId].Add((nca.Header.ContentType, entry.FullName));
                         }
                     }
@@ -912,9 +911,8 @@ namespace Ryujinx.HLE.FileSystem
                     {
                         updateNcasItem.Add((nca.Header.ContentType, entry.FullPath));
                     }
-                    else
+                    else if (updateNcas.TryAdd(nca.Header.TitleId, new List<(NcaContentType, string)>()))
                     {
-                        updateNcas.Add(nca.Header.TitleId, new List<(NcaContentType, string)>());
                         updateNcas[nca.Header.TitleId].Add((nca.Header.ContentType, entry.FullPath));
                     }
 
