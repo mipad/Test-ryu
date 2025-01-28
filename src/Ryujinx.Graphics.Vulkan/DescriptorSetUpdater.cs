@@ -3,6 +3,7 @@ using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Shader;
 using Silk.NET.Vulkan;
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using CompareOp = Ryujinx.Graphics.GAL.CompareOp;
@@ -41,15 +42,15 @@ namespace Ryujinx.Graphics.Vulkan
         private record struct TextureRef
         {
             public ShaderStage Stage;
-            public TextureStorage Storage;
-            public Auto<DisposableImageView> View;
+            public TextureView View;
+            public Auto<DisposableImageView> ImageView;
             public Auto<DisposableSampler> Sampler;
 
-            public TextureRef(ShaderStage stage, TextureStorage storage, Auto<DisposableImageView> view, Auto<DisposableSampler> sampler)
+            public TextureRef(ShaderStage stage, TextureView view, Auto<DisposableImageView> imageView, Auto<DisposableSampler> sampler)
             {
                 Stage = stage;
-                Storage = storage;
                 View = view;
+                ImageView = imageView;
                 Sampler = sampler;
             }
         }
@@ -57,14 +58,14 @@ namespace Ryujinx.Graphics.Vulkan
         private record struct ImageRef
         {
             public ShaderStage Stage;
-            public TextureStorage Storage;
-            public Auto<DisposableImageView> View;
+            public TextureView View;
+            public Auto<DisposableImageView> ImageView;
 
-            public ImageRef(ShaderStage stage, TextureStorage storage, Auto<DisposableImageView> view)
+            public ImageRef(ShaderStage stage, TextureView view, Auto<DisposableImageView> imageView)
             {
                 Stage = stage;
-                Storage = storage;
                 View = view;
+                ImageView = imageView;
             }
         }
 
@@ -121,6 +122,8 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly BufferHolder _dummyBuffer;
         private readonly TextureView _dummyTexture;
         private readonly SamplerHolder _dummySampler;
+
+        public List<TextureView> FeedbackLoopHazards { get; private set; }
 
         public DescriptorSetUpdater(VulkanRenderer gd, Device device)
         {
@@ -206,10 +209,15 @@ namespace Ryujinx.Graphics.Vulkan
             _templateUpdater = new();
         }
 
-        public void Initialize()
+        public void Initialize(bool isMainPipeline)
         {
             MemoryOwner<byte> dummyTextureData = MemoryOwner<byte>.RentCleared(4);
             _dummyTexture.SetData(dummyTextureData);
+
+            if (isMainPipeline)
+            {
+                FeedbackLoopHazards = new();
+            }
         }
 
         private static bool BindingOverlaps(ref DescriptorBufferInfo info, int bindingOffset, int offset, int size)
@@ -272,6 +280,18 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void InsertBindingBarriers(CommandBufferScoped cbs)
         {
+            if ((FeedbackLoopHazards?.Count ?? 0) > 0)
+            {
+                // Clear existing hazards - they will be rebuilt.
+
+                foreach (TextureView hazard in FeedbackLoopHazards)
+                {
+                    hazard.DecrementHazardUses();
+                }
+
+                FeedbackLoopHazards.Clear();
+            }
+
             foreach (ResourceBindingSegment segment in _program.BindingSegments[PipelineBase.TextureSetIndex])
             {
                 if (segment.Type == ResourceType.TextureAndSampler)
@@ -281,7 +301,7 @@ namespace Ryujinx.Graphics.Vulkan
                         for (int i = 0; i < segment.Count; i++)
                         {
                             ref var texture = ref _textureRefs[segment.Binding + i];
-                            texture.Storage?.QueueWriteToReadBarrier(cbs, AccessFlags.ShaderReadBit, texture.Stage.ConvertToPipelineStageFlags());
+                            texture.View?.PrepareForUsage(cbs, texture.Stage.ConvertToPipelineStageFlags(), FeedbackLoopHazards);
                         }
                     }
                     else
@@ -302,7 +322,7 @@ namespace Ryujinx.Graphics.Vulkan
                         for (int i = 0; i < segment.Count; i++)
                         {
                             ref var image = ref _imageRefs[segment.Binding + i];
-                            image.Storage?.QueueWriteToReadBarrier(cbs, AccessFlags.ShaderReadBit, image.Stage.ConvertToPipelineStageFlags());
+                            image.View?.PrepareForUsage(cbs, image.Stage.ConvertToPipelineStageFlags(), FeedbackLoopHazards);
                         }
                     }
                     else
@@ -376,9 +396,12 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else if (image is TextureView view)
             {
-                view.Storage.QueueWriteToReadBarrier(cbs, AccessFlags.ShaderReadBit, stage.ConvertToPipelineStageFlags());
+                ref ImageRef iRef = ref _imageRefs[binding];
 
-                _imageRefs[binding]= new(stage, view.Storage, view.GetIdentityImageView());
+                iRef.View?.ClearUsage(FeedbackLoopHazards);
+                view?.PrepareForUsage(cbs, stage.ConvertToPipelineStageFlags(), FeedbackLoopHazards);
+
+                iRef = new(stage, view, view.GetIdentityImageView());
             }
             else
             {
@@ -476,9 +499,12 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else if (texture is TextureView view)
             {
-                view.Storage.QueueWriteToReadBarrier(cbs, AccessFlags.ShaderReadBit, stage.ConvertToPipelineStageFlags());
+                ref TextureRef iRef = ref _textureRefs[binding];
 
-                _textureRefs[binding] = new(stage, view.Storage, view.GetImageView(), ((SamplerHolder)sampler)?.GetSampler());
+                iRef.View?.ClearUsage(FeedbackLoopHazards);
+                view?.PrepareForUsage(cbs, stage.ConvertToPipelineStageFlags(), FeedbackLoopHazards);
+
+                iRef = new(stage, view, view.GetImageView(), ((SamplerHolder)sampler)?.GetSampler());
             }
             else
             {
@@ -500,7 +526,7 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 view.Storage.QueueWriteToReadBarrier(cbs, AccessFlags.ShaderReadBit, stage.ConvertToPipelineStageFlags());
 
-                _textureRefs[binding] = new(stage, view.Storage, view.GetIdentityImageView(), ((SamplerHolder)sampler)?.GetSampler());
+                _textureRefs[binding] = new(stage, view, view.GetIdentityImageView(), ((SamplerHolder)sampler)?.GetSampler());
 
                 SignalDirty(DirtyFlags.Texture);
             }
@@ -826,7 +852,7 @@ namespace Ryujinx.Graphics.Vulkan
                                 ref var texture = ref textures[i];
                                 ref var refs = ref _textureRefs[binding + i];
 
-                                texture.ImageView = refs.View?.Get(cbs).Value ?? default;
+                                texture.ImageView = refs.ImageView?.Get(cbs).Value ?? default;
                                 texture.Sampler = refs.Sampler?.Get(cbs).Value ?? default;
 
                                 if (texture.ImageView.Handle == 0)
@@ -876,7 +902,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                             for (int i = 0; i < count; i++)
                             {
-                                images[i].ImageView = _imageRefs[binding + i].View?.Get(cbs).Value ?? default;
+                                images[i].ImageView = _imageRefs[binding + i].ImageView?.Get(cbs).Value ?? default;
                             }
 
                             tu.Push<DescriptorImageInfo>(images[..count]);
@@ -947,7 +973,7 @@ namespace Ryujinx.Graphics.Vulkan
                             ref var texture = ref textures[i];
                             ref var refs = ref _textureRefs[binding + i];
 
-                            texture.ImageView = refs.View?.Get(cbs).Value ?? default;
+                            texture.ImageView = refs.ImageView?.Get(cbs).Value ?? default;
                             texture.Sampler = refs.Sampler?.Get(cbs).Value ?? default;
 
                             if (texture.ImageView.Handle == 0)
