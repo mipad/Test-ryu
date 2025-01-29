@@ -298,7 +298,7 @@ namespace Ryujinx.HLE.HOS
             AddModsFromDirectory(mods, applicationDir, modMetadata);
         }
 
-        public static void QueryContentsDir(ModCache mods, DirectoryInfo contentsDir, ulong applicationId)
+        public static void QueryContentsDir(ModCache mods, DirectoryInfo contentsDir, ulong applicationId, ulong[] installedDlcs)
         {
             if (!contentsDir.Exists)
             {
@@ -312,6 +312,16 @@ namespace Ryujinx.HLE.HOS
             if (applicationDir != null)
             {
                 QueryApplicationDir(mods, applicationDir, applicationId);
+            }
+
+            foreach (ulong installedDlcId in installedDlcs)
+            {
+                DirectoryInfo dlcModDir = FindApplicationDir(contentsDir, $"{installedDlcId:x16}");
+
+                if (dlcModDir != null)
+                {
+                    QueryApplicationDir(mods, dlcModDir, applicationId);
+                }
             }
         }
 
@@ -422,7 +432,7 @@ namespace Ryujinx.HLE.HOS
                 {
                     foreach ((ulong applicationId, ModCache cache) in modCaches)
                     {
-                        QueryContentsDir(cache, searchDir, applicationId);
+                        QueryContentsDir(cache, searchDir, applicationId, Array.Empty<ulong>());
                     }
 
                     return true;

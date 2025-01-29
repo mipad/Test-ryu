@@ -146,7 +146,11 @@ namespace Ryujinx.Ava.UI.Controls
 
             if (viewModel?.SelectedApplication != null)
             {
-                await ModManagerWindow.Show(viewModel.SelectedApplication.Id, viewModel.SelectedApplication.Name);
+                await ModManagerWindow.Show(
+                    viewModel.SelectedApplication.Id,
+                    viewModel.SelectedApplication.IdBase, 
+                    viewModel.ApplicationLibrary,
+                    viewModel.SelectedApplication.Name);
             }
         }
 
