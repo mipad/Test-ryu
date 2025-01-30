@@ -93,7 +93,10 @@ namespace Ryujinx.Ava
             Console.Title = $"Ryujinx Console {Version}";
 
             // Hook unhandled exception and process exit events.
-            AppDomain.CurrentDomain.UnhandledException += (sender, e) => ProcessUnhandledException(e.ExceptionObject as Exception, e.IsTerminating);
+            AppDomain.CurrentDomain.UnhandledException += (sender, e) 
+                => ProcessUnhandledException(e.ExceptionObject as Exception, e.IsTerminating);
+            TaskScheduler.UnobservedTaskException += (sender, e)
+                => ProcessUnhandledException(e.Exception, false); 
             AppDomain.CurrentDomain.ProcessExit += (sender, e) => Exit();
 
             // Setup base data directory.
