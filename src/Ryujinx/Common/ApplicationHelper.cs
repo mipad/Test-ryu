@@ -349,7 +349,7 @@ namespace Ryujinx.Ava.Common
 
                 if (publicDataNca is null)
                 {
-                    Logger.Error?.Print(LogClass.Application, "Extraction failure. The  NCA was not present in the selected file");
+                    Logger.Error?.Print(LogClass.Application, "Extraction failure. The PublicData NCA was not present in the selected file");
 
                     Dispatcher.UIThread.InvokeAsync(async () =>
                     {
