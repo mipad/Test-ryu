@@ -35,12 +35,8 @@
         <!-- Button / JoyStick Settings -->
         <Grid
             Name="SettingButtons"
-            MinHeight="450">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
+            MinHeight="450"
+            ColumnDefinitions="Auto,*,Auto">
             <!-- Left Controls -->
             <StackPanel
                 Orientation="Vertical"
@@ -55,15 +51,9 @@
                     CornerRadius="5">
                     <Grid
                         Margin="10"
-                        HorizontalAlignment="Stretch">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition />
-                            <ColumnDefinition />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition />
-                            <RowDefinition />
-                        </Grid.RowDefinitions>
+                        HorizontalAlignment="Stretch"
+                        ColumnDefinitions="*,*"
+                        RowDefinitions="*,*">
                         <StackPanel
                             Grid.Column="0"
                             Grid.Row="0"
@@ -416,15 +406,9 @@
                     CornerRadius="5">
                     <Grid
                         Margin="10"
-                        HorizontalAlignment="Stretch">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition />
-                            <ColumnDefinition />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition />
-                            <RowDefinition />
-                        </Grid.RowDefinitions>
+                        HorizontalAlignment="Stretch"
+                        ColumnDefinitions="*,*"
+                        RowDefinitions="*,*">
                         <StackPanel
                             Grid.Column="1"
                             Grid.Row="0"

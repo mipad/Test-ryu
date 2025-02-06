@@ -20,7 +20,7 @@
                             </MenuItem>
                         </MenuItem>
                     </Menu>
-                    <StackPanel Orientation="Horizontal">
+                    <StackPanel Grid.Row="0" Orientation="Horizontal">
                         <ToggleButton
                             Name="btnAdd"
                             Height="28"

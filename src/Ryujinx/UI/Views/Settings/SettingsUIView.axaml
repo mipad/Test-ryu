@@ -95,12 +95,9 @@
                             </Style>
                         </ListBox.Styles>
                     </ListBox>
-                    <Grid HorizontalAlignment="Stretch">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
+                    <Grid
+                        HorizontalAlignment="Stretch"
+                        ColumnDefinitions="*,Auto,Auto">
                         <TextBox
                             Name="GameDirPathBox"
                             Margin="0"
@@ -149,12 +146,9 @@
                             </Style>
                         </ListBox.Styles>
                     </ListBox>
-                    <Grid HorizontalAlignment="Stretch">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
+                    <Grid
+                        HorizontalAlignment="Stretch"
+                        ColumnDefinitions="*,Auto,Auto">
                         <TextBox
                             Name="AutoloadDirPathBox"
                             Margin="0"

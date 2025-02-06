@@ -22,19 +22,12 @@
     <UserControl.Resources>
         <helpers:BitmapArrayValueConverter x:Key="ByteImage" />
     </UserControl.Resources>
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+    <Grid
+        RowDefinitions="Auto,*,Auto">
         <Grid
             Grid.Row="0"
-            HorizontalAlignment="Stretch">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition />
-            </Grid.ColumnDefinitions>
+            HorizontalAlignment="Stretch"
+            ColumnDefinitions="Auto,*">
             <StackPanel
                 Spacing="10"
                 Orientation="Horizontal"
@@ -83,11 +76,8 @@
             <Grid
                 Grid.Column="1"
                 HorizontalAlignment="Stretch"
-                Margin="10,0, 0, 0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition/>
-                </Grid.ColumnDefinitions>
+                Margin="10,0,0,0"
+                ColumnDefinitions="Auto,*">
                 <Label Content="{locale:Locale Search}" VerticalAlignment="Center" />
                 <TextBox
                     Margin="5,0,0,0"
@@ -121,11 +111,9 @@
                 </ListBox.Styles>
                 <ListBox.ItemTemplate>
                     <DataTemplate x:DataType="models:SaveModel">
-                        <Grid HorizontalAlignment="Stretch">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
+                        <Grid
+                            HorizontalAlignment="Stretch"
+                            ColumnDefinitions="*,Auto">
                             <StackPanel
                                 Grid.Column="0"
                                 Orientation="Horizontal"

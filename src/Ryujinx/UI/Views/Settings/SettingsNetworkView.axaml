@@ -61,7 +61,6 @@
                         Watermark="{locale:Locale LdnPassphraseInputPublic}" />
                     <Button
                         Name="GenLdnPassButton"
-                        Grid.Column="1"
                         MinWidth="90"
                         Margin="10,0,0,0"
                         ToolTip.Tip="{locale:Locale GenLdnPassTooltip}"
@@ -71,7 +70,6 @@
                     </Button>
                     <Button
                         Name="ClearLdnPassButton"
-                        Grid.Column="1"
                         MinWidth="90"
                         Margin="10,0,0,0"
                         ToolTip.Tip="{locale:Locale ClearLdnPassTooltip}"

@@ -94,49 +94,49 @@
                         Orientation="Vertical">
                         <StackPanel>
                             <RadioButton
-                                Checked="Sort_Checked"
+                                IsCheckedChanged="Sort_Checked"
                                 Content="{locale:Locale CommonFavorite}"
                                 GroupName="Sort"
                                 IsChecked="{Binding IsSortedByFavorite, Mode=OneTime}"
                                 Tag="Favorite" />
                             <RadioButton
-                                Checked="Sort_Checked"
+                                IsCheckedChanged="Sort_Checked"
                                 Content="{locale:Locale GameListHeaderApplication}"
                                 GroupName="Sort"
                                 IsChecked="{Binding IsSortedByTitle, Mode=OneTime}"
                                 Tag="Title" />
                             <RadioButton
-                                Checked="Sort_Checked"
+                                IsCheckedChanged="Sort_Checked"
                                 Content="{locale:Locale GameListHeaderDeveloper}"
                                 GroupName="Sort"
                                 IsChecked="{Binding IsSortedByDeveloper, Mode=OneTime}"
                                 Tag="Developer" />
                             <RadioButton
-                                Checked="Sort_Checked"
+                                IsCheckedChanged="Sort_Checked"
                                 Content="{locale:Locale GameListHeaderTimePlayed}"
                                 GroupName="Sort"
                                 IsChecked="{Binding IsSortedByTimePlayed, Mode=OneTime}"
                                 Tag="TotalTimePlayed" />
                             <RadioButton
-                                Checked="Sort_Checked"
+                                IsCheckedChanged="Sort_Checked"
                                 Content="{locale:Locale GameListHeaderLastPlayed}"
                                 GroupName="Sort"
                                 IsChecked="{Binding IsSortedByLastPlayed, Mode=OneTime}"
                                 Tag="LastPlayed" />
                             <RadioButton
-                                Checked="Sort_Checked"
+                                IsCheckedChanged="Sort_Checked"
                                 Content="{locale:Locale GameListHeaderFileExtension}"
                                 GroupName="Sort"
                                 IsChecked="{Binding IsSortedByType, Mode=OneTime}"
                                 Tag="FileType" />
                             <RadioButton
-                                Checked="Sort_Checked"
+                                IsCheckedChanged="Sort_Checked"
                                 Content="{locale:Locale GameListHeaderFileSize}"
                                 GroupName="Sort"
                                 IsChecked="{Binding IsSortedBySize, Mode=OneTime}"
                                 Tag="FileSize" />
                             <RadioButton
-                                Checked="Sort_Checked"
+                                IsCheckedChanged="Sort_Checked"
                                 Content="{locale:Locale GameListHeaderPath}"
                                 GroupName="Sort"
                                 IsChecked="{Binding IsSortedByPath, Mode=OneTime}"
@@ -152,13 +152,13 @@
                             <Separator Height="0" HorizontalAlignment="Stretch" />
                         </Border>
                         <RadioButton
-                            Checked="Order_Checked"
+                            IsCheckedChanged="Order_Checked"
                             Content="{locale:Locale OrderAscending}"
                             GroupName="Order"
                             IsChecked="{Binding IsAscending, Mode=OneTime}"
                             Tag="Ascending" />
                         <RadioButton
-                            Checked="Order_Checked"
+                            IsCheckedChanged="Order_Checked"
                             Content="{locale:Locale OrderDescending}"
                             GroupName="Order"
                             IsChecked="{Binding !IsAscending, Mode=OneTime}"
