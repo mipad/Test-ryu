@@ -22,4 +22,8 @@
     </AssemblyAttribute>
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Humanizer" />
+  </ItemGroup>
+
 </Project>
