@@ -164,7 +164,7 @@ namespace Ryujinx.UI.Common.Configuration
         public bool ShowConfirmExit { get; set; }
 
         /// <summary>
-        /// ignore "Applet" dialog
+        /// Ignore Controller Applet dialog
         /// </summary>
         public bool IgnoreApplet { get; set; }
 

@@ -33,10 +33,10 @@ namespace Ryujinx.Ava.UI.Applet
         {
             ManualResetEvent dialogCloseEvent = new(false);
 
-            bool ignoreApplet = ConfigurationState.Instance.IgnoreApplet;
+            bool ignoreControllerApplet = ConfigurationState.Instance.IgnoreControllerApplet;
             bool okPressed = false;
 
-            if (ignoreApplet)
+            if (ignoreControllerApplet)
             {
 
                 return false;

@@ -516,7 +516,7 @@ namespace Ryujinx.Ava.UI.ViewModels
             EnableDiscordIntegration = config.EnableDiscordIntegration;
             CheckUpdatesOnStart = config.CheckUpdatesOnStart;
             ShowConfirmExit = config.ShowConfirmExit;
-            IgnoreApplet = config.IgnoreApplet;
+            IgnoreApplet = config.IgnoreControllerApplet;
             RememberWindowState = config.RememberWindowState;
             HideCursor = (int)config.HideCursor.Value;
 
@@ -618,7 +618,7 @@ namespace Ryujinx.Ava.UI.ViewModels
             config.EnableDiscordIntegration.Value = EnableDiscordIntegration;
             config.CheckUpdatesOnStart.Value = CheckUpdatesOnStart;
             config.ShowConfirmExit.Value = ShowConfirmExit;
-            config.IgnoreApplet.Value = IgnoreApplet;
+            config.IgnoreControllerApplet.Value = IgnoreApplet;
             config.RememberWindowState.Value = RememberWindowState;
             config.HideCursor.Value = (HideCursorMode)HideCursor;
 
