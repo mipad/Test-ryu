@@ -111,7 +111,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Proxy
         public async Task<ushort> NatPunch()
         {
             NatDiscoverer discoverer = new NatDiscoverer();
-            CancellationTokenSource cts = new CancellationTokenSource(5000);
+            CancellationTokenSource cts = new CancellationTokenSource(2500);
 
             NatDevice device;
 
