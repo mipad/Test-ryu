@@ -15,7 +15,7 @@ namespace Ryujinx.UI.Common
         public static Timestamps StartedAt { get; set; }
         
         private const string Description = "A simple, experimental Nintendo Switch emulator.";
-        private const string ApplicationId = "1216775165866807456";
+        private const string ApplicationId = "1341170671497117746";
 
         private const int ApplicationByteLimit = 128;
         private const string Ellipsis = "…";
