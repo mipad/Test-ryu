@@ -23,6 +23,10 @@
     <TrimMode>partial</TrimMode>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-arm64'">
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+
   <!--
     FluentAvalonia, used in the Avalonia UI, requires a workaround for the json serializer used internally when using .NET 8+ System.Text.Json.
     See:
