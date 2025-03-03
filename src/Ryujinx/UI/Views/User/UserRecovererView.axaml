@@ -39,11 +39,7 @@
                                 VerticalAlignment="Stretch"
                                 ClipToBounds="True"
                                 CornerRadius="5">
-                                <Grid Margin="0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
+                                <Grid Margin="0" ColumnDefinitions="*,Auto">
                                     <TextBlock
                                         HorizontalAlignment="Stretch"
                                         Text="{Binding UserId}"
