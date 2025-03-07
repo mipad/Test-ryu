@@ -153,7 +153,7 @@ namespace ARMeilleure.Translation.PTC
         private void InitializeCarriers()
         {
             _infosStream = MemoryStreamManager.Shared.GetStream();
-            _codesList = new List<byte[]>();
+            _codesList = [];
             _relocsStream = MemoryStreamManager.Shared.GetStream();
             _unwindInfosStream = MemoryStreamManager.Shared.GetStream();
         }
@@ -794,7 +794,7 @@ namespace ARMeilleure.Translation.PTC
 
         private void StubCode(int index)
         {
-            _codesList[index] = Array.Empty<byte>();
+            _codesList[index] = [];
         }
 
         private void StubReloc(int relocEntriesCount)
@@ -892,7 +892,7 @@ namespace ARMeilleure.Translation.PTC
                 }
             }
 
-            List<Thread> threads = new();
+            List<Thread> threads = [];
 
             for (int i = 0; i < degreeOfParallelism; i++)
             {

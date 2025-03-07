@@ -143,12 +143,12 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
         //
         // A loopfilter should be applied to every other 8x8 horizontally.
         private static readonly ulong[] Left64x64TxformMask =
-        {
+        [
             0xffffffffffffffffUL, // (int)TxSize.Tx4x4
             0xffffffffffffffffUL, // (int)TxSize.Tx8x8
             0x5555555555555555UL, // (int)TxSize.Tx16x16
             0x1111111111111111UL // (int)TxSize.Tx32x32
-        };
+        ];
 
         // 64 bit masks for above transform size. Each 1 represents a position where
         // we should apply a loop filter across the top border of an 8x8 block
@@ -168,12 +168,12 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
         //
         // A loopfilter should be applied to every other 4 the row vertically.
         private static readonly ulong[] Above64x64TxformMask =
-        {
+        [
             0xffffffffffffffffUL, // (int)TxSize.Tx4x4
             0xffffffffffffffffUL, // (int)TxSize.Tx8x8
             0x00ff00ff00ff00ffUL, // (int)TxSize.Tx16x16
             0x000000ff000000ffUL // (int)TxSize.Tx32x32
-        };
+        ];
 
         // 64 bit masks for prediction sizes (left). Each 1 represents a position
         // where left border of an 8x8 block. These are aligned to the right most
@@ -191,7 +191,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
         //  00000000
         //  00000000
         private static readonly ulong[] LeftPredictionMask =
-        {
+        [
             0x0000000000000001UL, // BLOCK_4x4,
             0x0000000000000001UL, // BLOCK_4x8,
             0x0000000000000001UL, // BLOCK_8x4,
@@ -205,11 +205,11 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             0x0101010101010101UL, // BLOCK_32x64,
             0x0000000001010101UL, // BLOCK_64x32,
             0x0101010101010101UL // BLOCK_64x64
-        };
+        ];
 
         // 64 bit mask to shift and set for each prediction size.
         private static readonly ulong[] AbovePredictionMask =
-        {
+        [
             0x0000000000000001UL, // BLOCK_4x4
             0x0000000000000001UL, // BLOCK_4x8
             0x0000000000000001UL, // BLOCK_8x4
@@ -223,13 +223,13 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             0x000000000000000fUL, // BLOCK_32x64,
             0x00000000000000ffUL, // BLOCK_64x32,
             0x00000000000000ffUL // BLOCK_64x64
-        };
+        ];
 
         // 64 bit mask to shift and set for each prediction size. A bit is set for
         // each 8x8 block that would be in the left most block of the given block
         // size in the 64x64 block.
         private static readonly ulong[] SizeMask =
-        {
+        [
             0x0000000000000001UL, // BLOCK_4x4
             0x0000000000000001UL, // BLOCK_4x8
             0x0000000000000001UL, // BLOCK_8x4
@@ -243,7 +243,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             0x0f0f0f0f0f0f0f0fUL, // BLOCK_32x64,
             0x00000000ffffffffUL, // BLOCK_64x32,
             0xffffffffffffffffUL // BLOCK_64x64
-        };
+        ];
 
         // These are used for masking the left and above borders.
         private const ulong LeftBorder = 0x1111111111111111UL;
@@ -251,24 +251,24 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
 
         // 16 bit masks for uv transform sizes.
         private static readonly ushort[] Left64x64TxformMaskUv =
-        {
+        [
             0xffff, // (int)TxSize.Tx4x4
             0xffff, // (int)TxSize.Tx8x8
             0x5555, // (int)TxSize.Tx16x16
             0x1111 // (int)TxSize.Tx32x32
-        };
+        ];
 
         private static readonly ushort[] Above64x64TxformMaskUv =
-        {
+        [
             0xffff, // (int)TxSize.Tx4x4
             0xffff, // (int)TxSize.Tx8x8
             0x0f0f, // (int)TxSize.Tx16x16
             0x000f // (int)TxSize.Tx32x32
-        };
+        ];
 
         // 16 bit left mask to shift and set for each uv prediction size.
         private static readonly ushort[] LeftPredictionMaskUv =
-        {
+        [
             0x0001, // BLOCK_4x4,
             0x0001, // BLOCK_4x8,
             0x0001, // BLOCK_8x4,
@@ -282,11 +282,11 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             0x1111, // BLOCK_32x64
             0x0011, // BLOCK_64x32,
             0x1111 // BLOCK_64x64
-        };
+        ];
 
         // 16 bit above mask to shift and set for uv each prediction size.
         private static readonly ushort[] AbovePredictionMaskUv =
-        {
+        [
             0x0001, // BLOCK_4x4
             0x0001, // BLOCK_4x8
             0x0001, // BLOCK_8x4
@@ -300,11 +300,11 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             0x0003, // BLOCK_32x64,
             0x000f, // BLOCK_64x32,
             0x000f // BLOCK_64x64
-        };
+        ];
 
         // 64 bit mask to shift and set for each uv prediction size
         private static readonly ushort[] SizeMaskUv =
-        {
+        [
             0x0001, // BLOCK_4x4
             0x0001, // BLOCK_4x8
             0x0001, // BLOCK_8x4
@@ -318,16 +318,16 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             0x3333, // BLOCK_32x64,
             0x00ff, // BLOCK_64x32,
             0xffff // BLOCK_64x64
-        };
+        ];
 
         private const ushort LeftBorderUv = 0x1111;
         private const ushort AboveBorderUv = 0x000f;
 
         private static readonly int[] ModeLfLut =
-        {
+        [
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // INTRA_MODES
             1, 1, 0, 1 // INTER_MODES (ZEROMV == 0)
-        };
+        ];
 
         private static byte GetFilterLevel(ref LoopFilterInfoN lfiN, ref ModeInfo mi)
         {
@@ -342,12 +342,12 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
         // 8x8 blocks in a superblock. A "1" represents the first block in a 16x16
         // or greater area.
         private static readonly byte[][] FirstBlockIn16x16 =
-        {
-            new byte[] { 1, 0, 1, 0, 1, 0, 1, 0 }, new byte[] { 0, 0, 0, 0, 0, 0, 0, 0 },
-            new byte[] { 1, 0, 1, 0, 1, 0, 1, 0 }, new byte[] { 0, 0, 0, 0, 0, 0, 0, 0 },
-            new byte[] { 1, 0, 1, 0, 1, 0, 1, 0 }, new byte[] { 0, 0, 0, 0, 0, 0, 0, 0 },
-            new byte[] { 1, 0, 1, 0, 1, 0, 1, 0 }, new byte[] { 0, 0, 0, 0, 0, 0, 0, 0 }
-        };
+        [
+            [1, 0, 1, 0, 1, 0, 1, 0], [0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 0, 1, 0, 1, 0, 1, 0], [0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 0, 1, 0, 1, 0, 1, 0], [0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 0, 1, 0, 1, 0, 1, 0], [0, 0, 0, 0, 0, 0, 0, 0]
+        ];
 
         // This function sets up the bit masks for a block represented
         // by miRow, miCol in a 64x64 region.
@@ -1323,10 +1323,10 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             }
         }
 
-        private static readonly byte[] Num4x4BlocksWideLookup = { 1, 1, 2, 2, 2, 4, 4, 4, 8, 8, 8, 16, 16 };
-        private static readonly byte[] Num4x4BlocksHighLookup = { 1, 2, 1, 2, 4, 2, 4, 8, 4, 8, 16, 8, 16 };
-        private static readonly byte[] Num8x8BlocksWideLookup = { 1, 1, 1, 1, 1, 2, 2, 2, 4, 4, 4, 8, 8 };
-        private static readonly byte[] Num8x8BlocksHighLookup = { 1, 1, 1, 1, 2, 1, 2, 4, 2, 4, 8, 4, 8 };
+        private static readonly byte[] Num4x4BlocksWideLookup = [1, 1, 2, 2, 2, 4, 4, 4, 8, 8, 8, 16, 16];
+        private static readonly byte[] Num4x4BlocksHighLookup = [1, 2, 1, 2, 4, 2, 4, 8, 4, 8, 16, 8, 16];
+        private static readonly byte[] Num8x8BlocksWideLookup = [1, 1, 1, 1, 1, 2, 2, 2, 4, 4, 4, 8, 8];
+        private static readonly byte[] Num8x8BlocksHighLookup = [1, 1, 1, 1, 2, 1, 2, 4, 2, 4, 8, 4, 8];
 
         private static void FilterBlockPlaneNon420(
             ref Vp9Common cm,

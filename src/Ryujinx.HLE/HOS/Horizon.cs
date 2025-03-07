@@ -130,7 +130,7 @@ namespace Ryujinx.HLE.HOS
 
             PerformanceState = new PerformanceState();
 
-            NfpDevices = new List<NfpDevice>();
+            NfpDevices = [];
 
             // Note: This is not really correct, but with HLE of services, the only memory
             // region used that is used is Application, so we can use the other ones for anything.
@@ -283,14 +283,15 @@ namespace Ryujinx.HLE.HOS
 
                 ProcessCreationInfo creationInfo = new("Service", 1, 0, 0x8000000, 1, Flags, 0, 0);
 
-                uint[] defaultCapabilities = {
+                uint[] defaultCapabilities =
+                [
                     (((uint)KScheduler.CpuCoresCount - 1) << 24) + (((uint)KScheduler.CpuCoresCount - 1) << 16) + 0x63F7u,
                     0x1FFFFFCF,
                     0x207FFFEF,
                     0x47E0060F,
                     0x0048BFFF,
-                    0x01007FFF,
-                };
+                    0x01007FFF
+                ];
 
                 // TODO:
                 // - Pass enough information (capabilities, process creation info, etc) on ServiceEntry for proper initialization.
@@ -341,7 +342,7 @@ namespace Ryujinx.HLE.HOS
         {
             if (VirtualAmiibo.ApplicationBytes.Length > 0)
             {
-                VirtualAmiibo.ApplicationBytes = Array.Empty<byte>();
+                VirtualAmiibo.ApplicationBytes = [];
                 VirtualAmiibo.InputBin = string.Empty;
             }
             if (NfpDevices[nfpDeviceId].State == NfpDeviceState.SearchingForTag)
@@ -356,7 +357,7 @@ namespace Ryujinx.HLE.HOS
             VirtualAmiibo.InputBin = path;
             if (VirtualAmiibo.ApplicationBytes.Length > 0)
             {
-                VirtualAmiibo.ApplicationBytes = Array.Empty<byte>();
+                VirtualAmiibo.ApplicationBytes = [];
             }
             byte[] encryptedData = File.ReadAllBytes(path);
             VirtualAmiiboFile newFile = AmiiboBinReader.ReadBinFile(encryptedData);

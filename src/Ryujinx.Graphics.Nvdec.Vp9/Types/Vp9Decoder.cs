@@ -63,31 +63,31 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Types
             }
 
             byte[][] KfPartitionProbs =
-            {
+            [
                 // 8x8 . 4x4
-                new byte[] { 158, 97, 94 }, // a/l both not split
-                new byte[] { 93, 24, 99 }, // a split, l not split
-                new byte[] { 85, 119, 44 }, // l split, a not split
-                new byte[] { 62, 59, 67 }, // a/l both split
+                [158, 97, 94], // a/l both not split
+                [93, 24, 99], // a split, l not split
+                [85, 119, 44], // l split, a not split
+                [62, 59, 67], // a/l both split
 
                 // 16x16 . 8x8
-                new byte[] { 149, 53, 53 }, // a/l both not split
-                new byte[] { 94, 20, 48 }, // a split, l not split
-                new byte[] { 83, 53, 24 }, // l split, a not split
-                new byte[] { 52, 18, 18 }, // a/l both split
+                [149, 53, 53], // a/l both not split
+                [94, 20, 48], // a split, l not split
+                [83, 53, 24], // l split, a not split
+                [52, 18, 18], // a/l both split
 
                 // 32x32 . 16x16
-                new byte[] { 150, 40, 39 }, // a/l both not split
-                new byte[] { 78, 12, 26 }, // a split, l not split
-                new byte[] { 67, 33, 11 }, // l split, a not split
-                new byte[] { 24, 7, 5 }, // a/l both split
+                [150, 40, 39], // a/l both not split
+                [78, 12, 26], // a split, l not split
+                [67, 33, 11], // l split, a not split
+                [24, 7, 5], // a/l both split
 
                 // 64x64 . 32x32
-                new byte[] { 174, 35, 49 }, // a/l both not split
-                new byte[] { 68, 11, 27 }, // a split, l not split
-                new byte[] { 57, 15, 9 }, // l split, a not split
-                new byte[] { 12, 3, 3 } // a/l both split
-            };
+                [174, 35, 49], // a/l both not split
+                [68, 11, 27], // a split, l not split
+                [57, 15, 9], // l split, a not split
+                [12, 3, 3] // a/l both split
+            ];
 
             for (int i = 0; i < KfPartitionProbs.Length; i++)
             {

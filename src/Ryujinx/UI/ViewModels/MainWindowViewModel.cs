@@ -166,7 +166,7 @@ namespace Ryujinx.Ava.UI.ViewModels
 
         public MainWindowViewModel()
         {
-            Applications = new ObservableCollectionExtended<ApplicationData>();
+            Applications = [];
 
             Applications.ToObservableChangeSet()
                 .Filter(Filter)
@@ -1678,21 +1678,21 @@ namespace Ryujinx.Ava.UI.ViewModels
                 {
                     new(LocaleManager.Instance[LocaleKeys.FileDialogAllTypes])
                     {
-                        Patterns = new[] { "*.xci", "*.zip" },
-                        AppleUniformTypeIdentifiers = new[] { "com.ryujinx.xci", "public.zip-archive" },
-                        MimeTypes = new[] { "application/x-nx-xci", "application/zip" },
+                        Patterns = ["*.xci", "*.zip"],
+                        AppleUniformTypeIdentifiers = ["com.ryujinx.xci", "public.zip-archive"],
+                        MimeTypes = ["application/x-nx-xci", "application/zip"],
                     },
                     new("XCI")
                     {
-                        Patterns = new[] { "*.xci" },
-                        AppleUniformTypeIdentifiers = new[] { "com.ryujinx.xci" },
-                        MimeTypes = new[] { "application/x-nx-xci" },
+                        Patterns = ["*.xci"],
+                        AppleUniformTypeIdentifiers = ["com.ryujinx.xci"],
+                        MimeTypes = ["application/x-nx-xci"],
                     },
                     new("ZIP")
                     {
-                        Patterns = new[] { "*.zip" },
-                        AppleUniformTypeIdentifiers = new[] { "public.zip-archive" },
-                        MimeTypes = new[] { "application/zip" },
+                        Patterns = ["*.zip"],
+                        AppleUniformTypeIdentifiers = ["public.zip-archive"],
+                        MimeTypes = ["application/zip"],
                     },
                 },
             });
@@ -1725,21 +1725,21 @@ namespace Ryujinx.Ava.UI.ViewModels
                 {
                     new(LocaleManager.Instance[LocaleKeys.FileDialogAllTypes])
                     {
-                        Patterns = new[] { "*.keys", "*.zip" },
-                        AppleUniformTypeIdentifiers = new[] { "com.ryujinx.xci", "public.zip-archive" },
-                        MimeTypes = new[] { "application/keys", "application/zip" },
+                        Patterns = ["*.keys", "*.zip"],
+                        AppleUniformTypeIdentifiers = ["com.ryujinx.xci", "public.zip-archive"],
+                        MimeTypes = ["application/keys", "application/zip"],
                     },
                     new("KEYS")
                     {
-                        Patterns = new[] { "*.keys" },
-                        AppleUniformTypeIdentifiers = new[] { "com.ryujinx.xci" },
-                        MimeTypes = new[] { "application/keys" },
+                        Patterns = ["*.keys"],
+                        AppleUniformTypeIdentifiers = ["com.ryujinx.xci"],
+                        MimeTypes = ["application/keys"],
                     },
                     new("ZIP")
                     {
-                        Patterns = new[] { "*.zip" },
-                        AppleUniformTypeIdentifiers = new[] { "public.zip-archive" },
-                        MimeTypes = new[] { "application/zip" },
+                        Patterns = ["*.zip"],
+                        AppleUniformTypeIdentifiers = ["public.zip-archive"],
+                        MimeTypes = ["application/zip"],
                     },
                 },
             });
@@ -1851,53 +1851,53 @@ namespace Ryujinx.Ava.UI.ViewModels
                 {
                     new(LocaleManager.Instance[LocaleKeys.AllSupportedFormats])
                     {
-                        Patterns = new[] { "*.nsp", "*.xci", "*.nca", "*.nro", "*.nso" },
-                        AppleUniformTypeIdentifiers = new[]
-                        {
+                        Patterns = ["*.nsp", "*.xci", "*.nca", "*.nro", "*.nso"],
+                        AppleUniformTypeIdentifiers =
+                        [
                             "com.ryujinx.nsp",
                             "com.ryujinx.xci",
                             "com.ryujinx.nca",
                             "com.ryujinx.nro",
-                            "com.ryujinx.nso",
-                        },
-                        MimeTypes = new[]
-                        {
+                            "com.ryujinx.nso"
+                        ],
+                        MimeTypes =
+                        [
                             "application/x-nx-nsp",
                             "application/x-nx-xci",
                             "application/x-nx-nca",
                             "application/x-nx-nro",
-                            "application/x-nx-nso",
-                        },
+                            "application/x-nx-nso"
+                        ],
                     },
                     new("NSP")
                     {
-                        Patterns = new[] { "*.nsp" },
-                        AppleUniformTypeIdentifiers = new[] { "com.ryujinx.nsp" },
-                        MimeTypes = new[] { "application/x-nx-nsp" },
+                        Patterns = ["*.nsp"],
+                        AppleUniformTypeIdentifiers = ["com.ryujinx.nsp"],
+                        MimeTypes = ["application/x-nx-nsp"],
                     },
                     new("XCI")
                     {
-                        Patterns = new[] { "*.xci" },
-                        AppleUniformTypeIdentifiers = new[] { "com.ryujinx.xci" },
-                        MimeTypes = new[] { "application/x-nx-xci" },
+                        Patterns = ["*.xci"],
+                        AppleUniformTypeIdentifiers = ["com.ryujinx.xci"],
+                        MimeTypes = ["application/x-nx-xci"],
                     },
                     new("NCA")
                     {
-                        Patterns = new[] { "*.nca" },
-                        AppleUniformTypeIdentifiers = new[] { "com.ryujinx.nca" },
-                        MimeTypes = new[] { "application/x-nx-nca" },
+                        Patterns = ["*.nca"],
+                        AppleUniformTypeIdentifiers = ["com.ryujinx.nca"],
+                        MimeTypes = ["application/x-nx-nca"],
                     },
                     new("NRO")
                     {
-                        Patterns = new[] { "*.nro" },
-                        AppleUniformTypeIdentifiers = new[] { "com.ryujinx.nro" },
-                        MimeTypes = new[] { "application/x-nx-nro" },
+                        Patterns = ["*.nro"],
+                        AppleUniformTypeIdentifiers = ["com.ryujinx.nro"],
+                        MimeTypes = ["application/x-nx-nro"],
                     },
                     new("NSO")
                     {
-                        Patterns = new[] { "*.nso" },
-                        AppleUniformTypeIdentifiers = new[] { "com.ryujinx.nso" },
-                        MimeTypes = new[] { "application/x-nx-nso" },
+                        Patterns = ["*.nso"],
+                        AppleUniformTypeIdentifiers = ["com.ryujinx.nso"],
+                        MimeTypes = ["application/x-nx-nso"],
                     },
                 },
             });
@@ -2127,7 +2127,7 @@ namespace Ryujinx.Ava.UI.ViewModels
                     {
                         new(LocaleManager.Instance[LocaleKeys.AllSupportedFormats])
                         {
-                            Patterns = new[] { "*.bin" },
+                            Patterns = ["*.bin"],
                         }
                     }
                 });

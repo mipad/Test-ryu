@@ -116,20 +116,17 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 (4, SpecConstType.Float32),
                 (5, SpecConstType.Float32));
 
-            _edgeProgram = _renderer.CreateProgramWithMinimalLayout(new[]
-            {
-                new ShaderSource(edgeShader, ShaderStage.Compute, TargetLanguage.Spirv),
-            }, edgeResourceLayout, new[] { specInfo });
+            _edgeProgram = _renderer.CreateProgramWithMinimalLayout([
+                new ShaderSource(edgeShader, ShaderStage.Compute, TargetLanguage.Spirv)
+            ], edgeResourceLayout, [specInfo]);
 
-            _blendProgram = _renderer.CreateProgramWithMinimalLayout(new[]
-            {
-                new ShaderSource(blendShader, ShaderStage.Compute, TargetLanguage.Spirv),
-            }, blendResourceLayout, new[] { specInfo });
+            _blendProgram = _renderer.CreateProgramWithMinimalLayout([
+                new ShaderSource(blendShader, ShaderStage.Compute, TargetLanguage.Spirv)
+            ], blendResourceLayout, [specInfo]);
 
-            _neighbourProgram = _renderer.CreateProgramWithMinimalLayout(new[]
-            {
-                new ShaderSource(neighbourShader, ShaderStage.Compute, TargetLanguage.Spirv),
-            }, neighbourResourceLayout, new[] { specInfo });
+            _neighbourProgram = _renderer.CreateProgramWithMinimalLayout([
+                new ShaderSource(neighbourShader, ShaderStage.Compute, TargetLanguage.Spirv)
+            ], neighbourResourceLayout, [specInfo]);
         }
 
         public void DeletePipelines()
@@ -213,12 +210,12 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             _pipeline.SetTextureAndSampler(ShaderStage.Compute, 1, view, _samplerLinear);
             _pipeline.Specialize(_specConstants);
 
-            ReadOnlySpan<float> resolutionBuffer = stackalloc float[] { view.Width, view.Height };
+            ReadOnlySpan<float> resolutionBuffer = [view.Width, view.Height];
             int rangeSize = resolutionBuffer.Length * sizeof(float);
             using var buffer = _renderer.BufferManager.ReserveOrCreate(_renderer, cbs, rangeSize);
 
             buffer.Holder.SetDataUnchecked(buffer.Offset, resolutionBuffer);
-            _pipeline.SetUniformBuffers(stackalloc[] { new BufferAssignment(2, buffer.Range) });
+            _pipeline.SetUniformBuffers([new BufferAssignment(2, buffer.Range)]);
             _pipeline.SetImage(ShaderStage.Compute, 0, _edgeOutputTexture.GetView(FormatTable.ConvertRgba8SrgbToUnorm(view.Info.Format)));
             _pipeline.DispatchCompute(dispatchX, dispatchY, 1);
             _pipeline.ComputeBarrier();

@@ -34,14 +34,14 @@ namespace Ryujinx.Horizon.Kernel.Generators
         private const string TypeResult = NamespaceHorizonCommon + "." + TypeResultName;
         private const string TypeExecutionContext = "IExecutionContext";
 
-        private static readonly string[] _expectedResults = new string[]
-        {
+        private static readonly string[] _expectedResults =
+        [
             $"{TypeResultName}.Success",
             $"{TypeKernelResultName}.TimedOut",
             $"{TypeKernelResultName}.Cancelled",
             $"{TypeKernelResultName}.PortRemoteClosed",
-            $"{TypeKernelResultName}.InvalidState",
-        };
+            $"{TypeKernelResultName}.InvalidState"
+        ];
 
         private readonly struct OutParameter
         {
@@ -145,7 +145,7 @@ namespace Ryujinx.Horizon.Kernel.Generators
             GenerateResultCheckHelper(generator);
             generator.AppendLine();
 
-            List<SyscallIdAndName> syscalls = new List<SyscallIdAndName>();
+            List<SyscallIdAndName> syscalls = [];
 
             foreach (var method in syntaxReceiver.SvcImplementations)
             {
@@ -202,9 +202,9 @@ namespace Ryujinx.Horizon.Kernel.Generators
 
             RegisterAllocatorA32 regAlloc = new RegisterAllocatorA32();
 
-            List<OutParameter> outParameters = new List<OutParameter>();
-            List<string> logInArgs = new List<string>();
-            List<string> logOutArgs = new List<string>();
+            List<OutParameter> outParameters = [];
+            List<string> logInArgs = [];
+            List<string> logOutArgs = [];
 
             foreach (var methodParameter in method.ParameterList.Parameters)
             {
@@ -321,9 +321,9 @@ namespace Ryujinx.Horizon.Kernel.Generators
             int registerIndex = 0;
             int index = 0;
 
-            List<OutParameter> outParameters = new List<OutParameter>();
-            List<string> logInArgs = new List<string>();
-            List<string> logOutArgs = new List<string>();
+            List<OutParameter> outParameters = [];
+            List<string> logInArgs = [];
+            List<string> logOutArgs = [];
 
             foreach (var methodParameter in method.ParameterList.Parameters)
             {

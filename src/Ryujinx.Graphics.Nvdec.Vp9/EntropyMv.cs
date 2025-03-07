@@ -14,22 +14,22 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
 
 
         public static readonly sbyte[] JointTree =
-        {
+        [
             -(sbyte)MvJointType.Zero, 2, -(sbyte)MvJointType.Hnzvz, 4,
             -(sbyte)MvJointType.Hzvnz, -(sbyte)MvJointType.Hnzvnz
-        };
+        ];
 
         public static readonly sbyte[] ClassTree =
-        {
+        [
             -(sbyte)MvClassType.Class0, 2, -(sbyte)MvClassType.Class1, 4, 6, 8, -(sbyte)MvClassType.Class2,
             -(sbyte)MvClassType.Class3, 10, 12, -(sbyte)MvClassType.Class4, -(sbyte)MvClassType.Class5,
             -(sbyte)MvClassType.Class6, 14, 16, 18, -(sbyte)MvClassType.Class7, -(sbyte)MvClassType.Class8,
             -(sbyte)MvClassType.Class9, -(sbyte)MvClassType.Class10
-        };
+        ];
 
-        public static readonly sbyte[] Class0Tree = { -0, -1 };
+        public static readonly sbyte[] Class0Tree = [-0, -1];
 
-        public static readonly sbyte[] FpTree = { -0, 2, -1, 4, -2, -3 };
+        public static readonly sbyte[] FpTree = [-0, 2, -1, 4, -2, -3];
 
         private static bool JointVertical(MvJointType type)
         {
@@ -42,7 +42,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
         }
 
         private static readonly byte[] LogInBase2 =
-        {
+        [
             0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5,
             5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6,
             6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
@@ -73,7 +73,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
             9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
             9, 9, 9, 9, 9, 9, 9, 9, 9, 10
-        };
+        ];
 
         private static int ClassBase(MvClassType c)
         {

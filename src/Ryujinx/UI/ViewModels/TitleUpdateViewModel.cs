@@ -22,8 +22,8 @@ namespace Ryujinx.Ava.UI.ViewModels
         private ApplicationLibrary ApplicationLibrary { get; }
         private ApplicationData ApplicationData { get; }
 
-        private AvaloniaList<TitleUpdateModel> _titleUpdates = new();
-        private AvaloniaList<object> _views = new();
+        private AvaloniaList<TitleUpdateModel> _titleUpdates = [];
+        private AvaloniaList<object> _views = [];
         private object _selectedUpdate = new TitleUpdateViewNoUpdateSentinal();
         private bool _showBundledContentNotice = false;
 
@@ -193,9 +193,9 @@ namespace Ryujinx.Ava.UI.ViewModels
                 {
                     new(LocaleManager.Instance[LocaleKeys.AllSupportedFormats])
                     {
-                        Patterns = new[] { "*.nsp" },
-                        AppleUniformTypeIdentifiers = new[] { "com.ryujinx.nsp" },
-                        MimeTypes = new[] { "application/x-nx-nsp" },
+                        Patterns = ["*.nsp"],
+                        AppleUniformTypeIdentifiers = ["com.ryujinx.nsp"],
+                        MimeTypes = ["application/x-nx-nsp"],
                     },
                 },
             });

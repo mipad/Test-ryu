@@ -1239,9 +1239,9 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
         }
 
         private static readonly byte[] LiteralToFilter =
-        {
+        [
             Constants.EightTapSmooth, Constants.EightTap, Constants.EightTapSharp, Constants.Bilinear
-        };
+        ];
 
         private static byte ReadInterpFilter(ref ReadBitBuffer rb)
         {

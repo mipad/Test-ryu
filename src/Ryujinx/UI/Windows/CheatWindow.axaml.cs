@@ -38,7 +38,7 @@ namespace Ryujinx.Ava.UI.Windows
             MinWidth = 500;
             MinHeight = 650;
             
-            LoadedCheats = new AvaloniaList<CheatNode>();
+            LoadedCheats = [];
             IntegrityCheckLevel checkLevel = ConfigurationState.Instance.System.EnableFsIntegrityChecks
                 ? IntegrityCheckLevel.ErrorOnInvalid
                 : IntegrityCheckLevel.None;
@@ -54,7 +54,7 @@ namespace Ryujinx.Ava.UI.Windows
 
             _enabledCheatsPath = Path.Combine(titleModsPath, "cheats", "enabled.txt");
 
-            string[] enabled = Array.Empty<string>();
+            string[] enabled = [];
 
             if (File.Exists(_enabledCheatsPath))
             {
@@ -108,7 +108,7 @@ namespace Ryujinx.Ava.UI.Windows
                 return;
             }
 
-            List<string> enabledCheats = new();
+            List<string> enabledCheats = [];
 
             foreach (var cheats in LoadedCheats)
             {

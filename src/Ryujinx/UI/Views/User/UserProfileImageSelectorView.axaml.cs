@@ -71,9 +71,9 @@ namespace Ryujinx.Ava.UI.Views.User
                 {
                     new(LocaleManager.Instance[LocaleKeys.AllSupportedFormats])
                     {
-                        Patterns = new[] { "*.jpg", "*.jpeg", "*.png", "*.bmp" },
-                        AppleUniformTypeIdentifiers = new[] { "public.jpeg", "public.png", "com.microsoft.bmp" },
-                        MimeTypes = new[] { "image/jpeg", "image/png", "image/bmp" },
+                        Patterns = ["*.jpg", "*.jpeg", "*.png", "*.bmp"],
+                        AppleUniformTypeIdentifiers = ["public.jpeg", "public.png", "com.microsoft.bmp"],
+                        MimeTypes = ["image/jpeg", "image/png", "image/bmp"],
                     },
                 },
             });

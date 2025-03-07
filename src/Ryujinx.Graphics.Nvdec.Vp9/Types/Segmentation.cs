@@ -16,8 +16,8 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Types
 
         public const int PredictionProbs = 3;
 
-        private static readonly int[] SegFeatureDataSigned = { 1, 1, 0, 0 };
-        private static readonly int[] SegFeatureDataMax = { QuantCommon.MaxQ, Vp9.LoopFilter.MaxLoopFilter, 3, 0 };
+        private static readonly int[] SegFeatureDataSigned = [1, 1, 0, 0];
+        private static readonly int[] SegFeatureDataMax = [QuantCommon.MaxQ, Vp9.LoopFilter.MaxLoopFilter, 3, 0];
 
         public bool Enabled;
         public bool UpdateMap;

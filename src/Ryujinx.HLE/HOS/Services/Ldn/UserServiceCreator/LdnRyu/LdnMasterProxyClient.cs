@@ -40,7 +40,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu
         private readonly RyuLdnProtocol _protocol;
         private readonly NetworkTimeout _timeout;
 
-        private readonly List<NetworkInfo> _availableGames = new List<NetworkInfo>();
+        private readonly List<NetworkInfo> _availableGames = [];
         private DisconnectReason _disconnectReason;
 
         private P2pProxyServer _hostedProxy;
@@ -109,7 +109,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu
 
             ConnectAsync();
 
-            int index = WaitHandle.WaitAny(new WaitHandle[] { _connected, _error }, FailureTimeout);
+            int index = WaitHandle.WaitAny([_connected, _error], FailureTimeout);
 
             if (IsConnected)
             {
@@ -326,7 +326,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu
 
                 SendAsync(_protocol.Encode(PacketId.Reject, new RejectRequest(disconnectReason, nodeId)));
 
-                int index = WaitHandle.WaitAny(new WaitHandle[] { _reject, _error }, InactiveTimeout);
+                int index = WaitHandle.WaitAny([_reject, _error], InactiveTimeout);
 
                 if (index == 0)
                 {
@@ -566,13 +566,13 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu
 
                 SendAsync(_protocol.Encode(PacketId.Scan, scanFilter));
 
-                index = WaitHandle.WaitAny(new WaitHandle[] { _scan, _error }, ScanTimeout);
+                index = WaitHandle.WaitAny([_scan, _error], ScanTimeout);
             }
 
             if (index != 0)
             {
                 // An error occurred or timeout. Write 0 games.
-                return Array.Empty<NetworkInfo>();
+                return [];
             }
 
             return _availableGames.ToArray();

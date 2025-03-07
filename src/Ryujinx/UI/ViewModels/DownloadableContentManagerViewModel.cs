@@ -19,9 +19,9 @@ namespace Ryujinx.Ava.UI.ViewModels
     public class DownloadableContentManagerViewModel : BaseModel
     {
         private readonly ApplicationLibrary _applicationLibrary;
-        private AvaloniaList<DownloadableContentModel> _downloadableContents = new();
-        private AvaloniaList<DownloadableContentModel> _selectedDownloadableContents = new();
-        private AvaloniaList<DownloadableContentModel> _views = new();
+        private AvaloniaList<DownloadableContentModel> _downloadableContents = [];
+        private AvaloniaList<DownloadableContentModel> _selectedDownloadableContents = [];
+        private AvaloniaList<DownloadableContentModel> _views = [];
         private bool _showBundledContentNotice = false;
 
         private string _search;
@@ -169,9 +169,9 @@ namespace Ryujinx.Ava.UI.ViewModels
                 {
                     new("NSP")
                     {
-                        Patterns = new[] { "*.nsp" },
-                        AppleUniformTypeIdentifiers = new[] { "com.ryujinx.nsp" },
-                        MimeTypes = new[] { "application/x-nx-nsp" },
+                        Patterns = ["*.nsp"],
+                        AppleUniformTypeIdentifiers = ["com.ryujinx.nsp"],
+                        MimeTypes = ["application/x-nx-nsp"],
                     },
                 },
             });

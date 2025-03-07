@@ -1315,7 +1315,7 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             if (_isBuffer)
             {
-                handles = Array.Empty<TextureGroupHandle>();
+                handles = [];
             }
             else if (!(_hasMipViews || _hasLayerViews))
             {
@@ -1339,7 +1339,7 @@ namespace Ryujinx.Graphics.Gpu.Image
 
                 var groupHandle = new TextureGroupHandle(this, 0, Storage.Size, _views, 0, 0, 0, _allOffsets.Length, cpuRegionHandles);
 
-                handles = new TextureGroupHandle[] { groupHandle };
+                handles = [groupHandle];
             }
             else
             {

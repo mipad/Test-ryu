@@ -47,9 +47,9 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
 
         // MODE_MV_MAX_UPDATE_FACTOR (128) * count / MODE_MV_COUNT_SAT;
         private static readonly uint[] CountToUpdateFactor =
-        {
+        [
             0, 6, 12, 19, 25, 32, 38, 44, 51, 57, 64, 70, 76, 83, 89, 96, 102, 108, 115, 121, 128
-        };
+        ];
 
         private const int ModeMvCountSat = 20;
 
