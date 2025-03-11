@@ -45,7 +45,7 @@ namespace Ryujinx.UI.Common.Helper
         public static void SaveDownloadableContentsJson(VirtualFileSystem vfs, ulong applicationIdBase, List<(DownloadableContentModel, bool IsEnabled)> dlcs)
         {
             DownloadableContentContainer container = default;
-            List<DownloadableContentContainer> downloadableContentContainerList = new();
+            List<DownloadableContentContainer> downloadableContentContainerList = [];
 
             foreach ((DownloadableContentModel dlc, bool isEnabled) in dlcs)
             {

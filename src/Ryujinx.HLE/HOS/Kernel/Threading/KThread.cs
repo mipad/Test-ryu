@@ -121,8 +121,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
             SiblingsPerCore = new LinkedListNode<KThread>[KScheduler.CpuCoresCount];
 
-            _mutexWaiters = new LinkedList<KThread>();
-            _pinnedWaiters = new LinkedList<KThread>();
+            _mutexWaiters = [];
+            _pinnedWaiters = [];
         }
 
         public Result Initialize(

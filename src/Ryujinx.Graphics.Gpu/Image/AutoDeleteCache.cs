@@ -118,10 +118,10 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// </summary>
         public AutoDeleteCache()
         {
-            _textures = new LinkedList<Texture>();
+            _textures = [];
 
-            _shortCacheBuilder = new HashSet<ShortTextureCacheEntry>();
-            _shortCache = new HashSet<ShortTextureCacheEntry>();
+            _shortCacheBuilder = [];
+            _shortCache = [];
 
             _shortCacheLookup = new Dictionary<TextureDescriptor, ShortTextureCacheEntry>();
         }

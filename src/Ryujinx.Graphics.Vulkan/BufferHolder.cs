@@ -486,7 +486,7 @@ namespace Ryujinx.Graphics.Vulkan
                 (int keyOffset, int keySize) = FromMirrorKey(key);
                 if (!(offset + size <= keyOffset || offset >= keyOffset + keySize))
                 {
-                    toRemove ??= new List<ulong>();
+                    toRemove ??= [];
 
                     toRemove.Add(key);
                 }

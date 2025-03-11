@@ -74,9 +74,9 @@ namespace ARMeilleure.CodeGen.X86
         {
             _stream = stream;
             _labels = new Dictionary<Operand, long>();
-            _jumps = new List<Jump>();
+            _jumps = [];
 
-            _relocs = relocatable ? new List<Reloc>() : null;
+            _relocs = relocatable ? [] : null;
         }
 
         public void MarkLabel(Operand label)

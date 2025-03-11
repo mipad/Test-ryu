@@ -549,7 +549,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             _channel = channel;
             _cacheFromBuffer = new Dictionary<CacheEntryFromBufferKey, CacheEntryFromBuffer>();
             _cacheFromPool = new Dictionary<CacheEntryFromPoolKey, CacheEntry>();
-            _lruCache = new LinkedList<CacheEntryFromBuffer>();
+            _lruCache = [];
         }
 
         /// <summary>
@@ -1116,7 +1116,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             {
                 if (key.MatchesPool(pool))
                 {
-                    (keysToRemove ??= new()).Add(key);
+                    (keysToRemove ??= []).Add(key);
 
                     if (key.IsImage)
                     {

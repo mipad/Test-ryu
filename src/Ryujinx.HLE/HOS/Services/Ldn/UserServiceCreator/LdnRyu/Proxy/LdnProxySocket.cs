@@ -18,7 +18,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Proxy
         private readonly LdnProxy _proxy;
 
         private bool _isListening;
-        private readonly List<LdnProxySocket> _listenSockets = new List<LdnProxySocket>();
+        private readonly List<LdnProxySocket> _listenSockets = [];
 
         private readonly Queue<ProxyConnectRequest> _connectRequests = new Queue<ProxyConnectRequest>();
 

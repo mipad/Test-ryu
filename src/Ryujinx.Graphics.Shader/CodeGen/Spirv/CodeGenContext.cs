@@ -49,7 +49,7 @@ namespace Ryujinx.Graphics.Shader.CodeGen.Spirv
         private class BlockState
         {
             private int _entryCount;
-            private readonly List<Instruction> _labels = new();
+            private readonly List<Instruction> _labels = [];
 
             public Instruction GetNextLabel(CodeGenContext context)
             {

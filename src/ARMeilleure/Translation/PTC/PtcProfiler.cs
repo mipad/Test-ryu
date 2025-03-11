@@ -140,7 +140,7 @@ namespace ARMeilleure.Translation.PTC
 
         public List<ulong> GetBlacklistedFunctions()
         {
-            List<ulong> funcs = new List<ulong>();
+            List<ulong> funcs = [];
 
             foreach (var profiledFunc in ProfiledFuncs)
             {

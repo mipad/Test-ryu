@@ -257,7 +257,7 @@ namespace Ryujinx.Horizon.Generators.Hipc
                 generator.AppendLine();
             }
 
-            List<OutParameter> outParameters = new List<OutParameter>();
+            List<OutParameter> outParameters = [];
 
             string[] args = new string[method.ParameterList.Parameters.Count];
 

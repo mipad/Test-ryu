@@ -45,7 +45,7 @@ namespace Ryujinx.Input.HLE
             _keyboardDriver = keyboardDriver;
             _gamepadDriver = gamepadDriver;
             _mouseDriver = mouseDriver;
-            _inputConfig = new List<InputConfig>();
+            _inputConfig = [];
 
             _gamepadDriver.OnGamepadConnected += HandleOnGamepadConnected;
             _gamepadDriver.OnGamepadDisconnected += HandleOnGamepadDisconnected;

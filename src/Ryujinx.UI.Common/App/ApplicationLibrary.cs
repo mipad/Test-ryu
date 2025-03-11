@@ -661,7 +661,7 @@ namespace Ryujinx.UI.App.Common
             _applications.Clear();
 
             // Builds the applications list with paths to found applications
-            List<string> applicationPaths = new();
+            List<string> applicationPaths = [];
 
             try
             {
@@ -854,7 +854,7 @@ namespace Ryujinx.UI.App.Common
         {
             _cancellationToken = new CancellationTokenSource();
 
-            List<string> dlcPaths = new();
+            List<string> dlcPaths = [];
             int newDlcLoaded = 0;
             numDlcRemoved = 0;
 
@@ -967,7 +967,7 @@ namespace Ryujinx.UI.App.Common
         {
             _cancellationToken = new CancellationTokenSource();
 
-            List<string> updatePaths = new();
+            List<string> updatePaths = [];
             int numUpdatesLoaded = 0;
             numUpdatesRemoved = 0;
 

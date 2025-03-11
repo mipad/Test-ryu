@@ -13,7 +13,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator.LdnRyu.Proxy
         public EndPoint LocalEndpoint { get; }
         public IPAddress LocalAddress { get; }
 
-        private readonly List<LdnProxySocket> _sockets = new List<LdnProxySocket>();
+        private readonly List<LdnProxySocket> _sockets = [];
         private readonly Dictionary<ProtocolType, EphemeralPortPool> _ephemeralPorts = new Dictionary<ProtocolType, EphemeralPortPool>();
 
         private readonly IProxyClient _parent;
