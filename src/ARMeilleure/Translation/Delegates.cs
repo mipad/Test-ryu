@@ -63,7 +63,7 @@ namespace ARMeilleure.Translation
 
         private static readonly SortedList<string, DelegateInfo> _delegates;
 
-        unsafe static Delegates()
+        static Delegates()
         {
             _delegates = new SortedList<string, DelegateInfo>();
 

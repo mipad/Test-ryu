@@ -4,30 +4,21 @@ using System.Numerics;
 
 namespace Ryujinx.Graphics.Shader.Translation
 {
-    class AttributeUsage
+    class AttributeUsage(IGpuAccessor gpuAccessor)
     {
         public bool NextUsesFixedFuncAttributes { get; private set; }
         public int UsedInputAttributes { get; private set; }
         public int UsedOutputAttributes { get; private set; }
-        public HashSet<int> UsedInputAttributesPerPatch { get; }
-        public HashSet<int> UsedOutputAttributesPerPatch { get; }
+        public HashSet<int> UsedInputAttributesPerPatch { get; } = [];
+        public HashSet<int> UsedOutputAttributesPerPatch { get; } = [];
         public HashSet<int> NextUsedInputAttributesPerPatch { get; private set; }
         public int PassthroughAttributes { get; private set; }
         private int _nextUsedInputAttributes;
         private int _thisUsedInputAttributes;
         private Dictionary<int, int> _perPatchAttributeLocations;
-        private readonly IGpuAccessor _gpuAccessor;
 
         public UInt128 NextInputAttributesComponents { get; private set; }
         public UInt128 ThisInputAttributesComponents { get; private set; }
-
-        public AttributeUsage(IGpuAccessor gpuAccessor)
-        {
-            _gpuAccessor = gpuAccessor;
-
-            UsedInputAttributesPerPatch = [];
-            UsedOutputAttributesPerPatch = [];
-        }
 
         public void SetInputUserAttribute(int index, int component)
         {
@@ -74,7 +65,7 @@ namespace Ryujinx.Graphics.Shader.Translation
                     int location = BitOperations.TrailingZeroCount(freeMask);
                     if (location == 32)
                     {
-                        _gpuAccessor.Log($"No enough free locations for patch input/output 0x{attr:X}.");
+                        gpuAccessor.Log($"No enough free locations for patch input/output 0x{attr:X}.");
                         break;
                     }
 

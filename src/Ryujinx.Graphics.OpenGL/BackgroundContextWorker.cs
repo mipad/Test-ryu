@@ -5,7 +5,7 @@ using System.Threading;
 
 namespace Ryujinx.Graphics.OpenGL
 {
-    unsafe class BackgroundContextWorker : IDisposable
+    class BackgroundContextWorker : IDisposable
     {
         [ThreadStatic]
         public static bool InBackground;

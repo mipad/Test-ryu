@@ -14,7 +14,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
             Size = size;
         }
 
-        public int CompareTo([AllowNull] CacheEntry other)
+        public int CompareTo(CacheEntry other)
         {
             return Offset.CompareTo(other.Offset);
         }

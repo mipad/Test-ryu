@@ -52,7 +52,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv
         private IVirtualMemoryManager _clientMemory;
         private ulong _owner;
 
-        private bool _transferMemInitialized = false;
+        private bool _transferMemInitialized;
 
         // TODO: This should call set:sys::GetDebugModeFlag
         private readonly bool _debugModeEnabled = false;

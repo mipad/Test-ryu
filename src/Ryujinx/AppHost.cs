@@ -92,7 +92,7 @@ namespace Ryujinx.Ava
 
         private long _lastCursorMoveTime;
         private bool _isCursorInRenderer = true;
-        private bool _ignoreCursorState = false;
+        private bool _ignoreCursorState;
 
         private enum CursorStates
         {
@@ -106,7 +106,7 @@ namespace Ryujinx.Ava
 
         private DateTime _lastShaderReset;
         private uint _displayCount;
-        private uint _previousCount = 0;
+        private uint _previousCount;
 
         private bool _isStopped;
         private bool _isActive;

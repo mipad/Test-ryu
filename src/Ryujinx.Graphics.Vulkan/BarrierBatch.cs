@@ -67,7 +67,7 @@ namespace Ryujinx.Graphics.Vulkan
             return (access, stages);
         }
 
-        private readonly record struct StageFlags : IEquatable<StageFlags>
+        private readonly record struct StageFlags
         {
             public readonly PipelineStageFlags Source;
             public readonly PipelineStageFlags Dest;
@@ -122,7 +122,7 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe void FlushMemoryBarrier(ShaderCollection program, bool inRenderPass)
+        public void FlushMemoryBarrier(ShaderCollection program, bool inRenderPass)
         {
             if (_queuedIncoherentBarrier > IncoherentBarrierType.None)
             {
@@ -182,7 +182,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public unsafe void Flush(CommandBufferScoped cbs, bool inRenderPass, RenderPassHolder rpHolder, Action endRenderPass)
+        public void Flush(CommandBufferScoped cbs, bool inRenderPass, RenderPassHolder rpHolder, Action endRenderPass)
         {
             Flush(cbs, null, inRenderPass, rpHolder, endRenderPass);
         }

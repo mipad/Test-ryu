@@ -13,7 +13,6 @@ using Ryujinx.UI.Common.Helper;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Text.Json.Nodes;
 
 namespace Ryujinx.UI.Common.Configuration
 {
@@ -26,44 +25,23 @@ namespace Ryujinx.UI.Common.Configuration
         {
             public class Columns
             {
-                public ReactiveObject<bool> FavColumn { get; private set; }
-                public ReactiveObject<bool> IconColumn { get; private set; }
-                public ReactiveObject<bool> AppColumn { get; private set; }
-                public ReactiveObject<bool> DevColumn { get; private set; }
-                public ReactiveObject<bool> VersionColumn { get; private set; }
-                public ReactiveObject<bool> LdnInfoColumn { get; private set; }
-                public ReactiveObject<bool> TimePlayedColumn { get; private set; }
-                public ReactiveObject<bool> LastPlayedColumn { get; private set; }
-                public ReactiveObject<bool> FileExtColumn { get; private set; }
-                public ReactiveObject<bool> FileSizeColumn { get; private set; }
-                public ReactiveObject<bool> PathColumn { get; private set; }
-
-                public Columns()
-                {
-                    FavColumn = new ReactiveObject<bool>();
-                    IconColumn = new ReactiveObject<bool>();
-                    AppColumn = new ReactiveObject<bool>();
-                    DevColumn = new ReactiveObject<bool>();
-                    VersionColumn = new ReactiveObject<bool>();
-                    LdnInfoColumn = new ReactiveObject<bool>();
-                    TimePlayedColumn = new ReactiveObject<bool>();
-                    LastPlayedColumn = new ReactiveObject<bool>();
-                    FileExtColumn = new ReactiveObject<bool>();
-                    FileSizeColumn = new ReactiveObject<bool>();
-                    PathColumn = new ReactiveObject<bool>();
-                }
+                public ReactiveObject<bool> FavColumn { get; private set; } = new();
+                public ReactiveObject<bool> IconColumn { get; private set; } = new();
+                public ReactiveObject<bool> AppColumn { get; private set; } = new();
+                public ReactiveObject<bool> DevColumn { get; private set; } = new();
+                public ReactiveObject<bool> VersionColumn { get; private set; } = new();
+                public ReactiveObject<bool> LdnInfoColumn { get; private set; } = new();
+                public ReactiveObject<bool> TimePlayedColumn { get; private set; } = new();
+                public ReactiveObject<bool> LastPlayedColumn { get; private set; } = new();
+                public ReactiveObject<bool> FileExtColumn { get; private set; } = new();
+                public ReactiveObject<bool> FileSizeColumn { get; private set; } = new();
+                public ReactiveObject<bool> PathColumn { get; private set; } = new();
             }
 
             public class ColumnSortSettings
             {
-                public ReactiveObject<int> SortColumnId { get; private set; }
-                public ReactiveObject<bool> SortAscending { get; private set; }
-
-                public ColumnSortSettings()
-                {
-                    SortColumnId = new ReactiveObject<int>();
-                    SortAscending = new ReactiveObject<bool>();
-                }
+                public ReactiveObject<int> SortColumnId { get; private set; } = new();
+                public ReactiveObject<bool> SortAscending { get; private set; } = new();
             }
 
             /// <summary>
@@ -71,22 +49,12 @@ namespace Ryujinx.UI.Common.Configuration
             /// </summary>
             public class ShownFileTypeSettings
             {
-                public ReactiveObject<bool> NSP { get; private set; }
-                public ReactiveObject<bool> PFS0 { get; private set; }
-                public ReactiveObject<bool> XCI { get; private set; }
-                public ReactiveObject<bool> NCA { get; private set; }
-                public ReactiveObject<bool> NRO { get; private set; }
-                public ReactiveObject<bool> NSO { get; private set; }
-
-                public ShownFileTypeSettings()
-                {
-                    NSP = new ReactiveObject<bool>();
-                    PFS0 = new ReactiveObject<bool>();
-                    XCI = new ReactiveObject<bool>();
-                    NCA = new ReactiveObject<bool>();
-                    NRO = new ReactiveObject<bool>();
-                    NSO = new ReactiveObject<bool>();
-                }
+                public ReactiveObject<bool> NSP { get; private set; } = new();
+                public ReactiveObject<bool> PFS0 { get; private set; } = new();
+                public ReactiveObject<bool> XCI { get; private set; } = new();
+                public ReactiveObject<bool> NCA { get; private set; } = new();
+                public ReactiveObject<bool> NRO { get; private set; } = new();
+                public ReactiveObject<bool> NSO { get; private set; } = new();
             }
 
             // <summary>
@@ -94,20 +62,11 @@ namespace Ryujinx.UI.Common.Configuration
             ///<summary>
             public class WindowStartupSettings
             {
-                public ReactiveObject<int> WindowSizeWidth { get; private set; }
-                public ReactiveObject<int> WindowSizeHeight { get; private set; }
-                public ReactiveObject<int> WindowPositionX { get; private set; }
-                public ReactiveObject<int> WindowPositionY { get; private set; }
-                public ReactiveObject<bool> WindowMaximized { get; private set; }
-
-                public WindowStartupSettings()
-                {
-                    WindowSizeWidth = new ReactiveObject<int>();
-                    WindowSizeHeight = new ReactiveObject<int>();
-                    WindowPositionX = new ReactiveObject<int>();
-                    WindowPositionY = new ReactiveObject<int>();
-                    WindowMaximized = new ReactiveObject<bool>();
-                }
+                public ReactiveObject<int> WindowSizeWidth { get; private set; } = new();
+                public ReactiveObject<int> WindowSizeHeight { get; private set; } = new();
+                public ReactiveObject<int> WindowPositionX { get; private set; } = new();
+                public ReactiveObject<int> WindowPositionY { get; private set; } = new();
+                public ReactiveObject<bool> WindowMaximized { get; private set; } = new();
             }
 
             /// <summary>
@@ -421,32 +380,24 @@ namespace Ryujinx.UI.Common.Configuration
             /// <summary>
             /// Enable or disable keyboard support (Independent from controllers binding)
             /// </summary>
-            public ReactiveObject<bool> EnableKeyboard { get; private set; }
+            public ReactiveObject<bool> EnableKeyboard { get; private set; } = new();
 
             /// <summary>
             /// Enable or disable mouse support (Independent from controllers binding)
             /// </summary>
-            public ReactiveObject<bool> EnableMouse { get; private set; }
+            public ReactiveObject<bool> EnableMouse { get; private set; } = new();
 
             /// <summary>
             /// Hotkey Keyboard Bindings
             /// </summary>
-            public ReactiveObject<KeyboardHotkeys> Hotkeys { get; private set; }
+            public ReactiveObject<KeyboardHotkeys> Hotkeys { get; private set; } = new();
 
             /// <summary>
             /// Input device configuration.
             /// NOTE: This ReactiveObject won't issue an event when the List has elements added or removed.
             /// TODO: Implement a ReactiveList class.
             /// </summary>
-            public ReactiveObject<List<InputConfig>> InputConfig { get; private set; }
-
-            public HidSection()
-            {
-                EnableKeyboard = new ReactiveObject<bool>();
-                EnableMouse = new ReactiveObject<bool>();
-                Hotkeys = new ReactiveObject<KeyboardHotkeys>();
-                InputConfig = new ReactiveObject<List<InputConfig>>();
-            }
+            public ReactiveObject<List<InputConfig>> InputConfig { get; private set; } = new();
         }
 
         /// <summary>

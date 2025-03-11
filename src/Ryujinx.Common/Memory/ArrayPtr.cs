@@ -100,7 +100,7 @@ namespace Ryujinx.Common.Memory
             return obj is ArrayPtr<T> other && Equals(other);
         }
 
-        public readonly bool Equals([AllowNull] ArrayPtr<T> other)
+        public readonly bool Equals(ArrayPtr<T> other)
         {
             return _ptr == other._ptr && Length == other.Length;
         }

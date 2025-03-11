@@ -17,7 +17,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.Native
         public IntPtr SampleFmts;
         // Deprecated
         public unsafe ulong* ChannelLayouts;
-        public unsafe IntPtr PrivClass;
+        public IntPtr PrivClass;
         public IntPtr Profiles;
         public unsafe byte* WrapperName;
         public IntPtr ChLayouts;

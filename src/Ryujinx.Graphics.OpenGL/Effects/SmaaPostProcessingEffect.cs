@@ -6,7 +6,7 @@ using System;
 
 namespace Ryujinx.Graphics.OpenGL.Effects.Smaa
 {
-    internal partial class SmaaPostProcessingEffect : IPostProcessingEffect
+    internal class SmaaPostProcessingEffect : IPostProcessingEffect
     {
         public const int AreaWidth = 160;
         public const int AreaHeight = 560;
@@ -75,7 +75,7 @@ namespace Ryujinx.Graphics.OpenGL.Effects.Smaa
             }
         }
 
-        private unsafe void RecreateShaders(int width, int height)
+        private void RecreateShaders(int width, int height)
         {
             string baseShader = EmbeddedResources.ReadAllText("Ryujinx.Graphics.OpenGL/Effects/Shaders/smaa.hlsl");
             var pixelSizeDefine = $"#define SMAA_RT_METRICS float4(1.0 / {width}.0, 1.0 / {height}.0, {width}, {height}) \n";

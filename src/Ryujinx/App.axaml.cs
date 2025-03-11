@@ -144,7 +144,7 @@ namespace Ryujinx.Ava
 
         public static ThemeVariant DetectSystemTheme()
         {
-            if (Application.Current is App app)
+            if (Current is App app)
             {
                 var colorValues = app.PlatformSettings.GetColorValues();
 

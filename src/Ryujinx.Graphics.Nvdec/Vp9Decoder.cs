@@ -15,7 +15,7 @@ namespace Ryujinx.Graphics.Nvdec
     {
         private static readonly Decoder _decoder = new();
 
-        public unsafe static void Decode(ResourceManager rm, ref NvdecRegisters state)
+        public static void Decode(ResourceManager rm, ref NvdecRegisters state)
         {
             PictureInfo pictureInfo = rm.MemoryManager.DeviceRead<PictureInfo>(state.SetDrvPicSetupOffset);
             EntropyProbs entropy = rm.MemoryManager.DeviceRead<EntropyProbs>(state.Vp9SetProbTabBufOffset);

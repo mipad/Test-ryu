@@ -61,18 +61,12 @@ namespace Ryujinx.Graphics.Shader.Translation
 
         private readonly TransformFeedbackOutput[] _transformFeedbackOutputs;
 
-        readonly struct TransformFeedbackVariable : IEquatable<TransformFeedbackVariable>
+        readonly struct TransformFeedbackVariable(IoVariable ioVariable, int location = 0, int component = 0)
+            : IEquatable<TransformFeedbackVariable>
         {
-            public IoVariable IoVariable { get; }
-            public int Location { get; }
-            public int Component { get; }
-
-            public TransformFeedbackVariable(IoVariable ioVariable, int location = 0, int component = 0)
-            {
-                IoVariable = ioVariable;
-                Location = location;
-                Component = component;
-            }
+            public IoVariable IoVariable { get; } = ioVariable;
+            public int Location { get; } = location;
+            public int Component { get; } = component;
 
             public override bool Equals(object other)
             {

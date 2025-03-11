@@ -205,7 +205,7 @@ namespace Ryujinx.Graphics.Vulkan
         /// <param name="size">The minimum size the reserved data requires</param>
         /// <param name="alignment">The required alignment for the buffer offset</param>
         /// <returns>The reserved range of the staging buffer</returns>
-        public unsafe StagingBufferReserved? TryReserveData(CommandBufferScoped cbs, int size, int alignment)
+        public StagingBufferReserved? TryReserveData(CommandBufferScoped cbs, int size, int alignment)
         {
             if (size > BufferSize)
             {
@@ -235,7 +235,7 @@ namespace Ryujinx.Graphics.Vulkan
         /// <param name="cbs">Command buffer to reserve the data on</param>
         /// <param name="size">The minimum size the reserved data requires</param>
         /// <returns>The reserved range of the staging buffer</returns>
-        public unsafe StagingBufferReserved? TryReserveData(CommandBufferScoped cbs, int size)
+        public StagingBufferReserved? TryReserveData(CommandBufferScoped cbs, int size)
         {
             return TryReserveData(cbs, size, _resourceAlignment);
         }

@@ -20,7 +20,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
                 Size = size;
             }
 
-            public int CompareTo([AllowNull] Range other)
+            public int CompareTo(Range other)
             {
                 return Offset.CompareTo(other.Offset);
             }

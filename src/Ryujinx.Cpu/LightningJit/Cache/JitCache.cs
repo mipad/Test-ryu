@@ -28,7 +28,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
         private static readonly Lock _lock = new();
         private static bool _initialized;
         private static readonly List<ReservedRegion> _jitRegions = [];
-        private static int _activeRegionIndex = 0;
+        private static int _activeRegionIndex;
 
         [SupportedOSPlatform("windows")]
         [LibraryImport("kernel32.dll", SetLastError = true)]
@@ -75,12 +75,9 @@ namespace Ryujinx.Cpu.LightningJit.Cache
 
                 if (OperatingSystem.IsMacOS() && RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
                 {
-                    unsafe
+                    fixed (byte* codePtr = code)
                     {
-                        fixed (byte* codePtr = code)
-                        {
-                            JitSupportDarwin.Copy(funcPtr, (IntPtr)codePtr, (ulong)code.Length);
-                        }
+                        JitSupportDarwin.Copy(funcPtr, (IntPtr)codePtr, (ulong)code.Length);
                     }
                 }
                 else

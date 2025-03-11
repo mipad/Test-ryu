@@ -640,7 +640,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public unsafe void SetDataUnchecked<T>(int offset, ReadOnlySpan<T> data) where T : unmanaged
+        public void SetDataUnchecked<T>(int offset, ReadOnlySpan<T> data) where T : unmanaged
         {
             SetDataUnchecked(offset, MemoryMarshal.AsBytes(data));
         }

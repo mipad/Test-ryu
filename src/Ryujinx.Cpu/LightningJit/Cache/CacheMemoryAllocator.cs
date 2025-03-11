@@ -18,7 +18,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
                 Size = size;
             }
 
-            public int CompareTo([AllowNull] MemoryBlock other)
+            public int CompareTo(MemoryBlock other)
             {
                 return Offset.CompareTo(other.Offset);
             }

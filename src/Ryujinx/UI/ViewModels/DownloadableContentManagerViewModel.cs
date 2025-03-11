@@ -22,7 +22,7 @@ namespace Ryujinx.Ava.UI.ViewModels
         private AvaloniaList<DownloadableContentModel> _downloadableContents = [];
         private AvaloniaList<DownloadableContentModel> _selectedDownloadableContents = [];
         private AvaloniaList<DownloadableContentModel> _views = [];
-        private bool _showBundledContentNotice = false;
+        private bool _showBundledContentNotice;
 
         private string _search;
         private readonly ApplicationData _applicationData;

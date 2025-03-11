@@ -6,7 +6,7 @@ using System.Linq;
 
 namespace Ryujinx.Graphics.Vulkan
 {
-    class SyncManager
+    class SyncManager(VulkanRenderer gd, Device device)
     {
         private class SyncHandle
         {
@@ -23,18 +23,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         private ulong _firstHandle;
 
-        private readonly VulkanRenderer _gd;
-        private readonly Device _device;
-        private readonly List<SyncHandle> _handles;
+        private readonly List<SyncHandle> _handles = [];
         private ulong _flushId;
         private long _waitTicks;
-
-        public SyncManager(VulkanRenderer gd, Device device)
-        {
-            _gd = gd;
-            _device = device;
-            _handles = [];
-        }
 
         public void RegisterFlush()
         {
@@ -45,17 +36,17 @@ namespace Ryujinx.Graphics.Vulkan
         {
             ulong flushId = _flushId;
             MultiFenceHolder waitable = new();
-            if (strict || _gd.InterruptAction == null)
+            if (strict || gd.InterruptAction == null)
             {
-                _gd.FlushAllCommands();
-                _gd.CommandBufferPool.AddWaitable(waitable);
+                gd.FlushAllCommands();
+                gd.CommandBufferPool.AddWaitable(waitable);
             }
             else
             {
                 // Don't flush commands, instead wait for the current command buffer to finish.
                 // If this sync is waited on before the command buffer is submitted, interrupt the gpu thread and flush it manually.
 
-                _gd.CommandBufferPool.AddInUseWaitable(waitable);
+                gd.CommandBufferPool.AddInUseWaitable(waitable);
             }
 
             SyncHandle handle = new()
@@ -88,7 +79,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                         if (handle.ID > lastHandle)
                         {
-                            bool signaled = handle.Signalled || handle.Waitable.WaitForFences(_gd.Api, _device, 0);
+                            bool signaled = handle.Signalled || handle.Waitable.WaitForFences(gd.Api, device, 0);
                             if (signaled)
                             {
                                 lastHandle = handle.ID;
@@ -134,11 +125,11 @@ namespace Ryujinx.Graphics.Vulkan
 
                 if (result.NeedsFlush(_flushId))
                 {
-                    _gd.InterruptAction(() =>
+                    gd.InterruptAction(() =>
                     {
                         if (result.NeedsFlush(_flushId))
                         {
-                            _gd.FlushAllCommands();
+                            gd.FlushAllCommands();
                         }
                     });
                 }
@@ -150,7 +141,7 @@ namespace Ryujinx.Graphics.Vulkan
                         return;
                     }
 
-                    bool signaled = result.Signalled || result.Waitable.WaitForFences(_gd.Api, _device, 1000000000);
+                    bool signaled = result.Signalled || result.Waitable.WaitForFences(gd.Api, device, 1000000000);
 
                     if (!signaled)
                     {
@@ -182,7 +173,7 @@ namespace Ryujinx.Graphics.Vulkan
                     break;
                 }
 
-                bool signaled = first.Waitable.WaitForFences(_gd.Api, _device, 0);
+                bool signaled = first.Waitable.WaitForFences(gd.Api, device, 0);
                 if (signaled)
                 {
                     // Delete the sync object.

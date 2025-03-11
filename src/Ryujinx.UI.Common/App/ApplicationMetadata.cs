@@ -12,7 +12,7 @@ namespace Ryujinx.UI.App.Common
         public TimeSpan TimePlayed { get; set; } = TimeSpan.Zero;
 
         [JsonPropertyName("last_played_utc")]
-        public DateTime? LastPlayed { get; set; } = null;
+        public DateTime? LastPlayed { get; set; }
 
         [JsonPropertyName("time_played")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
