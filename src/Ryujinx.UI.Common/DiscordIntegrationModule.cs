@@ -194,7 +194,7 @@ namespace Ryujinx.UI.Common
             "0100f4c009322000", // Pikmin 3 Deluxe
             "0100b7c00933a000", // Pikmin 4
             
-                          // The Pokémon Franchise
+                          // Pokémon Franchise
             "0100f4300bf2c000", // New Pokémon Snap
             "0100000011d90000", // Pokémon Brilliant Diamond
             "01001f5010dfa000", // Pokémon Legends: Arceus
@@ -305,6 +305,7 @@ namespace Ryujinx.UI.Common
             "0100b41013c82000", // Cruis'n Blast
             "0100cf401a98e000", // Contra: Operation Galuga
             "010085900337e000", // Death Squared
+            "0100309016e7a000", // Demon Slayer -Kimestsu no Yaiba- The Hinokami Chronicles
             "01001b300b9be000", // Diablo III: Eternal Collection
             "010027400cdc6000", // Divinity: Original Sin 2 - Definitive Edition
             "010032c00ac58000", // Dragon's Dogma: Dark Arisen
@@ -324,10 +325,12 @@ namespace Ryujinx.UI.Common
             "0100d71004694000", // Minecraft
             "01007430037f6000", // Monopoly
             "0100853015e86000", // No Man's Sky
+            "0100276009872000", // Okami HD
             "01007bb017812000", // Portal
             "0100abd01785c000", // Portal 2
             "01008e200c5c2000", // Muse Dash
             "01001d301b83a000", // Neva
+            "0100be7013e06000", // Ni No Kuni II: Revenant Kingdom
             "0100d810170d0000", // Nine Sols
             "010057d006492000", // Octopath Traveler
             "0100210019428000", // Prince of Persia: The Lost Crown
@@ -336,10 +339,12 @@ namespace Ryujinx.UI.Common
             "01002f7013224000", // Rune Factory 5
             "01008d100d43e000", // Saints Row IV
             "0100de600beee000", // Saints Row: The Third - The Full Package
+            "01006bf01c4c8000", // Shiren the Wanderer: The Mystery Dungeon of Serpentcoil Island
             "01001180021fa000", // Shovel Knight: Specter of Torment
             "0100e65002bb8000", // Stardew Valley
             "0100d7a01b7a2000", // Star Wars: Bounty Hunter
             "0100800015926000", // Suika Game
+            "01004bd017080000", // Suikoden I & II HD Remaster
             "01007ad00013e000", // Super Bomberman R
             "0100e46006708000", // Terraria
             "0100605008268000", // Titan Quest
