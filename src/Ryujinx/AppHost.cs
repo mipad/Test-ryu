@@ -666,7 +666,7 @@ namespace Ryujinx.Ava
 
             SystemVersion firmwareVersion = ContentManager.GetCurrentFirmwareVersion();
 
-            if (Application.Current.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
                 if (!SetupValidator.CanStartApplication(ContentManager, ApplicationPath, out UserError userError))
                 {
@@ -888,7 +888,7 @@ namespace Ryujinx.Ava
             {
                 renderer = new VulkanRenderer(
                     Vk.GetApi(),
-                    (RendererHost.EmbeddedWindow as EmbeddedWindowVulkan).CreateSurface,
+                    ((EmbeddedWindowVulkan)RendererHost.EmbeddedWindow).CreateSurface,
                     VulkanHelper.GetRequiredInstanceExtensions,
                     ConfigurationState.Instance.Graphics.PreferredGpu.Value);
             }
@@ -1053,7 +1053,7 @@ namespace Ryujinx.Ava
             Width = (int)RendererHost.Bounds.Width;
             Height = (int)RendererHost.Bounds.Height;
 
-            _renderer.Window.SetSize((int)(Width * _topLevel.RenderScaling), (int)(Height * _topLevel.RenderScaling));
+            _renderer?.Window?.SetSize((int)(Width * _topLevel.RenderScaling), (int)(Height * _topLevel.RenderScaling));
 
             _chrono.Start();
 
@@ -1296,7 +1296,7 @@ namespace Ryujinx.Ava
                             _viewModel.Volume = Device.GetVolume();
                             break;
                         case KeyboardHotkeyState.None:
-                            (_keyboardInterface as AvaloniaKeyboard).Clear();
+                            (_keyboardInterface as AvaloniaKeyboard)?.Clear();
                             break;
                     }
                 }
@@ -1315,7 +1315,7 @@ namespace Ryujinx.Ava
 
             if (_viewModel.IsActive && !ConfigurationState.Instance.Hid.EnableMouse.Value)
             {
-                hasTouch = TouchScreenManager.Update(true, (_inputManager.MouseDriver as AvaloniaMouseDriver).IsButtonPressed(MouseButton.Button1), ConfigurationState.Instance.Graphics.AspectRatio.Value.ToFloat());
+                hasTouch = TouchScreenManager.Update(true, ((AvaloniaMouseDriver)_inputManager.MouseDriver).IsButtonPressed(MouseButton.Button1), ConfigurationState.Instance.Graphics.AspectRatio.Value.ToFloat());
             }
 
             if (!hasTouch)

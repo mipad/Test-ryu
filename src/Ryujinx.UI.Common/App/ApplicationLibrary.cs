@@ -1160,7 +1160,7 @@ namespace Ryujinx.UI.App.Common
                     return _ncaIcon;
                 }
 
-                return Path.GetExtension(applicationPath).ToLower() switch
+                return Path.GetExtension(applicationPath)?.ToLower() switch
                 {
                     ".nsp" => _nspIcon,
                     ".pfs0" => _nspIcon,
@@ -1177,7 +1177,7 @@ namespace Ryujinx.UI.App.Common
                 // Look for icon only if applicationPath is not a directory
                 if (!Directory.Exists(applicationPath))
                 {
-                    string extension = Path.GetExtension(applicationPath).ToLower();
+                    string extension = Path.GetExtension(applicationPath)?.ToLower();
 
                     using FileStream file = new(applicationPath, FileMode.Open, FileAccess.Read);
 
@@ -1233,7 +1233,7 @@ namespace Ryujinx.UI.App.Common
                                 {
                                     using var icon = new UniqueRef<IFile>();
 
-                                    controlFs.OpenFile(ref icon.Ref, $"/icon_{desiredTitleLanguage}.dat".ToU8Span(), OpenMode.Read).ThrowIfFailure();
+                                    controlFs?.OpenFile(ref icon.Ref, $"/icon_{desiredTitleLanguage}.dat".ToU8Span(), OpenMode.Read).ThrowIfFailure();
 
                                     using MemoryStream stream = new();
 
@@ -1251,7 +1251,7 @@ namespace Ryujinx.UI.App.Common
 
                                         using var icon = new UniqueRef<IFile>();
 
-                                        controlFs.OpenFile(ref icon.Ref, entry.FullPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
+                                        controlFs?.OpenFile(ref icon.Ref, entry.FullPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
 
                                         using MemoryStream stream = new();
                                         icon.Get.AsStream().CopyTo(stream);
@@ -1435,7 +1435,10 @@ namespace Ryujinx.UI.App.Common
             {
                 return new Nca(_virtualFileSystem.KeySet, ncaStorage);
             }
-            catch (Exception) { }
+            catch (Exception)
+            {
+                // ignored
+            }
 
             return null;
         }
