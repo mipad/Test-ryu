@@ -42,15 +42,6 @@ namespace Ryujinx.Ava.UI.Views.Settings
             }
         }
 
-        private void MouseClick(object sender, PointerPressedEventArgs e)
-        {
-            bool shouldUnbind = e.GetCurrentPoint(this).Properties.IsMiddleButtonPressed;
-
-            _currentAssigner?.Cancel(shouldUnbind);
-
-            PointerPressed -= MouseClick;
-        }
-
         private void Button_IsCheckedChanged(object sender, RoutedEventArgs e)
         {
             if (sender is ToggleButton button)
@@ -67,8 +58,6 @@ namespace Ryujinx.Ava.UI.Views.Settings
                         _currentAssigner = new ButtonKeyAssigner(button);
 
                         this.Focus(NavigationMethod.Pointer);
-
-                        PointerPressed += MouseClick;
 
                         var keyboard = (IKeyboard)_avaloniaKeyboardDriver.GetGamepad("0");
                         IButtonAssigner assigner = new KeyboardKeyAssigner(keyboard);
