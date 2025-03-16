@@ -26,21 +26,21 @@ namespace Ryujinx.HLE.HOS.Services.Am.AppletAE.AllSystemAppletProxiesService.Sys
 
         // TODO: Determine where those fields are used.
 #pragma warning disable IDE0052 // Remove unread private member
-        private bool _screenShotPermission;
-        private bool _operationModeChangedNotification;
-        private bool _performanceModeChangedNotification;
-        private bool _restartMessageEnabled;
-        private bool _outOfFocusSuspendingEnabled;
-        private bool _handlesRequestToDisplay;
+        private bool _screenShotPermission = false;
+        private bool _operationModeChangedNotification = false;
+        private bool _performanceModeChangedNotification = false;
+        private bool _restartMessageEnabled = false;
+        private bool _outOfFocusSuspendingEnabled = false;
+        private bool _handlesRequestToDisplay = false;
 #pragma warning restore IDE0052
-        private bool _autoSleepDisabled;
+        private bool _autoSleepDisabled = false;
 #pragma warning disable IDE0052 // Remove unread private member
-        private bool _albumImageTakenNotificationEnabled;
-        private bool _recordVolumeMuted;
+        private bool _albumImageTakenNotificationEnabled = false;
+        private bool _recordVolumeMuted = false;
 
-        private uint _screenShotImageOrientation;
+        private uint _screenShotImageOrientation = 0;
 #pragma warning restore IDE0052
-        private uint _idleTimeDetectionExtension;
+        private uint _idleTimeDetectionExtension = 0;
 
         public ISelfController(ServiceCtx context, ulong pid)
         {

@@ -99,13 +99,16 @@ namespace Ryujinx.UI.Common.Helper
                     Dictionary<ulong, ContentMetaData> updates =
                         pfs.GetContentData(ContentMetaType.Patch, vfs, checkLevel);
 
+                    Nca patchNca = null;
+                    Nca controlNca = null;
+
                     if (!updates.TryGetValue(applicationIdBase, out ContentMetaData content))
                     {
                         continue;
                     }
 
-                    Nca patchNca = content.GetNcaByType(vfs.KeySet, ContentType.Program);
-                    Nca controlNca = content.GetNcaByType(vfs.KeySet, ContentType.Control);
+                    patchNca = content.GetNcaByType(vfs.KeySet, ContentType.Program);
+                    controlNca = content.GetNcaByType(vfs.KeySet, ContentType.Control);
 
                     if (controlNca == null || patchNca == null)
                     {

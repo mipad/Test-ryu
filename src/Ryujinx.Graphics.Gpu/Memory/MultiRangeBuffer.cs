@@ -69,7 +69,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         }
 
         private List<PhysicalDependency> _dependencies;
-        private BufferModifiedRangeList _modifiedRanges;
+        private BufferModifiedRangeList _modifiedRanges = null;
 
         /// <summary>
         /// Creates a new instance of the buffer.

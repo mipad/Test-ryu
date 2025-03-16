@@ -24,7 +24,7 @@ namespace ARMeilleure.State
             public long Tpidr2El0;
         }
 
-        private static NativeCtxStorage _dummyStorage;
+        private static NativeCtxStorage _dummyStorage = new();
 
         private readonly IJitMemoryBlock _block;
 

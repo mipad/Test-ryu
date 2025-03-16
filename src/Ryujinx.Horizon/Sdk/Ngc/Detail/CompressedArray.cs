@@ -9,11 +9,20 @@ namespace Ryujinx.Horizon.Sdk.Ngc.Detail
         private const int CompressedEntriesPerBlock = 64;
         private const int BitsPerWord = Set.BitsPerWord;
 
-        private readonly struct BitfieldRange(uint range, int baseValue)
+        private readonly struct BitfieldRange
         {
-            public int BitfieldIndex => (int)(range & 0x7ffffff);
-            public int BitfieldLength => (int)(range >> 27) + 1;
-            public int BaseValue => baseValue;
+            private readonly uint _range;
+            private readonly int _baseValue;
+
+            public int BitfieldIndex => (int)(_range & 0x7ffffff);
+            public int BitfieldLength => (int)(_range >> 27) + 1;
+            public int BaseValue => _baseValue;
+
+            public BitfieldRange(uint range, int baseValue)
+            {
+                _range = range;
+                _baseValue = baseValue;
+            }
         }
 
         private uint[] _bitfieldRanges;

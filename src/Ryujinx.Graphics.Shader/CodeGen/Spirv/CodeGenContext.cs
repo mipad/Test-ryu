@@ -10,7 +10,7 @@ namespace Ryujinx.Graphics.Shader.CodeGen.Spirv
 {
     using IrOperandType = IntermediateRepresentation.OperandType;
 
-    class CodeGenContext : Module
+    partial class CodeGenContext : Module
     {
         private const uint SpirvVersionMajor = 1;
         private const uint SpirvVersionMinor = 3;

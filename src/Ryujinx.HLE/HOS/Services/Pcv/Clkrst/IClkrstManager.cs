@@ -10,7 +10,7 @@ namespace Ryujinx.HLE.HOS.Services.Pcv.Clkrst
     [Service("clkrst:i")] // 8.0.0+
     class IClkrstManager : IpcService
     {
-        private int _moduleStateTableEventHandle;
+        private int _moduleStateTableEventHandle = 0;
 
         public IClkrstManager(ServiceCtx context) { }
 

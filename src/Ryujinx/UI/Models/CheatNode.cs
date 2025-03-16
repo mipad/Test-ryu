@@ -7,7 +7,7 @@ namespace Ryujinx.Ava.UI.Models
 {
     public class CheatNode : BaseModel
     {
-        private bool _isEnabled;
+        private bool _isEnabled = false;
         public ObservableCollection<CheatNode> SubNodes { get; } = [];
         public string CleanName => Name.Length > 0 ? Name[1..^7] : Name;
         public string BuildIdKey => $"{BuildId}-{Name}";

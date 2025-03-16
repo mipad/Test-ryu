@@ -60,13 +60,13 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <remarks>
         /// This is null until at least one modification occurs.
         /// </remarks>
-        private BufferModifiedRangeList _modifiedRanges;
+        private BufferModifiedRangeList _modifiedRanges = null;
 
         /// <summary>
         /// A structure that is used to flush buffer data back to a host mapped buffer for cached readback.
         /// Only used if the buffer data is explicitly owned by device local memory.
         /// </summary>
-        private BufferPreFlush _preFlush;
+        private BufferPreFlush _preFlush = null;
 
         /// <summary>
         /// Usage tracking state that determines what type of backing the buffer should use.
@@ -171,9 +171,9 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 _memoryTracking.RegisterPreciseAction(PreciseAction);
             }
 
-            _externalFlushDelegate = ExternalFlush;
-            _loadDelegate = LoadRegion;
-            _modifiedDelegate = RegionModified;
+            _externalFlushDelegate = new RegionSignal(ExternalFlush);
+            _loadDelegate = new Action<ulong, ulong>(LoadRegion);
+            _modifiedDelegate = new Action<ulong, ulong>(RegionModified);
 
             _virtualDependenciesLock = new ReaderWriterLockSlim();
         }

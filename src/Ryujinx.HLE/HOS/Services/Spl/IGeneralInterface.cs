@@ -44,6 +44,8 @@ namespace Ryujinx.HLE.HOS.Services.Spl
                         configValue = (ulong)HardwareState.Development;
                         result = SmcResult.Success;
                         break;
+                    default:
+                        break;
                 }
             }
 

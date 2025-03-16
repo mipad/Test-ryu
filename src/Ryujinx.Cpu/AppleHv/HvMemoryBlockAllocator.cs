@@ -4,8 +4,7 @@ using System.Runtime.Versioning;
 namespace Ryujinx.Cpu.AppleHv
 {
     [SupportedOSPlatform("macos")]
-    class HvMemoryBlockAllocator(HvIpaAllocator ipaAllocator, ulong blockAlignment)
-        : PrivateMemoryAllocatorImpl<HvMemoryBlockAllocator.Block>(blockAlignment, MemoryAllocationFlags.None)
+    class HvMemoryBlockAllocator : PrivateMemoryAllocatorImpl<HvMemoryBlockAllocator.Block>
     {
         public class Block : PrivateMemoryAllocator.Block
         {
@@ -37,6 +36,13 @@ namespace Ryujinx.Cpu.AppleHv
             }
         }
 
+        private readonly HvIpaAllocator _ipaAllocator;
+
+        public HvMemoryBlockAllocator(HvIpaAllocator ipaAllocator, ulong blockAlignment) : base(blockAlignment, MemoryAllocationFlags.None)
+        {
+            _ipaAllocator = ipaAllocator;
+        }
+
         public HvMemoryBlockAllocation Allocate(ulong size, ulong alignment)
         {
             var allocation = Allocate(size, alignment, CreateBlock);
@@ -46,7 +52,7 @@ namespace Ryujinx.Cpu.AppleHv
 
         private Block CreateBlock(MemoryBlock memory, ulong size)
         {
-            return new Block(ipaAllocator, memory, size);
+            return new Block(_ipaAllocator, memory, size);
         }
     }
 }

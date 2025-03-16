@@ -21,7 +21,7 @@ namespace Ryujinx.Cpu.LightningJit.State
             public int Running;
         }
 
-        private static NativeCtxStorage _dummyStorage;
+        private static NativeCtxStorage _dummyStorage = new();
 
         private readonly IJitMemoryBlock _block;
 
@@ -79,22 +79,22 @@ namespace Ryujinx.Cpu.LightningJit.State
             GetStorage().V[index * 2 + 1] = value.Extract<ulong>(1);
         }
 
-        public uint GetPstate()
+        public unsafe uint GetPstate()
         {
             return GetStorage().Flags;
         }
 
-        public void SetPstate(uint value)
+        public unsafe void SetPstate(uint value)
         {
             GetStorage().Flags = value;
         }
 
-        public uint GetFPState(uint mask = uint.MaxValue)
+        public unsafe uint GetFPState(uint mask = uint.MaxValue)
         {
             return GetStorage().FpFlags & mask;
         }
 
-        public void SetFPState(uint value, uint mask = uint.MaxValue)
+        public unsafe void SetFPState(uint value, uint mask = uint.MaxValue)
         {
             GetStorage().FpFlags = (value & mask) | (GetStorage().FpFlags & ~mask);
         }

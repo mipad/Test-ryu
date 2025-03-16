@@ -8,7 +8,7 @@ namespace Ryujinx.Audio.Backends.SoundIo.Native
     public class SoundIoOutStreamContext : IDisposable
     {
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        private delegate void WriteCallbackDelegate(IntPtr ctx, int frameCountMin, int frameCountMax);
+        private unsafe delegate void WriteCallbackDelegate(IntPtr ctx, int frameCountMin, int frameCountMax);
 
         private IntPtr _context;
         private IntPtr _nameStored;

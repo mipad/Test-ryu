@@ -698,6 +698,8 @@ namespace Ryujinx.HLE.FileSystem
                     {
                         throw new InvalidFirmwarePackageException("Update not found in xci file.");
                     }
+                default:
+                    break;
             }
 
             SystemVersion VerifyAndGetVersionDirectory(string firmwareDirectory)

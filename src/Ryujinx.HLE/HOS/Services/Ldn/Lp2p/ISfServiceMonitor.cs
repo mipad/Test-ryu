@@ -10,8 +10,8 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.Lp2p
     {
         private readonly KEvent _stateChangeEvent;
         private readonly KEvent _jointEvent;
-        private int _stateChangeEventHandle;
-        private int _jointEventHandle;
+        private int _stateChangeEventHandle = 0;
+        private int _jointEventHandle = 0;
 
         public ISfServiceMonitor(ServiceCtx context)
         {

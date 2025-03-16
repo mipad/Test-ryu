@@ -90,8 +90,8 @@ namespace Ryujinx.Common.Utilities
         private BinaryReader _binaryReader;
         private long _offsetB, _dataSizeB, _cartSizeB, _fileSizeB;
         private bool _fileOK = true;
-        private bool _freeSpaceChecked;
-        private bool _freeSpaceValid;
+        private bool _freeSpaceChecked = false;
+        private bool _freeSpaceValid = false;
 
         public enum OperationOutcome
         {
@@ -191,7 +191,7 @@ namespace Ryujinx.Common.Utilities
 
                         if (timedSw.Elapsed.TotalSeconds > 0)
                         {
-                            Log?.Write(LogType.Info, $"Checked at {readSizeB / (double)BytesInAMegabyte / timedSw.Elapsed.TotalSeconds:N} Mb/sec");
+                            Log?.Write(LogType.Info, $"Checked at {readSizeB / (double)XCIFileTrimmer.BytesInAMegabyte / timedSw.Elapsed.TotalSeconds:N} Mb/sec");
                         }
 
                         if (freeSpaceValid)
@@ -219,7 +219,7 @@ namespace Ryujinx.Common.Utilities
 
         private bool CheckPadding(long readSizeB, CancellationToken? cancelToken = null)
         {
-            long maxReads = readSizeB / BufferSize;
+            long maxReads = readSizeB / XCIFileTrimmer.BufferSize;
             long read = 0;
             var buffer = new byte[BufferSize];
 
@@ -230,12 +230,12 @@ namespace Ryujinx.Common.Utilities
                     return false;
                 }
 
-                int bytes = _fileStream.Read(buffer, 0, BufferSize);
+                int bytes = _fileStream.Read(buffer, 0, XCIFileTrimmer.BufferSize);
                 if (bytes == 0)
                     break;
 
                 Log?.Progress(read, maxReads, "Verifying file can be trimmed", false);
-                if (buffer.Take(bytes).AsParallel().Any(b => b != PaddingByte))
+                if (buffer.Take(bytes).AsParallel().Any(b => b != XCIFileTrimmer.PaddingByte))
                 {
                     Log?.Write(LogType.Warn, "Free space is NOT valid");
                     return false;
@@ -380,7 +380,7 @@ namespace Ryujinx.Common.Utilities
 
                     if (timedSw.Elapsed.TotalSeconds > 0)
                     {
-                        Log?.Write(LogType.Info, $"Wrote at {bytesToWriteB / (double)BytesInAMegabyte / timedSw.Elapsed.TotalSeconds:N} Mb/sec");
+                        Log?.Write(LogType.Info, $"Wrote at {bytesToWriteB / (double)XCIFileTrimmer.BytesInAMegabyte / timedSw.Elapsed.TotalSeconds:N} Mb/sec");
                     }
 
                     if (cancelToken.HasValue && cancelToken.Value.IsCancellationRequested)
@@ -408,13 +408,13 @@ namespace Ryujinx.Common.Utilities
         private void WritePadding(FileStream outfileStream, long bytesToWriteB, CancellationToken? cancelToken = null)
         {
             long bytesLeftToWriteB = bytesToWriteB;
-            long writes = bytesLeftToWriteB / BufferSize;
+            long writes = bytesLeftToWriteB / XCIFileTrimmer.BufferSize;
             int write = 0;
 
             try
             {
                 var buffer = new byte[BufferSize];
-                Array.Fill<byte>(buffer, PaddingByte);
+                Array.Fill<byte>(buffer, XCIFileTrimmer.PaddingByte);
 
                 while (bytesLeftToWriteB > 0)
                 {
@@ -423,7 +423,7 @@ namespace Ryujinx.Common.Utilities
                         return;
                     }
 
-                    long bytesToWrite = Math.Min(BufferSize, bytesLeftToWriteB);
+                    long bytesToWrite = Math.Min(XCIFileTrimmer.BufferSize, bytesLeftToWriteB);
                     
 #if !XCI_TRIMMER_READ_ONLY_MODE
                         outfileStream.Write(buffer, 0, (int)bytesToWrite);
@@ -504,12 +504,12 @@ namespace Ryujinx.Common.Utilities
             }
 
             // Setup offset
-            _offsetB = (long)(assumeKeyArea ? CartKeyAreaSize : 0);
+            _offsetB = (long)(assumeKeyArea ? XCIFileTrimmer.CartKeyAreaSize : 0);
 
             // Check header
-            Pos = _offsetB + HeaderFilePos;
+            Pos = _offsetB + XCIFileTrimmer.HeaderFilePos;
             string head = System.Text.Encoding.ASCII.GetString(_binaryReader.ReadBytes(4));
-            if (head != HeaderMagicValue)
+            if (head != XCIFileTrimmer.HeaderMagicValue)
             {
                 if (!assumeKeyArea)
                 {
@@ -524,17 +524,17 @@ namespace Ryujinx.Common.Utilities
             }
 
             // Read Cart Size
-            Pos = _offsetB + CartSizeFilePos;
+            Pos = _offsetB + XCIFileTrimmer.CartSizeFilePos;
             byte cartSizeId = _binaryReader.ReadByte();
             if (!_cartSizesGB.TryGetValue(cartSizeId, out long cartSizeNGB))
             {
                 Log?.Write(LogType.Error, $"The source file doesn't look like an XCI file as the Cartridge Size is incorrect (0x{cartSizeId:X2})");
                 return false;
             }
-            _cartSizeB = cartSizeNGB * CartSizeMBinFormattedGB * BytesInAMegabyte;
+            _cartSizeB = cartSizeNGB * XCIFileTrimmer.CartSizeMBinFormattedGB * XCIFileTrimmer.BytesInAMegabyte;
 
             // Read data size
-            Pos = _offsetB + DataSizeFilePos;
+            Pos = _offsetB + XCIFileTrimmer.DataSizeFilePos;
             long records = (long)BitConverter.ToUInt32(_binaryReader.ReadBytes(4), 0);
             _dataSizeB = RecordsToByte(records);
 

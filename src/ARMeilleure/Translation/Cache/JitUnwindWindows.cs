@@ -79,7 +79,7 @@ namespace ARMeilleure.Translation.Cache
 
                 _unwindInfo = (UnwindInfo*)(workBufferPtr + _sizeOfRuntimeFunction);
 
-                _getRuntimeFunctionCallback = FunctionTableHandler;
+                _getRuntimeFunctionCallback = new GetRuntimeFunctionCallback(FunctionTableHandler);
 
                 result = RtlInstallFunctionTableCallback(
                     codeCachePtr | 3,
@@ -102,7 +102,10 @@ namespace ARMeilleure.Translation.Cache
 
             bool result;
 
-            result = RtlDeleteFunctionTable(codeCachePtr | 3);
+            unsafe
+            {
+                result = RtlDeleteFunctionTable(codeCachePtr | 3);
+            }
 
             if (!result)
             {

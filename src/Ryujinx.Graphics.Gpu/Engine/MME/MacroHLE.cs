@@ -506,7 +506,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
                 maxDrawCount,
                 stride,
                 indexCount,
-                IndirectDrawType.DrawIndexedIndirectCount);
+                Threed.IndirectDrawType.DrawIndexedIndirectCount);
         }
 
         /// <summary>

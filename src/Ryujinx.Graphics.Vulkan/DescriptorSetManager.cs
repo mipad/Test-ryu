@@ -44,7 +44,7 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
 
-            public DescriptorSetCollection AllocateDescriptorSets(ReadOnlySpan<DescriptorSetLayout> layouts, int consumedDescriptors)
+            public unsafe DescriptorSetCollection AllocateDescriptorSets(ReadOnlySpan<DescriptorSetLayout> layouts, int consumedDescriptors)
             {
                 TryAllocateDescriptorSets(layouts, consumedDescriptors, isTry: false, out var dsc);
                 return dsc;

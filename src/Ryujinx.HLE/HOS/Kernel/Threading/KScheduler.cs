@@ -6,7 +6,7 @@ using System.Threading;
 
 namespace Ryujinx.HLE.HOS.Kernel.Threading
 {
-    class KScheduler : IDisposable
+    partial class KScheduler : IDisposable
     {
         public const int PrioritiesCount = 64;
         public static int CpuCoresCount;

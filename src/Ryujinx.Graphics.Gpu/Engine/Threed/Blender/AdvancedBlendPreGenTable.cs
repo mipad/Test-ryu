@@ -1,5 +1,6 @@
 using Ryujinx.Common;
 using Ryujinx.Graphics.GAL;
+using System;
 using System.Collections.Generic;
 
 namespace Ryujinx.Graphics.Gpu.Engine.Threed.Blender

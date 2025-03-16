@@ -16,9 +16,9 @@ namespace Ryujinx.HLE.HOS
         // cheat and the re-execution of the first one.
         private const int TamperMachineSleepMs = 1000 / 12;
 
-        private Thread _tamperThread;
+        private Thread _tamperThread = null;
         private readonly ConcurrentQueue<ITamperProgram> _programs = new();
-        private long _pressedKeys;
+        private long _pressedKeys = 0;
         private readonly Dictionary<string, ITamperProgram> _programDictionary = new();
 
         private void Activate()

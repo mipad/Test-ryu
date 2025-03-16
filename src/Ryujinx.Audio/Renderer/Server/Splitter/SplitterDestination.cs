@@ -127,20 +127,23 @@ namespace Ryujinx.Audio.Renderer.Server.Splitter
         {
             get
             {
-                if (Unsafe.IsNullRef(ref _v2))
+                unsafe
                 {
-                    if (Unsafe.IsNullRef(ref _v1))
+                    if (Unsafe.IsNullRef(ref _v2))
                     {
-                        return new SplitterDestination();
+                        if (Unsafe.IsNullRef(ref _v1))
+                        {
+                            return new SplitterDestination();
+                        }
+                        else
+                        {
+                            return new SplitterDestination(ref _v1.Next);
+                        }
                     }
                     else
                     {
-                        return new SplitterDestination(ref _v1.Next);
+                        return new SplitterDestination(ref _v2.Next);
                     }
-                }
-                else
-                {
-                    return new SplitterDestination(ref _v2.Next);
                 }
             }
         }

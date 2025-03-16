@@ -11,7 +11,7 @@ namespace Ryujinx.HLE.HOS.Tamper
 
         public ProcessState State => _process.State;
 
-        public bool TamperedCodeMemory { get; set; }
+        public bool TamperedCodeMemory { get; set; } = false;
 
         public TamperedKProcess(KProcess process)
         {

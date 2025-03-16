@@ -8,7 +8,7 @@ namespace Ryujinx.Cpu.AppleHv
     {
         private const ulong InterruptIntervalNs = 16 * 1000000; // 16 ms
 
-        private static ulong _interruptTimeDeltaTicks;
+        private static ulong _interruptTimeDeltaTicks = 0;
 
         public readonly ulong Handle;
         public readonly HvVcpuExit* ExitInfo;

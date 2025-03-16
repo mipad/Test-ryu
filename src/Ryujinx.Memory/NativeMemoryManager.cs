@@ -19,7 +19,7 @@ namespace Ryujinx.Memory
             _length = length;
         }
 
-        public T* Pointer => _pointer;
+        public unsafe T* Pointer => _pointer;
 
         public int Length => _length;
 

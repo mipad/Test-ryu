@@ -14,7 +14,7 @@ namespace Ryujinx.HLE.HOS.Services.Sockets.Bsd
 {
     [Service("bsd:s", true)]
     [Service("bsd:u", false)]
-    class IClient(ServiceCtx context, bool isPrivileged) : IpcService(context.Device.System.BsdServer)
+    class IClient : IpcService
     {
         private static readonly List<IPollManager> _pollManagers =
         [
@@ -23,6 +23,12 @@ namespace Ryujinx.HLE.HOS.Services.Sockets.Bsd
         ];
 
         private BsdContext _context;
+        private readonly bool _isPrivileged;
+
+        public IClient(ServiceCtx context, bool isPrivileged) : base(context.Device.System.BsdServer)
+        {
+            _isPrivileged = isPrivileged;
+        }
 
         private ResultCode WriteBsdResult(ServiceCtx context, int result, LinuxError errorCode = LinuxError.SUCCESS)
         {
@@ -73,7 +79,7 @@ namespace Ryujinx.HLE.HOS.Services.Sockets.Bsd
             {
                 return WriteBsdResult(context, -1, LinuxError.EPROTONOSUPPORT);
             }
-            else if ((type == BsdSocketType.Seqpacket || type == BsdSocketType.Raw) && !isPrivileged)
+            else if ((type == BsdSocketType.Seqpacket || type == BsdSocketType.Raw) && !_isPrivileged)
             {
                 if (domain != BsdAddressFamily.InterNetwork || type != BsdSocketType.Raw || protocol != ProtocolType.Icmp)
                 {
@@ -1034,7 +1040,7 @@ namespace Ryujinx.HLE.HOS.Services.Sockets.Bsd
             LinuxError errno = LinuxError.ENOENT;
             int newSockFd = -1;
 
-            if (isPrivileged)
+            if (_isPrivileged)
             {
                 errno = LinuxError.SUCCESS;
 

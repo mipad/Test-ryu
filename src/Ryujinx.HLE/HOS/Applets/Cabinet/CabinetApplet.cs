@@ -128,13 +128,13 @@ namespace Ryujinx.HLE.HOS.Applets.Cabinet
         #region Structs
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct TagInfo
+        public unsafe struct TagInfo
         {
             public fixed byte Data[0x58];
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct StartParamForAmiiboSettings
+        public unsafe struct StartParamForAmiiboSettings
         {
             public byte ZeroValue; // Left at zero by sdknso
             public byte Type;
@@ -151,7 +151,7 @@ namespace Ryujinx.HLE.HOS.Applets.Cabinet
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct ReturnValueForAmiiboSettings
+        public unsafe struct ReturnValueForAmiiboSettings
         {
             public byte AmiiboSettingsReturnFlag;
             private byte Padding1;

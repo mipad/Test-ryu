@@ -32,7 +32,7 @@ namespace ARMeilleure.Translation.Cache
         private static bool _initialized;
 
         private static readonly List<ReservedRegion> _jitRegions = [];
-        private static int _activeRegionIndex;
+        private static int _activeRegionIndex = 0;
 
         [SupportedOSPlatform("windows")]
         [LibraryImport("kernel32.dll", SetLastError = true)]

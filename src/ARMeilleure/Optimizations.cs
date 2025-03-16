@@ -1,7 +1,7 @@
 namespace ARMeilleure
 {
-    using Arm64HardwareCapabilities = CodeGen.Arm64.HardwareCapabilities;
-    using X86HardwareCapabilities = CodeGen.X86.HardwareCapabilities;
+    using Arm64HardwareCapabilities = ARMeilleure.CodeGen.Arm64.HardwareCapabilities;
+    using X86HardwareCapabilities = ARMeilleure.CodeGen.X86.HardwareCapabilities;
 
     public static class Optimizations
     {

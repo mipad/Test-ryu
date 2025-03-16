@@ -792,6 +792,8 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                                 freeSlot = slot;
                             }
                             break;
+                        default:
+                            break;
                     }
                 }
 

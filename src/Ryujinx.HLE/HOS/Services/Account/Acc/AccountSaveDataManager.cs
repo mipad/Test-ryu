@@ -4,6 +4,7 @@ using Ryujinx.Common.Utilities;
 using Ryujinx.HLE.HOS.Services.Account.Acc.Types;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 
 namespace Ryujinx.HLE.HOS.Services.Account.Acc

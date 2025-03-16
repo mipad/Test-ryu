@@ -231,7 +231,7 @@ namespace Ryujinx.Ava.UI.Windows
             ViewModel.ShowContent = true;
             ViewModel.IsLoadingIndeterminate = false;
 
-            if (startFullscreen && ViewModel.WindowState != FullScreenWindowState)
+            if (startFullscreen && ViewModel.WindowState != MainWindow.FullScreenWindowState)
             {
                 ViewModel.ToggleFullscreen();
             }
@@ -243,7 +243,7 @@ namespace Ryujinx.Ava.UI.Windows
             ViewModel.ShowLoadProgress = true;
             ViewModel.IsLoadingIndeterminate = true;
 
-            if (startFullscreen && ViewModel.WindowState != FullScreenWindowState)
+            if (startFullscreen && ViewModel.WindowState != MainWindow.FullScreenWindowState)
             {
                 ViewModel.ToggleFullscreen();
             }

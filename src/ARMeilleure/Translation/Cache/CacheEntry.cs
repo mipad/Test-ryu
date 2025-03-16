@@ -18,7 +18,7 @@ namespace ARMeilleure.Translation.Cache
             UnwindInfo = unwindInfo;
         }
 
-        public int CompareTo(CacheEntry other)
+        public int CompareTo([AllowNull] CacheEntry other)
         {
             return Offset.CompareTo(other.Offset);
         }

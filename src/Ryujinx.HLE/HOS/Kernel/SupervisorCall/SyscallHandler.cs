@@ -3,7 +3,7 @@ using Ryujinx.HLE.HOS.Kernel.Threading;
 
 namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
 {
-    class SyscallHandler
+    partial class SyscallHandler
     {
         private readonly KernelContext _context;
 
