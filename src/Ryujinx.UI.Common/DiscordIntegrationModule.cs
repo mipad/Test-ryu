@@ -269,6 +269,7 @@ namespace Ryujinx.UI.Common
             "0100ff500e34a000", // Xenoblade Chronicles: Definitive Edition
             "0100e95004038000", // Xenoblade Chronicles 2
             "010074f013262000", // Xenoblade Chronicles 3
+            "0100453019aa8000", // Xenoblade Chronicles X: Definitive Edition
             
                           // Baten Kaitos Franchise
             "0100c07018ca6000", // Baten Kaitos I & II HD Remaster
