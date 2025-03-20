@@ -1,26 +1,24 @@
 <h1 align="center">
   <br>
-  <a href="https://ryujinx.org/"><img src="distribution/misc/Logo.svg" alt="Ryujinx" width="150"></a>
+  <img src="distribution/misc/Logo.png" alt="Kenji-NX">
   <br>
-  <b>Ryujinx</b>
+  <b>Kenji-NX</b>
   <br>
-  <sub><sup><b>(REE-YOU-JINX)</b></sup></sub>
-  <br>
-    <a href="https://github.com/KeatonTheBot/Ryujinx/releases/latest">
-        <img src="https://img.shields.io/github/v/release/KeatonTheBot/Ryujinx"
+    <a href="https://github.com/KeatonTheBot/Kenji-NX/releases/latest">
+        <img src="https://img.shields.io/github/v/release/KeatonTheBot/Kenji-NX"
             alt="Latest Release">
     </a>
 </h1>
 
 <p>
-  Ryujinx is an open-source Nintendo Switch emulator, originally created by gdkchan, written in C#.
+  Kenji-NX is an open-source Nintendo Switch emulator, originally created by gdkchan, written in C#.
   This emulator aims at providing excellent accuracy and performance, a user-friendly interface and consistent builds.
   It was written from scratch and development on the project began in September 2017.
-  Ryujinx is available on Github under the <a href="https://github.com/KeatonTheBot/Ryujinx/blob/master/LICENSE.txt" target="_blank">MIT license</a>.
+  Kenji-NX is available on GitHub under the <a href="https://github.com/KeatonTheBot/Kenji-NX/blob/master/LICENSE.txt" target="_blank">MIT license</a>.
   <br><br>
   On October 1st 2024, Ryujinx was discontinued as the creator was forced to abandon the project.
   <br><br>
-  This fork is not a Ryujinx revival project; it aims to be a middle ground between GreemDev's <a href="https://github.com/GreemDev/Ryujinx">Ryujinx</a> fork and the more preservative <a href="https://github.com/ryujinx-mirror/ryujinx">ryujinx-mirror</a> fork.
+  This fork is not a Ryujinx revival project; it aims to be a middle ground between GreemDev's <a href="https://git.ryujinx.app/ryubing/ryujinx">Ryujinx</a> fork and the more preservative <a href="https://git.ryujinx.app/archive/ryujinx-mirror">ryujinx-mirror</a> fork.
   It brings over many of the front-facing features from the aforementioned forks with <i>additional</i> contributions from KeatonTheBot and others.
   <br>
 </p>
@@ -48,7 +46,7 @@ failing to meet this requirement may result in a poor gameplay experience or une
 <s>These builds are compiled automatically for each commit on the master branch.
 While we strive to ensure optimal stability and performance prior to pushing an update, our automated builds **may be unstable or completely broken**.</s>
 
-Automated builds are temporarily disabled, but Windows x64 builds will be manually compiled and uploaded until the GitHub workflows are fixed.
+Automated builds are temporarily disabled, but builds for all platforms will be manually compiled and uploaded until the workflows are fixed.
 
 ## Documentation
 
@@ -65,16 +63,16 @@ Make sure your SDK version is higher or equal to the required version specified 
 
 ### Step 2
 
-Either use `git clone https://github.com/KeatonTheBot/Ryujinx` on the command line to clone the repository or use Code --> Download zip button to get the files.
+Either use `git clone https://github.com/KeatonTheBot/Kenji-NX` on the command line to clone the repository or use Code --> Download zip button to get the files.
 
 ### Step 3
 
-To build Ryujinx, open a command prompt inside the project directory.
+To build Kenji-NX, open a command prompt inside the project directory.
 You can quickly access it on Windows by holding shift in File Explorer, then right clicking and selecting `Open command window here`.
 Then type the following command: `dotnet build -c Release -o build`
 the built files will be found in the newly created build directory.
 
-Ryujinx system files are stored in the `Ryujinx` folder.
+System files are stored in the `Ryujinx` folder.
 This folder is located in the user folder, which can be accessed by clicking `Open Ryujinx Folder` under the File menu in the GUI.
 
 ## Features
@@ -90,7 +88,7 @@ This folder is located in the user folder, which can be accessed by clicking `Op
   It translates the ARM code to a custom IR, performs a few optimizations, and turns that into x86 code.
   There are three memory manager options available depending on the user's preference, leveraging both software-based (slower) and host-mapped modes (much faster).
   The fastest option (host, unchecked) is set by default.
-  Ryujinx also features an optional Profiled Persistent Translation Cache, which essentially caches translated functions so that they do not need to be translated every time the game loads.
+  Kenji-NX also features an optional Profiled Persistent Translation Cache, which essentially caches translated functions so that they do not need to be translated every time the game loads.
   The net result is a significant reduction in load times (the amount of time between launching a game and arriving at the title screen) for nearly every game.
   NOTE: This feature is enabled by default in the Options menu > System tab.
   You must launch the game at least twice to the title screen or beyond before performance improvements are unlocked on the third launch!
@@ -99,7 +97,7 @@ This folder is located in the user folder, which can be accessed by clicking `Op
 - **GPU**
 
   The GPU emulator emulates the Switch's Maxwell GPU using either the OpenGL (version 4.5 minimum), Vulkan, or Metal (via MoltenVK) APIs through a custom build of OpenTK or Silk.NET respectively.
-  There are currently six graphics enhancements available to the end user in Ryujinx: Disk Shader Caching, Resolution Scaling, Anti-Aliasing, Scaling Filters (including FSR), Anisotropic Filtering and Aspect Ratio Adjustment.
+  There are currently six graphics enhancements available to the end user in Kenji-NX: Disk Shader Caching, Resolution Scaling, Anti-Aliasing, Scaling Filters (including FSR), Anisotropic Filtering and Aspect Ratio Adjustment.
   These enhancements can be adjusted or toggled as desired in the GUI.
 
 - **Input**
@@ -110,7 +108,7 @@ This folder is located in the user folder, which can be accessed by clicking `Op
 
 - **DLC & Modifications**
 
-  Ryujinx is able to manage add-on content/downloadable content through the GUI.
+  Kenji-NX is able to manage add-on content/downloadable content through the GUI.
   Mods (romfs, exefs, and runtime mods such as cheats) are also supported;
   the GUI contains a shortcut to open the respective mods folder for a particular game.
 
