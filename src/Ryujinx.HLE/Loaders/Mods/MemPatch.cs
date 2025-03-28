@@ -23,7 +23,7 @@ namespace Ryujinx.HLE.Loaders.Mods
         /// Adds a patch in the form of an RLE (Fill mode).
         /// </summary>
         /// <param name="offset">Memory offset</param>
-        /// <param name="length"The fill length</param>
+        /// <param name="length">The fill length</param>
         /// <param name="filler">The byte to fill</param>
         public void AddFill(uint offset, int length, byte filler)
         {

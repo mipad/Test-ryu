@@ -42,7 +42,7 @@ namespace Ryujinx.Ava.UI.Helpers
         /// <typeparam name="T">The type of the element in the AvaoloniaList</typeparam>
         /// <param name="list">The list containing the item to replace</param>
         /// <param name="sourceList">The list of items to be actually added to `list`</param>
-        /// <param name="matchingList">The items to use as matching records to search for in the `sourceList', if not found this item will be added instead</params>
+        /// <param name="matchingList">The items to use as matching records to search for in the `sourceList', if not found this item will be added instead</param>
         public static void AddOrReplaceMatching<T>(this AvaloniaList<T> list, IList<T> sourceList, IList<T> matchingList)
         {
             foreach (var match in matchingList)

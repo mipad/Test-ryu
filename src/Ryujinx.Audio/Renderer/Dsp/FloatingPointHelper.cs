@@ -75,7 +75,7 @@ namespace Ryujinx.Audio.Renderer.Dsp
         /// Map decibel to linear.
         /// </summary>
         /// <param name="db">The decibel value to convert</param>
-        /// <returns>Converted linear value/returns>
+        /// <returns>Converted linear value</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float DecibelToLinear(float db)
         {

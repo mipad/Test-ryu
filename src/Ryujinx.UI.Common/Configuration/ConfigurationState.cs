@@ -89,9 +89,9 @@ namespace Ryujinx.UI.Common.Configuration
                 }
             }
 
-            // <summary>
+            /// <summary>
             /// Determines main window start-up position, size and state
-            ///<summary>
+            /// </summary>
             public class WindowStartupSettings
             {
                 public ReactiveObject<int> WindowSizeWidth { get; private set; }

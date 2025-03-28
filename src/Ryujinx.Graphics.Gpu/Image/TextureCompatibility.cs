@@ -723,7 +723,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// Checks if aliasing of two formats that would normally be considered incompatible be allowed,
         /// using copy dependencies.
         /// </summary>
-        /// <param name="lhsFormat">Format information of the first texture</param
+        /// <param name="lhsFormat">Format information of the first texture</param>
         /// <param name="rhsFormat">Format information of the second texture</param>
         /// <returns>True if aliasing should be allowed, false otherwise</returns>
         private static bool IsIncompatibleFormatAliasingAllowed(FormatInfo lhsFormat, FormatInfo rhsFormat)
@@ -747,7 +747,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// Check if the target of the first texture view information is compatible with the target of the second texture view information.
         /// This follows the host API target compatibility rules.
         /// </summary>
-        /// <param name="lhs">Texture information of the texture view</param
+        /// <param name="lhs">Texture information of the texture view</param>
         /// <param name="rhs">Texture information of the texture view</param>
         /// <param name="caps">Host GPU capabilities</param>
         /// <returns>True if the targets are compatible, false otherwise</returns>
