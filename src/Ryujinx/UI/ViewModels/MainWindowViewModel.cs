@@ -6,7 +6,6 @@ using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using DynamicData;
-using DynamicData.Alias;
 using DynamicData.Binding;
 using FluentAvalonia.UI.Controls;
 using Gommon;

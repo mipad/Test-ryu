@@ -4,7 +4,6 @@ using Silk.NET.Vulkan;
 using System;
 using Format = Silk.NET.Vulkan.Format;
 using PolygonMode = Silk.NET.Vulkan.PolygonMode;
-using PrimitiveTopology = Ryujinx.Graphics.GAL.PrimitiveTopology;
 
 namespace Ryujinx.Graphics.Vulkan
 {

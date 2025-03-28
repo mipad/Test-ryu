@@ -13,7 +13,6 @@ using Ryujinx.UI.Common.Helper;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Text.Json.Nodes;
 
 namespace Ryujinx.UI.Common.Configuration
 {

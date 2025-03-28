@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
-using PrimitiveTopology = Silk.NET.Vulkan.PrimitiveTopology;
 
 namespace Ryujinx.Graphics.Vulkan
 {

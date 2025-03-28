@@ -4,7 +4,6 @@ using Ryujinx.Graphics.Shader;
 using Ryujinx.Graphics.Shader.Translation;
 using Silk.NET.Vulkan;
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using CompareOp = Ryujinx.Graphics.GAL.CompareOp;
 using Format = Ryujinx.Graphics.GAL.Format;
