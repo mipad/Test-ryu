@@ -277,11 +277,10 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Types
         public CodecErr Decode(MemoryAllocator allocator, ArrayPtr<byte> data)
         {
             ArrayPtr<byte> dataStart = data;
-            CodecErr res;
             Array8<uint> frameSizes = new();
             int frameCount = 0;
 
-            res = Types.Decoder.ParseSuperframeIndex(data, (ulong)data.Length, ref frameSizes, out frameCount);
+            CodecErr res = Types.Decoder.ParseSuperframeIndex(data, (ulong)data.Length, ref frameSizes, out frameCount);
             if (res != CodecErr.Ok)
             {
                 return res;

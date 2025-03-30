@@ -795,10 +795,9 @@ namespace Ryujinx.UI.App.Common
                     {
                         ldnWebHost = DefaultLanPlayWebHost;
                     }
-                    IEnumerable<LdnGameData> ldnGameDataArray = Array.Empty<LdnGameData>();
                     using HttpClient httpClient = new HttpClient();
                     string ldnGameDataArrayString = await httpClient.GetStringAsync($"https://{ldnWebHost}/api/public_games");
-                    ldnGameDataArray = JsonHelper.Deserialize(ldnGameDataArrayString, _ldnDataSerializerContext.IEnumerableLdnGameData);
+                    IEnumerable<LdnGameData> ldnGameDataArray = JsonHelper.Deserialize(ldnGameDataArrayString, _ldnDataSerializerContext.IEnumerableLdnGameData);
                     var evt = new LdnGameDataReceivedEventArgs
                     {
                         LdnData = ldnGameDataArray

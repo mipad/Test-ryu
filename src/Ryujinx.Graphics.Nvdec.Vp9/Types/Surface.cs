@@ -136,8 +136,6 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Types
 
             ulong frameSize = (ulong)(1 + (useHighbitdepth ? 1 : 0)) * (yplaneSize + (2 * uvplaneSize));
 
-            ArrayPtr<byte> buf = ArrayPtr<byte>.Null;
-
             // frame_size is stored in buffer_alloc_sz, which is an int. If it won't
             // fit, fail early.
             if (frameSize > int.MaxValue)
@@ -212,7 +210,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Types
             SubsamplingX = ssX;
             SubsamplingY = ssY;
 
-            buf = BufferAlloc;
+            ArrayPtr<byte> buf = BufferAlloc;
             if (useHighbitdepth)
             {
                 // Store uint16 addresses when using 16bit framebuffers
