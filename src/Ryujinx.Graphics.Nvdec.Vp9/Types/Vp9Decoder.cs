@@ -280,7 +280,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Types
             Array8<uint> frameSizes = new();
             int frameCount = 0;
 
-            CodecErr res = Types.Decoder.ParseSuperframeIndex(data, (ulong)data.Length, ref frameSizes, out frameCount);
+            CodecErr res = Decoder.ParseSuperframeIndex(data, (ulong)data.Length, ref frameSizes, out frameCount);
             if (res != CodecErr.Ok)
             {
                 return res;
@@ -321,7 +321,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Types
                     // Account for suboptimal termination by the encoder.
                     while (dataStart.Length != 0)
                     {
-                        byte marker = Types.Decoder.ReadMarker(dataStart);
+                        byte marker = Decoder.ReadMarker(dataStart);
                         if (marker != 0)
                         {
                             break;

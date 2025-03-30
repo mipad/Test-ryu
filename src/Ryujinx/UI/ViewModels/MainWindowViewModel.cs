@@ -465,7 +465,7 @@ namespace Ryujinx.Ava.UI.ViewModels
 
         public bool OpenDeviceSaveDirectoryEnabled => !SelectedApplication.ControlHolder.ByteSpan.IsZeros() && SelectedApplication.ControlHolder.Value.DeviceSaveDataSize > 0;
 
-        public bool TrimXCIEnabled => Ryujinx.Common.Utilities.XCIFileTrimmer.CanTrim(SelectedApplication.Path, new Common.XCIFileTrimmerMainWindowLog(this));
+        public bool TrimXCIEnabled => XCIFileTrimmer.CanTrim(SelectedApplication.Path, new XCIFileTrimmerMainWindowLog(this));
 
         public bool OpenBcatSaveDirectoryEnabled => !SelectedApplication.ControlHolder.ByteSpan.IsZeros() && SelectedApplication.ControlHolder.Value.BcatDeliveryCacheStorageSize > 0;
 
@@ -1554,7 +1554,7 @@ namespace Ryujinx.Ava.UI.ViewModels
                 Dispatcher.UIThread.InvokeAsync(() =>
                 {
                     Application.Current.Styles.TryGetResource(args.VSyncMode,
-                        Avalonia.Application.Current.ActualThemeVariant,
+                        Application.Current.ActualThemeVariant,
                         out object color);
 
                     if (color is not null)
@@ -2235,7 +2235,7 @@ namespace Ryujinx.Ava.UI.ViewModels
             }
         }
 
-        public async void ProcessTrimResult(String filename, Ryujinx.Common.Utilities.XCIFileTrimmer.OperationOutcome operationOutcome)
+        public async void ProcessTrimResult(String filename, XCIFileTrimmer.OperationOutcome operationOutcome)
         {
             string notifyUser = operationOutcome.ToLocalisedText();
 
@@ -2250,8 +2250,8 @@ namespace Ryujinx.Ava.UI.ViewModels
             {
                 switch (operationOutcome)
                 {
-                    case Ryujinx.Common.Utilities.XCIFileTrimmer.OperationOutcome.Successful:
-                        if (Avalonia.Application.Current.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+                    case XCIFileTrimmer.OperationOutcome.Successful:
+                        if (Application.Current.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
                         {
                             if (desktop.MainWindow is MainWindow mainWindow)
                                 mainWindow.LoadApplications();
@@ -2268,7 +2268,7 @@ namespace Ryujinx.Ava.UI.ViewModels
                 return;
             }
 
-            var trimmer = new XCIFileTrimmer(filename, new Common.XCIFileTrimmerMainWindowLog(this));
+            var trimmer = new XCIFileTrimmer(filename, new XCIFileTrimmerMainWindowLog(this));
 
             if (trimmer.CanBeTrimmed)
             {
