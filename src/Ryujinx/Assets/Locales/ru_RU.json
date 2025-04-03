@@ -20,6 +20,7 @@
   "MenuBarOptions": "_Настройки",
   "MenuBarOptionsToggleFullscreen": "Включить полноэкранный режим",
   "MenuBarOptionsStartGamesInFullscreen": "Запускать игры в полноэкранном режиме",
+  "MenuBarOptionsStartGamesWithoutUI": "Запускать игры скрывая интерфейс",
   "MenuBarOptionsStopEmulation": "Остановить эмуляцию",
   "MenuBarOptionsSettings": "_Параметры",
   "MenuBarOptionsManageUserProfiles": "_Менеджер учетных записей",

@@ -19,6 +19,7 @@
   "MenuBarOptions": "选项(_O)",
   "MenuBarOptionsToggleFullscreen": "切换全屏",
   "MenuBarOptionsStartGamesInFullscreen": "全屏模式启动游戏",
+  "MenuBarOptionsStartGamesWithoutUI": "启动游戏时隐藏 UI",
   "MenuBarOptionsStopEmulation": "停止模拟",
   "MenuBarOptionsSettings": "设置(_S)",
   "MenuBarOptionsManageUserProfiles": "管理用户账户(_M)",

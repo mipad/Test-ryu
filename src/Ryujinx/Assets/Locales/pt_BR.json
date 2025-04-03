@@ -19,6 +19,7 @@
   "MenuBarOptions": "_Opções",
   "MenuBarOptionsToggleFullscreen": "_Mudar para tela cheia",
   "MenuBarOptionsStartGamesInFullscreen": "Iniciar jogos em tela cheia",
+  "MenuBarOptionsStartGamesWithoutUI": "Iniciar Jogos Ocultando a Interface",
   "MenuBarOptionsStopEmulation": "_Encerrar emulação",
   "MenuBarOptionsSettings": "_Configurações",
   "MenuBarOptionsManageUserProfiles": "_Gerenciar perfis de usuário",

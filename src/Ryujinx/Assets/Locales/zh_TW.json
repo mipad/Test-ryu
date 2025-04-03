@@ -19,6 +19,7 @@
   "MenuBarOptions": "選項(_O)",
   "MenuBarOptionsToggleFullscreen": "切換全螢幕模式",
   "MenuBarOptionsStartGamesInFullscreen": "使用全螢幕模式啟動遊戲",
+  "MenuBarOptionsStartGamesWithoutUI": "開啟遊戲時隱藏 UI",
   "MenuBarOptionsStopEmulation": "停止模擬",
   "MenuBarOptionsSettings": "設定(_S)",
   "MenuBarOptionsManageUserProfiles": "管理使用者設定檔(_M)",
