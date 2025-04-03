@@ -1624,7 +1624,7 @@ namespace Ryujinx.UI.Common.Configuration
 
             if (configurationFileFormat.Version < 57)
             {
-                Ryujinx.Common.Logging.Logger.Warning?.Print(LogClass.Application, $"Outdated configuration version {configurationFileFormat.Version}, migrating to version 55.");
+                Ryujinx.Common.Logging.Logger.Warning?.Print(LogClass.Application, $"Outdated configuration version {configurationFileFormat.Version}, migrating to version 57.");
 
                 configurationFileFormat.StartNoUI = false;
 
