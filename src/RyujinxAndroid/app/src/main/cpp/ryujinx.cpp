@@ -1,49 +1,233 @@
-// Write C++ code here.
-//
-// Do not forget to dynamically load the C++ library into your application.
-//
-// For instance,
-//
-// In MainActivity.java:
-//    static {
-//       System.loadLibrary("ryuijnx");
-//    }
-//
-// Or, in MainActivity.kt:
-//    companion object {
-//      init {
-//         System.loadLibrary("ryuijnx")
-//      }
-//    }
+// 
 
 #include "ryuijnx.h"
 #include "pthread.h"
 #include <chrono>
 #include <csignal>
+#include <android/native_window.h>
+#include <vulkan/vulkan.h>
+#include <adrenotools.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <atomic>
+#include <mutex>
+#include <android/log.h>
 
+//新增比例功能相关定义 
+enum AspectRatio {
+    AspectRatioStretch,
+    AspectRatio16_9,
+    AspectRatioCount
+};
+
+static AspectRatio currentAspectRatio = AspectRatioStretch;
+static std::atomic<bool> aspectRatioDirty(false);
+static std::mutex swapchainMutex;
+static bool needRecreateSwapchain = false;
+
+// Vulkan 全局对象声明
+extern VkDevice vulkanDevice;
+extern VkSwapchainKHR swapchain;
+extern ANativeWindow* nativeWindow;
+extern VkExtent2D swapchainExtent;
+extern VkSurfaceKHR vulkanSurface;
+extern VkCommandPool commandPool; 
+extern uint32_t graphicsQueueFamilyIndex; 
+extern VkPipelineLayout pipelineLayout; 
 
 std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
 
-extern "C"
-{
-JNIEXPORT jlong JNICALL
-Java_org_ryujinx_android_NativeHelpers_getNativeWindow(
+extern "C" {
+
+// 新增比例设置接口
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_setAspectRatio(
         JNIEnv *env,
-        jobject instance,
-        jobject surface) {
-    auto nativeWindow = ANativeWindow_fromSurface(env, surface);
-    return nativeWindow == NULL ? -1 : (jlong) nativeWindow;
+        jobject thiz,
+        jlong native_window,
+        jint ratio_mode) {
+    if (native_window == 0 || native_window == -1)
+        return;
+
+    auto window = (ANativeWindow *) native_window;
+    const int32_t originalWidth = ANativeWindow_getWidth(window);
+    const int32_t originalHeight = ANativeWindow_getHeight(window);
+    
+    int32_t targetWidth = originalWidth;
+    int32_t targetHeight = originalHeight;
+
+    switch (ratio_mode) {
+        case 1: { // 16:9 模式
+            targetHeight = (originalWidth * 9) / 16;
+            if (targetHeight > originalHeight) {
+                targetHeight = originalHeight;
+                targetWidth = (originalHeight * 16) / 9;
+            }
+            break;
+        }
+        default: // 拉伸模式
+            break;
+    }
+
+    // 设置新的缓冲区几何尺寸
+    ANativeWindow_setBuffersGeometry(
+        window, 
+        targetWidth, 
+        targetHeight, 
+        AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM
+    );
+
+    {
+        std::lock_guard<std::mutex> lock(swapchainMutex);
+        currentAspectRatio = static_cast<AspectRatio>(ratio_mode);
+        needRecreateSwapchain = true;
+    }
 }
 
-JNIEXPORT void JNICALL
-Java_org_ryujinx_android_NativeHelpers_releaseNativeWindow(
+JNIEXPORT jint JNICALL
+Java_org_ryujinx_android_NativeHelpers_getCurrentAspectRatio(
         JNIEnv *env,
-        jobject instance,
-        jlong window) {
-    auto nativeWindow = (ANativeWindow *) window;
+        jobject thiz) {
+    return static_cast<jint>(currentAspectRatio);
+}
 
-    if (nativeWindow != NULL)
-        ANativeWindow_release(nativeWindow);
+void recreateSwapchain() {
+    std::lock_guard<std::mutex> lock(swapchainMutex);
+    
+    vkDeviceWaitIdle(vulkanDevice);
+    
+    if (swapchain != VK_NULL_HANDLE) {
+        vkDestroySwapchainKHR(vulkanDevice, swapchain, nullptr);
+        swapchain = VK_NULL_HANDLE;
+    }
+
+    int32_t width = ANativeWindow_getWidth(nativeWindow);
+    int32_t height = ANativeWindow_getHeight(nativeWindow);
+    swapchainExtent = {static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
+
+    VkSwapchainCreateInfoKHR createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    createInfo.surface = vulkanSurface;
+    createInfo.minImageCount = 2;
+    createInfo.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
+    createInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+    createInfo.imageExtent = swapchainExtent;
+    createInfo.imageArrayLayers = 1;
+    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    createInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+    createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    createInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+
+    VkResult result = vkCreateSwapchainKHR(vulkanDevice, &createInfo, nullptr, &swapchain);
+    if (result != VK_SUCCESS) {
+        __android_log_print(ANDROID_LOG_ERROR, "Ryujinx", "Swapchain recreation failed: %d", result);
+    }
+    
+    needRecreateSwapchain = false;
+}
+
+void renderFrame() {
+    if (needRecreateSwapchain) {
+        recreateSwapchain();
+        return;
+    }
+
+    // 分配命令缓冲区
+    VkCommandBuffer cmdBuffer;
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = commandPool;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandBufferCount = 1;
+    if (vkAllocateCommandBuffers(vulkanDevice, &allocInfo, &cmdBuffer) != VK_SUCCESS) {
+        __android_log_print(ANDROID_LOG_ERROR, "Ryujinx", "Failed to allocate command buffer");
+        return;
+    }
+
+    // 开始记录命令
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    if (vkBeginCommandBuffer(cmdBuffer, &beginInfo) != VK_SUCCESS) {
+        __android_log_print(ANDROID_LOG_ERROR, "Ryujinx", "Failed to begin command buffer");
+        return;
+    }
+
+    // 动态视口设置
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(swapchainExtent.width);
+    viewport.height = static_cast<float>(swapchainExtent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    
+    VkRect2D scissor{};
+    scissor.offset = {0, 0};
+    scissor.extent = swapchainExtent;
+
+    vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
+    vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
+
+    // 投影矩阵适配
+    glm::mat4 projection = glm::mat4(1.0f);
+    float windowAspect = static_cast<float>(swapchainExtent.width) / swapchainExtent.height;
+    
+    switch (currentAspectRatio) {
+        case AspectRatio16_9: {
+            const float targetAspect = 16.0f / 9.0f;
+            if (windowAspect > targetAspect) {
+                projection = glm::scale(projection, 
+                    glm::vec3(targetAspect / windowAspect, 1.0f, 1.0f));
+            } else {
+                projection = glm::scale(projection, 
+                    glm::vec3(1.0f, windowAspect / targetAspect, 1.0f));
+            }
+            break;
+        }
+        default:
+            projection = glm::mat4(1.0f);
+    }
+    
+    // 上传投影矩阵到着色器
+    vkCmdPushConstants(
+        cmdBuffer, 
+        pipelineLayout,
+        VK_SHADER_STAGE_VERTEX_BIT,
+        0, 
+        sizeof(glm::mat4), 
+        &projection
+    );
+
+    // 结束记录并提交命令缓冲区
+    vkEndCommandBuffer(cmdBuffer);
+    // ... 提交到队列的逻辑 ...
+}
+//▲▲▲▲▲▲▲▲▲▲ 渲染循环修改 ▲▲▲▲▲▲▲▲▲▲
+
+//▼▼▼▼▼▼▼▼▼▼ Vulkan 初始化补充 ▼▼▼▼▼▼▼▼▼▼
+void initVulkan() {
+    // 创建命令池
+    VkCommandPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    poolInfo.queueFamilyIndex = graphicsQueueFamilyIndex;
+    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    if (vkCreateCommandPool(vulkanDevice, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
+        __android_log_print(ANDROID_LOG_ERROR, "Ryujinx", "Failed to create command pool!");
+    }
+
+    // 创建管线布局
+    VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = sizeof(glm::mat4);
+
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.pushConstantRangeCount = 1;
+    pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+    if (vkCreatePipelineLayout(vulkanDevice, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+        __android_log_print(ANDROID_LOG_ERROR, "Ryujinx", "Failed to create pipeline layout!");
+    }
 }
 
 long createSurface(long native_surface, long instance) {
@@ -51,13 +235,13 @@ long createSurface(long native_surface, long instance) {
     VkSurfaceKHR surface;
     auto vkInstance = (VkInstance) instance;
     auto fpCreateAndroidSurfaceKHR =
-            reinterpret_cast<PFN_vkCreateAndroidSurfaceKHR>(vkGetInstanceProcAddr(vkInstance,
-                                                                                  "vkCreateAndroidSurfaceKHR"));
+            reinterpret_cast<PFN_vkCreateAndroidSurfaceKHR>(vkGetInstanceProcAddr(vkInstance, "vkCreateAndroidSurfaceKHR"));
     if (!fpCreateAndroidSurfaceKHR)
         return -1;
     VkAndroidSurfaceCreateInfoKHR info = {VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR};
     info.window = nativeWindow;
     VK_CHECK(fpCreateAndroidSurfaceKHR(vkInstance, &info, nullptr, &surface));
+    vulkanSurface = surface; // 修正：在return前赋值
     return (long) surface;
 }
 
