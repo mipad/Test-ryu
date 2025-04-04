@@ -2,19 +2,24 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- 移除硬件音频输出的强制要求 -->
     <uses-feature
         android:name="android.hardware.audio.output"
-        android:required="true" />
+        android:required="false" />  <!-- 改为 false 允许无音频设备安装 -->
 
+    <!-- 权限调整 -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    
+    <!-- 移除 MANAGE_EXTERNAL_STORAGE（仅 Android 11+ 需要） -->
     <uses-permission
-        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
-        tools:ignore="ScopedStorage" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />  <!-- Android 9（API 28）及以下需要 -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />  <!-- Android 10 使用作用域存储 -->
 
     <application
         android:name=".RyujinxApplication"
@@ -27,19 +32,22 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.RyujinxAndroid"
-        tools:targetApi="31">
+        tools:targetApi="31"
+        tools:replace="android:isGame">  <!-- 避免旧版本属性冲突 -->
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:configChanges="orientation|screenSize|screenLayout|uiMode"  <!-- 移除 smallestScreenSize（API 24+） -->
             android:hardwareAccelerated="true"
             android:theme="@style/Theme.RyujinxAndroid">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 文件提供者适配 -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="org.ryujinx.android.fileprovider"
@@ -49,12 +57,15 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/provider_paths" />
         </provider>
+
+        <!-- 文档提供者适配（使用 SAF 替代） -->
         <provider
             android:name=".providers.DocumentProvider"
             android:authorities="org.ryujinx.android.providers"
             android:exported="true"
             android:grantUriPermissions="true"
-            android:permission="android.permission.MANAGE_DOCUMENTS">
+            android:permission="android.permission.MANAGE_DOCUMENTS"
+            tools:ignore="WrongManifestParent">  <!-- 忽略旧版本警告 -->
             <intent-filter>
                 <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
             </intent-filter>
