@@ -1,5 +1,5 @@
 package org.ryujinx.android.views
-#
+
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Intent
