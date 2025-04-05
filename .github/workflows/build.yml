@@ -2,11 +2,11 @@ name: Build and Release
 
 on:
   push:
-    branches: [ main, dev ]
+    branches: [ test, dev ]
     tags:
       - 'v*'  # 标签推送触发自动发布
   pull_request:
-    branches: [ main ]
+    branches: [ test]
   workflow_dispatch:
     inputs:
       upload_artifacts:
