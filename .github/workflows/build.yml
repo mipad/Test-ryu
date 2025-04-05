@@ -1,10 +1,3 @@
-# A workflow to verify the build on every push to the master branch
-name: Build
-
-on:
-  push: 
-    branches: [ test ]
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -12,27 +5,34 @@ jobs:
       - name: Git Checkout
         uses: actions/checkout@v4
         with:
-          submodules: false
+          submodules: false  # 确保子模块已禁用
 
+      # 设置项目目录为 src/RyujinxAndroid
+      - name: Set Project Directory
+        run: echo "PROJECT_DIR=src/RyujinxAndroid" >> $GITHUB_ENV
+
+      # 添加 gradlew 执行权限
+      - name: Add Gradlew Permission
+        run: chmod +x ${{ env.PROJECT_DIR }}/gradlew
+
+      # 后续步骤需指定 working-directory
       - name: Restore CCache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
           max-size: 3Gi
+        working-directory: ${{ env.PROJECT_DIR }}  # 指定目录
 
       - name: Restore Gradle Cache
         uses: actions/cache@v4
         with:
           path: ~/.gradle/
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/build.gradle') }}-${{ hashFiles('app/**/*.xml') }}-${{ hashFiles('app/**.kt', 'app/**.java') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-${{ hashFiles('**/build.gradle') }}-${{ hashFiles('app/**/*.xml') }}-
-            ${{ runner.os }}-gradle-${{ hashFiles('**/build.gradle') }}-
-            ${{ runner.os }}-gradle-
+        working-directory: ${{ env.PROJECT_DIR }}  # 指定目录
 
       - name: Install Java 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin' # Temurin should come pre-installed on GitHub-hosted runners
+          distribution: 'temurin'
           java-version: '17'
 
       - name: Install Ninja Build
@@ -40,9 +40,11 @@ jobs:
           sudo apt-get install -y ninja-build
           ln -s /usr/bin/ninja .
 
+      # 关键步骤：指定工作目录并运行 gradlew
       - name: Android Assemble
+        working-directory: ${{ env.PROJECT_DIR }}  # 确保在此目录下执行
         env:
           CMAKE_C_COMPILER_LAUNCHER: "ccache"
           CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
-          CCACHE_COMPILERCHECK: "string:${{ env.NDK_VERSION }}" # Use NDK version instead of compiler timestamp
+          CCACHE_COMPILERCHECK: "string:${{ env.NDK_VERSION }}"
         run: ./gradlew --no-daemon --stacktrace --build-cache --parallel --configure-on-demand assembleMainlineRelease
