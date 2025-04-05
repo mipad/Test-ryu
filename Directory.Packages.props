@@ -3,14 +3,14 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
-    <!-- Avalonia 升级到兼容版本 -->
-    <PackageVersion Include="Avalonia" Version="11.1.0" />
-    <PackageVersion Include="Avalonia.Controls.DataGrid" Version="11.1.0" />
-    <PackageVersion Include="Avalonia.Desktop" Version="11.1.0" />
-    <PackageVersion Include="Avalonia.Diagnostics" Version="11.1.0" />
-    <PackageVersion Include="Avalonia.Markup.Xaml.Loader" Version="11.1.0" />
-    <PackageVersion Include="Avalonia.Svg" Version="11.1.0.20" />
-    <PackageVersion Include="Avalonia.Svg.Skia" Version="11.1.0.20" />
+    <!-- Avalonia -->
+    <PackageVersion Include="Avalonia" Version="11.0.10" />
+    <PackageVersion Include="Avalonia.Controls.DataGrid" Version="11.0.10" />
+    <PackageVersion Include="Avalonia.Desktop" Version="11.0.10" />
+    <PackageVersion Include="Avalonia.Diagnostics" Version="11.0.10" />
+    <PackageVersion Include="Avalonia.Markup.Xaml.Loader" Version="11.0.10" />
+    <PackageVersion Include="Avalonia.Svg" Version="11.0.0.18" />
+    <PackageVersion Include="Avalonia.Svg.Skia" Version="11.0.0.18" />
 
     <!-- 核心依赖 -->
     <PackageVersion Include="CommandLineParser" Version="2.9.1" />
@@ -20,21 +20,21 @@
     <PackageVersion Include="LibHac" Version="0.19.0" />
 
     <!-- 安全升级 -->
-    <PackageVersion Include="System.Private.Uri" Version="4.3.1" />  <!-- 修复漏洞 -->
-    <PackageVersion Include="System.Text.Json" Version="8.0.2" />    <!-- 修复漏洞 -->
-    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="7.5.1" /> <!-- 降级到安全版本 -->
+    <PackageVersion Include="System.Private.Uri" Version="4.3.1" />
+    <PackageVersion Include="System.Text.Json" Version="8.0.2" />
+    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="7.5.1" />
 
     <!-- 测试框架 -->
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.9.2" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
     <PackageVersion Include="NUnit" Version="3.13.3" />
     <PackageVersion Include="NUnit3TestAdapter" Version="4.1.0" />
 
     <!-- 图形和多媒体 -->
-    <PackageVersion Include="OpenTK" Version="4.8.3" />  <!-- 升级到兼容版本 -->
-    <PackageVersion Include="OpenTK.Core" Version="4.8.3" />
-    <PackageVersion Include="OpenTK.Graphics" Version="4.8.3" />
-    <PackageVersion Include="OpenTK.Audio.OpenAL" Version="4.8.3" />
-    <PackageVersion Include="OpenTK.Windowing.GraphicsLibraryFramework" Version="4.8.3" />
+    <PackageVersion Include="OpenTK" Version="4.9.1" />
+    <PackageVersion Include="OpenTK.Core" Version="4.9.1" />
+    <PackageVersion Include="OpenTK.Graphics" Version="4.9.1" />
+    <PackageVersion Include="OpenTK.Audio.OpenAL" Version="4.9.1" />
+    <PackageVersion Include="OpenTK.Windowing.GraphicsLibraryFramework" Version="4.9.1" />
     <PackageVersion Include="Silk.NET.Vulkan" Version="2.21.0" />
     <PackageVersion Include="Silk.NET.Vulkan.Extensions.EXT" Version="2.21.0" />
     <PackageVersion Include="Silk.NET.Vulkan.Extensions.KHR" Version="2.21.0" />
