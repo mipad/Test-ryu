@@ -17,27 +17,19 @@ jobs:
       contents: write
 
     steps:
-      # ------------ 1. 代码拉取（包含子模块） ------------
+      # ------------ 1. 拉取代码（含子模块） ------------
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          submodules: "recursive"  # 启用子模块拉取
+          submodules: "recursive"
 
-      # ------------ 2. 调试目录结构 ------------
-      - name: Debug Directory Structure
-        run: |
-          echo "仓库根目录结构:"
-          ls -la
-          echo "项目路径验证:"
-          ls -la src/RyujinxAndroid
-
-      # ------------ 3. 安装 .NET 9.0 SDK ------------
+      # ------------ 2. 安装 .NET 9.0 SDK ------------
       - name: Install .NET 9.0 SDK
         uses: actions/setup-dotnet@v3
         with:
           dotnet-version: "9.0.100"
 
-      # ------------ 4. 缓存 NuGet 包 ------------
+      # ------------ 3. 缓存 NuGet 包 ------------
       - name: Cache NuGet packages
         uses: actions/cache@v3
         with:
@@ -48,76 +40,49 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nuget-
 
-      # ------------ 5. 安装 Android 命令行工具 ------------
-      - name: Install Android Command Line Tools
+      # ------------ 4. 安装 Android 工具链 ------------
+      - name: Install Android Tools
         run: |
           mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
           unzip -q commandlinetools-linux-9477386_latest.zip -d $ANDROID_SDK_ROOT/cmdline-tools
           mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
-
-      # ------------ 6. 安装 Android 组件 ------------
-      - name: Setup Android Components
-        run: |
-          mkdir -p ~/.android
-          touch ~/.android/repositories.cfg
           yes | sdkmanager --licenses --sdk_root=$ANDROID_SDK_ROOT
           sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;25.1.8937393" --sdk_root=$ANDROID_SDK_ROOT
 
-      # ------------ 7. 安装 JDK 17 ------------
+      # ------------ 5. 安装 JDK 17 ------------
       - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
           java-version: 17
           distribution: temurin
 
-      # ------------ 8. 缓存 Android SDK ------------
-      - name: Cache Android SDK
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.android/cache
-            ${{ env.ANDROID_SDK_ROOT }}/platforms
-            ${{ env.ANDROID_SDK_ROOT }}/ndk
-          key: ${{ runner.os }}-android-sdk-${{ hashFiles('**/gradle-wrapper.properties') }}
-
-      # ------------ 9. 项目配置 ------------
-      - name: Prepare Project
+      # ------------ 6. 强制恢复 NuGet 包 ------------
+      - name: Explicit .NET Restore
         working-directory: src/RyujinxAndroid
         run: |
-          chmod +x gradlew
-          # 验证 NDK 路径
-          echo "LLVM_PATH=$ANDROID_SDK_ROOT/ndk/25.1.8937393/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_ENV
-          # 显式恢复 NuGet 包（关键修复）
-          dotnet restore
+          dotnet restore --force-evaluate
 
-      # ------------ 10. 清理旧构建 ------------
+      # ------------ 7. 清理项目 ------------
       - name: Clean Project
         working-directory: src/RyujinxAndroid
         run: ./gradlew clean
 
-      # ------------ 11. 构建 Release APK ------------
+      # ------------ 8. 构建 Release APK ------------
       - name: Build Release APK
         working-directory: src/RyujinxAndroid
-        run: ./gradlew assembleRelease --stacktrace
+        run: ./gradlew assembleRelease --stacktrace --no-daemon
         env:
-          ORG_RYUJINX_LLVM_TOOLCHAIN_PATH: ${{ env.LLVM_PATH }}
+          ORG_RYUJINX_LLVM_TOOLCHAIN_PATH: ${{ env.ANDROID_SDK_ROOT }}/ndk/25.1.8937393/toolchains/llvm/prebuilt/linux-x86_64/bin
           STORE_FILE: ${{ github.workspace }}/src/RyujinxAndroid/keystore.jks
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      # ------------ 12. 上传产物 ------------
+      # ------------ 9. 上传产物 ------------
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: release-apk
           path: src/RyujinxAndroid/app/build/outputs/apk/release/app-release.apk
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: src/RyujinxAndroid/app/build/outputs/apk/release/app-release.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
