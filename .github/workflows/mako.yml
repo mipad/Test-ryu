@@ -1,12 +1,12 @@
 name: Mako
 on:
   discussion:
-    types: [created, edited, answered, unanswered, category_changed]
+    types: [创建, edited, answered, unanswered, category_changed]
   discussion_comment:
-    types: [created, edited]
+    types: [创建, edited]
   gollum:
   issue_comment:
-    types: [created, edited]
+    types: [创建, edited]
   issues:
     types: [opened, edited, reopened, pinned, milestoned, demilestoned, assigned, unassigned, labeled, unlabeled]
   pull_request_target:
@@ -28,11 +28,11 @@ jobs:
         with:
           # Ensure we pin the source origin as pull_request_target run under forks.
           fetch-depth: 0
-          repository: Scandal-UK/ryujinx
-          ref: main
+          repository: mipad/ryujinx
+          ref: text
 
       - name: Run Mako command
-        uses: Scandal-UK/ryujinx-mako@main
+        uses: mipad/ryujinx-mako@main
         with:
           command: exec-ryujinx-tasks
           args: --event-name "${{ github.event_name }}" --event-path "${{ github.event_path }}" -w "${{ github.workspace }}" "${{ github.repository }}" "${{ github.run_id }}"
