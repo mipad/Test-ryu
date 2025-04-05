@@ -7,8 +7,8 @@ on:
     branches: [ "test" ]
 
 env:
-  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk  # 定义 Android SDK 根目录
-  GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=true"
+  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk  # 固定 Android SDK 路径
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=true"  # 禁用守护进程 + 并行构建
 
 jobs:
   build:
@@ -17,7 +17,7 @@ jobs:
       contents: write  # 允许创建 Release
 
     steps:
-      # ------------ 基础配置 ------------
+      # ------------ 代码拉取 ------------
       - name: Checkout Code
         uses: actions/checkout@v4
 
@@ -25,33 +25,35 @@ jobs:
       - name: Install .NET 9.0 SDK (Preview)
         uses: actions/setup-dotnet@v3
         with:
-          dotnet-version: '9.0.100-preview.6.24328.19'  # 指定精确预览版
+          dotnet-version: "9.0.100-preview.6.24328.19"  # 指定精确版本
 
-      # ------------ Android SDK 安装 ------------
+      # ------------ Android 命令行工具安装 ------------
       - name: Install Android Command Line Tools
         run: |
+          # 创建目标目录并解压到正确路径
           mkdir -p $ANDROID_SDK_ROOT/cmdline-tools/latest
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
           unzip -q commandlinetools-linux-9477386_latest.zip -d $ANDROID_SDK_ROOT/cmdline-tools/latest
-          mv $ANDROID_SDK_ROOT/cmdline-tools/latest/cmdline-tools/* $ANDROID_SDK_ROOT/cmdline-tools/latest
-          rm -rf $ANDROID_SDK_ROOT/cmdline-tools/latest/cmdline-tools
-          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
 
-      - name: Accept Android Licenses
-        run: yes | sdkmanager --licenses  # 自动接受所有许可证
+          # 将 sdkmanager 添加到 PATH（关键路径修正）
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/cmdline-tools/bin:$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
+        env:
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 
-      - name: Install Android Components
+      # ------------ Android 组件安装 ------------
+      - name: Setup Android Components
         run: |
-          sdkmanager "platforms;android-34"          # API 34
-          sdkmanager "build-tools;34.0.0"           # 构建工具 34.0.0
-          sdkmanager "ndk;25.1.8937393" --channel=3  # NDK 25.1.8937393
+          yes | sdkmanager --licenses  # 自动接受许可证
+          sdkmanager "platforms;android-34"          # 安装 API 34
+          sdkmanager "build-tools;34.0.0"           # 安装构建工具
+          sdkmanager "ndk;25.1.8937393" --channel=3  # 安装 NDK
 
-      # ------------ Java 环境 ------------
+      # ------------ Java 环境配置 ------------
       - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
           java-version: 17
-          distribution: temurin
+          distribution: temurin  # 使用 Eclipse Temurin JDK
 
       # ------------ 缓存优化 ------------
       - name: Cache Android SDK
@@ -62,20 +64,31 @@ jobs:
             ${{ env.ANDROID_SDK_ROOT }}
           key: ${{ runner.os }}-android-sdk-${{ hashFiles('ryujinx/src/RyujinxAndroid/gradle/wrapper/gradle-wrapper.properties') }}
 
+      - name: Cache Gradle
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('ryujinx/src/RyujinxAndroid/gradle/wrapper/gradle-wrapper.properties') }}
+
       # ------------ 项目构建 ------------
-      - name: Grant gradlew Permission
-        run: chmod +x gradlew  # 赋予执行权限
-        working-directory: ryujinx/src/RyujinxAndroid  # 关键：指定项目目录
+      - name: Prepare Project Directory
+        run: |
+          # 确保 gradlew 有执行权限
+          chmod +x ryujinx/src/RyujinxAndroid/gradlew
+          # 验证 NDK 路径（修正 Linux 格式）
+          echo "ORG_RYUJINX_LLVM_TOOLCHAIN_PATH=$ANDROID_SDK_ROOT/ndk/25.1.8937393/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_ENV
 
       - name: Build Release APK
         run: ./gradlew assembleRelease
         working-directory: ryujinx/src/RyujinxAndroid  # 指定项目目录
         env:
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}          # 从 Secrets 读取签名信息
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}          # 签名配置
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          # 修正 LLVM 路径（Linux 格式）
-          ORG_RYUJINX_LLVM_TOOLCHAIN_PATH: /usr/local/lib/android/sdk/ndk/25.1.8937393/toolchains/llvm/prebuilt/linux-x86_64/bin
+          # 强制指定 LLVM 工具链路径
+          ORG_RYUJINX_LLVM_TOOLCHAIN_PATH: ${{ env.ANDROID_SDK_ROOT }}/ndk/25.1.8937393/toolchains/llvm/prebuilt/linux-x86_64/bin
 
       # ------------ 产物上传 ------------
       - name: Upload APK
