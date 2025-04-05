@@ -43,7 +43,7 @@ jobs:
         git commit -a -m "Add GitHub Action file"
 
     - name: Push changes
-      uses: ad-m/github-push-action@master
+      uses: ad-m/github-push-action@test
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         repository: ${{ github.repository }}
