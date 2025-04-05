@@ -1,9 +1,10 @@
 <Project>
   <PropertyGroup>
+    <!-- 启用中央包版本管理 -->
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
-    <!-- Avalonia 升级到兼容版本 -->
+    <!-- ========== Avalonia UI 框架 ========== -->
     <PackageVersion Include="Avalonia" Version="11.1.0" />
     <PackageVersion Include="Avalonia.Controls.DataGrid" Version="11.1.0" />
     <PackageVersion Include="Avalonia.Desktop" Version="11.1.0" />
@@ -12,42 +13,48 @@
     <PackageVersion Include="Avalonia.Svg" Version="11.1.0.20" />
     <PackageVersion Include="Avalonia.Svg.Skia" Version="11.1.0.20" />
 
-    <!-- 核心依赖 -->
+    <!-- ========== 核心功能依赖 ========== -->
     <PackageVersion Include="CommandLineParser" Version="2.9.1" />
     <PackageVersion Include="Concentus" Version="2.2.0" />
     <PackageVersion Include="DynamicData" Version="9.0.4" />
     <PackageVersion Include="FluentAvaloniaUI" Version="2.0.5" />
     <PackageVersion Include="LibHac" Version="0.19.0" />
 
-    <!-- 安全升级（强制覆盖传递依赖） -->
-    <PackageVersion Include="System.Private.Uri" Version="4.3.1" OverwriteTransitiveDependencies="true" />
+    <!-- ========== 安全关键依赖升级 ========== -->
+    <!-- 修复 System.Private.Uri 漏洞 (GHSA-5f2m-466j-3848) -->
+    <PackageVersion Include="System.Private.Uri" Version="4.3.2" />
+    <!-- 修复 System.Text.Json 潜在问题 -->
     <PackageVersion Include="System.Text.Json" Version="8.0.2" />
+    <!-- 身份验证库降级到稳定版本 -->
     <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="7.5.1" />
 
-    <!-- 测试框架 -->
+    <!-- ========== 测试框架 ========== -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.9.2" />
     <PackageVersion Include="NUnit" Version="3.13.3" />
     <PackageVersion Include="NUnit3TestAdapter" Version="4.1.0" />
 
-    <!-- 图形和多媒体（解决 OpenTK 版本问题） -->
-    <PackageVersion Include="OpenTK" Version="4.9.1" />
-    <PackageVersion Include="OpenTK.Core" Version="4.9.1" />
-    <PackageVersion Include="OpenTK.Graphics" Version="4.9.1" />
-    <PackageVersion Include="OpenTK.Audio.OpenAL" Version="4.9.1" />
-    <PackageVersion Include="OpenTK.Windowing.GraphicsLibraryFramework" Version="4.9.1" />
+    <!-- ========== 图形和多媒体库 ========== -->
+    <!-- OpenTK 统一版本 -->
+    <PackageVersion Include="OpenTK" Version="4.8.3" />
+    <PackageVersion Include="OpenTK.Core" Version="4.8.3" />
+    <PackageVersion Include="OpenTK.Graphics" Version="4.8.3" />
+    <PackageVersion Include="OpenTK.Audio.OpenAL" Version="4.8.3" />
+    <PackageVersion Include="OpenTK.Windowing.GraphicsLibraryFramework" Version="4.8.3" />
+    <!-- Vulkan 相关依赖 -->
     <PackageVersion Include="Silk.NET.Vulkan" Version="2.21.0" />
     <PackageVersion Include="Silk.NET.Vulkan.Extensions.EXT" Version="2.21.0" />
     <PackageVersion Include="Silk.NET.Vulkan.Extensions.KHR" Version="2.21.0" />
+    <!-- SkiaSharp 图形库 -->
     <PackageVersion Include="SkiaSharp" Version="2.88.7" />
     <PackageVersion Include="SkiaSharp.NativeAssets.Linux" Version="2.88.7" />
 
-    <!-- Ryujinx 专用依赖 -->
+    <!-- ========== Ryujinx 专用依赖 ========== -->
     <PackageVersion Include="Ryujinx.Audio.OpenAL.Dependencies" Version="1.21.0.1" />
     <PackageVersion Include="Ryujinx.Graphics.Nvdec.Dependencies" Version="5.0.3-build14" />
     <PackageVersion Include="Ryujinx.Graphics.Vulkan.Dependencies.MoltenVK" Version="1.2.0" />
     <PackageVersion Include="Ryujinx.SDL2-CS" Version="2.30.0-build32" />
 
-    <!-- 工具和辅助库 -->
+    <!-- ========== 工具和辅助库 ========== -->
     <PackageVersion Include="DiscordRichPresence" Version="1.2.1.24" />
     <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.9.2" />
@@ -59,11 +66,11 @@
     <PackageVersion Include="SharpZipLib" Version="1.4.2" />
     <PackageVersion Include="SPB" Version="0.0.4-build32" />
 
-    <!-- 系统工具 -->
+    <!-- ========== 系统工具库 ========== -->
     <PackageVersion Include="System.IO.Hashing" Version="8.0.0" />
     <PackageVersion Include="System.Management" Version="8.0.0" />
 
-    <!-- 其他 -->
+    <!-- ========== 其他关键依赖 ========== -->
     <PackageVersion Include="UnicornEngine.Unicorn" Version="2.0.2-rc1-fb78016" />
     <PackageVersion Include="Rxmxnx.PInvoke.Extensions" Version="1.5.0" />
   </ItemGroup>
