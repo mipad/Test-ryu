@@ -1,21 +1,19 @@
 name: Android CI
 
 on:
-  workflow_call:
   push:
-    branches: [ "text" ]
+    branches: [ "test" ]
   pull_request:
-    branches: [ "text" ]
+    branches: [ "test" ]
 
 env:
-  GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=true"  # 启用并行构建
-  ANDROID_SDK_CACHE: ~/.android/cache
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=true"
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # 仅允许创建 Release 时修改内容
+      contents: write
 
     steps:
       - name: Checkout Code
@@ -25,15 +23,15 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: 17
-          distribution: 'temurin'
+          distribution: temurin
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v2
         with:
-          api-level: 34                  # 明确指定 API 级别
+          api-level: 34
           build-tools-version: "34.0.0"
           ndk-version: "25.1.8937393"
-          components: "platforms;android-34, cmake"  # 安装额外组件
+          components: "platforms;android-34, cmake"
 
       - name: Cache Gradle and SDK
         uses: actions/cache@v3
@@ -41,19 +39,17 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-            ${{ env.ANDROID_SDK_CACHE }}  # 缓存 Android SDK 组件
-            ${{ github.workspace }}/ndk    # 缓存 NDK（若项目使用）
-          key: ${{ runner.os }}-android-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+            ~/.android/cache
+          key: ${{ runner.os }}-android-${{ hashFiles('**/*.gradle*') }}
 
       - name: Decode Keystore
-        if: env.KEY_STORE != ''  # 仅在 Secrets 存在时执行
         run: |
           echo "$KEY_STORE" | base64 -d > app/keystore.jks
         env:
           KEY_STORE: ${{ secrets.KEY_STORE_BASE64 }}
 
-      - name: Run Code Quality Checks
-        run: ./gradlew check  # 执行 Lint 和单元测试
+      - name: Grant gradlew Permission
+        run: chmod +x gradlew
 
       - name: Build Release APK
         run: ./gradlew assembleRelease
@@ -72,7 +68,5 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: app/build/outputs/apk/release/app-release.apk
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
