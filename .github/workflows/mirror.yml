@@ -1,54 +1,45 @@
-name: Mirror Git
+name: Mirror Repository
 
 on:
   workflow_dispatch:
-   inputs:
+    inputs:
       android:
-        description: 'Whether to trigger an Android build (true/false/auto)'
+        description: 'Trigger Android build'
         required: false
         default: 'true'
 
 jobs:
   mirror:
     runs-on: ubuntu-latest
-    
-    permissions: write-all
+    permissions:
+      contents: write
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout source
+      uses: actions/checkout@v4
       with:
-        ref: ${{ github.head_ref }}
         fetch-depth: 0
 
-    - name: Clone GitLab repo
-      run: git clone --branch https://github.com/mipad/Test-ryu/tree/test.git mirror
-
-    - name: Copy GitHub Action file to cloned repo
+    - name: Clone target repo
       run: |
-        mkdir -p mirror/.github/workflows/
-        cp .github/workflows/mirror.yml mirror/.github/workflows/
-        cp .github/workflows/build.yml mirror/.github/workflows/
-        cp .github/workflows/android-build.yml mirror/.github/workflows/
-                
-        
-    
+        git clone --branch test https://github.com/mipad/Test-ryu.git mirror
 
-    - name: Commit and force push to GitHub
+    - name: Sync workflows
       run: |
-        cd mirror
-        git remote set-url origin https://github.com/${{ github.repository }}.git
-        git config --local user.email "github-actions[bot]@users.noreply.github.com"
-        git config --local user.name "github-actions[bot]"
-        git add .
-        git commit -a -m "Add GitHub Action file"
+        mkdir -p mirror/.github/workflows
+        cp -v .github/workflows/*.yml mirror/.github/workflows/
+
+    - name: 提交更改
+      working-directory: ./mirror
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        git add .github/workflows
+        git commit -m "Sync CI workflows"
 
     - name: Push changes
-      uses: ad-m/github-push-action@test
+      uses: ad-m/github-push-action@v1.0
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
-        repository: ${{ github.repository }}
-        branch: ${{ github.ref }}
-        github_url: https://github.com
         directory: ./mirror
         force: true
-        
