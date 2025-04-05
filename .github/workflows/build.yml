@@ -1,213 +1,218 @@
-name: Flatpak release job
+name: Release job
 
 on:
-  workflow_call:
-    inputs:
-      ryujinx_version:
-        required: true
-        type: string
-push: 
+  workflow_dispatch:
+    inputs: {}
+  push:
     branches: [ test ]
+    paths-ignore:
+      - '.github/**'
+      - '*.yml'
+      - '*.json'
+      - '*.config'
+      - '*.md'
 
-concurrency: flatpak-release
+concurrency: release
+
+env:
+  POWERSHELL_TELEMETRY_OPTOUT: 1
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  RYUJINX_BASE_VERSION: "1.1"
+  RYUJINX_TARGET_RELEASE_CHANNEL_NAME: "master"
+  RYUJINX_TARGET_RELEASE_CHANNEL_OWNER: "Ryujinx"
+  RYUJINX_TARGET_RELEASE_CHANNEL_REPO: "release-channel-master"
 
 jobs:
+  tag:
+    name: Create tag
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Get version info
+        id: version_info
+        run: |
+          echo "build_version=${{ env.RYUJINX_BASE_VERSION }}.${{ github.run_number }}" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Create tag
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: 'refs/tags/${{ steps.version_info.outputs.build_version }}',
+              sha: context.sha
+            })
+
+      - name: Create release
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ steps.version_info.outputs.build_version }}
+          tag: ${{ steps.version_info.outputs.build_version }}
+          body: "For more information about this release please check out the official [Changelog](https://github.com/Scandal-UK/ryujinx/wiki/Changelog)."
+          omitBodyDuringUpdate: true
+          owner: ${{ env.RYUJINX_TARGET_RELEASE_CHANNEL_OWNER }}
+          repo: ${{ env.RYUJINX_TARGET_RELEASE_CHANNEL_REPO }}
+          token: ${{ secrets.RELEASE_TOKEN }}
+
   release:
+    name: Release for ${{ matrix.platform.name }}
+    runs-on: ${{ matrix.platform.os }}
     timeout-minutes: ${{ fromJSON(vars.JOB_TIMEOUT) }}
-    runs-on: ubuntu-latest
-
-    env:
-      NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
-      GIT_COMMITTER_NAME: "RyujinxBot"
-      GIT_COMMITTER_EMAIL: "61127645+RyujinxBot@users.noreply.github.com"
-      RYUJINX_PROJECT_FILE: "src/Ryujinx/Ryujinx.csproj"
-      NUGET_SOURCES_DESTDIR: "nuget-sources"
-      RYUJINX_VERSION: "${{ inputs.ryujinx_version }}"
-
+    strategy:
+      matrix:
+        platform:
+          - { name: win-x64,     os: windows-latest, zip_os_name: win_x64     }
+          - { name: linux-x64,   os: ubuntu-latest,  zip_os_name: linux_x64   }
+          - { name: linux-arm64, os: ubuntu-latest,  zip_os_name: linux_arm64 }
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: Ryujinx
 
       - uses: actions/setup-dotnet@v4
         with:
-          global-json-file: Ryujinx/global.json
+          global-json-file: global.json
+
+      - name: Overwrite csc problem matcher
+        run: echo "::add-matcher::.github/csc.json"
 
       - name: Get version info
         id: version_info
-        working-directory: Ryujinx
         run: |
-          echo "git_hash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "build_version=${{ env.RYUJINX_BASE_VERSION }}.${{ github.run_number }}" >> $GITHUB_OUTPUT
+          echo "git_short_hash=$(git rev-parse --short "${{ github.sha }}")" >> $GITHUB_OUTPUT
+        shell: bash
 
-      - uses: actions/checkout@v4
+      - name: Configure for release
+        run: |
+          sed -r --in-place 's/\%\%RYUJINX_BUILD_VERSION\%\%/${{ steps.version_info.outputs.build_version }}/g;' src/Ryujinx.Common/ReleaseInformation.cs
+          sed -r --in-place 's/\%\%RYUJINX_BUILD_GIT_HASH\%\%/${{ steps.version_info.outputs.git_short_hash }}/g;' src/Ryujinx.Common/ReleaseInformation.cs
+          sed -r --in-place 's/\%\%RYUJINX_TARGET_RELEASE_CHANNEL_NAME\%\%/${{ env.RYUJINX_TARGET_RELEASE_CHANNEL_NAME }}/g;' src/Ryujinx.Common/ReleaseInformation.cs
+          sed -r --in-place 's/\%\%RYUJINX_TARGET_RELEASE_CHANNEL_OWNER\%\%/${{ env.RYUJINX_TARGET_RELEASE_CHANNEL_OWNER }}/g;' src/Ryujinx.Common/ReleaseInformation.cs
+          sed -r --in-place 's/\%\%RYUJINX_TARGET_RELEASE_CHANNEL_REPO\%\%/${{ env.RYUJINX_TARGET_RELEASE_CHANNEL_REPO }}/g;' src/Ryujinx.Common/ReleaseInformation.cs
+          sed -r --in-place 's/\%\%RYUJINX_CONFIG_FILE_NAME\%\%/Config\.json/g;' src/Ryujinx.Common/ReleaseInformation.cs
+        shell: bash
+
+      - name: Create output dir
+        run: "mkdir release_output"
+
+      - name: Publish
+        run: |
+          dotnet publish -c Release -r "${{ matrix.platform.name }}" -o ./publish_ava/publish -p:Version="${{ steps.version_info.outputs.build_version }}" -p:SourceRevisionId="${{ steps.version_info.outputs.git_short_hash }}" -p:DebugType=embedded src/Ryujinx --self-contained true
+          dotnet publish -c Release -r "${{ matrix.platform.name }}" -o ./publish_sdl2_headless/publish -p:Version="${{ steps.version_info.outputs.build_version }}" -p:SourceRevisionId="${{ steps.version_info.outputs.git_short_hash }}" -p:DebugType=embedded src/Ryujinx.Headless.SDL2 --self-contained true
+
+      - name: Packing Windows builds
+        if: matrix.platform.os == 'windows-latest'
+        run: |
+          pushd publish_ava
+          cp publish/Ryujinx.exe publish/Ryujinx.Ava.exe
+          7z a ../release_output/ryujinx-${{ steps.version_info.outputs.build_version }}-${{ matrix.platform.zip_os_name }}.zip publish
+          7z a ../release_output/test-ava-ryujinx-${{ steps.version_info.outputs.build_version }}-${{ matrix.platform.zip_os_name }}.zip publish
+          popd
+
+          pushd publish_sdl2_headless
+          7z a ../release_output/sdl2-ryujinx-headless-${{ steps.version_info.outputs.build_version }}-${{ matrix.platform.zip_os_name }}.zip publish
+          popd
+        shell: bash
+
+      - name: Packing Linux builds
+        if: matrix.platform.os == 'ubuntu-latest'
+        run: |
+          pushd publish_ava
+          cp publish/Ryujinx publish/Ryujinx.Ava
+          chmod +x publish/Ryujinx.sh publish/Ryujinx.Ava publish/Ryujinx
+          tar -czvf ../release_output/ryujinx-${{ steps.version_info.outputs.build_version }}-${{ matrix.platform.zip_os_name }}.tar.gz publish
+          tar -czvf ../release_output/test-ava-ryujinx-${{ steps.version_info.outputs.build_version }}-${{ matrix.platform.zip_os_name }}.tar.gz publish
+          popd
+
+          pushd publish_sdl2_headless
+          chmod +x publish/Ryujinx.sh publish/Ryujinx.Headless.SDL2
+          tar -czvf ../release_output/sdl2-ryujinx-headless-${{ steps.version_info.outputs.build_version }}-${{ matrix.platform.zip_os_name }}.tar.gz publish
+          popd
+        shell: bash
+
+      - name: Pushing new release
+        uses: ncipollo/release-action@v1
         with:
-          repository: flathub/org.ryujinx.Ryujinx
-          token: ${{ secrets.RYUJINX_BOT_PAT }}
-          submodules: recursive
-          path: flathub
+          name: ${{ steps.version_info.outputs.build_version }}
+          artifacts: "release_output/*.tar.gz,release_output/*.zip"
+          tag: ${{ steps.version_info.outputs.build_version }}
+          body: "For more information about this release please check out the official [Changelog](https://github.com/Scandal-UK/ryujinx/wiki/Changelog)."
+          omitBodyDuringUpdate: true
+          allowUpdates: true
+          replacesArtifacts: true
+          owner: ${{ env.RYUJINX_TARGET_RELEASE_CHANNEL_OWNER }}
+          repo: ${{ env.RYUJINX_TARGET_RELEASE_CHANNEL_REPO }}
+          token: ${{ secrets.RELEASE_TOKEN }}
 
-      - name: Install dependencies
-        run: python -m pip install PyYAML lxml
+  macos_release:
+    name: Release MacOS universal
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ fromJSON(vars.JOB_TIMEOUT) }}
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Restore Nuget packages
-        # With .NET 8.0.100, Microsoft.NET.ILLink.Tasks isn't restored by default and only seems to appear when publishing.
-        # So we just publish to grab the dependencies
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Setup LLVM 15
         run: |
-          dotnet publish -c Release -r linux-x64 Ryujinx/${{ env.RYUJINX_PROJECT_FILE }} --self-contained
-          dotnet publish -c Release -r linux-arm64 Ryujinx/${{ env.RYUJINX_PROJECT_FILE }} --self-contained
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 15
 
-      - name: Generate nuget_sources.json
-        shell: python
+      - name: Install rcodesign
         run: |
-          import hashlib
-          from pathlib import Path
-          import base64
-          import binascii
-          import json
-          import os
-          import urllib.request
-
-          sources = []
-
-
-          def create_source_from_external(name, version):
-              full_dir_path = Path(os.environ["NUGET_PACKAGES"]).joinpath(name).joinpath(version)
-              os.makedirs(full_dir_path, exist_ok=True)
-
-              filename = "{}.{}.nupkg".format(name, version)
-              url = "https://api.nuget.org/v3-flatcontainer/{}/{}/{}".format(
-                  name, version, filename
-              )
-
-              print(f"Processing {url}...")
-              response = urllib.request.urlopen(url)
-              sha512 = hashlib.sha512(response.read()).hexdigest()
-
-              return {
-                  "type": "file",
-                  "url": url,
-                  "sha512": sha512,
-                  "dest": os.environ["NUGET_SOURCES_DESTDIR"],
-                  "dest-filename": filename,
-              }
-
-
-          has_added_x64_apphost = False
-
-          for path in Path(os.environ["NUGET_PACKAGES"]).glob("**/*.nupkg.sha512"):
-              name = path.parent.parent.name
-              version = path.parent.name
-              filename = "{}.{}.nupkg".format(name, version)
-              url = "https://api.nuget.org/v3-flatcontainer/{}/{}/{}".format(
-                  name, version, filename
-              )
-
-              with path.open() as fp:
-                  sha512 = binascii.hexlify(base64.b64decode(fp.read())).decode("ascii")
-
-              sources.append(
-                  {
-                      "type": "file",
-                      "url": url,
-                      "sha512": sha512,
-                      "dest": os.environ["NUGET_SOURCES_DESTDIR"],
-                      "dest-filename": filename,
-                  }
-              )
-
-              # .NET will not add current installed application host to the list, force inject it here.
-              if not has_added_x64_apphost and name.startswith('microsoft.netcore.app.host'):
-                  sources.append(create_source_from_external("microsoft.netcore.app.host.linux-x64", version))
-                  has_added_x64_apphost = True
-
-          with open("flathub/nuget_sources.json", "w") as fp:
-              json.dump(sources, fp, indent=4)
-
-      - name: Update flatpak metadata
-        id: metadata
+          mkdir -p $HOME/.bin
+          gh release download -R indygreg/apple-platform-rs -O apple-codesign.tar.gz -p 'apple-codesign-*-x86_64-unknown-linux-musl.tar.gz'
+          tar -xzvf apple-codesign.tar.gz --wildcards '*/rcodesign' --strip-components=1
+          rm apple-codesign.tar.gz
+          mv rcodesign $HOME/.bin/
+          echo "$HOME/.bin" >> $GITHUB_PATH
         env:
-          RYUJINX_GIT_HASH: ${{ steps.version_info.outputs.git_hash }}
-        shell: python
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get version info
+        id: version_info
         run: |
-          import hashlib
-          import hmac
-          import json
-          import os
-          import yaml
-          from datetime import datetime
-          from lxml import etree
-          
-          
-          # Ensure we don't destroy multiline strings
-          def str_presenter(dumper, data):
-            if len(data.splitlines()) > 1:
-              return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
-            return dumper.represent_scalar("tag:yaml.org,2002:str", data)
-            
-            
-          yaml.representer.SafeRepresenter.add_representer(str, str_presenter)
-  
-          yaml_file = "flathub/org.ryujinx.Ryujinx.yml"
-          xml_file = "flathub/org.ryujinx.Ryujinx.appdata.xml"
+          echo "build_version=${{ env.RYUJINX_BASE_VERSION }}.${{ github.run_number }}" >> $GITHUB_OUTPUT
+          echo "git_short_hash=$(git rev-parse --short "${{ github.sha }}")" >> $GITHUB_OUTPUT
 
-          with open(yaml_file, "r") as f:
-            data = yaml.safe_load(f)
-
-          for source in data["modules"][0]["sources"]:
-            if type(source) is str:
-              continue
-            if (
-              source["type"] == "git"
-              and source["url"] == "https://github.com/Scandal-UK/Ryujinx.git"
-            ):
-              source["commit"] = os.environ['RYUJINX_GIT_HASH']
-
-          is_same_version = data["modules"][0]["build-options"]["env"]["RYUJINX_VERSION"] == os.environ['RYUJINX_VERSION']
-
-          with open(os.environ['GITHUB_OUTPUT'], "a") as gh_out:
-            if is_same_version:
-              gh_out.write(f"commit_message=Retry update to {os.environ['RYUJINX_VERSION']}")
-            else:
-              gh_out.write(f"commit_message=Update to {os.environ['RYUJINX_VERSION']}")
-
-          if not is_same_version:
-            data["modules"][0]["build-options"]["env"]["RYUJINX_VERSION"] = os.environ['RYUJINX_VERSION']
-
-            with open(yaml_file, "w") as f:
-                yaml.safe_dump(data, f, sort_keys=False)
-
-            parser = etree.XMLParser(remove_blank_text=True)
-            tree = etree.parse(xml_file, parser)
-
-            root = tree.getroot()
-
-            releases = root.find("releases")
-
-            element = etree.Element("release")
-            element.set("version", os.environ['RYUJINX_VERSION'])
-            element.set("date", datetime.now().date().isoformat())
-            releases.insert(0, element)
-
-            # Ensure 4 spaces
-            etree.indent(root, space="    ")
-
-            with open(xml_file, "wb") as f:
-              f.write(
-                etree.tostring(
-                  tree,
-                  pretty_print=True,
-                  encoding="UTF-8",
-                  doctype='<?xml version="1.0" encoding="UTF-8"?>',
-                )
-              )
-
-      - name: Push flatpak update
-        working-directory: flathub
-        env:
-          COMMIT_MESSAGE: ${{ steps.metadata.outputs.commit_message }}
+      - name: Configure for release
         run: |
-          git config user.name "${{ env.GIT_COMMITTER_NAME }}"
-          git config user.email "${{ env.GIT_COMMITTER_EMAIL }}"
-          git add .
-          git commit -m "$COMMIT_MESSAGE"
-          git push origin master
+          sed -r --in-place 's/\%\%RYUJINX_BUILD_VERSION\%\%/${{ steps.version_info.outputs.build_version }}/g;' src/Ryujinx.Common/ReleaseInformation.cs
+          sed -r --in-place 's/\%\%RYUJINX_BUILD_GIT_HASH\%\%/${{ steps.version_info.outputs.git_short_hash }}/g;' src/Ryujinx.Common/ReleaseInformation.cs
+          sed -r --in-place 's/\%\%RYUJINX_TARGET_RELEASE_CHANNEL_NAME\%\%/${{ env.RYUJINX_TARGET_RELEASE_CHANNEL_NAME }}/g;' src/Ryujinx.Common/ReleaseInformation.cs
+          sed -r --in-place 's/\%\%RYUJINX_TARGET_RELEASE_CHANNEL_OWNER\%\%/${{ env.RYUJINX_TARGET_RELEASE_CHANNEL_OWNER }}/g;' src/Ryujinx.Common/ReleaseInformation.cs
+          sed -r --in-place 's/\%\%RYUJINX_TARGET_RELEASE_CHANNEL_REPO\%\%/${{ env.RYUJINX_TARGET_RELEASE_CHANNEL_REPO }}/g;' src/Ryujinx.Common/ReleaseInformation.cs
+          sed -r --in-place 's/\%\%RYUJINX_CONFIG_FILE_NAME\%\%/Config\.json/g;' src/Ryujinx.Common/ReleaseInformation.cs
+        shell: bash
+
+      - name: Publish macOS Ryujinx
+        run: |
+          ./distribution/macos/create_macos_build_ava.sh . publish_tmp_ava publish_ava ./distribution/macos/entitlements.xml "${{ steps.version_info.outputs.build_version }}" "${{ steps.version_info.outputs.git_short_hash }}" Release
+
+      - name: Publish macOS Ryujinx.Headless.SDL2
+        run: |
+          ./distribution/macos/create_macos_build_headless.sh . publish_tmp_headless publish_headless ./distribution/macos/entitlements.xml "${{ steps.version_info.outputs.build_version }}" "${{ steps.version_info.outputs.git_short_hash }}" Release
+
+      - name: Pushing new release
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ steps.version_info.outputs.build_version }}
+          artifacts: "publish_ava/*.tar.gz, publish_headless/*.tar.gz"
+          tag: ${{ steps.version_info.outputs.build_version }}
+          body: "For more information about this release please check out the official [Changelog](https://github.com/Scandl-UK/ryujinx/wiki/Changelog)."
+          omitBodyDuringUpdate: true
+          allowUpdates: true
+          replacesArtifacts: true
+          owner: ${{ env.RYUJINX_TARGET_RELEASE_CHANNEL_OWNER }}
+          repo: ${{ env.RYUJINX_TARGET_RELEASE_CHANNEL_REPO }}
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+  flatpak_release:
+    uses: ./.github/workflows/flatpak.yml
+    needs: release
+    with:
+      ryujinx_version: "1.1.${{ github.run_number }}"
+    secrets: inherit
