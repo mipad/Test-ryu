@@ -26,15 +26,15 @@ jobs:
     - name: Download  source code
       run: |
         cd ${{ github.workspace }}
-        git clone --branch ${{ github.event.inputs.branch }} https://github.com/mipad/Test-ryu/test.git --recursive
-        cd Test-ryu/test
+        git clone --branch ${{ github.event.inputs.branch }} https://github.com/mipad/Test-ryu/tree/test.git --recursive
+        cd test
         
 
     - id: version
       name: Get version
       run: |
         echo "date=$(/bin/date -u "+%Y%m%d")" >> $GITHUB_OUTPUT
-        cd ${{ github.workspace }}/Test-ryu
+        cd ${{ github.workspace }}/test
         echo "hash=$(git log -1 --pretty=format:%H)" >> $GITHUB_OUTPUT
         echo "short_hash=$(git describe --always --long)" >> $GITHUB_OUTPUT
         echo "version=$(git describe --tags --always)" >> $GITHUB_OUTPUT
@@ -44,9 +44,9 @@ jobs:
       with:
         path: |
           ~/.gradle/wrapper
-        key: ${{ runner.os }}-Test-ryu-${{ steps.version.outputs.hash }}
+        key: ${{ runner.os }}-test-${{ steps.version.outputs.hash }}
         restore-keys: |
-            ${{ runner.os }}-Test-ryu-
+            ${{ runner.os }}-test-
 
     #- name: Prepare environment
     #  run: |
@@ -58,7 +58,7 @@ jobs:
         chmod +x src/RyujinxAndroid/gradlew
         ./gradlew "assembleRelease"
         # bash gradlew build
-        mv $(find app/build/outputs/apk/release/* -type f | grep -E "\.apk$") ${{ github.workspace }}/Test-ryu-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
+        mv $(find app/build/outputs/apk/release/* -type f | grep -E "\.apk$") ${{ github.workspace }}/test-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
 
     - name: Release ryu (Test-ryu)
       uses: softprops/action-gh-release@v2
@@ -72,4 +72,4 @@ jobs:
       with:
         name: ${{ steps.version.outputs.date }}
         tag_name: ${{ steps.version.outputs.date }}
-        files: ${{ github.workspace }}/Test-ryu-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
+        files: ${{ github.workspace }}/test-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
