@@ -1,7 +1,3 @@
-# Todo List:
-# - Move libryu compilation away (or add ccache here) because the compilation is ridiculously slow
-# - Do not use legacy CMake scripts (figure out how)
-
 name: Java CI with Gradle
 
 on:
@@ -68,8 +64,11 @@ jobs:
     - name: Install packages
       run: yes | sdkmanager "cmake;3.31.6"
 
+    # 修复权限问题：添加执行权限后运行 gradlew
     - name: Download gradlew binaries
-      run: src/RyujinxAndroid/gradlew
+      run: |
+        chmod +x src/RyujinxAndroid/gradlew
+        src/RyujinxAndroid/gradlew
 
     - name: Build with Gradle
       env: 
@@ -92,7 +91,5 @@ jobs:
         prerelease: ${{ inputs.releasetype }}
         tag_name: ${{ inputs.releasetag }}
         make_latest: ${{ inputs.islatest }}
-        # body: 'Some release text body if needed'
-        # body_path: or/as/file.md
         files: |
           app/build/outputs/apk/release/ryu-release.apk
