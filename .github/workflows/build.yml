@@ -12,7 +12,7 @@ jobs:
       - name: Git Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
 
       - name: Restore CCache
         uses: hendrikmuhs/ccache-action@v1.2
