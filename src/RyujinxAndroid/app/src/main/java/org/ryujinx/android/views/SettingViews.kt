@@ -115,7 +115,6 @@ class SettingViews {
             val resScale = remember {
                 mutableStateOf(1f)
             }
-            val aspectRatio = remember { mutableStateOf(NativeHelpers.ASPECT_RATIO_16_9) }
             val useVirtualController = remember {
                 mutableStateOf(true)
             }
@@ -558,4 +557,6 @@ class SettingViews {
                                 mutableStateOf(false)
                             }
                             val showImportCompletion = remember {
-            
+                                mutableStateOf(false)
+                            }
+                   
