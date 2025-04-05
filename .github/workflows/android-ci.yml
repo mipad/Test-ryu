@@ -21,7 +21,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          submodules: "recursive"
+          submodules: "false"
 
       # ------------ 2. 安装 .NET 9.0 SDK ------------
       - name: Install .NET 9.0 SDK
