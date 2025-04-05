@@ -1,72 +1,72 @@
 name: Android CI
 
-   on:
-     push:
-       branches: [ "test" ]
-     pull_request:
-       branches: [ "test" ]
+on:                            
+  push:                        
+    branches: [ "test" ]       
+  pull_request:
+    branches: [ "test" ]
 
-   env:
-     GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=true"
+env:
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=true"
 
-   jobs:
-     build:
-       runs-on: ubuntu-latest
-       permissions:
-         contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
-       steps:
-         - name: Checkout Code
-           uses: actions/checkout@v4
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-         - name: Set up JDK 17
-           uses: actions/setup-java@v3
-           with:
-             java-version: 17
-             distribution: temurin
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: 17
+          distribution: temurin
 
-         - name: Setup Android SDK
-           uses: android-actions/setup-android@v2
-           with:
-             api-level: 34
-             build-tools-version: "34.0.0"
-             ndk-version: "25.1.8937393"
-             components: "platforms;android-34, cmake"
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v2
+        with:
+          api-level: 34
+          build-tools-version: "34.0.0"
+          ndk-version: "25.1.8937393"
+          components: "platforms;android-34, cmake"
 
-         - name: Cache Gradle and SDK
-           uses: actions/cache@v3
-           with:
-             path: |
-               ~/.gradle/caches
-               ~/.gradle/wrapper
-               ~/.android/cache
-             key: ${{ runner.os }}-android-${{ hashFiles('**/*.gradle*') }}
+      - name: Cache Gradle and SDK
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.android/cache
+          key: ${{ runner.os }}-android-${{ hashFiles('**/*.gradle*') }}
 
-         - name: Decode Keystore
-           run: |
-             echo "$KEY_STORE" | base64 -d > app/keystore.jks
-           env:
-             KEY_STORE: ${{ secrets.KEY_STORE_BASE64 }}
+      - name: Decode Keystore
+        run: |
+          echo "$KEY_STORE" | base64 -d > app/keystore.jks
+        env:
+          KEY_STORE: ${{ secrets.KEY_STORE_BASE64 }}
 
-         - name: Grant gradlew Permission
-           run: chmod +x gradlew
+      - name: Grant gradlew Permission
+        run: chmod +x gradlew
 
-         - name: Build Release APK
-           run: ./gradlew assembleRelease
-           env:
-             KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-             STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-             KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      - name: Build Release APK
+        run: ./gradlew assembleRelease
+        env:
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-         - name: Upload APK
-           uses: actions/upload-artifact@v4  # 更新为 v4
-           with:
-             name: release-apk
-             path: app/build/outputs/apk/release/app-release.apk
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: app/build/outputs/apk/release/app-release.apk
 
-         - name: Create GitHub Release
-           uses: softprops/action-gh-release@v1
-           with:
-             files: app/build/outputs/apk/release/app-release.apk
-           env:
-             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: app/build/outputs/apk/release/app-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
