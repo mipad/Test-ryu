@@ -3,14 +3,14 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
-    <!-- Avalonia -->
-    <PackageVersion Include="Avalonia" Version="11.0.10" />
-    <PackageVersion Include="Avalonia.Controls.DataGrid" Version="11.0.10" />
-    <PackageVersion Include="Avalonia.Desktop" Version="11.0.10" />
-    <PackageVersion Include="Avalonia.Diagnostics" Version="11.0.10" />
-    <PackageVersion Include="Avalonia.Markup.Xaml.Loader" Version="11.0.10" />
-    <PackageVersion Include="Avalonia.Svg" Version="11.0.0.18" />
-    <PackageVersion Include="Avalonia.Svg.Skia" Version="11.0.0.18" />
+    <!-- Avalonia 升级到兼容版本 -->
+    <PackageVersion Include="Avalonia" Version="11.1.0" />
+    <PackageVersion Include="Avalonia.Controls.DataGrid" Version="11.1.0" />
+    <PackageVersion Include="Avalonia.Desktop" Version="11.1.0" />
+    <PackageVersion Include="Avalonia.Diagnostics" Version="11.1.0" />
+    <PackageVersion Include="Avalonia.Markup.Xaml.Loader" Version="11.1.0" />
+    <PackageVersion Include="Avalonia.Svg" Version="11.1.0.20" />
+    <PackageVersion Include="Avalonia.Svg.Skia" Version="11.1.0.20" />
 
     <!-- 核心依赖 -->
     <PackageVersion Include="CommandLineParser" Version="2.9.1" />
@@ -19,17 +19,17 @@
     <PackageVersion Include="FluentAvaloniaUI" Version="2.0.5" />
     <PackageVersion Include="LibHac" Version="0.19.0" />
 
-    <!-- 安全升级 -->
-    <PackageVersion Include="System.Private.Uri" Version="4.3.1" />
+    <!-- 安全升级（强制覆盖传递依赖） -->
+    <PackageVersion Include="System.Private.Uri" Version="4.3.1" OverwriteTransitiveDependencies="true" />
     <PackageVersion Include="System.Text.Json" Version="8.0.2" />
     <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="7.5.1" />
 
     <!-- 测试框架 -->
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.9.2" />
     <PackageVersion Include="NUnit" Version="3.13.3" />
     <PackageVersion Include="NUnit3TestAdapter" Version="4.1.0" />
 
-    <!-- 图形和多媒体 -->
+    <!-- 图形和多媒体（解决 OpenTK 版本问题） -->
     <PackageVersion Include="OpenTK" Version="4.9.1" />
     <PackageVersion Include="OpenTK.Core" Version="4.9.1" />
     <PackageVersion Include="OpenTK.Graphics" Version="4.9.1" />
