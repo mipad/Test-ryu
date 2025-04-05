@@ -1,8 +1,8 @@
 name: Android CI
 
-on:                            
-  push:                        
-    branches: [ "test" ]       
+on:
+  push:
+    branches: [ "test" ]
   pull_request:
     branches: [ "test" ]
 
@@ -44,15 +44,18 @@ jobs:
 
       - name: Decode Keystore
         run: |
-          echo "$KEY_STORE" | base64 -d > app/keystore.jks
+          mkdir -p src/RyujinxAndroid/app
+          echo "$KEY_STORE" | base64 -d > src/RyujinxAndroid/app/keystore.jks
+          ls -la src/RyujinxAndroid/app/
         env:
           KEY_STORE: ${{ secrets.KEY_STORE_BASE64 }}
 
       - name: Grant gradlew Permission
-        run: chmod +x gradlew
+        run: chmod +x src/RyujinxAndroid/gradlew  # 权限赋予到实际 gradlew 路径
 
       - name: Build Release APK
         run: ./gradlew assembleRelease
+        working-directory: src/RyujinxAndroid  # 指定项目根目录
         env:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
@@ -62,11 +65,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-apk
-          path: app/build/outputs/apk/release/app-release.apk
+          path: src/RyujinxAndroid/app/build/outputs/apk/release/app-release.apk
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: app/build/outputs/apk/release/app-release.apk
+          files: src/RyujinxAndroid/app/build/outputs/apk/release/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
