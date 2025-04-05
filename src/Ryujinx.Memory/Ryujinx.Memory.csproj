@@ -1,12 +1,21 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<!-- Ryujinx.Memory.csproj -->
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- 定义平台编译符号 -->
+    <DefineConstants Condition="'$(TargetOS)' == 'windows'">WINDOWS</DefineConstants>
+    <DefineConstants Condition="'$(TargetOS)' == 'linux'">LINUX;UNIX</DefineConstants>
+    <DefineConstants Condition="'$(TargetOS)' == 'macos'">MACOS;UNIX</DefineConstants>
+    <DefineConstants Condition="'$(TargetOS)' == 'android'">ANDROID;UNIX</DefineConstants>
+    
+    <!-- 启用严格警告检查 -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsAsErrors>CA1416</WarningsAsErrors>
   </PropertyGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\Ryujinx.Common\Ryujinx.Common.csproj" />
+  <!-- 添加平台支持包 -->
+  <ItemGroup Condition="'$(TargetOS)' == 'windows'">
+    <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.2.63-beta" />
   </ItemGroup>
 
 </Project>
