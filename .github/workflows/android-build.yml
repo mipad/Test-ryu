@@ -7,9 +7,9 @@ on:
         type: choice
         description: 'select branch to build(default: Test-ryu)'
         required: false
-        default: 'Test-ryu'
+        default: 'test'
         options:
-        - Test-ryu
+        - test
         
 
 jobs:
