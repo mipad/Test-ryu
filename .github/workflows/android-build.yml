@@ -54,8 +54,8 @@ jobs:
     #      ln -s /usr/bin/ninja .
     - name: Build Android
       run: |
-        cd ${{ github.workspace }}/Test-ryu
-        chmod +x ./gradlew
+        cd ${{ github.workspace }}/src/RyujinxAndroid
+        chmod +x src/RyujinxAndroid/gradlew
         ./gradlew "assembleRelease"
         # bash gradlew build
         mv $(find app/build/outputs/apk/release/* -type f | grep -E "\.apk$") ${{ github.workspace }}/Test-ryu-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
