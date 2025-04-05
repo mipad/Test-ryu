@@ -68,9 +68,6 @@ jobs:
     - name: Install packages
       run: yes | sdkmanager "cmake;3.31.6"
 
-    - name: Download gradlew binaries
-      run: src/RyujinxAndroid/gradlew
-
     - name: Build with Gradle
       env: 
         CMAKE_C_COMPILER_LAUNCHER: "ccache"
