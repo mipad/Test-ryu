@@ -1,31 +1,29 @@
-name: Android CI with Gradle
+# Todo List:
+# - Move libryu compilation away (or add ccache here) because the compilation is ridiculously slow
+# - Do not use legacy CMake scripts (figure out how)
+
+name: Java CI with Gradle
 
 on:
   workflow_dispatch:
     inputs:
       shouldrelease:
-        description: Create release
-        type: boolean
-        default: false
+          description: Create release
+          type: boolean
       uploadbuild:
-        description: Upload build artifacts
-        type: boolean
-        default: true
+          description: Upload build
+          type: boolean
       releasetag:
-        description: Release tag name
-        required: true
-        default: 'v0.1.0'
+        description: Enter the tag name
+        type: string
       releasetype:
-        description: Mark as prerelease
+        description: Make it prerelease
         type: boolean
-        default: false
       islatest:
-        description: Mark as latest release
+        description: Mark as latest
         type: boolean
-        default: true
   push:
     branches: [ "test" ]
-    tags: [ "v*" ]  # 新增标签触发
   pull_request:
     branches: [ "test" ]
 
@@ -34,112 +32,67 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      actions: read
-      packages: write
 
     steps:
-    # 子模块检查加强
-    - name: Checkout repo with submodules
+    - name: Checkout repo
       uses: actions/checkout@v4
       with:
-        submodules: recursive
-        fetch-depth: 0  # 获取完整提交历史
+        submodules: false
 
-    # CCache 配置优化
     - name: Setup CCache
       uses: hendrikmuhs/ccache-action@v1.2
-      with:
-        key: ${{ runner.os }}-ccache
-        max-size: 1G
 
-    # Gradle 缓存配置优化
     - name: Setup Gradle Cache
       uses: actions/cache@v4
       with:
         path: |
           ~/.gradle/caches
           ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        key: ${{ runner.os }}-android-${{ github.sha }}
         restore-keys: |
-          ${{ runner.os }}-gradle-
-
+          ${{ runner.os }}-android-
+            
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: 17
 
-    # Android 配置增强
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
-      with:
-        ndk-version: 26.2.11394342  # 指定NDK版本
-        cmake-version: 3.22.1
 
     - name: Accept licenses
       run: |
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+        yes | sdkmanager --licenses
 
-    # 构建阶段优化
+    - name: Install packages
+      run: yes | sdkmanager "cmake;3.31.6"
+
+    - name: Download gradlew binaries
+      run: ./gradlew
+
     - name: Build with Gradle
-      env:
+      env: 
         CMAKE_C_COMPILER_LAUNCHER: "ccache"
         CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
-        CCACHE_DIR: /home/runner/.ccache
-        CCACHE_COMPRESS: true
-      run: |
-        ./gradlew clean assembleRelease \
-          --no-daemon \
-          --parallel \
-          --build-cache \
-          -Pandroid.enableBuildCache=true
+      run: ./gradlew assembleRelease
 
-    # 构建验证步骤
-    - name: Verify APK
-      run: |
-        if [ ! -f app/build/outputs/apk/release/*.apk ]; then
-          echo "APK file not found!"
-          exit 1
-        fi
-        ls -lh app/build/outputs/apk/release/
-
-    # 产物上传优化
-    - name: Upload build artifacts
+    - name: Build release artifacts
       uses: actions/upload-artifact@v4
-      if: ${{ inputs.uploadbuild || github.event_name != 'workflow_dispatch' }}
+      if: ${{ github.event_name != 'workflow_dispatch' }} || ${{ inputs.uploadbuild }}
       with:
-        name: ryu-build-${{ github.run_number }}
+        name: ryu-build
         path: |
-          app/build/outputs/apk/release/*.apk
-          app/build/outputs/mapping/release/mapping.txt
-        retention-days: 7
+          app/build/outputs/apk/release/*
 
-    # 自动创建Release
-    - name: Create GitHub Release
+    - name: Create release
       uses: softprops/action-gh-release@v2
-      if: ${{ inputs.shouldrelease || startsWith(github.ref, 'refs/tags/') }}
+      if: ${{ inputs.shouldrelease }}
       with:
-        tag_name: ${{ inputs.releasetag || github.ref_name }}
         prerelease: ${{ inputs.releasetype }}
-        generate_release_notes: true
+        tag_name: ${{ inputs.releasetag }}
+        make_latest: ${{ inputs.islatest }}
+        # body: 'Some release text body if needed'
+        # body_path: or/as/file.md
         files: |
-          app/build/outputs/apk/release/*.apk
-        body: |
-          ### 构建信息
-          - **版本号**: ${{ github.ref_name }}
-          - **构建时间**: ${{ steps.date.outputs.timestamp }}
-          - **提交哈希**: [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
-
-          ### 变更日志
-          ${{ steps.changelog.outputs.content }}
-
-    # 辅助步骤
-    - name: Get current timestamp
-      id: date
-      run: echo "timestamp=$(date +'%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_OUTPUT
-
-    - name: Generate changelog
-      id: changelog
-      run: |
-        changelog=$(git log --pretty=format:"- %s (%h)" ${{ github.event.base_ref || 'HEAD^' }}..HEAD)
-        echo "content=$changelog" >> $GITHUB_OUTPUT
+          app/build/outputs/apk/release/ryu-release.apk
