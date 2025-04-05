@@ -5,11 +5,11 @@ on:
     inputs:
       branch:
         type: choice
-        description: 'select branch to build(default: Test-ryu)'
+        description: 'select branch to build(default: test)'
         required: false
-        default: 'Test-ryu'
+        default: 'test'
         options:
-        - Test-ryu
+        - test
         
 
 jobs:
