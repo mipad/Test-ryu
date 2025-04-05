@@ -1,3 +1,9 @@
+name: Build
+
+on:
+  push: 
+    branches: [ test ]
+    
 jobs:
   build:
     runs-on: ubuntu-latest
