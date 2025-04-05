@@ -1,31 +1,29 @@
-name: Android CI with Gradle
+# Todo List:
+# - Move libryu compilation away (or add ccache here) because the compilation is ridiculously slow
+# - Do not use legacy CMake scripts (figure out how)
+
+name: Java CI with Gradle
 
 on:
   workflow_dispatch:
     inputs:
       shouldrelease:
-        description: Create release
-        type: boolean
-        default: false
+          description: Create release
+          type: boolean
       uploadbuild:
-        description: Upload build artifacts
-        type: boolean
-        default: true
+          description: Upload build
+          type: boolean
       releasetag:
-        description: Release tag name
-        required: true
-        default: 'v0.1.0'
+        description: Enter the tag name
+        type: string
       releasetype:
-        description: Mark as prerelease
+        description: Make it prerelease
         type: boolean
-        default: false
       islatest:
-        description: Mark as latest release
+        description: Mark as latest
         type: boolean
-        default: true
   push:
     branches: [ "test" ]
-    tags: [ "v*" ]
   pull_request:
     branches: [ "test" ]
 
@@ -34,29 +32,15 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      actions: read
 
     steps:
     - name: Checkout repo
       uses: actions/checkout@v4
       with:
         submodules: false
-        path: src/RyujinxAndroid  # 指定检出到子目录
-
-    - name: Validate Gradle Wrapper
-      working-directory: src/RyujinxAndroid
-      run: |
-        if [ ! -f "gradlew" ]; then
-          echo "::error::gradlew 文件未找到！请检查项目结构"
-          exit 1
-        fi
-        chmod +x gradlew
 
     - name: Setup CCache
       uses: hendrikmuhs/ccache-action@v1.2
-      with:
-        key: ${{ runner.os }}-ccache-${{ github.sha }}
-        max-size: 2G
 
     - name: Setup Gradle Cache
       uses: actions/cache@v4
@@ -64,11 +48,10 @@ jobs:
         path: |
           ~/.gradle/caches
           ~/.gradle/wrapper
-          src/RyujinxAndroid/build
-        key: ${{ runner.os }}-gradle-${{ hashFiles('src/RyujinxAndroid/**/*.gradle*', 'src/RyujinxAndroid/gradle/wrapper/gradle-wrapper.properties') }}
+        key: ${{ runner.os }}-android-${{ github.sha }}
         restore-keys: |
-          ${{ runner.os }}-gradle-
-
+          ${{ runner.os }}-android-
+            
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
@@ -77,57 +60,39 @@ jobs:
 
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
-      with:
-        ndk-version: 26.2.11394342
-        cmake-version: 3.22.1
 
     - name: Accept licenses
-      working-directory: src/RyujinxAndroid
-      run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+      run: |
+        yes | sdkmanager --licenses
+
+    - name: Install packages
+      run: yes | sdkmanager "cmake;3.31.6"
+
+    - name: Download gradlew binaries
+      run: src/RyujinxAndroid/gradlew
 
     - name: Build with Gradle
-      working-directory: src/RyujinxAndroid
-      env:
-        CCACHE_DIR: /home/runner/.ccache
-        CCACHE_COMPRESS: true
-      run: |
-        ./gradlew clean assembleRelease \
-          --no-daemon \
-          --parallel \
-          --build-cache \
-          -Pandroid.enableBuildCache=true
+      env: 
+        CMAKE_C_COMPILER_LAUNCHER: "ccache"
+        CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
+      run: src/RyujinxAndroid/gradlew assembleRelease
 
-    - name: Verify APK
-      working-directory: src/RyujinxAndroid
-      run: |
-        if [ ! -f "app/build/outputs/apk/release/*.apk" ]; then
-          echo "::error::APK 文件未生成！"
-          exit 1
-        fi
-        ls -lh app/build/outputs/apk/release/
-
-    - name: Upload build artifacts
+    - name: Build release artifacts
       uses: actions/upload-artifact@v4
-      if: ${{ inputs.uploadbuild || github.event_name != 'workflow_dispatch' }}
+      if: ${{ github.event_name != 'workflow_dispatch' }} || ${{ inputs.uploadbuild }}
       with:
-        name: ryu-build-${{ github.run_number }}
-        path: src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
-        retention-days: 7
+        name: ryu-build
+        path: |
+          app/build/outputs/apk/release/*
 
-    - name: Create GitHub Release
+    - name: Create release
       uses: softprops/action-gh-release@v2
-      if: ${{ inputs.shouldrelease || startsWith(github.ref, 'refs/tags/') }}
+      if: ${{ inputs.shouldrelease }}
       with:
-        tag_name: ${{ inputs.releasetag || github.ref_name }}
         prerelease: ${{ inputs.releasetype }}
-        generate_release_notes: true
-        files: src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
-        body: |
-          ### 构建信息
-          - **版本**: ${{ github.ref_name }}
-          - **提交**: [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
-          - **构建时间**: ${{ steps.date.outputs.timestamp }}
-
-    - name: Get timestamp
-      id: date
-      run: echo "timestamp=$(date +'%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_OUTPUT
+        tag_name: ${{ inputs.releasetag }}
+        make_latest: ${{ inputs.islatest }}
+        # body: 'Some release text body if needed'
+        # body_path: or/as/file.md
+        files: |
+          app/build/outputs/apk/release/ryu-release.apk
