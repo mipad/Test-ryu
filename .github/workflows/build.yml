@@ -69,13 +69,14 @@ jobs:
       run: yes | sdkmanager "cmake;3.31.6"
 
     - name: Download gradlew binaries
-      run: src/RyujinxAndroid
+      run: src/RyujinxAndroid/gradlew
 
     - name: Build with Gradle
       env: 
         CMAKE_C_COMPILER_LAUNCHER: "ccache"
-        CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
-      run: src/RyujinxAndroid assembleRelease
+        CMAKE_CXX_COMPILER_LAUNCHER: "ccache"      
+      run: chmod +x gradlew
+      src/RyujinxAndroid/gradlew assembleRelease
 
     - name: Build release artifacts
       uses: actions/upload-artifact@v4
