@@ -21,7 +21,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          submodules: false  # 禁用子模块
+          submodules: false
 
       # ------------ 2. 调试目录结构 ------------
       - name: Debug Directory Structure
@@ -29,13 +29,13 @@ jobs:
           echo "仓库根目录结构:"
           ls -la
           echo "项目路径验证:"
-          ls -la src/RyujinxAndroid  # 检查正确路径
+          ls -la src/RyujinxAndroid
 
       # ------------ 3. 安装 .NET 9.0 SDK ------------
       - name: Install .NET 9.0 SDK
         uses: actions/setup-dotnet@v3
         with:
-          dotnet-version: "9.0.100-preview.6.24328.19"
+          dotnet-version: "9.0.100"  # 稳定版
 
       # ------------ 4. 安装 Android 命令行工具 ------------
       - name: Install Android Command Line Tools
@@ -45,16 +45,14 @@ jobs:
           unzip -q commandlinetools-linux-9477386_latest.zip -d $ANDROID_SDK_ROOT/cmdline-tools
           mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
-        env:
-          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 
       # ------------ 5. 安装 Android 组件 ------------
       - name: Setup Android Components
         run: |
+          mkdir -p ~/.android
+          touch ~/.android/repositories.cfg
           yes | sdkmanager --licenses --sdk_root=$ANDROID_SDK_ROOT
-          sdkmanager "platforms;android-34" --sdk_root=$ANDROID_SDK_ROOT
-          sdkmanager "build-tools;34.0.0" --sdk_root=$ANDROID_SDK_ROOT
-          sdkmanager "ndk;25.1.8937393" --channel=3 --sdk_root=$ANDROID_SDK_ROOT
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;25.1.8937393" --sdk_root=$ANDROID_SDK_ROOT
 
       # ------------ 6. 安装 JDK 17 ------------
       - name: Set up JDK 17
@@ -69,12 +67,13 @@ jobs:
         with:
           path: |
             ~/.android/cache
-            ${{ env.ANDROID_SDK_ROOT }}
-          key: ${{ runner.os }}-android-sdk-${{ hashFiles('src/RyujinxAndroid/gradle/wrapper/gradle-wrapper.properties') }}
+            ${{ env.ANDROID_SDK_ROOT }}/platforms
+            ${{ env.ANDROID_SDK_ROOT }}/ndk
+          key: ${{ runner.os }}-android-sdk-${{ hashFiles('**/gradle-wrapper.properties') }}
 
       # ------------ 8. 项目配置 ------------
       - name: Prepare Project
-        working-directory: src/RyujinxAndroid  # 修正后的路径
+        working-directory: src/RyujinxAndroid
         run: |
           chmod +x gradlew
           echo "LLVM_PATH=$ANDROID_SDK_ROOT/ndk/25.1.8937393/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_ENV
@@ -85,6 +84,7 @@ jobs:
         run: ./gradlew assembleRelease
         env:
           ORG_RYUJINX_LLVM_TOOLCHAIN_PATH: ${{ env.LLVM_PATH }}
+          STORE_FILE: ${{ github.workspace }}/src/RyujinxAndroid/keystore.jks
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
