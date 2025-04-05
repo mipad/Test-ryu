@@ -3,48 +3,67 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="Avalonia" Version="11.0.10" />
-    <PackageVersion Include="Avalonia.Controls.DataGrid" Version="11.0.10" />
-    <PackageVersion Include="Avalonia.Desktop" Version="11.0.10" />
-    <PackageVersion Include="Avalonia.Diagnostics" Version="11.0.10" />
-    <PackageVersion Include="Avalonia.Markup.Xaml.Loader" Version="11.0.10" />
-    <PackageVersion Include="Avalonia.Svg" Version="11.0.0.18" />
-    <PackageVersion Include="Avalonia.Svg.Skia" Version="11.0.0.18" />
+    <!-- Avalonia 升级到兼容版本 -->
+    <PackageVersion Include="Avalonia" Version="11.1.0" />
+    <PackageVersion Include="Avalonia.Controls.DataGrid" Version="11.1.0" />
+    <PackageVersion Include="Avalonia.Desktop" Version="11.1.0" />
+    <PackageVersion Include="Avalonia.Diagnostics" Version="11.1.0" />
+    <PackageVersion Include="Avalonia.Markup.Xaml.Loader" Version="11.1.0" />
+    <PackageVersion Include="Avalonia.Svg" Version="11.1.0.20" />
+    <PackageVersion Include="Avalonia.Svg.Skia" Version="11.1.0.20" />
+
+    <!-- 核心依赖 -->
     <PackageVersion Include="CommandLineParser" Version="2.9.1" />
     <PackageVersion Include="Concentus" Version="2.2.0" />
-    <PackageVersion Include="DiscordRichPresence" Version="1.2.1.24" />
     <PackageVersion Include="DynamicData" Version="9.0.4" />
     <PackageVersion Include="FluentAvaloniaUI" Version="2.0.5" />
     <PackageVersion Include="LibHac" Version="0.19.0" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.9.2" />
-    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.0.1" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
-    <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
-    <PackageVersion Include="MsgPack.Cli" Version="1.0.1" />
-    <PackageVersion Include="NetCoreServer" Version="8.0.7" />
+
+    <!-- 安全升级 -->
+    <PackageVersion Include="System.Private.Uri" Version="4.3.1" />  <!-- 修复漏洞 -->
+    <PackageVersion Include="System.Text.Json" Version="8.0.2" />    <!-- 修复漏洞 -->
+    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="7.5.1" /> <!-- 降级到安全版本 -->
+
+    <!-- 测试框架 -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.9.2" />
     <PackageVersion Include="NUnit" Version="3.13.3" />
     <PackageVersion Include="NUnit3TestAdapter" Version="4.1.0" />
-    <PackageVersion Include="OpenTK" Version="4.8.2" />
-    <PackageVersion Include="OpenTK.Core" Version="4.8.2" />
-    <PackageVersion Include="OpenTK.Graphics" Version="4.8.2" />
-    <PackageVersion Include="OpenTK.Audio.OpenAL" Version="4.8.2" />
-    <PackageVersion Include="OpenTK.Windowing.GraphicsLibraryFramework" Version="4.8.2" />
-    <PackageVersion Include="Ryujinx.Audio.OpenAL.Dependencies" Version="1.21.0.1" />
-    <PackageVersion Include="Ryujinx.Graphics.Nvdec.Dependencies" Version="5.0.3-build14" />
-    <PackageVersion Include="Ryujinx.Graphics.Vulkan.Dependencies.MoltenVK" Version="1.2.0" />
-    <PackageVersion Include="Ryujinx.SDL2-CS" Version="2.30.0-build32" />
-    <PackageVersion Include="securifybv.ShellLink" Version="0.1.0" />
-    <PackageVersion Include="shaderc.net" Version="0.1.0" />
-    <PackageVersion Include="SharpZipLib" Version="1.4.2" />
+
+    <!-- 图形和多媒体 -->
+    <PackageVersion Include="OpenTK" Version="4.8.3" />  <!-- 升级到兼容版本 -->
+    <PackageVersion Include="OpenTK.Core" Version="4.8.3" />
+    <PackageVersion Include="OpenTK.Graphics" Version="4.8.3" />
+    <PackageVersion Include="OpenTK.Audio.OpenAL" Version="4.8.3" />
+    <PackageVersion Include="OpenTK.Windowing.GraphicsLibraryFramework" Version="4.8.3" />
     <PackageVersion Include="Silk.NET.Vulkan" Version="2.21.0" />
     <PackageVersion Include="Silk.NET.Vulkan.Extensions.EXT" Version="2.21.0" />
     <PackageVersion Include="Silk.NET.Vulkan.Extensions.KHR" Version="2.21.0" />
     <PackageVersion Include="SkiaSharp" Version="2.88.7" />
     <PackageVersion Include="SkiaSharp.NativeAssets.Linux" Version="2.88.7" />
+
+    <!-- Ryujinx 专用依赖 -->
+    <PackageVersion Include="Ryujinx.Audio.OpenAL.Dependencies" Version="1.21.0.1" />
+    <PackageVersion Include="Ryujinx.Graphics.Nvdec.Dependencies" Version="5.0.3-build14" />
+    <PackageVersion Include="Ryujinx.Graphics.Vulkan.Dependencies.MoltenVK" Version="1.2.0" />
+    <PackageVersion Include="Ryujinx.SDL2-CS" Version="2.30.0-build32" />
+
+    <!-- 工具和辅助库 -->
+    <PackageVersion Include="DiscordRichPresence" Version="1.2.1.24" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.9.2" />
+    <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
+    <PackageVersion Include="MsgPack.Cli" Version="1.0.1" />
+    <PackageVersion Include="NetCoreServer" Version="8.0.7" />
+    <PackageVersion Include="securifybv.ShellLink" Version="0.1.0" />
+    <PackageVersion Include="shaderc.net" Version="0.1.0" />
+    <PackageVersion Include="SharpZipLib" Version="1.4.2" />
     <PackageVersion Include="SPB" Version="0.0.4-build32" />
+
+    <!-- 系统工具 -->
     <PackageVersion Include="System.IO.Hashing" Version="8.0.0" />
     <PackageVersion Include="System.Management" Version="8.0.0" />
+
+    <!-- 其他 -->
     <PackageVersion Include="UnicornEngine.Unicorn" Version="2.0.2-rc1-fb78016" />
     <PackageVersion Include="Rxmxnx.PInvoke.Extensions" Version="1.5.0" />
   </ItemGroup>
