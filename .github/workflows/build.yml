@@ -6,6 +6,7 @@ on:
 env:
   POWERSHELL_TELEMETRY_OPTOUT: 1
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  IS_PR: ${{ github.event_name == 'pull_request' }}
   RYUJINX_BASE_VERSION: "1.1.0"
 
 jobs:
@@ -21,14 +22,34 @@ jobs:
           - { name: linux-x64,   os: ubuntu-latest,  zip_os_name: linux_x64   }
           - { name: linux-arm64, os: ubuntu-latest,  zip_os_name: linux_arm64 }
           - { name: osx-x64,     os: macos-13,       zip_os_name: osx_x64     }
-
+          - { name: android-arm64, os: ubuntu-latest, zip_os_name: android_arm64 }  
       fail-fast: false
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Debug IS_PR
+        run: echo "IS_PR is set to: ${{ env.IS_PR }}"
+
+      - name: Get Git Version
+        id: get_version
+        run: |
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v${{ env.RYUJINX_BASE_VERSION }}")
+          echo "RYUJINX_BASE_VERSION=${TAG#v}" >> $GITHUB_ENV
 
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v2
+        if: matrix.platform.name == 'android-arm64'
+
+      - name: Install .NET Android Workload
+        run: dotnet workload install android
+        if: matrix.platform.name == 'android-arm64'
 
       - name: Overwrite csc problem matcher
         run: echo "::add-matcher::.github/csc.json"
@@ -38,15 +59,12 @@ jobs:
         run: echo "result=$(git rev-parse --short "${{ github.sha }}")" >> $GITHUB_OUTPUT
         shell: bash
 
-      - name: Change config filename
-        run: sed -r --in-place 's/\%\%RYUJINX_CONFIG_FILE_NAME\%\%/PRConfig\.json/g;' src/Ryujinx.Common/ReleaseInformation.cs
+      - name: Modify Configuration File
+        run: |
+          sed -i.bak -E 's/%%RYUJINX_CONFIG_FILE_NAME%%/PRConfig.json/g' src/Ryujinx.Common/ReleaseInformation.cs
+          rm src/Ryujinx.Common/ReleaseInformation.cs.bak
         shell: bash
-        if: github.event_name == 'pull_request' && matrix.platform.os != 'macos-13'
-
-      - name: Change config filename for macOS
-        run: sed -r -i '' 's/\%\%RYUJINX_CONFIG_FILE_NAME\%\%/PRConfig\.json/g;' src/Ryujinx.Common/ReleaseInformation.cs
-        shell: bash
-        if: github.event_name == 'pull_request' && matrix.platform.os == 'macos-13'
+        if: env.IS_PR
 
       - name: Build
         run: dotnet build -c "${{ matrix.configuration }}" -p:Version="${{ env.RYUJINX_BASE_VERSION }}" -p:SourceRevisionId="${{ steps.git_short_hash.outputs.result }}" -p:ExtraDefineConstants=DISABLE_UPDATER
@@ -56,40 +74,78 @@ jobs:
         with:
           commands: dotnet test --no-build -c "${{ matrix.configuration }}"
           timeout-minutes: 10
-          retry-codes: 139
-        if: matrix.platform.name != 'linux-arm64'
+          retry-codes: "139,1"  # 扩展重试错误码
+        if: matrix.platform.name != 'linux-arm64' && matrix.platform.name != 'android-arm64'
 
       - name: Publish Ryujinx
         run: dotnet publish -c "${{ matrix.configuration }}" -r "${{ matrix.platform.name }}" -o ./publish -p:Version="${{ env.RYUJINX_BASE_VERSION }}" -p:DebugType=embedded -p:SourceRevisionId="${{ steps.git_short_hash.outputs.result }}" -p:ExtraDefineConstants=DISABLE_UPDATER src/Ryujinx --self-contained true
-        if: github.event_name == 'pull_request' && matrix.platform.os != 'macos-13'
+        if: env.IS_PR && matrix.platform.name != 'osx-x64' && matrix.platform.name != 'android-arm64'
 
       - name: Publish Ryujinx.Headless.SDL2
         run: dotnet publish -c "${{ matrix.configuration }}" -r "${{ matrix.platform.name }}" -o ./publish_sdl2_headless -p:Version="${{ env.RYUJINX_BASE_VERSION }}" -p:DebugType=embedded -p:SourceRevisionId="${{ steps.git_short_hash.outputs.result }}" -p:ExtraDefineConstants=DISABLE_UPDATER src/Ryujinx.Headless.SDL2 --self-contained true
-        if: github.event_name == 'pull_request' && matrix.platform.os != 'macos-13'
+        if: env.IS_PR && matrix.platform.name != 'osx-x64' && matrix.platform.name != 'android-arm64'
+
+      - name: Publish Android APK
+        run: |
+          dotnet publish -c "${{ matrix.configuration }}" \
+            -f net8.0-android \
+            -r android-arm64 \
+            -o ./publish_android \
+            -p:AndroidPackageFormat=apk \
+            -p:Version="${{ env.RYUJINX_BASE_VERSION }}" \
+            -p:DebugType=embedded \
+            -p:SourceRevisionId="${{ steps.git_short_hash.outputs.result }}" \
+            -p:ExtraDefineConstants=DISABLE_UPDATER \
+            src/Ryujinx.Android
+        if: env.IS_PR && matrix.platform.name == 'android-arm64'
+
+      - name: Sign and Align APK
+        run: |
+          zipalign -v -p 4 ./publish_android/*-Signed.apk ./publish_android/Ryujinx-Aligned.apk
+          apksigner sign \
+            --ks "${{ secrets.ANDROID_KEYSTORE_PATH }}" \
+            --ks-pass pass:"${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
+            --out ./publish_android/Ryujinx-Final.apk \
+            ./publish_android/Ryujinx-Aligned.apk
+        if: env.IS_PR && matrix.platform.name == 'android-arm64'
 
       - name: Set executable bit
         run: |
           chmod +x ./publish/Ryujinx ./publish/Ryujinx.sh
           chmod +x ./publish_sdl2_headless/Ryujinx.Headless.SDL2 ./publish_sdl2_headless/Ryujinx.sh
-        if: github.event_name == 'pull_request' && matrix.platform.os == 'ubuntu-latest'
+        if: env.IS_PR && matrix.platform.os == 'ubuntu-latest'
+
+      - name: Check publish directory exists
+        run: |
+          if [ ! -d "./publish" ]; then
+            echo "Error: publish directory not found!"
+            exit 1
+          fi
 
       - name: Upload Ryujinx artifact
         uses: actions/upload-artifact@v4
         with:
           name: ryujinx-${{ matrix.configuration }}-${{ env.RYUJINX_BASE_VERSION }}+${{ steps.git_short_hash.outputs.result }}-${{ matrix.platform.zip_os_name }}
           path: publish
-        if: github.event_name == 'pull_request' && matrix.platform.os != 'macos-13'
+        if: env.IS_PR && matrix.platform.name != 'osx-x64' && matrix.platform.name != 'android-arm64'
 
       - name: Upload Ryujinx.Headless.SDL2 artifact
         uses: actions/upload-artifact@v4
         with:
           name: sdl2-ryujinx-headless-${{ matrix.configuration }}-${{ env.RYUJINX_BASE_VERSION }}+${{ steps.git_short_hash.outputs.result }}-${{ matrix.platform.zip_os_name }}
           path: publish_sdl2_headless
-        if: github.event_name == 'pull_request' && matrix.platform.os != 'macos-13'
+        if: env.IS_PR && matrix.platform.name != 'osx-x64' && matrix.platform.name != 'android-arm64'
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ryujinx-${{ matrix.configuration }}-${{ env.RYUJINX_BASE_VERSION }}+${{ steps.git_short_hash.outputs.result }}-android_arm64
+          path: ./publish_android/Ryujinx-Final.apk
+        if: env.IS_PR && matrix.platform.name == 'android-arm64'
 
   build_macos:
     name: macOS Universal (${{ matrix.configuration }})
-    runs-on: ubuntu-latest
+    runs-on: macos-latest  
     timeout-minutes: 45
     strategy:
       matrix:
@@ -97,6 +153,19 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies (macOS)
+        run: |
+          brew update
+          brew install wget tar
+
+      - name: Get Git Version
+        id: get_version
+        run: |
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v${{ env.RYUJINX_BASE_VERSION }}")
+          echo "RYUJINX_BASE_VERSION=${TAG#v}" >> $GITHUB_ENV
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -106,12 +175,12 @@ jobs:
         run: |
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
-          sudo ./llvm.sh 14
+          sudo ./llvm.sh 14 || exit 1
 
       - name: Install rcodesign
         run: |
           mkdir -p $HOME/.bin
-          gh release download -R indygreg/apple-platform-rs -O apple-codesign.tar.gz -p 'apple-codesign-*-x86_64-unknown-linux-musl.tar.gz'
+          gh release download -R indygreg/apple-platform-rs -O apple-codesign.tar.gz -p 'apple-codesign-*-x86_64-unknown-linux-musl.tar.gz' || exit 1
           tar -xzvf apple-codesign.tar.gz --wildcards '*/rcodesign' --strip-components=1
           rm apple-codesign.tar.gz
           mv rcodesign $HOME/.bin/
@@ -123,10 +192,12 @@ jobs:
         id: git_short_hash
         run: echo "result=$(git rev-parse --short "${{ github.sha }}")" >> $GITHUB_OUTPUT
 
-      - name: Change config filename
-        run: sed -r --in-place 's/\%\%RYUJINX_CONFIG_FILE_NAME\%\%/PRConfig\.json/g;' src/Ryujinx.Common/ReleaseInformation.cs
+      - name: Modify Configuration File
+        run: |
+          sed -i.bak -E 's/%%RYUJINX_CONFIG_FILE_NAME%%/PRConfig.json/g' src/Ryujinx.Common/ReleaseInformation.cs
+          rm src/Ryujinx.Common/ReleaseInformation.cs.bak
         shell: bash
-        if: github.event_name == 'pull_request'
+        if: env.IS_PR
 
       - name: Publish macOS Ryujinx
         run: |
@@ -136,16 +207,23 @@ jobs:
         run: |
           ./distribution/macos/create_macos_build_headless.sh . publish_tmp_headless publish_headless ./distribution/macos/entitlements.xml "${{ env.RYUJINX_BASE_VERSION }}" "${{ steps.git_short_hash.outputs.result }}" "${{ matrix.configuration }}" "-p:ExtraDefineConstants=DISABLE_UPDATER"
 
+      - name: Check publish directory exists (macOS)
+        run: |
+          if [ ! -d "./publish" ]; then
+            echo "Error: macOS publish directory not found!"
+            exit 1
+          fi
+
       - name: Upload Ryujinx artifact
         uses: actions/upload-artifact@v4
         with:
           name: ryujinx-${{ matrix.configuration }}-${{ env.RYUJINX_BASE_VERSION }}+${{ steps.git_short_hash.outputs.result }}-macos_universal
-          path: "publish/*.tar.gz"
-        if: github.event_name == 'pull_request'
+          path: "publish/Ryujinx-${{ env.RYUJINX_BASE_VERSION }}-macos.tar.gz"  
+        if: env.IS_PR
 
       - name: Upload Ryujinx.Headless.SDL2 artifact
         uses: actions/upload-artifact@v4
         with:
           name: sdl2-ryujinx-headless-${{ matrix.configuration }}-${{ env.RYUJINX_BASE_VERSION }}+${{ steps.git_short_hash.outputs.result }}-macos_universal
-          path: "publish_headless/*.tar.gz"
-        if: github.event_name == 'pull_request'
+          path: "publish_headless/Ryujinx.Headless.SDL2-${{ env.RYUJINX_BASE_VERSION }}-macos.tar.gz"
+        if: env.IS_PR
