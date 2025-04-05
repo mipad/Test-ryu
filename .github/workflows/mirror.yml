@@ -21,7 +21,7 @@ jobs:
         fetch-depth: 0
 
     - name: Clone GitLab repo
-      run: git clone --branch https://github.com/mipad/Test-ryu.git mirror
+      run: git clone --branch https://github.com/mipad/Test-ryu/tree/test.git mirror
 
     - name: Copy GitHub Action file to cloned repo
       run: |
