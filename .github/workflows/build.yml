@@ -1,89 +1,155 @@
-# Todo List:
-# - Move libryu compilation away (or add ccache here) because the compilation is ridiculously slow
-# - Do not use legacy CMake scripts (figure out how)
-
-name: Java CI with Gradle
+name: Build job
 
 on:
-  workflow_dispatch:
-    inputs:
-      shouldrelease:
-          description: Create release
-          type: boolean
-      uploadbuild:
-          description: Upload build
-          type: boolean
-      releasetag:
-        description: Enter the tag name
-        type: string
-      releasetype:
-        description: Make it prerelease
-        type: boolean
-      islatest:
-        description: Mark as latest
-        type: boolean
+  workflow_call:
   push:
     branches: [ "test" ]
   pull_request:
     branches: [ "test" ]
+    
+env:
+  POWERSHELL_TELEMETRY_OPTOUT: 1
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  RYUJINX_BASE_VERSION: "1.1.0"
 
 jobs:
   build:
+    name: ${{ matrix.platform.name }} (${{ matrix.configuration }})
+    runs-on: ${{ matrix.platform.os }}
+    timeout-minutes: 45
+    strategy:
+      matrix:
+        configuration: [Debug, Release]
+        platform:
+          - { name: win-x64,     os: windows-latest, zip_os_name: win_x64     }
+          - { name: linux-x64,   os: ubuntu-latest,  zip_os_name: linux_x64   }
+          - { name: linux-arm64, os: ubuntu-latest,  zip_os_name: linux_arm64 }
+          - { name: osx-x64,     os: macos-13,       zip_os_name: osx_x64     }
+
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Overwrite csc problem matcher
+        run: echo "::add-matcher::.github/csc.json"
+
+      - name: Get git short hash
+        id: git_short_hash
+        run: echo "result=$(git rev-parse --short "${{ github.sha }}")" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Change config filename
+        run: sed -r --in-place 's/\%\%RYUJINX_CONFIG_FILE_NAME\%\%/PRConfig\.json/g;' src/Ryujinx.Common/ReleaseInformation.cs
+        shell: bash
+        if: github.event_name == 'pull_request' && matrix.platform.os != 'macos-13'
+
+      - name: Change config filename for macOS
+        run: sed -r -i '' 's/\%\%RYUJINX_CONFIG_FILE_NAME\%\%/PRConfig\.json/g;' src/Ryujinx.Common/ReleaseInformation.cs
+        shell: bash
+        if: github.event_name == 'pull_request' && matrix.platform.os == 'macos-13'
+
+      - name: Build
+        run: dotnet build -c "${{ matrix.configuration }}" -p:Version="${{ env.RYUJINX_BASE_VERSION }}" -p:SourceRevisionId="${{ steps.git_short_hash.outputs.result }}" -p:ExtraDefineConstants=DISABLE_UPDATER
+
+      - name: Test
+        uses: TSRBerry/unstable-commands@v1
+        with:
+          commands: dotnet test --no-build -c "${{ matrix.configuration }}"
+          timeout-minutes: 10
+          retry-codes: 139
+        if: matrix.platform.name != 'linux-arm64'
+
+      - name: Publish Ryujinx
+        run: dotnet publish -c "${{ matrix.configuration }}" -r "${{ matrix.platform.name }}" -o ./publish -p:Version="${{ env.RYUJINX_BASE_VERSION }}" -p:DebugType=embedded -p:SourceRevisionId="${{ steps.git_short_hash.outputs.result }}" -p:ExtraDefineConstants=DISABLE_UPDATER src/Ryujinx --self-contained true
+        if: github.event_name == 'pull_request' && matrix.platform.os != 'macos-13'
+
+      - name: Publish Ryujinx.Headless.SDL2
+        run: dotnet publish -c "${{ matrix.configuration }}" -r "${{ matrix.platform.name }}" -o ./publish_sdl2_headless -p:Version="${{ env.RYUJINX_BASE_VERSION }}" -p:DebugType=embedded -p:SourceRevisionId="${{ steps.git_short_hash.outputs.result }}" -p:ExtraDefineConstants=DISABLE_UPDATER src/Ryujinx.Headless.SDL2 --self-contained true
+        if: github.event_name == 'pull_request' && matrix.platform.os != 'macos-13'
+
+      - name: Set executable bit
+        run: |
+          chmod +x ./publish/Ryujinx ./publish/Ryujinx.sh
+          chmod +x ./publish_sdl2_headless/Ryujinx.Headless.SDL2 ./publish_sdl2_headless/Ryujinx.sh
+        if: github.event_name == 'pull_request' && matrix.platform.os == 'ubuntu-latest'
+
+      - name: Upload Ryujinx artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ryujinx-${{ matrix.configuration }}-${{ env.RYUJINX_BASE_VERSION }}+${{ steps.git_short_hash.outputs.result }}-${{ matrix.platform.zip_os_name }}
+          path: publish
+        if: github.event_name == 'pull_request' && matrix.platform.os != 'macos-13'
+
+      - name: Upload Ryujinx.Headless.SDL2 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdl2-ryujinx-headless-${{ matrix.configuration }}-${{ env.RYUJINX_BASE_VERSION }}+${{ steps.git_short_hash.outputs.result }}-${{ matrix.platform.zip_os_name }}
+          path: publish_sdl2_headless
+        if: github.event_name == 'pull_request' && matrix.platform.os != 'macos-13'
+
+  build_macos:
+    name: macOS Universal (${{ matrix.configuration }})
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    timeout-minutes: 45
+    strategy:
+      matrix:
+        configuration: [ Debug, Release ]
 
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@v4
-      with:
-        submodules: false
+      - uses: actions/checkout@v4
 
-    - name: Setup CCache
-      uses: hendrikmuhs/ccache-action@v1.2
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
 
-    - name: Setup Gradle Cache
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ github.sha }}
-        restore-keys: |
-          ${{ runner.os }}-android-
-            
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: 17
+      - name: Setup LLVM 14
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 14
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+      - name: Install rcodesign
+        run: |
+          mkdir -p $HOME/.bin
+          gh release download -R indygreg/apple-platform-rs -O apple-codesign.tar.gz -p 'apple-codesign-*-x86_64-unknown-linux-musl.tar.gz'
+          tar -xzvf apple-codesign.tar.gz --wildcards '*/rcodesign' --strip-components=1
+          rm apple-codesign.tar.gz
+          mv rcodesign $HOME/.bin/
+          echo "$HOME/.bin" >> $GITHUB_PATH
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Accept licenses
-      run: |
-        yes | sdkmanager --licenses
+      - name: Get git short hash
+        id: git_short_hash
+        run: echo "result=$(git rev-parse --short "${{ github.sha }}")" >> $GITHUB_OUTPUT
 
-    - name: Install packages
-      run: yes | sdkmanager "cmake;3.31.6"
+      - name: Change config filename
+        run: sed -r --in-place 's/\%\%RYUJINX_CONFIG_FILE_NAME\%\%/PRConfig\.json/g;' src/Ryujinx.Common/ReleaseInformation.cs
+        shell: bash
+        if: github.event_name == 'pull_request'
 
-    - name: Build release artifacts
-      uses: actions/upload-artifact@v4
-      if: ${{ github.event_name != 'workflow_dispatch' }} || ${{ inputs.uploadbuild }}
-      with:
-        name: ryu-build
-        path: |
-          app/build/outputs/apk/release/*
+      - name: Publish macOS Ryujinx
+        run: |
+          ./distribution/macos/create_macos_build_ava.sh . publish_tmp publish ./distribution/macos/entitlements.xml "${{ env.RYUJINX_BASE_VERSION }}" "${{ steps.git_short_hash.outputs.result }}" "${{ matrix.configuration }}" "-p:ExtraDefineConstants=DISABLE_UPDATER"
 
-    - name: Create release
-      uses: softprops/action-gh-release@v2
-      if: ${{ inputs.shouldrelease }}
-      with:
-        prerelease: ${{ inputs.releasetype }}
-        tag_name: ${{ inputs.releasetag }}
-        make_latest: ${{ inputs.islatest }}
-        # body: 'Some release text body if needed'
-        # body_path: or/as/file.md
-        files: |
-          app/build/outputs/apk/release/ryu-release.apk
+      - name: Publish macOS Ryujinx.Headless.SDL2
+        run: |
+          ./distribution/macos/create_macos_build_headless.sh . publish_tmp_headless publish_headless ./distribution/macos/entitlements.xml "${{ env.RYUJINX_BASE_VERSION }}" "${{ steps.git_short_hash.outputs.result }}" "${{ matrix.configuration }}" "-p:ExtraDefineConstants=DISABLE_UPDATER"
+
+      - name: Upload Ryujinx artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ryujinx-${{ matrix.configuration }}-${{ env.RYUJINX_BASE_VERSION }}+${{ steps.git_short_hash.outputs.result }}-macos_universal
+          path: "publish/*.tar.gz"
+        if: github.event_name == 'pull_request'
+
+      - name: Upload Ryujinx.Headless.SDL2 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdl2-ryujinx-headless-${{ matrix.configuration }}-${{ env.RYUJINX_BASE_VERSION }}+${{ steps.git_short_hash.outputs.result }}-macos_universal
+          path: "publish_headless/*.tar.gz"
+        if: github.event_name == 'pull_request'
