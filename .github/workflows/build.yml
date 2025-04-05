@@ -1,11 +1,30 @@
-name: Build job
+name: Build and Release
 
 on:
   push:
     branches: [ main, dev ]
+    tags:
+      - 'v*'  # 标签推送触发自动发布
   pull_request:
     branches: [ main ]
-  workflow_call:
+  workflow_dispatch:
+    inputs:
+      upload_artifacts:
+        description: 'Upload build artifacts'
+        type: boolean
+        default: true
+      create_release:
+        description: 'Create GitHub Release'
+        type: boolean
+        default: false
+      release_tag:
+        description: 'Release tag name'
+        required: true
+        default: 'v1.1.0'
+      prerelease:
+        description: 'Mark as prerelease'
+        type: boolean
+        default: false
 
 env:
   POWERSHELL_TELEMETRY_OPTOUT: 1
@@ -113,19 +132,54 @@ jobs:
             exit 1
           fi
 
-      - name: Upload Ryujinx artifact
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.upload_artifacts }}
         with:
-          name: ryujinx-${{ matrix.configuration }}-${{ env.RYUJINX_BASE_VERSION }}+${{ steps.git_short_hash.outputs.result }}-${{ matrix.platform.zip_os_name }}
-          path: publish
-        if: env.IS_PR && matrix.platform.name != 'osx-x64' && matrix.platform.name != 'android-arm64'
+          name: ryujinx-artifacts-${{ matrix.platform.name }}
+          path: |
+            publish/**
+            publish_android/*.apk
+          retention-days: 7
 
-      - name: Upload Android APK
-        uses: actions/upload-artifact@v4
+  create-release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
         with:
-          name: ryujinx-${{ matrix.configuration }}-${{ env.RYUJINX_BASE_VERSION }}+${{ steps.git_short_hash.outputs.result }}-android_arm64
-          path: ./publish_android/Ryujinx-Final.apk
-        if: env.IS_PR && matrix.platform.name == 'android-arm64'
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') || inputs.create_release }}
+        with:
+          tag_name: ${{ github.ref_name || inputs.release_tag }}
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: true
+          files: |
+            artifacts/**/*
+          body: |
+            ### Build Details
+            - Version: ${{ env.RYUJINX_BASE_VERSION }}
+            - Commit: [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
+            - Build Date: ${{ steps.date.outputs.current_date }}
+            
+            ### Supported Platforms
+            - Windows x64
+            - Linux x64/ARM64
+            - macOS Universal
+            - Android ARM64
+
+      - name: Get current date
+        id: date
+        run: echo "current_date=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
 
   build_macos:
     name: macOS Universal (${{ matrix.configuration }})
