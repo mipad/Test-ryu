@@ -10,6 +10,7 @@ on:
         default: 'test'
         options:
         - test
+        
 
 jobs:
   ryu_android_build:
@@ -22,37 +23,53 @@ jobs:
         distribution: temurin
         java-version: 18
 
-    - name: Clone repository
+    - name: Download  source code
       run: |
-        git clone --branch ${{ github.event.inputs.branch || 'test' }} https://github.com/mipad/Test-ryu.git test
+        cd ${{ github.workspace }}
+        git clone --branch ${{ github.event.inputs.branch }} https://github.com/mipad/Test-ryu/tree/test.git --recursive
         cd test
-        git submodule update --init --recursive
+        
 
     - id: version
-      name: Get version info
-      working-directory: ./test
+      name: Get version
       run: |
         echo "date=$(/bin/date -u "+%Y%m%d")" >> $GITHUB_OUTPUT
+        cd ${{ github.workspace }}/test
         echo "hash=$(git log -1 --pretty=format:%H)" >> $GITHUB_OUTPUT
         echo "short_hash=$(git describe --always --long)" >> $GITHUB_OUTPUT
         echo "version=$(git describe --tags --always)" >> $GITHUB_OUTPUT
 
-    - name: Setup Gradle cache
+    - name: Set up cache
       uses: actions/cache@v4
       with:
-        path: ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ steps.version.outputs.hash }}
+        path: |
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-test-${{ steps.version.outputs.hash }}
+        restore-keys: |
+            ${{ runner.os }}-test-
 
-    - name: Build APK
-      working-directory: ./test/src/RyujinxAndroid
+    #- name: Prepare environment
+    #  run: |
+    #    sudo apt-get install -y ninja-build
+    #      ln -s /usr/bin/ninja .
+    - name: Build Android
       run: |
-        chmod +x gradlew
-        ./gradlew assembleRelease
-        mv app/build/outputs/apk/release/*.apk ${{ github.workspace }}/test-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
+        cd ${{ github.workspace }}/src/RyujinxAndroid
+        chmod +x src/RyujinxAndroid/gradlew
+        ./gradlew "assembleRelease"
+        # bash gradlew build
+        mv $(find app/build/outputs/apk/release/* -type f | grep -E "\.apk$") ${{ github.workspace }}/test-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
 
-    - name: Upload Release
+    - name: Release ryu (Test-ryu)
       uses: softprops/action-gh-release@v2
       with:
-        name: Ryu ${{ steps.version.outputs.version }}
-        tag_name: ryu-${{ steps.version.outputs.date }}
+        name: ryu ${{ steps.version.outputs.date }}
+        tag_name: ryu
+        files: ${{ github.workspace }}/Test-ryu-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
+
+    - name: Release ryu ${{ steps.version.outputs.date }}
+      uses: softprops/action-gh-release@v2
+      with:
+        name: ${{ steps.version.outputs.date }}
+        tag_name: ${{ steps.version.outputs.date }}
         files: ${{ github.workspace }}/test-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
