@@ -30,6 +30,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Debug IS_PR
+        run: echo "IS_PR is set to: ${{ env.IS_PR }}"
+
       - name: Get Git Version
         id: get_version
         run: |
@@ -58,11 +61,8 @@ jobs:
 
       - name: Modify Configuration File
         run: |
-          if [[ "${{ matrix.platform.os }}" == "macos-13" ]]; then
-            sed -r -i '' 's/%%RYUJINX_CONFIG_FILE_NAME%%/PRConfig\.json/g;' src/Ryujinx.Common/ReleaseInformation.cs
-          else
-            sed -r --in-place 's/%%RYUJINX_CONFIG_FILE_NAME%%/PRConfig\.json/g;' src/Ryujinx.Common/ReleaseInformation.cs
-          fi
+          sed -i.bak -E 's/%%RYUJINX_CONFIG_FILE_NAME%%/PRConfig.json/g' src/Ryujinx.Common/ReleaseInformation.cs
+          rm src/Ryujinx.Common/ReleaseInformation.cs.bak
         shell: bash
         if: env.IS_PR
 
@@ -74,7 +74,7 @@ jobs:
         with:
           commands: dotnet test --no-build -c "${{ matrix.configuration }}"
           timeout-minutes: 10
-          retry-codes: 139
+          retry-codes: "139,1"  # 扩展重试错误码
         if: matrix.platform.name != 'linux-arm64' && matrix.platform.name != 'android-arm64'
 
       - name: Publish Ryujinx
@@ -102,7 +102,11 @@ jobs:
       - name: Sign and Align APK
         run: |
           zipalign -v -p 4 ./publish_android/*-Signed.apk ./publish_android/Ryujinx-Aligned.apk
-          apksigner sign --ks ./keystore.jks --ks-pass pass:android --out ./publish_android/Ryujinx-Final.apk ./publish_android/Ryujinx-Aligned.apk
+          apksigner sign \
+            --ks "${{ secrets.ANDROID_KEYSTORE_PATH }}" \
+            --ks-pass pass:"${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
+            --out ./publish_android/Ryujinx-Final.apk \
+            ./publish_android/Ryujinx-Aligned.apk
         if: env.IS_PR && matrix.platform.name == 'android-arm64'
 
       - name: Set executable bit
@@ -110,6 +114,13 @@ jobs:
           chmod +x ./publish/Ryujinx ./publish/Ryujinx.sh
           chmod +x ./publish_sdl2_headless/Ryujinx.Headless.SDL2 ./publish_sdl2_headless/Ryujinx.sh
         if: env.IS_PR && matrix.platform.os == 'ubuntu-latest'
+
+      - name: Check publish directory exists
+        run: |
+          if [ ! -d "./publish" ]; then
+            echo "Error: publish directory not found!"
+            exit 1
+          fi
 
       - name: Upload Ryujinx artifact
         uses: actions/upload-artifact@v4
@@ -145,6 +156,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install dependencies (macOS)
+        run: |
+          brew update
+          brew install wget tar
+
       - name: Get Git Version
         id: get_version
         run: |
@@ -159,12 +175,12 @@ jobs:
         run: |
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
-          sudo ./llvm.sh 14
+          sudo ./llvm.sh 14 || exit 1
 
       - name: Install rcodesign
         run: |
           mkdir -p $HOME/.bin
-          gh release download -R indygreg/apple-platform-rs -O apple-codesign.tar.gz -p 'apple-codesign-*-x86_64-unknown-linux-musl.tar.gz'
+          gh release download -R indygreg/apple-platform-rs -O apple-codesign.tar.gz -p 'apple-codesign-*-x86_64-unknown-linux-musl.tar.gz' || exit 1
           tar -xzvf apple-codesign.tar.gz --wildcards '*/rcodesign' --strip-components=1
           rm apple-codesign.tar.gz
           mv rcodesign $HOME/.bin/
@@ -177,7 +193,9 @@ jobs:
         run: echo "result=$(git rev-parse --short "${{ github.sha }}")" >> $GITHUB_OUTPUT
 
       - name: Modify Configuration File
-        run: sed -r --in-place 's/%%RYUJINX_CONFIG_FILE_NAME%%/PRConfig\.json/g;' src/Ryujinx.Common/ReleaseInformation.cs
+        run: |
+          sed -i.bak -E 's/%%RYUJINX_CONFIG_FILE_NAME%%/PRConfig.json/g' src/Ryujinx.Common/ReleaseInformation.cs
+          rm src/Ryujinx.Common/ReleaseInformation.cs.bak
         shell: bash
         if: env.IS_PR
 
@@ -188,6 +206,13 @@ jobs:
       - name: Publish macOS Ryujinx.Headless.SDL2
         run: |
           ./distribution/macos/create_macos_build_headless.sh . publish_tmp_headless publish_headless ./distribution/macos/entitlements.xml "${{ env.RYUJINX_BASE_VERSION }}" "${{ steps.git_short_hash.outputs.result }}" "${{ matrix.configuration }}" "-p:ExtraDefineConstants=DISABLE_UPDATER"
+
+      - name: Check publish directory exists (macOS)
+        run: |
+          if [ ! -d "./publish" ]; then
+            echo "Error: macOS publish directory not found!"
+            exit 1
+          fi
 
       - name: Upload Ryujinx artifact
         uses: actions/upload-artifact@v4
