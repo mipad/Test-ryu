@@ -21,7 +21,7 @@ jobs:
         fetch-depth: 0
 
     - name: Clone GitLab repo
-      run: git clone --branch Ishan09811-patch-34 https://github.com/Ishan09811/rpcs3-android.git mirror
+      run: git clone --branch https://github.com/mipad/Test-ryu.git mirror
 
     - name: Copy GitHub Action file to cloned repo
       run: |
