@@ -7,9 +7,9 @@ on:
         type: choice
         description: 'select branch to build(default: Test-ryu)'
         required: false
-        default: 'test'
+        default: 'Test-ryu'
         options:
-        - test
+        - Test-ryu
         
 
 jobs:
@@ -26,15 +26,15 @@ jobs:
     - name: Download  source code
       run: |
         cd ${{ github.workspace }}
-        git clone --branch ${{ github.event.inputs.branch }} https://github.com/mipad/Test-ryu.git --recursive
-        cd Test-ryu
+        git clone --branch ${{ github.event.inputs.branch }} https://github.com/mipad/Test-ryu/test.git --recursive
+        cd Test-ryu/test
         
 
     - id: version
       name: Get version
       run: |
         echo "date=$(/bin/date -u "+%Y%m%d")" >> $GITHUB_OUTPUT
-        cd ${{ github.workspace }}/Test-ryu/test
+        cd ${{ github.workspace }}/Test-ryu
         echo "hash=$(git log -1 --pretty=format:%H)" >> $GITHUB_OUTPUT
         echo "short_hash=$(git describe --always --long)" >> $GITHUB_OUTPUT
         echo "version=$(git describe --tags --always)" >> $GITHUB_OUTPUT
