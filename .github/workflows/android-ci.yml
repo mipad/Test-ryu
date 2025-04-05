@@ -1,0 +1,77 @@
+name: Android CI
+
+on:
+  push:
+    branches: [ "text" ]
+  pull_request:
+    branches: [ "text" ]
+
+env:
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=true"  # 启用并行构建
+  ANDROID_SDK_CACHE: ~/.android/cache
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 仅允许创建 Release 时修改内容
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: 17
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v2
+        with:
+          api-level: 34                  # 明确指定 API 级别
+          build-tools-version: "34.0.0"
+          ndk-version: "25.1.8937393"
+          components: "platforms;android-34, cmake"  # 安装额外组件
+
+      - name: Cache Gradle and SDK
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ${{ env.ANDROID_SDK_CACHE }}  # 缓存 Android SDK 组件
+            ${{ github.workspace }}/ndk    # 缓存 NDK（若项目使用）
+          key: ${{ runner.os }}-android-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+
+      - name: Decode Keystore
+        if: env.KEY_STORE != ''  # 仅在 Secrets 存在时执行
+        run: |
+          echo "$KEY_STORE" | base64 -d > app/keystore.jks
+        env:
+          KEY_STORE: ${{ secrets.KEY_STORE_BASE64 }}
+
+      - name: Run Code Quality Checks
+        run: ./gradlew check  # 执行 Lint 和单元测试
+
+      - name: Build Release APK
+        run: ./gradlew assembleRelease
+        env:
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-apk
+          path: app/build/outputs/apk/release/app-release.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: app/build/outputs/apk/release/app-release.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
