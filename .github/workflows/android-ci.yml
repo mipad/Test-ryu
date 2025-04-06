@@ -1,23 +1,6 @@
 name: Android CI
 
 on:
-  workflow_dispatch:
-    inputs:
-      shouldrelease:
-          description: Create release
-          type: boolean
-      uploadbuild:
-          description: Upload build
-          type: boolean
-      releasetag:
-        description: Enter the tag name
-        type: string
-      releasetype:
-        description: Make it prerelease
-        type: boolean
-      islatest:
-        description: Mark as latest
-        type: boolean
   push:
     branches: [ "test" ]
   pull_request:
@@ -34,82 +17,31 @@ jobs:
       contents: write
 
     steps:
-      # ------------ 1. 代码拉取 ------------
-      - name: Checkout repo
+      # ------------ 1. 拉取代码 ------------
+      - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          submodules: false  # 禁用子模块
+          submodules: false
 
-      # ------------ 2. 缓存加速 ------------
-      - name: Setup CCache
-        uses: hendrikmuhs/ccache-action@v1.2
-
-      - name: Setup Gradle Cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      # ------------ 3. 环境设置 ------------
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: 17
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          ndk-version: 25.1.8937393  # 匹配您的 NDK 版本
-          cmake-version: 3.22.1
-
-      # ------------ 4. 密钥管理（按需启用） ------------
-      - name: Decode Keystore
-        env:
-          KEYSTORE_ENCODED: ${{ secrets.KEYSTORE }}  # 需要配置 GitHub Secret
-        run: |
-          echo "$KEYSTORE_ENCODED" | base64 --decode > ${{ github.workspace }}/src/RyujinxAndroid/keystore.jks
-
-      # ------------ 5. 构建准备 ------------
-      - name: Fix gradlew Permissions
-        working-directory: src/RyujinxAndroid
-        run: chmod +x gradlew
-
+      # ------------ 2. 安装 .NET SDK 9.0.101 ------------
       - name: Install .NET SDK
         uses: actions/setup-dotnet@v3
         with:
-          dotnet-version: "9.0.100"
+          dotnet-version: "9.0.101"  # 精确版本
 
-      # ------------ 6. 核心构建步骤 ------------
+      # ------------ 3. 安装 Android 工具链 ------------
+      - name: Install Android Tools
+        run: |
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+          unzip -q commandlinetools-linux-9477386_latest.zip -d $ANDROID_SDK_ROOT/cmdline-tools
+          mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses --sdk_root=$ANDROID_SDK_ROOT <<< "y"
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;25.1.8937393" "cmake;3.31.6" --sdk_root=$ANDROID_SDK_ROOT
+
+      # ------------ 4. 构建项目 ------------
       - name: Build with Gradle
         working-directory: src/RyujinxAndroid
+        run: ./gradlew assembleRelease --stacktrace
         env:
           ORG_RYUJINX_LLVM_TOOLCHAIN_PATH: ${{ env.ANDROID_SDK_ROOT }}/ndk/25.1.8937393/toolchains/llvm/prebuilt/linux-x86_64/bin
-          CMAKE_C_COMPILER_LAUNCHER: "ccache"
-          CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
-          KEYSTORE_PATH: "keystore.jks"  # 与上文的解码路径一致
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEYSTORE_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
-        run: ./gradlew assembleRelease --stacktrace
-
-      # ------------ 7. 产物处理 ------------
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        if: ${{ github.event_name != 'workflow_dispatch' }} || ${{ inputs.uploadbuild }}
-        with:
-          name: ryujinx-build
-          path: src/RyujinxAndroid/app/build/outputs/apk/release/app-release.apk  # 确认实际路径
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        if: ${{ inputs.shouldrelease }}
-        with:
-          prerelease: ${{ inputs.releasetype }}
-          tag_name: ${{ inputs.releasetag }}
-          make_latest: ${{ inputs.islatest }}
-          files: |
-            src/RyujinxAndroid/app/build/outputs/apk/release/app-release.apk
