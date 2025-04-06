@@ -4,9 +4,17 @@ on:
   workflow_call:
   push:
     branches: [ "test" ]
+    paths:
+      - 'src/LibRyujinx/**'
+      - 'src/RyujinxAndroid/**'
+      - 'Directory.Packages.props'
   pull_request:
     branches: [ "test" ]
-        
+    paths:
+      - 'src/LibRyujinx/**'
+      - 'src/RyujinxAndroid/**'
+      - 'Directory.Packages.props'
+
 env:
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
   NDK_VERSION: "25.1.8937393"
@@ -22,11 +30,11 @@ jobs:
       contents: write
 
     steps:
-      # ------------ 1. 代码检出 ------------
+      # ------------ 1. 代码检出（修复子模块） ------------
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: false
+          submodules: recursive  # 递归初始化子模块
           fetch-depth: 0
 
       # ------------ 2. 环境设置 ------------
@@ -53,13 +61,18 @@ jobs:
             cmake;${{ env.CMAKE_VERSION }}
           accept-android-sdk-licenses: true
 
-      # ------------ 4. 构建环境验证 ------------
+      # ------------ 4. 自动接受许可证（新增步骤） ------------
+      - name: Accept Android Licenses
+        run: |
+          yes | ${{ env.ANDROID_SDK_ROOT }}/cmdline-tools/latest/bin/sdkmanager --licenses
+
+      # ------------ 5. 构建环境验证 ------------
       - name: Verify NDK Installation
         run: |
           echo "NDK路径: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}"
           ls -l ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++
 
-      # ------------ 5. 缓存优化 ------------
+      # ------------ 6. 缓存优化 ------------
       - name: CCache setup
         uses: hendrikmuhs/ccache-action@v1.2
         with:
@@ -74,7 +87,7 @@ jobs:
             ~/.gradle/wrapper
           key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
 
-      # ------------ 6. 构建准备 ------------
+      # ------------ 7. 构建准备 ------------
       - name: Fix permissions
         working-directory: src/RyujinxAndroid
         run: |
@@ -82,7 +95,15 @@ jobs:
           sudo sysctl -w fs.inotify.max_user_watches=524288
           ulimit -n 65536
 
-      # ------------ 7. 核心构建步骤 ------------
+      # ------------ 8. 核心构建步骤（新增 .NET 构建） ------------
+      - name: Build LibRyujinx (AOT)
+        working-directory: src/LibRyujinx
+        run: |
+          dotnet restore
+          dotnet build -c Release /p:RuntimeIdentifier=linux-bionic-arm64
+          dotnet build -c Release /p:RuntimeIdentifier=ios-arm64
+
+      # ------------ 9. Android 应用构建 ------------
       - name: Build with Gradle
         working-directory: src/RyujinxAndroid
         env:
@@ -96,7 +117,7 @@ jobs:
             -Dorg.gradle.workers.max=2 \
             -Dorg.gradle.caching=true
 
-      # ------------ 8. 产物处理 ------------
+      # ------------ 10. 产物处理 ------------
       - name: Upload APK
         if: ${{ inputs.uploadbuild || github.event_name != 'workflow_dispatch' }}
         uses: actions/upload-artifact@v4
