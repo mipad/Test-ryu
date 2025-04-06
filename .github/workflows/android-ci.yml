@@ -4,111 +4,135 @@ on:
   workflow_dispatch:
     inputs:
       shouldrelease:
-          description: Create release
-          type: boolean
+        description: "Create release"
+        type: boolean
+        required: false
+        default: false
       uploadbuild:
-          description: Upload build
-          type: boolean
+        description: "Upload build artifact"
+        type: boolean
+        required: false
+        default: true
       releasetag:
-        description: Enter the tag name
+        description: "Release tag name"
         type: string
+        required: false
       releasetype:
-        description: Make it prerelease
+        description: "Mark as prerelease"
         type: boolean
+        required: false
+        default: false
       islatest:
-        description: Mark as latest
+        description: "Mark as latest release"
         type: boolean
-  push:
-    branches: [ "test" ]
-  pull_request:
-    branches: [ "test" ]
+        required: false
+        default: true
 
 env:
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-  ANDROID_NDK_VERSION: "25.1.8937393"  # 定义 NDK 版本号
-  GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=true"
+  NDK_VERSION: "25.1.8937393"
+  CMAKE_VERSION: "3.22.1"
+  DOTNET_VERSION: "9.0.101"
+  JAVA_VERSION: "17"
 
 jobs:
   build:
+    name: Build and Package
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      # ------------ 1. 代码拉取 ------------
-      - name: Checkout repo
+      # ------------ 1. 代码检出 ------------
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: false
+          fetch-depth: 0
 
-      # ------------ 2. 缓存加速 ------------
-      - name: Setup CCache
+      # ------------ 2. 环境设置 ------------
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # ------------ 3. Android 环境配置 ------------
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: "latest"
+          packages: |
+            platforms;android-34
+            build-tools;34.0.0
+            ndk;${{ env.NDK_VERSION }}
+            cmake;${{ env.CMAKE_VERSION }}
+          accept-android-sdk-licenses: true
+
+      # ------------ 4. 构建环境验证 ------------
+      - name: Verify NDK Installation
+        run: |
+          echo "NDK路径: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}"
+          ls -l ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++
+
+      # ------------ 5. 缓存优化 ------------
+      - name: CCache setup
         uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ccache-${{ runner.os }}
+          maxsize: 500M
 
-      - name: Setup Gradle Cache
+      - name: Gradle cache
         uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
 
-      # ------------ 3. 环境设置 ------------
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: 17
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          ndk-version: ${{ env.ANDROID_NDK_VERSION }}  # 使用版本号
-          cmake-version: "3.22.1"
-
-      # ------------ 4. 密钥管理 ------------
-      - name: Decode Keystore
-        env:
-          KEYSTORE_ENCODED: ${{ secrets.KEYSTORE }}
-        run: |
-          echo "$KEYSTORE_ENCODED" | base64 --decode > ${{ github.workspace }}/src/RyujinxAndroid/keystore.jks
-
-      # ------------ 5. 构建准备 ------------
-      - name: Fix gradlew Permissions
+      # ------------ 6. 构建准备 ------------
+      - name: Fix permissions
         working-directory: src/RyujinxAndroid
-        run: chmod +x gradlew
+        run: |
+          chmod +x gradlew
+          sudo sysctl -w fs.inotify.max_user_watches=524288
+          ulimit -n 65536
 
-      - name: Install .NET SDK
-        uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: "9.0.101"
-
-      # ------------ 6. 核心构建步骤 ------------
+      # ------------ 7. 核心构建步骤 ------------
       - name: Build with Gradle
         working-directory: src/RyujinxAndroid
         env:
-          ORG_RYUJINX_LLVM_TOOLCHAIN_PATH: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.ANDROID_NDK_VERSION }}/toolchains/llvm/prebuilt/linux-x86_64/bin
+          ORG_GRADLE_PROJECT_ndkPath: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
+          CCACHE_DIR: /tmp/ccache
         run: |
           ./gradlew assembleRelease \
             --stacktrace \
-            -Pandroid.ndkPath=${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.ANDROID_NDK_VERSION }}
+            --no-daemon \
+            -Pandroid.ndkPath=$ORG_GRADLE_PROJECT_ndkPath \
+            -Dorg.gradle.workers.max=2 \
+            -Dorg.gradle.caching=true
 
-      # ------------ 7. 产物处理 ------------
-      - name: Upload APK Artifact
+      # ------------ 8. 产物处理 ------------
+      - name: Upload APK
+        if: ${{ inputs.uploadbuild || github.event_name != 'workflow_dispatch' }}
         uses: actions/upload-artifact@v4
-        if: ${{ github.event_name != 'workflow_dispatch' }} || ${{ inputs.uploadbuild }}
         with:
-          name: ryujinx-build
-          path: src/RyujinxAndroid/app/build/outputs/apk/release/app-release.apk
+          name: ryujinx-android
+          path: |
+            src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
+          retention-days: 7
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Create Release
         if: ${{ inputs.shouldrelease }}
+        uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.releasetag || github.ref_name }}
           prerelease: ${{ inputs.releasetype }}
-          tag_name: ${{ inputs.releasetag }}
-          make_latest: ${{ inputs.islatest }}
+          generate_release_notes: true
           files: |
-            src/RyujinxAndroid/app/build/outputs/apk/release/app-release.apk
+            src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
