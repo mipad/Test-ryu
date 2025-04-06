@@ -6,7 +6,7 @@ on:
     branches: [ "test" ]
   pull_request:
     branches: [ "test" ]
-    
+
 env:
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
   NDK_VERSION: "25.1.8937393"
@@ -20,16 +20,25 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: write
 
     steps:
-      # ------------ 1. 代码检出（修复子模块） ------------
+      # ------------ 1. 配置 SSH 访问（用于私有子模块） ------------
+      - name: Configure SSH Agent
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}  # 仓库中配置的 SSH 私钥
+
+      # ------------ 2. 代码检出（修复子模块初始化） ------------
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive  # 递归初始化子模块
+          token: ${{ secrets.GH_PAT }}  # 个人访问令牌（如需 HTTPS 访问）
           fetch-depth: 0
+          ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}  # 可选，与 SSH Agent 配合使用
 
-      # ------------ 2. 环境设置 ------------
+      # ------------ 3. 环境设置 ------------
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -41,7 +50,7 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      # ------------ 3. Android 环境配置 ------------
+      # ------------ 4. Android 环境配置 ------------
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
@@ -53,18 +62,18 @@ jobs:
             cmake;${{ env.CMAKE_VERSION }}
           accept-android-sdk-licenses: true
 
-      # ------------ 4. 自动接受许可证（新增步骤） ------------
+      # ------------ 5. 强制接受所有 Android 许可证 ------------
       - name: Accept Android Licenses
         run: |
           yes | ${{ env.ANDROID_SDK_ROOT }}/cmdline-tools/latest/bin/sdkmanager --licenses
 
-      # ------------ 5. 构建环境验证 ------------
+      # ------------ 6. 验证 NDK 安装 ------------
       - name: Verify NDK Installation
         run: |
           echo "NDK路径: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}"
           ls -l ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++
 
-      # ------------ 6. 缓存优化 ------------
+      # ------------ 7. 缓存配置 ------------
       - name: CCache setup
         uses: hendrikmuhs/ccache-action@v1.2
         with:
@@ -79,7 +88,7 @@ jobs:
             ~/.gradle/wrapper
           key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
 
-      # ------------ 7. 构建准备 ------------
+      # ------------ 8. 构建前准备 ------------
       - name: Fix permissions
         working-directory: src/RyujinxAndroid
         run: |
@@ -87,7 +96,7 @@ jobs:
           sudo sysctl -w fs.inotify.max_user_watches=524288
           ulimit -n 65536
 
-      # ------------ 8. 核心构建步骤（新增 .NET 构建） ------------
+      # ------------ 9. 构建 LibRyujinx（.NET AOT 编译） ------------
       - name: Build LibRyujinx (AOT)
         working-directory: src/LibRyujinx
         run: |
@@ -95,7 +104,7 @@ jobs:
           dotnet build -c Release /p:RuntimeIdentifier=linux-bionic-arm64
           dotnet build -c Release /p:RuntimeIdentifier=ios-arm64
 
-      # ------------ 9. Android 应用构建 ------------
+      # ------------ 10. Android 应用构建 ------------
       - name: Build with Gradle
         working-directory: src/RyujinxAndroid
         env:
@@ -109,7 +118,7 @@ jobs:
             -Dorg.gradle.workers.max=2 \
             -Dorg.gradle.caching=true
 
-      # ------------ 10. 产物处理 ------------
+      # ------------ 11. 产物上传与发布 ------------
       - name: Upload APK
         if: ${{ inputs.uploadbuild || github.event_name != 'workflow_dispatch' }}
         uses: actions/upload-artifact@v4
@@ -119,7 +128,7 @@ jobs:
             src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
           retention-days: 7
 
-      - name: Create Release
+      - name: Create GitHub Release
         if: ${{ inputs.shouldrelease }}
         uses: softprops/action-gh-release@v2
         with:
