@@ -25,7 +25,7 @@ on:
 
 env:
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-  ANDROID_NDK_PATH: ${{ env.ANDROID_SDK_ROOT }}/ndk/25.1.8937393  # 新增全局变量
+  ANDROID_NDK_VERSION: "25.1.8937393"  # 定义 NDK 版本号
   GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=true"
 
 jobs:
@@ -44,11 +44,6 @@ jobs:
       # ------------ 2. 缓存加速 ------------
       - name: Setup CCache
         uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          maxsize: 500M
-
-      - name: Clean Gradle Cache  # 新增清理步骤
-        run: rm -rf ~/.gradle/caches
 
       - name: Setup Gradle Cache
         uses: actions/cache@v4
@@ -70,10 +65,17 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          ndk-version: 25.1.8937393
-          cmake-version: 3.22.1
+          ndk-version: ${{ env.ANDROID_NDK_VERSION }}  # 使用版本号
+          cmake-version: "3.22.1"
 
-      # ------------ 4. 构建准备 ------------
+      # ------------ 4. 密钥管理 ------------
+      - name: Decode Keystore
+        env:
+          KEYSTORE_ENCODED: ${{ secrets.KEYSTORE }}
+        run: |
+          echo "$KEYSTORE_ENCODED" | base64 --decode > ${{ github.workspace }}/src/RyujinxAndroid/keystore.jks
+
+      # ------------ 5. 构建准备 ------------
       - name: Fix gradlew Permissions
         working-directory: src/RyujinxAndroid
         run: chmod +x gradlew
@@ -83,25 +85,17 @@ jobs:
         with:
           dotnet-version: "9.0.101"
 
-      # ------------ 5. 核心构建步骤 ------------
+      # ------------ 6. 核心构建步骤 ------------
       - name: Build with Gradle
         working-directory: src/RyujinxAndroid
         env:
-          ORG_RYUJINX_LLVM_TOOLCHAIN_PATH: ${{ env.ANDROID_NDK_PATH }}/toolchains/llvm/prebuilt/linux-x86_64/bin
-          CMAKE_C_COMPILER_LAUNCHER: "ccache"
-          CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
+          ORG_RYUJINX_LLVM_TOOLCHAIN_PATH: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.ANDROID_NDK_VERSION }}/toolchains/llvm/prebuilt/linux-x86_64/bin
         run: |
-          # 验证工具链
-          ls -l $ORG_RYUJINX_LLVM_TOOLCHAIN_PATH/clang*
-          # 带资源限制执行构建
-          ulimit -n 65536
           ./gradlew assembleRelease \
             --stacktrace \
-            --no-daemon \
-            -Pandroid.ndkPath=${{ env.ANDROID_NDK_PATH }} \
-            -Dorg.gradle.workers.max=2
+            -Pandroid.ndkPath=${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.ANDROID_NDK_VERSION }}
 
-      # ------------ 6. 产物处理 ------------
+      # ------------ 7. 产物处理 ------------
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         if: ${{ github.event_name != 'workflow_dispatch' }} || ${{ inputs.uploadbuild }}
