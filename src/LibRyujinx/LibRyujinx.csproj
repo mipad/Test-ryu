@@ -1,24 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <!-- 统一目标框架为 .NET 9.0 -->
     <TargetFramework>net9.0</TargetFramework>
     <RuntimeIdentifiers>linux-bionic-arm64;ios-arm64</RuntimeIdentifiers>
     <Nullable>enable</Nullable>
-    <!-- 安全优化配置 -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <InvariantGlobalization>true</InvariantGlobalization>
     <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
-    <!-- 平台特定配置 -->
     <LinkerFlavor Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">lld</LinkerFlavor>
     <NativeLib Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">Shared</NativeLib>
     <IlcInstructionSet>armv8.2-a</IlcInstructionSet>
-    <!-- AOT 发布配置 -->
     <PublishAot>true</PublishAot>
     <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
   </PropertyGroup>
 
-  <!-- Release模式优化 -->
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
     <Optimize>true</Optimize>
     <OptimizationPreference>Speed</OptimizationPreference>
@@ -41,20 +36,19 @@
     </ItemGroup>
   </Target>
 
-  <!-- 安全包版本统一管理 -->
+  <!-- 安全包版本统一管理（已删除 Version 属性） -->
   <ItemGroup>
-    <PackageReference Include="System.Private.Uri" Version="4.3.1" /> <!-- 修复漏洞 -->
-    <PackageReference Include="System.Text.Json" Version="8.0.2" />   <!-- 安全升级 -->
-    <PackageReference Include="Rxmxnx.PInvoke.Extensions" Version="2.2.0" />
-    <PackageReference Include="Silk.NET.Vulkan" Version="2.16.0" />
-    <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" Version="2.16.0" />
+    <PackageReference Include="System.Private.Uri" />
+    <PackageReference Include="System.Text.Json" />
+    <PackageReference Include="Rxmxnx.PInvoke.Extensions" />
+    <PackageReference Include="Silk.NET.Vulkan" />
+    <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" />
   </ItemGroup>
 
   <!-- 项目引用 -->
   <ItemGroup>
     <ProjectReference Include="..\Ryujinx.Audio.Backends.OpenAL\Ryujinx.Audio.Backends.OpenAL.csproj" />
     <ProjectReference Include="..\Ryujinx.Audio.Backends.SDL2\Ryujinx.Audio.Backends.SDL2.csproj" />
-    <!-- 其他项目引用保持不变 -->
   </ItemGroup>
 
   <!-- 符号文件处理 -->
