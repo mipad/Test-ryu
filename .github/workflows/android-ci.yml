@@ -17,61 +17,45 @@ jobs:
       contents: write
 
     steps:
+      # ------------ 1. 拉取代码（不拉取子模块） ------------
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           submodules: false
 
+      # ------------ 2. 安装 .NET 9.0 SDK ------------
       - name: Install .NET 9.0 SDK
         uses: actions/setup-dotnet@v3
         with:
           dotnet-version: "9.0.100"
 
-      - name: Cache NuGet packages
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.nuget/packages
-            ~/.local/share/NuGet
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props') }}
-          restore-keys: |
-            ${{ runner.os }}-nuget-
-
+      # ------------ 3. 安装 Android 工具链 ------------
       - name: Install Android Tools
         run: |
           mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
           unzip -q commandlinetools-linux-9477386_latest.zip -d $ANDROID_SDK_ROOT/cmdline-tools
           mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
-          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
+
+          # 临时更新 PATH
+          export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools
+
+          # 自动接受所有许可证
           yes | sdkmanager --licenses --sdk_root=$ANDROID_SDK_ROOT
           sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;25.1.8937393" --sdk_root=$ANDROID_SDK_ROOT
 
+      # ------------ 4. 其他步骤保持不变 ------------
       - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
           java-version: 17
           distribution: temurin
 
-      - name: Explicit .NET Restore
-        working-directory: src/RyujinxAndroid
-        run: |
-          dotnet restore --force-evaluate
-
-      - name: Clean Project
-        working-directory: src/RyujinxAndroid
-        run: ./gradlew clean
-
       - name: Build Release APK
         working-directory: src/RyujinxAndroid
-        # 关键修改：添加 -Pdotnet.args 参数忽略警告
-        run: ./gradlew assembleRelease --stacktrace -Pdotnet.args="-p:NoWarn=NU1903;NU1902"
+        run: ./gradlew assembleRelease --stacktrace
         env:
           ORG_RYUJINX_LLVM_TOOLCHAIN_PATH: ${{ env.ANDROID_SDK_ROOT }}/ndk/25.1.8937393/toolchains/llvm/prebuilt/linux-x86_64/bin
-          STORE_FILE: ${{ github.workspace }}/src/RyujinxAndroid/keystore.jks
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
