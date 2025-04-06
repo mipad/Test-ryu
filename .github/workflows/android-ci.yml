@@ -17,44 +17,72 @@ jobs:
       contents: write
 
     steps:
-      # ------------ 1. 拉取代码 ------------
+      # ------------ 1. 拉取代码（禁用子模块） ------------
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           submodules: false
 
-      # ------------ 2. 修复 gradlew 权限 ------------
+      # ------------ 2. 设置编译缓存加速 ------------
+      - name: Setup CCache
+        uses: hendrikmuhs/ccache-action@v1.2
+
+      - name: Setup Gradle Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      # ------------ 3. 安装 Java 17 ------------
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # ------------ 4. 安装 Android SDK 和 NDK ------------
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          ndk-version: 25.1.8937393  # 指定你的 NDK 版本
+          cmake-version: 3.22.1       # 指定 CMake 版本
+
+      # ------------ 5. 修复 gradlew 权限 ------------
       - name: Make gradlew Executable
-        working-directory: src/RyujinxAndroid
+        working-directory: src/RyujinxAndroid  # 根据项目路径调整
         run: chmod +x gradlew
 
-      # ------------ 3. 设置 JDK 17 ------------
-      - name: Set up JDK 17
-        uses: actions/setup-java@v3
+      # ------------ 6. 安装 .NET 9.0 SDK（如需要） ------------
+      - name: Install .NET 9.0 SDK
+        uses: actions/setup-dotnet@v3
         with:
-          java-version: 17
-          distribution: temurin
+          dotnet-version: "9.0.100"
 
-      # ------------ 4. 安装 Android 工具链 ------------
-      - name: Install Android Tools
-        run: |
-          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
-          unzip -q commandlinetools-linux-9477386_latest.zip -d $ANDROID_SDK_ROOT/cmdline-tools
-          mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses --sdk_root=$ANDROID_SDK_ROOT <<< "y"
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;25.1.8937393" --sdk_root=$ANDROID_SDK_ROOT
-
-      # ------------ 5. 构建 APK ------------
-      - name: Build Release APK
+      # ------------ 7. 构建 Release APK ------------
+      - name: Build with Gradle
         working-directory: src/RyujinxAndroid
-        run: ./gradlew assembleRelease --stacktrace --info
         env:
           ORG_RYUJINX_LLVM_TOOLCHAIN_PATH: ${{ env.ANDROID_SDK_ROOT }}/ndk/25.1.8937393/toolchains/llvm/prebuilt/linux-x86_64/bin
+          CMAKE_C_COMPILER_LAUNCHER: "ccache"  # 启用 CCache 加速
+          CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
+        run: ./gradlew assembleRelease --stacktrace
 
-      # ------------ 6. 上传产物 ------------
-      - name: Upload APK
+      # ------------ 8. 上传 APK 产物 ------------
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release-apk
-          path: src/RyujinxAndroid/app/build/outputs/apk/release/app-release.apk
+          name: ryujinx-android-release
+          path: src/RyujinxAndroid/app/build/outputs/apk/release/app-release.apk  # 调整路径
+
+      # ------------ 9. 可选：创建 GitHub Release ------------
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: ${{ github.event_name == 'push' && contains(github.ref, 'refs/tags/') }}  # 仅 Tag 触发
+        with:
+          files: src/RyujinxAndroid/app/build/outputs/apk/release/app-release.apk
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
