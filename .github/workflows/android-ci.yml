@@ -20,7 +20,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          submodules: "recursive"
+          submodules:false
 
       - name: Install .NET 9.0 SDK
         uses: actions/setup-dotnet@v3
