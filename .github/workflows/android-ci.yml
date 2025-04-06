@@ -4,17 +4,9 @@ on:
   workflow_call:
   push:
     branches: [ "test" ]
-    paths:
-      - 'src/LibRyujinx/**'
-      - 'src/RyujinxAndroid/**'
-      - 'Directory.Packages.props'
   pull_request:
     branches: [ "test" ]
-    paths:
-      - 'src/LibRyujinx/**'
-      - 'src/RyujinxAndroid/**'
-      - 'Directory.Packages.props'
-
+    
 env:
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
   NDK_VERSION: "25.1.8937393"
