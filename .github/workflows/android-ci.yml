@@ -1,42 +1,12 @@
 name: Android CI
 
 on:
-  # ------------ 新增 push 触发条件 ------------
+  workflow_call:
   push:
-    branches: [ test ]
-    paths:
-      - 'src/LibRyujinx/**'      # 监控 LibRyujinx 目录下的所有文件
-      - 'Directory.Packages.props'  # 监控中央包版本文件
-      - 'src/RyujinxAndroid/**'  # 监控 Android 项目文件
-
-  # ------------ 保留手动触发 ------------
-  workflow_dispatch:
-    inputs:
-      shouldrelease:
-        description: "Create release"
-        type: boolean
-        required: false
-        default: false
-      uploadbuild:
-        description: "Upload build artifact"
-        type: boolean
-        required: false
-        default: true
-      releasetag:
-        description: "Release tag name"
-        type: string
-        required: false
-      releasetype:
-        description: "Mark as prerelease"
-        type: boolean
-        required: false
-        default: false
-      islatest:
-        description: "Mark as latest release"
-        type: boolean
-        required: false
-        default: true
-
+    branches: [ "test" ]
+  pull_request:
+    branches: [ "test" ]
+        
 env:
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
   NDK_VERSION: "25.1.8937393"
@@ -112,15 +82,7 @@ jobs:
           sudo sysctl -w fs.inotify.max_user_watches=524288
           ulimit -n 65536
 
-      # ------------ 7. 核心构建步骤（新增 .NET 项目构建） ------------
-      - name: Build LibRyujinx (AOT)
-        working-directory: src/LibRyujinx
-        run: |
-          dotnet restore
-          dotnet build -c Release /p:RuntimeIdentifier=linux-bionic-arm64
-          dotnet build -c Release /p:RuntimeIdentifier=ios-arm64
-
-      # ------------ 8. Android 应用构建 ------------
+      # ------------ 7. 核心构建步骤 ------------
       - name: Build with Gradle
         working-directory: src/RyujinxAndroid
         env:
@@ -134,7 +96,7 @@ jobs:
             -Dorg.gradle.workers.max=2 \
             -Dorg.gradle.caching=true
 
-      # ------------ 9. 产物处理 ------------
+      # ------------ 8. 产物处理 ------------
       - name: Upload APK
         if: ${{ inputs.uploadbuild || github.event_name != 'workflow_dispatch' }}
         uses: actions/upload-artifact@v4
