@@ -1,6 +1,10 @@
 name: Android CI
 
 on:
+push:
+    branches: [ "test" ]
+  pull_request:
+    branches: [ "test" ]
   workflow_dispatch:
     inputs:
       shouldrelease:
@@ -27,11 +31,7 @@ on:
         type: boolean
         required: false
         default: true
-    push:
-    branches: [ "test" ]
-  pull_request:
-    branches: [ "test" ]
-    
+        
 env:
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
   NDK_VERSION: "25.1.8937393"
