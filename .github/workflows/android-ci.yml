@@ -17,20 +17,25 @@ jobs:
       contents: write
 
     steps:
+      # ------------ 1. 拉取代码 ------------
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           submodules: false
 
+      # ------------ 2. 修复 gradlew 权限 ------------
       - name: Make gradlew Executable
         working-directory: src/RyujinxAndroid
         run: chmod +x gradlew
 
-      - name: Install .NET 9.0 SDK
-        uses: actions/setup-dotnet@v3
+      # ------------ 3. 设置 JDK 17 ------------
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
         with:
-          dotnet-version: "9.0.100"
+          java-version: 17
+          distribution: temurin
 
+      # ------------ 4. 安装 Android 工具链 ------------
       - name: Install Android Tools
         run: |
           mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
@@ -40,29 +45,14 @@ jobs:
           $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses --sdk_root=$ANDROID_SDK_ROOT <<< "y"
           $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;25.1.8937393" --sdk_root=$ANDROID_SDK_ROOT
 
-      - name: Verify NDK Path
-        run: |
-          echo "LLVM工具链路径: ${{ env.ORG_RYUJINX_LLVM_TOOLCHAIN_PATH }}"
-          ls -la ${{ env.ORG_RYUJINX_LLVM_TOOLCHAIN_PATH }}
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v3
-        with:
-          java-version: 17
-          distribution: temurin
-
-      - name: Clean Project
-        working-directory: src/RyujinxAndroid
-        run: |
-          ./gradlew clean
-          dotnet clean
-
+      # ------------ 5. 构建 APK ------------
       - name: Build Release APK
         working-directory: src/RyujinxAndroid
         run: ./gradlew assembleRelease --stacktrace --info
         env:
           ORG_RYUJINX_LLVM_TOOLCHAIN_PATH: ${{ env.ANDROID_SDK_ROOT }}/ndk/25.1.8937393/toolchains/llvm/prebuilt/linux-x86_64/bin
 
+      # ------------ 6. 上传产物 ------------
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
