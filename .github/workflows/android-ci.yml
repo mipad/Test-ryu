@@ -25,6 +25,7 @@ on:
 
 env:
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+  ANDROID_NDK_PATH: ${{ env.ANDROID_SDK_ROOT }}/ndk/25.1.8937393  # 新增全局变量
   GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=true"
 
 jobs:
@@ -38,11 +39,16 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          submodules: false  # 禁用子模块
+          submodules: false
 
       # ------------ 2. 缓存加速 ------------
       - name: Setup CCache
         uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          maxsize: 500M
+
+      - name: Clean Gradle Cache  # 新增清理步骤
+        run: rm -rf ~/.gradle/caches
 
       - name: Setup Gradle Cache
         uses: actions/cache@v4
@@ -64,17 +70,10 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          ndk-version: 25.1.8937393  # 匹配您的 NDK 版本
+          ndk-version: 25.1.8937393
           cmake-version: 3.22.1
 
-      # ------------ 4. 密钥管理（按需启用） ------------
-      - name: Decode Keystore
-        env:
-          KEYSTORE_ENCODED: ${{ secrets.KEYSTORE }}  # 需要配置 GitHub Secret
-        run: |
-          echo "$KEYSTORE_ENCODED" | base64 --decode > ${{ github.workspace }}/src/RyujinxAndroid/keystore.jks
-
-      # ------------ 5. 构建准备 ------------
+      # ------------ 4. 构建准备 ------------
       - name: Fix gradlew Permissions
         working-directory: src/RyujinxAndroid
         run: chmod +x gradlew
@@ -84,25 +83,31 @@ jobs:
         with:
           dotnet-version: "9.0.101"
 
-      # ------------ 6. 核心构建步骤 ------------
+      # ------------ 5. 核心构建步骤 ------------
       - name: Build with Gradle
         working-directory: src/RyujinxAndroid
         env:
-          ORG_RYUJINX_LLVM_TOOLCHAIN_PATH: ${{ env.ANDROID_SDK_ROOT }}/ndk/25.1.8937393/toolchains/llvm/prebuilt/linux-x86_64/bin
+          ORG_RYUJINX_LLVM_TOOLCHAIN_PATH: ${{ env.ANDROID_NDK_PATH }}/toolchains/llvm/prebuilt/linux-x86_64/bin
           CMAKE_C_COMPILER_LAUNCHER: "ccache"
           CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
-          KEYSTORE_PATH: "keystore.jks"  # 与上文的解码路径一致
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEYSTORE_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
-        run: ./gradlew assembleRelease --stacktrace
+        run: |
+          # 验证工具链
+          ls -l $ORG_RYUJINX_LLVM_TOOLCHAIN_PATH/clang*
+          # 带资源限制执行构建
+          ulimit -n 65536
+          ./gradlew assembleRelease \
+            --stacktrace \
+            --no-daemon \
+            -Pandroid.ndkPath=${{ env.ANDROID_NDK_PATH }} \
+            -Dorg.gradle.workers.max=2
 
-      # ------------ 7. 产物处理 ------------
+      # ------------ 6. 产物处理 ------------
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         if: ${{ github.event_name != 'workflow_dispatch' }} || ${{ inputs.uploadbuild }}
         with:
           name: ryujinx-build
-          path: src/RyujinxAndroid/app/build/outputs/apk/release/app-release.apk  # 确认实际路径
+          path: src/RyujinxAndroid/app/build/outputs/apk/release/app-release.apk
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
