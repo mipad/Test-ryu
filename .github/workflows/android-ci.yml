@@ -1,6 +1,12 @@
 name: Android CI
 
 on:
+  # 添加 push 触发条件，监控 LibRyujinx.csproj 的变更
+  push:
+    branches: [ test ]
+    paths:
+      - 'src/LibRyujinx/**'   # 监控 LibRyujinx 目录下的所有文件
+      - 'Directory.Packages.props'  # 监控中央版本管理文件
   workflow_dispatch:
     inputs:
       shouldrelease:
@@ -103,7 +109,15 @@ jobs:
           sudo sysctl -w fs.inotify.max_user_watches=524288
           ulimit -n 65536
 
-      # ------------ 7. 核心构建步骤 ------------
+      # ------------ 7. 核心构建步骤（新增 .NET 项目构建） ------------
+      - name: Build LibRyujinx (AOT)
+        working-directory: src/LibRyujinx
+        run: |
+          dotnet restore
+          dotnet build -c Release /p:RuntimeIdentifier=linux-bionic-arm64
+          dotnet build -c Release /p:RuntimeIdentifier=ios-arm64
+
+      # ------------ 8. Android 应用构建 ------------
       - name: Build with Gradle
         working-directory: src/RyujinxAndroid
         env:
@@ -117,7 +131,7 @@ jobs:
             -Dorg.gradle.workers.max=2 \
             -Dorg.gradle.caching=true
 
-      # ------------ 8. 产物处理 ------------
+      # ------------ 9. 产物处理 ------------
       - name: Upload APK
         if: ${{ inputs.uploadbuild || github.event_name != 'workflow_dispatch' }}
         uses: actions/upload-artifact@v4
