@@ -16,8 +16,8 @@ env:
   DOTNET_VERSION: "9.0.101"
   JAVA_VERSION: "17"
   ANDROID_CMD_TOOLS_VERSION: "9477386"
-  BUILD_TOOLS_VERSION: "34.0.0"
-  PLATFORM_VERSION: "34"
+  BUILD_TOOLS_VERSION: "35.0.0"  # ✅ 升级构建工具版本
+  PLATFORM_VERSION: "35"         # ✅ 关键修改：升级到 Android 35
 
 jobs:
   build:
@@ -70,8 +70,8 @@ jobs:
       - name: Install Android Components
         run: |
           yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
-            "platforms;android-${{ env.PLATFORM_VERSION }}" \
-            "build-tools;${{ env.BUILD_TOOLS_VERSION }}" \
+            "platforms;android-${{ env.PLATFORM_VERSION }}" \  # ✅ 自动使用 35
+            "build-tools;${{ env.BUILD_TOOLS_VERSION }}" \      # ✅ 使用 35.0.0
             "ndk;${{ env.NDK_VERSION }}" \
             "cmake;${{ env.CMAKE_VERSION }}" \
             --sdk_root=$ANDROID_SDK_ROOT
@@ -79,9 +79,7 @@ jobs:
       # ================== [关键新增] 安装.NET Android工作负载 ==================
       - name: Install .NET Android Workload
         run: |
-          # 安装 Android 工作负载
           dotnet workload install android --skip-manifest-update
-          # 验证工作负载
           dotnet workload list | grep "android"
 
       # ================== [5] Java环境配置 ==================
@@ -98,7 +96,6 @@ jobs:
           chmod +x gradlew
           echo "NDK_PATH=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
           echo "CMAKE_PATH=$ANDROID_SDK_ROOT/cmake/${{ env.CMAKE_VERSION }}/bin" >> $GITHUB_ENV
-          # 显式传递 Android SDK 路径
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
 
       # ================== [8] 原生库构建 ==================
@@ -108,15 +105,12 @@ jobs:
           ANDROID_NDK: "${{ env.NDK_PATH }}"
           ANDROID_SDK: "${{ env.ANDROID_SDK_ROOT }}"
         run: |
-          # 确保工作负载已加载
           dotnet workload list
-          # 构建命令
           dotnet build -c Release \
             -p:RuntimeIdentifier=linux-bionic-arm64 \
             -p:AndroidNdkDirectory=$ANDROID_NDK \
             -p:AndroidSdkDirectory=$ANDROID_SDK \
-            -p:TargetFramework=net9.0-android${{ env.PLATFORM_VERSION }} \
-            -p:AndroidSdkDirectory="$ANDROID_SDK_ROOT"  # 显式指定 SDK 路径
+            -p:TargetFramework=net9.0-android${{ env.PLATFORM_VERSION }}  # ✅ 使用 35
 
       # ================== [9] Android应用构建 ==================
       - name: Build Android APK
