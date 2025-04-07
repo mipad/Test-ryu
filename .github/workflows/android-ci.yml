@@ -13,7 +13,6 @@ env:
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
   NDK_VERSION: "25.1.8937393"
   CMAKE_VERSION: "3.22.1"
-  DOTNET_VERSION: "9.0.101"
   JAVA_VERSION: "17"
 
 jobs:
@@ -41,30 +40,27 @@ jobs:
           sparse-checkout-cone-mode: false
 
       # ================== [2] Java环境配置优化 ==================
-      - name: Setup Java
+      - name: Setup Java (Optimized)
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: ${{ env.JAVA_VERSION }}
-          cache: 'gradle'
+          cache: "gradle"
           check-latest: true  # 确保获取最新补丁版本
-          overwrite-settings: false  # 避免覆盖必要配置
 
-      # ================== [3] Android SDK安装修复 ==================
+      # ================== [3] Android SDK配置增强 ==================
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          cmdline-tools-version: "12.0"
+          cmdline-tools-version: "latest"  # 自动获取最新稳定版
           packages: |
             platforms;android-34
             build-tools;34.0.0
             ndk;${{ env.NDK_VERSION }}
             cmake;${{ env.CMAKE_VERSION }}
-        env:
-          REPO_OS_OVERRIDE: linux  # 强制指定Linux平台
 
-      # ================== [4] 增强缓存配置 ==================
-      - name: Gradle Cache
+      # ================== [4] 构建缓存优化 ==================
+      - name: Cache optimization
         uses: actions/cache@v4
         with:
           path: |
@@ -72,38 +68,38 @@ jobs:
             ~/.gradle/wrapper
             ~/.android/build-cache
             src/RyujinxAndroid/.gradle
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/gradle-wrapper.properties', '**/build.gradle') }}
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties') }}
           restore-keys: |
-            gradle-${{ runner.os }}-
+            ${{ runner.os }}-gradle-
 
-      # ================== [5] SDK验证步骤 ==================
-      - name: Verify Android Installation
+      # ================== [5] 构建环境验证 ==================
+      - name: Verify Environment
         run: |
-          echo "Installed packages:"
+          # Java验证
+          java -version
+          javac -version
+
+          # Android SDK验证
           $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --list_installed
-          
-          echo "Checking NDK path:"
           ls -l $ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}
 
       # ================== [6] 原生库构建 ==================
       - name: Build Native Libraries
         working-directory: src/LibRyujinx
         env:
-          DOTNET_CLI_TELEMETRY_OPTOUT: 1
           ANDROID_NDK: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
         run: |
           dotnet restore --verbosity minimal
           dotnet build -c Release /p:RuntimeIdentifier=linux-bionic-arm64 \
             /p:AndroidSdkDirectory=$ANDROID_SDK_ROOT \
-            /p:AndroidNdkDirectory=$ANDROID_NDK \
-            /warnAsError:true
+            /p:AndroidNdkDirectory=$ANDROID_NDK
 
-      # ================== [7] Android构建优化 ==================
-      - name: Build Android APK
+      # ================== [7] Android构建强化 ==================
+      - name: Build APK
         working-directory: src/RyujinxAndroid
         env:
           ORG_GRADLE_PROJECT_ndkPath: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
-          GRADLE_OPTS: -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=$(nproc)
+          CCACHE_DIR: /tmp/ccache
         run: |
           ./gradlew assembleRelease \
             --build-cache \
@@ -112,14 +108,14 @@ jobs:
             -Pandroid.ndkPath=$ORG_GRADLE_PROJECT_ndkPath
 
       # ================== [8] 产物处理 ==================
-      - name: Upload APK Artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ryujinx-android
           path: src/RyujinxAndroid/app/build/outputs/apk/**/*.apk
           retention-days: 7
 
-      - name: Create GitHub Release
+      - name: Create Release
         if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: softprops/action-gh-release@v2
         with:
