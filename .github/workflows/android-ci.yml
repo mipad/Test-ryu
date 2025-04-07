@@ -1,84 +1,128 @@
-name: Android Build Workflow
+name: Android CI
 
 on:
-  workflow_dispatch:
+  workflow_call:
   push:
+    branches: [ "test" ]
+    paths-ignore:
+      - 'src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools/**'
+  pull_request:
     branches: [ "test" ]
 
 env:
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-  CMAKE_VERSION: "3.31.6"
   NDK_VERSION: "25.1.8937393"
+  CMAKE_VERSION: "3.22.1"
+  JAVA_VERSION: "17"
 
 jobs:
-  android-build:
+  build:
+    name: Build and Package
     runs-on: ubuntu-latest
-    
-    # ================== [1] 权限声明 ==================
     permissions:
-      contents: write    # 需要写入内容（发布release）
-      packages: write    # 需要上传制品
-      actions: write     # 需要创建工作流产物
-      id-token: write    # 需要OIDC令牌（如果使用云服务认证）
+      contents: write
+      packages: write
 
     steps:
-      # ================== [2] 代码检出（含令牌配置） ==================
+      # ================== [1] 智能代码检出 ==================
       - name: Checkout code with submodules
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GHH_PAT }}  # 必须使用具有repo权限的PAT
+          token: ${{ secrets.GHH_PAT }}
+          repository: mipad/Test-ryu
+          ref: test
           submodules: recursive
-          fetch-depth: 0
+          fetch-depth: 1
           sparse-checkout: |
-            /*
-            src/RyujinxAndroid/**
-            !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
+            # 基础文件
+            *
+            # 包含Android项目
+            src/RyujinxAndroid/
+            # 排除指定子目录
+            !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools/
+          sparse-checkout-cone-mode: false
+
+      # ================== [2] 环境验证 ==================
+      - name: Validate checkout structure
+        run: |
+          echo "===== 目录结构验证 ====="
+          [ -d "src/RyujinxAndroid" ] || exit 1
+          [ ! -d "src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools" ] || exit 1
+          tree -L 3
 
       # ================== [3] Java环境配置 ==================
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: 17
-          cache: 'gradle'
-          server-id: github  # Maven服务器配置
-          server-username: ${{ github.actor }}
-          server-password: ${{ secrets.GITHUB_TOKEN }}
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+          check-latest: true
 
-      # ================== [4] 密钥库处理（需要secrets读取权限） ==================
-      - name: Decode Keystore
-        env:
-          KEYSTORE_ENCODED: ${{ secrets.KEYSTORE }}
-        run: |
-          echo "$KEYSTORE_ENCODED" | base64 -d > app/ks.jks
-          chmod 600 app/ks.jks
-
-      # ================== [5] Android SDK配置 ==================
+      # ================== [4] Android SDK配置 ==================
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          cmdline-tools-version: "latest"
+          cmdline-tools-version: "12.0"
           packages: |
             platforms;android-34
             build-tools;34.0.0
             ndk;${{ env.NDK_VERSION }}
+            cmake;${{ env.CMAKE_VERSION }}
+        timeout-minutes: 10
 
-      # ================== [6] 构建步骤 ==================
-      - name: Build APK
+      # ================== [5] 缓存加速 ==================
+      - name: CCache configuration
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ccache-${{ runner.os }}-${{ github.sha }}
+          max-size: 1G
+
+      - name: Gradle Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            src/RyujinxAndroid/.gradle
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/gradle-wrapper.properties') }}
+
+      # ================== [6] 原生库构建 ==================
+      - name: Build Native Libraries
+        working-directory: src/LibRyujinx
+        env:
+          ANDROID_NDK: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
+        run: |
+          dotnet restore --verbosity minimal
+          dotnet build -c Release \
+            /p:RuntimeIdentifier=linux-bionic-arm64 \
+            /p:AndroidSdkDirectory=$ANDROID_SDK_ROOT \
+            /p:AndroidNdkDirectory=$ANDROID_NDK
+
+      # ================== [7] Android APK构建 ==================
+      - name: Build Android APK
+        working-directory: src/RyujinxAndroid
         env:
           ORG_GRADLE_PROJECT_ndkPath: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
-        run: ./gradlew assembleRelease
+        run: |
+          ./gradlew assembleRelease \
+            --no-daemon \
+            --stacktrace \
+            -Pandroid.ndkVersion=${{ env.NDK_VERSION }} \
+            -Pandroid.enableParallelJsonGen=true
 
-      # ================== [7] 产物上传（需要contents:write） ==================
-      - name: Upload Artifact
+      # ================== [8] 产物处理 ==================
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: android-build
-          path: app/build/outputs/apk/**/*.apk
+          name: ryujinx-android
+          path: src/RyujinxAndroid/app/build/outputs/apk/**/*.apk
+          retention-days: 7
 
-      # ================== [8] 创建Release（需要contents:write） ==================
-      - name: Create Release
+      - name: Create GitHub Release
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: app/build/outputs/apk/release/*.apk
+          files: src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
+          draft: false
