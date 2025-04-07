@@ -15,128 +15,54 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-steps:
-      # ================== [1] 智能代码检出 ==================
+    steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GHH_PAT }}
           repository: mipad/Test-ryu
           ref: test
-          submodules: false
-          fetch-depth: 1  # 优化检出速度
-          clean: true
           sparse-checkout: |
             /*
             src/RyujinxAndroid/**
             !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
-          sparse-checkout-cone-mode: false
-          persist-credentials: true
+          fetch-depth: 1
+          clean: true
 
-      # ================== [2] 深度清理残留 ==================
-      - name: Deep clean workspace
+      - name: Deep clean
         run: |
-          # 物理删除残留目录
-          rm -rf src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools || true
-          
-          # Git历史记录清理
-          git reset --hard HEAD
-          git clean -fdx
-          
-          # 清理子模块缓存
-          git submodule deinit -f src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools 2>/dev/null || true
-          git rm --cached src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools 2>/dev/null || true
-          rm -rf .git/modules/src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
+          git submodule deinit -f --all
+          git clean -ffdx
+          rm -rf .git/modules
 
-      # ================== [3] 项目结构验证 ==================
-      - name: Validate project structure
+      - name: Validate structure
         run: |
-          echo "===== 全量目录扫描 ====="
-          tree -L 4 -I '.git'  # 忽略.git目录
-          
-          echo "===== 关键路径验证 ====="
-          [ -d "src/RyujinxAndroid" ] || { echo "::error::Android项目根目录缺失"; exit 1; }
-          [ -f "src/RyujinxAndroid/build.gradle" ] || { echo "::error::build.gradle文件未找到"; exit 1; }
-          
-          echo "===== 排除目录深度检测 ====="
-          if find . -type d -path '*/adrenotools' | grep -q .; then
-            echo "::error::检测到残留的子模块目录"
-            find . -type d -path '*/adrenotools'
-            exit 1
-          else
-            echo "✅ 排除验证通过"
-          fi
+          [ -f "src/RyujinxAndroid/gradlew" ] || { echo "::error::Gradle wrapper missing"; exit 1; }
+          [ ! -d "src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools" ] || { echo "::error::Adrenotools still exists"; exit 1; }
 
-          echo "===== 依赖目录完整性检查 ====="
-          [ -d "src/RyujinxAndroid/app/src/main/cpp/libraries" ] || { echo "::warning::libraries目录不存在，可能影响构建"; }
-          [ -d "src/LibRyujinx" ] || { echo "::error::原生库目录缺失"; exit 1; }
-      # ------------ 3. 安装 .NET 9.0 SDK ------------
-      - name: Install .NET 9.0 SDK
-        uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: "9.0.100-preview.6.24328.19"
-
-      # ------------ 4. 安装 Android 命令行工具 ------------
-      - name: Install Android Command Line Tools
-        run: |
-          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
-          unzip -q commandlinetools-linux-9477386_latest.zip -d $ANDROID_SDK_ROOT/cmdline-tools
-          mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
-          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
-        env:
-          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-
-      # ------------ 5. 安装 Android 组件 ------------
-      - name: Setup Android Components
-        run: |
-          yes | sdkmanager --licenses --sdk_root=$ANDROID_SDK_ROOT
-          sdkmanager "platforms;android-34" --sdk_root=$ANDROID_SDK_ROOT
-          sdkmanager "build-tools;34.0.0" --sdk_root=$ANDROID_SDK_ROOT
-          sdkmanager "ndk;25.1.8937393" --channel=3 --sdk_root=$ANDROID_SDK_ROOT
-      # ------------ 6. 安装 JDK 17 ------------
-      - name: Set up JDK 17
+      - name: Setup JDK
         uses: actions/setup-java@v3
         with:
           java-version: 17
           distribution: temurin
 
-      # ------------ 7. 缓存优化 ------------
-      - name: Cache Android SDK
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.android/cache
-            ${{ env.ANDROID_SDK_ROOT }}
-          key: ${{ runner.os }}-android-sdk-${{ hashFiles('src/RyujinxAndroid/gradle/wrapper/gradle-wrapper.properties') }}
+      - name: Setup Android
+        uses: android-actions/setup-android@v3
 
-      # ------------ 8. 项目配置 ------------
-      - name: Prepare Project
-        working-directory: src/RyujinxAndroid  # 修正后的路径
-        run: |
-          chmod +x gradlew
-          echo "LLVM_PATH=$ANDROID_SDK_ROOT/ndk/25.1.8937393/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_ENV
-      # ------------ 9. 构建 Release APK ------------
-      - name: Build Release APK
+      - name: Build APK
         working-directory: src/RyujinxAndroid
-        run: ./gradlew assembleRelease
         env:
-          ORG_RYUJINX_LLVM_TOOLCHAIN_PATH: ${{ env.LLVM_PATH }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEYSTORE_FILE: ${{ secrets.KEYSTORE_FILE }}
+        run: |
+          echo "$KEYSTORE_FILE" | base64 -d > keystore.jks
+          ./gradlew assembleRelease \
+            -PstoreFile=keystore.jks \
+            -PstorePassword=${{ secrets.STORE_PASSWORD }} \
+            -PkeyAlias=${{ secrets.KEY_ALIAS }} \
+            -PkeyPassword=${{ secrets.KEY_PASSWORD }}
 
-      # ------------ 10. 上传产物 ------------
-      - name: Upload APK
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release-apk
-          path: src/RyujinxAndroid/app/build/outputs/apk/release/app-release.apk
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: src/RyujinxAndroid/app/build/outputs/apk/release/app-release.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-Editing Test-ryu/.github/workflows/android-ci.yml at test · mipad/Test-ryu
+          name: ryujinx-apk
+          path: src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
