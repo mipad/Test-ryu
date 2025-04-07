@@ -15,7 +15,7 @@ env:
   CMAKE_VERSION: "3.22.1"
   DOTNET_VERSION: "9.0.101"
   JAVA_VERSION: "17"
-  ANDROID_CMD_TOOLS_VERSION: "9477386"  # commandlinetools-linux-9477386_latest.zip
+  ANDROID_CMD_TOOLS_VERSION: "9477386"
   BUILD_TOOLS_VERSION: "34.0.0"
   PLATFORM_VERSION: "34"
 
@@ -51,13 +51,14 @@ jobs:
           git clean -fdx -e .gradle/ -e .nuget/
           git submodule deinit -f --all
 
-      # ================== [3] 基础环境配置 ==================
+      # ================== [3] .NET环境配置 ==================
       - name: Setup .NET 9.0.101
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "${{ env.DOTNET_VERSION }}"
-          cache: true
+          cache: false  # 禁用自动缓存检查
 
+      # ================== [4] Android环境安装 ==================
       - name: Install Android CLI Tools
         run: |
           mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
@@ -66,7 +67,6 @@ jobs:
           mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
-      # ================== [4] Android组件安装 ==================
       - name: Install Android Components
         run: |
           yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
@@ -76,6 +76,7 @@ jobs:
             "cmake;${{ env.CMAKE_VERSION }}" \
             --sdk_root=$ANDROID_SDK_ROOT
 
+      # ================== [5] Java环境配置 ==================
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
@@ -83,7 +84,7 @@ jobs:
           java-version: "${{ env.JAVA_VERSION }}"
           cache: "gradle"
 
-      # ================== [5] 缓存配置 ==================
+      # ================== [6] 缓存配置 ==================
       - name: Cache Android SDK
         uses: actions/cache@v4
         with:
@@ -93,15 +94,19 @@ jobs:
             ${{ env.ANDROID_SDK_ROOT }}/build-tools
           key: android-${{ runner.os }}-${{ hashFiles('**/gradle-wrapper.properties') }}
 
+      - name: Generate NuGet Lock File
+        working-directory: src/LibRyujinx
+        run: dotnet restore --use-lock-file --lock-file-path packages.lock.json
+
       - name: Cache NuGet
         uses: actions/cache@v4
         with:
           path: |
             ~/.nuget/packages
-            **/packages.lock.json
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+            src/LibRyujinx/packages.lock.json
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/LibRyujinx/packages.lock.json') }}
 
-      # ================== [6] 构建准备 ==================
+      # ================== [7] 构建配置 ==================
       - name: Prepare Build Environment
         working-directory: src/RyujinxAndroid
         run: |
@@ -109,27 +114,28 @@ jobs:
           echo "NDK_PATH=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
           echo "CMAKE_PATH=$ANDROID_SDK_ROOT/cmake/${{ env.CMAKE_VERSION }}/bin" >> $GITHUB_ENV
 
-      # ================== [7] 原生库构建 ==================
+      # ================== [8] 原生库构建 ==================
       - name: Build Native Libraries
         working-directory: src/LibRyujinx
         env:
           ANDROID_NDK: "${{ env.NDK_PATH }}"
           ANDROID_SDK: "${{ env.ANDROID_SDK_ROOT }}"
         run: |
-          dotnet restore --verbosity minimal --configfile nuget.config
+          dotnet restore --configfile nuget.config
           dotnet build -c Release \
             -p:RuntimeIdentifier=linux-bionic-arm64 \
             -p:AndroidNdkDirectory=$ANDROID_NDK \
             -p:AndroidSdkDirectory=$ANDROID_SDK \
             -p:TargetFramework=net9.0-android${{ env.PLATFORM_VERSION }}
 
-      # ================== [8] Android应用构建 ==================
+      # ================== [9] Android应用构建 ==================
       - name: Build Android APK
         working-directory: src/RyujinxAndroid
         env:
           ORG_GRADLE_PROJECT_ndkPath: "${{ env.NDK_PATH }}"
           ORG_GRADLE_PROJECT_cmakePath: "${{ env.CMAKE_PATH }}"
-          KEYSTORE_PASSWORD: "${{ secrets.STORE_PASSWORD }}"
+          KEY_ALIAS: "${{ secrets.KEY_ALIAS }}"
+          STORE_PASSWORD: "${{ secrets.STORE_PASSWORD }}"
           KEY_PASSWORD: "${{ secrets.KEY_PASSWORD }}"
         run: |
           ./gradlew assembleRelease \
@@ -137,9 +143,9 @@ jobs:
             --no-daemon \
             -Pandroid.ndkPath=$ORG_GRADLE_PROJECT_ndkPath \
             -Pandroid.cmakePath=$ORG_GRADLE_PROJECT_cmakePath \
-            -Pandroid.buildingNativeCode=true
+            -Pandroid.buildToolsVersion="${{ env.BUILD_TOOLS_VERSION }}"
 
-      # ================== [9] 产物处理 ==================
+      # ================== [10] 产物处理 ==================
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -151,8 +157,4 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "v$(date +'%Y%m%d%H%M')"
-          files: |
-            src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
-          draft: false
-          prerelease: false
+          files: src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
