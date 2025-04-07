@@ -28,59 +28,37 @@ jobs:
       packages: write
 
     steps:
-      # ================== [1] 智能代码检出（子模块处理）==================
+      # ================== [1] 代码检出 ==================
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GHH_PAT }}
           repository: mipad/Test-ryu
           ref: test
-          submodules: false  # 显式禁用子模块检出
+          submodules: false
           fetch-depth: 1
           sparse-checkout: |
             /*
             src/RyujinxAndroid/**
-            !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools  # 排除子模块目录
+            !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
           sparse-checkout-cone-mode: false
           clean: true
 
-      # ================== [2] 深度子模块清理 ==================
-      - name: Deep clean submodules
+      # ================== [2] 环境清理 ==================
+      - name: Deep clean
         run: |
-          # 物理删除残留目录
-          rm -rf src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools || true
-          
-          # Git历史记录清理
-          git reset --hard HEAD
-          git clean -fdx
-          
-          # 清理子模块缓存
-          git submodule deinit -f src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools 2>/dev/null || true
-          git rm --cached src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools 2>/dev/null || true
-          rm -rf .git/modules/src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
+          rm -rf src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
+          git clean -fdx -e .gradle/ -e .nuget/
+          git submodule deinit -f --all
 
-      # ================== [3] 项目结构验证 ==================
-      - name: Validate project structure
-        run: |
-          echo "===== 排除目录深度检测 ====="
-          if find . -type d -path '*/adrenotools' | grep -q .; then
-            echo "::error::检测到残留的子模块目录"
-            find . -type d -path '*/adrenotools'
-            exit 1
-          else
-            echo "✅ 排除验证通过"
-          fi
-
-          echo "===== 依赖目录完整性检查 ====="
-          [ -d "src/RyujinxAndroid/app/src/main/cpp/libraries" ] || { echo "::warning::libraries目录不存在，可能影响构建"; }
-          [ -d "src/LibRyujinx" ] || { echo "::error::原生库目录缺失"; exit 1; }
-
-      # ================== [4] 环境配置 ================== 
+      # ================== [3] .NET环境配置 ==================
       - name: Setup .NET 9.0.101
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "${{ env.DOTNET_VERSION }}"
+          cache: false
 
+      # ================== [4] Android环境安装 ==================
       - name: Install Android CLI Tools
         run: |
           mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
@@ -98,46 +76,82 @@ jobs:
             "cmake;${{ env.CMAKE_VERSION }}" \
             --sdk_root=$ANDROID_SDK_ROOT
 
+      # ================== [5] Java环境配置（已禁用Gradle缓存）==================
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "${{ env.JAVA_VERSION }}"
+          cache: false  # 关键修改：禁用 Gradle 自动缓存
 
-      # ================== [5] 构建配置 ==================
+      # ================== [6] 缓存配置（移除了对.gradle目录的保留）==================
+      - name: Cache Android SDK
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ANDROID_SDK_ROOT }}/platforms
+            ${{ env.ANDROID_SDK_ROOT }}/ndk
+            ${{ env.ANDROID_SDK_ROOT }}/build-tools
+          key: android-${{ runner.os }}-${{ hashFiles('**/gradle-wrapper.properties') }}
+
+      - name: Generate NuGet Lock File
+        working-directory: src/LibRyujinx
+        run: dotnet restore --use-lock-file --lock-file-path packages.lock.json
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.nuget/packages
+            src/LibRyujinx/packages.lock.json
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/LibRyujinx/packages.lock.json') }}
+
+      # ================== [7] 构建配置 ==================
       - name: Prepare Build Environment
         working-directory: src/RyujinxAndroid
         run: |
           chmod +x gradlew
           echo "NDK_PATH=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
+          echo "CMAKE_PATH=$ANDROID_SDK_ROOT/cmake/${{ env.CMAKE_VERSION }}/bin" >> $GITHUB_ENV
 
-      # ================== [6] 原生库构建 ==================
+      # ================== [8] 原生库构建 ==================
       - name: Build Native Libraries
         working-directory: src/LibRyujinx
         env:
           ANDROID_NDK: "${{ env.NDK_PATH }}"
+          ANDROID_SDK: "${{ env.ANDROID_SDK_ROOT }}"
         run: |
-          dotnet restore
-          dotnet build -c Release /p:RuntimeIdentifier=linux-bionic-arm64 \
-            /p:AndroidNdkDirectory=$ANDROID_NDK \
-            /p:AndroidSdkDirectory=$ANDROID_SDK_ROOT
+          dotnet restore --configfile nuget.config
+          dotnet build -c Release \
+            -p:RuntimeIdentifier=linux-bionic-arm64 \
+            -p:AndroidNdkDirectory=$ANDROID_NDK \
+            -p:AndroidSdkDirectory=$ANDROID_SDK \
+            -p:TargetFramework=net9.0-android${{ env.PLATFORM_VERSION }}
 
-      # ================== [7] Android应用构建 ==================
+      # ================== [9] Android应用构建 ==================
       - name: Build Android APK
         working-directory: src/RyujinxAndroid
         env:
           ORG_GRADLE_PROJECT_ndkPath: "${{ env.NDK_PATH }}"
+          ORG_GRADLE_PROJECT_cmakePath: "${{ env.CMAKE_PATH }}"
+          KEY_ALIAS: "${{ secrets.KEY_ALIAS }}"
+          STORE_PASSWORD: "${{ secrets.STORE_PASSWORD }}"
+          KEY_PASSWORD: "${{ secrets.KEY_PASSWORD }}"
         run: |
           ./gradlew assembleRelease \
+            --build-cache \
             --no-daemon \
-            -Pandroid.ndkPath=$ORG_GRADLE_PROJECT_ndkPath
+            -Pandroid.ndkPath=$ORG_GRADLE_PROJECT_ndkPath \
+            -Pandroid.cmakePath=$ORG_GRADLE_PROJECT_cmakePath \
+            -Pandroid.buildToolsVersion="${{ env.BUILD_TOOLS_VERSION }}"
 
-      # ================== [8] 产物处理 ==================
+      # ================== [10] 产物处理 ==================
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ryujinx-android
           path: src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
+          retention-days: 7
 
       - name: Create Release
         if: ${{ github.event_name == 'workflow_dispatch' }}
