@@ -40,59 +40,23 @@ jobs:
           sparse-checkout-cone-mode: false
 
       # ================== [2] Java环境配置优化 ==================
-      - name: Setup Java (Optimized)
-        uses: actions/setup-java@v4
-        with:
-          distribution: "temurin"
-          java-version: ${{ env.JAVA_VERSION }}
-          cache: "gradle"
-          check-latest: true  # 确保获取最新补丁版本
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: 17
 
-      # ================== [3] Android SDK配置增强 ==================
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: "latest"  # 自动获取最新稳定版
-          packages: |
-            platforms;android-34
-            build-tools;34.0.0
-            ndk;${{ env.NDK_VERSION }}
-            cmake;${{ env.CMAKE_VERSION }}
+    - name: Decode Keystore
+      env:
+        KEYSTORE_ENCODED: ${{ secrets.KEYSTORE }}
+      run: | 
+        echo "$KEYSTORE_ENCODED" | base64 --decode > ${{ github.workspace }}/app/ks.jks
 
-      # ================== [4] 构建缓存优化 ==================
-      - name: Cache optimization
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            ~/.android/build-cache
-            src/RyujinxAndroid/.gradle
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
 
-      # ================== [5] 构建环境验证 ==================
-      - name: Verify Environment
-        run: |
-          # Java验证
-          java -version
-          javac -version
-
-          # Android SDK验证
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --list_installed
-          ls -l $ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}
-
-      # ================== [6] 原生库构建 ==================
-      - name: Build Native Libraries
-        working-directory: src/LibRyujinx
-        env:
-          ANDROID_NDK: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
-        run: |
-          dotnet restore --verbosity minimal
-          dotnet build -c Release /p:RuntimeIdentifier=linux-bionic-arm64 \
-            /p:AndroidSdkDirectory=$ANDROID_SDK_ROOT \
-            /p:AndroidNdkDirectory=$ANDROID_NDK
+    - name: Install packages
+      run: yes | sdkmanager "cmake;3.31.6"
 
       # ================== [7] Android构建强化 ==================
       - name: Build APK
