@@ -1,95 +1,166 @@
-name: Android CI (Skip Submodule)
+name: Android CI
 
 on:
-  workflow_dispatch:
+  workflow_call:
   push:
+    branches: [ "test" ]
+    paths-ignore:
+      - 'src/RyujinxAndroid/app/src/main/cpp/libraries/**'
+  pull_request:
     branches: [ "test" ]
 
 env:
-  EXCLUDED_SUBMODULE: "src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools"
+  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+  NDK_VERSION: "25.1.8937393"
+  CMAKE_VERSION: "3.22.1"
+  DOTNET_VERSION: "9.0.101"
+  JAVA_VERSION: "17"
 
 jobs:
   build:
+    name: Build and Package
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
     steps:
       # ================== [1] 智能代码检出 ==================
-      - name: Checkout with Submodule Filter
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GHH_PAT }}
-          submodules: false  # 完全禁用自动初始化
+          repository: mipad/Test-ryu
+          ref: test
+          submodules: false
+          fetch-depth: 1  # 优化检出速度
+          clean: true
           sparse-checkout: |
             /*
-            !${{ env.EXCLUDED_SUBMODULE }}
-          filter: 'tree:0'  # 启用部分克隆优化
-          clean: true
+            src/RyujinxAndroid/**
+            !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
+          sparse-checkout-cone-mode: false
+          persist-credentials: true
 
-      # ================== [2] 子模块安全白名单 ==================
-      - name: Safe Submodule Initialization
+      # ================== [2] 深度清理残留 ==================
+      - name: Deep clean workspace
         run: |
-          # 生成有效子模块列表
-          valid_submodules=$(
-            git config --file .gitmodules --get-regexp path |
-            awk '{print $2}' |
-            grep -v "${{ env.EXCLUDED_SUBMODULE }}" |
-            tr '\n' ' '
-          )
-
-          # 显示调试信息
-          echo "有效子模块列表: ${valid_submodules}"
+          # 物理删除残留目录
+          rm -rf src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools || true
           
-          # 初始化白名单子模块
-          git submodule sync --recursive
-          git submodule update --init --depth=1 --jobs $(nproc) $valid_submodules
+          # Git历史记录清理
+          git reset --hard HEAD
+          git clean -fdx
+          
+          # 清理子模块缓存
+          git submodule deinit -f src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools 2>/dev/null || true
+          git rm --cached src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools 2>/dev/null || true
+          rm -rf .git/modules/src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
 
-          # 验证排除路径
-          if [ -d "${{ env.EXCLUDED_SUBMODULE }}" ]; then
-            echo "::error::排除路径仍然存在"
+      # ================== [3] 项目结构验证 ==================
+      - name: Validate project structure
+        run: |
+          echo "===== 全量目录扫描 ====="
+          tree -L 4 -I '.git'  # 忽略.git目录
+          
+          echo "===== 关键路径验证 ====="
+          [ -d "src/RyujinxAndroid" ] || { echo "::error::Android项目根目录缺失"; exit 1; }
+          [ -f "src/RyujinxAndroid/build.gradle" ] || { echo "::error::build.gradle文件未找到"; exit 1; }
+          
+          echo "===== 排除目录深度检测 ====="
+          if find . -type d -path '*/adrenotools' | grep -q .; then
+            echo "::error::检测到残留的子模块目录"
+            find . -type d -path '*/adrenotools'
             exit 1
+          else
+            echo "✅ 排除验证通过"
           fi
 
-      # ================== [3] 构建环境配置 ==================
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: "12.0"
-          packages: |
-            platforms;android-34
-            build-tools;34.0.0
-            ndk;25.1.8937393
-            cmake;3.22.1
+          echo "===== 依赖目录完整性检查 ====="
+          [ -d "src/RyujinxAndroid/app/src/main/cpp/libraries" ] || { echo "::warning::libraries目录不存在，可能影响构建"; }
+          [ -d "src/LibRyujinx" ] || { echo "::error::原生库目录缺失"; exit 1; }
 
+      # ================== [4] 环境配置 ================== 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: 17
+          distribution: "temurin"
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: 'gradle'
 
-      # ================== [4] 构建流程优化 ==================
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: "8.0"
+          disable-confirmation: true
+          packages: |
+            platforms;android-34
+            build-tools;34.0.0
+            ndk;${{ env.NDK_VERSION }}
+            cmake;${{ env.CMAKE_VERSION }}
+          
+      # ================== [5] 构建加速 ==================
+      - name: Configure CCache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ccache-${{ runner.os }}-${{ github.sha }}
+          max-size: 500M
+          enable-fallback: true
+
+      - name: Restore Gradle Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/gradle-wrapper.properties', '**/build.gradle') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      # ================== [6] 原生库构建 ==================
       - name: Build Native Libraries
         working-directory: src/LibRyujinx
         env:
-          ANDROID_NDK: ${{ env.ANDROID_SDK_ROOT }}/ndk/25.1.8937393
+          DOTNET_CLI_TELEMETRY_OPTOUT: 1
+          ANDROID_NDK: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
         run: |
-          # 显式排除子模块路径
-          find . -path "*${{ env.EXCLUDED_SUBMODULE }}*" -prune -o -name "*.cpp" -exec echo Building {} \;
-          
-          # 实际构建命令
-          dotnet build -c Release /p:RuntimeIdentifier=linux-bionic-arm64
+          dotnet restore --verbosity minimal
+          dotnet build -c Release /p:RuntimeIdentifier=linux-bionic-arm64 \
+            /p:AndroidSdkDirectory=$ANDROID_SDK_ROOT \
+            /p:AndroidNdkDirectory=$ANDROID_NDK \
+            /warnAsError:true
 
-      - name: Build APK
+      # ================== [7] Android构建 ==================
+      - name: Build Android APK
         working-directory: src/RyujinxAndroid
+        env:
+          ORG_GRADLE_PROJECT_ndkPath: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
+          CCACHE_DIR: /tmp/ccache
+          GRADLE_OPTS: -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=4 -Dorg.gradle.caching=true
         run: |
-          # 使用Gradle属性排除模块
           ./gradlew assembleRelease \
-            -PexcludeModules=${{ env.EXCLUDED_SUBMODULE }} \
+            --build-cache \
             --no-daemon \
-            --stacktrace
+            --scan \
+            -Pandroid.ndkPath=$ORG_GRADLE_PROJECT_ndkPath
 
-      # ================== [5] 产物处理 ==================
-      - name: Upload Artifact
+      # ================== [8] 产物处理 ==================
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: android-build
+          name: ryujinx-android
           path: |
             src/RyujinxAndroid/app/build/outputs/apk/**/*.apk
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
+          draft: false
+          prerelease: ${{ contains(github.ref, 'beta') }}
