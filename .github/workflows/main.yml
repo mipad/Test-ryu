@@ -1,36 +1,35 @@
 name: Clean Submodule
 on:
-  workflow_dispatch:  #
+  workflow_dispatch:  # 手动触发
   push:
-    branches:
-      - test         
-    paths:
-      - 'src/RyujinxAndroid/app/src/main/cpp/libraries/**'  # 仅子模块路径变更时触发
+    branches: [test]  # 主分支触发
 
 jobs:
-  clean-submodule:
+  cleanup:
     runs-on: ubuntu-latest
-    # 授予写权限（关键配置）
     permissions:
-      contents: write
-      pull-requests: write
+      contents: write  # 授予代码写入权限
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 拉取完整提交历史
-          token: ${{ secrets.GITHUB_TOKEN }}  # 使用默认令牌
+          token: ${{ secrets.GH_PAT }}  # 必须使用 PAT
+          fetch-depth: 0  # 拉取完整历史
 
-      - name: Remove submodule references
+      - name: Purge submodule traces
         run: |
-          # 删除 Git 记录
-          git rm --cached src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools -r
+          # 删除物理目录（可能残留）
+          rm -rf src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
           
-          # 提交变更（添加 [skip ci] 防止循环触发）
-          git config --global user.email "actions@github.com"
-          git config --global user.name "GitHub Actions"
-          git commit -m "Remove submodule references [skip ci]" || echo "No changes"
+          # 从 Git 缓存中移除记录
+          git rm --cached -f src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
           
-          # 强制推送（处理可能的冲突）
-          git push --force-with-lease origin HEAD:${{ github.ref }}
+          # 删除 Git 模块配置（即使没有 .gitmodules）
+          git config --local --remove-section submodule.src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools || true
+          
+          # 提交变更（添加 [skip ci] 避免循环触发）
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          git commit -m "Purge adrenotools submodule [skip ci]" || echo "No changes"
+          git push origin HEAD:${{ github.ref }}
