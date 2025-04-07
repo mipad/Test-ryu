@@ -1,151 +1,160 @@
-name: Build job
+name: Android CI
 
 on:
   workflow_call:
+  push:
+    branches: [ "test" ]
+    paths-ignore:
+      - 'src/RyujinxAndroid/app/src/main/cpp/libraries/**'
+  pull_request:
+    branches: [ "test" ]
 
 env:
-  POWERSHELL_TELEMETRY_OPTOUT: 1
-  DOTNET_CLI_TELEMETRY_OPTOUT: 1
-  RYUJINX_BASE_VERSION: "1.1.0"
+  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+  NDK_VERSION: "25.1.8937393"
+  CMAKE_VERSION: "3.22.1"
+  DOTNET_VERSION: "9.0.101"
+  JAVA_VERSION: "17"
+  ANDROID_CMD_TOOLS_VERSION: "9477386"
+  BUILD_TOOLS_VERSION: "34.0.0"  # 回退到稳定版本
+  PLATFORM_VERSION: "34"         # 保持与构建工具版本一致
 
 jobs:
   build:
-    name: ${{ matrix.platform.name }} (${{ matrix.configuration }})
-    runs-on: ${{ matrix.platform.os }}
-    timeout-minutes: 45
-    strategy:
-      matrix:
-        configuration: [Debug, Release]
-        platform:
-          - { name: win-x64,     os: windows-latest, zip_os_name: win_x64     }
-          - { name: linux-x64,   os: ubuntu-latest,  zip_os_name: linux_x64   }
-          - { name: linux-arm64, os: ubuntu-latest,  zip_os_name: linux_arm64 }
-          - { name: osx-x64,     os: macos-13,       zip_os_name: osx_x64     }
-
-      fail-fast: false
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
-
-      - name: Overwrite csc problem matcher
-        run: echo "::add-matcher::.github/csc.json"
-
-      - name: Get git short hash
-        id: git_short_hash
-        run: echo "result=$(git rev-parse --short "${{ github.sha }}")" >> $GITHUB_OUTPUT
-        shell: bash
-
-      - name: Change config filename
-        run: sed -r --in-place 's/\%\%RYUJINX_CONFIG_FILE_NAME\%\%/PRConfig\.json/g;' src/Ryujinx.Common/ReleaseInformation.cs
-        shell: bash
-        if: github.event_name == 'pull_request' && matrix.platform.os != 'macos-13'
-
-      - name: Change config filename for macOS
-        run: sed -r -i '' 's/\%\%RYUJINX_CONFIG_FILE_NAME\%\%/PRConfig\.json/g;' src/Ryujinx.Common/ReleaseInformation.cs
-        shell: bash
-        if: github.event_name == 'pull_request' && matrix.platform.os == 'macos-13'
-
-      - name: Build
-        run: dotnet build -c "${{ matrix.configuration }}" -p:Version="${{ env.RYUJINX_BASE_VERSION }}" -p:SourceRevisionId="${{ steps.git_short_hash.outputs.result }}" -p:ExtraDefineConstants=DISABLE_UPDATER
-
-      - name: Test
-        uses: TSRBerry/unstable-commands@v1
-        with:
-          commands: dotnet test --no-build -c "${{ matrix.configuration }}"
-          timeout-minutes: 10
-          retry-codes: 139
-        if: matrix.platform.name != 'linux-arm64'
-
-      - name: Publish Ryujinx
-        run: dotnet publish -c "${{ matrix.configuration }}" -r "${{ matrix.platform.name }}" -o ./publish -p:Version="${{ env.RYUJINX_BASE_VERSION }}" -p:DebugType=embedded -p:SourceRevisionId="${{ steps.git_short_hash.outputs.result }}" -p:ExtraDefineConstants=DISABLE_UPDATER src/Ryujinx --self-contained true
-        if: github.event_name == 'pull_request' && matrix.platform.os != 'macos-13'
-
-      - name: Publish Ryujinx.Headless.SDL2
-        run: dotnet publish -c "${{ matrix.configuration }}" -r "${{ matrix.platform.name }}" -o ./publish_sdl2_headless -p:Version="${{ env.RYUJINX_BASE_VERSION }}" -p:DebugType=embedded -p:SourceRevisionId="${{ steps.git_short_hash.outputs.result }}" -p:ExtraDefineConstants=DISABLE_UPDATER src/Ryujinx.Headless.SDL2 --self-contained true
-        if: github.event_name == 'pull_request' && matrix.platform.os != 'macos-13'
-
-      - name: Set executable bit
-        run: |
-          chmod +x ./publish/Ryujinx ./publish/Ryujinx.sh
-          chmod +x ./publish_sdl2_headless/Ryujinx.Headless.SDL2 ./publish_sdl2_headless/Ryujinx.sh
-        if: github.event_name == 'pull_request' && matrix.platform.os == 'ubuntu-latest'
-
-      - name: Upload Ryujinx artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ryujinx-${{ matrix.configuration }}-${{ env.RYUJINX_BASE_VERSION }}+${{ steps.git_short_hash.outputs.result }}-${{ matrix.platform.zip_os_name }}
-          path: publish
-        if: github.event_name == 'pull_request' && matrix.platform.os != 'macos-13'
-
-      - name: Upload Ryujinx.Headless.SDL2 artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sdl2-ryujinx-headless-${{ matrix.configuration }}-${{ env.RYUJINX_BASE_VERSION }}+${{ steps.git_short_hash.outputs.result }}-${{ matrix.platform.zip_os_name }}
-          path: publish_sdl2_headless
-        if: github.event_name == 'pull_request' && matrix.platform.os != 'macos-13'
-
-  build_macos:
-    name: macOS Universal (${{ matrix.configuration }})
+    name: Build and Package
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    strategy:
-      matrix:
-        configuration: [ Debug, Release ]
+    permissions:
+      contents: write
+      packages: write
 
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-dotnet@v4
+      # ================== [1] 代码检出 ==================
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
-          global-json-file: global.json
+          token: ${{ secrets.GHH_PAT }}
+          repository: mipad/Test-ryu
+          ref: test
+          submodules: false
+          fetch-depth: 1
+          sparse-checkout: |
+            /*
+            src/RyujinxAndroid/**
+            !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
+          sparse-checkout-cone-mode: false
+          clean: true
 
-      - name: Setup LLVM 14
+      # ================== [2] 环境清理 ==================
+      - name: Deep clean
         run: |
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 14
+          rm -rf src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
+          git clean -fdx
+          git submodule deinit -f --all
 
-      - name: Install rcodesign
+      # ================== [3] .NET环境配置 ==================
+      - name: Setup .NET 9.0.101
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "${{ env.DOTNET_VERSION }}"
+          cache: false
+
+      # ================== [4] Android环境安装 ==================
+      - name: Install Android CLI Tools
         run: |
-          mkdir -p $HOME/.bin
-          gh release download -R indygreg/apple-platform-rs -O apple-codesign.tar.gz -p 'apple-codesign-*-x86_64-unknown-linux-musl.tar.gz'
-          tar -xzvf apple-codesign.tar.gz --wildcards '*/rcodesign' --strip-components=1
-          rm apple-codesign.tar.gz
-          mv rcodesign $HOME/.bin/
-          echo "$HOME/.bin" >> $GITHUB_PATH
+          # 清理旧缓存并创建目录
+          rm -rf $ANDROID_SDK_ROOT/*
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+          
+          # 使用腾讯云镜像下载
+          wget -q https://mirrors.cloud.tencent.com/android/repository/commandlinetools-linux-${ANDROID_CMD_TOOLS_VERSION}_latest.zip
+          
+          unzip -q commandlinetools-linux-*.zip -d $ANDROID_SDK_ROOT/cmdline-tools
+          mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+
+      - name: Install Android Components
+        run: |
+          # 配置清华镜像源
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools/latest/repos
+          echo "repo.url=https://mirrors.tuna.tsinghua.edu.cn/git/git-repo" > $ANDROID_SDK_ROOT/cmdline-tools/latest/repos.cfg
+          
+          # 分步安装关键组件
+          components=(
+            "platforms;android-${{ env.PLATFORM_VERSION }}"
+            "build-tools;${{ env.BUILD_TOOLS_VERSION }}"
+            "ndk;${{ env.NDK_VERSION }}"
+            "cmake;${{ env.CMAKE_VERSION }}"
+          )
+          
+          for component in "${components[@]}"; do
+            $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install "$component" --sdk_root=$ANDROID_SDK_ROOT
+          done
+
+      # ================== [关键新增] 安装.NET Android工作负载 ==================
+      - name: Install .NET Android Workload
+        run: |
+          dotnet workload install android --skip-manifest-update
+          dotnet workload list | grep "android"
+
+      # ================== [5] Java环境配置 ==================
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "${{ env.JAVA_VERSION }}"
+          check-latest: true
+
+      # ================== [7] 构建配置 ==================
+      - name: Prepare Build Environment
+        working-directory: src/RyujinxAndroid
+        run: |
+          chmod +x gradlew
+          echo "NDK_PATH=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
+          echo "CMAKE_PATH=$ANDROID_SDK_ROOT/cmake/${{ env.CMAKE_VERSION }}/bin" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+
+      # ================== [8] 原生库构建 ==================
+      - name: Build Native Libraries
+        working-directory: src/LibRyujinx
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Get git short hash
-        id: git_short_hash
-        run: echo "result=$(git rev-parse --short "${{ github.sha }}")" >> $GITHUB_OUTPUT
-
-      - name: Change config filename
-        run: sed -r --in-place 's/\%\%RYUJINX_CONFIG_FILE_NAME\%\%/PRConfig\.json/g;' src/Ryujinx.Common/ReleaseInformation.cs
-        shell: bash
-        if: github.event_name == 'pull_request'
-
-      - name: Publish macOS Ryujinx
+          ANDROID_NDK: "${{ env.NDK_PATH }}"
+          ANDROID_SDK: "${{ env.ANDROID_SDK_ROOT }}"
         run: |
-          ./distribution/macos/create_macos_build_ava.sh . publish_tmp publish ./distribution/macos/entitlements.xml "${{ env.RYUJINX_BASE_VERSION }}" "${{ steps.git_short_hash.outputs.result }}" "${{ matrix.configuration }}" "-p:ExtraDefineConstants=DISABLE_UPDATER"
+          # 显式设置目标框架版本
+          dotnet build -c Release \
+            -p:RuntimeIdentifier=linux-bionic-arm64 \
+            -p:AndroidNdkDirectory=$ANDROID_NDK \
+            -p:AndroidSdkDirectory=$ANDROID_SDK \
+            -p:TargetFramework=net9.0-android${{ env.PLATFORM_VERSION }} \
+            -p:AndroidSupportedAbis=arm64-v8a
 
-      - name: Publish macOS Ryujinx.Headless.SDL2
+      # ================== [9] Android应用构建 ==================
+      - name: Build Android APK
+        working-directory: src/RyujinxAndroid
+        env:
+          ORG_GRADLE_PROJECT_ndkPath: "${{ env.NDK_PATH }}"
+          ORG_GRADLE_PROJECT_cmakePath: "${{ env.CMAKE_PATH }}"
+          KEY_ALIAS: "${{ secrets.KEY_ALIAS }}"
+          STORE_PASSWORD: "${{ secrets.STORE_PASSWORD }}"
+          KEY_PASSWORD: "${{ secrets.KEY_PASSWORD }}"
         run: |
-          ./distribution/macos/create_macos_build_headless.sh . publish_tmp_headless publish_headless ./distribution/macos/entitlements.xml "${{ env.RYUJINX_BASE_VERSION }}" "${{ steps.git_short_hash.outputs.result }}" "${{ matrix.configuration }}" "-p:ExtraDefineConstants=DISABLE_UPDATER"
+          ./gradlew assembleRelease \
+            --no-build-cache \
+            --no-daemon \
+            -Pandroid.ndkPath=$ORG_GRADLE_PROJECT_ndkPath \
+            -Pandroid.cmakePath=$ORG_GRADLE_PROJECT_cmakePath \
+            -Pandroid.buildToolsVersion="${{ env.BUILD_TOOLS_VERSION }}"
 
-      - name: Upload Ryujinx artifact
+      # ================== [10] 产物处理 ==================
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ryujinx-${{ matrix.configuration }}-${{ env.RYUJINX_BASE_VERSION }}+${{ steps.git_short_hash.outputs.result }}-macos_universal
-          path: "publish/*.tar.gz"
-        if: github.event_name == 'pull_request'
+          name: ryujinx-android
+          path: src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
+          retention-days: 7
 
-      - name: Upload Ryujinx.Headless.SDL2 artifact
-        uses: actions/upload-artifact@v4
+      - name: Create Release
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: softprops/action-gh-release@v2
         with:
-          name: sdl2-ryujinx-headless-${{ matrix.configuration }}-${{ env.RYUJINX_BASE_VERSION }}+${{ steps.git_short_hash.outputs.result }}-macos_universal
-          path: "publish_headless/*.tar.gz"
-        if: github.event_name == 'pull_request'
+          files: src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
