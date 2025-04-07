@@ -1,4 +1,4 @@
-name: Android CI
+name: Android Secure CI
 
 on:
   workflow_dispatch:
@@ -14,11 +14,11 @@ env:
   NDK_VERSION: "25.1.8937393"
   CMAKE_VERSION: "3.22.1"
   JAVA_VERSION: "17"
-  EXCLUDE_PATH: "src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools"
+  EXCLUDED_PATH: "src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools"
 
 jobs:
-  build:
-    name: Secure Build
+  secure-build:
+    name: Security Hardened Build
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -26,79 +26,82 @@ jobs:
 
     steps:
       # ================== [1] 安全代码检出 ==================
-      - name: Checkout with Submodule Protection
+      - name: Checkout with Nuclear Clean
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GHH_PAT }}
-          submodules: recursive
+          submodules: false  # 禁用自动初始化
+          clean: true
           fetch-depth: 1
           sparse-checkout: |
             /*
             src/RyujinxAndroid/
-            !${{ env.EXCLUDE_PATH }}
+            !${{ env.EXCLUDED_PATH }}
+          filter: 'blob:none'  # 启用对象过滤
           sparse-checkout-cone-mode: false
-          clean: true
 
-      # ================== [2] 原子级子模块清理 ==================
-      - name: Nuclear Submodule Cleanup
+      # ================== [2] 量子级残留清理 ==================
+      - name: Quantum-Level Cleanup
         run: |
-          # 递归清理git配置
+          # 递归擦除git配置
           find . -type d -name ".git" | while read gitdir; do
-            config_files=(
-              "$gitdir/config"
-              "$gitdir/modules/config"
-              "${gitdir%.git}.gitmodules"
-            )
-            for cfg in "${config_files[@]}"; do
-              [ -f "$cfg" ] && sed -i '/adrenotools/d' "$cfg"
-            done
+            cfg_files=("$gitdir/config" "$gitdir/modules/config" "${gitdir%.git}.gitmodules")
+            parallel --will-cite -j4 "sed -i '\|${{ env.EXCLUDED_PATH }}|d' {}" ::: "${cfg_files[@]}" 2>/dev/null || true
           done
 
-          # 物理清除残留
-          find . -type d -path "*${{ env.EXCLUDE_PATH }}*" -exec rm -rf {} + || true
-          rm -rf .git/modules/*adrenotools*
+          # 物理湮灭残留路径
+          find . -type d -path "*${{ env.EXCLUDED_PATH }}*" -exec rm -rf {} + 2>/dev/null || true
+          find .git/modules -type d -name "*$(basename "${{ env.EXCLUDED_PATH }}")*" -exec rm -rf {} + 2>/dev/null || true
 
-          # 重建索引
+          # 量子态索引重建
           git reset --hard HEAD
-          git submodule sync --recursive
+          git update-index --really-refresh
+          git rm --cached -r --ignore-unmatch "${{ env.EXCLUDED_PATH }}" || true
 
-      # ================== [3] 安全子模块初始化 ==================
-      - name: Safe Submodule Init
+      # ================== [3] 白名单子模块初始化 ==================
+      - name: Whitelist Submodule Init
         run: |
-          git config --global protocol.file.allow always
+          # 生成有效子模块列表
+          valid_submodules=$(git config --file .gitmodules --get-regexp path | 
+            awk '{print $2}' | 
+            grep -v "${{ env.EXCLUDED_PATH }}" | 
+            tr '\n' ' ')
+
+          # 安全初始化
+          git submodule sync --recursive
           git submodule update --init --force --depth=1 \
             --jobs $(nproc) \
-            --filter=blob:none \
+            --filter=tree:0 \
             --checkout \
-            :(exclude,glob)${{ env.EXCLUDE_PATH }}
+            $valid_submodules
 
       # ================== [4] 环境验证 ==================
-      - name: Environment Validation
+      - name: Security Verification
         run: |
-          # 路径存在性验证
-          [ ! -d "${{ env.EXCLUDE_PATH }}" ] || { 
-            echo "::error::排除目录仍然存在";
-            exit 1;
-          }
+          # 路径存在性断言
+          if [ -d "${{ env.EXCLUDED_PATH }}" ]; then
+            echo "::error::路径残留异常：${{ env.EXCLUDED_PATH }}"
+            exit 1
+          fi
 
           # 子模块健康检查
-          bad_submodules=$(git submodule status | grep -E "(^\-|adrenotools)")
-          [ -z "$bad_submodules" ] || {
-            echo "::error::检测到异常子模块:";
-            echo "$bad_submodules";
-            exit 1;
-          }
+          bad_submodules=$(git submodule status | grep -E "(^\-|${{ env.EXCLUDED_PATH }})")
+          if [ -n "$bad_submodules" ]; then
+            echo "::error::异常子模块列表："
+            printf "%s\n" "$bad_submodules"
+            exit 1
+          fi
 
       # ================== [5] 构建环境配置 ==================
-      - name: Setup Java
+      - name: Java Environment
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: gradle
-          overwrite-settings: false
+          check-latest: true
 
-      - name: Android SDK Manager
+      - name: Android SDK Fortification
         uses: android-actions/setup-android@v3
         with:
           cmdline-tools-version: "12.0"
@@ -107,28 +110,30 @@ jobs:
             build-tools;34.0.0
             ndk;${{ env.NDK_VERSION }}
             cmake;${{ env.CMAKE_VERSION }}
-        env:
-          REPO_OS_OVERRIDE: "linux"
+        timeout-minutes: 15
 
-      # ================== [6] 构建加速系统 ==================
-      - name: Cache Optimization
+      # ================== [6] 分布式缓存系统 ==================
+      - name: Cache Matrix
         uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
             ~/.ccache
-          key: ${{ runner.os }}-${{ github.sha }}
+            src/RyujinxAndroid/.gradle
+          key: ${{ runner.os }}-${{ github.sha }}-${{ hashFiles('**/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-
 
-      - name: CCache Setup
+      - name: CCache Accelerator
         uses: hendrikmuhs/ccache-action@v1.2
         with:
+          key: ccache-${{ runner.os }}-${{ github.sha }}
           max-size: 2G
+          enable-fallback: false
 
       # ================== [7] 核心构建流程 ==================
-      - name: Native Library Build
+      - name: Native Library Compilation
         working-directory: src/LibRyujinx
         env:
           ANDROID_NDK: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
@@ -136,9 +141,10 @@ jobs:
           dotnet build -c Release \
             /p:RuntimeIdentifier=linux-bionic-arm64 \
             /p:AndroidNdkDirectory="$ANDROID_NDK" \
-            /p:AndroidSdkDirectory="$ANDROID_SDK_ROOT"
+            /p:AndroidSdkDirectory="$ANDROID_SDK_ROOT" \
+            /p:ErrorReport=prompt
 
-      - name: APK Assembly
+      - name: APK Assembly Line
         working-directory: src/RyujinxAndroid
         env:
           ORG_GRADLE_PROJECT_ndkPath: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
@@ -147,29 +153,30 @@ jobs:
             --no-daemon \
             --stacktrace \
             -Pandroid.ndkVersion=${{ env.NDK_VERSION }} \
-            -Pandroid.enableParallelJsonGen=true
+            -Pandroid.buildCacheDir=${{ github.workspace }}/.gradle-build-cache \
+            -Porg.gradle.parallel=true
 
-      # ================== [8] 产物安全发布 ==================
-      - name: Artifact Sanitization
+      # ================== [8] 安全发布通道 ==================
+      - name: Artifact Fort Knox
         run: |
-          find app/build/outputs/apk -name "*.apk" -exec sh -c '
-            echo "Validating $1 ...";
-            if ! unzip -l "$1" >/dev/null; then
-              echo "::error::损坏的APK文件: $1";
-              exit 1;
-            fi
-          ' sh {} \;
+          # APK完整性校验
+          find app/build/outputs/apk -name "*.apk" -print0 | xargs -0 -P4 -I{} \
+            sh -c 'if ! unzip -t "{}" >/dev/null; then 
+              echo "::error::损坏的APK文件: {}"
+              exit 1
+            fi'
 
-      - name: Upload Artifact
+      - name: Deploy Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: android-artifacts
+          name: armored-apk
           path: |
             app/build/outputs/apk/**/*.apk
             app/build/outputs/mapping/**/*.txt
           retention-days: 3
+          compression-level: 9
 
-      - name: Create Release
+      - name: Release Sentinel
         if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: softprops/action-gh-release@v2
         with:
@@ -177,3 +184,4 @@ jobs:
           files: app/build/outputs/apk/release/*.apk
           draft: false
           generate_release_notes: true
+          discussion_category_name: "Releases"
