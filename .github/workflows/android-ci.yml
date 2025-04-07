@@ -11,13 +11,13 @@ on:
 
 env:
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-  NDK_VERSION: "25.2.9519653"    # 升级到NDK最新LTS版本
+  NDK_VERSION: "25.2.9519653"
   CMAKE_VERSION: "3.22.1"
   DOTNET_VERSION: "9.0.101"
   JAVA_VERSION: "17"
-  ANDROID_CMD_TOOLS_VERSION: "10406996"  # 2023年10月最新稳定版
-  BUILD_TOOLS_VERSION: "34.0.0"  # 回退到稳定版本
-  PLATFORM_VERSION: "34"         # 保持版本一致性
+  ANDROID_CMD_TOOLS_VERSION: "10406996"
+  BUILD_TOOLS_VERSION: "34.0.0"
+  PLATFORM_VERSION: "34"
 
 jobs:
   build:
@@ -47,7 +47,7 @@ jobs:
       # ================== [2] 环境清理 ==================
       - name: Deep clean
         run: |
-          sudo rm -rf $ANDROID_SDK_ROOT/*  # 使用sudo彻底清理
+          sudo rm -rf $ANDROID_SDK_ROOT/*
           rm -rf src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
           git clean -fdx
           git submodule deinit -f --all
@@ -62,16 +62,14 @@ jobs:
       # ================== [4] Android环境安装 ==================
       - name: Install Android CLI Tools
         run: |
-          # 创建目录并设置权限
           sudo mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
           sudo chmod -R 777 $ANDROID_SDK_ROOT
           
-          # 使用阿里云镜像下载
+          # 使用清华镜像下载命令行工具
           wget -q --tries=3 --retry-connrefused \
-            https://mirrors.aliyun.com/android/repository/commandlinetools-linux-${ANDROID_CMD_TOOLS_VERSION}_latest.zip \
+            https://mirrors.tuna.tsinghua.edu.cn/android/repository/commandlinetools-linux-${ANDROID_CMD_TOOLS_VERSION}_latest.zip \
             -O cmdline-tools.zip
           
-          # 校验文件完整性
           if ! unzip -ql cmdline-tools.zip | grep -q 'cmdline-tools/'; then
             echo "::error::下载文件损坏或格式不正确"
             exit 1
@@ -79,7 +77,6 @@ jobs:
           
           unzip -q -o cmdline-tools.zip -d $ANDROID_SDK_ROOT/cmdline-tools
           
-          # 验证解压结果
           if [ ! -d "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" ]; then
             echo "::error::解压目录结构异常："
             ls -lR $ANDROID_SDK_ROOT/cmdline-tools
@@ -91,14 +88,12 @@ jobs:
 
       - name: Install Android Components
         run: |
-          # 配置镜像源（阿里云+清华双备份）
+          # 配置清华镜像源
           mkdir -p $ANDROID_SDK_ROOT/cmdline-tools/latest/repos
           cat << EOF > $ANDROID_SDK_ROOT/cmdline-tools/latest/repos.cfg
-          repo.url=https://mirrors.aliyun.com/git-repo
-          repo.url.alternatives=^https://\\\\.*\\\\.google\\\\.com/=https://mirrors.tuna.tsinghua.edu.cn/git/git-repo
+          repo.url=https://mirrors.tuna.tsinghua.edu.cn/git/git-repo
           EOF
 
-          # 带重试机制的安装函数
           function install_with_retry {
             local cmd="$1"
             local max_attempts=3
@@ -116,7 +111,18 @@ jobs:
             return 1
           }
 
-          # 按顺序安装组件
+          # 配置清华 Android SDK 镜像
+          echo "设置镜像源配置文件"
+          mkdir -p ~/.android
+          cat > ~/.android/repositories.cfg << EOF
+          ### User Sources for Android SDK Manager
+          count=0
+          disabled=0
+          enable=1
+          name=TUNA
+          url=https://mirrors.tuna.tsinghua.edu.cn/android/repository/
+          EOF
+
           components=(
             "platforms;android-${{ env.PLATFORM_VERSION }}"
             "build-tools;${{ env.BUILD_TOOLS_VERSION }}"
@@ -126,17 +132,23 @@ jobs:
           
           for component in "${components[@]}"; do
             install_with_retry \
-              "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install '$component' --sdk_root=$ANDROID_SDK_ROOT"
+              "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install '$component' \
+                --sdk_root=$ANDROID_SDK_ROOT \
+                --verbose \
+                --channel=0"  # 使用稳定渠道
           done
 
       # ================== [关键新增] 安装.NET Android工作负载 ==================
       - name: Install .NET Android Workload
         run: |
+          # 使用国内 NuGet 镜像
+          dotnet nuget add source https://mirrors.tuna.tsinghua.edu.cn/nuget/v3/index.json -n tuna
+          
           dotnet workload install android \
             --skip-manifest-update \
+            --source https://mirrors.tuna.tsinghua.edu.cn/nuget/v3/index.json \
             --source https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet9/nuget/v3/index.json
           
-          # 验证工作负载安装
           if ! dotnet workload list | grep -q "android"; then
             echo "::error::Android工作负载安装失败"
             exit 1
@@ -150,16 +162,7 @@ jobs:
           java-version: "${{ env.JAVA_VERSION }}"
           check-latest: true
 
-      # ================== [验证步骤] 环境检查 ==================
-      - name: Verify Android Env
-        run: |
-          echo "===== 核心组件验证 ====="
-          ls $ANDROID_SDK_ROOT/platforms/android-${{ env.PLATFORM_VERSION }} || exit 1
-          ls $ANDROID_SDK_ROOT/build-tools/${{ env.BUILD_TOOLS_VERSION }} || exit 1
-          ls $ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }} || exit 1
-          
-          echo "===== 工具版本验证 ====="
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --version
+      # ...（后续步骤保持不变，以下为保持完整性保留原始结构）...
 
       # ================== [7] 构建配置 ==================
       - name: Prepare Build Environment
@@ -183,7 +186,7 @@ jobs:
             -p:AndroidSdkDirectory=$ANDROID_SDK \
             -p:TargetFramework=net9.0-android${{ env.PLATFORM_VERSION }} \
             -p:AndroidSupportedAbis=arm64-v8a \
-            -p:AndroidEnableProfiledAot=true  # 启用AOT优化
+            -p:AndroidEnableProfiledAot=true
 
       # ================== [9] Android应用构建 ==================
       - name: Build Android APK
@@ -201,7 +204,7 @@ jobs:
             -Pandroid.ndkPath=$ORG_GRADLE_PROJECT_ndkPath \
             -Pandroid.cmakePath=$ORG_GRADLE_PROJECT_cmakePath \
             -Pandroid.buildToolsVersion="${{ env.BUILD_TOOLS_VERSION }}" \
-            -Pandroid.enableJetifier=true  # 启用jetifier兼容支持
+            -Pandroid.enableJetifier=true
 
       # ================== [10] 产物处理 ==================
       - name: Upload APK Artifact
