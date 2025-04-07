@@ -4,8 +4,11 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <EnablePreviewFeatures>true</EnablePreviewFeatures> <!-- 启用预览功能 -->
-    
+    <EnablePreviewFeatures>true</EnablePreviewFeatures>
+
+    <!-- [新增] 允许不安全代码 -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks> 
+
     <!-- 多平台编译符号 -->
     <DefineConstants Condition="'$(TargetOS)' == 'windows'">WINDOWS</DefineConstants>
     <DefineConstants Condition="'$(TargetOS)' == 'linux'">LINUX;UNIX</DefineConstants>
