@@ -1,0 +1,33 @@
+name: Debug Toolkit
+
+on:
+  push:
+    branches: 
+      - 'test'  # 只在test分支push时触发
+    paths:       # 可选路径过滤
+      - 'src/RyujinxAndroid/**'  # 仅当指定路径文件变化时触发
+
+jobs:
+  git-forensics:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout with Full History
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整git历史
+          show-progress: true
+
+      - name: Git Autopsy
+        run: |
+          echo "===== [时间胶囊] 最近操作记录 ====="
+          git reflog show --all --date=iso
+          
+          echo "===== [完整性验证] 仓库健康检查 =====" 
+          git fsck --full --strict --no-progress
+          
+          echo "===== [存储分析] 对象仓库统计 ====="
+          git count-objects -vH
+          
+          echo "===== [时空差异] 与目标分支对比 ====="
+          git fetch origin test --depth=1  # 确保有对比基准
+          git diff origin/test --name-status --find-renames
