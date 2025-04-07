@@ -48,8 +48,7 @@ jobs:
       - name: Deep clean
         run: |
           rm -rf src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
-          # 移除 -e 参数来清理所有缓存目录
-          git clean -fdx
+          git clean -fdx  # 强制清理所有未跟踪文件
           git submodule deinit -f --all
 
       # ================== [3] .NET环境配置 ==================
@@ -57,7 +56,7 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "${{ env.DOTNET_VERSION }}"
-          cache: false  # 禁用 NuGet 缓存
+          cache: false  # 禁用NuGet缓存
 
       # ================== [4] Android环境安装 ==================
       - name: Install Android CLI Tools
@@ -77,16 +76,12 @@ jobs:
             "cmake;${{ env.CMAKE_VERSION }}" \
             --sdk_root=$ANDROID_SDK_ROOT
 
-      # ================== [5] Java环境配置（禁用缓存）==================
+      # ================== [5] Java环境配置 ==================
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "${{ env.JAVA_VERSION }}"
-          # 完全移除 cache 参数（不配置任何缓存）
-
-      # ================== [6] 移除所有缓存配置步骤 ==================
-      # 已删除 Cache Android SDK 和 Cache NuGet 步骤
 
       # ================== [7] 构建配置 ==================
       - name: Prepare Build Environment
@@ -96,21 +91,21 @@ jobs:
           echo "NDK_PATH=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
           echo "CMAKE_PATH=$ANDROID_SDK_ROOT/cmake/${{ env.CMAKE_VERSION }}/bin" >> $GITHUB_ENV
 
-      # ================== [8] 原生库构建 ==================
+      # ================== [8] 原生库构建（关键修复）==================
       - name: Build Native Libraries
         working-directory: src/LibRyujinx
         env:
           ANDROID_NDK: "${{ env.NDK_PATH }}"
           ANDROID_SDK: "${{ env.ANDROID_SDK_ROOT }}"
         run: |
-          dotnet restore --configfile nuget.config
+          dotnet restore  # ✅ 已移除 --configfile 参数
           dotnet build -c Release \
             -p:RuntimeIdentifier=linux-bionic-arm64 \
             -p:AndroidNdkDirectory=$ANDROID_NDK \
             -p:AndroidSdkDirectory=$ANDROID_SDK \
             -p:TargetFramework=net9.0-android${{ env.PLATFORM_VERSION }}
 
-      # ================== [9] Android应用构建（禁用构建缓存）==================
+      # ================== [9] Android应用构建 ==================
       - name: Build Android APK
         working-directory: src/RyujinxAndroid
         env:
@@ -120,7 +115,6 @@ jobs:
           STORE_PASSWORD: "${{ secrets.STORE_PASSWORD }}"
           KEY_PASSWORD: "${{ secrets.KEY_PASSWORD }}"
         run: |
-          # 添加 --no-build-cache 参数
           ./gradlew assembleRelease \
             --no-build-cache \
             --no-daemon \
