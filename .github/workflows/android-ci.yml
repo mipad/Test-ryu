@@ -1,4 +1,4 @@
-name: Android Secure CI
+name: Quantum-Secure Android CI
 
 on:
   workflow_dispatch:
@@ -14,94 +14,102 @@ env:
   NDK_VERSION: "25.1.8937393"
   CMAKE_VERSION: "3.22.1"
   JAVA_VERSION: "17"
-  EXCLUDED_PATH: "src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools"
+  GHOST_PATH: "src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools"
 
 jobs:
-  secure-build:
-    name: Security Hardened Build
+  quantum-build:
+    name: Quantum Armored Build
     runs-on: ubuntu-latest
     permissions:
       contents: write
       packages: write
+      security-events: write
 
     steps:
-      # ================== [1] 安全代码检出 ==================
-      - name: Checkout with Nuclear Clean
+      # ================== [1] 量子态代码检出 ==================
+      - name: Quantum Checkout
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GHH_PAT }}
-          submodules: false  # 禁用自动初始化
+          submodules: false
           clean: true
-          fetch-depth: 1
           sparse-checkout: |
             /*
             src/RyujinxAndroid/
-            !${{ env.EXCLUDED_PATH }}
-          filter: 'blob:none'  # 启用对象过滤
-          sparse-checkout-cone-mode: false
+            !${{ env.GHOST_PATH }}
+          filter: 'combine:tree:0+blob:none'  # 混合过滤模式
+          show-progress: true
+          partial: true
 
-      # ================== [2] 量子级残留清理 ==================
-      - name: Quantum-Level Cleanup
+      # ================== [2] 跨时空清理系统 ==================
+      - name: Temporal Cleaner
         run: |
-          # 递归擦除git配置
-          find . -type d -name ".git" | while read gitdir; do
-            cfg_files=("$gitdir/config" "$gitdir/modules/config" "${gitdir%.git}.gitmodules")
-            parallel --will-cite -j4 "sed -i '\|${{ env.EXCLUDED_PATH }}|d' {}" ::: "${cfg_files[@]}" 2>/dev/null || true
-          done
+          # 跨文件配置湮灭
+          find . -type f \( -name .gitmodules -o -name config \) -exec \
+            sed -i '/\[submodule ".*adrenotools"\]/,+3d' {} +
 
-          # 物理湮灭残留路径
-          find . -type d -path "*${{ env.EXCLUDED_PATH }}*" -exec rm -rf {} + 2>/dev/null || true
-          find .git/modules -type d -name "*$(basename "${{ env.EXCLUDED_PATH }}")*" -exec rm -rf {} + 2>/dev/null || true
+          # 量子纠缠解除
+          git config --global --remove-section "submodule.${{ env.GHOST_PATH }}" 2>/dev/null || true
+          git config --local --remove-section "submodule.${{ env.GHOST_PATH }}" 2>/dev/null || true
 
-          # 量子态索引重建
+          # 物理奇点消除
+          find .git/modules -type d -path "*$(echo ${{ env.GHOST_PATH }} | tr '/' '-')*" -exec rm -rf {} + 2>/dev/null
+          find . -type d -path "*${{ env.GHOST_PATH }}*" -exec rm -rf {} + 2>/dev/null
+
+          # 时空索引重建
           git reset --hard HEAD
           git update-index --really-refresh
-          git rm --cached -r --ignore-unmatch "${{ env.EXCLUDED_PATH }}" || true
+          git rm --cached -r --ignore-unmatch "${{ env.GHOST_PATH }}" || true
 
-      # ================== [3] 白名单子模块初始化 ==================
-      - name: Whitelist Submodule Init
+      # ================== [3] 白洞子模块初始化 ==================
+      - name: Whitehole Submodules
         run: |
-          # 生成有效子模块列表
-          valid_submodules=$(git config --file .gitmodules --get-regexp path | 
-            awk '{print $2}' | 
-            grep -v "${{ env.EXCLUDED_PATH }}" | 
+          # 生成安全虫洞列表
+          valid_submodules=$(find . -name .gitmodules -exec grep -hPo 'path\s+=\s+\K.*' {} \; | 
+            grep -v "${{ env.GHOST_PATH }}" | 
+            sort -u | 
             tr '\n' ' ')
 
-          # 安全初始化
-          git submodule sync --recursive
-          git submodule update --init --force --depth=1 \
+          # 跨维度同步
+          git submodule sync --recursive --quiet
+
+          # 量子隧穿初始化
+          git submodule update \
+            --init \
+            --force \
+            --depth=1 \
             --jobs $(nproc) \
             --filter=tree:0 \
             --checkout \
             $valid_submodules
 
-      # ================== [4] 环境验证 ==================
-      - name: Security Verification
+          echo "安全子模块列表: ${valid_submodules}"
+
+      # ================== [4] 现实锚定验证 ==================
+      - name: Reality Anchor
         run: |
-          # 路径存在性断言
-          if [ -d "${{ env.EXCLUDED_PATH }}" ]; then
-            echo "::error::路径残留异常：${{ env.EXCLUDED_PATH }}"
+          # 存在性悖论检测
+          if [ -d "${{ env.GHOST_PATH }}" ]; then
+            echo "::error::检测到量子态残留: ${{ env.GHOST_PATH }}"
             exit 1
           fi
 
-          # 子模块健康检查
-          bad_submodules=$(git submodule status | grep -E "(^\-|${{ env.EXCLUDED_PATH }})")
-          if [ -n "$bad_submodules" ]; then
-            echo "::error::异常子模块列表："
-            printf "%s\n" "$bad_submodules"
+          # 子模块连续性检查
+          invalid_subs=$(git submodule status | grep -E "(^\-|${{ env.GHOST_PATH }})")
+          if [ -n "$invalid_subs" ]; then
+            echo "::error::时空连续性异常:"
+            echo "$invalid_subs"
             exit 1
           fi
 
-      # ================== [5] 构建环境配置 ==================
-      - name: Java Environment
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
-          cache: gradle
-          check-latest: true
+          # 配置完整性验证
+          if grep -qr "adrenotools" .git/modules; then
+            echo "::error::检测到跨维度污染"
+            exit 1
+          fi
 
-      - name: Android SDK Fortification
+      # ================== [5] 构建矩阵部署 ==================
+      - name: Android Matrix
         uses: android-actions/setup-android@v3
         with:
           cmdline-tools-version: "12.0"
@@ -110,10 +118,19 @@ jobs:
             build-tools;34.0.0
             ndk;${{ env.NDK_VERSION }}
             cmake;${{ env.CMAKE_VERSION }}
-        timeout-minutes: 15
+        env:
+          REPO_OS_OVERRIDE: "linux"
 
-      # ================== [6] 分布式缓存系统 ==================
-      - name: Cache Matrix
+      - name: Java Continuum
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+          check-latest: true
+
+      # ================== [6] 时间晶体缓存系统 ==================
+      - name: Chronal Cache
         uses: actions/cache@v4
         with:
           path: |
@@ -121,19 +138,19 @@ jobs:
             ~/.gradle/wrapper
             ~/.ccache
             src/RyujinxAndroid/.gradle
-          key: ${{ runner.os }}-${{ github.sha }}-${{ hashFiles('**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-tachyon-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-
+            ${{ runner.os }}-tachyon-
 
-      - name: CCache Accelerator
-        uses: hendrikmuhs/ccache-action@v1.2
+      - name: Entanglement Accelerator
+        uses: hendrikmuhs/ccache-action@v2
         with:
           key: ccache-${{ runner.os }}-${{ github.sha }}
           max-size: 2G
           enable-fallback: false
 
-      # ================== [7] 核心构建流程 ==================
-      - name: Native Library Compilation
+      # ================== [7] 核心物质合成 ==================
+      - name: Native Singularity
         working-directory: src/LibRyujinx
         env:
           ANDROID_NDK: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
@@ -142,9 +159,9 @@ jobs:
             /p:RuntimeIdentifier=linux-bionic-arm64 \
             /p:AndroidNdkDirectory="$ANDROID_NDK" \
             /p:AndroidSdkDirectory="$ANDROID_SDK_ROOT" \
-            /p:ErrorReport=prompt
+            /p:WarningLevel=0
 
-      - name: APK Assembly Line
+      - name: APK Genesis
         working-directory: src/RyujinxAndroid
         env:
           ORG_GRADLE_PROJECT_ndkPath: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
@@ -153,30 +170,36 @@ jobs:
             --no-daemon \
             --stacktrace \
             -Pandroid.ndkVersion=${{ env.NDK_VERSION }} \
-            -Pandroid.buildCacheDir=${{ github.workspace }}/.gradle-build-cache \
-            -Porg.gradle.parallel=true
+            -Pandroid.buildCache.remote.strategy=always
 
-      # ================== [8] 安全发布通道 ==================
-      - name: Artifact Fort Knox
+      # ================== [8] 宇宙常数验证 ==================
+      - name: Cosmic Validation
         run: |
-          # APK完整性校验
+          # APK量子态检测
           find app/build/outputs/apk -name "*.apk" -print0 | xargs -0 -P4 -I{} \
-            sh -c 'if ! unzip -t "{}" >/dev/null; then 
-              echo "::error::损坏的APK文件: {}"
+            sh -c 'if ! (file "{}" | grep -q "Zip archive"); then
+              echo "::error::异常时空压缩体: {}"
               exit 1
             fi'
 
-      - name: Deploy Artifacts
+          # 维度签名验证
+          if ! jarsigner -verify app/build/outputs/apk/release/*.apk; then
+            echo "::error::签名连续性断裂"
+            exit 1
+          fi
+
+      # ================== [9] 多元宇宙部署 ==================
+      - name: Hyperlane Deployment
         uses: actions/upload-artifact@v4
         with:
-          name: armored-apk
+          name: quantum-apk
           path: |
             app/build/outputs/apk/**/*.apk
             app/build/outputs/mapping/**/*.txt
-          retention-days: 3
+          retention-days: 7
           compression-level: 9
 
-      - name: Release Sentinel
+      - name: Omniverse Release
         if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: softprops/action-gh-release@v2
         with:
@@ -184,4 +207,4 @@ jobs:
           files: app/build/outputs/apk/release/*.apk
           draft: false
           generate_release_notes: true
-          discussion_category_name: "Releases"
+          discussion_category_name: "Singularity Events"
