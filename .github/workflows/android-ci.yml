@@ -1,88 +1,84 @@
-name: Android CI
+name: Android Build Workflow
 
 on:
-  workflow_call:
+  workflow_dispatch:
   push:
-    branches: [ "test" ]
-    paths-ignore:
-      - 'src/RyujinxAndroid/app/src/main/cpp/libraries/**'
-  pull_request:
     branches: [ "test" ]
 
 env:
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+  CMAKE_VERSION: "3.31.6"
   NDK_VERSION: "25.1.8937393"
-  CMAKE_VERSION: "3.22.1"
-  JAVA_VERSION: "17"
 
 jobs:
-  build:
-    name: Build and Package
+  android-build:
     runs-on: ubuntu-latest
+    
+    # ================== [1] 权限声明 ==================
     permissions:
-      contents: write
-      packages: write
+      contents: write    # 需要写入内容（发布release）
+      packages: write    # 需要上传制品
+      actions: write     # 需要创建工作流产物
+      id-token: write    # 需要OIDC令牌（如果使用云服务认证）
 
     steps:
-      # ================== [1] 代码检出优化 ==================
-      - name: Checkout code
+      # ================== [2] 代码检出（含令牌配置） ==================
+      - name: Checkout code with submodules
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GHH_PAT }}
-          repository: mipad/Test-ryu
-          ref: test
-          submodules: false
-          fetch-depth: 1
+          token: ${{ secrets.GHH_PAT }}  # 必须使用具有repo权限的PAT
+          submodules: recursive
+          fetch-depth: 0
           sparse-checkout: |
             /*
             src/RyujinxAndroid/**
             !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
-          sparse-checkout-cone-mode: false
 
-      # ================== [2] Java环境配置优化 ==================
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: 17
+      # ================== [3] Java环境配置 ==================
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 17
+          cache: 'gradle'
+          server-id: github  # Maven服务器配置
+          server-username: ${{ github.actor }}
+          server-password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Decode Keystore
-      env:
-        KEYSTORE_ENCODED: ${{ secrets.KEYSTORE }}
-      run: | 
-        echo "$KEYSTORE_ENCODED" | base64 --decode > ${{ github.workspace }}/app/ks.jks
+      # ================== [4] 密钥库处理（需要secrets读取权限） ==================
+      - name: Decode Keystore
+        env:
+          KEYSTORE_ENCODED: ${{ secrets.KEYSTORE }}
+        run: |
+          echo "$KEYSTORE_ENCODED" | base64 -d > app/ks.jks
+          chmod 600 app/ks.jks
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+      # ================== [5] Android SDK配置 ==================
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: "latest"
+          packages: |
+            platforms;android-34
+            build-tools;34.0.0
+            ndk;${{ env.NDK_VERSION }}
 
-    - name: Install packages
-      run: yes | sdkmanager "cmake;3.31.6"
-
-      # ================== [7] Android构建强化 ==================
+      # ================== [6] 构建步骤 ==================
       - name: Build APK
-        working-directory: src/RyujinxAndroid
         env:
           ORG_GRADLE_PROJECT_ndkPath: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
-          CCACHE_DIR: /tmp/ccache
-        run: |
-          ./gradlew assembleRelease \
-            --build-cache \
-            --no-daemon \
-            --stacktrace \
-            -Pandroid.ndkPath=$ORG_GRADLE_PROJECT_ndkPath
+        run: ./gradlew assembleRelease
 
-      # ================== [8] 产物处理 ==================
+      # ================== [7] 产物上传（需要contents:write） ==================
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ryujinx-android
-          path: src/RyujinxAndroid/app/build/outputs/apk/**/*.apk
-          retention-days: 7
+          name: android-build
+          path: app/build/outputs/apk/**/*.apk
 
+      # ================== [8] 创建Release（需要contents:write） ==================
       - name: Create Release
-        if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
-          draft: false
+          files: app/build/outputs/apk/release/*.apk
