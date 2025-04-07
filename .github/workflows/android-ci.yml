@@ -13,7 +13,7 @@ env:
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
   NDK_VERSION: "25.1.8937393"
   CMAKE_VERSION: "3.22.1"
-  DOTNET_VERSION: "9.0.101"  # 明确指定.NET版本
+  DOTNET_VERSION: "9.0.101"
   JAVA_VERSION: "17"
 
 jobs:
@@ -25,7 +25,7 @@ jobs:
       packages: write
 
     steps:
-      # ================== [1] 代码检出 ==================
+      # ================== [1] 智能代码检出 ==================
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -39,8 +39,40 @@ jobs:
             /*
             src/RyujinxAndroid/**
             !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
+          sparse-checkout-cone-mode: false
+          persist-credentials: true
 
-      # ================== [2] 环境配置 ================== 
+      # ================== [2] 深度清理残留 ==================
+      - name: Deep clean workspace
+        run: |
+          rm -rf src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools || true
+          git reset --hard HEAD
+          git clean -fdx
+          git submodule deinit -f src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools 2>/dev/null || true
+          git rm --cached src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools 2>/dev/null || true
+          rm -rf .git/modules/src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
+
+      # ================== [3] 项目结构验证 ==================
+      - name: Validate project structure
+        run: |
+          echo "===== 全量目录扫描 ====="
+          tree -L 4 -I '.git'
+          
+          echo "===== 关键路径验证 ====="
+          [ -d "src/RyujinxAndroid" ] || { echo "::error::Android项目根目录缺失"; exit 1; }
+          [ -f "src/RyujinxAndroid/build.gradle" ] || { echo "::error::build.gradle文件未找到"; exit 1; }
+          
+          echo "===== 排除目录深度检测 ====="
+          if find . -type d -path '*/adrenotools' | grep -q .; then
+            echo "::error::检测到残留的子模块目录"
+            exit 1
+          fi
+
+          echo "===== 依赖目录完整性检查 ====="
+          [ -d "src/RyujinxAndroid/app/src/main/cpp/libraries" ] || { echo "::warning::libraries目录不存在"; }
+          [ -d "src/LibRyujinx" ] || { echo "::error::原生库目录缺失"; exit 1; }
+
+      # ================== [4] 环境配置 ================== 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -48,13 +80,12 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: 'gradle'
 
-      # ================== [新增].NET 9.0安装 ==================
+      # ================== [新增] .NET 9.0 配置 ==================
       - name: Setup .NET 9.0.101
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
           cache: true
-          disable-parallel: false  # 启用并行安装
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -67,35 +98,38 @@ jobs:
             ndk;${{ env.NDK_VERSION }}
             cmake;${{ env.CMAKE_VERSION }}
 
-      # ================== [3] 缓存优化 ==================
-      - name: NuGet Cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.nuget/packages
-            **/packages.lock.json
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json') }}
-          restore-keys: |
-            nuget-${{ runner.os }}-
-
+      # ================== [5] 构建加速 ==================
       - name: Configure CCache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
           key: ccache-${{ runner.os }}-${{ github.sha }}
           max-size: 500M
 
-      # ================== [4] 原生库构建 ==================
+      - name: Restore Gradle Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/gradle-wrapper.properties') }}
+
+      # ================== [新增] NuGet缓存 ==================
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.nuget/packages
+            **/packages.lock.json
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json') }}
+
+      # ================== [6] 原生库构建 (更新) ==================
       - name: Build Native Libraries
         working-directory: src/LibRyujinx
         env:
-          DOTNET_ROOT: ${{ env.HOME }}/.dotnet  # 确保路径正确
+          DOTNET_ROOT: ${{ env.HOME }}/.dotnet
           DOTNET_CLI_TELEMETRY_OPTOUT: 1
           ANDROID_NDK: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
         run: |
-          # 验证.NET环境
-          dotnet --info
-          
-          # 使用新版构建参数
           dotnet restore --verbosity minimal \
             --packages ./nuget_packages \
             --configfile nuget.config
@@ -104,20 +138,18 @@ jobs:
             -p:RuntimeIdentifier=linux-bionic-arm64 \
             -p:AndroidSdkDirectory=$ANDROID_SDK_ROOT \
             -p:AndroidNdkDirectory=$ANDROID_NDK \
-            -p:TargetFramework=net9.0-android34 \  # Android特定目标框架
+            -p:TargetFramework=net9.0-android34 \
             -p:AndroidEnableProfiledAot=true \
-            -p:UseSharedCompression=false \
             -p:IlcCompilationMode=partial \
-            --no-self-contained \
             --nologo
 
-      # ================== [5] Android构建 ==================
+      # ================== [7] Android构建 (优化) ==================
       - name: Build Android APK
         working-directory: src/RyujinxAndroid
         env:
           ORG_GRADLE_PROJECT_ndkPath: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
           CCACHE_DIR: /tmp/ccache
-          GRADLE_OPTS: -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=4
+          GRADLE_OPTS: -Dorg.gradle.parallel=true
         run: |
           ./gradlew assembleRelease \
             --build-cache \
@@ -125,7 +157,7 @@ jobs:
             -Pandroid.ndkPath=$ORG_GRADLE_PROJECT_ndkPath \
             -Pandroid.enableJetifier=true
 
-      # ================== [6] 产物处理 ==================
+      # ================== [8] 产物处理 ==================
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
