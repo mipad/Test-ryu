@@ -4,9 +4,6 @@ on:
   workflow_call:
   push:
     branches: [ "test" ]
-    paths:
-      - '.gitmodules'
-      - 'src/RyujinxAndroid/**'
   pull_request:
     branches: [ "test" ]
 
