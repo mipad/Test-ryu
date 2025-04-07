@@ -29,26 +29,42 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GHH_PAT }}
-          repository: mipad/Test-ryu
-          ref: test
-          submodules: false
+          token: ${{ secrets.GHH_PAT }}  # 必须使用自定义 PAT
+          repository: mipad/Test-ryu    # 确认仓库名称正确
+          ref: test                     # 明确指定分支
+          submodules: false             # 禁用子模块拉取
           fetch-depth: 0
           clean: true
           sparse-checkout: |
-            /*               # 包含根目录所有内容
-            !/src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools  # 精确排除路径
-          sparse-checkout-cone-mode: false  # 关键修复：禁用 cone 模式
+            /*
+            !/src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
+            src/RyujinxAndroid/**
+          sparse-checkout-cone-mode: false  # 禁用 cone 模式
           persist-credentials: true
 
-      # ================== 2. 验证检出结果 ==================
-      - name: Validate checkout
+      # ================== 2. 全局 Git 配置 ==================
+      - name: Configure Git security
         run: |
-          echo "===== 目录结构 ====="
-          ls -al
-          echo "===== Android 代码路径 ====="
-          ls -al src/RyujinxAndroid/app/src/main/cpp/libraries/
-          echo "===== 排除目录状态 ====="
+          # 强制使用 HTTPS 协议
+          git config --global url."https://github.com/".insteadOf git@github.com:
+          git config --global url."https://".insteadOf git://
+          
+          # 配置凭证缓存
+          git config --global credential.helper "store --file=/tmp/git-credentials"
+          echo "https://oauth2:${{ secrets.GH_PAT }}@github.com" > /tmp/git-credentials
+
+      # ================== 3. 项目结构验证 ==================
+      - name: Validate project structure
+        run: |
+          echo "===== 完整目录结构 ====="
+          tree -L 3  # 显示三级目录结构
+
+          echo "===== Android 关键路径验证 ====="
+          [ -d "src/RyujinxAndroid" ] || { echo "错误：Android 项目根目录不存在"; exit 1; }
+          [ -f "src/RyujinxAndroid/build.gradle" ] || { echo "错误：未找到 build.gradle"; exit 1; }
+          [ -d "src/RyujinxAndroid/app/src/main/cpp" ] || { echo "错误：C++ 代码目录不存在"; exit 1; }
+
+          echo "===== 排除目录验证 ====="
           if [ -d "src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools" ]; then
             echo "错误：子模块目录未被排除！"
             exit 1
@@ -56,7 +72,7 @@ jobs:
             echo "成功排除 adrenotools 目录"
           fi
 
-      # ================== 3. 构建环境配置 ==================
+      # ================== 4. 构建环境配置 ==================
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -75,7 +91,7 @@ jobs:
             cmake;${{ env.CMAKE_VERSION }}
           accept-android-sdk-licenses: true
 
-      # ================== 4. 构建加速配置 ==================
+      # ================== 5. 构建加速配置 ==================
       - name: CCache configuration
         uses: hendrikmuhs/ccache-action@v1.2
         with:
@@ -93,18 +109,19 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
-      # ================== 5. 原生库构建 ==================
+      # ================== 6. 原生库构建 ==================
       - name: Build Native Libraries
         working-directory: src/LibRyujinx
         env:
           DOTNET_CLI_TELEMETRY_OPTOUT: 1
+          ANDROID_NDK: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
         run: |
           dotnet restore --verbosity minimal
           dotnet build -c Release /p:RuntimeIdentifier=linux-bionic-arm64 \
             /p:AndroidSdkDirectory=$ANDROID_SDK_ROOT \
-            /p:AndroidNdkDirectory=$ANDROID_SDK_ROOT/ndk/$NDK_VERSION
+            /p:AndroidNdkDirectory=$ANDROID_NDK
 
-      # ================== 6. Android应用构建 ==================
+      # ================== 7. Android应用构建 ==================
       - name: Build Android APK
         working-directory: src/RyujinxAndroid
         env:
@@ -118,7 +135,7 @@ jobs:
             -Pandroid.ndkPath=$ORG_GRADLE_PROJECT_ndkPath \
             -Dorg.gradle.caching=true
 
-      # ================== 7. 产物处理 ==================
+      # ================== 8. 产物处理 ==================
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
