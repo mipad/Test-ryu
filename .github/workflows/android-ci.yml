@@ -4,7 +4,7 @@ on:
   workflow_call:
   push:
     branches: [ "test" ]
-    paths-ignore:  # 忽略无关路径变更
+    paths-ignore:
       - 'src/RyujinxAndroid/app/src/main/cpp/libraries/**'
   pull_request:
     branches: [ "test" ]
@@ -29,24 +29,32 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GHH_PAT }}
+          token: ${{ secrets.GH_PAT }}
           repository: mipad/Test-ryu
           ref: test
           submodules: false
           fetch-depth: 0
           clean: true
           sparse-checkout: |
-            **
-            !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
+            /*               # 包含根目录所有内容
+            !/src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools  # 精确排除路径
+          sparse-checkout-cone-mode: false  # 关键修复：禁用 cone 模式
           persist-credentials: true
 
-      # ================== 2. 调试步骤 ==================
+      # ================== 2. 验证检出结果 ==================
       - name: Validate checkout
         run: |
-          echo "当前目录结构:"
+          echo "===== 目录结构 ====="
           ls -al
-          echo "Android代码路径:"
-          ls -al src/RyujinxAndroid/
+          echo "===== Android 代码路径 ====="
+          ls -al src/RyujinxAndroid/app/src/main/cpp/libraries/
+          echo "===== 排除目录状态 ====="
+          if [ -d "src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools" ]; then
+            echo "错误：子模块目录未被排除！"
+            exit 1
+          else
+            echo "成功排除 adrenotools 目录"
+          fi
 
       # ================== 3. 构建环境配置 ==================
       - name: Setup Java
@@ -54,11 +62,12 @@ jobs:
         with:
           distribution: "temurin"
           java-version: ${{ env.JAVA_VERSION }}
+          cache: 'gradle'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          cmdline-tools-version: "latest"
+          cmdline-tools-version: "8.0"
           packages: |
             platforms;android-34
             build-tools;34.0.0
@@ -66,12 +75,13 @@ jobs:
             cmake;${{ env.CMAKE_VERSION }}
           accept-android-sdk-licenses: true
 
-      # ================== 4. 构建优化 ==================
-      - name: Configure CCache
+      # ================== 4. 构建加速配置 ==================
+      - name: CCache configuration
         uses: hendrikmuhs/ccache-action@v1.2
         with:
           key: ccache-${{ runner.os }}
-          maxsize: "500M"
+          max-size: 500M
+          enable-fallback: true
 
       - name: Gradle Cache
         uses: actions/cache@v4
@@ -79,37 +89,45 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
 
-      # ================== 5. 核心编译 ==================
-      - name: Build Native Libs
+      # ================== 5. 原生库构建 ==================
+      - name: Build Native Libraries
         working-directory: src/LibRyujinx
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: 1
         run: |
-          dotnet restore
-          dotnet build -c Release /p:RuntimeIdentifier=linux-bionic-arm64
+          dotnet restore --verbosity minimal
+          dotnet build -c Release /p:RuntimeIdentifier=linux-bionic-arm64 \
+            /p:AndroidSdkDirectory=$ANDROID_SDK_ROOT \
+            /p:AndroidNdkDirectory=$ANDROID_SDK_ROOT/ndk/$NDK_VERSION
 
+      # ================== 6. Android应用构建 ==================
       - name: Build Android APK
         working-directory: src/RyujinxAndroid
         env:
           ORG_GRADLE_PROJECT_ndkPath: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
           CCACHE_DIR: /tmp/ccache
+          GRADLE_OPTS: -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=4
         run: |
           ./gradlew assembleRelease \
-            --stacktrace \
+            --build-cache \
             --no-daemon \
             -Pandroid.ndkPath=$ORG_GRADLE_PROJECT_ndkPath \
-            -Dorg.gradle.workers.max=2 \
             -Dorg.gradle.caching=true
 
-      # ================== 6. 产物处理 ==================
+      # ================== 7. 产物处理 ==================
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ryujinx-android
-          path: src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
+          path: |
+            src/RyujinxAndroid/app/build/outputs/apk/**/*.apk
           retention-days: 7
 
-      - name: Create Release
+      - name: Create GitHub Release
         if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: softprops/action-gh-release@v2
         with:
