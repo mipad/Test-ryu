@@ -4,6 +4,8 @@ on:
   workflow_call:
   push:
     branches: [ "test" ]
+    paths-ignore:  # 忽略无关路径变更
+      - 'src/RyujinxAndroid/app/src/main/cpp/libraries/**'
   pull_request:
     branches: [ "test" ]
 
@@ -19,7 +21,7 @@ jobs:
     name: Build and Package
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # 必须授予写入权限
+      contents: write
       packages: write
 
     steps:
@@ -27,13 +29,24 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GH_PAT }}  # 必须使用自定义 PAT
-          repository: mipad/Test-ryu    # 确认仓库名称正确
-          ref: test                     # 明确指定分支
-          submodules: false             # 禁用子模块拉取
+          token: ${{ secrets.GH_PAT }}
+          repository: mipad/Test-ryu
+          ref: test
+          submodules: false
           fetch-depth: 0
           clean: true
-          
+          sparse-checkout: |
+            **
+            !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
+          persist-credentials: true
+
+      # ================== 2. 调试步骤 ==================
+      - name: Validate checkout
+        run: |
+          echo "当前目录结构:"
+          ls -al
+          echo "Android代码路径:"
+          ls -al src/RyujinxAndroid/
 
       # ================== 3. 构建环境配置 ==================
       - name: Setup Java
@@ -53,7 +66,7 @@ jobs:
             cmake;${{ env.CMAKE_VERSION }}
           accept-android-sdk-licenses: true
 
-      # ================== 4. 构建优化配置 ==================
+      # ================== 4. 构建优化 ==================
       - name: Configure CCache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
@@ -68,7 +81,7 @@ jobs:
             ~/.gradle/wrapper
           key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
 
-      # ================== 5. 核心编译流程 ==================
+      # ================== 5. 核心编译 ==================
       - name: Build Native Libs
         working-directory: src/LibRyujinx
         run: |
