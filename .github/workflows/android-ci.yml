@@ -4,6 +4,9 @@ on:
   workflow_call:
   push:
     branches: [ "test" ]
+    paths:
+      - '.gitmodules'
+      - 'src/RyujinxAndroid/**'
   pull_request:
     branches: [ "test" ]
 
@@ -23,23 +26,29 @@ jobs:
       packages: write
 
     steps:
-      # ------------ 1. 代码检出 ------------
+      # ------------ 1. 代码检出（修复子模块和权限） ------------
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          token: ${{ secrets.GH_PAT }}  # 使用自定义 PAT（需在仓库 Secrets 配置）
           submodules: recursive
-          token: ${{ secrets.GH_PAT }}  # 仅保留 HTTPS 访问令牌
           fetch-depth: 0
+          persist-credentials: true
+          clean: true
+          sparse-checkout-cone-mode: true
 
-      # ------------ 2. 删除 adrenotools 子模块 ------------
+      # ------------ 2. 强制删除问题子模块 ------------
       - name: Remove adrenotools submodule
         run: |
-          # 删除子模块目录（物理移除）
+          # 删除物理目录和 Git 记录
           rm -rf src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
-          # 清理 Git 缓存（避免后续检出冲突）
           git rm --cached src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
+          # 提交变更（避免后续检出冲突）
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git commit -m "Remove adrenotools submodule" || echo "No changes to commit"
 
-      # ------------ 3. 环境设置 ------------
+      # ------------ 3. 环境初始化 ------------
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -51,7 +60,7 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      # ------------ 4. Android 环境配置 ------------
+      # ------------ 4. Android SDK 配置 ------------
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
@@ -63,12 +72,11 @@ jobs:
             cmake;${{ env.CMAKE_VERSION }}
           accept-android-sdk-licenses: true
 
-      # ------------ 5. 强制接受所有 Android 许可证 ------------
       - name: Accept Android Licenses
         run: |
           yes | ${{ env.ANDROID_SDK_ROOT }}/cmdline-tools/latest/bin/sdkmanager --licenses
 
-      # ------------ 6. 缓存配置 ------------
+      # ------------ 5. 缓存加速 ------------
       - name: CCache setup
         uses: hendrikmuhs/ccache-action@v1.2
         with:
@@ -83,7 +91,7 @@ jobs:
             ~/.gradle/wrapper
           key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
 
-      # ------------ 7. 构建前准备 ------------
+      # ------------ 6. 构建前准备 ------------
       - name: Fix permissions
         working-directory: src/RyujinxAndroid
         run: |
@@ -91,7 +99,7 @@ jobs:
           sudo sysctl -w fs.inotify.max_user_watches=524288
           ulimit -n 65536
 
-      # ------------ 8. 构建 LibRyujinx（.NET AOT 编译） ------------
+      # ------------ 7. 核心编译步骤 ------------
       - name: Build LibRyujinx (AOT)
         working-directory: src/LibRyujinx
         run: |
@@ -99,7 +107,6 @@ jobs:
           dotnet build -c Release /p:RuntimeIdentifier=linux-bionic-arm64
           dotnet build -c Release /p:RuntimeIdentifier=ios-arm64
 
-      # ------------ 9. Android 应用构建 ------------
       - name: Build with Gradle
         working-directory: src/RyujinxAndroid
         env:
@@ -113,22 +120,19 @@ jobs:
             -Dorg.gradle.workers.max=2 \
             -Dorg.gradle.caching=true
 
-      # ------------ 10. 产物上传与发布 ------------
+      # ------------ 8. 产物处理 ------------
       - name: Upload APK
-        if: ${{ inputs.uploadbuild || github.event_name != 'workflow_dispatch' }}
         uses: actions/upload-artifact@v4
         with:
           name: ryujinx-android
-          path: |
-            src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
+          path: src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
           retention-days: 7
 
       - name: Create GitHub Release
-        if: ${{ inputs.shouldrelease }}
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.releasetag || github.ref_name }}
-          prerelease: ${{ inputs.releasetype }}
+          tag_name: ${{ github.ref_name }}
           generate_release_notes: true
           files: |
             src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
