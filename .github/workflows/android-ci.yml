@@ -4,6 +4,8 @@ on:
   workflow_call:
   push:
     branches: [ "test" ]
+    paths:
+      - '!src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools/**'  # 忽略子模块路径变更
   pull_request:
     branches: [ "test" ]
 
@@ -19,45 +21,45 @@ jobs:
     name: Build and Package
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write  # 必须授予写入权限
       packages: write
 
     steps:
-      # ------------ 1. 代码检出（修复子模块和权限） ------------
+      # ================== 1. 安全代码检出 ==================
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GH_PAT }}  # 使用自定义 PAT（需在仓库 Secrets 配置）
-          submodules: recursive
+          token: ${{ secrets.GH_PAT }}  # 必须使用自定义 PAT
+          repository: mipad/Test-ryu    # 确认仓库名称正确
+          ref: test                     # 明确指定分支
+          submodules: false             # 禁用子模块拉取
           fetch-depth: 0
-          persist-credentials: true
           clean: true
-          sparse-checkout-cone-mode: true
 
-      # ------------ 2. 强制删除问题子模块 ------------
-      - name: Remove adrenotools submodule
+      # ================== 2. 深度清理子模块 ==================
+      - name: Purge submodule
         run: |
-          # 删除物理目录和 Git 记录
+          # 清理物理文件
           rm -rf src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
-          git rm --cached src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
-          # 提交变更（避免后续检出冲突）
+          
+          # 清理 Git 记录（即使没有.gitmodules）
+          git rm --cached -f src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
+          git config --local --remove-section submodule.src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools 2>/dev/null || true
+          rm -rf .git/modules/src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
+
+          # 提交变更（防止后续检出冲突）
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
-          git commit -m "Remove adrenotools submodule" || echo "No changes to commit"
+          git commit -m "Purge adrenotools submodule [skip ci]" || echo "No changes"
+          git push origin HEAD:${{ github.ref }}
 
-      # ------------ 3. 环境初始化 ------------
+      # ================== 3. 构建环境配置 ==================
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: ${{ env.JAVA_VERSION }}
 
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-
-      # ------------ 4. Android SDK 配置 ------------
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
@@ -69,18 +71,14 @@ jobs:
             cmake;${{ env.CMAKE_VERSION }}
           accept-android-sdk-licenses: true
 
-      - name: Accept Android Licenses
-        run: |
-          yes | ${{ env.ANDROID_SDK_ROOT }}/cmdline-tools/latest/bin/sdkmanager --licenses
-
-      # ------------ 5. 缓存加速 ------------
-      - name: CCache setup
+      # ================== 4. 构建优化配置 ==================
+      - name: Configure CCache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
           key: ccache-${{ runner.os }}
-          maxsize: 500M
+          maxsize: "500M"
 
-      - name: Gradle cache
+      - name: Gradle Cache
         uses: actions/cache@v4
         with:
           path: |
@@ -88,23 +86,15 @@ jobs:
             ~/.gradle/wrapper
           key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
 
-      # ------------ 6. 构建前准备 ------------
-      - name: Fix permissions
-        working-directory: src/RyujinxAndroid
-        run: |
-          chmod +x gradlew
-          sudo sysctl -w fs.inotify.max_user_watches=524288
-          ulimit -n 65536
-
-      # ------------ 7. 核心编译步骤 ------------
-      - name: Build LibRyujinx (AOT)
+      # ================== 5. 核心编译流程 ==================
+      - name: Build Native Libs
         working-directory: src/LibRyujinx
         run: |
           dotnet restore
           dotnet build -c Release /p:RuntimeIdentifier=linux-bionic-arm64
           dotnet build -c Release /p:RuntimeIdentifier=ios-arm64
 
-      - name: Build with Gradle
+      - name: Build Android APK
         working-directory: src/RyujinxAndroid
         env:
           ORG_GRADLE_PROJECT_ndkPath: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
@@ -117,15 +107,15 @@ jobs:
             -Dorg.gradle.workers.max=2 \
             -Dorg.gradle.caching=true
 
-      # ------------ 8. 产物处理 ------------
-      - name: Upload APK
+      # ================== 6. 产物处理 ==================
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ryujinx-android
           path: src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
           retention-days: 7
 
-      - name: Create GitHub Release
+      - name: Create Release
         if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: softprops/action-gh-release@v2
         with:
