@@ -1,30 +1,21 @@
 name: Android CI
 
 on:
-  workflow_call:
   push:
     branches: [ "test" ]
-    paths-ignore:
-      - 'src/RyujinxAndroid/app/src/main/cpp/libraries/**'
   pull_request:
     branches: [ "test" ]
 
 env:
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-  NDK_VERSION: "25.1.8937393"
-  CMAKE_VERSION: "3.22.1"
-  DOTNET_VERSION: "9.0.101"
-  JAVA_VERSION: "17"
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=true"
 
 jobs:
   build:
-    name: Build and Package
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      packages: write
-
-    steps:
+steps:
       # ================== [1] 智能代码检出 ==================
       - name: Checkout code
         uses: actions/checkout@v4
@@ -79,88 +70,73 @@ jobs:
           echo "===== 依赖目录完整性检查 ====="
           [ -d "src/RyujinxAndroid/app/src/main/cpp/libraries" ] || { echo "::warning::libraries目录不存在，可能影响构建"; }
           [ -d "src/LibRyujinx" ] || { echo "::error::原生库目录缺失"; exit 1; }
-
-      # ================== [4] 环境配置 ================== 
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      # ------------ 3. 安装 .NET 9.0 SDK ------------
+      - name: Install .NET 9.0 SDK
+        uses: actions/setup-dotnet@v3
         with:
-          distribution: "temurin"
-          java-version: ${{ env.JAVA_VERSION }}
-          cache: 'gradle'
+          dotnet-version: "9.0.100-preview.6.24328.19"
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: "8.0"
-          disable-confirmation: true
-          packages: |
-            platforms;android-34
-            build-tools;34.0.0
-            ndk;${{ env.NDK_VERSION }}
-            cmake;${{ env.CMAKE_VERSION }}
-          
-      # ================== [5] 构建加速 ==================
-      - name: Configure CCache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: ccache-${{ runner.os }}-${{ github.sha }}
-          max-size: 500M
-          enable-fallback: true
+      # ------------ 4. 安装 Android 命令行工具 ------------
+      - name: Install Android Command Line Tools
+        run: |
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+          unzip -q commandlinetools-linux-9477386_latest.zip -d $ANDROID_SDK_ROOT/cmdline-tools
+          mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
+        env:
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 
-      - name: Restore Gradle Cache
-        uses: actions/cache@v4
+      # ------------ 5. 安装 Android 组件 ------------
+      - name: Setup Android Components
+        run: |
+          yes | sdkmanager --licenses --sdk_root=$ANDROID_SDK_ROOT
+          sdkmanager "platforms;android-34" --sdk_root=$ANDROID_SDK_ROOT
+          sdkmanager "build-tools;34.0.0" --sdk_root=$ANDROID_SDK_ROOT
+          sdkmanager "ndk;25.1.8937393" --channel=3 --sdk_root=$ANDROID_SDK_ROOT
+      # ------------ 6. 安装 JDK 17 ------------
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: 17
+          distribution: temurin
+
+      # ------------ 7. 缓存优化 ------------
+      - name: Cache Android SDK
+        uses: actions/cache@v3
         with:
           path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/gradle-wrapper.properties', '**/build.gradle') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-
+            ~/.android/cache
+            ${{ env.ANDROID_SDK_ROOT }}
+          key: ${{ runner.os }}-android-sdk-${{ hashFiles('src/RyujinxAndroid/gradle/wrapper/gradle-wrapper.properties') }}
 
-      # ================== [6] 原生库构建 ==================
-      - name: Build Native Libraries
-        working-directory: src/LibRyujinx
-        env:
-          DOTNET_CLI_TELEMETRY_OPTOUT: 1
-          ANDROID_NDK: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
+      # ------------ 8. 项目配置 ------------
+      - name: Prepare Project
+        working-directory: src/RyujinxAndroid  # 修正后的路径
         run: |
-          dotnet restore --verbosity minimal
-          dotnet build -c Release /p:RuntimeIdentifier=linux-bionic-arm64 \
-            /p:AndroidSdkDirectory=$ANDROID_SDK_ROOT \
-            /p:AndroidNdkDirectory=$ANDROID_NDK \
-            /warnAsError:true
-
-      # ================== [7] Android构建 ==================
-      - name: Build Android APK
+          chmod +x gradlew
+          echo "LLVM_PATH=$ANDROID_SDK_ROOT/ndk/25.1.8937393/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_ENV
+      # ------------ 9. 构建 Release APK ------------
+      - name: Build Release APK
         working-directory: src/RyujinxAndroid
+        run: ./gradlew assembleRelease
         env:
-          ORG_GRADLE_PROJECT_ndkPath: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
-          CCACHE_DIR: /tmp/ccache
-          GRADLE_OPTS: -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=4 -Dorg.gradle.caching=true
-        run: |
-          ./gradlew assembleRelease \
-            --build-cache \
-            --no-daemon \
-            --scan \
-            -Pandroid.ndkPath=$ORG_GRADLE_PROJECT_ndkPath
+          ORG_RYUJINX_LLVM_TOOLCHAIN_PATH: ${{ env.LLVM_PATH }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      # ================== [8] 产物处理 ==================
-      - name: Upload APK Artifact
+      # ------------ 10. 上传产物 ------------
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ryujinx-android
-          path: |
-            src/RyujinxAndroid/app/build/outputs/apk/**/*.apk
-          retention-days: 7
-          if-no-files-found: error
+          name: release-apk
+          path: src/RyujinxAndroid/app/build/outputs/apk/release/app-release.apk
 
       - name: Create GitHub Release
-        if: ${{ github.event_name == 'workflow_dispatch' }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref_name }}
-          generate_release_notes: true
-          files: |
-            src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
-          draft: false
-          prerelease: ${{ contains(github.ref, 'beta') }}
+          files: src/RyujinxAndroid/app/build/outputs/apk/release/app-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+Editing Test-ryu/.github/workflows/android-ci.yml at test · mipad/Test-ryu
