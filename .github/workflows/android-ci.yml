@@ -25,7 +25,6 @@ jobs:
       packages: write
 
     steps:
-      # ================== [1] 代码检出 ==================
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -40,7 +39,6 @@ jobs:
             !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
           sparse-checkout-cone-mode: false
 
-      # ================== [2] 环境配置 ==================
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -58,19 +56,10 @@ jobs:
             ndk;${{ env.NDK_VERSION }}
             cmake;${{ env.CMAKE_VERSION }}
 
-      # ================== [3] 缓存优化 ==================
-      - name: Gradle Cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            ~/.android/build-cache
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-
+      - name: Verify Android Packages
+        run: |
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --list_installed
 
-      # ================== [4] 原生库构建 ==================
       - name: Build Native Libraries
         working-directory: src/LibRyujinx
         env:
@@ -83,7 +72,6 @@ jobs:
             /p:AndroidNdkDirectory=$ANDROID_NDK \
             /warnAsError:true
 
-      # ================== [5] Android构建 ==================
       - name: Build Android APK
         working-directory: src/RyujinxAndroid
         env:
@@ -95,7 +83,6 @@ jobs:
             --no-daemon \
             -Pandroid.ndkPath=$ORG_GRADLE_PROJECT_ndkPath
 
-      # ================== [6] 产物处理 ==================
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
