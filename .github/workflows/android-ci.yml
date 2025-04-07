@@ -26,12 +26,31 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          path: src/RyujinxAndroid  # 指定子目录检出
+          token: ${{ secrets.GHH_PAT }}
+          repository: mipad/Test-ryu
+          ref: test
+          submodules: false
+          fetch-depth: 1
           sparse-checkout: |
             /*
             src/RyujinxAndroid/**
             !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
+          sparse-checkout-cone-mode: false
+          clean: true
 
+      # ================== [2] 环境清理 ==================
+      - name: Deep clean
+        run: |
+          sudo rm -rf $ANDROID_SDK_ROOT/*
+          rm -rf src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
+          git clean -fdx
+          git submodule deinit -f --all
+      # ================== [3] .NET环境配置 ==================
+      - name: Setup .NET 9.0.101
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "${{ env.DOTNET_VERSION }}"
+          cache: false
       # ================== [2] JDK环境配置 ==================
       - name: Setup JDK 17
         uses: actions/setup-java@v4
