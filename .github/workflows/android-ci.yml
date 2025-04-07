@@ -94,9 +94,9 @@ jobs:
           # 配置镜像源（阿里云+清华双备份）
           mkdir -p $ANDROID_SDK_ROOT/cmdline-tools/latest/repos
           cat << EOF > $ANDROID_SDK_ROOT/cmdline-tools/latest/repos.cfg
-repo.url=https://mirrors.aliyun.com/git-repo
-repo.url.alternatives=^https://\\\\.*\\\\.google\\\\.com/=https://mirrors.tuna.tsinghua.edu.cn/git/git-repo
-EOF
+          repo.url=https://mirrors.aliyun.com/git-repo
+          repo.url.alternatives=^https://\\\\.*\\\\.google\\\\.com/=https://mirrors.tuna.tsinghua.edu.cn/git/git-repo
+          EOF
 
           # 带重试机制的安装函数
           function install_with_retry {
