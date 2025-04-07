@@ -1,7 +1,6 @@
 name: Android CI
 
 on:
-  workflow_call:
   push:
     branches: [ "test" ]
     paths-ignore:
@@ -13,206 +12,46 @@ env:
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
   NDK_VERSION: "25.2.9519653"
   CMAKE_VERSION: "3.22.1"
-  DOTNET_VERSION: "9.0.101"
   JAVA_VERSION: "17"
-  ANDROID_CMD_TOOLS_VERSION: "10406996"
   BUILD_TOOLS_VERSION: "34.0.0"
-  PLATFORM_VERSION: "34"
 
 jobs:
   build:
-    name: Build and Package
+    name: Build APK
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: write
 
     steps:
-      # ================== [1] 代码检出 ==================
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GHH_PAT }}
-          repository: mipad/Test-ryu
-          ref: test
-          submodules: false
-          fetch-depth: 1
-          sparse-checkout: |
-            /*
-            src/RyujinxAndroid/**
-            !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
-          clean: true
+          submodules: recursive
 
-      # ================== [2] 环境清理 ==================
-      - name: Deep clean
-        run: |
-          rm -rf $ANDROID_SDK_ROOT/*
-          git clean -fdx -e local.properties
-
-      # ================== [3] .NET环境配置 ==================
-      - name: Setup .NET 9.0.101
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "${{ env.DOTNET_VERSION }}"
-
-      # ================== [4] Android CLI 工具安装 ==================
-      - name: Install Android CLI Tools
-        run: |
-          # 多镜像源下载策略
-          declare -A MIRRORS=(
-            ["ghproxy"]="https://ghproxy.com/https://github.com/android/commandlinetools/archive/refs/tags/cmdline-tools-${ANDROID_CMD_TOOLS_VERSION}.zip"
-            ["tencent"]="https://mirrors.cloud.tencent.com/android/repository/commandlinetools-linux-${ANDROID_CMD_TOOLS_VERSION}_latest.zip"
-            ["tsinghua"]="https://mirrors.tuna.tsinghua.edu.cn/android/repository/commandlinetools-linux-${ANDROID_CMD_TOOLS_VERSION}_latest.zip"
-            ["google"]="https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_CMD_TOOLS_VERSION}_latest.zip"
-          )
-
-          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
-          
-          for key in "${!MIRRORS[@]}"; do
-            echo "⇩ 正在尝试从 $key 镜像下载..."
-            if wget -q --tries=2 --timeout=30 --retry-connrefused "${MIRRORS[$key]}" -O cmdline-tools.zip; then
-              if [ $(stat -c%s cmdline-tools.zip) -gt 100000000 ] && unzip -tq cmdline-tools.zip; then
-                echo "✓ $key 镜像下载成功"
-                break
-              else
-                echo "⚠ 文件校验失败，尝试下一个镜像..."
-                rm -f cmdline-tools.zip
-              fi
-            fi
-          done
-
-          if [ ! -f cmdline-tools.zip ]; then
-            echo "❌ 所有镜像下载失败"
-            exit 1
-          fi
-
-          # 智能解压处理
-          unzip -q -o cmdline-tools.zip -d $ANDROID_SDK_ROOT/cmdline-tools
-          find $ANDROID_SDK_ROOT/cmdline-tools -name cmdline-tools -exec mv {} $ANDROID_SDK_ROOT/cmdline-tools/latest \; || true
-          
-          # 路径验证
-          if [ ! -d "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" ]; then
-            echo "❌ 目录结构异常，实际内容："
-            tree -L 3 $ANDROID_SDK_ROOT/cmdline-tools
-            exit 1
-          fi
-          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
-
-      # ================== [5] Android组件安装 ==================
-      - name: Install Android Components
-        run: |
-          # 动态镜像源配置
-          cat > ~/.android/repositories.cfg << EOF
-          disabled=0
-          enable=1
-          count=3
-          name0=Tencent
-          url0=https://mirrors.cloud.tencent.com/android/repository/
-          name1=TUNA
-          url1=https://mirrors.tuna.tsinghua.edu.cn/android/repository/
-          name2=USTC
-          url2=https://mirrors.ustc.edu.cn/android/repository/
-          EOF
-
-          components=(
-            "platforms;android-$PLATFORM_VERSION"
-            "build-tools;$BUILD_TOOLS_VERSION"
-            "ndk;$NDK_VERSION"
-            "cmake;$CMAKE_VERSION"
-          )
-
-          for component in "${components[@]}"; do
-            retries=0
-            until [ $retries -ge 3 ]; do
-              if $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
-                --install "$component" \
-                --sdk_root=$ANDROID_SDK_ROOT \
-                --verbose \
-                --no_https \
-                --proxy=http \
-                --proxy_host=mirrors.aliyun.com \
-                --proxy_port=80; then
-                break
-              fi
-              ((retries++))
-              sleep $((retries * 10))
-              echo "⚠ 第 $retries 次重试安装 $component"
-            done
-          done
-
-      # ================== [6] .NET工作负载配置 ==================
-      - name: Install .NET Android Workload
-        run: |
-          # 多NuGet源配置
-          dotnet nuget add source https://nuget.cdn.example.com/v3/index.json -n mirror1
-          dotnet nuget add source https://mirrors.cloud.tencent.com/nuget/ -n mirror2
-          
-          dotnet workload install android \
-            --skip-manifest-update \
-            --source https://nuget.cdn.example.com/v3/index.json \
-            --source https://mirrors.cloud.tencent.com/nuget/ \
-            --verbosity detailed
-
-          if ! dotnet workload list | grep -q "android"; then
-            echo "❌ 工作负载安装失败，详细日志："
-            find /tmp -name '*.binlog' -exec cat {} \;
-            exit 1
-          fi
-
-      # ================== [7] Java环境配置 ==================
-      - name: Setup Java 17
+      - name: Setup JDK
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
 
-      # ================== [8] 构建环境准备 ==================
-      - name: Prepare Build Environment
-        working-directory: src/RyujinxAndroid
-        run: |
-          chmod +x gradlew
-          echo "NDK_PATH=$ANDROID_SDK_ROOT/ndk/$NDK_VERSION" >> $GITHUB_ENV
-          echo "CMAKE_PATH=$ANDROID_SDK_ROOT/cmake/$CMAKE_VERSION/bin" >> $GITHUB_ENV
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          ndk-version: ${{ env.NDK_VERSION }}
+          cmake-version: ${{ env.CMAKE_VERSION }}
 
-      # ================== [9] 原生库构建 ==================
-      - name: Build Native Libraries
-        working-directory: src/LibRyujinx
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@v3
         env:
-          ANDROID_NDK: ${{ env.NDK_PATH }}
-          ANDROID_SDK: ${{ env.ANDROID_SDK_ROOT }}
-        run: |
-          dotnet build -c Release \
-            -p:AndroidNdkDirectory=$ANDROID_NDK \
-            -p:AndroidSdkDirectory=$ANDROID_SDK \
-            -p:TargetFramework=net9.0-android$PLATFORM_VERSION \
-            -p:AndroidSupportedAbis=arm64-v8a \
-            -p:AndroidEnableProfiledAot=true
+          ORG_GRADLE_PROJECT_ndkPath: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
+        with:
+          arguments: |
+            :app:assembleRelease
+            -Pandroid.buildToolsVersion=${{ env.BUILD_TOOLS_VERSION }}
+            -Porg.gradle.parallel=true
+            -Porg.gradle.daemon=false
 
-      # ================== [10] APK构建 ==================
-      - name: Build Android APK
-        working-directory: src/RyujinxAndroid
-        env:
-          ORG_GRADLE_PROJECT_ndkPath: ${{ env.NDK_PATH }}
-          ORG_GRADLE_PROJECT_cmakePath: ${{ env.CMAKE_PATH }}
-        run: |
-          ./gradlew assembleRelease \
-            --no-build-cache \
-            --no-daemon \
-            -Pandroid.buildToolsVersion="$BUILD_TOOLS_VERSION" \
-            -Pandroid.enableJetifier=true
-
-      # ================== [11] 产物处理 ==================
-      - name: Upload APK Artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ryujinx-apk
-          path: src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
-          retention-days: 7
-
-      - name: Create Release
-        if: ${{ github.event_name == 'workflow_dispatch' }}
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            src/RyujinxAndroid/app/build/outputs/apk/**/*.apk
-            src/RyujinxAndroid/app/build/outputs/mapping/**/mapping.txt
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 3
