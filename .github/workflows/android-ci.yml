@@ -4,8 +4,6 @@ on:
   workflow_call:
   push:
     branches: [ "test" ]
-    paths:
-      - '!src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools/**'  # 忽略子模块路径变更
   pull_request:
     branches: [ "test" ]
 
@@ -35,23 +33,7 @@ jobs:
           submodules: false             # 禁用子模块拉取
           fetch-depth: 0
           clean: true
-
-      # ================== 2. 深度清理子模块 ==================
-      - name: Purge submodule
-        run: |
-          # 清理物理文件
-          rm -rf src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
           
-          # 清理 Git 记录（即使没有.gitmodules）
-          git rm --cached -f src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
-          git config --local --remove-section submodule.src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools 2>/dev/null || true
-          rm -rf .git/modules/src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
-
-          # 提交变更（防止后续检出冲突）
-          git config --global user.email "actions@github.com"
-          git config --global user.name "GitHub Actions"
-          git commit -m "Purge adrenotools submodule [skip ci]" || echo "No changes"
-          git push origin HEAD:${{ github.ref }}
 
       # ================== 3. 构建环境配置 ==================
       - name: Setup Java
@@ -92,7 +74,6 @@ jobs:
         run: |
           dotnet restore
           dotnet build -c Release /p:RuntimeIdentifier=linux-bionic-arm64
-          dotnet build -c Release /p:RuntimeIdentifier=ios-arm64
 
       - name: Build Android APK
         working-directory: src/RyujinxAndroid
