@@ -25,6 +25,7 @@ jobs:
       packages: write
 
     steps:
+      # ================== [1] 代码检出优化 ==================
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -39,13 +40,17 @@ jobs:
             !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
           sparse-checkout-cone-mode: false
 
+      # ================== [2] Java环境配置优化 ==================
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: ${{ env.JAVA_VERSION }}
           cache: 'gradle'
+          check-latest: true  # 确保获取最新补丁版本
+          overwrite-settings: false  # 避免覆盖必要配置
 
+      # ================== [3] Android SDK安装修复 ==================
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
@@ -55,11 +60,32 @@ jobs:
             build-tools;34.0.0
             ndk;${{ env.NDK_VERSION }}
             cmake;${{ env.CMAKE_VERSION }}
+        env:
+          REPO_OS_OVERRIDE: linux  # 强制指定Linux平台
 
-      - name: Verify Android Packages
+      # ================== [4] 增强缓存配置 ==================
+      - name: Gradle Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.android/build-cache
+            src/RyujinxAndroid/.gradle
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/gradle-wrapper.properties', '**/build.gradle') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      # ================== [5] SDK验证步骤 ==================
+      - name: Verify Android Installation
         run: |
+          echo "Installed packages:"
           $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --list_installed
+          
+          echo "Checking NDK path:"
+          ls -l $ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}
 
+      # ================== [6] 原生库构建 ==================
       - name: Build Native Libraries
         working-directory: src/LibRyujinx
         env:
@@ -72,6 +98,7 @@ jobs:
             /p:AndroidNdkDirectory=$ANDROID_NDK \
             /warnAsError:true
 
+      # ================== [7] Android构建优化 ==================
       - name: Build Android APK
         working-directory: src/RyujinxAndroid
         env:
@@ -81,8 +108,10 @@ jobs:
           ./gradlew assembleRelease \
             --build-cache \
             --no-daemon \
+            --stacktrace \
             -Pandroid.ndkPath=$ORG_GRADLE_PROJECT_ndkPath
 
+      # ================== [8] 产物处理 ==================
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
