@@ -108,6 +108,9 @@ tasks.register('compileLibRyujinx', Exec) {
             "-p:DisableUnsupportedError=true",
             "-p:PublishAotUsingRuntimePack=true",
             "-p:StripSymbols=${stripSymbols}",
+            // 新增关键参数
+            "-p:AllowUnsafeBlocks=true",   // 强制启用不安全代码
+            "--force",                    // 强制清理旧构建
             "--artifacts-path", buildDir
 
     args additionalArgs.split(" ")
