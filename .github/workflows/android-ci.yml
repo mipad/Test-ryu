@@ -10,10 +10,11 @@ on:
 
 env:
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+  GRADLE_USER_HOME: ${{ github.workspace }}/src/RyujinxAndroid/.gradle
   NDK_VERSION: "25.2.9519653"
   CMAKE_VERSION: "3.22.1"
-  JAVA_VERSION: "17"
   BUILD_TOOLS_VERSION: "34.0.0"
+  JAVA_VERSION: "17"
 
 jobs:
   build:
@@ -21,37 +22,58 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # ================== [1] 代码检出 ==================
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: false
+          path: src/RyujinxAndroid  # 指定子目录检出
+          sparse-checkout: |
+            /*
+            src/RyujinxAndroid/**
+            !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
 
-      - name: Setup JDK
+      # ================== [2] JDK环境配置 ==================
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
 
+      # ================== [3] Android环境配置 ==================
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
+          sdk-path: ${{ env.ANDROID_SDK_ROOT }}
           ndk-version: ${{ env.NDK_VERSION }}
           cmake-version: ${{ env.CMAKE_VERSION }}
+          build-tools-version: ${{ env.BUILD_TOOLS_VERSION }}
 
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v3
-        env:
-          ORG_GRADLE_PROJECT_ndkPath: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
+      # ================== [4] 构建缓存配置 ==================
+      - name: Cache Gradle
+        uses: actions/cache@v4
         with:
-          arguments: |
-            :app:assembleRelease
-            -Pandroid.buildToolsVersion=${{ env.BUILD_TOOLS_VERSION }}
-            -Porg.gradle.parallel=true
-            -Porg.gradle.daemon=false
+          path: |
+            ${{ env.GRADLE_USER_HOME }}
+            ~/.android/build-cache
+          key: ${{ runner.os }}-gradle-${{ hashFiles('src/RyujinxAndroid/**/*.gradle') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
+      # ================== [5] 构建执行 ==================
+      - name: Build with Gradle
+        working-directory: src/RyujinxAndroid  # 关键路径配置
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease \
+            -Pandroid.buildToolsVersion=${{ env.BUILD_TOOLS_VERSION }} \
+            -Porg.gradle.parallel=true \
+            -Porg.gradle.daemon=false \
+            --no-build-cache
+
+      # ================== [6] 产物上传 ==================
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ryujinx-apk
-          path: app/build/outputs/apk/release/*.apk
+          path: src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
           retention-days: 3
