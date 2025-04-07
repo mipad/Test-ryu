@@ -16,8 +16,8 @@ env:
   DOTNET_VERSION: "9.0.101"
   JAVA_VERSION: "17"
   ANDROID_CMD_TOOLS_VERSION: "9477386"
-  BUILD_TOOLS_VERSION: "35.0.0"  # 回退到稳定版本
-  PLATFORM_VERSION: "35"         # 保持与构建工具版本一致
+  BUILD_TOOLS_VERSION: "34.0.0"  # 回退到稳定版本
+  PLATFORM_VERSION: "34"         # 保持与构建工具版本一致
 
 jobs:
   build:
