@@ -44,11 +44,11 @@ jobs:
           sparse-checkout-cone-mode: false
           clean: true
 
-      # ================== [2] 环境清理（强化清理）==================
+      # ================== [2] 环境清理 ==================
       - name: Deep clean
         run: |
           rm -rf src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
-          git clean -fdx  # 强制清理所有未跟踪文件
+          git clean -fdx
           git submodule deinit -f --all
 
       # ================== [3] .NET环境配置 ==================
@@ -56,7 +56,7 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "${{ env.DOTNET_VERSION }}"
-          cache: false  # 禁用NuGet缓存
+          cache: false
 
       # ================== [4] Android环境安装 ==================
       - name: Install Android CLI Tools
@@ -76,6 +76,14 @@ jobs:
             "cmake;${{ env.CMAKE_VERSION }}" \
             --sdk_root=$ANDROID_SDK_ROOT
 
+      # ================== [关键新增] 安装.NET Android工作负载 ==================
+      - name: Install .NET Android Workload
+        run: |
+          # 安装 Android 工作负载
+          dotnet workload install android --skip-manifest-update
+          # 验证工作负载
+          dotnet workload list | grep "android"
+
       # ================== [5] Java环境配置 ==================
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -90,20 +98,25 @@ jobs:
           chmod +x gradlew
           echo "NDK_PATH=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
           echo "CMAKE_PATH=$ANDROID_SDK_ROOT/cmake/${{ env.CMAKE_VERSION }}/bin" >> $GITHUB_ENV
+          # 显式传递 Android SDK 路径
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
 
-      # ================== [8] 原生库构建（关键修复）==================
+      # ================== [8] 原生库构建 ==================
       - name: Build Native Libraries
         working-directory: src/LibRyujinx
         env:
           ANDROID_NDK: "${{ env.NDK_PATH }}"
           ANDROID_SDK: "${{ env.ANDROID_SDK_ROOT }}"
         run: |
-          dotnet restore  # ✅ 已移除 --configfile 参数
+          # 确保工作负载已加载
+          dotnet workload list
+          # 构建命令
           dotnet build -c Release \
             -p:RuntimeIdentifier=linux-bionic-arm64 \
             -p:AndroidNdkDirectory=$ANDROID_NDK \
             -p:AndroidSdkDirectory=$ANDROID_SDK \
-            -p:TargetFramework=net9.0-android${{ env.PLATFORM_VERSION }}
+            -p:TargetFramework=net9.0-android${{ env.PLATFORM_VERSION }} \
+            -p:AndroidSdkDirectory="$ANDROID_SDK_ROOT"  # 显式指定 SDK 路径
 
       # ================== [9] Android应用构建 ==================
       - name: Build Android APK
