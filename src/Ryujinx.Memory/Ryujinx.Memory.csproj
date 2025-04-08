@@ -2,7 +2,7 @@
   <PropertyGroup>
     <!-- 设置目标框架为.NET 9.0 -->
     <TargetFramework>net9.0</TargetFramework>
-    <Nullable>disable</Nullable>
+    <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <EnablePreviewFeatures>true</EnablePreviewFeatures>
 
