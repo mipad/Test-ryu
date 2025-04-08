@@ -1,3 +1,6 @@
+using Ryujinx.Common.Collections;
+using Ryujinx.Common.DataStructs;
+using Ryujinx.Common.Memory;
 using Ryujinx.Common.Pools;
 using Ryujinx.Memory.Range;
 using System.Collections.Generic;
@@ -43,7 +46,7 @@ namespace Ryujinx.Memory.Tracking
         public MemoryTracking(
             IVirtualMemoryManager memoryManager,
             int pageSize,
-            InvalidAccessHandler invalidAccessHandler = null,
+            InvalidAccessHandler? invalidAccessHandler = null,
             bool singleByteGuestTracking = false)
         {
             _memoryManager = memoryManager;
@@ -64,7 +67,7 @@ namespace Ryujinx.Memory.Tracking
         }
 
         /// <summary>
-        /// Indicate that a virtual region has been mapped, and which physical region it has been mapped to.
+        /// Indicate that a virtual region has been mapped, 和 which physical region it has been mapped to.
         /// Should be called after the mapping is complete.
         /// </summary>
         /// <param name="va">Virtual memory address</param>
