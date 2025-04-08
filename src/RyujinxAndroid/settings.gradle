@@ -1,4 +1,3 @@
-// settings.gradle 
 pluginManagement {
     repositories {
         maven { url 'https://maven.aliyun.com/repository/public/' }
@@ -24,5 +23,18 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "RyujinxAndroid"
-include ':app'
-include ':libryujinx'
+
+// ========== 核心修改：添加子项目声明 ==========
+include(
+    ':app',
+    ':libryujinx',
+    // 添加以下子项目
+    ':Ryujinx.Common',
+    ':Ryujinx.Common.Collections',
+    ':Ryujinx.Common.DataStructs'
+)
+
+// 根据实际路径调整项目目录（示例）
+project(':Ryujinx.Common').projectDir = new File('src/Ryujinx/Common')
+project(':Ryujinx.Common.Collections').projectDir = new File('src/Ryujinx/Common/Collections')
+project(':Ryujinx.Common.DataStructs').projectDir = new File('src/Ryujinx/Common/DataStructs')
