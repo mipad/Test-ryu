@@ -23,6 +23,13 @@
     <SupportedOSPlatforms>windows;linux;macos;android</SupportedOSPlatforms>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="../Ryujinx.Common/Ryujinx.Common.csproj" />
+    <ProjectReference Include="../Ryujinx.SDL2.Common/Ryujinx.SDL2.Common.csproj" />
+    <ProjectReference Include="../Ryujinx.Common.Collections/Ryujinx.Common.Collections.csproj" />
+    <ProjectReference Include="../Ryujinx.Common.DataStructs/Ryujinx.Common.DataStructs.csproj" />
+  </ItemGroup>
+
   <!-- Windows平台专用包 -->
   <ItemGroup Condition="'$(TargetOS)' == 'windows'">
     <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.2.63-beta" />
