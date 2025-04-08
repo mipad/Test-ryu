@@ -62,6 +62,13 @@ ext.publishTree = fileTree(publishDirectory) {
 // Tasks
 
 tasks.register('compileLibRyujinx', Exec) {
+    // ========== 关键修改：添加构建顺序依赖 ==========
+    dependsOn(
+        ':Ryujinx.Common:build',
+        ':Ryujinx.Common.DataStructs:build',
+        ':Ryujinx.Common.Collections:build'
+    )
+
     def projectName = "LibRyujinx"
 
     workingDir "../../${projectName}"
@@ -108,7 +115,6 @@ tasks.register('compileLibRyujinx', Exec) {
             "-p:DisableUnsupportedError=true",
             "-p:PublishAotUsingRuntimePack=true",
             "-p:StripSymbols=${stripSymbols}",
-            // 新增关键参数
             "-p:AllowUnsafeBlocks=true",   // 强制启用不安全代码
             "--force",                    // 强制清理旧构建
             "--artifacts-path", buildDir
