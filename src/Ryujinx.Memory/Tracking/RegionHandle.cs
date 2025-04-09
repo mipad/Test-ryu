@@ -64,24 +64,31 @@ namespace Ryujinx.Memory.Tracking
         private bool _volatile;
 
         internal MemoryPermission RequiredPermission
+{
+    get
+    {
+        // If this is unmapped, allow reprotecting as RW as it can't be dirtied.
+        // This is required for the partial unmap cases where part of the data are still being accessed.
+        if (Unmapped)
         {
-            get
-            {
-                // If this is unmapped, allow reprotecting as RW as it can't be dirtied.
-                // This is required for the partial unmap cases where part of the data are still being accessed.
-                if (Unmapped)
-                {
-                    return MemoryPermission.ReadAndWrite;
-                }
-
-                if (_preAction != null)
-                {
-                    return MemoryPermission.None;
-                }
-
-                return Dirty ? MemoryPermission.ReadAndWrite : MemoryPermission.Read;
-            }
+            return MemoryPermission.ReadAndWrite;
         }
+
+        if (_preAction != null)
+        {
+            return MemoryPermission.None;
+        }
+
+        if (Dirty)
+        {
+            return MemoryPermission.ReadAndWrite;
+        }
+        else
+        {
+            return MemoryPermission.Read;
+        }
+    }
+}
 
         internal RegionSignal PreAction => _preAction;
 
