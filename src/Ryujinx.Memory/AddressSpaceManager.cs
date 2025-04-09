@@ -1,4 +1,4 @@
-using System.Runtime.Versioning;
+using System.Runtime.Versioning; 
 using Ryujinx.Memory.Range;
 using System;
 using System.Collections.Generic;
@@ -10,10 +10,10 @@ namespace Ryujinx.Memory
     [SupportedOSPlatform("windows")]
     [SupportedOSPlatform("linux")]
     [SupportedOSPlatform("macos")]
-    [SupportedOSPlatform("android")] // 添加 Android 支持
+    [SupportedOSPlatform("android")]
     public sealed class AddressSpaceManager : VirtualMemoryManagerBase, IVirtualMemoryManager
     {
-        /// <inheritdoc/>
+       /// <inheritdoc/>
         public bool UsesPrivateAllocations => false;
 
         /// <summary>
@@ -123,7 +123,8 @@ namespace Ryujinx.Memory
         }
 
         /// <inheritdoc/>
-        public IEnumerable<MemoryRange> GetPhysicalRegions(ulong va, ulong size)
+        /// <inheritdoc/>
+public IEnumerable<MemoryRange> GetPhysicalRegions(ulong va, ulong size)
 {
     if (size == 0)
     {
@@ -131,74 +132,75 @@ namespace Ryujinx.Memory
     }
 
     var hostRegions = GetHostRegionsImpl(va, size);
-    if (hostRegions == null || hostRegions.Count == 0)
+
+    if (hostRegions.Count == 0)
     {
-        return Enumerable.Empty<MemoryRange>(); // 返回空集合
+        return Enumerable.Empty<MemoryRange>();
     }
-    
-            var regions = new MemoryRange[hostRegions.Count];
 
-            ulong backingStart = (ulong)_backingMemory.Pointer;
-            ulong backingEnd = backingStart + _backingMemory.Size;
+    var regions = new MemoryRange[hostRegions.Count];
 
-            int count = 0;
+    ulong backingStart = (ulong)_backingMemory.Pointer;
+    ulong backingEnd = backingStart + _backingMemory.Size;
 
-            for (int i = 0; i < regions.Length; i++)
-            {
-                var hostRegion = hostRegions[i];
+    int count = 0;
 
-                if (hostRegion.Address >= backingStart && hostRegion.Address < backingEnd)
-                {
-                    regions[count++] = new MemoryRange(hostRegion.Address - backingStart, hostRegion.Size);
-                }
-            }
+    for (int i = 0; i < regions.Length; i++)
+    {
+        var hostRegion = hostRegions[i];
 
-            if (count != regions.Length)
-            {
-                return new ArraySegment<MemoryRange>(regions, 0, count);
-            }
-
-            return regions;
+        if (hostRegion.Address >= backingStart && hostRegion.Address < backingEnd)
+        {
+            regions[count++] = new MemoryRange(hostRegion.Address - backingStart, hostRegion.Size);
         }
+    }
 
-        private List<HostMemoryRange>? GetHostRegionsImpl(ulong va, ulong size)
+    if (count != regions.Length)
+    {
+        return new ArraySegment<MemoryRange>(regions, 0, count);
+    }
+
+    return regions;
+}
+
+private List<HostMemoryRange> GetHostRegionsImpl(ulong va, ulong size)
 {
     if (!ValidateAddress(va) || !ValidateAddressAndSize(va, size))
     {
-        return new List<HostMemoryRange>(); // 返回空列表
+        return new List<HostMemoryRange>();
     }
 
     int pages = GetPagesCount(va, size, out va);
 
     var regions = new List<HostMemoryRange>();
 
-            nuint regionStart = GetHostAddress(va);
-            ulong regionSize = PageSize;
+    nuint regionStart = GetHostAddress(va);
+    ulong regionSize = PageSize;
 
-            for (int page = 0; page < pages - 1; page++)
+    for (int page = 0; page < pages - 1; page++)
     {
         if (!ValidateAddress(va + PageSize))
         {
-            return new List<HostMemoryRange>(); // 返回空列表
+            return new List<HostMemoryRange>();
         }
-        
-                nuint newHostAddress = GetHostAddress(va + PageSize);
 
-                if (GetHostAddress(va) + PageSize != newHostAddress)
-                {
-                    regions.Add(new HostMemoryRange(regionStart, regionSize));
-                    regionStart = newHostAddress;
-                    regionSize = 0;
-                }
+        nuint newHostAddress = GetHostAddress(va + PageSize);
 
-                va += PageSize;
-                regionSize += PageSize;
-            }
-
+        if (GetHostAddress(va) + PageSize != newHostAddress)
+        {
             regions.Add(new HostMemoryRange(regionStart, regionSize));
-
-            return regions;
+            regionStart = newHostAddress;
+            regionSize = 0;
         }
+
+        va += PageSize;
+        regionSize += PageSize;
+    }
+
+    regions.Add(new HostMemoryRange(regionStart, regionSize));
+
+    return regions;
+}
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override bool IsMapped(ulong va)
