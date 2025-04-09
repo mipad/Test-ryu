@@ -47,13 +47,12 @@ namespace Ryujinx.Memory.Tracking
         public ulong RealSize { get; }
         public ulong RealEndAddress { get; }
 
-        internal IMultiRegionHandle Parent { get; set; }
+        internal IMultiRegionHandle? Parent { get; set; } }
 
-        private event Action OnDirty;
-
+        private event Action OnDirty = delegate { }; 
         private readonly object _preActionLock = new();
-        private RegionSignal _preAction; // Action to perform before a read or write. This will block the memory access.
-        private PreciseRegionSignal _preciseAction; // Action to perform on a precise read or write.
+        private RegionSignal? _preAction; // Action to perform before a read or write. This will block the memory access.
+        private PreciseRegionSignal? _preciseAction; // Action to perform on a precise read or write.
         private readonly List<VirtualRegion> _regions;
         private readonly List<VirtualRegion> _guestRegions;
         private readonly List<VirtualRegion> _allRegions;
@@ -339,7 +338,7 @@ namespace Ryujinx.Memory.Tracking
         }
 
         /// <summary>
-        /// Consume the dirty flag for this handle, and reprotect so it can be set on the next write.
+        /// Consume the dirty flag for this handle, 和 reprotect so it can be set on the next write.
         /// </summary>
         /// <param name="asDirty">True if the handle should be reprotected as dirty, rather than have it cleared</param>
         /// <param name="consecutiveCheck">True if this reprotect is the result of consecutive dirty checks</param>
@@ -389,7 +388,7 @@ namespace Ryujinx.Memory.Tracking
         }
 
         /// <summary>
-        /// Consume the dirty flag for this handle, and reprotect so it can be set on the next write.
+        /// Consume the dirty flag for this handle, 和 reprotect so it can be set on the next write.
         /// </summary>
         /// <param name="asDirty">True if the handle should be reprotected as dirty, rather than have it cleared</param>
         public void Reprotect(bool asDirty = false)
