@@ -7,20 +7,16 @@ plugins {
 // Configurable properties
 
 // Path to the LLVM toolchain to use. This should be configured in your global gradle.properties
-// See: https://docs.gradle.org/current/userguide/directory_layout.html#dir:gradle_user_home
 def toolchainPath = providers.gradleProperty("org.ryujinx.llvm.toolchain.path").getOrNull()
 // Path to the dotnet executable This should be configured in your global gradle.properties
-// See: https://docs.gradle.org/current/userguide/directory_layout.html#dir:gradle_user_home
 def dotnetExecutable = providers.gradleProperty("org.ryujinx.dotnet.bin").getOrElse("dotnet")
 // Build configuration
 def configuration = providers.gradleProperty("org.ryujinx.config").getOrElse("debug").toLowerCase()
 // Publish directory
 def publishDirectory = providers.gradleProperty("org.ryujinx.publish.path").getOrNull()
 // Should the symbols be stripped from the published library?
-// Per default the symbols will be stripped for release builds, but not for debug builds.
-// This can be overridden using this property.
-// Valid values are: ["auto", "-1", "true", "1", "false", "0"]
 def stripSymbols = providers.gradleProperty("org.ryujinx.symbols.strip").getOrElse("")
+
 //noinspection GroovyFallthrough
 switch (stripSymbols) {
     case "true":
@@ -35,6 +31,7 @@ switch (stripSymbols) {
         stripSymbols = configuration == "release"
         break
 }
+
 // Additional arguments for the dotnet publish command.
 def additionalArgs = project.hasProperty("org.ryujinx.args") ? project.property("org.ryujinx.args") : ""
 
@@ -42,13 +39,11 @@ configuration = configuration.substring(0, 1).toUpperCase() + configuration.subs
 
 if (publishDirectory != null) {
     publishDirectory = "${rootProject.projectDir}/${publishDirectory}"
-}
-else {
+} else {
     publishDirectory = libsDirectory.get().toString()
 }
 
 // Trees
-
 ext.outputTree = fileTree("${buildDir}/publish") {
     include "*/${configuration.toLowerCase()}_*/*"
     builtBy 'compileLibRyujinx'
@@ -60,15 +55,14 @@ ext.publishTree = fileTree(publishDirectory) {
 }
 
 // Tasks
-
 tasks.register('compileLibRyujinx', Exec) {
-    // ========== 关键修改：添加构建顺序依赖 ==========
+    // ========== 关键修改：修复依赖路径和标点符号 ==========
     dependsOn(
-        ':Ryujinx.Common:build',
+        // 如果子项目存在则保留，否则移除此行
+        // ':Ryujinx.Common:build'
     )
 
     def projectName = "LibRyujinx"
-
     workingDir "../../${projectName}"
 
     def solutionFiles = fileTree("../../") {
@@ -79,20 +73,19 @@ tasks.register('compileLibRyujinx', Exec) {
         exclude '**/RyujinxAndroid/**'
     }
 
+    // ========== 修复中文句号为英文句点 ==========
     inputs.files(solutionFiles)
-            。withPropertyName('sourceFiles')
-            。withPathSensitivity(PathSensitivity.RELATIVE)
-            。ignoreEmptyDirectories()
+        .withPropertyName('sourceFiles')       // 英文句点
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+        .ignoreEmptyDirectories()
 
     outputs.file("${publishDirectory}/${projectName.toLowerCase()}.so")
 
     OperatingSystem os = DefaultNativePlatform.currentOperatingSystem
     if (toolchainPath != null) {
         if (os.isWindows()) {
-            // NOTE: This is not a typo. dotnet.exe actually uses Path instead of PATH.
             environment "Path", "${toolchainPath};${providers.environmentVariable("PATH").get()}"
-        }
-        else {
+        } else {
             environment "PATH", "${toolchainPath}:${providers.environmentVariable("PATH").get()}"
         }
     }
@@ -113,8 +106,8 @@ tasks.register('compileLibRyujinx', Exec) {
             "-p:DisableUnsupportedError=true",
             "-p:PublishAotUsingRuntimePack=true",
             "-p:StripSymbols=${stripSymbols}",
-            "-p:AllowUnsafeBlocks=true",   // 强制启用不安全代码
-            "--force",                    // 强制清理旧构建
+            "-p:AllowUnsafeBlocks=true",
+            "--force",
             "--artifacts-path", buildDir
 
     args additionalArgs.split(" ")
@@ -124,7 +117,7 @@ tasks.register('compileLibRyujinx', Exec) {
             from project.ext.outputTree.getFiles()
             include '*.so'
             into publishDirectory
-            rename (String originalName) -> originalName.toLowerCase()
+            rename { String originalName -> originalName.toLowerCase() }
             duplicatesStrategy 'fail'
             preserve {
                 include '.gitkeep'
