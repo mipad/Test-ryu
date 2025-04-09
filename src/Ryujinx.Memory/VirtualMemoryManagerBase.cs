@@ -15,72 +15,71 @@ namespace Ryujinx.Memory
         protected abstract ulong AddressSpaceSize { get; }
 
         public virtual ReadOnlySequence<byte> GetReadOnlySequence(ulong va, int size, bool tracked = false)
+{
+    if (size == 0)
+    {
+        return ReadOnlySequence<byte>.Empty;
+    }
+
+    if (tracked)
+    {
+        SignalMemoryTracking(va, (ulong)size, false);
+    }
+
+    if (IsContiguousAndMapped(va, size))
+    {
+        nuint pa = TranslateVirtualAddressUnchecked(va);
+        return new ReadOnlySequence<byte>(GetPhysicalAddressMemory(pa, size));
+    }
+    else
+    {
+        AssertValidAddressAndSize(va, size);
+
+        int offset = 0, segmentSize;
+
+        BytesReadOnlySequenceSegment? first = null;
+        BytesReadOnlySequenceSegment? last = null;
+
+        if ((va & PageMask) != 0)
         {
-            if (size == 0)
-            {
-                return ReadOnlySequence<byte>.Empty;
-            }
+            nuint pa = TranslateVirtualAddressChecked(va);
+            segmentSize = Math.Min(size, PageSize - (int)(va & PageMask));
+            Memory<byte> memory = GetPhysicalAddressMemory(pa, segmentSize);
+            first = last = new BytesReadOnlySequenceSegment(memory);
+            offset += segmentSize;
+        }
 
-            if (tracked)
-            {
-                SignalMemoryTracking(va, (ulong)size, false);
-            }
+        for (; offset < size; offset += segmentSize)
+        {
+            nuint pa = TranslateVirtualAddressChecked(va + (ulong)offset);
+            segmentSize = Math.Min(size - offset, PageSize);
+            Memory<byte> memory = GetPhysicalAddressMemory(pa, segmentSize);
 
-            if (IsContiguousAndMapped(va, size))
+            if (first is null)
             {
-                nuint pa = TranslateVirtualAddressUnchecked(va);
-
-                return new ReadOnlySequence<byte>(GetPhysicalAddressMemory(pa, size));
+                first = last = new BytesReadOnlySequenceSegment(memory);
             }
             else
             {
-                AssertValidAddressAndSize(va, size);
-
-                int offset = 0, segmentSize;
-
-                BytesReadOnlySequenceSegment first = null, last = null;
-
-                if ((va & PageMask) != 0)
+                if (last!.IsContiguousWith(memory, out nuint contiguousStart, out int contiguousSize))
                 {
-                    nuint pa = TranslateVirtualAddressChecked(va);
-
-                    segmentSize = Math.Min(size, PageSize - (int)(va & PageMask));
-
-                    Memory<byte> memory = GetPhysicalAddressMemory(pa, segmentSize);
-
-                    first = last = new BytesReadOnlySequenceSegment(memory);
-
-                    offset += segmentSize;
+                    last.Replace(GetPhysicalAddressMemory(contiguousStart, contiguousSize));
                 }
-
-                for (; offset < size; offset += segmentSize)
+                else
                 {
-                    nuint pa = TranslateVirtualAddressChecked(va + (ulong)offset);
-
-                    segmentSize = Math.Min(size - offset, PageSize);
-
-                    Memory<byte> memory = GetPhysicalAddressMemory(pa, segmentSize);
-
-                    if (first is null)
-                    {
-                        first = last = new BytesReadOnlySequenceSegment(memory);
-                    }
-                    else
-                    {
-                        if (last.IsContiguousWith(memory, out nuint contiguousStart, out int contiguousSize))
-                        {
-                            last.Replace(GetPhysicalAddressMemory(contiguousStart, contiguousSize));
-                        }
-                        else
-                        {
-                            last = last.Append(memory);
-                        }
-                    }
+                    last = last.Append(memory);
                 }
-
-                return new ReadOnlySequence<byte>(first, 0, last, (int)(size - last.RunningIndex));
             }
         }
+
+        if (first is null)
+        {
+            return ReadOnlySequence<byte>.Empty;
+        }
+
+        return new ReadOnlySequence<byte>(first, 0, last!, (int)(size - last!.RunningIndex));
+    }
+}
 
         public virtual ReadOnlySpan<byte> GetSpan(ulong va, int size, bool tracked = false)
         {
@@ -114,7 +113,7 @@ namespace Ryujinx.Memory
         {
             if (size == 0)
             {
-                return new WritableRegion(null, va, Memory<byte>.Empty);
+                return new WritableRegion(this, va, Memory<byte>.Empty);
             }
 
             if (tracked)
@@ -126,7 +125,7 @@ namespace Ryujinx.Memory
             {
                 nuint pa = TranslateVirtualAddressUnchecked(va);
 
-                return new WritableRegion(null, va, GetPhysicalAddressMemory(pa, size));
+                return new WritableRegion(this, va, GetPhysicalAddressMemory(pa, size));
             }
             else
             {
