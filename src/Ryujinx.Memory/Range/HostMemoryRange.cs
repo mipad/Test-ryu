@@ -53,7 +53,7 @@ namespace Ryujinx.Memory.Range
             return thisAddress < otherEndAddress && otherAddress < thisEndAddress;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj) // 修改此处参数类型
         {
             return obj is HostMemoryRange other && Equals(other);
         }
