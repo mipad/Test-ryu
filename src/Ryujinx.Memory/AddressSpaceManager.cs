@@ -6,10 +6,10 @@ using System.Runtime.CompilerServices;
 
 namespace Ryujinx.Memory
 {
-    /// <summary>
-    /// Represents a address space manager.
-    /// Supports virtual memory region mapping, address translation and read/write access to mapped regions.
-    /// </summary>
+    [SupportedOSPlatform("windows")]
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("android")] // 添加 Android 支持
     public sealed class AddressSpaceManager : VirtualMemoryManagerBase, IVirtualMemoryManager
     {
         /// <inheritdoc/>
@@ -50,6 +50,15 @@ namespace Ryujinx.Memory
         /// <inheritdoc/>
         public void Map(ulong va, ulong pa, ulong size, MemoryMapFlags flags)
         {
+            // 添加平台检查（可选）
+            if (!OperatingSystem.IsWindows() && 
+                !OperatingSystem.IsLinux() && 
+                !OperatingSystem.IsMacOS() && 
+                !OperatingSystem.IsAndroid()) // 包含 Android 检查
+            {
+                throw new PlatformNotSupportedException("This method requires Windows, Linux, macOS, or Android.");
+            }
+
             AssertValidAddressAndSize(va, size);
 
             while (size != 0)
@@ -61,7 +70,7 @@ namespace Ryujinx.Memory
                 size -= PageSize;
             }
         }
-
+        
         public override void MapForeign(ulong va, nuint hostPointer, ulong size)
         {
             AssertValidAddressAndSize(va, size);
@@ -114,18 +123,18 @@ namespace Ryujinx.Memory
 
         /// <inheritdoc/>
         public IEnumerable<MemoryRange> GetPhysicalRegions(ulong va, ulong size)
-        {
-            if (size == 0)
-            {
-                return Enumerable.Empty<MemoryRange>();
-            }
+{
+    if (size == 0)
+    {
+        return Enumerable.Empty<MemoryRange>();
+    }
 
-            var hostRegions = GetHostRegionsImpl(va, size);
-            if (hostRegions == null)
-            {
-                return null;
-            }
-
+    var hostRegions = GetHostRegionsImpl(va, size);
+    if (hostRegions == null || hostRegions.Count == 0)
+    {
+        return Enumerable.Empty<MemoryRange>(); // 返回空集合
+    }
+    
             var regions = new MemoryRange[hostRegions.Count];
 
             ulong backingStart = (ulong)_backingMemory.Pointer;
@@ -151,27 +160,27 @@ namespace Ryujinx.Memory
             return regions;
         }
 
-        private List<HostMemoryRange> GetHostRegionsImpl(ulong va, ulong size)
-        {
-            if (!ValidateAddress(va) || !ValidateAddressAndSize(va, size))
-            {
-                return null;
-            }
+        private List<HostMemoryRange>? GetHostRegionsImpl(ulong va, ulong size)
+{
+    if (!ValidateAddress(va) || !ValidateAddressAndSize(va, size))
+    {
+        return new List<HostMemoryRange>(); // 返回空列表
+    }
 
-            int pages = GetPagesCount(va, size, out va);
+    int pages = GetPagesCount(va, size, out va);
 
-            var regions = new List<HostMemoryRange>();
+    var regions = new List<HostMemoryRange>();
 
             nuint regionStart = GetHostAddress(va);
             ulong regionSize = PageSize;
 
             for (int page = 0; page < pages - 1; page++)
-            {
-                if (!ValidateAddress(va + PageSize))
-                {
-                    return null;
-                }
-
+    {
+        if (!ValidateAddress(va + PageSize))
+        {
+            return new List<HostMemoryRange>(); // 返回空列表
+        }
+        
                 nuint newHostAddress = GetHostAddress(va + PageSize);
 
                 if (GetHostAddress(va) + PageSize != newHostAddress)
