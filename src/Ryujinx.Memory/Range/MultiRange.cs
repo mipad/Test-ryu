@@ -126,7 +126,7 @@ namespace Ryujinx.Memory.Range
         /// <returns>Region at the index specified</returns>
         private MemoryRange GetSubRangeUnchecked(int index)
         {
-            return HasSingleRange ? _singleRange : _ranges[index];
+            return HasSingleRange ? _singleRange : _ranges![index];
         }
 
         /// <summary>
@@ -266,7 +266,7 @@ namespace Ryujinx.Memory.Range
             return sum;
         }
         
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             return obj is MultiRange other && Equals(other);
         }
