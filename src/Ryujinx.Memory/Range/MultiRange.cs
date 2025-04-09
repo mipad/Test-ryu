@@ -11,7 +11,7 @@ namespace Ryujinx.Memory.Range
         private const ulong InvalidAddress = ulong.MaxValue;
 
         private readonly MemoryRange _singleRange;
-        private readonly MemoryRange[] _ranges;
+        private readonly MemoryRange[]? _ranges; // 标记为可空
 
         private bool HasSingleRange => _ranges == null;
 
@@ -23,24 +23,20 @@ namespace Ryujinx.Memory.Range
         /// <summary>
         /// Total of physical sub-ranges on the virtual memory region.
         /// </summary>
-        public int Count => HasSingleRange ? 1 : _ranges.Length;
+        public int Count => HasSingleRange ? 1 : (_ranges?.Length ?? 0); // 处理空引用
 
         /// <summary>
         /// Creates a new multi-range with a single physical region.
         /// </summary>
-        /// <param name="address">Start address of the region</param>
-        /// <param name="size">Size of the region in bytes</param>
         public MultiRange(ulong address, ulong size)
         {
             _singleRange = new MemoryRange(address, size);
-            _ranges = null;
+            _ranges = null; // 显式赋值为null
         }
 
         /// <summary>
         /// Creates a new multi-range with multiple physical regions.
         /// </summary>
-        /// <param name="ranges">Array of physical regions</param>
-        /// <exception cref="ArgumentNullException"><paramref name="ranges"/> is null</exception>
         public MultiRange(MemoryRange[] ranges)
         {
             ArgumentNullException.ThrowIfNull(ranges);
@@ -48,7 +44,7 @@ namespace Ryujinx.Memory.Range
             if (ranges.Length == 1)
             {
                 _singleRange = ranges[0];
-                _ranges = null;
+                _ranges = null; // 显式赋值为null
             }
             else
             {
@@ -58,11 +54,25 @@ namespace Ryujinx.Memory.Range
         }
 
         /// <summary>
-        /// Gets a slice of the multi-range.
+        /// Gets the physical region at the specified index.
         /// </summary>
-        /// <param name="offset">Offset of the slice into the multi-range in bytes</param>
-        /// <param name="size">Size of the slice in bytes</param>
-        /// <returns>A new multi-range representing the given slice of this one</returns>
+        public MemoryRange GetSubRange(int index)
+        {
+            if (HasSingleRange)
+            {
+                ArgumentOutOfRangeException.ThrowIfNotEqual(index, 0);
+                return _singleRange;
+            }
+            else
+            {
+                if (_ranges == null || (uint)index >= _ranges.Length)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(index));
+                }
+                return _ranges[index];
+            }
+        }
+
         public MultiRange Slice(ulong offset, ulong size)
         {
             if (HasSingleRange)
@@ -109,32 +119,6 @@ namespace Ryujinx.Memory.Range
                 return ranges.Count == 1 ? new MultiRange(ranges[0].Address, ranges[0].Size) : new MultiRange(ranges.ToArray());
             }
         }
-
-        /// <summary>
-        /// Gets the physical region at the specified index.
-        /// </summary>
-        /// <param name="index">Index of the physical region</param>
-        /// <returns>Region at the index specified</returns>
-        /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is invalid</exception>
-        public MemoryRange GetSubRange(int index)
-        {
-            if (HasSingleRange)
-            {
-                ArgumentOutOfRangeException.ThrowIfNotEqual(index, 0);
-
-                return _singleRange;
-            }
-            else
-            {
-                if ((uint)index >= _ranges.Length)
-                {
-                    throw new ArgumentOutOfRangeException(nameof(index));
-                }
-
-                return _ranges[index];
-            }
-        }
-
         /// <summary>
         /// Gets the physical region at the specified index, without explicit bounds checking.
         /// </summary>
@@ -274,15 +258,14 @@ namespace Ryujinx.Memory.Range
             }
 
             ulong sum = 0;
-
-            foreach (MemoryRange range in _ranges)
+            
+            foreach (MemoryRange range in _ranges!) // 明确非null
             {
                 sum += range.Size;
             }
-
             return sum;
         }
-
+        
         public override bool Equals(object obj)
         {
             return obj is MultiRange other && Equals(other);
@@ -321,7 +304,7 @@ namespace Ryujinx.Memory.Range
 
             HashCode hash = new();
 
-            foreach (MemoryRange range in _ranges)
+            foreach (MemoryRange range in _ranges!)
             {
                 hash.Add(range);
             }
@@ -335,9 +318,9 @@ namespace Ryujinx.Memory.Range
         /// <returns>A string summary of the ranges contained within</returns>
         public override string ToString()
         {
-            return HasSingleRange ? _singleRange.ToString() : string.Join(", ", _ranges);
+            return HasSingleRange ? _singleRange.ToString() : string.Join(", ", _ranges!);
         }
-
+        
         public static bool operator ==(MultiRange left, MultiRange right)
         {
             return left.Equals(right);
