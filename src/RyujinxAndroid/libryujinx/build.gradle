@@ -65,8 +65,6 @@ tasks.register('compileLibRyujinx', Exec) {
     // ========== 关键修改：添加构建顺序依赖 ==========
     dependsOn(
         ':Ryujinx.Common:build',
-        ':Ryujinx.Common.DataStructs:build',
-        ':Ryujinx.Common.Collections:build'
     )
 
     def projectName = "LibRyujinx"
@@ -82,9 +80,9 @@ tasks.register('compileLibRyujinx', Exec) {
     }
 
     inputs.files(solutionFiles)
-            .withPropertyName('sourceFiles')
-            .withPathSensitivity(PathSensitivity.RELATIVE)
-            .ignoreEmptyDirectories()
+            。withPropertyName('sourceFiles')
+            。withPathSensitivity(PathSensitivity.RELATIVE)
+            。ignoreEmptyDirectories()
 
     outputs.file("${publishDirectory}/${projectName.toLowerCase()}.so")
 
