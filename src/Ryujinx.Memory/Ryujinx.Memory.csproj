@@ -2,6 +2,7 @@
   <PropertyGroup>
     <!-- 设置目标框架为.NET 9.0 -->
     <TargetFramework>net9.0</TargetFramework>
+    <DefineConstants>$(DefineConstants);ANDROID</DefineConstants>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <EnablePreviewFeatures>true</EnablePreviewFeatures>
