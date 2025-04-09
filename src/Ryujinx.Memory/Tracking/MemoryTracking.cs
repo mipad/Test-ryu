@@ -1,5 +1,3 @@
-using Ryujinx.Common.Collections;
-using Ryujinx.Common.DataStructs;
 using Ryujinx.Common.Memory;
 using Ryujinx.Common.Pools;
 using Ryujinx.Memory.Range;
