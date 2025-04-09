@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using Ryujinx.Memory.Range;
 using System;
 using System.Collections.Generic;
