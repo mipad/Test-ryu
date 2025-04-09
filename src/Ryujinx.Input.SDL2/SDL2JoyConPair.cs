@@ -1,6 +1,4 @@
 ﻿using Ryujinx.Common.Configuration.Hid;
-using Ryujinx.Common.Configuration.Hid.Controller;
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -10,15 +8,6 @@ namespace Ryujinx.Input.SDL2
 {
     internal class SDL2JoyConPair(IGamepad left, IGamepad right) : IGamepad
     {
-        private StandardControllerInputConfig _configuration;
-
-        private readonly StickInputId[] _stickUserMapping =
-        [
-            StickInputId.Unbound,
-            StickInputId.Left,
-            StickInputId.Right
-        ];
-
         public GamepadFeaturesFlag Features => (left?.Features ?? GamepadFeaturesFlag.None) |
                                                (right?.Features ?? GamepadFeaturesFlag.None);
 

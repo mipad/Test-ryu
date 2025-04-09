@@ -52,10 +52,10 @@ namespace Ryujinx.Input.SDL2
 
         private readonly List<ButtonMappingEntry> _buttonsUserMapping;
 
-        private readonly StickInputId[] _stickUserMapping = new StickInputId[(int)StickInputId.Count]
-        {
-            StickInputId.Unbound, StickInputId.Left, StickInputId.Right,
-        };
+        private readonly StickInputId[] _stickUserMapping =
+        [
+            StickInputId.Unbound, StickInputId.Left, StickInputId.Right
+        ];
 
         public GamepadFeaturesFlag Features { get; }
 
@@ -212,7 +212,8 @@ namespace Ryujinx.Input.SDL2
                 Vector3 value = _joyConType switch
                 {
                     JoyConType.Left => new Vector3(-values[2], values[1], values[0]),
-                    JoyConType.Right => new Vector3(values[2], values[1], -values[0])
+                    JoyConType.Right => new Vector3(values[2], values[1], -values[0]),
+                    _ => throw new ArgumentOutOfRangeException()
                 };
 
                 return inputId switch
