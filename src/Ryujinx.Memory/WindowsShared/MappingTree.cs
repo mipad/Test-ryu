@@ -13,7 +13,8 @@ namespace Ryujinx.Memory.WindowsShared
 
         public int GetNodes(ulong start, ulong end, ref RangeNode<T>[] overlaps, int overlapCount = 0)
         {
-            RangeNode<T> node = this.GetNodeByKey(start);
+            // 明确声明 node 为可空类型
+            RangeNode<T>? node = GetNodeByKey(start);
 
             for (; node != null; node = node.Successor)
             {
@@ -52,8 +53,15 @@ namespace Ryujinx.Memory.WindowsShared
             End += sizeDelta;
         }
 
-        public int CompareTo(RangeNode<T> other)
+        // 修复 CS8767：匹配接口 IComparable<RangeNode<T>> 的可空性
+        public int CompareTo(RangeNode<T>? other)
         {
+            // 根据 IComparable 约定，非 null 实例大于 null
+            if (other is null)
+            {
+                return 1;
+            }
+
             if (Start < other.Start)
             {
                 return -1;
