@@ -47,7 +47,7 @@ namespace Ryujinx.Memory.Tracking
         public ulong RealSize { get; }
         public ulong RealEndAddress { get; }
 
-        internal IMultiRegionHandle? Parent { get; set; } }
+        internal IMultiRegionHandle? Parent { get; set; }
 
         private event Action OnDirty = delegate { }; 
         private readonly object _preActionLock = new();
@@ -402,25 +402,25 @@ namespace Ryujinx.Memory.Tracking
         /// </summary>
         /// <param name="action">Action to call on read or write</param>
         public void RegisterAction(RegionSignal action)
+{
+    ClearVolatile();
+
+    lock (_preActionLock)
+    {
+        RegionSignal? lastAction = Interlocked.Exchange(ref _preAction, action);
+
+        if (lastAction == null && action != null)
         {
-            ClearVolatile();
-
-            lock (_preActionLock)
+            lock (_tracking.TrackingLock)
             {
-                RegionSignal lastAction = Interlocked.Exchange(ref _preAction, action);
-
-                if (lastAction == null && action != lastAction)
+                foreach (VirtualRegion region in _allRegions)
                 {
-                    lock (_tracking.TrackingLock)
-                    {
-                        foreach (VirtualRegion region in _allRegions)
-                        {
-                            region.UpdateProtection();
-                        }
-                    }
+                    region.UpdateProtection();
                 }
             }
         }
+    }
+}
 
         /// <summary>
         /// Register an action to perform when a precise access occurs (one with exact address and size).
