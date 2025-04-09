@@ -5,24 +5,27 @@ namespace Ryujinx.Memory
 {
     public sealed class WritableRegion : IDisposable
     {
-        private readonly IWritableBlock _block;
+        private readonly IWritableBlock? _block;      // 允许 _block 为 null
         private readonly ulong _va;
-        private readonly MemoryOwner<byte> _memoryOwner;
+        private readonly MemoryOwner<byte>? _memoryOwner; // 明确声明为可空
         private readonly bool _tracked;
 
         private bool NeedsWriteback => _block != null;
 
         public Memory<byte> Memory { get; }
 
-        public WritableRegion(IWritableBlock block, ulong va, Memory<byte> memory, bool tracked = false)
+        // 构造函数 1：接受 Memory<byte>
+        public WritableRegion(IWritableBlock? block, ulong va, Memory<byte> memory, bool tracked = false)
         {
             _block = block;
             _va = va;
             _tracked = tracked;
             Memory = memory;
+            _memoryOwner = null; // 显式初始化为 null
         }
 
-        public WritableRegion(IWritableBlock block, ulong va, MemoryOwner<byte> memoryOwner, bool tracked = false)
+        // 构造函数 2：接受 MemoryOwner<byte>
+        public WritableRegion(IWritableBlock? block, ulong va, MemoryOwner<byte> memoryOwner, bool tracked = false)
             : this(block, va, memoryOwner.Memory, tracked)
         {
             _memoryOwner = memoryOwner;
@@ -30,7 +33,7 @@ namespace Ryujinx.Memory
 
         public void Dispose()
         {
-            if (NeedsWriteback)
+            if (NeedsWriteback && _block != null) // 双重空检查
             {
                 if (_tracked)
                 {
@@ -42,7 +45,7 @@ namespace Ryujinx.Memory
                 }
             }
 
-            _memoryOwner?.Dispose();
+            _memoryOwner?.Dispose(); // 安全调用
         }
     }
 }
