@@ -92,7 +92,7 @@ namespace Ryujinx.Memory.WindowsShared
             lock (_mappings)
             {
                 RangeNode<ulong> node = _mappings.GetNodeByKey(address);
-                RangeNode<ulong> successorNode;
+                RangeNode<ulong>? successorNode;
 
                 for (; node != null; node = successorNode)
                 {
@@ -479,19 +479,19 @@ namespace Ryujinx.Memory.WindowsShared
         /// <returns>True if the reprotection was successful or if <paramref name="throwOnError"/> is true, false otherwise</returns>
         /// <exception cref="WindowsApiException">If <paramref name="throwOnError"/> is true, it is thrown when the Windows API returns an error reprotecting the memory</exception>
         private bool ReprotectViewInternal(IntPtr address, IntPtr size, MemoryPermission permission, bool throwOnError)
-        {
-            ulong reprotectAddress = (ulong)address;
-            ulong reprotectSize = (ulong)size;
-            ulong endAddress = reprotectAddress + reprotectSize;
+{
+    ulong reprotectAddress = (ulong)address;
+    ulong reprotectSize = (ulong)size;
+    ulong endAddress = reprotectAddress + reprotectSize;
 
-            bool success = true;
+    bool success = true;
 
-            lock (_mappings)
-            {
-                RangeNode<ulong> node = _mappings.GetNodeByKey(reprotectAddress);
-                RangeNode<ulong> successorNode;
+    lock (_mappings)
+    {
+        RangeNode<ulong> node = _mappings.GetNodeByKey(reprotectAddress);
+        RangeNode<ulong>? successorNode; // 修改此处声明为可为 null
 
-                for (; node != null; node = successorNode)
+        for (; node != null; node = successorNode)
                 {
                     successorNode = node.Successor;
                     var overlap = node;
