@@ -6,11 +6,11 @@ namespace Ryujinx.Memory
         public const int PageSize = 1 << PageBits;
         public const int PageMask = PageSize - 1;
 
-        private const int PtLevelBits = 9; // 9 * 4 + 12 = 48 (max address space size)
+        private const int PtLevelBits = 9;
         private const int PtLevelSize = 1 << PtLevelBits;
         private const int PtLevelMask = PtLevelSize - 1;
 
-        private readonly T[][][][] _pageTable;
+        private readonly T[][][][]? _pageTable; // 声明为可空
 
         public PageTable()
         {
@@ -24,17 +24,7 @@ namespace Ryujinx.Memory
             int l1 = (int)(va >> (PageBits + PtLevelBits * 2)) & PtLevelMask;
             int l0 = (int)(va >> (PageBits + PtLevelBits * 3)) & PtLevelMask;
 
-            if (_pageTable[l0] == null)
-            {
-                return default;
-            }
-
-            if (_pageTable[l0][l1] == null)
-            {
-                return default;
-            }
-
-            if (_pageTable[l0][l1][l2] == null)
+            if (_pageTable?[l0]?[l1]?[l2] == null)
             {
                 return default;
             }
@@ -49,7 +39,7 @@ namespace Ryujinx.Memory
             int l1 = (int)(va >> (PageBits + PtLevelBits * 2)) & PtLevelMask;
             int l0 = (int)(va >> (PageBits + PtLevelBits * 3)) & PtLevelMask;
 
-            if (_pageTable[l0] == null)
+            if (_pageTable![l0] == null) // 使用 null 包容运算符（!）确保非空
             {
                 _pageTable[l0] = new T[PtLevelSize][][];
             }
@@ -74,17 +64,7 @@ namespace Ryujinx.Memory
             int l1 = (int)(va >> (PageBits + PtLevelBits * 2)) & PtLevelMask;
             int l0 = (int)(va >> (PageBits + PtLevelBits * 3)) & PtLevelMask;
 
-            if (_pageTable[l0] == null)
-            {
-                return;
-            }
-
-            if (_pageTable[l0][l1] == null)
-            {
-                return;
-            }
-
-            if (_pageTable[l0][l1][l2] == null)
+            if (_pageTable?[l0]?[l1]?[l2] == null)
             {
                 return;
             }
@@ -100,7 +80,7 @@ namespace Ryujinx.Memory
 
             if (empty)
             {
-                _pageTable[l0][l1][l2] = null;
+                _pageTable[l0][l1][l2] = null!; // 使用 null 包容运算符
 
                 RemoveIfAllNull(l0, l1);
             }
@@ -108,6 +88,11 @@ namespace Ryujinx.Memory
 
         private void RemoveIfAllNull(int l0, int l1)
         {
+            if (_pageTable?[l0]?[l1] == null)
+            {
+                return;
+            }
+
             bool empty = true;
 
             for (int i = 0; i < _pageTable[l0][l1].Length; i++)
@@ -117,7 +102,7 @@ namespace Ryujinx.Memory
 
             if (empty)
             {
-                _pageTable[l0][l1] = null;
+                _pageTable[l0][l1] = null!; // 使用 null 包容运算符
 
                 RemoveIfAllNull(l0);
             }
@@ -125,6 +110,11 @@ namespace Ryujinx.Memory
 
         private void RemoveIfAllNull(int l0)
         {
+            if (_pageTable?[l0] == null)
+            {
+                return;
+            }
+
             bool empty = true;
 
             for (int i = 0; i < _pageTable[l0].Length; i++)
@@ -134,7 +124,7 @@ namespace Ryujinx.Memory
 
             if (empty)
             {
-                _pageTable[l0] = null;
+                _pageTable[l0] = null!; // 使用 null 包容运算符
             }
         }
     }
