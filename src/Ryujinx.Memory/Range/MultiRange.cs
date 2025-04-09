@@ -74,51 +74,38 @@ namespace Ryujinx.Memory.Range
         }
 
         public MultiRange Slice(ulong offset, ulong size)
+{
+    if (HasSingleRange)
+    {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(size, _singleRange.Size - offset);
+        return new MultiRange(_singleRange.Address + offset, size);
+    }
+    else
+    {
+        var ranges = new List<MemoryRange>();
+        foreach (MemoryRange range in _ranges!) // 明确断言 _ranges 非空
         {
-            if (HasSingleRange)
+            if ((long)offset <= 0)
             {
-                ArgumentOutOfRangeException.ThrowIfGreaterThan(size, _singleRange.Size - offset);
-
-                return new MultiRange(_singleRange.Address + offset, size);
+                ranges.Add(new MemoryRange(range.Address, Math.Min(size, range.Size)));
+                size -= range.Size;
             }
-            else
+            else if (offset < range.Size)
             {
-                var ranges = new List<MemoryRange>();
-
-                foreach (MemoryRange range in _ranges)
-                {
-                    if ((long)offset <= 0)
-                    {
-                        ranges.Add(new MemoryRange(range.Address, Math.Min(size, range.Size)));
-                        size -= range.Size;
-                    }
-                    else if (offset < range.Size)
-                    {
-                        ulong sliceSize = Math.Min(size, range.Size - offset);
-
-                        if (range.Address == InvalidAddress)
-                        {
-                            ranges.Add(new MemoryRange(range.Address, sliceSize));
-                        }
-                        else
-                        {
-                            ranges.Add(new MemoryRange(range.Address + offset, sliceSize));
-                        }
-
-                        size -= sliceSize;
-                    }
-
-                    if ((long)size <= 0)
-                    {
-                        break;
-                    }
-
-                    offset -= range.Size;
-                }
-
-                return ranges.Count == 1 ? new MultiRange(ranges[0].Address, ranges[0].Size) : new MultiRange(ranges.ToArray());
+                ulong sliceSize = Math.Min(size, range.Size - offset);
+                ranges.Add(range.Address == InvalidAddress ?
+                    new MemoryRange(range.Address, sliceSize) :
+                    new MemoryRange(range.Address + offset, sliceSize));
+                size -= sliceSize;
             }
+            if ((long)size <= 0) break;
+            offset -= range.Size;
         }
+        return ranges.Count == 1 ?
+            new MultiRange(ranges[0].Address, ranges[0].Size) :
+            new MultiRange(ranges.ToArray());
+    }
+}
         /// <summary>
         /// Gets the physical region at the specified index, without explicit bounds checking.
         /// </summary>
