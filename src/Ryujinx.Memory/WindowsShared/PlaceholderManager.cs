@@ -394,8 +394,8 @@ namespace Ryujinx.Memory.WindowsShared
                     return;
                 }
 
-                RangeNode<ulong> predecessor = node.Predecessor;
-                RangeNode<ulong> successor = null;
+                RangeNode<ulong>？ predecessor = node.Predecessor;
+                RangeNode<ulong>? successor = null;
 
                 for (; node != null; node = successor)
                 {
