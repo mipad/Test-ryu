@@ -488,7 +488,7 @@ namespace Ryujinx.Memory.WindowsShared
 
     lock (_mappings)
     {
-        RangeNode<ulong> node = _mappings.GetNodeByKey(reprotectAddress);
+        RangeNode<ulong>? node = _mappings.GetNodeByKey(reprotectAddress);
         RangeNode<ulong>? successorNode = null;
 
         for (; node != null; node = successorNode)
