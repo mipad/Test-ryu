@@ -91,8 +91,8 @@ namespace Ryujinx.Memory.WindowsShared
 
             lock (_mappings)
             {
-                RangeNode<ulong> node = _mappings.GetNodeByKey(address);
-                RangeNode<ulong>? successorNode;
+                RangeNode<ulong>? node = _mappings.GetNodeByKey(address);
+                RangeNode<ulong>? successorNode = null;
 
                 for (; node != null; node = successorNode)
                 {
@@ -386,7 +386,7 @@ namespace Ryujinx.Memory.WindowsShared
 
             lock (_mappings)
             {
-                RangeNode<ulong> node = _mappings.GetNodeByKey(address);
+                RangeNode<ulong>? node = _mappings.GetNodeByKey(address);
 
                 if (node == null)
                 {
@@ -489,7 +489,7 @@ namespace Ryujinx.Memory.WindowsShared
     lock (_mappings)
     {
         RangeNode<ulong> node = _mappings.GetNodeByKey(reprotectAddress);
-        RangeNode<ulong>? successorNode; // 修改此处声明为可为 null
+        RangeNode<ulong>? successorNode = null;
 
         for (; node != null; node = successorNode)
                 {
@@ -587,7 +587,7 @@ namespace Ryujinx.Memory.WindowsShared
 
             lock (_protections)
             {
-                RangeNode<MemoryPermission> node = _protections.GetNodeByKey(address);
+                RangeNode<MemoryPermission>? node = _protections.GetNodeByKey(address);
 
                 if (node != null &&
                     node.Start <= address &&
@@ -658,7 +658,7 @@ namespace Ryujinx.Memory.WindowsShared
 
             lock (_protections)
             {
-                RangeNode<MemoryPermission> node = _protections.GetNodeByKey(address);
+                RangeNode<MemoryPermission>? node = _protections.GetNodeByKey(address);
                 RangeNode<MemoryPermission> successorNode;
 
                 for (; node != null; node = successorNode)
