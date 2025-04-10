@@ -597,7 +597,7 @@ namespace Ryujinx.Memory.WindowsShared
                     return;
                 }
 
-                RangeNode<MemoryPermission> successorNode;
+                RangeNode<MemoryPermission>? successorNode;
 
                 ulong startAddress = address;
 
@@ -659,7 +659,7 @@ namespace Ryujinx.Memory.WindowsShared
             lock (_protections)
             {
                 RangeNode<MemoryPermission>? node = _protections.GetNodeByKey(address);
-                RangeNode<MemoryPermission> successorNode;
+                RangeNode<MemoryPermission>? successorNode;
 
                 for (; node != null; node = successorNode)
                 {
