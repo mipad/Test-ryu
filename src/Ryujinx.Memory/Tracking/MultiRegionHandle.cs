@@ -89,7 +89,7 @@ namespace Ryujinx.Memory.Tracking
 
                                 splitHandle.Reprotect(handle.Dirty);
 
-                                RegionSignal signal = handle.PreAction;
+                                RegionSignal? signal = handle.PreAction;
                                 if (signal != null)
                                 {
                                     splitHandle.RegisterAction(signal);
@@ -384,7 +384,7 @@ namespace Ryujinx.Memory.Tracking
             }
         }
 
-        public void RegisterAction(ulong address, ulong size, RegionSignal action)
+        public void RegisterAction(ulong address, ulong size, RegionSignal? action)
         {
             int startHandle = (int)((address - Address) / Granularity);
             int lastHandle = (int)((address + (size - 1) - Address) / Granularity);
