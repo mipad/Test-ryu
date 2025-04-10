@@ -43,7 +43,6 @@ jobs:
         run: |
           mkdir -p $ANDROID_SDK_ROOT
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-
       # ================== [3] .NET环境配置 ==================
       - name: Setup .NET 9.0.101
         uses: actions/setup-dotnet@v4
@@ -69,7 +68,6 @@ jobs:
           
           # 配置环境变量
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
-
       # ================== [6] 安装Android组件 ==================
       - name: Install Android Components
         run: |
@@ -77,7 +75,6 @@ jobs:
           yes | sdkmanager "platform-tools" "build-tools;${{ env.BUILD_TOOLS_VERSION }}"
           yes | sdkmanager "ndk;${{ env.NDK_VERSION }}"
           yes | sdkmanager "cmake;${{ env.CMAKE_VERSION }}"
-
       # ================== [7] 构建缓存配置 ==================
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -88,7 +85,6 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('src/RyujinxAndroid/**/*.gradle') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
-
       # ================== [8] 构建执行 ==================
       - name: Build with Gradle
         working-directory: src/RyujinxAndroid
@@ -98,7 +94,6 @@ jobs:
             -Porg.gradle.parallel=true \
             -Porg.gradle.daemon=false \
             --no-build-cache
-
       # ================== [9] 产物上传 ==================
       - name: Upload APK
         uses: actions/upload-artifact@v4
