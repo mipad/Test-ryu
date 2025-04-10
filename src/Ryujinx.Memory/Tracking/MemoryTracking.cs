@@ -12,7 +12,7 @@ namespace Ryujinx.Memory.Tracking
     public class MemoryTracking
     {
         private readonly IVirtualMemoryManager _memoryManager;
-        private readonly InvalidAccessHandler _invalidAccessHandler;
+        private readonly InvalidAccessHandler? _invalidAccessHandler;
 
         // Only use these from within the lock.
         private readonly NonOverlappingRangeList<VirtualRegion> _virtualRegions;
