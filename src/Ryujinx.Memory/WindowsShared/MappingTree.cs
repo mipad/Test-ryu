@@ -10,7 +10,32 @@ namespace Ryujinx.Memory.WindowsShared
     class MappingTree<T> : IntrusiveRedBlackTree<RangeNode<T>>
     {
         private const int ArrayGrowthSize = 16;
+        
+        public RangeNode<T>? GetNodeByKey(ulong address)
+        {
+            RangeNode<T>? node = Root;
 
+            while (node != null)
+            {
+                int cmp = node.CompareTo(address);
+
+                if (cmp == 0)
+                {
+                    return node;
+                }
+                else if (cmp < 0)
+                {
+                    node = node.Left;
+                }
+                else
+                {
+                    node = node.Right;
+                }
+            }
+
+            return null;
+        }
+        
         public int GetNodes(ulong start, ulong end, ref RangeNode<T>[] overlaps, int overlapCount = 0)
         {
             // 明确声明 node 为可空类型
