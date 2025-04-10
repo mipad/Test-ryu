@@ -9,7 +9,6 @@ on:
     branches: [ "test" ]
 
 env:
-  ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
   GRADLE_USER_HOME: ${{ github.workspace }}/src/RyujinxAndroid/.gradle
   NDK_VERSION: "25.2.9519653"
   CMAKE_VERSION: "3.22.1"
@@ -41,8 +40,11 @@ jobs:
       # ================== [2] 环境初始化 ==================
       - name: Prepare workspace
         run: |
-          mkdir -p $ANDROID_SDK_ROOT
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          # 统一使用ANDROID_HOME作为SDK路径
+          echo "ANDROID_HOME=${{ github.workspace }}/android-sdk" >> $GITHUB_ENV
+          mkdir -p $ANDROID_HOME
+          echo "sdk.dir=$ANDROID_HOME" >> src/RyujinxAndroid/local.properties
+
       # ================== [3] .NET环境配置 ==================
       - name: Setup .NET 9.0.101
         uses: actions/setup-dotnet@v4
@@ -60,14 +62,15 @@ jobs:
       # ================== [5] Android SDK基础安装 ==================
       - name: Install Android Command-line Tools
         run: |
-          # 下载并解压命令行工具
+          # 下载并解压命令行工具到统一路径
           wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
-          unzip commandlinetools-linux-*.zip -d $ANDROID_SDK_ROOT/cmdline-tools
-          mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
+          unzip commandlinetools-linux-*.zip -d $ANDROID_HOME/cmdline-tools
+          mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
           rm commandlinetools-linux-*.zip
           
           # 配置环境变量
-          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+
       # ================== [6] 安装Android组件 ==================
       - name: Install Android Components
         run: |
@@ -75,6 +78,7 @@ jobs:
           yes | sdkmanager "platform-tools" "build-tools;${{ env.BUILD_TOOLS_VERSION }}"
           yes | sdkmanager "ndk;${{ env.NDK_VERSION }}"
           yes | sdkmanager "cmake;${{ env.CMAKE_VERSION }}"
+
       # ================== [7] 构建缓存配置 ==================
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -85,15 +89,21 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('src/RyujinxAndroid/**/*.gradle') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
+
       # ================== [8] 构建执行 ==================
       - name: Build with Gradle
         working-directory: src/RyujinxAndroid
         run: |
+          # 显式设置SDK路径并清理旧配置
+          sed -i '/sdk.dir/d' local.properties
+          echo "sdk.dir=$ANDROID_HOME" >> local.properties
+          
           chmod +x gradlew
           ./gradlew assembleRelease \
             -Porg.gradle.parallel=true \
             -Porg.gradle.daemon=false \
             --no-build-cache
+
       # ================== [9] 产物上传 ==================
       - name: Upload APK
         uses: actions/upload-artifact@v4
