@@ -71,7 +71,9 @@ namespace Ryujinx.Memory.Tracking
             {
                 if (handle != null)
                 {
-                    handle?.RegisterPreciseAction((address, size, write) => action?.Invoke(handle.Address, handle.Size, write));
+                    handle?.RegisterPreciseAction((address, size, write) => action != null 
+                    ? action(handle.Address, handle.Size, write) 
+                    : false);
                 }
             }
         }
