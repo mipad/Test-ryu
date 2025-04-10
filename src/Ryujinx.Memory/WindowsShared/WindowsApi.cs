@@ -46,7 +46,7 @@ namespace Ryujinx.Memory.WindowsShared
             FileMapProtection flProtect,
             uint dwMaximumSizeHigh,
             uint dwMaximumSizeLow,
-            [MarshalAs(UnmanagedType.LPWStr)] string lpName);
+            [MarshalAs(UnmanagedType.LPWStr)] string? lpName);
 
         [LibraryImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
