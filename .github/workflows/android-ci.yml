@@ -62,20 +62,30 @@ jobs:
 
       # ================== [5] Android环境配置 ==================
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v2
+        uses: actions/setup-android@v1  # 使用官方推荐Action
         with:
-          cmdline-tools-version: "latest"
-          accept-android-sdk-licenses: true
+          licenses: |
+            android-sdk-license
+            android-sdk-preview-license
 
-      # ================== [6] 安装Android工具 ==================
+      # ================== [6] 安装Android命令行工具 ==================
+      - name: Install Command-line Tools
+        run: |
+          # 安装cmdline-tools
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/bin/sdkmanager --install "cmdline-tools;latest"
+          # 设置环境变量
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH" >> $GITHUB_ENV
+
+      # ================== [7] 安装Android工具 ==================
       - name: Install Android Tools
         run: |
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install "cmake;${{ env.CMAKE_VERSION }}"
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install "build-tools;${{ env.BUILD_TOOLS_VERSION }}"
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install "platform-tools"
+          yes | sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
+          yes | sdkmanager --install "cmake;${{ env.CMAKE_VERSION }}"
+          yes | sdkmanager --install "build-tools;${{ env.BUILD_TOOLS_VERSION }}"
+          yes | sdkmanager --install "platform-tools"
 
-      # ================== [7] 构建缓存配置 ==================
+      # ================== [8] 构建缓存配置 ==================
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
@@ -86,7 +96,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      # ================== [8] 构建执行 ==================
+      # ================== [9] 构建执行 ==================
       - name: Build with Gradle
         working-directory: src/RyujinxAndroid
         run: |
@@ -96,7 +106,7 @@ jobs:
             -Porg.gradle.daemon=false \
             --no-build-cache
 
-      # ================== [9] 产物上传 ==================
+      # ================== [10] 产物上传 ==================
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
