@@ -35,21 +35,30 @@ namespace Ryujinx.Memory
         /// Creates a new instance of the memory block class.
         /// </summary>
         public MemoryBlock(ulong size, MemoryAllocationFlags flags = MemoryAllocationFlags.None)
+{
+    if (flags.HasFlag(MemoryAllocationFlags.Mirrorable))
+    {
+        if (OperatingSystem.IsAndroid())
         {
-            if (flags.HasFlag(MemoryAllocationFlags.Mirrorable))
-            {
-#if ANDROID
-                // Android 使用 ASharedMemory_create
-                _sharedMemory = MemoryManagementUnix.CreateSharedMemory(size, flags.HasFlag(MemoryAllocationFlags.Reserve));
-#else
-                _sharedMemory = MemoryManagement.CreateSharedMemory(size, flags.HasFlag(MemoryAllocationFlags.Reserve));
-#endif
-                if (!flags.HasFlag(MemoryAllocationFlags.NoMap))
-                {
-                    _pointer = MemoryManagement.MapSharedMemory(_sharedMemory, size);
-                }
-                _usesSharedMemory = true;
-            }
+            // Android 使用 ASharedMemory_create
+            _sharedMemory = MemoryManagementUnix.CreateSharedMemory(size, flags.HasFlag(MemoryAllocationFlags.Reserve));
+        }
+        else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+        {
+            // Linux/macOS 使用其他实现
+            _sharedMemory = MemoryManagement.CreateSharedMemory(size, flags.HasFlag(MemoryAllocationFlags.Reserve));
+        }
+        else
+        {
+            throw new PlatformNotSupportedException("Shared memory is not supported on this platform.");
+        }
+
+        if (!flags.HasFlag(MemoryAllocationFlags.NoMap))
+        {
+            _pointer = MemoryManagement.MapSharedMemory(_sharedMemory, size);
+        }
+        _usesSharedMemory = true;
+    }
             else if (flags.HasFlag(MemoryAllocationFlags.Reserve))
             {
                 _viewCompatible = flags.HasFlag(MemoryAllocationFlags.ViewCompatible);
