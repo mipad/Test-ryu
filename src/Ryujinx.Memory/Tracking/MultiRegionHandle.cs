@@ -391,10 +391,13 @@ namespace Ryujinx.Memory.Tracking
 
             for (int i = startHandle; i <= lastHandle; i++)
             {
+            if (action != null) // 添加 null 检查
+           {
                 _handles[i].RegisterAction(action);
             }
         }
-
+    }
+    
         public void RegisterPreciseAction(ulong address, ulong size, PreciseRegionSignal action)
         {
             int startHandle = (int)((address - Address) / Granularity);
