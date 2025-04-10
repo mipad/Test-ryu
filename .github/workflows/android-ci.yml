@@ -40,9 +40,9 @@ jobs:
       # ================== [2] 环境初始化 ==================
       - name: Prepare workspace
         run: |
-          # 统一使用ANDROID_HOME作为SDK路径
+          # 创建完整目录结构
           echo "ANDROID_HOME=${{ github.workspace }}/android-sdk" >> $GITHUB_ENV
-          mkdir -p $ANDROID_HOME
+          mkdir -p $ANDROID_HOME/cmdline-tools  # 提前创建cmdline-tools目录
           echo "sdk.dir=$ANDROID_HOME" >> src/RyujinxAndroid/local.properties
 
       # ================== [3] .NET环境配置 ==================
@@ -62,12 +62,21 @@ jobs:
       # ================== [5] Android SDK基础安装 ==================
       - name: Install Android Command-line Tools
         run: |
-          # 下载并解压命令行工具到统一路径
+          # 确保目标目录存在
+          mkdir -p $ANDROID_HOME/cmdline-tools
+          
+          # 下载并解压命令行工具
           wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
           unzip commandlinetools-linux-*.zip -d $ANDROID_HOME/cmdline-tools
+          
+          # 重命名并清理
           mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
           rm commandlinetools-linux-*.zip
           
+          # 验证目录结构
+          echo "Command-line tools installed at:"
+          ls -la $ANDROID_HOME/cmdline-tools/latest
+
           # 配置环境变量
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
@@ -94,7 +103,7 @@ jobs:
       - name: Build with Gradle
         working-directory: src/RyujinxAndroid
         run: |
-          # 显式设置SDK路径并清理旧配置
+          # 强制更新SDK路径配置
           sed -i '/sdk.dir/d' local.properties
           echo "sdk.dir=$ANDROID_HOME" >> local.properties
           
