@@ -217,7 +217,7 @@ namespace Ryujinx.Memory.Range
         /// </remarks>
         /// <param name="item">Item to check for overlaps</param>
         /// <returns>The overlapping item, or the default value for the type if none found</returns>
-        public T FindFirstOverlap(T item)
+        public T? FindFirstOverlap(T item)
         {
             return FindFirstOverlap(item.Address, item.Size);
         }
@@ -232,7 +232,7 @@ namespace Ryujinx.Memory.Range
         /// <param name="address">Start address of the range</param>
         /// <param name="size">Size in bytes of the range</param>
         /// <returns>The overlapping item, or the default value for the type if none found</returns>
-        public T FindFirstOverlap(ulong address, ulong size)
+        public T? FindFirstOverlap(ulong address, ulong size)
         {
             int index = BinarySearch(address, address + size);
 
