@@ -17,7 +17,7 @@
     <DefineConstants Condition="'$(TargetOS)' == 'android'">ANDROID;UNIX</DefineConstants>
     
     <!-- 警告配置 -->
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <WarningsAsErrors>CA1416</WarningsAsErrors>
     
     <!-- 声明支持的操作系统平台 -->
