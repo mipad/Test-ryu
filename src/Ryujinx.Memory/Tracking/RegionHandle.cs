@@ -90,7 +90,7 @@ namespace Ryujinx.Memory.Tracking
     }
 }
 
-        internal RegionSignal PreAction => _preAction;
+        internal RegionSignal? PreAction => _preAction;
 
         internal ConcurrentBitmap Bitmap;
         internal int DirtyBit;
