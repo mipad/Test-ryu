@@ -124,7 +124,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv
                             {
                                 targetPrevAddress = InvalidAddress;
                             }
-                            node = node.Previous;
+                            node = node?.Previous;
                             _tree.Remove(prevAddress);
                             _list.Remove(_dictionary[prevAddress]);
                             _dictionary.Remove(prevAddress);

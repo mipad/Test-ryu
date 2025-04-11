@@ -2251,7 +2251,7 @@ namespace Ryujinx.Ava.UI.ViewModels
                 switch (operationOutcome)
                 {
                     case XCIFileTrimmer.OperationOutcome.Successful:
-                        if (Application.Current.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+                        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
                         {
                             if (desktop.MainWindow is MainWindow mainWindow)
                                 mainWindow.LoadApplications();

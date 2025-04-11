@@ -93,9 +93,9 @@ namespace Ryujinx.Ava.UI.ViewModels
 
             _modJsonPath = Path.Combine(AppDataManager.GamesDirPath, applicationId.ToString("x16"), "mods.json");
 
-            if (Application.Current.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
-                _storageProvider = desktop.MainWindow.StorageProvider;
+                _storageProvider = desktop.MainWindow?.StorageProvider;
             }
 
             LoadMods(applicationId, _installedDlcIds);
@@ -117,8 +117,8 @@ namespace Ryujinx.Ava.UI.ViewModels
 
                 foreach (var mod in modCache.RomfsDirs)
                 {
-                    var modModel = new ModModel(mod.Path.Parent.FullName, mod.Name, mod.Enabled, inSd);
-                    if (Mods.All(x => x.Path != mod.Path.Parent.FullName))
+                    var modModel = new ModModel(mod.Path.Parent?.FullName, mod.Name, mod.Enabled, inSd);
+                    if (Mods.All(x => x.Path != mod.Path.Parent?.FullName))
                     {
                         Mods.Add(modModel);
                     }
@@ -131,8 +131,8 @@ namespace Ryujinx.Ava.UI.ViewModels
 
                 foreach (var mod in modCache.ExefsDirs)
                 {
-                    var modModel = new ModModel(mod.Path.Parent.FullName, mod.Name, mod.Enabled, inSd);
-                    if (Mods.All(x => x.Path != mod.Path.Parent.FullName))
+                    var modModel = new ModModel(mod.Path.Parent?.FullName, mod.Name, mod.Enabled, inSd);
+                    if (Mods.All(x => x.Path != mod.Path.Parent?.FullName))
                     {
                         Mods.Add(modModel);
                     }

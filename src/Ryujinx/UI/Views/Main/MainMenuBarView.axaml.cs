@@ -106,7 +106,7 @@ namespace Ryujinx.Ava.UI.Views.Main
 
         private async void StopEmulation_Click(object sender, RoutedEventArgs e)
         {
-            await Window.ViewModel.AppHost?.ShowExitPrompt();
+            await Window.ViewModel.AppHost.ShowExitPrompt();
         }
 
         private void PauseEmulation_Click(object sender, RoutedEventArgs e)
@@ -211,7 +211,7 @@ namespace Ryujinx.Ava.UI.Views.Main
             ViewModel.AreMimeTypesRegistered = FileAssociationHelper.Install();
             if (ViewModel.AreMimeTypesRegistered)
                 await ContentDialogHelper.CreateInfoDialog(LocaleManager.Instance[LocaleKeys.DialogInstallFileTypesSuccessMessage], string.Empty, LocaleManager.Instance[LocaleKeys.InputDialogOk], string.Empty, string.Empty);
-             else
+            else
             {
                 await ContentDialogHelper.CreateErrorDialog(LocaleManager.Instance[LocaleKeys.DialogInstallFileTypesErrorMessage]);
             }

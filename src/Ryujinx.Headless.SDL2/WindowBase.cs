@@ -418,7 +418,7 @@ namespace Ryujinx.Headless.SDL2
             // Get screen touch position
             if (!_enableMouse)
             {
-                hasTouch = TouchScreenManager.Update(true, (_inputManager.MouseDriver as SDL2MouseDriver).IsButtonPressed(MouseButton.Button1), _aspectRatio.ToFloat());
+                hasTouch = TouchScreenManager.Update(true, ((SDL2MouseDriver)_inputManager.MouseDriver).IsButtonPressed(MouseButton.Button1), _aspectRatio.ToFloat());
             }
 
             if (!hasTouch)

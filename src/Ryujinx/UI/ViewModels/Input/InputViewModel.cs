@@ -46,7 +46,6 @@ namespace Ryujinx.Ava.UI.ViewModels.Input
         private PlayerIndex _playerId;
         private PlayerIndex _playerIdChoose;
         private int _controller;
-        private int _controllerNumber;
         private string _controllerImage;
         private int _device;
         private object _configViewModel;
@@ -247,8 +246,8 @@ namespace Ryujinx.Ava.UI.ViewModels.Input
             if (Program.PreviewerDetached)
             {
                 _mainWindow =
-                    (MainWindow)((IClassicDesktopStyleApplicationLifetime)Application.Current
-                        .ApplicationLifetime).MainWindow;
+                    (MainWindow)((IClassicDesktopStyleApplicationLifetime)Application.Current?
+                        .ApplicationLifetime)?.MainWindow;
 
                 AvaloniaKeyboardDriver = new AvaloniaKeyboardDriver(owner);
 
@@ -519,7 +518,7 @@ namespace Ryujinx.Ava.UI.ViewModels.Input
         {
             ProfilesList.Clear();
 
-            string basePath = GetProfileBasePath();
+            string basePath = GetProfileBasePath() ?? string.Empty;
 
             if (!Directory.Exists(basePath))
             {
@@ -773,11 +772,11 @@ namespace Ryujinx.Ava.UI.ViewModels.Input
 
                     if (IsKeyboard)
                     {
-                        config = (ConfigViewModel as KeyboardInputViewModel).Config.GetConfig();
+                        config = (ConfigViewModel as KeyboardInputViewModel)?.Config.GetConfig();
                     }
                     else if (IsController)
                     {
-                        config = (ConfigViewModel as ControllerInputViewModel).Config.GetConfig();
+                        config = (ConfigViewModel as ControllerInputViewModel)?.Config.GetConfig();
                     }
 
                     config.ControllerType = Controllers[_controller].Type;
@@ -842,18 +841,18 @@ namespace Ryujinx.Ava.UI.ViewModels.Input
 
                 if (device.Type == DeviceType.Keyboard)
                 {
-                    var inputConfig = (ConfigViewModel as KeyboardInputViewModel).Config;
+                    var inputConfig = ((KeyboardInputViewModel)ConfigViewModel).Config;
                     inputConfig.Id = device.Id;
                 }
                 else
                 {
-                    var inputConfig = (ConfigViewModel as ControllerInputViewModel).Config;
+                    var inputConfig = ((ControllerInputViewModel)ConfigViewModel).Config;
                     inputConfig.Id = device.Id.Split(" ")[0];
                 }
 
                 var config = !IsController
-                    ? (ConfigViewModel as KeyboardInputViewModel).Config.GetConfig()
-                    : (ConfigViewModel as ControllerInputViewModel).Config.GetConfig();
+                    ? ((KeyboardInputViewModel)ConfigViewModel).Config.GetConfig()
+                    : ((ControllerInputViewModel)ConfigViewModel).Config.GetConfig();
                 config.ControllerType = Controllers[_controller].Type;
                 config.PlayerIndex = _playerId;
 

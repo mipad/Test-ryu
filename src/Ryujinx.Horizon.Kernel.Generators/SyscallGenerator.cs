@@ -210,7 +210,7 @@ namespace Ryujinx.Horizon.Kernel.Generators
             {
                 string name = methodParameter.Identifier.Text;
                 string argName = GetPrefixedArgName(name);
-                string typeName = methodParameter.Type.ToString();
+                string typeName = methodParameter.Type?.ToString();
                 string canonicalTypeName = GetCanonicalTypeName(compilation, methodParameter.Type);
 
                 if (methodParameter.Modifiers.Any(SyntaxKind.OutKeyword))
@@ -329,7 +329,7 @@ namespace Ryujinx.Horizon.Kernel.Generators
             {
                 string name = methodParameter.Identifier.Text;
                 string argName = GetPrefixedArgName(name);
-                string typeName = methodParameter.Type.ToString();
+                string typeName = methodParameter.Type?.ToString();
                 string canonicalTypeName = GetCanonicalTypeName(compilation, methodParameter.Type);
 
                 if (methodParameter.Modifiers.Any(SyntaxKind.OutKeyword))
@@ -415,9 +415,9 @@ namespace Ryujinx.Horizon.Kernel.Generators
         private static string GetCanonicalTypeName(Compilation compilation, SyntaxNode syntaxNode)
         {
             TypeInfo typeInfo = compilation.GetSemanticModel(syntaxNode.SyntaxTree).GetTypeInfo(syntaxNode);
-            if (typeInfo.Type.ContainingNamespace == null)
+            if (typeInfo.Type?.ContainingNamespace == null)
             {
-                return typeInfo.Type.Name;
+                return typeInfo.Type?.Name;
             }
 
             return $"{typeInfo.Type.ContainingNamespace.ToDisplayString()}.{typeInfo.Type.Name}";
