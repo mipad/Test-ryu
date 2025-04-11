@@ -33,30 +33,45 @@ namespace ARMeilleure.CodeGen.X86
         }
 
         private static uint GetXcr0Eax()
+{
+    // 统一平台检查
+    if (!OperatingSystem.IsWindows() && 
+        !OperatingSystem.IsLinux() && 
+        !OperatingSystem.IsMacOS() && 
+        !OperatingSystem.IsAndroid())
+    {
+        throw new PlatformNotSupportedException("MemoryBlock is not supported on this platform.");
+    }
+
+    if (!FeatureInfo1Ecx.HasFlag(FeatureFlags1Ecx.Xsave))
+    {
+        return 0;
+    }
+
+    ReadOnlySpan<byte> asmGetXcr0 = new byte[]
+    {
+        0x31, 0xc9,       // xor ecx, ecx
+        0x0f, 0x01, 0xd0, // xgetbv
+        0xc3               // ret
+    };
+
+    using (MemoryBlock memGetXcr0 = new((ulong)asmGetXcr0.Length))
+    {
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
         {
-            if (!FeatureInfo1Ecx.HasFlag(FeatureFlags1Ecx.Xsave))
-            {
-                // XSAVE feature required for xgetbv
-                return 0;
-            }
-
-            ReadOnlySpan<byte> asmGetXcr0 = new byte[]
-            {
-                0x31, 0xc9, // xor ecx, ecx
-                0xf, 0x01, 0xd0, // xgetbv
-                0xc3, // ret
-            };
-
-            using MemoryBlock memGetXcr0 = new((ulong)asmGetXcr0.Length);
-
             memGetXcr0.Write(0, asmGetXcr0);
-
             memGetXcr0.Reprotect(0, (ulong)asmGetXcr0.Length, MemoryPermission.ReadAndExecute);
-
-            var fGetXcr0 = Marshal.GetDelegateForFunctionPointer<GetXcr0>(memGetXcr0.Pointer);
-
-            return fGetXcr0();
         }
+        else
+        {
+            throw new PlatformNotSupportedException();
+        }
+
+        var ptr = memGetXcr0.Pointer;
+        var fGetXcr0 = Marshal.GetDelegateForFunctionPointer<GetXcr0>(ptr);
+        return fGetXcr0();
+    }
+}
 
         [Flags]
         public enum FeatureFlags1Edx
