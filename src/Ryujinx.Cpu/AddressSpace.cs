@@ -37,7 +37,6 @@ namespace Ryujinx.Cpu
              return false;
          }
 
-         // 保持参数对齐
          MemoryBlock baseMemory = null;
          MemoryBlock mirrorMemory = null;
 
@@ -60,7 +59,6 @@ namespace Ryujinx.Cpu
      {
          addressSpace = null;
 
-         // 仅在入口检查一次平台
          if (!OperatingSystem.IsLinux() && !OperatingSystem.IsAndroid() && 
              !OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS())
          {
