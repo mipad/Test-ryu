@@ -10,30 +10,37 @@ using System.Runtime.Versioning;
 
 namespace Ryujinx.Cpu.Jit
 {
-    /// <summary>
-    /// Represents a CPU memory manager which maps guest virtual memory directly onto a host virtual region.
-    /// </summary>
     [SupportedOSPlatform("linux")]
     [SupportedOSPlatform("android")]
     [SupportedOSPlatform("macos")]
     [SupportedOSPlatform("windows")]
     public sealed class MemoryManagerHostNoMirror : VirtualMemoryManagerRefCountedBase, ICpuMemoryManager, IVirtualMemoryManagerTracked, IWritableBlock
     {
-        private readonly InvalidAccessHandler _invalidAccessHandler;
-        private readonly bool _unsafeMode;
-
-        private readonly MemoryBlock _addressSpace;
-        private readonly MemoryBlock _backingMemory;
-        private readonly PageTable<ulong> _pageTable;
+#if LINUX || ANDROID || MACOS || WINDOWS
+    // 目标平台字段
+    private readonly MemoryBlock _addressSpace;
+    private readonly MemoryBlock _backingMemory;
+    private readonly PageTable<ulong> _pageTable;
+    private readonly bool _unsafeMode;
+    private readonly ManagedPageFlags _pages;
+    // TODO: 后续实现内存异常处理时使用
+    private readonly MemoryEhMeilleure _memoryEh;
+    // TODO: 后续实现无效访问处理逻辑
+    private readonly InvalidAccessHandler _invalidAccessHandler;
+#else
+    // 非目标平台默认值（仅用于消除警告）
+    private readonly MemoryBlock _addressSpace = null;
+    private readonly MemoryBlock _backingMemory = null;
+    private readonly PageTable<ulong> _pageTable = null;
+    private readonly bool _unsafeMode = false;
+    private readonly ManagedPageFlags _pages = null;
+    private readonly MemoryEhMeilleure _memoryEh = null;
+    private readonly InvalidAccessHandler _invalidAccessHandler = null;
+#endif
 
         public int AddressSpaceBits { get; }
         protected override ulong AddressSpaceSize { get; }
 
-        private readonly MemoryEhMeilleure _memoryEh;
-
-        private readonly ManagedPageFlags _pages;
-
-        /// <inheritdoc/>
         public bool UsesPrivateAllocations => false;
 
         public IntPtr PageTablePointer
@@ -43,7 +50,7 @@ namespace Ryujinx.Cpu.Jit
 #if LINUX || ANDROID || MACOS || WINDOWS
                 return _addressSpace.Pointer;
 #else
-                throw new PlatformNotSupportedException("PageTablePointer is not supported on this platform.");
+                throw new PlatformNotSupportedException();
 #endif
             }
         }
@@ -52,7 +59,9 @@ namespace Ryujinx.Cpu.Jit
 
         public MemoryTracking Tracking { get; }
 
-        public event Action<ulong, ulong> UnmapEvent;
+#pragma warning disable CS0067
+        public event Action<ulong, ulong> UnmapEvent; // TODO: 
+#pragma warning restore CS0067
 
         /// <summary>
         /// Creates a new instance of the host mapped memory manager.
@@ -66,7 +75,7 @@ namespace Ryujinx.Cpu.Jit
             bool unsafeMode,
             InvalidAccessHandler invalidAccessHandler)
         {
-        #if LINUX || ANDROID || MACOS || WINDOWS
+#if LINUX || ANDROID || MACOS || WINDOWS
             _addressSpace = addressSpace;
             _backingMemory = backingMemory;
             _pageTable = new PageTable<ulong>();
@@ -84,13 +93,11 @@ namespace Ryujinx.Cpu.Jit
             }
 
             AddressSpaceBits = asBits;
-
             _pages = new ManagedPageFlags(asBits);
-
             Tracking = new MemoryTracking(this, (int)MemoryBlock.GetPageSize(), invalidAccessHandler);
             _memoryEh = new MemoryEhMeilleure(addressSpace, null, Tracking);
-            #else
-            throw new PlatformNotSupportedException("MemoryManagerHostNoMirror is not supported on this platform.");
+#else
+            throw new PlatformNotSupportedException();
 #endif
         }
 
