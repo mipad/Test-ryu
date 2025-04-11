@@ -269,5 +269,7 @@ namespace Ryujinx.Cpu.Signal
           }
 
           return success;
-      }
+          }
         }
+     }
+}
