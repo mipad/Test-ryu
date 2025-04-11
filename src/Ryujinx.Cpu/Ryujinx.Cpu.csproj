@@ -10,7 +10,11 @@
   </PropertyGroup>
 
   <PropertyGroup>
-     <EnablePreviewFeatures>true</EnablePreviewFeatures>
+    <EnablePlatformCompatAnalysis>true</EnablePlatformCompatAnalysis>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <EnablePreviewFeatures>true</EnablePreviewFeatures>
   </PropertyGroup>
 
   <ItemGroup>
