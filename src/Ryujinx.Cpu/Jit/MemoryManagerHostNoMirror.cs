@@ -23,19 +23,19 @@ namespace Ryujinx.Cpu.Jit
     private readonly PageTable<ulong> _pageTable;
     private readonly bool _unsafeMode;
     private readonly ManagedPageFlags _pages;
-    // TODO: 后续实现内存异常处理时使用
     private readonly MemoryEhMeilleure _memoryEh;
-    // TODO: 后续实现无效访问处理逻辑
     private readonly InvalidAccessHandler _invalidAccessHandler;
 #else
-    // 非目标平台默认值（仅用于消除警告）
+    #pragma warning disable CS0414
+    // 非目标平台默认值
     private readonly MemoryBlock _addressSpace = null;
     private readonly MemoryBlock _backingMemory = null;
     private readonly PageTable<ulong> _pageTable = null;
     private readonly bool _unsafeMode = false;
-    private readonly ManagedPageFlags _pages = null;
+    private readonly ManagedPageFlags _pages = default;
     private readonly MemoryEhMeilleure _memoryEh = null;
     private readonly InvalidAccessHandler _invalidAccessHandler = null;
+    #pragma warning restore CS0414
 #endif
 
         public int AddressSpaceBits { get; }
