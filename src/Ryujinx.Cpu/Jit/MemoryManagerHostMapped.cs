@@ -1,4 +1,4 @@
-﻿using ARMeilleure.Memory;
+using ARMeilleure.Memory;
 using Ryujinx.Memory;
 using Ryujinx.Memory.Range;
 using Ryujinx.Memory.Tracking;
@@ -13,6 +13,10 @@ namespace Ryujinx.Cpu.Jit
     /// <summary>
     /// Represents a CPU memory manager which maps guest virtual memory directly onto a host virtual region.
     /// </summary>
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("android")]
+    [SupportedOSPlatform("windows")]
+    [SupportedOSPlatform("macos")]
     public sealed class MemoryManagerHostMapped : VirtualMemoryManagerRefCountedBase, ICpuMemoryManager, IVirtualMemoryManagerTracked
     {
         private readonly InvalidAccessHandler _invalidAccessHandler;
@@ -49,6 +53,8 @@ namespace Ryujinx.Cpu.Jit
         /// <param name="invalidAccessHandler">Optional function to handle invalid memory accesses</param>
         public MemoryManagerHostMapped(AddressSpace addressSpace, bool unsafeMode, InvalidAccessHandler invalidAccessHandler)
         {
+            EnsurePlatformSupported();
+        
             _addressSpace = addressSpace;
             _pageTable = new PageTable<ulong>();
             _invalidAccessHandler = invalidAccessHandler;
@@ -88,6 +94,7 @@ namespace Ryujinx.Cpu.Jit
         /// <inheritdoc/>
         public void Map(ulong va, ulong pa, ulong size, MemoryMapFlags flags)
         {
+            EnsurePlatformSupported();
             AssertValidAddressAndSize(va, size);
 
             _addressSpace.Map(va, pa, size, flags);
@@ -100,6 +107,7 @@ namespace Ryujinx.Cpu.Jit
         /// <inheritdoc/>
         public void Unmap(ulong va, ulong size)
         {
+            EnsurePlatformSupported();
             AssertValidAddressAndSize(va, size);
 
             UnmapEvent?.Invoke(va, size);
@@ -135,6 +143,7 @@ namespace Ryujinx.Cpu.Jit
 
         public override T Read<T>(ulong va)
         {
+            EnsurePlatformSupported();
             try
             {
                 AssertMapped(va, (ulong)Unsafe.SizeOf<T>());
@@ -152,8 +161,20 @@ namespace Ryujinx.Cpu.Jit
             }
         }
 
+        private void EnsurePlatformSupported()
+{
+    if (!OperatingSystem.IsLinux() && 
+        !OperatingSystem.IsAndroid() && 
+        !OperatingSystem.IsWindows() && 
+        !OperatingSystem.IsMacOS())
+    {
+        throw new PlatformNotSupportedException("Memory operations are not supported on the current platform.");
+    }
+}
+     
         public override T ReadTracked<T>(ulong va)
         {
+            EnsurePlatformSupported();
             try
             {
                 return base.ReadTracked<T>(va);
@@ -171,6 +192,7 @@ namespace Ryujinx.Cpu.Jit
 
         public override void Read(ulong va, Span<byte> data)
         {
+            EnsurePlatformSupported();
             try
             {
                 AssertMapped(va, (ulong)data.Length);
@@ -188,6 +210,7 @@ namespace Ryujinx.Cpu.Jit
 
         public override void Write<T>(ulong va, T value)
         {
+            EnsurePlatformSupported();
             try
             {
                 SignalMemoryTracking(va, (ulong)Unsafe.SizeOf<T>(), write: true);
@@ -205,6 +228,7 @@ namespace Ryujinx.Cpu.Jit
 
         public override void Write(ulong va, ReadOnlySpan<byte> data)
         {
+            EnsurePlatformSupported();
             try
             {
                 SignalMemoryTracking(va, (ulong)data.Length, write: true);
@@ -222,6 +246,7 @@ namespace Ryujinx.Cpu.Jit
 
         public override void WriteUntracked(ulong va, ReadOnlySpan<byte> data)
         {
+            EnsurePlatformSupported();
             try
             {
                 AssertMapped(va, (ulong)data.Length);
@@ -239,6 +264,7 @@ namespace Ryujinx.Cpu.Jit
 
         public override bool WriteWithRedundancyCheck(ulong va, ReadOnlySpan<byte> data)
         {
+            EnsurePlatformSupported();
             try
             {
                 SignalMemoryTracking(va, (ulong)data.Length, false);
@@ -265,7 +291,8 @@ namespace Ryujinx.Cpu.Jit
         }
 
         public override ReadOnlySequence<byte> GetReadOnlySequence(ulong va, int size, bool tracked = false)
-        {
+        {   
+            EnsurePlatformSupported();
             if (tracked)
             {
                 SignalMemoryTracking(va, (ulong)size, write: false);
@@ -280,6 +307,7 @@ namespace Ryujinx.Cpu.Jit
 
         public override ReadOnlySpan<byte> GetSpan(ulong va, int size, bool tracked = false)
         {
+            EnsurePlatformSupported();
             if (tracked)
             {
                 SignalMemoryTracking(va, (ulong)size, write: false);
@@ -294,6 +322,7 @@ namespace Ryujinx.Cpu.Jit
 
         public override WritableRegion GetWritableRegion(ulong va, int size, bool tracked = false)
         {
+            EnsurePlatformSupported();
             if (tracked)
             {
                 SignalMemoryTracking(va, (ulong)size, true);
@@ -330,6 +359,7 @@ namespace Ryujinx.Cpu.Jit
         /// <inheritdoc/>
         public IEnumerable<HostMemoryRange> GetHostRegions(ulong va, ulong size)
         {
+            EnsurePlatformSupported();
             AssertValidAddressAndSize(va, size);
 
             return Enumerable.Repeat(new HostMemoryRange((nuint)(ulong)_addressSpace.Mirror.GetPointer(va, size), size), 1);
@@ -386,7 +416,7 @@ namespace Ryujinx.Cpu.Jit
         }
 
         /// <remarks>
-        /// This function also validates that the given range is both valid and mapped, and will throw if it is not.
+        /// This function also validates that the given range is both valid and mapped, 和 will throw if it is not.
         /// </remarks>
         public override void SignalMemoryTracking(ulong va, ulong size, bool write, bool precise = false, int? exemptId = null)
         {
@@ -410,6 +440,7 @@ namespace Ryujinx.Cpu.Jit
         /// <inheritdoc/>
         public void TrackingReprotect(ulong va, ulong size, MemoryPermission protection, bool guest)
         {
+            EnsurePlatformSupported();
             if (guest)
             {
                 _addressSpace.Base.Reprotect(va, size, protection, false);
@@ -448,10 +479,16 @@ namespace Ryujinx.Cpu.Jit
         }
 
         protected override Memory<byte> GetPhysicalAddressMemory(nuint pa, int size)
-            => _addressSpace.Mirror.GetMemory(pa, size);
+     {
+         EnsurePlatformSupported();
+         return _addressSpace.Mirror.GetMemory(pa, size);
+     }
 
-        protected override Span<byte> GetPhysicalAddressSpan(nuint pa, int size)
-            => _addressSpace.Mirror.GetSpan(pa, size);
+     protected override Span<byte> GetPhysicalAddressSpan(nuint pa, int size)
+     {
+         EnsurePlatformSupported();
+         return _addressSpace.Mirror.GetSpan(pa, size);
+     }
 
         protected override nuint TranslateVirtualAddressChecked(ulong va)
             => (nuint)GetPhysicalAddressChecked(va);
