@@ -9,6 +9,10 @@
     <DefineConstants>ANDROID</DefineConstants>
   </PropertyGroup>
 
+  <PropertyGroup>
+     <EnablePreviewFeatures>true</EnablePreviewFeatures>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\ARMeilleure\ARMeilleure.csproj" />
     <ProjectReference Include="..\Ryujinx.Memory\Ryujinx.Memory.csproj" />
