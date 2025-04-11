@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 
 namespace Ryujinx.Cpu.Signal
 {
@@ -51,7 +52,10 @@ namespace Ryujinx.Cpu.Signal
         /// </summary>
         public SignalHandlerRangeArray Ranges;
     }
-
+   [SupportedOSPlatform("linux")]
+   [SupportedOSPlatform("android")]
+   [SupportedOSPlatform("macos")]
+   [SupportedOSPlatform("windows")]
     static class NativeSignalHandler
     {
         private static readonly IntPtr _handlerConfig;
@@ -70,62 +74,64 @@ namespace Ryujinx.Cpu.Signal
             config = new SignalHandlerConfig();
         }
 
-        public static void InitializeSignalHandler(Func<IntPtr, IntPtr, IntPtr> customSignalHandlerFactory = null)
+         public static void InitializeSignalHandler(Func<IntPtr, IntPtr, IntPtr> customSignalHandlerFactory = null)
+    {
+#if LINUX || ANDROID || MACOS || WINDOWS
+        if (_initialized)
+        {
+            return;
+        }
+
+        lock (_lock)
         {
             if (_initialized)
             {
                 return;
             }
 
-            lock (_lock)
+            int rangeStructSize = Unsafe.SizeOf<SignalHandlerRange>();
+            ref SignalHandlerConfig config = ref GetConfigRef();
+
+            if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || PlatformInfo.IsBionic || OperatingSystem.IsIOS())
             {
-                if (_initialized)
+                _signalHandlerPtr = MapCode(NativeSignalHandlerGenerator.GenerateUnixSignalHandler(_handlerConfig, rangeStructSize));
+
+                if (PlatformInfo.IsBionic)
                 {
-                    return;
+                    config.StructAddressOffset = 16;
+                    config.StructWriteOffset = 8;
                 }
 
-                int rangeStructSize = Unsafe.SizeOf<SignalHandlerRange>();
-
-                ref SignalHandlerConfig config = ref GetConfigRef();
-
-                if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || PlatformInfo.IsBionic || OperatingSystem.IsIOS())
+                if (customSignalHandlerFactory != null)
                 {
-                    _signalHandlerPtr = MapCode(NativeSignalHandlerGenerator.GenerateUnixSignalHandler(_handlerConfig, rangeStructSize));
-
-                    if (PlatformInfo.IsBionic)
-                    {
-                        config.StructAddressOffset = 16; // si_addr
-                        config.StructWriteOffset = 8; // si_code
-                    }
-
-                    if (customSignalHandlerFactory != null)
-                    {
-                        _signalHandlerPtr = customSignalHandlerFactory(UnixSignalHandlerRegistration.GetSegfaultExceptionHandler().sa_handler, _signalHandlerPtr);
-                    }
-
-                    var old = UnixSignalHandlerRegistration.RegisterExceptionHandler(_signalHandlerPtr);
-
-                    config.UnixOldSigaction = (nuint)(ulong)old.sa_handler;
-                    config.UnixOldSigaction3Arg = old.sa_flags & 4;
-                }
-                else
-                {
-                    config.StructAddressOffset = 40; // ExceptionInformation1
-                    config.StructWriteOffset = 32; // ExceptionInformation0
-
-                    _signalHandlerPtr = MapCode(NativeSignalHandlerGenerator.GenerateWindowsSignalHandler(_handlerConfig, rangeStructSize));
-
-                    if (customSignalHandlerFactory != null)
-                    {
-                        _signalHandlerPtr = customSignalHandlerFactory(IntPtr.Zero, _signalHandlerPtr);
-                    }
-
-                    WindowsSignalHandlerRegistration.RegisterExceptionHandler(_signalHandlerPtr);
+                    _signalHandlerPtr = customSignalHandlerFactory(UnixSignalHandlerRegistration.GetSegfaultExceptionHandler().sa_handler, _signalHandlerPtr);
                 }
 
-                _initialized = true;
+                var old = UnixSignalHandlerRegistration.RegisterExceptionHandler(_signalHandlerPtr);
+                config.UnixOldSigaction = (nuint)(ulong)old.sa_handler;
+                config.UnixOldSigaction3Arg = old.sa_flags & 4;
             }
+            else
+            {
+                config.StructAddressOffset = 40;
+                config.StructWriteOffset = 32;
+
+                _signalHandlerPtr = MapCode(NativeSignalHandlerGenerator.GenerateWindowsSignalHandler(_handlerConfig, rangeStructSize));
+
+                if (customSignalHandlerFactory != null)
+                {
+                    _signalHandlerPtr = customSignalHandlerFactory(IntPtr.Zero, _signalHandlerPtr);
+                }
+
+                WindowsSignalHandlerRegistration.RegisterExceptionHandler(_signalHandlerPtr);
+            }
+
+            _initialized = true;
         }
+#else
+        throw new PlatformNotSupportedException();
+#endif
+    }
 
         public static void InstallUnixAlternateStackForCurrentThread(IntPtr stackPtr, ulong stackSize)
         {
@@ -143,17 +149,20 @@ namespace Ryujinx.Cpu.Signal
         }
 
         private static IntPtr MapCode(ReadOnlySpan<byte> code)
-        {
-            Debug.Assert(_codeBlock == null);
+    {
+#if LINUX || ANDROID || MACOS || WINDOWS
+        Debug.Assert(_codeBlock == null);
 
-            ulong codeSizeAligned = BitUtils.AlignUp((ulong)code.Length, MemoryBlock.GetPageSize());
+        ulong codeSizeAligned = BitUtils.AlignUp((ulong)code.Length, MemoryBlock.GetPageSize());
+        _codeBlock = new MemoryBlock(codeSizeAligned);
+        _codeBlock.Write(0, code);
+        _codeBlock.Reprotect(0, codeSizeAligned, MemoryPermission.ReadAndExecute);
 
-            _codeBlock = new MemoryBlock(codeSizeAligned);
-            _codeBlock.Write(0, code);
-            _codeBlock.Reprotect(0, codeSizeAligned, MemoryPermission.ReadAndExecute);
-
-            return _codeBlock.Pointer;
-        }
+        return _codeBlock.Pointer;
+#else
+        throw new PlatformNotSupportedException("MemoryBlock operations are not supported on this platform.");
+#endif
+    }
 
         private static unsafe ref SignalHandlerConfig GetConfigRef()
         {
@@ -161,41 +170,47 @@ namespace Ryujinx.Cpu.Signal
         }
 
         public static bool AddTrackedRegion(nuint address, nuint endAddress, IntPtr action)
+    {
+#if LINUX || ANDROID || MACOS || WINDOWS
+        Span<SignalHandlerRange> ranges = GetConfigRef().Ranges;
+
+        for (int i = 0; i < NativeSignalHandlerGenerator.MaxTrackedRanges; i++)
         {
-            Span<SignalHandlerRange> ranges = GetConfigRef().Ranges;
-
-            for (int i = 0; i < NativeSignalHandlerGenerator.MaxTrackedRanges; i++)
+            if (ranges[i].IsActive == 0)
             {
-                if (ranges[i].IsActive == 0)
-                {
-                    ranges[i].RangeAddress = address;
-                    ranges[i].RangeEndAddress = endAddress;
-                    ranges[i].ActionPointer = action;
-                    ranges[i].IsActive = 1;
-
-                    return true;
-                }
+                ranges[i].RangeAddress = address;
+                ranges[i].RangeEndAddress = endAddress;
+                ranges[i].ActionPointer = action;
+                ranges[i].IsActive = 1;
+                return true;
             }
-
-            return false;
         }
+
+        return false;
+#else
+        throw new PlatformNotSupportedException();
+#endif
+    }
 
         public static bool RemoveTrackedRegion(nuint address)
+    {
+#if LINUX || ANDROID || MACOS || WINDOWS
+        Span<SignalHandlerRange> ranges = GetConfigRef().Ranges;
+
+        for (int i = 0; i < NativeSignalHandlerGenerator.MaxTrackedRanges; i++)
         {
-            Span<SignalHandlerRange> ranges = GetConfigRef().Ranges;
-
-            for (int i = 0; i < NativeSignalHandlerGenerator.MaxTrackedRanges; i++)
+            if (ranges[i].IsActive == 1 && ranges[i].RangeAddress == address)
             {
-                if (ranges[i].IsActive == 1 && ranges[i].RangeAddress == address)
-                {
-                    ranges[i].IsActive = 0;
-
-                    return true;
-                }
+                ranges[i].IsActive = 0;
+                return true;
             }
-
-            return false;
         }
+
+        return false;
+#else
+        throw new PlatformNotSupportedException();
+#endif
+    }
 
         public static bool SupportsFaultAddressPatching()
         {
