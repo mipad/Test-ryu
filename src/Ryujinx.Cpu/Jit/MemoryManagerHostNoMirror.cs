@@ -6,12 +6,17 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.Versioning;
 
 namespace Ryujinx.Cpu.Jit
 {
     /// <summary>
     /// Represents a CPU memory manager which maps guest virtual memory directly onto a host virtual region.
     /// </summary>
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("android")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("windows")]
     public sealed class MemoryManagerHostNoMirror : VirtualMemoryManagerRefCountedBase, ICpuMemoryManager, IVirtualMemoryManagerTracked, IWritableBlock
     {
         private readonly InvalidAccessHandler _invalidAccessHandler;
@@ -31,8 +36,18 @@ namespace Ryujinx.Cpu.Jit
         /// <inheritdoc/>
         public bool UsesPrivateAllocations => false;
 
-        public IntPtr PageTablePointer => _addressSpace.Pointer;
-
+        public IntPtr PageTablePointer
+        {
+            get
+            {
+#if LINUX || ANDROID || MACOS || WINDOWS
+                return _addressSpace.Pointer;
+#else
+                throw new PlatformNotSupportedException("PageTablePointer is not supported on this platform.");
+#endif
+            }
+        }
+        
         public MemoryManagerType Type => _unsafeMode ? MemoryManagerType.HostMappedUnsafe : MemoryManagerType.HostMapped;
 
         public MemoryTracking Tracking { get; }
@@ -51,6 +66,7 @@ namespace Ryujinx.Cpu.Jit
             bool unsafeMode,
             InvalidAccessHandler invalidAccessHandler)
         {
+        #if LINUX || ANDROID || MACOS || WINDOWS
             _addressSpace = addressSpace;
             _backingMemory = backingMemory;
             _pageTable = new PageTable<ulong>();
@@ -73,6 +89,9 @@ namespace Ryujinx.Cpu.Jit
 
             Tracking = new MemoryTracking(this, (int)MemoryBlock.GetPageSize(), invalidAccessHandler);
             _memoryEh = new MemoryEhMeilleure(addressSpace, null, Tracking);
+            #else
+            throw new PlatformNotSupportedException("MemoryManagerHostNoMirror is not supported on this platform.");
+#endif
         }
 
         /// <summary>
@@ -91,6 +110,7 @@ namespace Ryujinx.Cpu.Jit
         /// <inheritdoc/>
         public void Map(ulong va, ulong pa, ulong size, MemoryMapFlags flags)
         {
+        #if LINUX || ANDROID || MACOS || WINDOWS
             AssertValidAddressAndSize(va, size);
 
             _addressSpace.MapView(_backingMemory, pa, va, size);
@@ -98,6 +118,9 @@ namespace Ryujinx.Cpu.Jit
             PtMap(va, pa, size);
 
             Tracking.Map(va, size);
+            #else
+            throw new PlatformNotSupportedException("Map is not supported on this platform.");
+#endif
         }
 
         private void PtMap(ulong va, ulong pa, ulong size)
@@ -115,6 +138,7 @@ namespace Ryujinx.Cpu.Jit
         /// <inheritdoc/>
         public void Unmap(ulong va, ulong size)
         {
+#if LINUX || ANDROID || MACOS || WINDOWS
             AssertValidAddressAndSize(va, size);
 
             UnmapEvent?.Invoke(va, size);
@@ -123,6 +147,9 @@ namespace Ryujinx.Cpu.Jit
             _pages.RemoveMapping(va, size);
             PtUnmap(va, size);
             _addressSpace.UnmapView(_backingMemory, va, size);
+#else
+            throw new PlatformNotSupportedException("Unmap is not supported on this platform.");
+#endif
         }
 
         private void PtUnmap(ulong va, ulong size)
@@ -138,11 +165,18 @@ namespace Ryujinx.Cpu.Jit
 
         /// <inheritdoc/>
         public void Reprotect(ulong va, ulong size, MemoryPermission permission)
-        {
-        }
+{
+#if LINUX || ANDROID || MACOS || WINDOWS
+    // 
+    throw new NotImplementedException("Reprotect is not implemented.");
+#else
+    throw new PlatformNotSupportedException("Reprotect is not supported on this platform.");
+#endif
+}
 
         public ref T GetRef<T>(ulong va) where T : unmanaged
         {
+#if LINUX || ANDROID || MACOS || WINDOWS
             if (!IsContiguous(va, Unsafe.SizeOf<T>()))
             {
                 ThrowMemoryNotContiguous();
@@ -151,6 +185,9 @@ namespace Ryujinx.Cpu.Jit
             SignalMemoryTracking(va, (ulong)Unsafe.SizeOf<T>(), true);
 
             return ref _backingMemory.GetRef<T>(GetPhysicalAddressChecked(va));
+#else
+            throw new PlatformNotSupportedException("GetRef<T> is not supported on this platform.");
+#endif
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -170,6 +207,7 @@ namespace Ryujinx.Cpu.Jit
         /// <inheritdoc/>
         public IEnumerable<HostMemoryRange> GetHostRegions(ulong va, ulong size)
         {
+#if LINUX || ANDROID || MACOS || WINDOWS
             if (size == 0)
             {
                 return Enumerable.Empty<HostMemoryRange>();
@@ -178,7 +216,7 @@ namespace Ryujinx.Cpu.Jit
             var guestRegions = GetPhysicalRegionsImpl(va, size);
             if (guestRegions == null)
             {
-                return null;
+                return Enumerable.Empty<HostMemoryRange>();
             }
 
             var regions = new HostMemoryRange[guestRegions.Count];
@@ -191,6 +229,9 @@ namespace Ryujinx.Cpu.Jit
             }
 
             return regions;
+#else
+            throw new PlatformNotSupportedException("GetHostRegions is not supported on this platform.");
+#endif
         }
 
         /// <inheritdoc/>
@@ -260,7 +301,7 @@ namespace Ryujinx.Cpu.Jit
 
         /// <inheritdoc/>
         /// <remarks>
-        /// This function also validates that the given range is both valid and mapped, and will throw if it is not.
+        /// This function also validates that the given range is both valid and mapped, 和 will throw if it is not.
         /// </remarks>
         public override void SignalMemoryTracking(ulong va, ulong size, bool write, bool precise = false, int? exemptId = null)
         {
@@ -278,6 +319,7 @@ namespace Ryujinx.Cpu.Jit
         /// <inheritdoc/>
         public void TrackingReprotect(ulong va, ulong size, MemoryPermission protection, bool guest)
         {
+#if LINUX || ANDROID || MACOS || WINDOWS
             if (guest)
             {
                 _addressSpace.Reprotect(va, size, protection, false);
@@ -286,6 +328,9 @@ namespace Ryujinx.Cpu.Jit
             {
                 _pages.TrackingReprotect(va, size, protection);
             }
+#else
+            throw new PlatformNotSupportedException("TrackingReprotect is not supported on this platform.");
+#endif
         }
 
         /// <inheritdoc/>
@@ -311,15 +356,31 @@ namespace Ryujinx.Cpu.Jit
         /// </summary>
         protected override void Destroy()
         {
+        #if LINUX || ANDROID || MACOS || WINDOWS
             _addressSpace.Dispose();
             _memoryEh.Dispose();
+            #else
+            throw new PlatformNotSupportedException("Destroy is not supported on this platform.");
+#endif
         }
 
         protected override Memory<byte> GetPhysicalAddressMemory(nuint pa, int size)
-            => _backingMemory.GetMemory(pa, size);
+        {
+#if LINUX || ANDROID || MACOS || WINDOWS
+            return _backingMemory.GetMemory(pa, size);
+#else
+            throw new PlatformNotSupportedException("GetPhysicalAddressMemory is not supported on this platform.");
+#endif
+        }
 
         protected override Span<byte> GetPhysicalAddressSpan(nuint pa, int size)
-            => _backingMemory.GetSpan(pa, size);
+        {
+#if LINUX || ANDROID || MACOS || WINDOWS
+            return _backingMemory.GetSpan(pa, size);
+#else
+            throw new PlatformNotSupportedException("GetPhysicalAddressSpan is not supported on this platform.");
+#endif
+        }
 
         protected override nuint TranslateVirtualAddressChecked(ulong va)
             => (nuint)GetPhysicalAddressChecked(va);
