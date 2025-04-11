@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetOS)' == 'android'">
-    <DefineConstants>ANDROID</DefineConstants>
+    <DefineConstants>$(DefineConstants);LINUX;ANDROID;MACOS;WINDOWS</DefineConstants>
   </PropertyGroup>
 
   <PropertyGroup>
