@@ -18,8 +18,7 @@
     <!-- ====================== -->
     <PackageVersion Include="LibHac" Version="0.18.0" />
     <PackageVersion Include="MsgPack.Cli" Version="1.0.1" />
-    <!-- 修正后的 Concentus.Opus 包 -->
-    <PackageVersion Include="Concentus.Opus" Version="1.1.10" />
+    <PackageVersion Include="Concentus" Version="0.0.1" />
 
     <!-- ====================== -->
     <!--     图形/多媒体库      -->
@@ -79,6 +78,7 @@
     <PackageVersion Include="Rxmxnx.PInvoke.Extensions" Version="1.5.0" />
     <PackageVersion Include="shaderc.net" Version="0.1.0" />
     <PackageVersion Include="SPB" Version="0.0.4-build32" />
+    <PackageVersion Include="ConcentusCore" Version="1.1.7" /> <!-- 替换后的包 -->
   </ItemGroup>
 
   <!-- ====================== -->
@@ -91,8 +91,7 @@
     <!-- 强制指定关键包版本 -->
     <PackageVersion Update="LibHac" Version="0.18.0" />
     <PackageVersion Update="MsgPack.Cli" Version="1.0.1" />
-    <!-- 强制覆盖 Concentus.Opus 版本 -->
-    <PackageVersion Update="Concentus.Opus" Version="1.1.10" />
+    <PackageVersion Update="Concentus" Version="0.0.1" />
     <PackageVersion Update="Rxmxnx.PInvoke.Extensions" Version="1.5.0" />
     <PackageVersion Update="Silk.NET.Vulkan.Extensions.KHR" Version="2.21.0" />
   </ItemGroup>
