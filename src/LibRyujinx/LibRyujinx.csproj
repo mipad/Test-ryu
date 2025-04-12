@@ -52,17 +52,20 @@
 
   <!-- 安全包版本统一管理 -->
   <ItemGroup>
+    <PackageReference Include="System.Text.Encoding" />
     <PackageReference Include="System.Private.Uri" /> <!-- 修复漏洞 -->
     <PackageReference Include="System.Text.Json" />   <!-- 安全升级 -->
     <PackageReference Include="Rxmxnx.PInvoke.Extensions" />
     <PackageReference Include="Silk.NET.Vulkan" />
     <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" />
+    <PackageReference Include="LibHac" />
   </ItemGroup>
 
   <!-- 项目引用 -->
   <ItemGroup>
     <ProjectReference Include="..\Ryujinx.Audio.Backends.OpenAL\Ryujinx.Audio.Backends.OpenAL.csproj" />
     <ProjectReference Include="..\Ryujinx.Audio.Backends.SDL2\Ryujinx.Audio.Backends.SDL2.csproj" />
+    <ProjectReference Include="..\Ryujinx.HLE\Ryujinx.HLE.csproj" />
   </ItemGroup>
 
   <!-- 符号文件处理 -->
