@@ -13,6 +13,7 @@ using System.Runtime.InteropServices;
 using ConfigGamepadInputId = Ryujinx.Common.Configuration.Hid.Controller.GamepadInputId;
 using ConfigStickInputId = Ryujinx.Common.Configuration.Hid.Controller.StickInputId;
 using StickInputId = Ryujinx.Input.StickInputId;
+using System.Runtime.Versioning;
 
 namespace LibRyujinx
 {
@@ -24,7 +25,7 @@ namespace LibRyujinx
         private static TouchScreenManager? _touchScreenManager;
         private static InputManager? _inputManager;
         private static NpadManager? _npadManager;
-        private static InputConfig[] _configs;
+        private static InputConfig[] _configs = Array.Empty<InputConfig>();
 
         public static void InitializeInput(int width, int height)
         {
@@ -81,9 +82,9 @@ namespace LibRyujinx
             _gamepadDriver?.SetAccelerometerData(accel, id);
         }
 
-        public static void SetGryoData(Vector3 gyro, int id)
+        public static void SetGyroData(Vector3 gyro, int id)
         {
-            _gamepadDriver?.SetGryoData(gyro, id);
+            _gamepadDriver?.SetGyroData(gyro, id);
         }
 
         public static void SetStickAxis(StickInputId stick, Vector2 axes, int deviceId)
@@ -193,6 +194,7 @@ namespace LibRyujinx
         }
     }
 
+    [RequiresPreviewFeatures]
     public class VirtualTouchScreen : IMouse
     {
         public Size ClientSize { get; set; }
@@ -285,6 +287,7 @@ namespace LibRyujinx
         }
     }
 
+    [RequiresPreviewFeatures]
     public class VirtualTouchScreenDriver : IGamepadDriver
     {
         private readonly VirtualTouchScreen _virtualTouchScreen;
@@ -294,8 +297,10 @@ namespace LibRyujinx
             _virtualTouchScreen = virtualTouchScreen;
         }
 
+        [RequiresPreviewFeatures]
         public string DriverName => "VirtualTouchDriver";
 
+        [RequiresPreviewFeatures]
         public ReadOnlySpan<string> GamepadsIds => new[] { "0" };
 
 
@@ -322,6 +327,7 @@ namespace LibRyujinx
         }
     }
 
+    [RequiresPreviewFeatures]
     public class VirtualGamepadDriver : IGamepadDriver
     {
         private readonly int _controllerCount;
@@ -414,7 +420,7 @@ namespace LibRyujinx
             }
         }
 
-        public void SetGryoData(Vector3 gyro, int deviceId)
+        public void SetGyroData(Vector3 gyro, int deviceId)
         {
             if (_gamePads.TryGetValue(deviceId, out var gamePad))
             {
@@ -422,7 +428,8 @@ namespace LibRyujinx
             }
         }
     }
-
+    
+    [RequiresPreviewFeatures]
     public class VirtualGamepad : IGamepad
     {
         private readonly VirtualGamepadDriver _driver;
