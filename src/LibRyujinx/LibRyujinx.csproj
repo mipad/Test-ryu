@@ -34,9 +34,9 @@
       <Output TaskParameter="ConsoleOutput" PropertyName="XcodeSelect" />
     </Exec>
 
-   <PropertyGroup>
-    <EnablePreviewFeatures>true</EnablePreviewFeatures>
-  </PropertyGroup>
+    <PropertyGroup>
+      <EnablePreviewFeatures>true</EnablePreviewFeatures>
+    </PropertyGroup>
 
     <PropertyGroup>
       <XcodePath>$([MSBuild]::EnsureTrailingSlash('$(XcodeSelect)'))</XcodePath>
