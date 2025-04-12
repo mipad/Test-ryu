@@ -77,6 +77,7 @@
     <!-- ====================== -->
     <!--     特殊依赖         -->
     <!-- ====================== -->
+    <PackageVersion Include="LibHac" Version="0.18.0"
     <PackageVersion Include="UnicornEngine.Unicorn" Version="2.0.2-rc1-fb78016" />
     <PackageVersion Include="Rxmxnx.PInvoke.Extensions" Version="1.5.0" />
     <PackageVersion Include="shaderc.net" Version="0.1.0" />
