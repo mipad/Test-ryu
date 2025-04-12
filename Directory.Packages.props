@@ -14,6 +14,13 @@
     <PackageVersion Include="System.Text.Encoding" Version="4.3.0" />
 
     <!-- ====================== -->
+    <!--     显式声明缺失包     -->
+    <!-- ====================== -->
+    <PackageVersion Include="LibHac" Version="0.18.0" />
+    <PackageVersion Include="MsgPack.Cli" Version="1.0.1" />
+    <PackageVersion Include="Concentus" Version="0.0.1" />
+
+    <!-- ====================== -->
     <!--     图形/多媒体库      -->
     <!-- ====================== -->
     <PackageVersion Include="OpenTK" Version="4.9.1" />
@@ -72,24 +79,20 @@
     <PackageVersion Include="shaderc.net" Version="0.1.0" />
     <PackageVersion Include="SPB" Version="0.0.4-build32" />
     <PackageVersion Include="ConcentusCore" Version="1.1.7" /> <!-- 替换后的包 -->
-
-    <!-- ====================== -->
-    <!--     临时兼容依赖      -->
-    <!-- ====================== -->
-    <PackageVersion Include="LibHac" Version="0.18.0" /> <!-- 显式声明 -->
-    <PackageVersion Include="Concentus" Version="0.0.1" /> <!-- 临时保留 -->
-    <PackageVersion Include="MsgPack.Cli" Version="1.0.1" /> <!-- 临时保留 -->
   </ItemGroup>
 
   <!-- ====================== -->
   <!--   强制覆盖策略        -->
   <!-- ====================== -->
   <ItemGroup>
+    <!-- 统一 OpenTK 版本 -->
     <PackageVersion Update="OpenTK.*" Version="4.9.1" OverwritePackagesVersion="true" />
+
+    <!-- 强制指定关键包版本 -->
     <PackageVersion Update="LibHac" Version="0.18.0" />
+    <PackageVersion Update="MsgPack.Cli" Version="1.0.1" />
+    <PackageVersion Update="Concentus" Version="0.0.1" />
     <PackageVersion Update="Rxmxnx.PInvoke.Extensions" Version="1.5.0" />
     <PackageVersion Update="Silk.NET.Vulkan.Extensions.KHR" Version="2.21.0" />
-    <PackageVersion Update="Concentus" Version="0.0.1" />
-    <PackageVersion Update="MsgPack.Cli" Version="1.0.1" />
   </ItemGroup>
 </Project>
