@@ -90,7 +90,7 @@ namespace Ryujinx.Horizon.Sdk.Codec.Detail
 
             public MultiSampleDecoder(int sampleRate, int channelsCount, int streams, int coupledStreams, byte[] mapping)
             {
-                _decoder = OpusCodecFactory.CreateMultiStreamDecoder(sampleRate, channelsCount, streams, coupledStreams, mapping);
+                _decoder = new OpusMultiStreamDecoder(sampleRate, channelsCount, streams, coupledStreams, mapping);
             }
 
             public int Decode(ReadOnlySpan<byte> inData, Span<short> outPcm, int frameSize)
