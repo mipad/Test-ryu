@@ -53,7 +53,6 @@
   <!-- 安全包版本统一管理 -->
   <ItemGroup>
     <PackageReference Include="System.Text.Encoding" />
-    <PackageReference Include="System.Private.Uri" /> <!-- 修复漏洞 -->
     <PackageReference Include="System.Text.Json" />   <!-- 安全升级 -->
     <PackageReference Include="Rxmxnx.PInvoke.Extensions" />
     <PackageReference Include="Silk.NET.Vulkan" />
