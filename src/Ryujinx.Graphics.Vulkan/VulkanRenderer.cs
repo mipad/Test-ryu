@@ -28,7 +28,7 @@ namespace Ryujinx.Graphics.Vulkan
         private bool _initialized;
 
         internal FormatCapabilities FormatCapabilities { get; private set; }
-        internal HardwareCapabilities Capabilities;
+        internal HardwareCapabilities Capabilities { get; private set; }
 
         internal Vk Api { get; private set; }
         internal KhrSurface SurfaceApi { get; private set; }
