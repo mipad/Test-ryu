@@ -1,5 +1,5 @@
 using OpenTK.Graphics.OpenGL;
-using OpenTK.Graphics.OpenGL.Extensions.NV;
+using OpenTK.Graphics.OpenGL.NV;
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Shader;
@@ -295,7 +295,7 @@ namespace Ryujinx.Graphics.OpenGL
             return All.Never;
         }
 
-        public static ClipDepthMode Convert(this DepthMode mode)
+        public static ClipDepth Convert(this DepthMode mode)
         {
             switch (mode)
             {
