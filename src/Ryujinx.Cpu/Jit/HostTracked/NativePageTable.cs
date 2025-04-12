@@ -22,11 +22,11 @@ namespace Ryujinx.Cpu.Jit.HostTracked
 
         private const int PteSize = 8;
 
-        private readonly int _entriesPerPtPage;
-        private readonly int _pageCommitmentBits;
-        private readonly MemoryBlock _nativePageTable;
-        private readonly ulong[] _pageCommitmentBitmap;
-        private readonly ulong _hostPageSize;
+        private readonly int _entriesPerPtPage = 0;
+        private readonly int _pageCommitmentBits = 0;
+        private readonly MemoryBlock _nativePageTable = null!; 
+        private readonly ulong[] _pageCommitmentBitmap = null!;
+        private readonly ulong _hostPageSize = 0;
 
         private bool _disposed;
 
@@ -145,30 +145,33 @@ namespace Ryujinx.Cpu.Jit.HostTracked
             if ((oldMask & mask) == 0)
             {
                 lock (_pageCommitmentBitmap)
-  {
-      oldMask = _pageCommitmentBitmap[index];
-      if ((oldMask & mask) != 0)
-      {
-          return;
-      }
-
-      _nativePageTable.Commit(bit * _hostPageSize, _hostPageSize);
-
-      Span<ulong> pageSpan = MemoryMarshal.Cast<byte, ulong>(_nativePageTable.GetSpan(bit * _hostPageSize, (int)_hostPageSize));
-
-      Debug.Assert(pageSpan.Length == _entriesPerPtPage);
-
-      IntPtr guardPagePtr = GetGuardPagePointer();
-
-      for (int i = 0; i < pageSpan.Length; i++)
-      {
-          pageSpan[i] = GetPte((bit << _pageCommitmentBits) | ((ulong)i * PageSize), guardPagePtr);
-      }
-
-      _pageCommitmentBitmap[index] = oldMask | mask;
-  }
-            }
+    {
+        oldMask = _pageCommitmentBitmap[index];
+        if ((oldMask & mask) != 0)
+        {
+            return;
         }
+
+        #if LINUX || ANDROID || WINDOWS
+        _nativePageTable.Commit(bit * _hostPageSize, _hostPageSize);
+        #elif MACOS
+        throw new PlatformNotSupportedException("MemoryBlock.Commit is not supported on macOS.");
+        #endif
+
+        Span<ulong> pageSpan = MemoryMarshal.Cast<byte, ulong>(_nativePageTable.GetSpan(bit * _hostPageSize, (int)_hostPageSize));
+        Debug.Assert(pageSpan.Length == _entriesPerPtPage);
+
+        IntPtr guardPagePtr = GetGuardPagePointer();
+
+        for (int i = 0; i < pageSpan.Length; i++)
+        {
+            pageSpan[i] = GetPte((bit << _pageCommitmentBits) | ((ulong)i * PageSize), guardPagePtr);
+        }
+
+        _pageCommitmentBitmap[index] = oldMask | mask;
+    }
+}
+   }
 
         private IntPtr GetGuardPagePointer()
   {
@@ -234,4 +237,4 @@ namespace Ryujinx.Cpu.Jit.HostTracked
             GC.SuppressFinalize(this);
         }
     }
-}
+}        
