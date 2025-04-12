@@ -2,6 +2,9 @@
   <PropertyGroup>
     <!-- 统一目标框架为 .NET 9.0 -->
     <TargetFramework>net9.0</TargetFramework>
+    <!-- 全局启用预览功能 -->
+    <EnablePreviewFeatures>True</EnablePreviewFeatures>
+    <LangVersion>preview</LangVersion>
     <RuntimeIdentifiers>linux-bionic-arm64;ios-arm64</RuntimeIdentifiers>
     <Nullable>enable</Nullable>
     <!-- 禁止将 NuGet 安全警告视为错误 -->
@@ -33,11 +36,6 @@
     <Exec Command="xcrun xcode-select -p" ConsoleToMSBuild="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="XcodeSelect" />
     </Exec>
-
-    <PropertyGroup>
-      <EnablePreviewFeatures>true</EnablePreviewFeatures>
-      <LangVersion>preview</LangVersion>
-    </PropertyGroup>
 
     <PropertyGroup>
       <XcodePath>$([MSBuild]::EnsureTrailingSlash('$(XcodeSelect)'))</XcodePath>
