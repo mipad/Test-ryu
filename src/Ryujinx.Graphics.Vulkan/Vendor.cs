@@ -95,7 +95,6 @@ namespace Ryujinx.Graphics.Vulkan
                 DriverId.MesaDozen => "Dozen",
                 DriverId.MesaNvk => "NVK",
                 DriverId.ImaginationOpenSourceMesa => "Imagination (Open)",
-                DriverId.MesaAgxv => "Honeykrisp",
                 DriverId.HuaweiProprietary => "Huawei",
                 _ => id.ToString(),
             };
