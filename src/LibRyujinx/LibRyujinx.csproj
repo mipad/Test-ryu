@@ -36,6 +36,7 @@
 
     <PropertyGroup>
       <EnablePreviewFeatures>true</EnablePreviewFeatures>
+      <LangVersion>preview</LangVersion>
     </PropertyGroup>
 
     <PropertyGroup>
