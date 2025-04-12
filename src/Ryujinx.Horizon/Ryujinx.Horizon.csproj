@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Concentus.Opus" />
+    <PackageReference Include="ConcentusCore" />
     <PackageReference Include="LibHac" />
   </ItemGroup>
 </Project>
