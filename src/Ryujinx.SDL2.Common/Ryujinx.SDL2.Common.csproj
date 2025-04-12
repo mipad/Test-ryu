@@ -4,6 +4,10 @@
     <TargetFramework>net9.0</TargetFramework>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <EnablePreviewFeatures>true</EnablePreviewFeatures>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Ryujinx.SDL2-CS" />
   </ItemGroup>
