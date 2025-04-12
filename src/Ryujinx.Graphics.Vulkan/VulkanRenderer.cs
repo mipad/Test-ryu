@@ -28,7 +28,7 @@ namespace Ryujinx.Graphics.Vulkan
         private bool _initialized;
 
         internal FormatCapabilities FormatCapabilities { get; private set; }
-        internal HardwareCapabilities Capabilities { get; private set; }
+        internal HardwareCapabilities Capabilities;
 
         internal Vk Api { get; private set; }
         internal KhrSurface SurfaceApi { get; private set; }
@@ -93,7 +93,6 @@ namespace Ryujinx.Graphics.Vulkan
         internal bool IsQualcommProprietary { get; private set; }
         internal bool IsMoltenVk { get; private set; }
         internal bool IsTBDR { get; private set; }
-        internal bool IsHuawei { get; private set; }
         internal bool IsSharedMemory { get; private set; }
 
         public string GpuVendor { get; private set; }
@@ -354,12 +353,11 @@ namespace Ryujinx.Graphics.Vulkan
             IsAmdWindows = Vendor == Vendor.Amd && OperatingSystem.IsWindows();
             IsIntelWindows = Vendor == Vendor.Intel && OperatingSystem.IsWindows();
             IsTBDR =
-    Vendor == Vendor.Apple ||
-    Vendor == Vendor.Qualcomm ||
-    Vendor == Vendor.ARM ||
-    Vendor == Vendor.Broadcom ||
-    Vendor == Vendor.ImgTec || 
-    Vendor == Vendor.Huawei;
+                Vendor == Vendor.Apple ||
+                Vendor == Vendor.Qualcomm ||
+                Vendor == Vendor.ARM ||
+                Vendor == Vendor.Broadcom ||
+                Vendor == Vendor.ImgTec;
 
             GpuVendor = VendorUtils.GetNameFromId(properties.VendorID);
             GpuDriver = hasDriverProperties && !OperatingSystem.IsMacOS() ?
@@ -445,19 +443,6 @@ namespace Ryujinx.Graphics.Vulkan
                 vertexBufferAlignment,
                 properties.Limits.SubTexelPrecisionBits,
                 minResourceAlignment);
-                
-if (IsHuawei)
-{
-    // 禁用华为不支持的扩展（即使设备报告支持）
-    if (_physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_shader_interlock"))
-    {
-        Logger.Warning?.PrintMsg(LogClass.Gpu, "Disabling VK_EXT_fragment_shader_interlock on Huawei GPU");
-        Capabilities.SupportsFragmentShaderInterlock = false;
-    }
-
-    // 启用针对华为的优化
-    Capabilities.SupportsNonConstantTextureOffset = true;
-}
 
             IsSharedMemory = MemoryAllocator.IsDeviceMemoryShared(_physicalDevice);
 
