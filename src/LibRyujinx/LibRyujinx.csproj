@@ -63,7 +63,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Ryujinx.Audio.Backends.OpenAL\Ryujinx.Audio.Backends.OpenAL.csproj" />
     <ProjectReference Include="..\Ryujinx.Audio.Backends.SDL2\Ryujinx.Audio.Backends.SDL2.csproj" />
-    <ProjectReference Include="..\Ryujinx.HLE\Ryujinx.HLE.csproj" />
   </ItemGroup>
 
   <!-- 符号文件处理 -->
