@@ -24,13 +24,13 @@
     <!--     图形/多媒体库      -->
     <!-- ====================== -->
     <!-- 将 OpenTK 降级到 4.7.5 稳定版 -->
-    <PackageVersion Include="OpenTK" Version="4.7.5" />
-    <PackageVersion Include="OpenTK.Core" Version="4.7.5" />
-    <PackageVersion Include="OpenTK.Graphics" Version="4.7.5" />
-    <PackageVersion Include="OpenTK.Audio.OpenAL" Version="4.7.5" />
-    <PackageVersion Include="OpenTK.Windowing.GraphicsLibraryFramework" Version="4.7.5" />
+    <PackageVersion Include="OpenTK" Version="4.8.0" />
+    <PackageVersion Include="OpenTK.Core" Version="4.8.0" />
+    <PackageVersion Include="OpenTK.Graphics" Version="4.8.0" />
+    <PackageVersion Include="OpenTK.Audio.OpenAL" Version="4.8.0" />
+    <PackageVersion Include="OpenTK.Windowing.GraphicsLibraryFramework" Version="4.8.0" />
     <!-- 添加 OpenTK.Graphics.OpenGL4 -->
-    <PackageVersion Include="OpenTK.Graphics.OpenGL4" Version="4.7.5" />
+    <PackageVersion Include="OpenTK.Graphics.OpenGL4" Version="4.8.0" />
 
     <PackageVersion Include="Silk.NET.Vulkan" Version="2.22.0" />
     <PackageVersion Include="Silk.NET.Vulkan.Extensions.EXT" Version="2.22.0" />
@@ -88,7 +88,7 @@
   <!-- ====================== -->
   <ItemGroup>
     <!-- 统一 OpenTK 版本为 4.7.5 -->
-    <PackageVersion Update="OpenTK.*" Version="4.7.5" OverwritePackagesVersion="true" />
+    <PackageVersion Update="OpenTK.*" Version="4.8.0" OverwritePackagesVersion="true" />
 
     <!-- 强制指定关键包版本 -->
     <PackageVersion Update="LibHac" Version="0.19.0" />
