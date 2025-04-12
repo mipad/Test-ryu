@@ -1,6 +1,5 @@
 <Project>
   <PropertyGroup>
-    <!-- 启用中央包版本管理并限制 NuGet 源 -->
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <RestoreSources>https://api.nuget.org/v3/index.json</RestoreSources>
   </PropertyGroup>
@@ -9,7 +8,6 @@
     <!-- ====================== -->
     <!--     核心框架依赖       -->
     <!-- ====================== -->
-    <!-- .NET 基础库 -->
     <PackageVersion Include="System.Text.Json" Version="8.0.2" />
     <PackageVersion Include="System.IO.Hashing" Version="8.0.0" />
     <PackageVersion Include="System.Management" Version="8.0.0" />
@@ -18,19 +16,16 @@
     <!-- ====================== -->
     <!--     图形/多媒体库      -->
     <!-- ====================== -->
-    <!-- OpenTK 全家桶 -->
     <PackageVersion Include="OpenTK" Version="4.9.1" />
     <PackageVersion Include="OpenTK.Core" Version="4.9.1" />
     <PackageVersion Include="OpenTK.Graphics" Version="4.9.1" />
     <PackageVersion Include="OpenTK.Audio.OpenAL" Version="4.9.1" />
     <PackageVersion Include="OpenTK.Windowing.GraphicsLibraryFramework" Version="4.9.1" />
 
-    <!-- Vulkan 生态 -->
     <PackageVersion Include="Silk.NET.Vulkan" Version="2.21.0" />
     <PackageVersion Include="Silk.NET.Vulkan.Extensions.EXT" Version="2.21.0" />
     <PackageVersion Include="Silk.NET.Vulkan.Extensions.KHR" Version="2.21.0" />
 
-    <!-- 图形渲染 -->
     <PackageVersion Include="SkiaSharp" Version="2.88.7" />
     <PackageVersion Include="SkiaSharp.NativeAssets.Linux" Version="2.88.7" />
 
@@ -45,14 +40,11 @@
     <!-- ====================== -->
     <!--     工具/辅助库       -->
     <!-- ====================== -->
-    <!-- 压缩/序列化 -->
     <PackageVersion Include="SharpZipLib" Version="1.4.7" />
-    <PackageVersion Include="MessagePack" Version="2.4.59" /> <!-- 替换 MsgPack.Cli -->
+    <PackageVersion Include="MessagePack" Version="2.4.59" /> <!-- 新序列化库 -->
 
-    <!-- 网络/通信 -->
     <PackageVersion Include="NetCoreServer" Version="8.0.7" />
 
-    <!-- 诊断/监控 -->
     <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
     <PackageVersion Include="DiscordRichPresence" Version="1.2.1.24" />
 
@@ -65,11 +57,9 @@
     <!-- ====================== -->
     <!--     开发工具链       -->
     <!-- ====================== -->
-    <!-- 代码分析 -->
     <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.9.2" />
 
-    <!-- 测试框架 -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.9.2" />
     <PackageVersion Include="NUnit" Version="3.13.3" />
     <PackageVersion Include="NUnit3TestAdapter" Version="4.1.0" />
@@ -81,19 +71,25 @@
     <PackageVersion Include="Rxmxnx.PInvoke.Extensions" Version="1.5.0" />
     <PackageVersion Include="shaderc.net" Version="0.1.0" />
     <PackageVersion Include="SPB" Version="0.0.4-build32" />
-    <PackageVersion Include="ConcentusCore" Version="1.1.7" /> <!-- 替换 Concentus -->
+    <PackageVersion Include="ConcentusCore" Version="1.1.7" /> <!-- 替换后的包 -->
+
+    <!-- ====================== -->
+    <!--     临时兼容依赖      -->
+    <!-- ====================== -->
+    <PackageVersion Include="LibHac" Version="0.18.0" /> <!-- 显式声明 -->
+    <PackageVersion Include="Concentus" Version="0.0.1" /> <!-- 临时保留 -->
+    <PackageVersion Include="MsgPack.Cli" Version="1.0.1" /> <!-- 临时保留 -->
   </ItemGroup>
 
   <!-- ====================== -->
   <!--   强制覆盖策略        -->
   <!-- ====================== -->
   <ItemGroup>
-    <!-- 确保所有 OpenTK 依赖使用统一版本 -->
     <PackageVersion Update="OpenTK.*" Version="4.9.1" OverwritePackagesVersion="true" />
-
-    <!-- 强制覆盖关键依赖版本 -->
     <PackageVersion Update="LibHac" Version="0.18.0" />
     <PackageVersion Update="Rxmxnx.PInvoke.Extensions" Version="1.5.0" />
     <PackageVersion Update="Silk.NET.Vulkan.Extensions.KHR" Version="2.21.0" />
+    <PackageVersion Update="Concentus" Version="0.0.1" />
+    <PackageVersion Update="MsgPack.Cli" Version="1.0.1" />
   </ItemGroup>
 </Project>
