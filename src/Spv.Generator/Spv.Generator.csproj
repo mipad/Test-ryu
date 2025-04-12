@@ -4,4 +4,8 @@
     <TargetFramework>net9.0</TargetFramework>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <EnablePreviewFeatures>true</EnablePreviewFeatures>
+  </PropertyGroup>
+
 </Project>
