@@ -4,9 +4,14 @@ using System;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 
 namespace Ryujinx.Cpu.Jit.HostTracked
 {
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("android")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("windows")]
     sealed class NativePageTable : IDisposable
     {
         private delegate ulong TrackingEventDelegate(ulong address, ulong size, bool write);
@@ -30,10 +35,21 @@ namespace Ryujinx.Cpu.Jit.HostTracked
 
         private bool _disposed;
 
-        public IntPtr PageTablePointer => _nativePageTable.Pointer;
+        public IntPtr PageTablePointer
+        {
+            get
+            {
+#if LINUX || ANDROID || MACOS || WINDOWS
+                return _nativePageTable.Pointer;
+#else
+                throw new PlatformNotSupportedException();
+#endif
+            }
+        }
 
         public NativePageTable(ulong asSize)
         {
+#if LINUX || ANDROID || MACOS || WINDOWS
             ulong hostPageSize = MemoryBlock.GetPageSize();
 
             _entriesPerPtPage = (int)(hostPageSize / sizeof(ulong));
@@ -56,10 +72,14 @@ namespace Ryujinx.Cpu.Jit.HostTracked
             {
                 throw new InvalidOperationException("Number of allowed tracked regions exceeded.");
             }
+#else
+            throw new PlatformNotSupportedException();
+#endif
         }
 
         public void Map(ulong va, ulong pa, ulong size, AddressSpacePartitioned addressSpace, MemoryBlock backingMemory, bool privateMap)
         {
+#if LINUX || ANDROID || MACOS || WINDOWS
             while (size != 0)
             {
                 _pageTable.Map(va, pa);
@@ -79,10 +99,14 @@ namespace Ryujinx.Cpu.Jit.HostTracked
                 pa += PageSize;
                 size -= PageSize;
             }
+#else
+            throw new PlatformNotSupportedException();
+#endif
         }
 
         public void Unmap(ulong va, ulong size)
         {
+#if LINUX || ANDROID || MACOS || WINDOWS
             IntPtr guardPagePtr = GetGuardPagePointer();
 
             while (size != 0)
@@ -93,32 +117,40 @@ namespace Ryujinx.Cpu.Jit.HostTracked
                 va += PageSize;
                 size -= PageSize;
             }
+#else
+            throw new PlatformNotSupportedException();
+#endif
         }
 
         public ulong Read(ulong va)
-        {
-            ulong pte = _nativePageTable.Read<ulong>((va / PageSize) * PteSize);
+  {
+  #if LINUX || ANDROID || MACOS || WINDOWS
+      ulong pte = _nativePageTable.Read<ulong>((va / PageSize) * PteSize);
+      pte += va & ~(ulong)PageMask;
+      return pte + (va & PageMask);
+  #else
+      throw new PlatformNotSupportedException();
+  #endif
+  }
 
-            pte += va & ~(ulong)PageMask;
+      public void Update(ulong va, IntPtr ptr, ulong size)
+  {
+  #if LINUX || ANDROID || MACOS || WINDOWS
+      ulong remainingSize = size;
 
-            return pte + (va & PageMask);
-        }
+      while (remainingSize != 0)
+      {
+          EnsureCommitment(va);
+          _nativePageTable.Write((va / PageSize) * PteSize, GetPte(va, ptr));
 
-        public void Update(ulong va, IntPtr ptr, ulong size)
-        {
-            ulong remainingSize = size;
-
-            while (remainingSize != 0)
-            {
-                EnsureCommitment(va);
-
-                _nativePageTable.Write((va / PageSize) * PteSize, GetPte(va, ptr));
-
-                va += PageSize;
-                ptr += PageSize;
-                remainingSize -= PageSize;
-            }
-        }
+          va += PageSize;
+          ptr += PageSize;
+          remainingSize -= PageSize;
+      }
+  #else
+      throw new PlatformNotSupportedException();
+  #endif
+  }
 
         private void EnsureCommitment(ulong va)
         {
@@ -134,36 +166,39 @@ namespace Ryujinx.Cpu.Jit.HostTracked
             if ((oldMask & mask) == 0)
             {
                 lock (_pageCommitmentBitmap)
-                {
-                    oldMask = _pageCommitmentBitmap[index];
+  {
+      oldMask = _pageCommitmentBitmap[index];
+      if ((oldMask & mask) != 0)
+      {
+          return;
+      }
 
-                    if ((oldMask & mask) != 0)
-                    {
-                        return;
-                    }
+      _nativePageTable.Commit(bit * _hostPageSize, _hostPageSize);
 
-                    _nativePageTable.Commit(bit * _hostPageSize, _hostPageSize);
+      Span<ulong> pageSpan = MemoryMarshal.Cast<byte, ulong>(_nativePageTable.GetSpan(bit * _hostPageSize, (int)_hostPageSize));
 
-                    Span<ulong> pageSpan = MemoryMarshal.Cast<byte, ulong>(_nativePageTable.GetSpan(bit * _hostPageSize, (int)_hostPageSize));
+      Debug.Assert(pageSpan.Length == _entriesPerPtPage);
 
-                    Debug.Assert(pageSpan.Length == _entriesPerPtPage);
+      IntPtr guardPagePtr = GetGuardPagePointer();
 
-                    IntPtr guardPagePtr = GetGuardPagePointer();
+      for (int i = 0; i < pageSpan.Length; i++)
+      {
+          pageSpan[i] = GetPte((bit << _pageCommitmentBits) | ((ulong)i * PageSize), guardPagePtr);
+      }
 
-                    for (int i = 0; i < pageSpan.Length; i++)
-                    {
-                        pageSpan[i] = GetPte((bit << _pageCommitmentBits) | ((ulong)i * PageSize), guardPagePtr);
-                    }
-
-                    _pageCommitmentBitmap[index] = oldMask | mask;
-                }
+      _pageCommitmentBitmap[index] = oldMask | mask;
+  }
             }
         }
 
         private IntPtr GetGuardPagePointer()
-        {
-            return _nativePageTable.GetPointer(_nativePageTable.Size - _hostPageSize, _hostPageSize);
-        }
+  {
+  #if LINUX || ANDROID || MACOS || WINDOWS
+      return _nativePageTable.GetPointer(_nativePageTable.Size - _hostPageSize, _hostPageSize);
+  #else
+      throw new PlatformNotSupportedException();
+  #endif
+  }
 
         private static ulong GetPte(ulong va, IntPtr ptr)
         {
@@ -173,31 +208,31 @@ namespace Ryujinx.Cpu.Jit.HostTracked
         }
 
         public ulong GetPhysicalAddress(ulong va)
-        {
-            return _pageTable.Read(va) + (va & PageMask);
-        }
+  {
+  #if LINUX || ANDROID || MACOS || WINDOWS
+      return _pageTable.Read(va) + (va & PageMask);
+  #else
+      throw new PlatformNotSupportedException();
+  #endif
+  }
 
-        private ulong VirtualMemoryEvent(ulong address, ulong size, bool write)
-        {
-            if (address < _nativePageTable.Size - _hostPageSize)
-            {
-                // Some prefetch instructions do not cause faults with invalid addresses.
-                // Retry if we are hitting a case where the page table is unmapped, the next
-                // run will execute the actual instruction.
-                // The address loaded from the page table will be invalid, and it should hit the else case
-                // if the instruction faults on unmapped or protected memory.
-
-                ulong va = address * (PageSize / sizeof(ulong));
-
-                EnsureCommitment(va);
-
-                return (ulong)_nativePageTable.Pointer + address;
-            }
-            else
-            {
-                throw new InvalidMemoryRegionException();
-            }
-        }
+  private ulong VirtualMemoryEvent(ulong address, ulong size, bool write)
+  {
+  #if LINUX || ANDROID || MACOS || WINDOWS
+      if (address < _nativePageTable.Size - _hostPageSize)
+      {
+          ulong va = address * (PageSize / sizeof(ulong));
+          EnsureCommitment(va);
+          return (ulong)_nativePageTable.Pointer + address;
+      }
+      else
+      {
+          throw new InvalidMemoryRegionException();
+      }
+  #else
+      throw new PlatformNotSupportedException();
+  #endif
+  }
 
         private void Dispose(bool disposing)
         {
@@ -205,11 +240,11 @@ namespace Ryujinx.Cpu.Jit.HostTracked
             {
                 if (disposing)
                 {
+#if LINUX || ANDROID || MACOS || WINDOWS
                     NativeSignalHandler.RemoveTrackedRegion((nuint)_nativePageTable.Pointer);
-
                     _nativePageTable.Dispose();
+#endif
                 }
-
                 _disposed = true;
             }
         }
@@ -220,4 +255,4 @@ namespace Ryujinx.Cpu.Jit.HostTracked
             GC.SuppressFinalize(this);
         }
     }
-}
+}        
