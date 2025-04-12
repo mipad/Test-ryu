@@ -85,13 +85,13 @@
   <!-- ====================== -->
   <ItemGroup>
     <!-- 统一 OpenTK 版本 -->
-    <PackageVersion Update="OpenTK.*" Version="4.9.1" OverwritePackagesVersion="true" />
+    <PackageVersion Update="OpenTK.*" Version="5.0.0-pre.13" OverwritePackagesVersion="true" />
 
     <!-- 强制指定关键包版本 -->
     <PackageVersion Update="LibHac" Version="0.19.0" />
     <PackageVersion Update="MsgPack.Cli" Version="1.0.1" />
     <PackageVersion Update="Concentus" Version="2.2.2" />
-    <PackageVersion Update="Rxmxnx.PInvoke.Extensions" Version="1.5.0" />
-    <PackageVersion Update="Silk.NET.Vulkan.Extensions.KHR" Version="2.21.0" />
+    <PackageVersion Update="Rxmxnx.PInvoke.Extensions" Version="2.2.6" />
+    <PackageVersion Update="Silk.NET.Vulkan.Extensions.KHR" Version="2.22.0" />
   </ItemGroup>
 </Project>
