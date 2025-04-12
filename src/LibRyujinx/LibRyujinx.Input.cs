@@ -17,37 +17,37 @@ using System.Runtime.Versioning;
 
 namespace LibRyujinx.Preview
 {
-[RequiresPreviewFeatures]
+    [RequiresPreviewFeatures]
     public class WrappedJoyconConfig<T1, T2> : JoyconConfigControllerStick<T1, T2>
     {
-    [RequiresPreviewFeatures]
-    public enum WrappedGamepadInputId
-    {
-        DpadUp = ConfigGamepadInputId.DpadUp,
-    DpadDown = ConfigGamepadInputId.DpadDown,
-    DpadLeft = ConfigGamepadInputId.DpadLeft,
-    DpadRight = ConfigGamepadInputId.DpadRight,
-    LeftTrigger = ConfigGamepadInputId.LeftTrigger,
-    Unbound = ConfigGamepadInputId.Unbound,
-    A = ConfigGamepadInputId.A,
-    B = ConfigGamepadInputId.B,
-    X = ConfigGamepadInputId.X,
-    Y = ConfigGamepadInputId.Y,
-    Plus = ConfigGamepadInputId.Plus,
-    RightShoulder = ConfigGamepadInputId.RightShoulder,
-    RightTrigger = ConfigGamepadInputId.RightTrigger,
-    // 补充缺失的枚举值（如 LeftStick、RightStick）
-    LeftStick = ConfigGamepadInputId.LeftStick,
-    RightStick = ConfigGamepadInputId.RightStick
-    }
+        [RequiresPreviewFeatures]
+        public enum WrappedGamepadInputId
+        {
+            DpadUp = ConfigGamepadInputId.DpadUp,
+            DpadDown = ConfigGamepadInputId.DpadDown,
+            DpadLeft = ConfigGamepadInputId.DpadLeft,
+            DpadRight = ConfigGamepadInputId.DpadRight,
+            LeftTrigger = ConfigGamepadInputId.LeftTrigger,
+            Unbound = ConfigGamepadInputId.Unbound,
+            A = ConfigGamepadInputId.A,
+            B = ConfigGamepadInputId.B,
+            X = ConfigGamepadInputId.X,
+            Y = ConfigGamepadInputId.Y,
+            Plus = ConfigGamepadInputId.Plus,
+            RightShoulder = ConfigGamepadInputId.RightShoulder,
+            RightTrigger = ConfigGamepadInputId.RightTrigger,
+            LeftStick = ConfigGamepadInputId.LeftStick,
+            RightStick = ConfigGamepadInputId.RightStick
+        }
 
-    [RequiresPreviewFeatures]
-    public enum WrappedStickInputId
-    {
-        Left = ConfigStickInputId.Left,
-        Right = ConfigStickInputId.Right
-    }
-}
+        [RequiresPreviewFeatures]
+        public enum WrappedStickInputId
+        {
+            Left = ConfigStickInputId.Left,
+            Right = ConfigStickInputId.Right
+        }
+    } 
+} 
 
 namespace LibRyujinx
 {
