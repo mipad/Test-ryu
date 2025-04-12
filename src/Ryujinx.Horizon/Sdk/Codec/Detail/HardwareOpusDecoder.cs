@@ -1,4 +1,5 @@
-using Concentus;
+using using Concentus.Core; 
+using Concentus.Core.Decoders
 using Concentus.Enums;
 using Concentus.Structs;
 using Ryujinx.Common.Logging;
