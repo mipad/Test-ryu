@@ -1,4 +1,5 @@
 using OpenTK.Graphics.OpenGL;
+using OpenTK.Graphics.OpenGL.Extensions.NV;
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Shader;
