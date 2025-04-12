@@ -11,6 +11,10 @@
     <TieredPGO>true</TieredPGO>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <EnablePreviewFeatures>true</EnablePreviewFeatures>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="OpenTK.Core" />
     <PackageReference Include="Ryujinx.Graphics.Nvdec.Dependencies" />
