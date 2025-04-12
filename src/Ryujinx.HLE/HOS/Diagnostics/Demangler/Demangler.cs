@@ -2241,8 +2241,6 @@ namespace Ryujinx.HLE.HOS.Diagnostics.Demangler
 
                             return new CastExpression("reinterpret_cast", to, from);
                         case 'm':
-                            _position += 2;
-                            return ParseBinaryExpression("%");
                         case 'M':
                             _position += 2;
                             return ParseBinaryExpression("%");

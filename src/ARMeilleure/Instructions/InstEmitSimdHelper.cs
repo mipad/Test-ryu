@@ -2082,8 +2082,6 @@ namespace ARMeilleure.Instructions
                     vector = context.VectorInsert16(vector, value, index);
                     break;
                 case 2:
-                    vector = context.VectorInsert(vector, value, index);
-                    break;
                 case 3:
                     vector = context.VectorInsert(vector, value, index);
                     break;

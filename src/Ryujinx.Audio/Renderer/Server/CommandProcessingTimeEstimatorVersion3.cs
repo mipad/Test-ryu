@@ -496,12 +496,6 @@ namespace Ryujinx.Audio.Renderer.Server
 
                             return (10090.9f, 3490.9f);
                         case SampleRateConversionQuality.High:
-                            if (sampleCount == 160)
-                            {
-                                return (9446.36f, 2308.91f);
-                            }
-
-                            return (12520.85f, 3480.61f);
                         case SampleRateConversionQuality.Low:
                             if (sampleCount == 160)
                             {

@@ -1054,8 +1054,6 @@ namespace Ryujinx.HLE.FileSystem
                         verified = verifyKeys(lines, titlePattern);
                         break;
                     case "console.keys":
-                        verified = verifyKeys(lines, genericPattern);
-                        break;
                     case "dev.keys":
                         verified = verifyKeys(lines, genericPattern);
                         break;
