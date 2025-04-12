@@ -165,3 +165,7 @@
     <AdditionalFiles Include="Assets\Locales\en_US.json" />
   </ItemGroup>
 </Project>
+
+  <PropertyGroup>
+    <EnablePreviewFeatures>true</EnablePreviewFeatures>
+  </PropertyGroup>
