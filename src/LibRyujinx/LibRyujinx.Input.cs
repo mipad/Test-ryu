@@ -10,15 +10,17 @@ using System.Drawing;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using ConfigGamepadInputId = LibRyujinx.Preview.WrappedGamepadInputId;
-using ConfigStickInputId = LibRyujinx.Preview.WrappedStickInputId;
+using ConfigGamepadInputId = LibRyujinx.Preview.WrappedJoyconConfig<object, object>.WrappedGamepadInputId;
+using ConfigStickInputId = LibRyujinx.Preview.WrappedJoyconConfig<object, object>.WrappedStickInputId;
 using StickInputId = Ryujinx.Input.StickInputId;
 using System.Runtime.Versioning;
 
 namespace LibRyujinx.Preview
 {
     [RequiresPreviewFeatures]
-    public class WrappedJoyconConfig<T1, T2> : JoyconConfigControllerStick<T1, T2>
+    public class WrappedJoyconConfig<T1, T2> : JoyconConfigControllerStick<T1, T2> 
+    where T1 : struct 
+    where T2 : struct
     {
         [RequiresPreviewFeatures]
         public enum WrappedGamepadInputId
