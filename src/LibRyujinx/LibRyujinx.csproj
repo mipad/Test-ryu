@@ -33,9 +33,14 @@
     <Exec Command="xcrun xcode-select -p" ConsoleToMSBuild="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="XcodeSelect" />
     </Exec>
+   <PropertyGroup>
+    <EnablePreviewFeatures>true</EnablePreviewFeatures>
+  </PropertyGroup>
+
     <PropertyGroup>
       <XcodePath>$([MSBuild]::EnsureTrailingSlash('$(XcodeSelect)'))</XcodePath>
     </PropertyGroup>
+
     <ItemGroup>
       <LinkerArg Include="-Wl,-ld_classic" />
       <LinkerArg Include="-isysroot %22$(XcodePath)Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk%22" 
