@@ -22,16 +22,11 @@ namespace Ryujinx.Cpu.Jit.HostTracked
 
         private const int PteSize = 8;
 
-        private readonly int _bitsPerPtPage;
         private readonly int _entriesPerPtPage;
         private readonly int _pageCommitmentBits;
-
-        private readonly PageTable<ulong> _pageTable;
         private readonly MemoryBlock _nativePageTable;
         private readonly ulong[] _pageCommitmentBitmap;
         private readonly ulong _hostPageSize;
-
-        private readonly TrackingEventDelegate _trackingEvent;
 
         private bool _disposed;
 
@@ -48,42 +43,27 @@ namespace Ryujinx.Cpu.Jit.HostTracked
         }
 
         public NativePageTable(ulong asSize)
-        {
+{
 #if LINUX || ANDROID || MACOS || WINDOWS
-            ulong hostPageSize = MemoryBlock.GetPageSize();
+    ulong hostPageSize = MemoryBlock.GetPageSize();
 
-            _entriesPerPtPage = (int)(hostPageSize / sizeof(ulong));
-            _bitsPerPtPage = BitOperations.Log2((uint)_entriesPerPtPage);
-            _pageCommitmentBits = PageBits + _bitsPerPtPage;
+    _entriesPerPtPage = (int)(hostPageSize / sizeof(ulong));
+    int bitsPerPtPage = BitOperations.Log2((uint)_entriesPerPtPage);
+    _pageCommitmentBits = PageBits + bitsPerPtPage;
 
-            _hostPageSize = hostPageSize;
-            _pageTable = new PageTable<ulong>();
-            _nativePageTable = new MemoryBlock((asSize / PageSize) * PteSize + _hostPageSize, MemoryAllocationFlags.Reserve);
-            _pageCommitmentBitmap = new ulong[(asSize >> _pageCommitmentBits) / (sizeof(ulong) * 8)];
-
-            ulong ptStart = (ulong)_nativePageTable.Pointer;
-            ulong ptEnd = ptStart + _nativePageTable.Size;
-
-            _trackingEvent = VirtualMemoryEvent;
-
-            bool added = NativeSignalHandler.AddTrackedRegion((nuint)ptStart, (nuint)ptEnd, Marshal.GetFunctionPointerForDelegate(_trackingEvent));
-
-            if (!added)
-            {
-                throw new InvalidOperationException("Number of allowed tracked regions exceeded.");
-            }
+    _hostPageSize = hostPageSize;
+    _nativePageTable = new MemoryBlock((asSize / PageSize) * PteSize + _hostPageSize, MemoryAllocationFlags.Reserve);
+    _pageCommitmentBitmap = new ulong[(asSize >> _pageCommitmentBits) / (sizeof(ulong) * 8)];
 #else
-            throw new PlatformNotSupportedException();
+    throw new PlatformNotSupportedException();
 #endif
-        }
+}
 
         public void Map(ulong va, ulong pa, ulong size, AddressSpacePartitioned addressSpace, MemoryBlock backingMemory, bool privateMap)
         {
 #if LINUX || ANDROID || MACOS || WINDOWS
             while (size != 0)
             {
-                _pageTable.Map(va, pa);
-
                 EnsureCommitment(va);
 
                 if (privateMap)
@@ -111,7 +91,6 @@ namespace Ryujinx.Cpu.Jit.HostTracked
 
             while (size != 0)
             {
-                _pageTable.Unmap(va);
                 _nativePageTable.Write((va / PageSize) * PteSize, GetPte(va, guardPagePtr));
 
                 va += PageSize;
@@ -123,15 +102,15 @@ namespace Ryujinx.Cpu.Jit.HostTracked
         }
 
         public ulong Read(ulong va)
-  {
-  #if LINUX || ANDROID || MACOS || WINDOWS
-      ulong pte = _nativePageTable.Read<ulong>((va / PageSize) * PteSize);
-      pte += va & ~(ulong)PageMask;
-      return pte + (va & PageMask);
-  #else
-      throw new PlatformNotSupportedException();
-  #endif
-  }
+{
+    #if LINUX || ANDROID || MACOS || WINDOWS
+    ulong pte = _nativePageTable.Read<ulong>((va / PageSize) * PteSize);
+    pte += va & ~(ulong)PageMask;
+    return pte + (va & PageMask);
+    #else
+    throw new PlatformNotSupportedException();
+    #endif
+}
 
       public void Update(ulong va, IntPtr ptr, ulong size)
   {
@@ -255,4 +234,4 @@ namespace Ryujinx.Cpu.Jit.HostTracked
             GC.SuppressFinalize(this);
         }
     }
-}        
+}
