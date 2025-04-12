@@ -1,7 +1,6 @@
-using using Concentus.Core; 
-using Concentus.Core.Decoders
-using Concentus.Enums;
-using Concentus.Structs;
+using Concentus.Core;           
+using Concentus.Core.Decoders;
+using Concentus.Core.Enums;
 using Ryujinx.Common.Logging;
 using Ryujinx.Horizon.Common;
 using Ryujinx.Horizon.Sdk.Sf;
@@ -47,14 +46,14 @@ namespace Ryujinx.Horizon.Sdk.Codec.Detail
 
         private class Decoder : IDecoder
         {
-            private readonly IOpusDecoder _decoder;
+            private readonly OpusDecoder _decoder;
 
             public int SampleRate => _decoder.SampleRate;
             public int ChannelsCount => _decoder.NumChannels;
 
             public Decoder(int sampleRate, int channelsCount)
             {
-                _decoder = OpusCodecFactory.CreateDecoder(sampleRate, channelsCount);
+                _decoder = new OpusDecoder(sampleRate, channelsCount);
             }
 
             public int Decode(ReadOnlySpan<byte> inData, Span<short> outPcm, int frameSize)
@@ -84,7 +83,7 @@ namespace Ryujinx.Horizon.Sdk.Codec.Detail
 
         private class MultiSampleDecoder : IDecoder
         {
-            private readonly IOpusMultiStreamDecoder _decoder;
+            private readonly OpusMultiStreamDecoder _decoder;
 
             public int SampleRate => _decoder.SampleRate;
             public int ChannelsCount => _decoder.NumChannels;
