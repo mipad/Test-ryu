@@ -563,3 +563,4 @@ namespace LibRyujinx
             return new GamepadStateSnapshot();
         }
     }
+}
