@@ -11,9 +11,11 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Runtime.Versioning;
 
 namespace LibRyujinx.Android
 {
+    [RequiresPreviewFeatures]
     internal class AndroidUIHandler : IHostUIHandler, IDisposable
     {
         private bool _isDisposed;
@@ -21,6 +23,7 @@ namespace LibRyujinx.Android
         private string? _input;
         private ManualResetEvent _resetEvent = new ManualResetEvent(false);
 
+        [RequiresPreviewFeatures]
         public IHostUITheme HostUITheme => throw new NotImplementedException();
 
         public IDynamicTextInputHandler CreateDynamicTextInputHandler()
