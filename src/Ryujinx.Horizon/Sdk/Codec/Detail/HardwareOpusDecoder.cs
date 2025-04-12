@@ -1,6 +1,6 @@
-using Concentus.Core;           
-using Concentus.Core.Decoders;
-using Concentus.Core.Enums;
+using Concentus;
+using Concentus.Enums;
+using Concentus.Structs;
 using Ryujinx.Common.Logging;
 using Ryujinx.Horizon.Common;
 using Ryujinx.Horizon.Sdk.Sf;
