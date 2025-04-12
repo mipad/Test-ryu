@@ -246,7 +246,7 @@ namespace LibRyujinx
         public string Name => "AvaloniaMouse";
 
         public bool IsConnected => true;
-        public GamepadFeaturesFlag Features => throw new NotImplementedException();
+        public GamepadFeaturesFlag Features => throw new NotImplementedException(); //难道可触控
 
         public void Dispose()
         {
@@ -563,4 +563,3 @@ namespace LibRyujinx
             return new GamepadStateSnapshot();
         }
     }
-}
