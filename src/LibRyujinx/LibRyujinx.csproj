@@ -33,6 +33,7 @@
     <Exec Command="xcrun xcode-select -p" ConsoleToMSBuild="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="XcodeSelect" />
     </Exec>
+
    <PropertyGroup>
     <EnablePreviewFeatures>true</EnablePreviewFeatures>
   </PropertyGroup>
