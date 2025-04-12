@@ -58,6 +58,7 @@
     <PackageReference Include="Silk.NET.Vulkan" />
     <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" />
     <PackageReference Include="LibHac" />
+    <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-llog" />
   </ItemGroup>
 
   <!-- 项目引用 -->
