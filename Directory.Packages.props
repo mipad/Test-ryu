@@ -16,9 +16,9 @@
     <!-- ====================== -->
     <!--     显式声明缺失包     -->
     <!-- ====================== -->
-    <PackageVersion Include="LibHac" Version="0.18.0" />
+    <PackageVersion Include="LibHac" Version="0.19.0" />
     <PackageVersion Include="MsgPack.Cli" Version="1.0.1" />
-    <PackageVersion Include="Concentus" Version="0.0.1" />
+    <PackageVersion Include="Concentus" Version="2.2.2" />
 
     <!-- ====================== -->
     <!--     图形/多媒体库      -->
@@ -89,9 +89,9 @@
     <PackageVersion Update="OpenTK.*" Version="4.9.1" OverwritePackagesVersion="true" />
 
     <!-- 强制指定关键包版本 -->
-    <PackageVersion Update="LibHac" Version="0.18.0" />
+    <PackageVersion Update="LibHac" Version="0.19.0" />
     <PackageVersion Update="MsgPack.Cli" Version="1.0.1" />
-    <PackageVersion Update="Concentus" Version="0.0.1" />
+    <PackageVersion Update="Concentus" Version="2.2.2" />
     <PackageVersion Update="Rxmxnx.PInvoke.Extensions" Version="1.5.0" />
     <PackageVersion Update="Silk.NET.Vulkan.Extensions.KHR" Version="2.21.0" />
   </ItemGroup>
