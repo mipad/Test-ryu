@@ -13,6 +13,7 @@ namespace Ryujinx.Graphics.Vulkan
         Broadcom,
         Qualcomm,
         Apple,
+        Huawei,
         Unknown,
     }
 
@@ -36,6 +37,7 @@ namespace Ryujinx.Graphics.Vulkan
                 0x14E4 => Vendor.Broadcom,
                 0x8086 => Vendor.Intel,
                 0x5143 => Vendor.Qualcomm,
+                0x19E5 => Vendor.Huawei,
                 _ => Vendor.Unknown,
             };
         }
@@ -59,6 +61,7 @@ namespace Ryujinx.Graphics.Vulkan
                 0x10004 => "Codeplay Software Ltd.",
                 0x10005 => "Mesa",
                 0x10006 => "PoCL",
+                0x19E5 => "Huawei",
                 _ => $"0x{id:X}",
             };
         }
@@ -93,6 +96,7 @@ namespace Ryujinx.Graphics.Vulkan
                 DriverId.MesaNvk => "NVK",
                 DriverId.ImaginationOpenSourceMesa => "Imagination (Open)",
                 DriverId.MesaAgxv => "Honeykrisp",
+                DriverId.HuaweiProprietary => "Huawei",
                 _ => id.ToString(),
             };
         }
