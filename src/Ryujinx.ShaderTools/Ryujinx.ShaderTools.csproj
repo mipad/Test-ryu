@@ -6,6 +6,10 @@
     <Configurations>Debug;Release</Configurations>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <EnablePreviewFeatures>true</EnablePreviewFeatures>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Ryujinx.Graphics.Shader\Ryujinx.Graphics.Shader.csproj" />
   </ItemGroup>
