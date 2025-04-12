@@ -1,23 +1,28 @@
+using System;
+using System.Runtime.Versioning;
 using Ryujinx.Common.Logging;
 using Ryujinx.Common.Logging.Formatters;
 using Ryujinx.Common.Logging.Targets;
-using System;
 
 namespace LibRyujinx
 {
+    [RequiresPreviewFeatures]
     public class AndroidLogTarget : ILogTarget
     {
         private readonly string _name;
         private readonly DefaultLogFormatter _formatter;
 
+        [RequiresPreviewFeatures]
         string ILogTarget.Name { get => _name; }
 
+        [RequiresPreviewFeatures]
         public AndroidLogTarget(string name)
         {
             _name = name;
             _formatter = new DefaultLogFormatter();
         }
 
+        [RequiresPreviewFeatures]
         public void Log(object sender, LogEventArgs args)
         {
             Logcat.AndroidLogPrint(GetLogLevel(args.Level), _name, _formatter.Format(args));
@@ -37,7 +42,6 @@ namespace LibRyujinx
                 LogLevel.Notice => Logcat.LogLevel.Info,
                 LogLevel.Trace => Logcat.LogLevel.Verbose,
                 _ => throw new NotImplementedException(),
-
             };
         }
 
