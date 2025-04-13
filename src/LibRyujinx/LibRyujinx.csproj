@@ -34,17 +34,26 @@
     <StripSymbols>true</StripSymbols>
   </PropertyGroup>
 
-  <!-- 合并链接参数 -->
+  <!-- 链接参数修正为独立元素 -->
   <ItemGroup>
-    <LinkerArg 
-      Condition="'$(RuntimeIdentifier)'=='android-arm64' OR '$(RuntimeIdentifier)'=='linux-bionic-arm64'"
-      Include="-llog -ldl -lz -lm -lc" 
-    />
+    <!-- Android 链接参数 -->
+    <LinkerArg Condition="'$(RuntimeIdentifier)'=='android-arm64'" Include="-llog" />
+    <LinkerArg Condition="'$(RuntimeIdentifier)'=='android-arm64'" Include="-ldl" />
+    <LinkerArg Condition="'$(RuntimeIdentifier)'=='android-arm64'" Include="-lz" />
+    <LinkerArg Condition="'$(RuntimeIdentifier)'=='android-arm64'" Include="-lm" />
+    <LinkerArg Condition="'$(RuntimeIdentifier)'=='android-arm64'" Include="-lc" />
+    
+    <!-- Linux Bionic 链接参数 -->
+    <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-llog" />
+    <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-ldl" />
+    <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-lz" />
+    <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-lm" />
+    <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-lc" />
   </ItemGroup>
 
-  <!-- NuGet 包引用（无版本号） -->
+  <!-- NuGet 包引用 -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.DotNet.ILCompiler" />  <!-- 版本由 Directory.Packages.props 控制 -->
+    <PackageReference Include="Microsoft.DotNet.ILCompiler" />
     <PackageReference Include="System.Text.Encoding" />
     <PackageReference Include="System.Text.Json" />
     <PackageReference Include="Rxmxnx.PInvoke.Extensions" />
