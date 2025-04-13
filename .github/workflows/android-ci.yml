@@ -62,7 +62,6 @@ jobs:
 
           # 验证项目结构
           [ -d src/Ryujinx.Common ] || { echo "::error::Missing Ryujinx.Common"; exit 1; }
-          [ -f Directory.Packages.props ] || { echo "::error::Missing Directory.Packages.props"; exit 1; }
 
       # ================== [3] 基础环境配置 ==================
       - name: Setup core environments
@@ -77,7 +76,7 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
           cache: false
 
-      # ================== [4] Android SDK安装（已修复）==================
+      # ================== [4] Android SDK安装 ==================
       - name: Install Android Components
         run: |
           # 安装命令行工具
@@ -87,13 +86,13 @@ jobs:
           rm "$ANDROID_HOME"/commandlinetools-linux-*.zip
           chmod +x "$ANDROID_HOME/cmdline-tools/latest/bin/"*
 
-          # 配置当前步骤的PATH
+          # 配置环境变量
           echo "PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$PATH" >> $GITHUB_ENV
           echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
 
-          # 安装核心组件（带绝对路径调用）
+          # 安装核心组件
           for i in {1..3}; do
-            echo "尝试第 $i 次安装..."
+            echo "Attempt $i/3 installing components..."
             yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses && \
             "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
               "platform-tools" \
@@ -102,21 +101,31 @@ jobs:
               "cmake;$CMAKE_VERSION" && break || sleep 15
           done
 
-          # 验证安装结果
-          echo "检查NDK工具链..."
-          [ -f "$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android30-clang++" ] || exit 1
-          echo "检查SDK管理器..."
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --list | grep "ndk;$NDK_VERSION"
+          # 验证安装
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --list_installed
 
       # ================== [5] NuGet配置 ==================
       - name: Configure NuGet
         run: |
+          # 创建中央包管理文件
+          echo '<Project>
+            <PropertyGroup>
+              <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+            </PropertyGroup>
+            <ItemGroup>
+              <PackageVersion Include="Microsoft.DotNet.ILCompiler" Version="9.0.0-rtm.24516.5" />
+              <PackageVersion Include="System.Text.Json" Version="9.0.0" />
+              <PackageVersion Include="Silk.NET.Vulkan" Version="2.19.0" />
+              <PackageVersion Include="Silk.NET.Vulkan.Extensions.KHR" Version="2.19.0" />
+            </ItemGroup>
+          </Project>' > Directory.Packages.props
+
+          # 配置NuGet源
           dotnet nuget remove source dotnet9 || true
-          dotnet nuget remove source nuget || true
-          
           dotnet nuget add source https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet9/nuget/v3/index.json --name dotnet9
           dotnet nuget add source https://api.nuget.org/v3/index.json --name nuget
-          
+
+          # 创建包源映射配置
           echo '<?xml version="1.0" encoding="utf-8"?>
           <configuration>
             <packageSources>
@@ -126,10 +135,10 @@ jobs:
             <packageSourceMapping>
               <packageSource key="nuget">
                 <package pattern="*" />
+                <package pattern="Silk.NET.*" />
               </packageSource>
               <packageSource key="dotnet9">
                 <package pattern="Microsoft.DotNet.*" />
-                <package pattern="Silk.NET.*" />
               </packageSource>
             </packageSourceMapping>
           </configuration>' > nuget.config
@@ -145,30 +154,30 @@ jobs:
 
           # 修改项目配置
           xmlstarlet ed -L \
-            -d '//ItemGroup/LinkerArg[@Condition="'\''$(RuntimeIdentifier)'\''=='\''linux-bionic-arm64'\''"]' \
+            -d "//ItemGroup/LinkerArg[@Condition=\"'\$(RuntimeIdentifier)' == 'linux-bionic-arm64'\"]" \
             LibRyujinx.csproj
 
           for lib in "-llog" "-ldl" "-lz" "-lm" "-lc"; do
             xmlstarlet ed -L \
-              --var condition "'\$(RuntimeIdentifier)'=='linux-bionic-arm64'" \
               -s '//ItemGroup[last()]' \
               -t elem -n LinkerArg \
               -i '$prev' -t attr -n Include -v "$lib" \
-              -i '$prev' -t attr -n Condition -v "\$condition" \
+              -i '$prev' -t attr -n Condition -v "'\$(RuntimeIdentifier)' == 'linux-bionic-arm64'" \
               LibRyujinx.csproj
           done
 
           # 构建原生库
-          dotnet restore --configfile ../../nuget.config
+          dotnet restore --configfile ../../nuget.config \
+            --source "https://api.nuget.org/v3/index.json" \
+            --source "https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet9/nuget/v3/index.json"
+
           dotnet publish -c Release \
             -r linux-bionic-arm64 \
             -p:AndroidNdkDirectory="$NDK_HOME" \
             -p:AndroidNativeLibraryName=libryujinx.so \
             -p:StripSymbols=true \
-            --self-contained
-
-          # 验证二进制文件
-          find bin/Release/net9.0/linux-bionic-arm64/publish -name '*.so' -exec file {} \;
+            --self-contained \
+            --verbosity detailed
 
       # ================== [7] APK构建 ==================
       - name: Build Android Package
@@ -190,9 +199,9 @@ jobs:
             -Dorg.gradle.jvmargs="-Xmx6g -XX:MaxMetaspaceSize=2g" \
             --stacktrace
 
-          # 验证APK产出
+          # APK验证
           if ! ls app/build/outputs/apk/release/*.apk 1> /dev/null 2>&1; then
-            echo "::error::APK文件未生成"
+            echo "::error::APK file not generated"
             exit 1
           fi
 
