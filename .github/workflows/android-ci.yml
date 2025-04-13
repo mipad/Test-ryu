@@ -29,8 +29,8 @@ jobs:
           token: ${{ secrets.GHH_PAT }}
           repository: mipad/Test-ryu
           ref: test
-          submodules: false
-          fetch-depth: 1
+          submodules: recursive
+          fetch-depth: 0
           sparse-checkout: |
             /*
             !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
@@ -60,50 +60,72 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
           cache: false
 
-      # ================== [4] Android SDK安装 ==================
+      # ================== [4] Android SDK安装（关键修改）==================
       - name: Install Android Tools
         run: |
-          # 安装命令行工具
+          # 安装命令行工具（修复目录结构）
           cd $ANDROID_HOME
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
           unzip -q commandlinetools-linux-*.zip -d cmdline-tools
           mv cmdline-tools/cmdline-tools cmdline-tools/latest
           rm commandlinetools-linux-*.zip
 
-          # 设置PATH
-          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+          # 设置立即生效的PATH
+          echo "Current PATH: $PATH"
+          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin
+          echo "Updated PATH: $PATH"
 
-          # 安装必要组件
-          yes | sdkmanager --licenses
-          sdkmanager "platform-tools" "build-tools;${{ env.BUILD_TOOLS_VERSION }}"
-          sdkmanager "ndk;${{ env.NDK_VERSION }}"
-          sdkmanager "cmake;${{ env.CMAKE_VERSION }}"
+          # 验证sdkmanager可用性
+          if ! command -v sdkmanager &> /dev/null; then
+              echo "❌ sdkmanager not found! Searching..."
+              find $ANDROID_HOME -name sdkmanager
+              exit 1
+          fi
+
+          # 接受许可证（改进写法）
+          mkdir -p ~/.android
+          touch ~/.android/repositories.cfg
+          (while true; do echo y; sleep 1; done) | sdkmanager --licenses
+
+          # 安装组件（使用完整路径保险）
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --verbose \
+              "platform-tools" \
+              "build-tools;${{ env.BUILD_TOOLS_VERSION }}" \
+              "ndk;${{ env.NDK_VERSION }}" \
+              "cmake;${{ env.CMAKE_VERSION }}"
+
+          # 验证安装结果
+          ls -l $ANDROID_HOME/ndk/${{ env.NDK_VERSION }}
+          ls -l $ANDROID_HOME/cmake/${{ env.CMAKE_VERSION }}
 
       # ================== [5] 修复NativeAOT编译参数 ==================
       - name: Patch NativeAOT Settings
         working-directory: src/LibRyujinx
         run: |
           # 修改RuntimeIdentifier为Android目标
-          sed -i 's/<RuntimeIdentifier>.*<\/RuntimeIdentifier>/<RuntimeIdentifier>android-arm64<\/RuntimeIdentifier>/g' LibRyujinx.csproj
+          sed -i 's|<RuntimeIdentifier>.*</RuntimeIdentifier>|<RuntimeIdentifier>android-arm64</RuntimeIdentifier>|g' LibRyujinx.csproj
           
           # 添加AOT编译参数
-          echo '<PropertyGroup>' >> LibRyujinx.csproj
-          echo '  <IlcGenerateMapFile>true</IlcGenerateMapFile>' >> LibRyujinx.csproj
-          echo '  <IlcDisableUnhandledExceptionExperience>true</IlcDisableUnhandledExceptionExperience>' >> LibRyujinx.csproj
-          echo '  <IlcGenerateCompleteTypeMetadata>false</IlcGenerateCompleteTypeMetadata>' >> LibRyujinx.csproj
-          echo '  <IlcDisableReflection>true</IlcDisableReflection>' >> LibRyujinx.csproj
-          echo '</PropertyGroup>' >> LibRyujinx.csproj
+          cat << EOF >> LibRyujinx.csproj
+          <PropertyGroup>
+            <IlcGenerateMapFile>true</IlcGenerateMapFile>
+            <IlcDisableUnhandledExceptionExperience>true</IlcDisableUnhandledExceptionExperience>
+            <IlcGenerateCompleteTypeMetadata>false</IlcGenerateCompleteTypeMetadata>
+            <IlcDisableReflection>true</IlcDisableReflection>
+            <AndroidStripSymbols>false</AndroidStripSymbols>
+          </PropertyGroup>
+          EOF
 
-      # ================== [6] 构建执行 ==================
+      # ================== [6] 构建执行（优化参数）==================
       - name: Build Android Project
         working-directory: src/RyujinxAndroid
         env:
           DOTNET_CLI_TELEMETRY_OPTOUT: 1
           DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+          TERM: xterm-color  # 确保Gradle输出颜色正常
         run: |
           # 清理旧构建
-          ./gradlew clean
+          ./gradlew clean --stacktrace
           
           # 完整构建流程
           ./gradlew assembleRelease \
@@ -111,14 +133,18 @@ jobs:
             -Porg.gradle.parallel=true \
             -Porg.gradle.daemon=false \
             -Porg.gradle.caching=false \
-            --stacktrace
+            -PnativeLib.buildType=release \
+            --scan \
+            --stacktrace \
+            --info
 
-      # ================== [7] 产物处理 ==================
+      # ================== [7] 产物处理（增加符号文件）==================
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: android-build-output
+          name: android-build-${{ github.run_id }}
           path: |
             src/RyujinxAndroid/app/build/outputs/apk/**/*.apk
             src/RyujinxAndroid/app/build/outputs/native-debug-symbols/**/*.so
+            src/RyujinxAndroid/app/build/reports/**/*.html
           retention-days: 3
