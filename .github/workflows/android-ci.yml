@@ -10,13 +10,12 @@ on:
 
 env:
   GRADLE_USER_HOME: ${{ github.workspace }}/src/RyujinxAndroid/.gradle
-  NDK_VERSION: "25.2.9519653"  # 注意版本号必须与安装命令完全一致
+  NDK_VERSION: "25.2.9519653"  # 必须与NDK安装版本严格一致
   CMAKE_VERSION: "3.22.1"
   BUILD_TOOLS_VERSION: "34.0.0"
   JAVA_VERSION: "17"
   DOTNET_VERSION: "9.0.101"
-  ANDROID_HOME: ${{ github.workspace }}/android-sdk  # 直接定义绝对路径
-  # 注意：此处不能引用 env.NDK_VERSION，需在步骤中动态组合路径
+  ANDROID_HOME: ${{ github.workspace }}/android-sdk
 
 jobs:
   build:
@@ -43,17 +42,16 @@ jobs:
       # ================== [2] 环境初始化 ==================
       - name: Prepare workspace
         run: |
-          # 创建SDK目录结构
+          # 创建目录结构
           mkdir -p "$ANDROID_HOME/cmdline-tools"
           
-          # 动态设置NDK_HOME（关键修复）
+          # 动态设置NDK路径
           NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION"
           echo "NDK_HOME=$NDK_HOME" >> $GITHUB_ENV
           
           # 验证目录结构
-          echo "ANDROID_HOME: $ANDROID_HOME"
-          echo "NDK_HOME: $NDK_HOME"
-          ls -l "$ANDROID_HOME"
+          echo "Android SDK路径: $ANDROID_HOME"
+          echo "NDK路径: $NDK_HOME"
 
       # ================== [3] .NET环境配置 ==================
       - name: Setup .NET
@@ -67,43 +65,52 @@ jobs:
         run: |
           cd "$ANDROID_HOME"
 
-          # 安装命令行工具
+          # 安装命令行工具（关键修复目录结构）
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
           unzip -q commandlinetools-linux-*.zip -d cmdline-tools
           mv cmdline-tools/cmdline-tools cmdline-tools/latest
           rm commandlinetools-linux-*.zip
 
-          # 配置PATH
-          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          # 立即生效PATH配置
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          echo "当前PATH: $PATH"
 
-          # 安装组件（显式指定版本）
-          yes | sdkmanager --licenses
+          # 验证sdkmanager存在性
+          echo "sdkmanager路径验证:"
+          ls -l "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+
+          # 接受许可证（稳定写法）
+          mkdir -p ~/.android
+          touch ~/.android/repositories.cfg
+          (while true; do echo y; sleep 1; done) | sdkmanager --licenses
+
+          # 安装核心组件
           sdkmanager --verbose \
             "platform-tools" \
             "build-tools;$BUILD_TOOLS_VERSION" \
-            "ndk;$NDK_VERSION" \  # 使用环境变量中的版本号
+            "ndk;$NDK_VERSION" \
             "cmake;$CMAKE_VERSION"
 
-          # 验证NDK安装
-          echo "Installed NDK versions:"
+          # NDK安装验证
+          echo "已安装的NDK版本:"
           ls -l "$ANDROID_HOME/ndk"
-          echo "Current NDK path:"
+          echo "当前使用的NDK路径:"
           ls -l "$NDK_HOME"
 
-      # ================== [5] 修复NativeAOT参数 ==================
+      # ================== [5] 修复NativeAOT配置 ==================
       - name: Patch NativeAOT Settings
         working-directory: src/LibRyujinx
         run: |
           # 安装XML处理工具
           sudo apt-get update && sudo apt-get install -y xmlstarlet
 
-          # 修正RuntimeIdentifier
+          # 修正RuntimeIdentifier（关键修复）
           xmlstarlet ed -L \
             -u '/Project/PropertyGroup/RuntimeIdentifier' \
             -v 'android-arm64' \
             LibRyujinx.csproj
 
-          # 添加AOT参数
+          # 添加AOT编译参数
           xmlstarlet ed -L \
             -s '/Project/PropertyGroup[1]' \
             -t elem -n IlcGenerateMapFile -v 'true' \
@@ -117,9 +124,9 @@ jobs:
             -t elem -n AndroidStripSymbols -v 'false' \
             LibRyujinx.csproj
 
-          # 验证XML格式
+          # XML格式验证
           if ! xmlstarlet val LibRyujinx.csproj; then
-              echo "::error::XML格式验证失败！"
+              echo "::error::XML验证失败！"
               exit 1
           fi
 
@@ -133,16 +140,16 @@ jobs:
         run: |
           # 修复权限问题
           chmod +x gradlew
-          ls -l gradlew  # 验证权限
+          ls -l gradlew  # 验证权限应为-rwxr-xr-x
 
-          # 清理构建缓存
+          # 清理构建环境
           ./gradlew clean --stacktrace
 
           # 完整构建命令（关键参数传递）
           ./gradlew assembleRelease \
             -Pandroid.ndkVersion=$NDK_VERSION \
             -Pandroid.sdkDirectory=$ANDROID_HOME \
-            -Porg.gradle.java.home=$JAVA_HOME_17_X64 \  # 使用Github预装JDK路径
+            -Porg.gradle.java.home=$JAVA_HOME_17_X64 \
             --parallel \
             --no-daemon \
             --stacktrace \
