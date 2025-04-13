@@ -1,4 +1,5 @@
 // State class for the library
+using Ryujinx.Audio.Backends.OpenAL;
 using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE.HOS.Services.Account.Acc;
 using Ryujinx.HLE.HOS;
