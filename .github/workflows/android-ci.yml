@@ -132,4 +132,3 @@ jobs:
             src/RyujinxAndroid/app/build/outputs/apk/**/*.apk
             src/RyujinxAndroid/app/build/outputs/native-debug-symbols/**/*.so
           retention-days: 7
-Update Directory.软件包.props · mipad/Test-ryu@f41c772 
