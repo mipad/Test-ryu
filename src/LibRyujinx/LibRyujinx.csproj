@@ -1,24 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- 全局配置 -->
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <EnablePreviewFeatures>True</EnablePreviewFeatures>
     <LangVersion>preview</LangVersion>
-    <RuntimeIdentifiers>android-arm64;linux-bionic-arm64;ios-arm64</RuntimeIdentifiers>
+    <RuntimeIdentifiers>android-arm64;linux-bionic-arm64</RuntimeIdentifiers>
     <Nullable>enable</Nullable>
     <WarningsNotAsErrors>NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
     <NuGetAudit>false</NuGetAudit>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <InvariantGlobalization>true</InvariantGlobalization>
-    <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
     
-    <!-- 新增AOT编译参数 -->
+    <!-- AOT 优化参数 -->
     <IlcGenerateMapFile>true</IlcGenerateMapFile>
     <IlcDisableUnhandledExceptionExperience>true</IlcDisableUnhandledExceptionExperience>
-    <IlcGenerateCompleteTypeMetadata>false</IlcGenerateCompleteTypeMetadata>
-    <IlcDisableReflection>true</IlcDisableReflection>
-    <AndroidStripSymbols>false</AndroidStripSymbols>
+    <IlcGenerateCompleteTypeMetadata>true</IlcGenerateCompleteTypeMetadata>
+    <IlcDisableReflection>false</IlcDisableReflection>
+    <IlcTrimMetadata>true</IlcTrimMetadata>
   </PropertyGroup>
 
   <!-- Android 平台配置 -->
@@ -27,67 +24,45 @@
     <NativeLib>Shared</NativeLib>
     <IlcInstructionSet>armv8.2-a</IlcInstructionSet>
     <PublishAot>true</PublishAot>
-    <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
     <StripSymbols>true</StripSymbols>
     <AndroidNativeLibrary>libryujinx.so</AndroidNativeLibrary>
   </PropertyGroup>
 
-  <!-- Release模式优化 -->
-  <PropertyGroup Condition="'$(Configuration)'=='Release'">
-    <Optimize>true</Optimize>
-    <OptimizationPreference>Speed</OptimizationPreference>
-    <DebugType>portable</DebugType>
-    <DebugSymbols>true</DebugSymbols>
+  <!-- Linux Bionic 配置 -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">
+    <IlcInstructionSet>armv8-a</IlcInstructionSet>
+    <StripSymbols>true</StripSymbols>
   </PropertyGroup>
 
-  <!-- 链接器配置 -->
+  <!-- 合并链接参数 -->
   <ItemGroup>
-    <!-- Android链接参数 -->
-    <LinkerArg Condition="'$(RuntimeIdentifier)'=='android-arm64'" Include="-llog" />
-    <LinkerArg Condition="'$(RuntimeIdentifier)'=='android-arm64'" Include="-ldl" />
-    <LinkerArg Condition="'$(RuntimeIdentifier)'=='android-arm64'" Include="-lz" />
-    <LinkerArg Condition="'$(RuntimeIdentifier)'=='android-arm64'" Include="-lm" />
-    <LinkerArg Condition="'$(RuntimeIdentifier)'=='android-arm64'" Include="-lc" />
-    
-    <!-- Linux链接参数 -->
-    <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-llog" />
-    <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-ldl" />
-    <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-lz" />
-    <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-lm" />
-    <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-lc" />
+    <LinkerArg 
+      Condition="'$(RuntimeIdentifier)'=='android-arm64' OR '$(RuntimeIdentifier)'=='linux-bionic-arm64'"
+      Include="-llog -ldl -lz -lm -lc" 
+    />
   </ItemGroup>
 
-  <!-- NuGet 包管理 -->
+  <!-- NuGet 包引用（无版本号） -->
   <ItemGroup>
+    <PackageReference Include="Microsoft.DotNet.ILCompiler" />  <!-- 版本由 Directory.Packages.props 控制 -->
     <PackageReference Include="System.Text.Encoding" />
     <PackageReference Include="System.Text.Json" />
     <PackageReference Include="Rxmxnx.PInvoke.Extensions" />
     <PackageReference Include="Silk.NET.Vulkan" />
     <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" />
     <PackageReference Include="LibHac" />
-    <PackageReference Include="Microsoft.DotNet.ILCompiler" Version="9.0.0-*" />
   </ItemGroup>
 
-  <!-- 项目引用 -->
-  <ItemGroup>
-    <ProjectReference Include="..\Ryujinx.Audio.Backends.OpenAL\Ryujinx.Audio.Backends.OpenAL.csproj" />
-    <ProjectReference Include="..\Ryujinx.Audio.Backends.SDL2\Ryujinx.Audio.Backends.SDL2.csproj" />
-    <ProjectReference Include="..\Ryujinx.Input\Ryujinx.Input.csproj" />
-    <ProjectReference Include="..\Ryujinx.Common\Ryujinx.Common.csproj" />
-    <ProjectReference Include="..\Ryujinx.HLE\Ryujinx.HLE.csproj" />
-    <ProjectReference Include="..\ARMeilleure\ARMeilleure.csproj" />
-    <ProjectReference Include="..\Ryujinx.Graphics.OpenGL\Ryujinx.Graphics.OpenGL.csproj" />
-    <ProjectReference Include="..\Ryujinx.Graphics.Vulkan\Ryujinx.Graphics.Vulkan.csproj" />
-    <ProjectReference Include="..\Ryujinx.Graphics.Gpu\Ryujinx.Graphics.Gpu.csproj" />
-    <ProjectReference Include="..\Ryujinx.UI.Common\Ryujinx.UI.Common.csproj" />
-  </ItemGroup>
+  <!-- 显式定义 Android 工程路径 -->
+  <PropertyGroup>
+    <AndroidProjectDirectory>../RyujinxAndroid</AndroidProjectDirectory>
+  </PropertyGroup>
 
-  <!-- Android构建后处理 -->
+  <!-- 构建后处理 -->
   <Target Name="PostBuildAndroid" AfterTargets="Publish" Condition="'$(RuntimeIdentifier)'=='android-arm64'">
-    <ItemGroup>
-      <NativeLibs Include="$(OutputPath)/*.so" />
-    </ItemGroup>
-    <Copy SourceFiles="@(NativeLibs)" 
-          DestinationFolder="$(AndroidProjectDirectory)/src/main/jniLibs/$(AndroidAbi)" />
+    <Copy 
+      SourceFiles="$(OutputPath)/*.so" 
+      DestinationFolder="$(AndroidProjectDirectory)/app/src/main/jniLibs/arm64-v8a" 
+    />
   </Target>
 </Project>
