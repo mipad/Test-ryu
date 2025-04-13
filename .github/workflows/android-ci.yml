@@ -10,11 +10,13 @@ on:
 
 env:
   GRADLE_USER_HOME: ${{ github.workspace }}/src/RyujinxAndroid/.gradle
-  NDK_VERSION: "25.2.9519653"
+  NDK_VERSION: "25.2.9519653"  # 必须与安装版本完全一致
   CMAKE_VERSION: "3.22.1"
   BUILD_TOOLS_VERSION: "34.0.0"
   JAVA_VERSION: "17"
   DOTNET_VERSION: "9.0.101"
+  ANDROID_HOME: ${{ github.workspace }}/android-sdk  # 直接定义环境变量
+  NDK_HOME: ${{ github.workspace }}/android-sdk/ndk/${{ env.NDK_VERSION }}
 
 jobs:
   build:
@@ -37,23 +39,14 @@ jobs:
             !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
           sparse-checkout-cone-mode: false
           clean: true
-          filter: 'blob:none'  # 优化检出速度
 
       # ================== [2] 环境初始化 ==================
       - name: Prepare workspace
         run: |
-          # 设置Android环境变量
-          ANDROID_HOME="${{ github.workspace }}/android-sdk"
-          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
-          echo "NDK_HOME=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
-          
-          # 创建必要的目录结构
+          # 创建SDK和NDK目录
           mkdir -p $ANDROID_HOME/cmdline-tools
-          
-          # 配置local.properties
-          echo "sdk.dir=$ANDROID_HOME" > src/RyujinxAndroid/local.properties
-          echo "ndk.dir=$NDK_HOME" >> src/RyujinxAndroid/local.properties
-          echo "cmake.dir=$ANDROID_HOME/cmake/${{ env.CMAKE_VERSION }}" >> src/RyujinxAndroid/local.properties
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "NDK_HOME=$NDK_HOME" >> $GITHUB_ENV
 
       # ================== [3] .NET环境配置 ==================
       - name: Setup .NET
@@ -65,54 +58,57 @@ jobs:
       # ================== [4] Android SDK安装 ==================
       - name: Install Android Tools
         run: |
-          # 安装命令行工具
           cd $ANDROID_HOME
+
+          # 安装命令行工具
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
           unzip -q commandlinetools-linux-*.zip -d cmdline-tools
           mv cmdline-tools/cmdline-tools cmdline-tools/latest
           rm commandlinetools-linux-*.zip
 
-          # 设置PATH并验证
-          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin
-          echo "PATH=$PATH" >> $GITHUB_ENV
-          
-          # 验证sdkmanager
-          if ! command -v sdkmanager >/dev/null; then
-              echo "::error::sdkmanager not found!"
-              exit 1
-          fi
+          # 配置PATH
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
-          # 接受许可证
-          mkdir -p ~/.android
-          touch ~/.android/repositories.cfg
+          # 安装组件（显式指定NDK版本）
           yes | sdkmanager --licenses
-
-          # 安装组件
-          sdkmanager --install "platform-tools" \
+          sdkmanager --install \
+            "platform-tools" \
             "build-tools;${{ env.BUILD_TOOLS_VERSION }}" \
             "ndk;${{ env.NDK_VERSION }}" \
             "cmake;${{ env.CMAKE_VERSION }}"
 
-          # 验证安装
-          ls -l $ANDROID_HOME/ndk/${{ env.NDK_VERSION }}
+          # 验证NDK安装
+          ls -l $NDK_HOME
 
       # ================== [5] 修复NativeAOT参数 ==================
       - name: Patch NativeAOT Settings
         working-directory: src/LibRyujinx
         run: |
-          # 修改RuntimeIdentifier
-          sed -i 's|<RuntimeIdentifier>.*</RuntimeIdentifier>|<RuntimeIdentifier>android-arm64</RuntimeIdentifier>|g' LibRyujinx.csproj
-          
+          # 使用XML工具直接修改项目文件
+          sudo apt-get install -y xmlstarlet
+
+          # 修正RuntimeIdentifier
+          xmlstarlet ed -L \
+            -u '/Project/PropertyGroup/RuntimeIdentifier' \
+            -v 'android-arm64' \
+            LibRyujinx.csproj
+
           # 添加AOT参数
-          cat <<EOF >> LibRyujinx.csproj
-          <PropertyGroup>
-            <IlcGenerateMapFile>true</IlcGenerateMapFile>
-            <IlcDisableUnhandledExceptionExperience>true</IlcDisableUnhandledExceptionExperience>
-            <IlcGenerateCompleteTypeMetadata>false</IlcGenerateCompleteTypeMetadata>
-            <IlcDisableReflection>true</IlcDisableReflection>
-            <AndroidStripSymbols>false</AndroidStripSymbols>
-          </PropertyGroup>
-          EOF
+          xmlstarlet ed -L \
+            -s '/Project/PropertyGroup[1]' \
+            -t elem -n IlcGenerateMapFile -v 'true' \
+            -s '/Project/PropertyGroup[1]' \
+            -t elem -n IlcDisableUnhandledExceptionExperience -v 'true' \
+            -s '/Project/PropertyGroup[1]' \
+            -t elem -n IlcGenerateCompleteTypeMetadata -v 'false' \
+            -s '/Project/PropertyGroup[1]' \
+            -t elem -n IlcDisableReflection -v 'true' \
+            -s '/Project/PropertyGroup[1]' \
+            -t elem -n AndroidStripSymbols -v 'false' \
+            LibRyujinx.csproj
+
+          # 验证XML格式
+          xmlstarlet val LibRyujinx.csproj || exit 1
 
       # ================== [6] 构建执行 ==================
       - name: Build Android Project
@@ -122,20 +118,15 @@ jobs:
           DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
           TERM: xterm-color
         run: |
-          # 修复权限
+          # 修复权限并清理
           chmod +x gradlew
-          ls -l gradlew  # 验证权限应为-rwxr-xr-x
-          
-          # 清理构建缓存
-          ./gradlew clean --stacktrace
-          
-          # 完整构建
+          ./gradlew clean
+
+          # 带参数构建（关键修改：通过环境变量传递路径）
           ./gradlew assembleRelease \
-            -Pandroid.debug.obsoleteApi=true \
-            --parallel \
-            --no-daemon \
-            --build-cache \
-            --scan \
+            -Pandroid.ndkVersion=$NDK_VERSION \
+            -Pandroid.sdkDirectory=$ANDROID_HOME \
+            -Porg.gradle.java.home=$JAVA_HOME \
             --stacktrace \
             --info
 
@@ -147,5 +138,4 @@ jobs:
           path: |
             src/RyujinxAndroid/app/build/outputs/apk/**/*.apk
             src/RyujinxAndroid/app/build/outputs/native-debug-symbols/**/*.so
-            src/RyujinxAndroid/app/build/reports/**/*.html
           retention-days: 7
