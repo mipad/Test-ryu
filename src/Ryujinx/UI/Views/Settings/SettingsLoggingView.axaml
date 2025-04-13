@@ -97,19 +97,14 @@
                                     Width="150"
                                     HorizontalContentAlignment="Left"
                                     ToolTip.Tip="{locale:Locale OpenGlLogLevel}">
-                                <ComboBoxItem>
-                                    <TextBlock Text="{locale:Locale SettingsTabLoggingGraphicsBackendLogLevelNone}" />
-                                </ComboBoxItem>
-                                <ComboBoxItem>
-                                    <TextBlock Text="{locale:Locale SettingsTabLoggingGraphicsBackendLogLevelError}" />
-                                </ComboBoxItem>
-                                <ComboBoxItem>
-                                    <TextBlock
-                                        Text="{locale:Locale SettingsTabLoggingGraphicsBackendLogLevelPerformance}" />
-                                </ComboBoxItem>
-                                <ComboBoxItem>
-                                    <TextBlock Text="{locale:Locale SettingsTabLoggingGraphicsBackendLogLevelAll}" />
-                                </ComboBoxItem>
+                                <ComboBoxItem
+                                    Content="{locale:Locale SettingsTabLoggingGraphicsBackendLogLevelNone}" />
+                                <ComboBoxItem
+                                    Content="{locale:Locale SettingsTabLoggingGraphicsBackendLogLevelError}" />
+                                <ComboBoxItem
+                                    Content="{locale:Locale SettingsTabLoggingGraphicsBackendLogLevelPerformance}" />
+                                <ComboBoxItem
+                                    Content="{locale:Locale SettingsTabLoggingGraphicsBackendLogLevelAll}" />
                             </ComboBox>
                         </StackPanel>
                     </StackPanel>

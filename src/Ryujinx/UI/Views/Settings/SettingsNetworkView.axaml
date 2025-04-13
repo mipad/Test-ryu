@@ -33,15 +33,12 @@
                         ToolTip.Tip="{locale:Locale MultiplayerModeTooltip}"
                         HorizontalContentAlignment="Left"
                         Width="250">
-                        <ComboBoxItem>
-                            <TextBlock Text="{locale:Locale MultiplayerModeDisabled}" />
-                        </ComboBoxItem>
-                        <ComboBoxItem>
-                            <TextBlock Text="{locale:Locale MultiplayerModeLdnRyu}" />
-                        </ComboBoxItem>
-                        <ComboBoxItem>
-                            <TextBlock Text="{locale:Locale MultiplayerModeLdnMitm}" />
-                        </ComboBoxItem>
+                        <ComboBoxItem
+                            Content="{locale:Locale MultiplayerModeDisabled}" />
+                        <ComboBoxItem
+                            Content="{locale:Locale MultiplayerModeLdnRyu}" />
+                        <ComboBoxItem
+                            Content="{locale:Locale MultiplayerModeLdnMitm}" />
                     </ComboBox>
                     <CheckBox Margin="10,0,0,0" IsChecked="{Binding DisableP2P}">
                         <TextBlock Text="{locale:Locale MultiplayerDisableP2P}"

@@ -98,20 +98,24 @@
             Spacing="10">
             <Button
                 Name="DeleteButton"
-                Click="DeleteButton_Click"
-                Content="{locale:Locale UserProfilesDelete}" />
+                Click="DeleteButton_Click">
+                <TextBlock Text="{locale:Locale UserProfilesDelete}" />
+                </Button>
             <Button
                 Name="ChangePictureButton"
-                Click="ChangePictureButton_Click"
-                Content="{locale:Locale UserProfilesChangeProfileImage}" />
+                Click="ChangePictureButton_Click">
+                <TextBlock Text="{locale:Locale UserProfilesChangeProfileImage}" />
+                </Button>
             <Button
                 Name="AddPictureButton"
-                Click="ChangePictureButton_Click"
-                Content="{locale:Locale UserProfilesSetProfileImage}" />
+                Click="ChangePictureButton_Click">
+                <TextBlock Text="{locale:Locale UserProfilesSetProfileImage}" />
+                </Button>
             <Button
                 Name="SaveButton"
-                Click="SaveButton_Click"
-                Content="{locale:Locale Save}" />
+                Click="SaveButton_Click">
+                <TextBlock Text="{locale:Locale UserProfilesSetProfileImage}" />
+                </Button>
         </StackPanel>
     </Grid>
 </UserControl>

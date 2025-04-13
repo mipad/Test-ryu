@@ -53,19 +53,14 @@
                                   HorizontalContentAlignment="Left"
                                   Width="350">
                             <ComboBoxItem
-                                ToolTip.Tip="{locale:Locale MemoryManagerSoftwareTooltip}">
-                                <TextBlock
-                                    Text="{locale:Locale SettingsTabSystemMemoryManagerModeSoftware}" />
-                            </ComboBoxItem>
+                                ToolTip.Tip="{locale:Locale MemoryManagerSoftwareTooltip}"
+                                Content="{locale:Locale SettingsTabSystemMemoryManagerModeSoftware}" />
                             <ComboBoxItem
-                                ToolTip.Tip="{locale:Locale MemoryManagerHostTooltip}">
-                                <TextBlock Text="{locale:Locale SettingsTabSystemMemoryManagerModeHost}" />
-                            </ComboBoxItem>
+                                ToolTip.Tip="{locale:Locale MemoryManagerHostTooltip}"
+                                Content="{locale:Locale SettingsTabSystemMemoryManagerModeHost}" />
                             <ComboBoxItem
-                                ToolTip.Tip="{locale:Locale MemoryManagerUnsafeTooltip}">
-                                <TextBlock
-                                    Text="{locale:Locale SettingsTabSystemMemoryManagerModeHostUnchecked}" />
-                            </ComboBoxItem>
+                                ToolTip.Tip="{locale:Locale MemoryManagerUnsafeTooltip}"
+                                Content="{locale:Locale SettingsTabSystemMemoryManagerModeHostUnchecked}" />
                         </ComboBox>
                     </StackPanel>
                     <CheckBox IsChecked="{Binding UseHypervisor}"

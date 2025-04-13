@@ -46,15 +46,12 @@
                         <ComboBox SelectedIndex="{Binding HideCursor}"
                                   HorizontalContentAlignment="Left"
                                   MinWidth="100">
-                            <ComboBoxItem>
-                                <TextBlock Text="{locale:Locale SettingsTabGeneralHideCursorNever}" />
-                            </ComboBoxItem>
-                            <ComboBoxItem>
-                                <TextBlock Text="{locale:Locale SettingsTabGeneralHideCursorOnIdle}" />
-                            </ComboBoxItem>
-                            <ComboBoxItem>
-                                <TextBlock Text="{locale:Locale SettingsTabGeneralHideCursorAlways}" />
-                            </ComboBoxItem>
+                            <ComboBoxItem
+                                Content="{locale:Locale SettingsTabGeneralHideCursorNever}" />
+                            <ComboBoxItem
+                                Content="{locale:Locale SettingsTabGeneralHideCursorOnIdle}" />
+                            <ComboBoxItem
+                                Content="{locale:Locale SettingsTabGeneralHideCursorAlways}" />
                         </ComboBox>
                     </StackPanel>
                     <StackPanel Margin="0, 15, 0, 10" Orientation="Horizontal">
@@ -65,15 +62,12 @@
                         <ComboBox SelectedIndex="{Binding BaseStyleIndex}"
                                   HorizontalContentAlignment="Left"
                                   MinWidth="100">
-                            <ComboBoxItem>
-                                <TextBlock Text="{locale:Locale SettingsTabGeneralThemeAuto}" />
-                            </ComboBoxItem>
-                            <ComboBoxItem>
-                                <TextBlock Text="{locale:Locale SettingsTabGeneralThemeLight}" />
-                            </ComboBoxItem>
-                            <ComboBoxItem>
-                                <TextBlock Text="{locale:Locale SettingsTabGeneralThemeDark}" />
-                            </ComboBoxItem>
+                            <ComboBoxItem
+                                Content="{locale:Locale SettingsTabGeneralThemeAuto}" />
+                            <ComboBoxItem
+                                Content="{locale:Locale SettingsTabGeneralThemeLight}" />
+                            <ComboBoxItem
+                                Content="{locale:Locale SettingsTabGeneralThemeDark}" />
                         </ComboBox>
                     </StackPanel>
                 </StackPanel>

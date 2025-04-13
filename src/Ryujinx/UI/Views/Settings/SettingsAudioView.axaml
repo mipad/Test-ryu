@@ -34,18 +34,17 @@
                     <ComboBox SelectedIndex="{Binding AudioBackend}"
                               Width="350"
                               HorizontalContentAlignment="Left">
-                        <ComboBoxItem>
-                            <TextBlock Text="{locale:Locale SettingsTabSystemAudioBackendDummy}" />
-                        </ComboBoxItem>
-                        <ComboBoxItem IsEnabled="{Binding IsOpenAlEnabled}">
-                            <TextBlock Text="{locale:Locale SettingsTabSystemAudioBackendOpenAL}" />
-                        </ComboBoxItem>
-                        <ComboBoxItem IsEnabled="{Binding IsSoundIoEnabled}">
-                            <TextBlock Text="{locale:Locale SettingsTabSystemAudioBackendSoundIO}" />
-                        </ComboBoxItem>
-                        <ComboBoxItem IsEnabled="{Binding IsSDL2Enabled}">
-                            <TextBlock Text="{locale:Locale SettingsTabSystemAudioBackendSDL2}" />
-                        </ComboBoxItem>
+                        <ComboBoxItem
+                            Content="{locale:Locale SettingsTabSystemAudioBackendDummy}" />
+                        <ComboBoxItem
+                            IsEnabled="{Binding IsOpenAlEnabled}"
+                            Content="{locale:Locale SettingsTabSystemAudioBackendOpenAL}" />
+                        <ComboBoxItem
+                            IsEnabled="{Binding IsSoundIoEnabled}"
+                            Content="{locale:Locale SettingsTabSystemAudioBackendSoundIO}" />
+                        <ComboBoxItem
+                            IsEnabled="{Binding IsSDL2Enabled}"
+                            Content="{locale:Locale SettingsTabSystemAudioBackendSDL2}" />
                     </ComboBox>
                 </StackPanel>
                 <StackPanel Margin="10,0,0,0" Orientation="Horizontal">
