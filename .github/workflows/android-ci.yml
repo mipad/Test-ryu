@@ -10,7 +10,7 @@ on:
 
 env:
   GRADLE_USER_HOME: ${{ github.workspace }}/src/RyujinxAndroid/.gradle
-  NDK_VERSION: "25.2.9519653"
+  NDK_VERSION: "25.2.9519653"  # 显式指定 NDK 版本
   CMAKE_VERSION: "3.22.1"
   BUILD_TOOLS_VERSION: "34.0.0"
   JAVA_VERSION: "17"
@@ -40,9 +40,10 @@ jobs:
       # ================== [2] 环境初始化 ==================
       - name: Prepare workspace
         run: |
-          # 创建完整目录结构
+          # 设置 ANDROID_HOME 和 NDK_ROOT 环境变量
           echo "ANDROID_HOME=${{ github.workspace }}/android-sdk" >> $GITHUB_ENV
-          mkdir -p $ANDROID_HOME/cmdline-tools  # 提前创建cmdline-tools目录
+          echo "NDK_ROOT=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV  # 新增 NDK_ROOT
+          mkdir -p $ANDROID_HOME/cmdline-tools
           echo "sdk.dir=$ANDROID_HOME" >> src/RyujinxAndroid/local.properties
 
       # ================== [3] .NET环境配置 ==================
@@ -62,22 +63,13 @@ jobs:
       # ================== [5] Android SDK基础安装 ==================
       - name: Install Android Command-line Tools
         run: |
-          # 确保目标目录存在
           mkdir -p $ANDROID_HOME/cmdline-tools
-          
-          # 下载并解压命令行工具
           wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
           unzip commandlinetools-linux-*.zip -d $ANDROID_HOME/cmdline-tools
-          
-          # 重命名并清理
           mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
           rm commandlinetools-linux-*.zip
-          
-          # 验证目录结构
           echo "Command-line tools installed at:"
           ls -la $ANDROID_HOME/cmdline-tools/latest
-
-          # 配置环境变量
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
       # ================== [6] 安装Android组件 ==================
@@ -85,7 +77,7 @@ jobs:
         run: |
           yes | sdkmanager --licenses
           yes | sdkmanager "platform-tools" "build-tools;${{ env.BUILD_TOOLS_VERSION }}"
-          yes | sdkmanager "ndk;${{ env.NDK_VERSION }}"
+          yes | sdkmanager "ndk;${{ env.NDK_VERSION }}"  # 安装指定版本的 NDK
           yes | sdkmanager "cmake;${{ env.CMAKE_VERSION }}"
 
       # ================== [7] 构建缓存配置 ==================
@@ -103,10 +95,8 @@ jobs:
       - name: Build with Gradle
         working-directory: src/RyujinxAndroid
         run: |
-          # 强制更新SDK路径配置
           sed -i '/sdk.dir/d' local.properties
           echo "sdk.dir=$ANDROID_HOME" >> local.properties
-          
           chmod +x gradlew
           ./gradlew assembleRelease \
             -Porg.gradle.parallel=true \
