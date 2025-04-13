@@ -4,7 +4,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <EnablePreviewFeatures>True</EnablePreviewFeatures>
     <LangVersion>preview</LangVersion>
-    <RuntimeIdentifiers>linux-bionic-arm64;ios-arm64</RuntimeIdentifiers>
+    <RuntimeIdentifiers>android-arm64;linux-bionic-arm64;ios-arm64</RuntimeIdentifiers>
     <Nullable>enable</Nullable>
     <WarningsNotAsErrors>NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
     <NuGetAudit>false</NuGetAudit>
@@ -12,48 +12,50 @@
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <InvariantGlobalization>true</InvariantGlobalization>
     <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
+    
+    <!-- 新增AOT编译参数 -->
+    <IlcGenerateMapFile>true</IlcGenerateMapFile>
+    <IlcDisableUnhandledExceptionExperience>true</IlcDisableUnhandledExceptionExperience>
+    <IlcGenerateCompleteTypeMetadata>false</IlcGenerateCompleteTypeMetadata>
+    <IlcDisableReflection>true</IlcDisableReflection>
+    <AndroidStripSymbols>false</AndroidStripSymbols>
   </PropertyGroup>
 
-  <!-- Linux Bionic 平台配置 -->
-  <PropertyGroup Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">
+  <!-- Android 平台配置 -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)'=='android-arm64'">
     <LinkerFlavor>lld</LinkerFlavor>
     <NativeLib>Shared</NativeLib>
     <IlcInstructionSet>armv8.2-a</IlcInstructionSet>
     <PublishAot>true</PublishAot>
     <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
+    <StripSymbols>true</StripSymbols>
+    <AndroidNativeLibrary>libryujinx.so</AndroidNativeLibrary>
   </PropertyGroup>
 
   <!-- Release模式优化 -->
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
     <Optimize>true</Optimize>
     <OptimizationPreference>Speed</OptimizationPreference>
+    <DebugType>portable</DebugType>
+    <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
 
-  <!-- Linux Bionic 链接器配置 -->
-  <ItemGroup Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">
-    <LinkerArg Include="-llog" />
-    <LinkerArg Include="-ldl" />
-    <LinkerArg Include="-lz" />
-    <LinkerArg Include="-lm" />
-    <LinkerArg Include="-lc" />
+  <!-- 链接器配置 -->
+  <ItemGroup>
+    <!-- Android链接参数 -->
+    <LinkerArg Condition="'$(RuntimeIdentifier)'=='android-arm64'" Include="-llog" />
+    <LinkerArg Condition="'$(RuntimeIdentifier)'=='android-arm64'" Include="-ldl" />
+    <LinkerArg Condition="'$(RuntimeIdentifier)'=='android-arm64'" Include="-lz" />
+    <LinkerArg Condition="'$(RuntimeIdentifier)'=='android-arm64'" Include="-lm" />
+    <LinkerArg Condition="'$(RuntimeIdentifier)'=='android-arm64'" Include="-lc" />
+    
+    <!-- Linux链接参数 -->
+    <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-llog" />
+    <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-ldl" />
+    <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-lz" />
+    <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-lm" />
+    <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-lc" />
   </ItemGroup>
-
-  <!-- iOS 平台链接修复 -->
-  <Target Condition="'$(RuntimeIdentifier)'=='ios-arm64'" Name="PrepareBeforeIlcCompile" BeforeTargets="IlcCompile">
-    <Exec Command="xcrun xcode-select -p" ConsoleToMSBuild="true">
-      <Output TaskParameter="ConsoleOutput" PropertyName="XcodeSelect" />
-    </Exec>
-    <PropertyGroup>
-      <XcodePath>$([MSBuild]::EnsureTrailingSlash('$(XcodeSelect)'))</XcodePath>
-    </PropertyGroup>
-    <ItemGroup>
-      <LinkerArg Include="-Wl,-ld_classic" />
-      <LinkerArg Include="-isysroot %22$(XcodePath)Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk%22" 
-                  Condition=" $(RuntimeIdentifier.Contains('simulator')) " />
-      <LinkerArg Include="-isysroot %22$(XcodePath)Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk%22" 
-                  Condition=" !$(RuntimeIdentifier.Contains('simulator')) " />
-    </ItemGroup>
-  </Target>
 
   <!-- NuGet 包管理 -->
   <ItemGroup>
@@ -63,6 +65,7 @@
     <PackageReference Include="Silk.NET.Vulkan" />
     <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" />
     <PackageReference Include="LibHac" />
+    <PackageReference Include="Microsoft.DotNet.ILCompiler" Version="9.0.0-*" />
   </ItemGroup>
 
   <!-- 项目引用 -->
@@ -79,12 +82,12 @@
     <ProjectReference Include="..\Ryujinx.UI.Common\Ryujinx.UI.Common.csproj" />
   </ItemGroup>
 
-  <!-- iOS 符号文件处理 -->
-  <Target Condition="'$(RuntimeIdentifier)'=='ios-arm64'" Name="FixSymbols" AfterTargets="Publish">
-    <RemoveDir Directories="$(PublishDir)$(TargetName).framework.dSYM" />
+  <!-- Android构建后处理 -->
+  <Target Name="PostBuildAndroid" AfterTargets="Publish" Condition="'$(RuntimeIdentifier)'=='android-arm64'">
     <ItemGroup>
-      <SymbolFiles Include="$(NativeBinary).dsym\**\*.*" />
+      <NativeLibs Include="$(OutputPath)/*.so" />
     </ItemGroup>
-    <Copy SourceFiles="@(SymbolFiles)" DestinationFolder="$(PublishDir)$(TargetName).framework.dSYM" />
+    <Copy SourceFiles="@(NativeLibs)" 
+          DestinationFolder="$(AndroidProjectDirectory)/src/main/jniLibs/$(AndroidAbi)" />
   </Target>
 </Project>
