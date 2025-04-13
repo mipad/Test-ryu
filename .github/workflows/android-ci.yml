@@ -10,13 +10,13 @@ on:
 
 env:
   GRADLE_USER_HOME: ${{ github.workspace }}/src/RyujinxAndroid/.gradle
-  NDK_VERSION: "25.2.9519653"  # 必须与安装版本完全一致
+  NDK_VERSION: "25.2.9519653"  # 注意版本号必须与安装命令完全一致
   CMAKE_VERSION: "3.22.1"
   BUILD_TOOLS_VERSION: "34.0.0"
   JAVA_VERSION: "17"
   DOTNET_VERSION: "9.0.101"
-  ANDROID_HOME: ${{ github.workspace }}/android-sdk  # 直接定义环境变量
-  NDK_HOME: ${{ github.workspace }}/android-sdk/ndk/${{ env.NDK_VERSION }}
+  ANDROID_HOME: ${{ github.workspace }}/android-sdk  # 直接定义绝对路径
+  # 注意：此处不能引用 env.NDK_VERSION，需在步骤中动态组合路径
 
 jobs:
   build:
@@ -43,10 +43,17 @@ jobs:
       # ================== [2] 环境初始化 ==================
       - name: Prepare workspace
         run: |
-          # 创建SDK和NDK目录
-          mkdir -p $ANDROID_HOME/cmdline-tools
-          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          # 创建SDK目录结构
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          
+          # 动态设置NDK_HOME（关键修复）
+          NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION"
           echo "NDK_HOME=$NDK_HOME" >> $GITHUB_ENV
+          
+          # 验证目录结构
+          echo "ANDROID_HOME: $ANDROID_HOME"
+          echo "NDK_HOME: $NDK_HOME"
+          ls -l "$ANDROID_HOME"
 
       # ================== [3] .NET环境配置 ==================
       - name: Setup .NET
@@ -58,7 +65,7 @@ jobs:
       # ================== [4] Android SDK安装 ==================
       - name: Install Android Tools
         run: |
-          cd $ANDROID_HOME
+          cd "$ANDROID_HOME"
 
           # 安装命令行工具
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
@@ -69,23 +76,26 @@ jobs:
           # 配置PATH
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
-          # 安装组件（显式指定NDK版本）
+          # 安装组件（显式指定版本）
           yes | sdkmanager --licenses
-          sdkmanager --install \
+          sdkmanager --verbose \
             "platform-tools" \
-            "build-tools;${{ env.BUILD_TOOLS_VERSION }}" \
-            "ndk;${{ env.NDK_VERSION }}" \
-            "cmake;${{ env.CMAKE_VERSION }}"
+            "build-tools;$BUILD_TOOLS_VERSION" \
+            "ndk;$NDK_VERSION" \  # 使用环境变量中的版本号
+            "cmake;$CMAKE_VERSION"
 
           # 验证NDK安装
-          ls -l $NDK_HOME
+          echo "Installed NDK versions:"
+          ls -l "$ANDROID_HOME/ndk"
+          echo "Current NDK path:"
+          ls -l "$NDK_HOME"
 
       # ================== [5] 修复NativeAOT参数 ==================
       - name: Patch NativeAOT Settings
         working-directory: src/LibRyujinx
         run: |
-          # 使用XML工具直接修改项目文件
-          sudo apt-get install -y xmlstarlet
+          # 安装XML处理工具
+          sudo apt-get update && sudo apt-get install -y xmlstarlet
 
           # 修正RuntimeIdentifier
           xmlstarlet ed -L \
@@ -108,7 +118,10 @@ jobs:
             LibRyujinx.csproj
 
           # 验证XML格式
-          xmlstarlet val LibRyujinx.csproj || exit 1
+          if ! xmlstarlet val LibRyujinx.csproj; then
+              echo "::error::XML格式验证失败！"
+              exit 1
+          fi
 
       # ================== [6] 构建执行 ==================
       - name: Build Android Project
@@ -118,15 +131,20 @@ jobs:
           DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
           TERM: xterm-color
         run: |
-          # 修复权限并清理
+          # 修复权限问题
           chmod +x gradlew
-          ./gradlew clean
+          ls -l gradlew  # 验证权限
 
-          # 带参数构建（关键修改：通过环境变量传递路径）
+          # 清理构建缓存
+          ./gradlew clean --stacktrace
+
+          # 完整构建命令（关键参数传递）
           ./gradlew assembleRelease \
             -Pandroid.ndkVersion=$NDK_VERSION \
             -Pandroid.sdkDirectory=$ANDROID_HOME \
-            -Porg.gradle.java.home=$JAVA_HOME \
+            -Porg.gradle.java.home=$JAVA_HOME_17_X64 \  # 使用Github预装JDK路径
+            --parallel \
+            --no-daemon \
             --stacktrace \
             --info
 
