@@ -10,10 +10,11 @@ on:
 
 env:
   GRADLE_USER_HOME: ${{ github.workspace }}/src/RyujinxAndroid/.gradle
-  NDK_VERSION: "25.2.9519653"  # 显式指定 NDK 版本
+  NDK_VERSION: "25.2.9519653"
   CMAKE_VERSION: "3.22.1"
   BUILD_TOOLS_VERSION: "34.0.0"
   JAVA_VERSION: "17"
+  DOTNET_VERSION: "9.0.101"
 
 jobs:
   build:
@@ -28,11 +29,10 @@ jobs:
           token: ${{ secrets.GHH_PAT }}
           repository: mipad/Test-ryu
           ref: test
-          submodules: false
-          fetch-depth: 1
+          submodules: recursive
+          fetch-depth: 0
           sparse-checkout: |
             /*
-            src/RyujinxAndroid/**
             !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
           sparse-checkout-cone-mode: false
           clean: true
@@ -40,73 +40,85 @@ jobs:
       # ================== [2] 环境初始化 ==================
       - name: Prepare workspace
         run: |
-          # 设置 ANDROID_HOME 和 NDK_ROOT 环境变量
-          echo "ANDROID_HOME=${{ github.workspace }}/android-sdk" >> $GITHUB_ENV
-          echo "NDK_ROOT=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV  # 新增 NDK_ROOT
+          # 设置Android环境变量
+          ANDROID_HOME="${{ github.workspace }}/android-sdk"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "NDK_HOME=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
+          
+          # 创建必要的目录结构
           mkdir -p $ANDROID_HOME/cmdline-tools
-          echo "sdk.dir=$ANDROID_HOME" >> src/RyujinxAndroid/local.properties
+          
+          # 配置local.properties
+          echo "sdk.dir=$ANDROID_HOME" > src/RyujinxAndroid/local.properties
+          echo "ndk.dir=$NDK_HOME" >> src/RyujinxAndroid/local.properties
+          echo "cmake.dir=$ANDROID_HOME/cmake/${{ env.CMAKE_VERSION }}" >> src/RyujinxAndroid/local.properties
 
       # ================== [3] .NET环境配置 ==================
-      - name: Setup .NET 9.0.101
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "9.0.101"
+          dotnet-version: ${{ env.DOTNET_VERSION }}
           cache: false
 
-      # ================== [4] JDK环境配置 ==================
-      - name: Setup JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: ${{ env.JAVA_VERSION }}
-
-      # ================== [5] Android SDK基础安装 ==================
-      - name: Install Android Command-line Tools
+      # ================== [4] Android SDK安装 ==================
+      - name: Install Android Tools
         run: |
-          mkdir -p $ANDROID_HOME/cmdline-tools
-          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
-          unzip commandlinetools-linux-*.zip -d $ANDROID_HOME/cmdline-tools
-          mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
+          # 安装命令行工具
+          cd $ANDROID_HOME
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+          unzip -q commandlinetools-linux-*.zip -d cmdline-tools
+          mv cmdline-tools/cmdline-tools cmdline-tools/latest
           rm commandlinetools-linux-*.zip
-          echo "Command-line tools installed at:"
-          ls -la $ANDROID_HOME/cmdline-tools/latest
+
+          # 设置PATH
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
 
-      # ================== [6] 安装Android组件 ==================
-      - name: Install Android Components
-        run: |
+          # 安装必要组件
           yes | sdkmanager --licenses
-          yes | sdkmanager "platform-tools" "build-tools;${{ env.BUILD_TOOLS_VERSION }}"
-          yes | sdkmanager "ndk;${{ env.NDK_VERSION }}"  # 安装指定版本的 NDK
-          yes | sdkmanager "cmake;${{ env.CMAKE_VERSION }}"
+          sdkmanager "platform-tools" "build-tools;${{ env.BUILD_TOOLS_VERSION }}"
+          sdkmanager "ndk;${{ env.NDK_VERSION }}"
+          sdkmanager "cmake;${{ env.CMAKE_VERSION }}"
 
-      # ================== [7] 构建缓存配置 ==================
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.GRADLE_USER_HOME }}
-            ~/.android/build-cache
-          key: ${{ runner.os }}-gradle-${{ hashFiles('src/RyujinxAndroid/**/*.gradle') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      # ================== [8] 构建执行 ==================
-      - name: Build with Gradle
-        working-directory: src/RyujinxAndroid
+      # ================== [5] 修复NativeAOT编译参数 ==================
+      - name: Patch NativeAOT Settings
+        working-directory: src/LibRyujinx
         run: |
-          sed -i '/sdk.dir/d' local.properties
-          echo "sdk.dir=$ANDROID_HOME" >> local.properties
-          chmod +x gradlew
+          # 修改RuntimeIdentifier为Android目标
+          sed -i 's/<RuntimeIdentifier>.*<\/RuntimeIdentifier>/<RuntimeIdentifier>android-arm64<\/RuntimeIdentifier>/g' LibRyujinx.csproj
+          
+          # 添加AOT编译参数
+          echo '<PropertyGroup>' >> LibRyujinx.csproj
+          echo '  <IlcGenerateMapFile>true</IlcGenerateMapFile>' >> LibRyujinx.csproj
+          echo '  <IlcDisableUnhandledExceptionExperience>true</IlcDisableUnhandledExceptionExperience>' >> LibRyujinx.csproj
+          echo '  <IlcGenerateCompleteTypeMetadata>false</IlcGenerateCompleteTypeMetadata>' >> LibRyujinx.csproj
+          echo '  <IlcDisableReflection>true</IlcDisableReflection>' >> LibRyujinx.csproj
+          echo '</PropertyGroup>' >> LibRyujinx.csproj
+
+      # ================== [6] 构建执行 ==================
+      - name: Build Android Project
+        working-directory: src/RyujinxAndroid
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: 1
+          DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+        run: |
+          # 清理旧构建
+          ./gradlew clean
+          
+          # 完整构建流程
           ./gradlew assembleRelease \
+            -Pandroid.debug.obsoleteApi=true \
             -Porg.gradle.parallel=true \
             -Porg.gradle.daemon=false \
-            --no-build-cache
+            -Porg.gradle.caching=false \
+            --stacktrace
 
-      # ================== [9] 产物上传 ==================
-      - name: Upload APK
+      # ================== [7] 产物处理 ==================
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ryujinx-apk
-          path: src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
+          name: android-build-output
+          path: |
+            src/RyujinxAndroid/app/build/outputs/apk/**/*.apk
+            src/RyujinxAndroid/app/build/outputs/native-debug-symbols/**/*.so
           retention-days: 3
