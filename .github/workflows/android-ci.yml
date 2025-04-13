@@ -47,7 +47,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}  # 修复变量引用方式
+          dotnet-version: ${{ env.DOTNET_VERSION }}
           cache: false
 
       # ================== [4] Android SDK安装 ==================
@@ -65,7 +65,7 @@ jobs:
           which sdkmanager
 
           mkdir -p ~/.android && touch ~/.android/repositories.cfg
-          yes | sdkmanager --licenses  # 优化许可证确认方式
+          yes | sdkmanager --licenses
 
           sdkmanager --verbose \
             "platform-tools" \
@@ -81,16 +81,21 @@ jobs:
         working-directory: src/LibRyujinx
         run: |
           sudo apt-get install -y xmlstarlet
+
+          # 修正 RuntimeIdentifiers（复数形式）
           xmlstarlet ed -L \
-            -u '/Project/PropertyGroup/RuntimeIdentifier' \
-            -v 'linux-bionic-arm64' \
+            -u '/Project/PropertyGroup/RuntimeIdentifiers' \
+            -v 'android-arm64;linux-bionic-arm64' \
             LibRyujinx.csproj
 
-          xmlstarlet ed -L \
-            -s '/Project/ItemGroup[contains(@Condition, "linux-bionic-arm64")]' \
-            -t elem -n LinkerArg -v "-llog" \
-            -i '/Project/ItemGroup/LinkerArg' -t attr -n Include -v "-llog" \
-            LibRyujinx.csproj
+          # 为 linux-bionic-arm64 添加独立链接参数
+          for lib in "-llog" "-ldl" "-lz" "-lm" "-lc"; do
+            xmlstarlet ed -L \
+              -s '/Project/ItemGroup[contains(@Condition, "linux-bionic-arm64")]' \
+              -t elem -n LinkerArg -v "$lib" \
+              -i '/Project/ItemGroup/LinkerArg[text()="'"$lib"'"]' -t attr -n Include -v "$lib" \
+              LibRyujinx.csproj
+          done
 
           xmlstarlet val LibRyujinx.csproj || (echo "XML validation failed!"; exit 1)
 
@@ -102,7 +107,7 @@ jobs:
         run: |
           dotnet publish -c Release \
             -r linux-bionic-arm64 \
-            -p:AndroidNdkDirectory=${{ env.NDK_HOME }} \  # 显式使用环境变量
+            -p:AndroidNdkDirectory=${{ env.NDK_HOME }} \
             -p:AndroidNativeLibraryName=libryujinx.so \
             -p:StripSymbols=true \
             --self-contained
@@ -126,7 +131,7 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease \
-            -Pandroid.ndkVersion=${{ env.NDK_VERSION }} \  # 显式变量引用
+            -Pandroid.ndkVersion=${{ env.NDK_VERSION }} \
             -Pandroid.sdkDirectory=${{ env.ANDROID_HOME }} \
             --stacktrace \
             --info
