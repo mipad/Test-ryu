@@ -10,44 +10,9 @@ using System.Drawing;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using ConfigGamepadInputId = LibRyujinx.Preview.WrappedJoyconConfig.WrappedGamepadInputId;
-using ConfigStickInputId = LibRyujinx.Preview.WrappedJoyconConfig.WrappedStickInputId;
+using ConfigGamepadInputId = Ryujinx.Common.Configuration.Hid.Controller.GamepadInputId;
+using ConfigStickInputId = Ryujinx.Common.Configuration.Hid.Controller.StickInputId;
 using StickInputId = Ryujinx.Input.StickInputId;
-using System.Runtime.Versioning;
-
-namespace LibRyujinx.Preview
-{
-    [RequiresPreviewFeatures]
-    public class WrappedJoyconConfig : JoyconConfigControllerStick<WrappedJoyconConfig.WrappedGamepadInputId, WrappedJoyconConfig.WrappedStickInputId>
-    {
-        [RequiresPreviewFeatures]
-        public enum WrappedGamepadInputId
-        {
-            DpadUp,
-            DpadDown,
-            DpadLeft,
-            DpadRight,
-            LeftTrigger,
-            Unbound,
-            A,
-            B,
-            X,
-            Y,
-            Plus,
-            RightShoulder,
-            RightTrigger,
-            LeftStick,
-            RightStick
-        }
-
-        [RequiresPreviewFeatures]
-        public enum WrappedStickInputId
-        {
-            Left,
-            Right
-        }
-    } 
-} 
 
 namespace LibRyujinx
 {
@@ -59,7 +24,7 @@ namespace LibRyujinx
         private static TouchScreenManager? _touchScreenManager;
         private static InputManager? _inputManager;
         private static NpadManager? _npadManager;
-        private static InputConfig[] _configs = Array.Empty<InputConfig>();
+        private static InputConfig[] _configs;
 
         public static void InitializeInput(int width, int height)
         {
@@ -116,9 +81,9 @@ namespace LibRyujinx
             _gamepadDriver?.SetAccelerometerData(accel, id);
         }
 
-        public static void SetGyroData(Vector3 gyro, int id)
+        public static void SetGryoData(Vector3 gyro, int id)
         {
-            _gamepadDriver?.SetGyroData(gyro, id);
+            _gamepadDriver?.SetGryoData(gyro, id);
         }
 
         public static void SetStickAxis(StickInputId stick, Vector2 axes, int deviceId)
@@ -170,7 +135,7 @@ namespace LibRyujinx
                     ButtonSr = ConfigGamepadInputId.Unbound,
                 },
 
-                LeftJoyconStick = new WrappedJoyconConfig
+                LeftJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
                 {
                     Joystick = ConfigStickInputId.Left,
                     StickButton = ConfigGamepadInputId.LeftStick,
@@ -192,7 +157,7 @@ namespace LibRyujinx
                     ButtonSr = ConfigGamepadInputId.Unbound,
                 },
 
-                RightJoyconStick = new WrappedJoyconConfig
+                RightJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
                 {
                     Joystick = ConfigStickInputId.Right,
                     StickButton = ConfigGamepadInputId.RightStick,
@@ -228,7 +193,6 @@ namespace LibRyujinx
         }
     }
 
-    [RequiresPreviewFeatures]
     public class VirtualTouchScreen : IMouse
     {
         public Size ClientSize { get; set; }
@@ -246,7 +210,7 @@ namespace LibRyujinx
         public string Name => "AvaloniaMouse";
 
         public bool IsConnected => true;
-        public GamepadFeaturesFlag Features => throw new NotImplementedException(); //难道可触控
+        public GamepadFeaturesFlag Features => throw new NotImplementedException();
 
         public void Dispose()
         {
@@ -321,7 +285,6 @@ namespace LibRyujinx
         }
     }
 
-    [RequiresPreviewFeatures]
     public class VirtualTouchScreenDriver : IGamepadDriver
     {
         private readonly VirtualTouchScreen _virtualTouchScreen;
@@ -331,10 +294,8 @@ namespace LibRyujinx
             _virtualTouchScreen = virtualTouchScreen;
         }
 
-        [RequiresPreviewFeatures]
         public string DriverName => "VirtualTouchDriver";
 
-        [RequiresPreviewFeatures]
         public ReadOnlySpan<string> GamepadsIds => new[] { "0" };
 
 
@@ -361,7 +322,6 @@ namespace LibRyujinx
         }
     }
 
-    [RequiresPreviewFeatures]
     public class VirtualGamepadDriver : IGamepadDriver
     {
         private readonly int _controllerCount;
@@ -454,7 +414,7 @@ namespace LibRyujinx
             }
         }
 
-        public void SetGyroData(Vector3 gyro, int deviceId)
+        public void SetGryoData(Vector3 gyro, int deviceId)
         {
             if (_gamePads.TryGetValue(deviceId, out var gamePad))
             {
@@ -462,8 +422,7 @@ namespace LibRyujinx
             }
         }
     }
-    
-    [RequiresPreviewFeatures]
+
     public class VirtualGamepad : IGamepad
     {
         private readonly VirtualGamepadDriver _driver;
