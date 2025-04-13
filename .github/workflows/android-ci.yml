@@ -8,7 +8,7 @@ on:
 
 env:
   GRADLE_USER_HOME: ${{ github.workspace }}/src/RyujinxAndroid/.gradle
-  NDK_VERSION: "25.2.9519653"  # 必须与安装的NDK版本完全一致
+  NDK_VERSION: "25.2.9519653"
   CMAKE_VERSION: "3.22.1"
   BUILD_TOOLS_VERSION: "34.0.0"
   DOTNET_VERSION: "9.0.101"
@@ -35,12 +35,10 @@ jobs:
             !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
           sparse-checkout-cone-mode: false
           clean: true
-    
 
       # ================== [2] 环境初始化 ==================
       - name: Prepare workspace
         run: |
-          # 设置动态路径
           NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION"
           echo "NDK_HOME=$NDK_HOME" >> $GITHUB_ENV
           mkdir -p "$ANDROID_HOME/cmdline-tools"
@@ -49,59 +47,52 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: $DOTNET_VERSION
+          dotnet-version: ${{ env.DOTNET_VERSION }}  # 修复变量引用方式
+          cache: false
 
       # ================== [4] Android SDK安装 ==================
       - name: Install Android Tools
         run: |
           cd "$ANDROID_HOME"
 
-          # 安装命令行工具（关键路径修复）
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
           unzip -q commandlinetools-linux-*.zip -d cmdline-tools
           mv cmdline-tools/cmdline-tools cmdline-tools/latest
           rm commandlinetools-linux-*.zip
 
-          # 立即生效PATH配置
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-          echo "当前PATH: $PATH"
+          echo "Current PATH: $PATH"
           which sdkmanager
 
-          # 接受许可证
           mkdir -p ~/.android && touch ~/.android/repositories.cfg
-          (while true; do echo y; sleep 1; done) | sdkmanager --licenses
+          yes | sdkmanager --licenses  # 优化许可证确认方式
 
-          # 安装核心组件
           sdkmanager --verbose \
             "platform-tools" \
             "build-tools;$BUILD_TOOLS_VERSION" \
             "ndk;$NDK_VERSION" \
             "cmake;$CMAKE_VERSION"
 
-          # NDK验证
-          echo "NDK安装路径验证:"
+          echo "NDK installation verification:"
           ls -l "$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android30-clang++"
 
       # ================== [5] 配置项目文件 ==================
       - name: Configure Project
         working-directory: src/LibRyujinx
         run: |
-          # 使用xmlstarlet修正RuntimeIdentifier
           sudo apt-get install -y xmlstarlet
           xmlstarlet ed -L \
             -u '/Project/PropertyGroup/RuntimeIdentifier' \
             -v 'linux-bionic-arm64' \
             LibRyujinx.csproj
 
-          # 添加Android专用链接参数
           xmlstarlet ed -L \
             -s '/Project/ItemGroup[contains(@Condition, "linux-bionic-arm64")]' \
             -t elem -n LinkerArg -v "-llog" \
             -i '/Project/ItemGroup/LinkerArg' -t attr -n Include -v "-llog" \
             LibRyujinx.csproj
 
-          # 验证XML格式
-          xmlstarlet val LibRyujinx.csproj || (echo "XML格式错误！"; exit 1)
+          xmlstarlet val LibRyujinx.csproj || (echo "XML validation failed!"; exit 1)
 
       # ================== [6] 编译原生库 ==================
       - name: Build Native Library
@@ -111,25 +102,22 @@ jobs:
         run: |
           dotnet publish -c Release \
             -r linux-bionic-arm64 \
-            -p:AndroidNdkDirectory=$NDK_HOME \
+            -p:AndroidNdkDirectory=${{ env.NDK_HOME }} \  # 显式使用环境变量
             -p:AndroidNativeLibraryName=libryujinx.so \
             -p:StripSymbols=true \
             --self-contained
 
-          # 验证产物
-          echo "生成的原生库:"
+          echo "Generated native libraries:"
           find bin/Release/net9.0/linux-bionic-arm64/publish -name '*.so'
 
       # ================== [7] 集成到Android工程 ==================
       - name: Integrate into Android Project
         working-directory: src/RyujinxAndroid
         run: |
-          # 复制.so文件到jniLibs
           mkdir -p app/src/main/jniLibs/arm64-v8a
           cp ../LibRyujinx/bin/Release/net9.0/linux-bionic-arm64/publish/*.so app/src/main/jniLibs/arm64-v8a/
           
-          # 验证复制结果
-          echo "jniLibs目录内容:"
+          echo "jniLibs directory contents:"
           ls -l app/src/main/jniLibs/arm64-v8a
 
       # ================== [8] 构建APK ==================
@@ -138,13 +126,12 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease \
-            -Pandroid.ndkVersion=$NDK_VERSION \
-            -Pandroid.sdkDirectory=$ANDROID_HOME \
+            -Pandroid.ndkVersion=${{ env.NDK_VERSION }} \  # 显式变量引用
+            -Pandroid.sdkDirectory=${{ env.ANDROID_HOME }} \
             --stacktrace \
             --info
 
-          # APK验证
-          echo "生成的APK:"
+          echo "Generated APKs:"
           ls -l app/build/outputs/apk/release/*.apk
 
       # ================== [9] 上传产物 ==================
