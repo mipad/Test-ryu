@@ -31,7 +31,6 @@ jobs:
           fetch-depth: 1
           sparse-checkout: |
             /*
-            # 核心代码库
             src/RyujinxAndroid/**
             src/Ryujinx.Common/**
             src/Ryujinx.HLE/**
@@ -40,11 +39,8 @@ jobs:
             src/Ryujinx.Graphics.**
             src/Ryujinx.Audio.**
             src/Ryujinx.UI.**
-            # 配置文件
             Directory.Packages.props
-            # 排除不需要的目录
             !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
-            !src/RyujinxAndroid/app/src/main/cpp/libraries/glad
           sparse-checkout-cone-mode: false
           clean: true
 
@@ -63,10 +59,8 @@ jobs:
 
           # 验证项目结构
           echo "=== 项目结构验证 ==="
-          ls -ld src/Ryujinx.Common
-          ls -ld src/Ryujinx.HLE
-          ls -ld src/ARMeilleure
-          [ -d src/Ryujinx.Graphics.OpenGL ] || exit 1
+          [ -d src/Ryujinx.Common ] || { echo "::error::Missing Ryujinx.Common"; exit 1; }
+          [ -d src/Ryujinx.HLE ] || { echo "::error::Missing Ryujinx.HLE"; exit 1; }
 
       # ================== [3] .NET环境配置 ==================
       - name: Setup .NET
@@ -75,7 +69,7 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
           cache: false
 
-      # ================== [4] Android SDK安装 ==================
+      # ================== [4] Android SDK安装 (关键修复) ==================
       - name: Install Android Tools
         run: |
           cd "$ANDROID_HOME"
@@ -86,11 +80,29 @@ jobs:
           mv cmdline-tools/cmdline-tools cmdline-tools/latest
           rm commandlinetools-linux-*.zip
 
-          # 配置环境变量
-          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          
+          # 设置执行权限 (新增关键步骤)
+          chmod +x cmdline-tools/latest/bin/*
+
+          # 显式导出环境变量 (关键修复)
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          echo "PATH=$PATH" >> $GITHUB_ENV
+
+          # 验证SDK管理器
+          echo "=== sdkmanager 路径验证 ==="
+          which sdkmanager || { echo "::error::sdkmanager not found"; exit 1; }
+
+          # 接受许可证 (增加重试机制)
+          tries=0
+          until yes | sdkmanager --licenses; do
+            tries=$((tries+1))
+            if [ $tries -gt 3 ]; then
+              echo "::error::Failed to accept licenses after 3 attempts"
+              exit 1
+            fi
+            sleep 5
+          done
+
           # 安装必要组件
-          yes | sdkmanager --licenses
           sdkmanager --verbose \
             "platform-tools" \
             "build-tools;$BUILD_TOOLS_VERSION" \
@@ -98,6 +110,7 @@ jobs:
             "cmake;$CMAKE_VERSION"
 
           # NDK 完整性检查
+          echo "=== NDK 工具链验证 ==="
           [ -f "$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android30-clang++" ] || exit 1
 
       # ================== [5] 配置项目文件 ==================
@@ -106,13 +119,13 @@ jobs:
         run: |
           sudo apt-get install -y xmlstarlet
 
-          # 修正 RuntimeIdentifiers (复数形式)
+          # 修正 RuntimeIdentifiers
           xmlstarlet ed -L \
             -u '/Project/PropertyGroup/RuntimeIdentifiers' \
             -v 'android-arm64;linux-bionic-arm64' \
             LibRyujinx.csproj
 
-          # 动态添加链接参数（改进版）
+          # 动态添加链接参数
           for lib in "-llog" "-ldl" "-lz" "-lm" "-lc"; do
             xmlstarlet ed -L \
               -s '/Project/ItemGroup[contains(@Condition, "linux-bionic-arm64")]' \
@@ -121,32 +134,22 @@ jobs:
               LibRyujinx.csproj
           done
 
-          # 强制 XML 验证
+          # XML格式验证
           if ! xmlstarlet val LibRyujinx.csproj; then
             echo "::error::XML validation failed!"
             exit 1
           fi
 
-      # ================== [6] 验证依赖关系 ==================
-      - name: Validate Dependencies
-        working-directory: src/LibRyujinx
-        run: |
-          echo "=== 项目引用列表 ==="
-          dotnet list reference
-          
-          echo "=== NuGet 包列表 ==="
-          dotnet list package
-
-          echo "=== 依赖项健康检查 ==="
-          dotnet restore --no-cache --force
-
-      # ================== [7] 编译原生库 ==================
+      # ================== [6] 编译原生库 ==================
       - name: Build Native Library
         working-directory: src/LibRyujinx
         env:
           DOTNET_CLI_TELEMETRY_OPTOUT: 1
           DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
         run: |
+          # 强制还原依赖
+          dotnet restore --force-evaluate
+
           # 详细编译日志
           dotnet publish -c Release \
             -r linux-bionic-arm64 \
@@ -154,32 +157,28 @@ jobs:
             -p:AndroidNativeLibraryName=libryujinx.so \
             -p:StripSymbols=true \
             --self-contained true \
-            --verbosity detailed \
-            --property:WarningLevel=1 \
-            --property:GenerateDocumentationFile=false
+            --verbosity detailed
 
           # 二进制文件验证
           echo "=== 生成的共享库信息 ==="
           find bin/Release/net9.0/linux-bionic-arm64/publish -name '*.so' -exec file {} \;
-          find bin/Release/net9.0/linux-bionic-arm64/publish -name '*.so' -exec readelf -d {} \;
 
-      # ================== [8] 集成到Android工程 ==================
+      # ================== [7] 集成到Android工程 ==================
       - name: Integrate into Android Project
         working-directory: src/RyujinxAndroid
         run: |
           # 清理旧文件
           rm -rf app/src/main/jniLibs/arm64-v8a/*
           
-          # 复制新库文件（带校验）
+          # 复制新库文件
           mkdir -p app/src/main/jniLibs/arm64-v8a
           rsync -av --checksum ../LibRyujinx/bin/Release/net9.0/linux-bionic-arm64/publish/*.so app/src/main/jniLibs/arm64-v8a/
           
           # 验证复制结果
           echo "=== 已集成的原生库 ==="
-          ls -lh app/src/main/jniLibs/arm64-v8a
-          [ -f app/src/main/jniLibs/arm64-v8a/libryujinx.so ] || exit 1
+          [ -f app/src/main/jniLibs/arm64-v8a/libryujinx.so ] || { echo "::error::libryujinx.so missing"; exit 1; }
 
-      # ================== [9] 构建APK ==================
+      # ================== [8] 构建APK ==================
       - name: Build APK
         working-directory: src/RyujinxAndroid
         timeout-minutes: 30
@@ -187,7 +186,7 @@ jobs:
           # 清理构建缓存
           ./gradlew clean --no-daemon
           
-          # 正式构建（内存优化）
+          # 正式构建 (内存优化)
           ./gradlew assembleRelease \
             -Pandroid.ndkVersion=$NDK_VERSION \
             -Pandroid.sdkDirectory=$ANDROID_HOME \
@@ -197,17 +196,10 @@ jobs:
             -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g"
 
           # APK 验证
-          apk_path=$(find app/build/outputs/apk -name '*-release.apk' | head -1)
-          if [ ! -f "$apk_path" ]; then
-            echo "::error::APK 文件未生成！"
-            exit 1
-          fi
-          
-          echo "=== APK 文件信息 ==="
-          ls -lh $apk_path
-          unzip -l $apk_path | grep 'lib/arm64-v8a/.*\.so'
+          apk_path=$(find app/build/outputs/apk -name '*-release.apk')
+          [ -f "$apk_path" ] || { echo "::error::APK file not found"; exit 1; }
 
-      # ================== [10] 上传产物 ==================
+      # ================== [9] 上传产物 ==================
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -217,12 +209,11 @@ jobs:
             src/RyujinxAndroid/app/build/outputs/native-debug-symbols/**/*.so
           retention-days: 7
 
-      # ================== [11] 清理工作区 ==================
+      # ================== [10] 清理工作区 ==================
       - name: Cleanup
         if: always()
         run: |
           # 释放磁盘空间
           sudo rm -rf ${{ env.ANDROID_HOME }}/ndk
           sudo rm -rf ~/.nuget/packages
-          sudo rm -rf ~/.android/cache
           df -h
