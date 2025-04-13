@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <!-- 全局配置 -->
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <EnablePreviewFeatures>True</EnablePreviewFeatures>
@@ -11,17 +12,18 @@
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <InvariantGlobalization>true</InvariantGlobalization>
     <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
-    
-    <!-- Linux Bionic 平台配置 -->
-    <PropertyGroup Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">
-      <AndroidNdkPath>/opt/android-ndk</AndroidNdkPath>
-      <SysrootPath>$(AndroidNdkPath)/toolchains/llvm/prebuilt/linux-x86_64/sysroot</SysrootPath>
-      <LinkerFlavor>lld</LinkerFlavor>
-      <NativeLib>Shared</NativeLib>
-      <IlcInstructionSet>armv8.2-a</IlcInstructionSet>
-      <PublishAot>true</PublishAot>
-      <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
-    </PropertyGroup>
+  </PropertyGroup>
+
+  <!-- Linux Bionic 平台配置 -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">
+    <LinkerFlavor>lld</LinkerFlavor>
+    <NativeLib>Shared</NativeLib>
+    <IlcInstructionSet>armv8.2-a</IlcInstructionSet>
+    <PublishAot>true</PublishAot>
+    <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
+    <!-- 指定 NDK 路径（需替换为实际路径） -->
+    <AndroidNdkPath>/opt/android-ndk</AndroidNdkPath>
+    <SysrootPath>$(AndroidNdkPath)/toolchains/llvm/prebuilt/linux-x86_64/sysroot</SysrootPath>
   </PropertyGroup>
 
   <!-- Release模式优化 -->
@@ -32,18 +34,15 @@
 
   <!-- Linux Bionic 链接器配置 -->
   <ItemGroup Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">
-    <!-- 基础库链接 -->
     <LinkerArg Include="-llog" />
     <LinkerArg Include="-ldl" />
     <LinkerArg Include="-lz" />
     <LinkerArg Include="-lm" />
     <LinkerArg Include="-lc" />
-
-    <!-- NDK 运行时对象文件 -->
+    <!-- 添加 C 运行时启动文件 -->
     <LinkerArg Include="$(SysrootPath)/usr/lib/aarch64-linux-android/21/crtbegin_so.o" />
     <LinkerArg Include="$(SysrootPath)/usr/lib/aarch64-linux-android/21/crtend_so.o" />
-
-    <!-- Vulkan 和 OpenAL 路径 -->
+    <!-- 添加库搜索路径 -->
     <LinkerArg Include="-L$(SysrootPath)/usr/lib/aarch64-linux-android/21" />
     <LinkerArg Include="-L$(AndroidNdkPath)/sources/third_party/vulkan/src/build-android/jniLibs/arm64-v8a" />
   </ItemGroup>
@@ -53,11 +52,9 @@
     <Exec Command="xcrun xcode-select -p" ConsoleToMSBuild="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="XcodeSelect" />
     </Exec>
-
     <PropertyGroup>
       <XcodePath>$([MSBuild]::EnsureTrailingSlash('$(XcodeSelect)'))</XcodePath>
     </PropertyGroup>
-
     <ItemGroup>
       <LinkerArg Include="-Wl,-ld_classic" />
       <LinkerArg Include="-isysroot %22$(XcodePath)Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk%22" 
