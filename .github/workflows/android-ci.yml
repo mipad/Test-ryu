@@ -29,8 +29,8 @@ jobs:
           token: ${{ secrets.GHH_PAT }}
           repository: mipad/Test-ryu
           ref: test
-          submodules: recursive
-          fetch-depth: 0
+          submodules: false
+          fetch-depth: 1
           sparse-checkout: |
             /*
             !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
