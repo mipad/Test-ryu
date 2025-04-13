@@ -1,28 +1,27 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <!-- 统一目标框架为 .NET 9.0 -->
     <TargetFramework>net9.0</TargetFramework>
-    <!-- 全局启用预览功能 -->
     <EnablePreviewFeatures>True</EnablePreviewFeatures>
     <LangVersion>preview</LangVersion>
     <RuntimeIdentifiers>linux-bionic-arm64;ios-arm64</RuntimeIdentifiers>
     <Nullable>enable</Nullable>
-    <!-- 禁止将 NuGet 安全警告视为错误 -->
     <WarningsNotAsErrors>NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
-    <!-- 禁用 NuGet 漏洞扫描 -->
     <NuGetAudit>false</NuGetAudit>
-    <!-- 安全优化配置 -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <InvariantGlobalization>true</InvariantGlobalization>
     <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
-    <!-- 平台特定配置 -->
-    <LinkerFlavor Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">lld</LinkerFlavor>
-    <NativeLib Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">Shared</NativeLib>
-    <IlcInstructionSet>armv8.2-a</IlcInstructionSet>
-    <!-- AOT 发布配置 -->
-    <PublishAot>true</PublishAot>
-    <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
+    
+    <!-- Linux Bionic 平台配置 -->
+    <PropertyGroup Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">
+      <AndroidNdkPath>/opt/android-ndk</AndroidNdkPath>
+      <SysrootPath>$(AndroidNdkPath)/toolchains/llvm/prebuilt/linux-x86_64/sysroot</SysrootPath>
+      <LinkerFlavor>lld</LinkerFlavor>
+      <NativeLib>Shared</NativeLib>
+      <IlcInstructionSet>armv8.2-a</IlcInstructionSet>
+      <PublishAot>true</PublishAot>
+      <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
+    </PropertyGroup>
   </PropertyGroup>
 
   <!-- Release模式优化 -->
@@ -30,6 +29,24 @@
     <Optimize>true</Optimize>
     <OptimizationPreference>Speed</OptimizationPreference>
   </PropertyGroup>
+
+  <!-- Linux Bionic 链接器配置 -->
+  <ItemGroup Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">
+    <!-- 基础库链接 -->
+    <LinkerArg Include="-llog" />
+    <LinkerArg Include="-ldl" />
+    <LinkerArg Include="-lz" />
+    <LinkerArg Include="-lm" />
+    <LinkerArg Include="-lc" />
+
+    <!-- NDK 运行时对象文件 -->
+    <LinkerArg Include="$(SysrootPath)/usr/lib/aarch64-linux-android/21/crtbegin_so.o" />
+    <LinkerArg Include="$(SysrootPath)/usr/lib/aarch64-linux-android/21/crtend_so.o" />
+
+    <!-- Vulkan 和 OpenAL 路径 -->
+    <LinkerArg Include="-L$(SysrootPath)/usr/lib/aarch64-linux-android/21" />
+    <LinkerArg Include="-L$(AndroidNdkPath)/sources/third_party/vulkan/src/build-android/jniLibs/arm64-v8a" />
+  </ItemGroup>
 
   <!-- iOS 平台链接修复 -->
   <Target Condition="'$(RuntimeIdentifier)'=='ios-arm64'" Name="PrepareBeforeIlcCompile" BeforeTargets="IlcCompile">
@@ -50,15 +67,14 @@
     </ItemGroup>
   </Target>
 
-  <!-- 安全包版本统一管理 -->
+  <!-- NuGet 包管理 -->
   <ItemGroup>
     <PackageReference Include="System.Text.Encoding" />
-    <PackageReference Include="System.Text.Json" />   <!-- 安全升级 -->
+    <PackageReference Include="System.Text.Json" />
     <PackageReference Include="Rxmxnx.PInvoke.Extensions" />
     <PackageReference Include="Silk.NET.Vulkan" />
     <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" />
     <PackageReference Include="LibHac" />
-    <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-llog" />
   </ItemGroup>
 
   <!-- 项目引用 -->
@@ -75,7 +91,7 @@
     <ProjectReference Include="..\Ryujinx.UI.Common\Ryujinx.UI.Common.csproj" />
   </ItemGroup>
 
-  <!-- 符号文件处理 -->
+  <!-- iOS 符号文件处理 -->
   <Target Condition="'$(RuntimeIdentifier)'=='ios-arm64'" Name="FixSymbols" AfterTargets="Publish">
     <RemoveDir Directories="$(PublishDir)$(TargetName).framework.dSYM" />
     <ItemGroup>
