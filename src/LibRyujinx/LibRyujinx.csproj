@@ -3,7 +3,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <EnablePreviewFeatures>True</EnablePreviewFeatures>
     <LangVersion>preview</LangVersion>
-    <RuntimeIdentifiers>android-arm64;linux-bionic-arm64</RuntimeIdentifiers>
+    <RuntimeIdentifiers>linux-bionic-arm64</RuntimeIdentifiers>
     <Nullable>enable</Nullable>
     <WarningsNotAsErrors>NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
     <NuGetAudit>false</NuGetAudit>
@@ -18,32 +18,14 @@
     <IlcTrimMetadata>true</IlcTrimMetadata>
   </PropertyGroup>
 
-  <!-- Android 平台配置 -->
-  <PropertyGroup Condition="'$(RuntimeIdentifier)'=='android-arm64'">
-    <LinkerFlavor>lld</LinkerFlavor>
-    <NativeLib>Shared</NativeLib>
-    <IlcInstructionSet>armv8.2-a</IlcInstructionSet>
-    <PublishAot>true</PublishAot>
-    <StripSymbols>true</StripSymbols>
-    <AndroidNativeLibrary>libryujinx.so</AndroidNativeLibrary>
-  </PropertyGroup>
-
   <!-- Linux Bionic 配置 -->
   <PropertyGroup Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">
     <IlcInstructionSet>armv8-a</IlcInstructionSet>
     <StripSymbols>true</StripSymbols>
   </PropertyGroup>
 
-  <!-- 链接参数修正为独立元素 -->
+  <!-- 链接参数 -->
   <ItemGroup>
-    <!-- Android 链接参数 -->
-    <LinkerArg Condition="'$(RuntimeIdentifier)'=='android-arm64'" Include="-llog" />
-    <LinkerArg Condition="'$(RuntimeIdentifier)'=='android-arm64'" Include="-ldl" />
-    <LinkerArg Condition="'$(RuntimeIdentifier)'=='android-arm64'" Include="-lz" />
-    <LinkerArg Condition="'$(RuntimeIdentifier)'=='android-arm64'" Include="-lm" />
-    <LinkerArg Condition="'$(RuntimeIdentifier)'=='android-arm64'" Include="-lc" />
-    
-    <!-- Linux Bionic 链接参数 -->
     <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-llog" />
     <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-ldl" />
     <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-lz" />
@@ -61,17 +43,4 @@
     <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" />
     <PackageReference Include="LibHac" />
   </ItemGroup>
-
-  <!-- 显式定义 Android 工程路径 -->
-  <PropertyGroup>
-    <AndroidProjectDirectory>../RyujinxAndroid</AndroidProjectDirectory>
-  </PropertyGroup>
-
-  <!-- 构建后处理 -->
-  <Target Name="PostBuildAndroid" AfterTargets="Publish" Condition="'$(RuntimeIdentifier)'=='android-arm64'">
-    <Copy 
-      SourceFiles="$(OutputPath)/*.so" 
-      DestinationFolder="$(AndroidProjectDirectory)/app/src/main/jniLibs/arm64-v8a" 
-    />
-  </Target>
 </Project>
