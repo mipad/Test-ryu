@@ -4,10 +4,6 @@
     <TargetFramework>net9.0</TargetFramework>
   </PropertyGroup>
 
-  <PropertyGroup>
-    <EnablePreviewFeatures>true</EnablePreviewFeatures>
-  </PropertyGroup>
-
   <ItemGroup>
     <PackageReference Include="OpenTK.Audio.OpenAL" />
   </ItemGroup>
