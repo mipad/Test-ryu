@@ -1,25 +1,22 @@
-name: Android CI
+name: Android CI (Linux Bionic ARM64)
 
 on:
   push:
     branches: [ "test" ]
-    paths-ignore:
-      - 'src/RyujinxAndroid/app/src/main/cpp/libraries/**'
   pull_request:
     branches: [ "test" ]
 
 env:
   GRADLE_USER_HOME: ${{ github.workspace }}/src/RyujinxAndroid/.gradle
-  NDK_VERSION: "25.2.9519653"  # 必须与NDK安装版本完全一致
+  NDK_VERSION: "25.2.9519653"  # 必须与安装的NDK版本完全一致
   CMAKE_VERSION: "3.22.1"
   BUILD_TOOLS_VERSION: "34.0.0"
-  JAVA_VERSION: "17"
   DOTNET_VERSION: "9.0.101"
   ANDROID_HOME: ${{ github.workspace }}/android-sdk
 
 jobs:
   build:
-    name: Build APK
+    name: Build Android Library
     runs-on: ubuntu-latest
 
     steps:
@@ -27,44 +24,33 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GHH_PAT }}
-          repository: mipad/Test-ryu
-          ref: test
-          submodules: false
-          fetch-depth: 1
+          submodules: recursive
           sparse-checkout: |
             /*
             src/RyujinxAndroid/**
             !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
-          sparse-checkout-cone-mode: false
           clean: true
 
       # ================== [2] 环境初始化 ==================
       - name: Prepare workspace
         run: |
-          # 创建目录结构
-          mkdir -p "$ANDROID_HOME/cmdline-tools"
-          
-          # 动态设置NDK路径
-          NDK_HOME="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
+          # 设置动态路径
+          NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION"
           echo "NDK_HOME=$NDK_HOME" >> $GITHUB_ENV
-          
-          echo "Android SDK路径: $ANDROID_HOME"
-          echo "NDK路径: $NDK_HOME"
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
 
       # ================== [3] .NET环境配置 ==================
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-          cache: false
+          dotnet-version: $DOTNET_VERSION
 
       # ================== [4] Android SDK安装 ==================
       - name: Install Android Tools
         run: |
           cd "$ANDROID_HOME"
 
-          # 安装命令行工具（关键目录结构修复）
+          # 安装命令行工具（关键路径修复）
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
           unzip -q commandlinetools-linux-*.zip -d cmdline-tools
           mv cmdline-tools/cmdline-tools cmdline-tools/latest
@@ -73,92 +59,89 @@ jobs:
           # 立即生效PATH配置
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           echo "当前PATH: $PATH"
+          which sdkmanager
 
-          # 验证sdkmanager存在性
-          echo "sdkmanager路径验证:"
-          ls -l "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-
-          # 接受许可证（稳定写法）
-          mkdir -p ~/.android
-          touch ~/.android/repositories.cfg
+          # 接受许可证
+          mkdir -p ~/.android && touch ~/.android/repositories.cfg
           (while true; do echo y; sleep 1; done) | sdkmanager --licenses
 
           # 安装核心组件
           sdkmanager --verbose \
             "platform-tools" \
-            "build-tools;${{ env.BUILD_TOOLS_VERSION }}" \
-            "ndk;${{ env.NDK_VERSION }}" \
-            "cmake;${{ env.CMAKE_VERSION }}"
+            "build-tools;$BUILD_TOOLS_VERSION" \
+            "ndk;$NDK_VERSION" \
+            "cmake;$CMAKE_VERSION"
 
-          # NDK安装验证
-          echo "已安装的NDK版本:"
-          ls -l "$ANDROID_HOME/ndk"
-          echo "当前使用的NDK路径:"
-          ls -l "$NDK_HOME"
+          # NDK验证
+          echo "NDK安装路径验证:"
+          ls -l "$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android30-clang++"
 
-      # ================== [5] 修复NativeAOT配置 ==================
-      - name: Patch NativeAOT Settings
+      # ================== [5] 配置项目文件 ==================
+      - name: Configure Project
         working-directory: src/LibRyujinx
         run: |
-          # 安装XML处理工具
-          sudo apt-get update && sudo apt-get install -y xmlstarlet
-
-          # 修正RuntimeIdentifier
+          # 使用xmlstarlet修正RuntimeIdentifier
+          sudo apt-get install -y xmlstarlet
           xmlstarlet ed -L \
             -u '/Project/PropertyGroup/RuntimeIdentifier' \
-            -v 'android-arm64' \
+            -v 'linux-bionic-arm64' \
             LibRyujinx.csproj
 
-          # 添加AOT编译参数
+          # 添加Android专用链接参数
           xmlstarlet ed -L \
-            -s '/Project/PropertyGroup[1]' \
-            -t elem -n IlcGenerateMapFile -v 'true' \
-            -s '/Project/PropertyGroup[1]' \
-            -t elem -n IlcDisableUnhandledExceptionExperience -v 'true' \
-            -s '/Project/PropertyGroup[1]' \
-            -t elem -n IlcGenerateCompleteTypeMetadata -v 'false' \
-            -s '/Project/PropertyGroup[1]' \
-            -t elem -n IlcDisableReflection -v 'true' \
-            -s '/Project/PropertyGroup[1]' \
-            -t elem -n AndroidStripSymbols -v 'false' \
+            -s '/Project/ItemGroup[contains(@Condition, "linux-bionic-arm64")]' \
+            -t elem -n LinkerArg -v "-llog" \
+            -i '/Project/ItemGroup/LinkerArg' -t attr -n Include -v "-llog" \
             LibRyujinx.csproj
 
-          # XML格式验证
-          if ! xmlstarlet val LibRyujinx.csproj; then
-              echo "::error::XML验证失败！"
-              exit 1
-          fi
+          # 验证XML格式
+          xmlstarlet val LibRyujinx.csproj || (echo "XML格式错误！"; exit 1)
 
-      # ================== [6] 构建执行（关键修复）==================
-      - name: Build Android Project
-        working-directory: src/RyujinxAndroid
+      # ================== [6] 编译原生库 ==================
+      - name: Build Native Library
+        working-directory: src/LibRyujinx
         env:
-          TERM: xterm-color
-          JAVA_HOME_17: /usr/lib/jvm/temurin-17-jdk-amd64  # GitHub预装JDK路径
+          DOTNET_CLI_TELEMETRY_OPTOUT: 1
         run: |
-          # 修复权限问题
+          dotnet publish -c Release \
+            -r linux-bionic-arm64 \
+            -p:AndroidNdkDirectory=$NDK_HOME \
+            -p:AndroidNativeLibraryName=libryujinx.so \
+            -p:StripSymbols=true \
+            --self-contained
+
+          # 验证产物
+          echo "生成的原生库:"
+          find bin/Release/net9.0/linux-bionic-arm64/publish -name '*.so'
+
+      # ================== [7] 集成到Android工程 ==================
+      - name: Integrate into Android Project
+        working-directory: src/RyujinxAndroid
+        run: |
+          # 复制.so文件到jniLibs
+          mkdir -p app/src/main/jniLibs/arm64-v8a
+          cp ../LibRyujinx/bin/Release/net9.0/linux-bionic-arm64/publish/*.so app/src/main/jniLibs/arm64-v8a/
+          
+          # 验证复制结果
+          echo "jniLibs目录内容:"
+          ls -l app/src/main/jniLibs/arm64-v8a
+
+      # ================== [8] 构建APK ==================
+      - name: Build APK
+        working-directory: src/RyujinxAndroid
+        run: |
           chmod +x gradlew
-          chmod -R 755 "$ANDROID_HOME"
-
-          # 清理构建环境
-          ./gradlew clean --stacktrace
-
-          # 完整构建命令（带诊断参数）
           ./gradlew assembleRelease \
-            -Pandroid.ndkVersion=${{ env.NDK_VERSION }} \
+            -Pandroid.ndkVersion=$NDK_VERSION \
             -Pandroid.sdkDirectory=$ANDROID_HOME \
-            -Porg.gradle.java.home=$JAVA_HOME_17 \
-            --parallel \
-            --no-daemon \
             --stacktrace \
-            --scan \
             --info
 
-          # 验证产物存在性
-          echo "APK生成路径:"
-          ls -lR app/build/outputs/apk
+          # APK验证
+          echo "生成的APK:"
+          ls -l app/build/outputs/apk/release/*.apk
 
-      # ================== [7] 产物上传 ==================
+      # ================== [9] 上传产物 ==================
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
