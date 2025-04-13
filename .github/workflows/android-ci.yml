@@ -10,7 +10,7 @@ on:
 
 env:
   GRADLE_USER_HOME: ${{ github.workspace }}/src/RyujinxAndroid/.gradle
-  NDK_VERSION: "25.2.9519653"  # 必须与NDK安装版本严格一致
+  NDK_VERSION: "25.2.9519653"  # 必须与NDK安装版本完全一致
   CMAKE_VERSION: "3.22.1"
   BUILD_TOOLS_VERSION: "34.0.0"
   JAVA_VERSION: "17"
@@ -46,10 +46,9 @@ jobs:
           mkdir -p "$ANDROID_HOME/cmdline-tools"
           
           # 动态设置NDK路径
-          NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION"
+          NDK_HOME="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
           echo "NDK_HOME=$NDK_HOME" >> $GITHUB_ENV
           
-          # 验证目录结构
           echo "Android SDK路径: $ANDROID_HOME"
           echo "NDK路径: $NDK_HOME"
 
@@ -65,7 +64,7 @@ jobs:
         run: |
           cd "$ANDROID_HOME"
 
-          # 安装命令行工具（关键修复目录结构）
+          # 安装命令行工具（关键目录结构修复）
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
           unzip -q commandlinetools-linux-*.zip -d cmdline-tools
           mv cmdline-tools/cmdline-tools cmdline-tools/latest
@@ -87,9 +86,9 @@ jobs:
           # 安装核心组件
           sdkmanager --verbose \
             "platform-tools" \
-            "build-tools;$BUILD_TOOLS_VERSION" \
-            "ndk;$NDK_VERSION" \
-            "cmake;$CMAKE_VERSION"
+            "build-tools;${{ env.BUILD_TOOLS_VERSION }}" \
+            "ndk;${{ env.NDK_VERSION }}" \
+            "cmake;${{ env.CMAKE_VERSION }}"
 
           # NDK安装验证
           echo "已安装的NDK版本:"
@@ -104,7 +103,7 @@ jobs:
           # 安装XML处理工具
           sudo apt-get update && sudo apt-get install -y xmlstarlet
 
-          # 修正RuntimeIdentifier（关键修复）
+          # 修正RuntimeIdentifier
           xmlstarlet ed -L \
             -u '/Project/PropertyGroup/RuntimeIdentifier' \
             -v 'android-arm64' \
@@ -130,30 +129,34 @@ jobs:
               exit 1
           fi
 
-      # ================== [6] 构建执行 ==================
+      # ================== [6] 构建执行（关键修复）==================
       - name: Build Android Project
         working-directory: src/RyujinxAndroid
         env:
-          DOTNET_CLI_TELEMETRY_OPTOUT: 1
-          DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
           TERM: xterm-color
+          JAVA_HOME_17: /usr/lib/jvm/temurin-17-jdk-amd64  # GitHub预装JDK路径
         run: |
           # 修复权限问题
           chmod +x gradlew
-          ls -l gradlew  # 验证权限应为-rwxr-xr-x
+          chmod -R 755 "$ANDROID_HOME"
 
           # 清理构建环境
           ./gradlew clean --stacktrace
 
-          # 完整构建命令（关键参数传递）
+          # 完整构建命令（带诊断参数）
           ./gradlew assembleRelease \
-            -Pandroid.ndkVersion=$NDK_VERSION \
+            -Pandroid.ndkVersion=${{ env.NDK_VERSION }} \
             -Pandroid.sdkDirectory=$ANDROID_HOME \
-            -Porg.gradle.java.home=$JAVA_HOME_17_X64 \
+            -Porg.gradle.java.home=$JAVA_HOME_17 \
             --parallel \
             --no-daemon \
             --stacktrace \
+            --scan \
             --info
+
+          # 验证产物存在性
+          echo "APK生成路径:"
+          ls -lR app/build/outputs/apk
 
       # ================== [7] 产物上传 ==================
       - name: Upload Artifacts
