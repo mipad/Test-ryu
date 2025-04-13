@@ -10,43 +10,41 @@ using System.Drawing;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using ConfigGamepadInputId = LibRyujinx.Preview.WrappedJoyconConfig<object, object>.WrappedGamepadInputId;
-using ConfigStickInputId = LibRyujinx.Preview.WrappedJoyconConfig<object, object>.WrappedStickInputId;
+using ConfigGamepadInputId = LibRyujinx.Preview.WrappedJoyconConfig.WrappedGamepadInputId;
+using ConfigStickInputId = LibRyujinx.Preview.WrappedJoyconConfig.WrappedStickInputId;
 using StickInputId = Ryujinx.Input.StickInputId;
 using System.Runtime.Versioning;
 
 namespace LibRyujinx.Preview
 {
     [RequiresPreviewFeatures]
-    public class WrappedJoyconConfig<T1, T2> : JoyconConfigControllerStick<T1, T2> 
-    where T1 : struct 
-    where T2 : struct
+    public class WrappedJoyconConfig : JoyconConfigControllerStick<WrappedGamepadInputId, WrappedStickInputId>
     {
         [RequiresPreviewFeatures]
         public enum WrappedGamepadInputId
         {
-            DpadUp = ConfigGamepadInputId.DpadUp,
-            DpadDown = ConfigGamepadInputId.DpadDown,
-            DpadLeft = ConfigGamepadInputId.DpadLeft,
-            DpadRight = ConfigGamepadInputId.DpadRight,
-            LeftTrigger = ConfigGamepadInputId.LeftTrigger,
-            Unbound = ConfigGamepadInputId.Unbound,
-            A = ConfigGamepadInputId.A,
-            B = ConfigGamepadInputId.B,
-            X = ConfigGamepadInputId.X,
-            Y = ConfigGamepadInputId.Y,
-            Plus = ConfigGamepadInputId.Plus,
-            RightShoulder = ConfigGamepadInputId.RightShoulder,
-            RightTrigger = ConfigGamepadInputId.RightTrigger,
-            LeftStick = ConfigGamepadInputId.LeftStick,
-            RightStick = ConfigGamepadInputId.RightStick
+            DpadUp,
+            DpadDown,
+            DpadLeft,
+            DpadRight,
+            LeftTrigger,
+            Unbound,
+            A,
+            B,
+            X,
+            Y,
+            Plus,
+            RightShoulder,
+            RightTrigger,
+            LeftStick,
+            RightStick
         }
 
         [RequiresPreviewFeatures]
         public enum WrappedStickInputId
         {
-            Left = ConfigStickInputId.Left,
-            Right = ConfigStickInputId.Right
+            Left,
+            Right
         }
     } 
 } 
@@ -172,7 +170,7 @@ namespace LibRyujinx
                     ButtonSr = ConfigGamepadInputId.Unbound,
                 },
 
-                LeftJoyconStick = new WrappedJoyconConfig<ConfigGamepadInputId, ConfigStickInputId>
+                LeftJoyconStick = new WrappedJoyconConfig
                 {
                     Joystick = ConfigStickInputId.Left,
                     StickButton = ConfigGamepadInputId.LeftStick,
@@ -194,7 +192,7 @@ namespace LibRyujinx
                     ButtonSr = ConfigGamepadInputId.Unbound,
                 },
 
-                RightJoyconStick = new WrappedJoyconConfig<ConfigGamepadInputId, ConfigStickInputId>
+                RightJoyconStick = new WrappedJoyconConfig
                 {
                     Joystick = ConfigStickInputId.Right,
                     StickButton = ConfigGamepadInputId.RightStick,
