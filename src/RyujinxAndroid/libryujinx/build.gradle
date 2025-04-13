@@ -51,7 +51,6 @@ tasks.register('compileLibRyujinx', Exec) {
         include '**/*.cs', '**/*.csproj'
         exclude '**/bin/**', '**/obj/**', '**/RyujinxAndroid/**'
     }).withPropertyName('sourceFiles')
-    }).withPathSensitivity(PathSensitivity.RELATIVE)
 
     // 输出文件配置
     outputs.file("${publishDirectory}/lib${projectName.toLowerCase()}.so")
