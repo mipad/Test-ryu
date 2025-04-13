@@ -5,6 +5,8 @@ on:
     branches: [ "test" ]
     paths-ignore:
       - 'src/RyujinxAndroid/app/src/main/cpp/libraries/**'
+      - '**/*.md'
+      - '**/tests/**'
   pull_request:
     branches: [ "test" ]
 
@@ -31,18 +33,16 @@ jobs:
           submodules: false
           fetch-depth: 1
           sparse-checkout: |
-            /*
-            src/RyujinxAndroid/**
-            !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
-          sparse-checkout-cone-mode: false
+            /src/RyujinxAndroid
+            !/src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
+          sparse-checkout-cone-mode: true
           clean: true
 
       # ================== [2] 环境初始化 ==================
       - name: Prepare workspace
         run: |
-          # 创建完整目录结构
           echo "ANDROID_HOME=${{ github.workspace }}/android-sdk" >> $GITHUB_ENV
-          mkdir -p $ANDROID_HOME/cmdline-tools  # 提前创建cmdline-tools目录
+          mkdir -p $ANDROID_HOME/cmdline-tools
           echo "sdk.dir=$ANDROID_HOME" >> src/RyujinxAndroid/local.properties
 
       # ================== [3] .NET环境配置 ==================
@@ -59,61 +59,52 @@ jobs:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
 
-      # ================== [5] Android SDK基础安装 ==================
+      # ================== [5] Android SDK安装 ==================
       - name: Install Android Command-line Tools
         run: |
-          # 确保目标目录存在
           mkdir -p $ANDROID_HOME/cmdline-tools
-          
-          # 下载并解压命令行工具
-          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+          wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip
           unzip commandlinetools-linux-*.zip -d $ANDROID_HOME/cmdline-tools
-          
-          # 重命名并清理
           mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
           rm commandlinetools-linux-*.zip
-          
-          # 验证目录结构
-          echo "Command-line tools installed at:"
-          ls -la $ANDROID_HOME/cmdline-tools/latest
-
-          # 配置环境变量
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
-      # ================== [6] 安装Android组件 ==================
+      # ================== [6] 接受许可证 ==================
+      - name: Accept Android Licenses
+        run: |
+          echo -e "y\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\n" > licenses.txt
+          yes | sdkmanager --licenses < licenses.txt
+
+      # ================== [7] 安装Android组件 ==================
       - name: Install Android Components
         run: |
-          yes | sdkmanager --licenses
-          yes | sdkmanager "platform-tools" "build-tools;${{ env.BUILD_TOOLS_VERSION }}"
-          yes | sdkmanager "ndk;${{ env.NDK_VERSION }}"
-          yes | sdkmanager "cmake;${{ env.CMAKE_VERSION }}"
+          sdkmanager "platform-tools" "build-tools;${{ env.BUILD_TOOLS_VERSION }}"
+          sdkmanager "ndk;${{ env.NDK_VERSION }}"
+          sdkmanager "cmake;${{ env.CMAKE_VERSION }}"
 
-      # ================== [7] 构建缓存配置 ==================
+      # ================== [8] 缓存配置 ==================
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
           path: |
             ${{ env.GRADLE_USER_HOME }}
             ~/.android/build-cache
-          key: ${{ runner.os }}-gradle-${{ hashFiles('src/RyujinxAndroid/**/*.gradle') }}
+          key: ${{ runner.os }}-gradle-${{ hashFiles('src/RyujinxAndroid/gradle/wrapper/gradle-wrapper.properties', 'src/RyujinxAndroid/**/*.gradle') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      # ================== [8] 构建执行 ==================
+      # ================== [9] 构建执行 ==================
       - name: Build with Gradle
         working-directory: src/RyujinxAndroid
         run: |
-          # 强制更新SDK路径配置
           sed -i '/sdk.dir/d' local.properties
           echo "sdk.dir=$ANDROID_HOME" >> local.properties
-          
           chmod +x gradlew
           ./gradlew assembleRelease \
             -Porg.gradle.parallel=true \
-            -Porg.gradle.daemon=false \
-            --no-build-cache
+            -Porg.gradle.daemon=false
 
-      # ================== [9] 产物上传 ==================
+      # ================== [10] 产物上传 ==================
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
