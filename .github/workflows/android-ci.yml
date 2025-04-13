@@ -24,12 +24,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          token: ${{ secrets.GHH_PAT }}
+          repository: mipad/Test-ryu
+          ref: test
+          submodules: false
+          fetch-depth: 1
           sparse-checkout: |
             /*
             src/RyujinxAndroid/**
             !src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
+          sparse-checkout-cone-mode: false
           clean: true
+    
 
       # ================== [2] 环境初始化 ==================
       - name: Prepare workspace
