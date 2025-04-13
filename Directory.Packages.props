@@ -25,7 +25,7 @@
     <!-- ====================== -->
     <!--     核心框架依赖       -->
     <!-- ====================== -->
-    <PackageVersion Include="Microsoft.DotNet.ILCompiler" Version="9.0.0-rc.1.24374.7" />
+    <PackageVersion Include="Microsoft.DotNet.ILCompiler" Version="9.0.101" />
     <PackageVersion Include="System.Text.Json" Version="8.0.2" />
     <PackageVersion Include="System.IO.Hashing" Version="8.0.0" />
     <PackageVersion Include="System.Management" Version="8.0.0" />
@@ -92,7 +92,7 @@
   <!-- ====================== -->
   <ItemGroup>
     <!-- 关键包版本锁定 -->
-    <PackageVersion Update="Microsoft.DotNet.ILCompiler" Version="9.0.0-rc.1.24374.7" />
+    <PackageVersion Update="Microsoft.DotNet.ILCompiler" Version="9.0.101" />
     <PackageVersion Update="Silk.NET.Vulkan*" Version="2.22.0" />
     <PackageVersion Update="OpenTK*" Version="4.8.0" />
     <PackageVersion Update="LibHac" Version="0.19.0" />
