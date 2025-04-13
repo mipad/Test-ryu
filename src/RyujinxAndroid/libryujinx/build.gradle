@@ -4,136 +4,106 @@ plugins {
     id 'base'
 }
 
-// Configurable properties
+// 配置属性（增加Android平台参数）
+ext {
+    androidAbi = providers.gradleProperty("android.abi").getOrElse("arm64-v8a")
+    ndkVersion = providers.gradleProperty("android.ndk.version").getOrElse("25.2.9519653")
+}
 
-// Path to the LLVM toolchain to use. This should be configured in your global gradle.properties
+// 可配置属性
 def toolchainPath = providers.gradleProperty("org.ryujinx.llvm.toolchain.path").getOrNull()
-// Path to the dotnet executable This should be configured in your global gradle.properties
 def dotnetExecutable = providers.gradleProperty("org.ryujinx.dotnet.bin").getOrElse("dotnet")
-// Build configuration
 def configuration = providers.gradleProperty("org.ryujinx.config").getOrElse("debug").toLowerCase()
-// Publish directory
 def publishDirectory = providers.gradleProperty("org.ryujinx.publish.path").getOrNull()
-// Should the symbols be stripped from the published library?
 def stripSymbols = providers.gradleProperty("org.ryujinx.symbols.strip").getOrElse("")
 
-//noinspection GroovyFallthrough
-switch (stripSymbols) {
-    case "true":
-    case "1":
-        stripSymbols = true
-        break
-    case "false":
-    case "0":
-        stripSymbols = false
-        break
-    default:
-        stripSymbols = configuration == "release"
-        break
-}
+// 符号剥离配置
+stripSymbols = stripSymbols.toBoolean() ?: (configuration == "release")
 
-// Additional arguments for the dotnet publish command.
-def additionalArgs = project.hasProperty("org.ryujinx.args") ? project.property("org.ryujinx.args") : ""
+configuration = configuration.capitalize()
 
-configuration = configuration.substring(0, 1).toUpperCase() + configuration.substring(1)
-
-if (publishDirectory != null) {
-    publishDirectory = "${rootProject.projectDir}/${publishDirectory}"
+// 发布目录设置（指向Android jniLibs目录）
+if (!publishDirectory) {
+    publishDirectory = "${rootProject.projectDir}/app/src/main/jniLibs/${androidAbi}"
 } else {
-    publishDirectory = libsDirectory.get().toString()
+    publishDirectory = "${rootProject.projectDir}/${publishDirectory}"
 }
 
-// Trees
-ext.outputTree = fileTree("${buildDir}/publish") {
-    include "*/${configuration.toLowerCase()}_*/*"
+// 文件树配置
+def outputDir = "${buildDir}/publish"
+ext.outputTree = fileTree(outputDir) {
+    include "**/*.so"
     builtBy 'compileLibRyujinx'
 }
 
 ext.publishTree = fileTree(publishDirectory) {
-    include ext.outputTree.getFiles().collect { it.getName().toLowerCase() }.findAll { it.endsWith(".so") }
+    include '*.so'
     builtBy 'compileLibRyujinx'
 }
 
-// Tasks
+// 编译任务（关键修改点）
 tasks.register('compileLibRyujinx', Exec) {
-    // ========== 关键修改：修复依赖路径和标点符号 ==========
-    dependsOn(
-        // 如果子项目存在则保留，否则移除此行
-        // ':Ryujinx.Common:build'
-    )
-
     def projectName = "LibRyujinx"
     workingDir "../../${projectName}"
 
-    def solutionFiles = fileTree("../../") {
-        include '**/*.cs'
-        include '**/*.csproj'
-        exclude '**/bin/**'
-        exclude '**/obj/**'
-        exclude '**/RyujinxAndroid/**'
+    // 输入文件配置
+    inputs.files(fileTree("../../") {
+        include '**/*.cs', '**/*.csproj'
+        exclude '**/bin/**', '**/obj/**', '**/RyujinxAndroid/**'
+    }).withPropertyName('sourceFiles')
+      。withPathSensitivity(PathSensitivity.RELATIVE)
+
+    // 输出文件配置
+    outputs.file("${publishDirectory}/lib${projectName.toLowerCase()}.so")
+
+    // 环境变量配置
+    if (toolchainPath) {
+        environment "PATH", "${toolchainPath}${File.pathSeparator}${System.getenv('PATH')}"
     }
 
-    // ========== 修复中文句号为英文句点 ==========
-    inputs.files(solutionFiles)
-        .withPropertyName('sourceFiles')       // 英文句点
-        .withPathSensitivity(PathSensitivity.RELATIVE)
-        .ignoreEmptyDirectories()
-
-    outputs.file("${publishDirectory}/${projectName.toLowerCase()}.so")
-
-    OperatingSystem os = DefaultNativePlatform.currentOperatingSystem
-    if (toolchainPath != null) {
-        if (os.isWindows()) {
-            environment "Path", "${toolchainPath};${providers.environmentVariable("PATH").get()}"
-        } else {
-            environment "PATH", "${toolchainPath}:${providers.environmentVariable("PATH").get()}"
-        }
-    }
-
+    // 执行前日志
     doFirst {
-        println "Building ${projectName} in ${configuration} mode."
-        println "Configuration:"
-        println "\tusing: ${dotnetExecutable}"
-        println "\tStripSymbols: ${stripSymbols}"
-        println "\tadditional args: ${additionalArgs.split(" ")}"
-        println "\tcustom LLVM toolchain path: ${toolchainPath}"
+        logger.lifecycle("Building ${projectName} in ${configuration} mode for ${androidAbi}")
+        logger.info("""
+        |Configuration:
+        |  dotnet: ${dotnetExecutable}
+        |  strip symbols: ${stripSymbols}
+        |  NDK version: ${ndkVersion}
+        |  output dir: ${publishDirectory}
+        """.stripMargin())
     }
 
+    // 执行命令（关键修改：使用android-arm64 RID）
     executable dotnetExecutable
     args 'publish',
-            '-r', 'linux-bionic-arm64',
-            '-c', configuration,
-            "-p:DisableUnsupportedError=true",
-            "-p:PublishAotUsingRuntimePack=true",
-            "-p:StripSymbols=${stripSymbols}",
-            "-p:AllowUnsafeBlocks=true",
-            "--force",
-            "--artifacts-path", buildDir
+        '-r', 'android-arm64',  // 修正RuntimeIdentifier
+        '-c', configuration,
+        "-p:PublishAot=true",
+        "-p:StripSymbols=${stripSymbols}",
+        "-p:AndroidNativeLibraryName=libryujinx.so",
+        "-p:AndroidNdkDirectory=${ndk.dir}",  // 使用local.properties配置
+        "--output", outputDir
 
-    args additionalArgs.split(" ")
-
+    // 后处理：复制到jniLibs
     doLast {
-        project.sync {
-            from project.ext.outputTree.getFiles()
+        copy {
+            from(outputDir)
+            into(publishDirectory)
             include '*.so'
-            into publishDirectory
-            rename { String originalName -> originalName.toLowerCase() }
-            duplicatesStrategy 'fail'
-            preserve {
-                include '.gitkeep'
-                include '*.so'
-                exclude {
-                    project.ext.publishTree
-                }
+            rename { filename -> 
+                "libryujinx.so"  // 统一命名
             }
         }
+        logger.lifecycle("Native library copied to: ${publishDirectory}")
     }
 }
 
+// 清理任务
 tasks.register("cleanLibRyujinx", Delete) {
-    delete project.ext.publishTree.getFiles()
+    delete publishTree
+    delete outputTree
 }
 
-// Register tasks as standard lifecycle tasks
+// 任务依赖配置
 assemble.dependsOn("compileLibRyujinx")
 clean.dependsOn("cleanLibRyujinx")
