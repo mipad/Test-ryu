@@ -18,7 +18,7 @@ using System.Runtime.Versioning;
 namespace LibRyujinx.Preview
 {
     [RequiresPreviewFeatures]
-    public class WrappedJoyconConfig : JoyconConfigControllerStick<WrappedGamepadInputId, WrappedStickInputId>
+    public class WrappedJoyconConfig : JoyconConfigControllerStick<WrappedJoyconConfig.WrappedGamepadInputId, WrappedJoyconConfig.WrappedStickInputId>
     {
         [RequiresPreviewFeatures]
         public enum WrappedGamepadInputId
