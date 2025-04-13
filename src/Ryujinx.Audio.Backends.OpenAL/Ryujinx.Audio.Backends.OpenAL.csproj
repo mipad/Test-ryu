@@ -13,4 +13,7 @@
     <ProjectReference Include="..\Ryujinx.Audio\Ryujinx.Audio.csproj" />
   </ItemGroup>
 
+<ItemGroup>
+    <Compile Include="OpenALLibraryNameContainer.cs" />
+  </ItemGroup>
 </Project>
