@@ -42,7 +42,7 @@ jobs:
         repository: mipad/Test-ryu  # 您的仓库地址
         ref: best                   # 默认分支
         path: ${{ env.PROJECT_ROOT }}
-        submodules: recursive
+        submodules: false
 
     - name: Setup CCache
       uses: hendrikmuhs/ccache-action@v1.2
