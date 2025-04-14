@@ -1,4 +1,4 @@
-name: Android CI - Full Pipeline
+name: Android CI - Final Fix
 
 on:
   push:
@@ -13,16 +13,17 @@ jobs:
 
     steps:
       # ----------------------------------
-      # 1. 检出代码（禁用子模块）
+      # 1. 检出代码（修复 sparse-checkout）
       # ----------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: false
-          path: src  # 代码检出到 src 目录
+          path: src
           sparse-checkout: |
             /*
-            !/src/RyujinxAndroid/app/src/main/jniLibs/arm64-v8a  # 匹配 .gitignore 排除项
+            !src/RyujinxAndroid/app/src/main/jniLibs/arm64-v8a
+          sparse-checkout-cone-mode: false
 
       # ----------------------------------
       # 2. 安装系统依赖
@@ -44,8 +45,7 @@ jobs:
       - name: Install .NET 9.0
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: |
-            9.0.x
+          dotnet-version: 9.0.x
           dotnet-quality: preview
 
       # ----------------------------------
@@ -64,20 +64,16 @@ jobs:
         run: |
           export ANDROID_SDK_ROOT="$HOME/android-sdk-custom"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-          echo "ANDROID_HOME=" >> $GITHUB_ENV  # 清空冲突变量
-          
-          # 创建自定义 SDK 目录
+          echo "ANDROID_HOME=" >> $GITHUB_ENV
+
           mkdir -p "$ANDROID_SDK_ROOT"
           
-          # 安装命令行工具
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
           unzip -q commandlinetools-linux-9477386_latest.zip -d "$ANDROID_SDK_ROOT/cmdline-tools"
           mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
           
-          # 配置环境变量
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
           
-          # 安装必要组件
           yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses
           "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
             "platforms;android-34" \
@@ -122,8 +118,7 @@ jobs:
         working-directory: src/RyujinxAndroid
         run: |
           chmod +x gradlew
-          ./gradlew clean
-          ./gradlew assembleDebug \
+          ./gradlew clean assembleDebug \
             --stacktrace \
             -Pandroid.debug.obsoleteApi=true \
             -Dorg.gradle.java.home=$JAVA_HOME \
@@ -139,10 +134,12 @@ jobs:
           path: src/RyujinxAndroid/app/build/outputs/apk/debug/*.apk
 
       # ----------------------------------
-      # 10. 清理大文件（可选）
+      # 10. 清理验证（可选）
       # ----------------------------------
-      - name: Cleanup Android SDK
-        if: always()
+      - name: Verify Build
         run: |
-          rm -rf "$ANDROID_SDK_ROOT/cmdline-tools"
-          rm -rf "$ANDROID_SDK_ROOT/ndk/25.2.9519653/sources"
+          if [ ! -f "src/RyujinxAndroid/app/build/outputs/apk/debug/app-debug.apk" ]; then
+            echo "::error::APK 文件未生成!"
+            exit 1
+          fi
+          echo "APK 文件生成成功！"
