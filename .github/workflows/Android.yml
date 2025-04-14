@@ -1,104 +1,136 @@
-name: Android CI - Best Branch
+name: Android CI - Best Branch (Final Fix)
 
 on:
   push:
-    branches: [best]  # 仅监听 best 分支
+    branches: [best]
   pull_request:
-    branches: [best]  # 针对 best 分支的 PR
+    branches: [best]
 
 jobs:
   build-android:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
 
     steps:
       # ----------------------------------
-      # 1. 检出代码（适配 best 分支）
+      # 1. 代码检出（适配 best 分支）
       # ----------------------------------
-      - name: Checkout best branch
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GHH_PAT }}  # 使用自定义令牌
-          ref: best  # 显式指定分支
-          path: 。    # 检出到根目录
+          token: ${{ secrets.GHH_PAT }}
+          ref: best
+          path: .
           sparse-checkout: |
-            /*                      # 包含所有根目录文件
-            !app/src/main/jniLibs/arm64-v8a  # 排除目录
-            src/RyujinxAndroid/gradlew*  # 显式包含 gradlew.bat
+            /*
+            !app/src/main/jniLibs/arm64-v8a
+            src/RyujinxAndroid/gradlew*
           sparse-checkout-cone-mode: false
 
       # ----------------------------------
-      # 2. 路径校正（针对 best 分支结构）
+      # 2. 修复 gradlew.bat 路径
       # ----------------------------------
-      - name: Fix file structure
+      - name: Fix gradlew.bat location
         run: |
-          # 检查 gradlew.bat 位置
+          # 移动 gradlew.bat 到工作目录根
           if [ -f "src/RyujinxAndroid/gradlew.bat" ]; then
             mv src/RyujinxAndroid/gradlew.bat .
-            echo "✔️ gradlew.bat 移动到根目录"
           fi
 
-          # 创建必要目录（根据 best 分支结构）
-          mkdir -p app/src/main/cpp
-
-      # ----------------------------------
-      # 3. 生成 Unix 兼容脚本
-      # ----------------------------------
-      - name: Create gradlew proxy
-        run: |
-          echo "#!/bin/bash" > gradlew
-          echo './gradlew.bat "$@"' >> gradlew
+          # 创建 Unix 执行脚本
+          echo -e '#!/bin/bash\n./gradlew.bat "$@"' > gradlew
           chmod +x gradlew
-          echo "===== 脚本内容 ====="
-          cat gradlew
-          echo "===================="
+          echo "===== 生成代理脚本 ====="
+          ls -l gradlew*
 
       # ----------------------------------
-      # 4. Android 环境配置
+      # 3. Android SDK 安装（关键修复）
       # ----------------------------------
       - name: Setup Android SDK
         run: |
-          export ANDROID_SDK_ROOT="$HOME/android-sdk-best"  # 分支专用路径
+          # 设置专用 SDK 路径
+          export ANDROID_SDK_ROOT="$HOME/android-sdk-best"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "ANDROID_HOME=" >> $GITHUB_ENV
 
-          # 安装命令行工具
-          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools/latest"
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
-          unzip -q commandlinetools-linux-9477386_latest.zip -d "$ANDROID_SDK_ROOT/cmdline-tools/latest"
-          
-          # 配置环境变量
-          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          
-          # 接受许可协议（带重试）
+          # 创建基础目录结构
+          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+
+          # 带重试机制的下载
           for i in {1..3}; do
-            yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses && break
-            sleep 10
+            wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip && break
+            sleep 30
           done
 
-          # 安装组件（best 分支专用版本）
+          # 解压并修正目录结构
+          unzip -q commandlinetools-linux-9477386_latest.zip -d "$ANDROID_SDK_ROOT/cmdline-tools"
+          mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+
+          # 验证核心文件存在
+          echo "===== SDK 工具验证 ====="
+          ls -l "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+
+          # 配置环境变量
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+
+          # 接受许可协议（增强重试）
+          for i in {1..5}; do
+            yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses && break
+            sleep 15
+          done
+
+          # 安装核心组件（带进度显示）
           "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
             "platforms;android-34" \
             "build-tools;34.0.0" \
-            "ndk;25.2.9519653"
+            "ndk;25.2.9519653" 2>&1 | tee sdkmanager.log
 
       # ----------------------------------
-      # 5. 构建执行（best 分支优化）
+      # 4. 生成 local.properties
+      # ----------------------------------
+      - name: Configure local.properties
+        run: |
+          {
+            echo "sdk.dir=$ANDROID_SDK_ROOT"
+            echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/25.2.9519653"
+            echo "cmake.dir=$ANDROID_SDK_ROOT/cmake/3.22.1"
+          } > local.properties
+          echo "===== local.properties 内容 ====="
+          cat local.properties
+
+      # ----------------------------------
+      # 5. 构建执行（带缓存优化）
       # ----------------------------------
       - name: Build with Gradle
         env:
-          BRANCH_NAME: best  # 注入分支名称
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
         run: |
+          # 清理并构建
           ./gradlew clean assembleDebug \
-            -PbuildBranch=$BRANCH_NAME \
             --stacktrace \
             --no-daemon \
-            -Dorg.gradle.java.home="$JAVA_HOME"
+            -Pandroid.debug.obsoleteApi=true \
+            -Dorg.gradle.parallel=true \
+            -Dorg.gradle.caching=true
+
+          # 验证产物存在
+          if [ ! -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
+            echo "::error::APK 文件未生成！"
+            exit 1
+          fi
 
       # ----------------------------------
-      # 6. 产物处理（分支区分）
+      # 6. 产物上传与清理
       # ----------------------------------
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ryujinx-apk-best
+          name: ryujinx-best-debug
           path: app/build/outputs/apk/debug/*.apk
+          retention-days: 7
+
+      - name: Cleanup SDK
+        if: always()
+        run: |
+          rm -rf "$ANDROID_SDK_ROOT/cmdline-tools"
+          rm -rf "$ANDROID_SDK_ROOT/ndk/25.2.9519653/toolchains"
