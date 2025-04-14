@@ -1,30 +1,37 @@
-name: Android CI with .NET Fix
+name: Android CI - Ryujinx Build
 
 on:
   push:
-    branches: [best]
+    branches: [main]
   pull_request:
-    branches: [best]
+    branches: [main]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      # 1. 检出代码（包含子模块）
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
+      # 2. 安装 .NET SDK
       - name: Install .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x  # 主版本号匹配 global.json 的 rollForward 策略
+          dotnet-version: 9.0.x
+          dotnet-quality: preview
 
+      # 3. 设置 JDK
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
+      # 4. 安装 Android SDK 和 NDK
       - name: Setup Android SDK
         run: |
           yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
@@ -35,18 +42,59 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
 
-      # 关键修复：指定项目文件路径
-      - name: Restore .NET dependencies
-        run: dotnet restore src/RyujinxAndroid/libryujinx/LibRyujinx.csproj  # 根据实际路径调整
+      # 5. 缓存优化
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            src/RyujinxAndroid/.gradle
+          key: ${{ runner.os }}-gradle-${{ hashFiles('src/RyujinxAndroid/**/*.gradle*') }}
 
-      - name: Build APK
-        working-directory: src/RyujinxAndroid
+      - name: Cache .NET
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.nuget/packages
+            src/LibRyujinx/bin
+            src/LibRyujinx/obj
+          key: ${{ runner.os }}-dotnet-${{ hashFiles('src/LibRyujinx/**/*.csproj') }}
+
+      # 6. 编译 .NET 库
+      - name: Build LibRyujinx
+        working-directory: src/LibRyujinx
         run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          dotnet restore
+          dotnet build -c Release
 
+      # 7. 构建 Android 项目
+      - name: Build Android APK
+        working-directory: src/RyujinxAndroid  # 关键路径设置
+        run: |
+          # 授予权限
+          chmod +x gradlew
+          
+          # 生成 local.properties
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          echo "ndk.dir=$ANDROID_NDK_HOME" >> local.properties
+          
+          # 执行构建
+          ./gradlew assembleDebug --stacktrace \
+            -Pandroid.native.build.configure=release \
+            -Pcmake.definitions="CMAKE_ANDROID_ARCH_ABI=arm64-v8a"
+
+      # 8. 上传产物
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ryujinx-debug-apk
+          name: ryujinx-debug
           path: src/RyujinxAndroid/app/build/outputs/apk/debug/*.apk
+
+      # 9. 调试步骤（可选）
+      - name: Verify Build Outputs
+        run: |
+          echo "=== 目录结构验证 ==="
+          ls -R src/RyujinxAndroid/app/build/outputs/apk/
+          echo "=== CMake 文件检查 ==="
+          ls -l src/RyujinxAndroid/app/src/main/cpp/
