@@ -1,48 +1,61 @@
-name: Ryujinx Android CI (CMake FetchContent)
+name: Ryujinx Android CI (Fixed)
 
 on:
   workflow_dispatch:
     inputs:
       upload_artifact:
-        description: 'Upload APK artifact'
+        description: "Upload APK artifact"
         type: boolean
         default: true
       release_tag:
-        description: 'Release tag (empty=auto)'
+        description: "Custom release tag"
         type: string
-        default: ''
+        default: ""
   push:
     branches: [ "best" ]
   pull_request:
     branches: [ "best" ]
 
+env:
+  REPO_ROOT: ${{ github.workspace }}
+  CMAKE_SOURCE_DIR: src/RyujinxAndroid/app/src/main/cpp  # 核心修正点
+  BUILD_DIR: ${{ github.workspace }}/build
+  GRADLE_USER_HOME: ${{ github.workspace }}/.gradle
+  ANDROID_ABI: arm64-v8a
+  ANDROID_PLATFORM: android-33
+
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
-    env:
-      PROJECT_ROOT: .src/RyujinxAndroid
-      BUILD_DIR: ${{ github.workspace }}/build
-      GRADLE_USER_HOME: ${{ github.workspace }}/.gradle
+    permissions:
+      contents: write
 
     steps:
-    # ========== 代码检出（禁用子模块）==========
-    - name: Checkout codebase
+    # ========== 代码检出 ==========
+    - name: Checkout repository
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
         ref: best
-        path: ${{ env.PROJECT_ROOT }}
-        submodules: false  # 关键配置：禁用子模块
+        path: src/RyujinxAndroid
+        submodules: false
         fetch-depth: 0
 
-    # ========== 构建加速配置 ==========
+    # ========== 环境验证 ==========
+    - name: Validate CMakeLists existence
+      run: |
+        echo "Checking CMakeLists.txt at: ${{ env.CMAKE_SOURCE_DIR }}"
+        ls -la ${{ env.CMAKE_SOURCE_DIR }}
+        test -f ${{ env.CMAKE_SOURCE_DIR }}/CMakeLists.txt || exit 1
+
+    # ========== 缓存配置 ==========
     - name: CCache setup
       uses: hendrikmuhs/ccache-action@v1.2
       with:
-        key: ryujinx-fetchcontent-${{ github.sha }}
-        max_size: 1G
+        key: ryujinx-${{ github.sha }}
+        max_size: 2G
 
-    - name: CMake cache
+    - name: Cache CMake build
       uses: actions/cache@v4
       with:
         path: |
@@ -50,13 +63,7 @@ jobs:
           ~/.cache/CMake
         key: ${{ runner.os }}-cmake-${{ hashFiles('**/CMakeLists.txt') }}
 
-    # ========== 环境配置 ==========
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: temurin
-        java-version: 17
-
+    # ========== 安卓环境配置 ==========
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       with:
@@ -68,43 +75,44 @@ jobs:
 
     # ========== CMake 构建阶段 ==========
     - name: Configure CMake
-      working-directory: ${{ env.PROJECT_ROOT }}
+      working-directory: ${{ env.CMAKE_SOURCE_DIR }}
       run: |
-        cmake -B ${{ env.BUILD_DIR }} \
-          -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
-          -DANDROID_ABI=arm64-v8a \
-          -DANDROID_PLATFORM=android-33 \
+        cmake -B "${{ env.BUILD_DIR }}" \
+          -S . \
+          -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+          -DANDROID_ABI="${{ env.ANDROID_ABI }}" \
+          -DANDROID_PLATFORM="${{ env.ANDROID_PLATFORM }}" \
           -DCMAKE_FETCHCONTENT_FULLY_DISCONNECTED=OFF
 
-    - name: Build with CMake
-      working-directory: ${{ env.PROJECT_ROOT }}
+    - name: Build native code
+      working-directory: ${{ env.CMAKE_SOURCE_DIR }}
       env:
         CCACHE_DIR: /github/workspace/.ccache
-      run: cmake --build ${{ env.BUILD_DIR }} --parallel 4
+      run: cmake --build "${{ env.BUILD_DIR }}" --parallel 4
 
     # ========== Gradle 打包 ==========
     - name: Build APK
-      working-directory: ${{ env.PROJECT_ROOT }}
+      working-directory: src/RyujinxAndroid
       run: |
         chmod +x gradlew
         ./gradlew assembleRelease \
-          -PCMAKE_BUILD_DIR=${{ env.BUILD_DIR }} \
+          -PnativeBuildDir="${{ env.BUILD_DIR }}" \
           --no-daemon \
           --stacktrace
 
     # ========== 产物处理 ==========
     - name: Locate APK
-      id: apk_finder
-      working-directory: ${{ env.PROJECT_ROOT }}
+      id: find_apk
+      working-directory: src/RyujinxAndroid
       run: |
         APK_PATH=$(find app/build/outputs/apk -name '*.apk' -print -quit)
         echo "apk_path=${APK_PATH}" >> $GITHUB_OUTPUT
         echo "APK_NAME=$(basename ${APK_PATH})" >> $GITHUB_ENV
 
-    - name: Archive APK
+    - name: Prepare release asset
       run: |
-        mv "${{ env.PROJECT_ROOT }}/${{ steps.apk_finder.outputs.apk_path }}" \
-          "${{ github.workspace }}/Ryujinx-Android-${{ github.run_number }}.apk"
+        mv "src/RyujinxAndroid/${{ steps.find_apk.outputs.apk_path }}" \
+          "${{ env.REPO_ROOT }}/Ryujinx-Android-${{ github.run_number }}.apk"
 
     # ========== 发布流程 ==========
     - name: Upload artifact
@@ -112,5 +120,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ryujinx-android
-        path: ${{ github.workspace }}/Ryujinx-Android-${{ github.run_number }}.apk
+        path: ${{ env.REPO_ROOT }}/Ryujinx-Android-${{ github.run_number }}.apk
         retention-days: 7
