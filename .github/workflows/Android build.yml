@@ -1,0 +1,136 @@
+name: Ryujinx Android CI
+
+on:
+  # ========== 触发条件 ==========
+  workflow_dispatch:
+    inputs:
+      should_release:
+        description: 'Create GitHub Release'
+        type: boolean
+        default: false
+      upload_artifact:
+        description: 'Upload APK as artifact'
+        type: boolean
+        default: true
+      release_tag:
+        description: 'Release tag (empty=auto)'
+        type: string
+        default: ''
+      is_prerelease:
+        description: 'Mark as pre-release'
+        type: boolean
+        default: false
+  push:
+    branches: [ "best" ]  # 监控 best 分支推送
+  pull_request:
+    branches: [ "best" ]
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 需要写入权限创建 Release
+      
+    env:
+      PROJECT_ROOT: .src/RyujinxAndroid  # 项目根目录
+      GRADLE_USER_HOME: ${{ github.workspace }}/.gradle
+      BUILD_TOOLS: "34.0.0"  # 根据项目需求调整
+      NDK_VERSION: "25.2.9519653"
+
+    steps:
+    # ========== 代码检出 ==========
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        repository: mipad/Test-ryu  # 你的仓库地址
+        ref: best                   # 监控的分支
+        path: ${{ env.PROJECT_ROOT }}
+        submodules: recursive
+        fetch-depth: 0
+
+    # ========== 构建加速 ==========
+    - name: CCache setup
+      uses: hendrikmuhs/ccache-action@v1.2
+      with:
+        key: ryujinx-android-${{ github.sha }}
+        max_size: 1G
+
+    - name: Gradle cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ env.GRADLE_USER_HOME }}/caches
+          ${{ env.GRADLE_USER_HOME }}/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle/wrapper/gradle-wrapper.properties', '**/build.gradle') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+
+    # ========== 环境配置 ==========
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: 17
+
+    - name: Android SDK tools
+      uses: android-actions/setup-android@v3
+      with:
+        build-tools: ${{ env.BUILD_TOOLS }}
+        ndk-version: ${{ env.NDK_VERSION }}
+
+    - name: Accept licenses
+      run: |
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+
+    # ========== 构建阶段 ==========
+    - name: Gradle build
+      working-directory: ${{ env.PROJECT_ROOT }}
+      env:
+        CCACHE_DIR: /github/workspace/.ccache
+      run: |
+        chmod +x gradlew
+        ./gradlew clean assembleRelease \
+          --no-daemon \
+          --stacktrace \
+          --info \
+          -Pandroid.injected.version.code=${{ github.run_number }} \
+          -Pandroid.injected.version.name=v${{ github.run_number }}
+
+    # ========== 产物处理 ==========
+    - name: Locate APK
+      id: apk-discovery
+      working-directory: ${{ env.PROJECT_ROOT }}
+      run: |
+        APK_PATH=$(find . -path '*/outputs/apk/*Release*.apk' -print -quit)
+        if [ -z "$APK_PATH" ]; then
+          echo "::error::APK file not found!"
+          exit 1
+        fi
+        echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+        echo "APK_NAME=$(basename $APK_PATH)" >> $GITHUB_ENV
+
+    - name: Rename artifact
+      run: |
+        mv "${{ env.PROJECT_ROOT }}/${{ steps.apk-discovery.outputs.apk_path }}" \
+          "${{ github.workspace }}/Ryujinx-Android-${{ github.run_number }}.apk"
+
+    # ========== 产物上传 ==========
+    - name: Upload artifact
+      if: ${{ inputs.upload_artifact || github.event_name == 'push' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ryujinx-android-apk
+        path: ${{ github.workspace }}/Ryujinx-Android-${{ github.run_number }}.apk
+        retention-days: 7
+
+    # ========== 发布到 GitHub ==========
+    - name: Create Release
+      if: ${{ inputs.should_release || github.event_name == 'push' }}
+      uses: softprops/action-gh-release@v2
+      with:
+        name: ${{ coalesce(inputs.release_tag, format('Ryujinx-Android-{0}', github.run_number) }}
+        tag_name: ${{ coalesce(inputs.release_tag, format('android-{0}', github.run_number) }}
+        prerelease: ${{ inputs.is_prerelease || github.event_name == 'push' }}
+        generate_release_notes: true
+        files: |
+          ${{ github.workspace }}/Ryujinx-Android-${{ github.run_number }}.apk
