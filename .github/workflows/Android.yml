@@ -1,4 +1,4 @@
-name: Android CI
+name: Android CI - Full Pipeline
 
 on:
   push:
@@ -7,14 +7,26 @@ on:
     branches: [best]
 
 jobs:
-  build:
+  build-android:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
-      - name: Checkout code
+      # ----------------------------------
+      # 1. 检出代码（禁用子模块）
+      # ----------------------------------
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: false
+          path: src  # 代码检出到 src 目录
+          sparse-checkout: |
+            /*
+            !/src/RyujinxAndroid/app/src/main/jniLibs/arm64-v8a  # 匹配 .gitignore 排除项
 
-      # 关键修复：安装系统依赖
+      # ----------------------------------
+      # 2. 安装系统依赖
+      # ----------------------------------
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -22,47 +34,115 @@ jobs:
             libicu-dev \
             libssl-dev \
             zlib1g \
-            libkrb5-dev
+            libkrb5-dev \
+            cmake \
+            ninja-build
 
-      - name: Install .NET SDK
+      # ----------------------------------
+      # 3. 安装 .NET SDK
+      # ----------------------------------
+      - name: Install .NET 9.0
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x  # 自动匹配 9.0.203
+          dotnet-version: |
+            9.0.x
           dotnet-quality: preview
 
+      # ----------------------------------
+      # 4. 设置 JDK 环境
+      # ----------------------------------
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      - name: Setup Android SDK
+      # ----------------------------------
+      # 5. 安装 Android SDK/NDK
+      # ----------------------------------
+      - name: Setup Android Tools
         run: |
-          export ANDROID_SDK_ROOT=$HOME/android-sdk
-          mkdir -p $ANDROID_SDK_ROOT
-          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
-          unzip commandlinetools-linux-9477386_latest.zip -d $ANDROID_SDK_ROOT/cmdline-tools
-          mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
+          export ANDROID_SDK_ROOT="$HOME/android-sdk-custom"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "ANDROID_HOME=" >> $GITHUB_ENV  # 清空冲突变量
+          
+          # 创建自定义 SDK 目录
+          mkdir -p "$ANDROID_SDK_ROOT"
+          
+          # 安装命令行工具
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+          unzip -q commandlinetools-linux-9477386_latest.zip -d "$ANDROID_SDK_ROOT/cmdline-tools"
+          mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+          
+          # 配置环境变量
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
           
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
+          # 安装必要组件
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
             "platforms;android-34" \
             "build-tools;34.0.0" \
-            "ndk;25.2.9519653"
+            "ndk;25.2.9519653" \
+            "cmake;3.22.1"
+          
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
 
-      - name: Restore .NET dependencies
-        run: dotnet restore src/LibRyujinx/LibRyujinx.csproj
+      # ----------------------------------
+      # 6. 生成 local.properties
+      # ----------------------------------
+      - name: Create local.properties
+        working-directory: src/RyujinxAndroid
+        run: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+          echo "ndk.dir=$ANDROID_NDK_HOME" >> local.properties
+          echo "cmake.dir=$ANDROID_SDK_ROOT/cmake/3.22.1" >> local.properties
 
-      - name: Build APK
+      # ----------------------------------
+      # 7. 缓存优化
+      # ----------------------------------
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            src/RyujinxAndroid/.gradle
+          key: ${{ runner.os }}-gradle-${{ hashFiles('src/RyujinxAndroid/gradle/wrapper/gradle-wrapper.properties') }}
+
+      - name: Cache Android SDK
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.ANDROID_SDK_ROOT }}
+          key: ${{ runner.os }}-android-sdk-${{ hashFiles('src/RyujinxAndroid/local.properties') }}
+
+      # ----------------------------------
+      # 8. 构建项目
+      # ----------------------------------
+      - name: Build with Gradle
         working-directory: src/RyujinxAndroid
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew clean
+          ./gradlew assembleDebug \
+            --stacktrace \
+            -Pandroid.debug.obsoleteApi=true \
+            -Dorg.gradle.java.home=$JAVA_HOME \
+            -Dorg.gradle.parallel=true
 
-      - name: Upload APK
+      # ----------------------------------
+      # 9. 上传产物
+      # ----------------------------------
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ryujinx-debug-apk
           path: src/RyujinxAndroid/app/build/outputs/apk/debug/*.apk
+
+      # ----------------------------------
+      # 10. 清理大文件（可选）
+      # ----------------------------------
+      - name: Cleanup Android SDK
+        if: always()
+        run: |
+          rm -rf "$ANDROID_SDK_ROOT/cmdline-tools"
+          rm -rf "$ANDROID_SDK_ROOT/ndk/25.2.9519653/sources"
