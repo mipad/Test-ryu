@@ -37,7 +37,7 @@ jobs:
       with:
         repository: mipad/Test-ryu
         ref: best
-        path: src/RyujinxAndroid
+        path: .src/RyujinxAndroid
         submodules: false
         fetch-depth: 0
 
