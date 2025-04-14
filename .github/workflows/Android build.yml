@@ -1,124 +1,114 @@
-name: Ryujinx Android CI (Fixed)
+name: Ryujinx Android CI
 
 on:
   workflow_dispatch:
     inputs:
+      should_release:
+        description: 'Create GitHub Release'
+        type: boolean
+        default: false
       upload_artifact:
-        description: "Upload APK artifact"
+        description: 'Upload APK as artifact'
         type: boolean
         default: true
       release_tag:
-        description: "Custom release tag"
+        description: 'Custom release tag (留空自动生成)'
         type: string
-        default: ""
+        default: ''
+      is_prerelease:
+        description: 'Mark as pre-release'
+        type: boolean
+        default: false
   push:
-    branches: [ "best" ]
+    branches: [ "best" ]  # 同步您的实际分支
   pull_request:
     branches: [ "best" ]
 
-env:
-  REPO_ROOT: ${{ github.workspace }}
-  CMAKE_SOURCE_DIR: src/RyujinxAndroid/app/src/main/cpp  # 核心修正点
-  BUILD_DIR: ${{ github.workspace }}/build
-  GRADLE_USER_HOME: ${{ github.workspace }}/.gradle
-  ANDROID_ABI: arm64-v8a
-  ANDROID_PLATFORM: android-33
-
 jobs:
-  build-and-release:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
+    env:
+      PROJECT_ROOT: .src/RyujinxAndroid  # 匹配您的项目结构
+      GRADLE_USER_HOME: ${{ github.workspace }}/.gradle
+
     steps:
-    # ========== 代码检出 ==========
-    - name: Checkout repository
+    # ========== 环境准备 ==========
+    - name: Checkout code
       uses: actions/checkout@v4
       with:
-        repository: mipad/Test-ryu
-        ref: best
-        path: .src/RyujinxAndroid
-        submodules: false
-        fetch-depth: 0
+        repository: mipad/Test-ryu  # 您的仓库地址
+        ref: best                   # 默认分支
+        path: ${{ env.PROJECT_ROOT }}
+        submodules: recursive
 
-    # ========== 环境验证 ==========
-    - name: Validate CMakeLists existence
-      run: |
-        echo "Checking CMakeLists.txt at: ${{ env.CMAKE_SOURCE_DIR }}"
-        ls -la ${{ env.CMAKE_SOURCE_DIR }}
-        test -f ${{ env.CMAKE_SOURCE_DIR }}/CMakeLists.txt || exit 1
-
-    # ========== 缓存配置 ==========
-    - name: CCache setup
+    - name: Setup CCache
       uses: hendrikmuhs/ccache-action@v1.2
       with:
-        key: ryujinx-${{ github.sha }}
-        max_size: 2G
+        key: ryujinx-android-${{ github.sha }}
+        max_size: 500M
 
-    - name: Cache CMake build
+    - name: Cache Gradle
       uses: actions/cache@v4
       with:
         path: |
-          ${{ env.BUILD_DIR }}
-          ~/.cache/CMake
-        key: ${{ runner.os }}-cmake-${{ hashFiles('**/CMakeLists.txt') }}
+          ${{ env.GRADLE_USER_HOME }}/caches
+          ${{ env.GRADLE_USER_HOME }}/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
 
     # ========== 安卓环境配置 ==========
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: 17
+
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       with:
-        ndk-version: 25.2.9519653
-        cmake-version: 3.22.1
+        ndk-version: 25.2.9519653  # 根据项目需求调整
 
     - name: Accept licenses
       run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
 
-    # ========== CMake 构建阶段 ==========
-    - name: Configure CMake
-      working-directory: ${{ env.CMAKE_SOURCE_DIR }}
-      run: |
-        cmake -B "${{ env.BUILD_DIR }}" \
-          -S . \
-          -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
-          -DANDROID_ABI="${{ env.ANDROID_ABI }}" \
-          -DANDROID_PLATFORM="${{ env.ANDROID_PLATFORM }}" \
-          -DCMAKE_FETCHCONTENT_FULLY_DISCONNECTED=OFF
-
-    - name: Build native code
-      working-directory: ${{ env.CMAKE_SOURCE_DIR }}
+    # ========== 构建阶段 ==========
+    - name: Build with Gradle
+      working-directory: ${{ env.PROJECT_ROOT }}
       env:
+        CMAKE_C_COMPILER_LAUNCHER: "ccache"
+        CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
         CCACHE_DIR: /github/workspace/.ccache
-      run: cmake --build "${{ env.BUILD_DIR }}" --parallel 4
-
-    # ========== Gradle 打包 ==========
-    - name: Build APK
-      working-directory: src/RyujinxAndroid
       run: |
         chmod +x gradlew
-        ./gradlew assembleRelease \
-          -PnativeBuildDir="${{ env.BUILD_DIR }}" \
-          --no-daemon \
-          --stacktrace
+        ./gradlew clean assembleRelease --no-daemon --stacktrace
 
     # ========== 产物处理 ==========
-    - name: Locate APK
-      id: find_apk
-      working-directory: src/RyujinxAndroid
+    - name: Find APK
+      id: apk_path
+      working-directory: ${{ env.PROJECT_ROOT }}
       run: |
-        APK_PATH=$(find app/build/outputs/apk -name '*.apk' -print -quit)
-        echo "apk_path=${APK_PATH}" >> $GITHUB_OUTPUT
-        echo "APK_NAME=$(basename ${APK_PATH})" >> $GITHUB_ENV
+        APK_PATH=$(find . -path '*/outputs/apk/release/*.apk' -print -quit)
+        echo "path=${APK_PATH}" >> $GITHUB_OUTPUT
+        echo "APK_PATH=${APK_PATH}" >> $GITHUB_ENV
 
-    - name: Prepare release asset
-      run: |
-        mv "src/RyujinxAndroid/${{ steps.find_apk.outputs.apk_path }}" \
-          "${{ env.REPO_ROOT }}/Ryujinx-Android-${{ github.run_number }}.apk"
-
-    # ========== 发布流程 ==========
     - name: Upload artifact
       if: ${{ inputs.upload_artifact || github.event_name == 'push' }}
       uses: actions/upload-artifact@v4
       with:
         name: ryujinx-android
-        path: ${{ env.REPO_ROOT }}/Ryujinx-Android-${{ github.run_number }}.apk
-        retention-days: 7
+        path: ${{ env.PROJECT_ROOT }}/${{ env.APK_PATH }}
+
+    # ========== 发布逻辑 ==========
+    - name: Create Release
+      if: ${{ inputs.should_release }}
+      uses: softprops/action-gh-release@v2
+      with:
+        name: ${{ coalesce(inputs.release_tag, format('Ryujinx-Android-{0}', github.sha) }}
+        tag_name: ${{ coalesce(inputs.release_tag, format('android-{0}', github.run_number)) }}
+        prerelease: ${{ inputs.is_prerelease }}
+        files: |
+          ${{ env.PROJECT_ROOT }}/${{ env.APK_PATH }}
