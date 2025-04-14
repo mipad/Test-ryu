@@ -2,9 +2,9 @@ name: Android CI - Best Branch (Final)
 
 on:
   push:
-    branches: [best]
+    branches: [bes]
   pull_request:
-    branches: [best]
+    branches: [bes]
 
 jobs:
   build-android:
