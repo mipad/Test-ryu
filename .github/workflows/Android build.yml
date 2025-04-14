@@ -114,12 +114,3 @@ jobs:
         name: ryujinx-android
         path: ${{ github.workspace }}/Ryujinx-Android-${{ github.run_number }}.apk
         retention-days: 7
-
-    - name: Create Release
-      if: ${{ github.event_name == 'push' }}
-      uses: softprops/action-gh-release@v2
-      with:
-        name: ${{ coalesce(inputs.release_tag, format('Ryujinx-Android-{0}', github.run_number)) }}
-        tag_name: ${{ coalesce(inputs.release_tag, format('android-{0}', github.run_number)) }}
-        files: |
-          ${{ github.workspace }}/Ryujinx-Android-${{ github.run_number }}.apk
