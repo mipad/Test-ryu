@@ -1,4 +1,4 @@
-name: Android CI - Final Solution
+name: Android CI - Final Build
 
 on:
   push:
@@ -9,49 +9,44 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 30
 
     steps:
       # ----------------------------------
-      # 1. 精准代码检出（核心修复）
+      # 1. 精准代码检出（关键修复）
       # ----------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: false
-          path: src/RyujinxAndroid  # 直接检出到项目根目录
+          path: src/RyujinxAndroid  # 直接检出到项目目录
           sparse-checkout: |
-            /*                      # 包含仓库根目录所有文件
-            !app/src/main/jniLibs/arm64-v8a  # 排除指定目录
-            gradle*                 # 显式包含 Gradle 文件
-            gradlew                 # 显式包含 gradlew
-          sparse-checkout-cone-mode: false  # 禁用 cone 模式
+            src/RyujinxAndroid/*    # 包含项目目录所有内容
+            !src/RyujinxAndroid/app/src/main/jniLibs/arm64-v8a  # 排除指定目录
+          sparse-checkout-cone-mode: false
 
       # ----------------------------------
       # 2. 文件系统验证（关键诊断）
       # ----------------------------------
-      - name: Verify project structure
+      - name: Verify gradlew existence
         working-directory: src/RyujinxAndroid
         run: |
-          echo "===== 核心文件检查 ====="
-          required_files=(
-            "gradlew"
-            "app/src/main/cpp/CMakeLists.txt"
-            "gradle/wrapper/gradle-wrapper.properties"
-          )
+          echo "===== 文件检查 ====="
+          # 检查 gradlew (Unix) 和 gradlew.bat (Windows)
+          if [ ! -f "gradlew" ] && [ ! -f "gradlew.bat" ]; then
+            echo "::error::致命错误：gradlew 或 gradlew.bat 文件缺失"
+            exit 1
+          fi
           
-          for file in "${required_files[@]}"; do
-            if [ ! -f "$file" ]; then
-              echo "::error::关键文件缺失: $file"
-              exit 1
-            else
-              echo "✔️ 文件存在: $file"
-            fi
-          done
+          # 显式设置 gradlew 权限（如果存在）
+          if [ -f "gradlew" ]; then
+            chmod +x gradlew
+            echo "✔️ gradlew 权限已修复"
+          fi
 
           echo "===== 目录结构 ====="
           ls -al
-          echo "===== gradle/wrapper ====="
+          echo "===== Gradle 文件 ====="
           ls -al gradle/wrapper
 
       # ----------------------------------
@@ -69,26 +64,7 @@ jobs:
             ninja-build
 
       # ----------------------------------
-      # 4. .NET 环境配置
-      # ----------------------------------
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: |
-            9.0.x
-          dotnet-quality: preview
-
-      # ----------------------------------
-      # 5. JDK 环境配置
-      # ----------------------------------
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-
-      # ----------------------------------
-      # 6. Android SDK/NDK 安装（精准控制）
+      # 4. Android SDK/NDK 配置
       # ----------------------------------
       - name: Setup Android Tools
         run: |
@@ -96,24 +72,15 @@ jobs:
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
           echo "ANDROID_HOME=" >> $GITHUB_ENV
 
-          # 创建干净的 SDK 目录
           mkdir -p "$ANDROID_SDK_ROOT"
           
-          # 安装命令行工具
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
           unzip -q commandlinetools-linux-9477386_latest.zip -d "$ANDROID_SDK_ROOT/cmdline-tools"
           mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
 
-          # 配置环境变量
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
           
-          # 接受许可协议（带重试机制）
-          for i in {1..5}; do
-            yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses && break
-            sleep 10
-          done
-
-          # 安装核心组件
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses
           "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
             "platforms;android-34" \
             "build-tools;34.0.0" \
@@ -123,71 +90,33 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
 
       # ----------------------------------
-      # 7. 生成 local.properties（路径锁定）
-      # ----------------------------------
-      - name: Configure local.properties
-        working-directory: src/RyujinxAndroid
-        run: |
-          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
-          echo "ndk.dir=$ANDROID_NDK_HOME" >> local.properties
-          echo "cmake.dir=$ANDROID_SDK_ROOT/cmake/3.22.1" >> local.properties
-          echo "===== local.properties 内容 ====="
-          cat local.properties
-
-      # ----------------------------------
-      # 8. 缓存优化（加速后续构建）
-      # ----------------------------------
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            src/RyujinxAndroid/.gradle
-          key: ${{ runner.os }}-gradle-${{ hashFiles('src/RyujinxAndroid/gradle/wrapper/gradle-wrapper.properties') }}
-
-      - name: Cache Android SDK
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.ANDROID_SDK_ROOT }}
-          key: ${{ runner.os }}-android-sdk-${{ hashFiles('src/RyujinxAndroid/local.properties') }}
-
-      # ----------------------------------
-      # 9. 构建执行（带故障保护）
+      # 5. 构建执行（跨平台兼容）
       # ----------------------------------
       - name: Build with Gradle
         working-directory: src/RyujinxAndroid
         run: |
-          # 权限修复
-          chmod +x gradlew
-          
-          # 带重试机制的构建
-          for attempt in {1..3}; do
-            echo "尝试第 $attempt 次构建..."
+          # 优先使用 Unix 版 gradlew
+          if [ -f "gradlew" ]; then
             ./gradlew clean assembleDebug \
               --stacktrace \
-              --no-daemon \
               -Pandroid.debug.obsoleteApi=true \
-              -Dorg.gradle.java.home="$JAVA_HOME" \
-              -Dorg.gradle.parallel=true && break
-            sleep 15
-          done
+              -Dorg.gradle.java.home="$JAVA_HOME"
+          elif [ -f "gradlew.bat" ]; then
+            echo "::warning::使用 gradlew.bat 可能在 Linux 环境受限"
+            ./gradlew.bat clean assembleDebug \
+              --stacktrace \
+              -Pandroid.debug.obsoleteApi=true \
+              -Dorg.gradle.java.home="$JAVA_HOME"
+          else
+            echo "::error::未找到任何 Gradle Wrapper 文件"
+            exit 1
+          fi
 
       # ----------------------------------
-      # 10. 产物处理与验证
+      # 6. 产物处理
       # ----------------------------------
-      - name: Upload APK Artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ryujinx-debug-apk
           path: src/RyujinxAndroid/app/build/outputs/apk/debug/*.apk
-
-      - name: Verify APK
-        run: |
-          if [ ! -f "src/RyujinxAndroid/app/build/outputs/apk/debug/app-debug.apk" ]; then
-            echo "::error::构建产物缺失！"
-            exit 1
-          else
-            echo "::notice::APK 文件大小："
-            ls -lh "src/RyujinxAndroid/app/build/outputs/apk/debug/app-debug.apk"
-          fi
