@@ -538,7 +538,7 @@ namespace Ryujinx.Graphics.Vulkan
         public void CreateBackgroundComputePipeline()
         {
             PipelineState pipeline = new();
-            pipeline.Initialize(_gd.Capabilities);
+            pipeline.Initialize();
 
             pipeline.Stages[0] = _shaders[0].GetInfo();
             pipeline.StagesCount = 1;
