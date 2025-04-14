@@ -1,4 +1,4 @@
-name: Android CI - Final Build
+name: Android CI - Final Solution
 
 on:
   push:
@@ -9,24 +9,53 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       # ----------------------------------
-      # 1. 检出代码（精准路径控制）
+      # 1. 精准代码检出（核心修复）
       # ----------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: false
-          path: src/RyujinxAndroid  # 直接检出到项目目录
+          path: src/RyujinxAndroid  # 直接检出到项目根目录
           sparse-checkout: |
-            /*
-            !app/src/main/jniLibs/arm64-v8a  # 相对路径匹配.gitignore
-          sparse-checkout-cone-mode: false
+            /*                      # 包含仓库根目录所有文件
+            !app/src/main/jniLibs/arm64-v8a  # 排除指定目录
+            gradle*                 # 显式包含 Gradle 文件
+            gradlew                 # 显式包含 gradlew
+          sparse-checkout-cone-mode: false  # 禁用 cone 模式
 
       # ----------------------------------
-      # 2. 安装系统依赖
+      # 2. 文件系统验证（关键诊断）
+      # ----------------------------------
+      - name: Verify project structure
+        working-directory: src/RyujinxAndroid
+        run: |
+          echo "===== 核心文件检查 ====="
+          required_files=(
+            "gradlew"
+            "app/src/main/cpp/CMakeLists.txt"
+            "gradle/wrapper/gradle-wrapper.properties"
+          )
+          
+          for file in "${required_files[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "::error::关键文件缺失: $file"
+              exit 1
+            else
+              echo "✔️ 文件存在: $file"
+            fi
+          done
+
+          echo "===== 目录结构 ====="
+          ls -al
+          echo "===== gradle/wrapper ====="
+          ls -al gradle/wrapper
+
+      # ----------------------------------
+      # 3. 系统依赖安装
       # ----------------------------------
       - name: Install system dependencies
         run: |
@@ -40,16 +69,17 @@ jobs:
             ninja-build
 
       # ----------------------------------
-      # 3. 安装 .NET SDK
+      # 4. .NET 环境配置
       # ----------------------------------
-      - name: Install .NET 9.0
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: |
+            9.0.x
           dotnet-quality: preview
 
       # ----------------------------------
-      # 4. 设置 JDK 环境
+      # 5. JDK 环境配置
       # ----------------------------------
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -58,17 +88,17 @@ jobs:
           java-version: 17
 
       # ----------------------------------
-      # 5. 安装 Android SDK/NDK
+      # 6. Android SDK/NDK 安装（精准控制）
       # ----------------------------------
       - name: Setup Android Tools
         run: |
           export ANDROID_SDK_ROOT="$HOME/android-sdk-custom"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-          echo "ANDROID_HOME=" >> $GITHUB_ENV  # 清除冲突变量
+          echo "ANDROID_HOME=" >> $GITHUB_ENV
 
-          # 创建自定义 SDK 目录
+          # 创建干净的 SDK 目录
           mkdir -p "$ANDROID_SDK_ROOT"
-
+          
           # 安装命令行工具
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
           unzip -q commandlinetools-linux-9477386_latest.zip -d "$ANDROID_SDK_ROOT/cmdline-tools"
@@ -76,9 +106,14 @@ jobs:
 
           # 配置环境变量
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          
+          # 接受许可协议（带重试机制）
+          for i in {1..5}; do
+            yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses && break
+            sleep 10
+          done
 
           # 安装核心组件
-          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses
           "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
             "platforms;android-34" \
             "build-tools;34.0.0" \
@@ -88,27 +123,19 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
 
       # ----------------------------------
-      # 6. 配置构建环境
+      # 7. 生成 local.properties（路径锁定）
       # ----------------------------------
-      - name: Prepare build environment
+      - name: Configure local.properties
         working-directory: src/RyujinxAndroid
         run: |
-          # 创建必要目录结构
-          mkdir -p app/src/main/cpp/libraries
-
-          # 生成 local.properties
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
           echo "ndk.dir=$ANDROID_NDK_HOME" >> local.properties
           echo "cmake.dir=$ANDROID_SDK_ROOT/cmake/3.22.1" >> local.properties
-
-          # 验证目录结构
-          echo "项目目录结构："
-          ls -al
-          echo "CPP 源代码目录："
-          ls -al app/src/main/cpp
+          echo "===== local.properties 内容 ====="
+          cat local.properties
 
       # ----------------------------------
-      # 7. 缓存优化
+      # 8. 缓存优化（加速后续构建）
       # ----------------------------------
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -126,20 +153,28 @@ jobs:
           key: ${{ runner.os }}-android-sdk-${{ hashFiles('src/RyujinxAndroid/local.properties') }}
 
       # ----------------------------------
-      # 8. 构建项目
+      # 9. 构建执行（带故障保护）
       # ----------------------------------
       - name: Build with Gradle
         working-directory: src/RyujinxAndroid
         run: |
+          # 权限修复
           chmod +x gradlew
-          ./gradlew clean assembleDebug \
-            --stacktrace \
-            -Pandroid.debug.obsoleteApi=true \
-            -Dorg.gradle.java.home=$JAVA_HOME \
-            -Dorg.gradle.parallel=true
+          
+          # 带重试机制的构建
+          for attempt in {1..3}; do
+            echo "尝试第 $attempt 次构建..."
+            ./gradlew clean assembleDebug \
+              --stacktrace \
+              --no-daemon \
+              -Pandroid.debug.obsoleteApi=true \
+              -Dorg.gradle.java.home="$JAVA_HOME" \
+              -Dorg.gradle.parallel=true && break
+            sleep 15
+          done
 
       # ----------------------------------
-      # 9. 上传产物
+      # 10. 产物处理与验证
       # ----------------------------------
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
@@ -147,15 +182,12 @@ jobs:
           name: ryujinx-debug-apk
           path: src/RyujinxAndroid/app/build/outputs/apk/debug/*.apk
 
-      # ----------------------------------
-      # 10. 构建验证
-      # ----------------------------------
-      - name: Verify Build Result
+      - name: Verify APK
         run: |
           if [ ! -f "src/RyujinxAndroid/app/build/outputs/apk/debug/app-debug.apk" ]; then
-            echo "::error::构建失败：APK 文件未生成"
+            echo "::error::构建产物缺失！"
             exit 1
           else
-            echo "::notice::APK 文件已生成"
-            ls -lh "src/RyujinxAndroid/app/build/outputs/apk/debug/"
+            echo "::notice::APK 文件大小："
+            ls -lh "src/RyujinxAndroid/app/build/outputs/apk/debug/app-debug.apk"
           fi
