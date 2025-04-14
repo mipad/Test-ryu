@@ -22,7 +22,7 @@ jobs:
     - name: Download ryujinx source code
       run: |
         cd ${{ github.workspace }}
-        git clone --branch ${{ github.event.inputs.branch }} https://github.com/mipad/Test-ryu.git --false
+        git clone --branch ${{ github.event.inputs.branch }} https://github.com/mipad/Test-ryu.git --recursive
         cd Test-ryu
         
 
