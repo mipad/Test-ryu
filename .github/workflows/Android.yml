@@ -1,4 +1,4 @@
-name: Android CI - Ryujinx Build
+name: Android CI
 
 on:
   push:
@@ -7,107 +7,35 @@ on:
     branches: [best]
 
 jobs:
-  build-android:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      # ----------------------------------
-      # 1. 检出代码（含子模块）
-      # ----------------------------------
-      - name: Checkout repository
+      # 1. 检出代码（禁用子模块）
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: recursive  # 确保检出嵌套子模块
-          path: src  # 将代码检出到 src 目录
+          submodules: false  # 明确禁用子模块
 
-      # ----------------------------------
-      # 2. 设置 .NET 环境
-      # ----------------------------------
-      - name: Install .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: |
-            9.0.x  # 主版本匹配 global.json 的 rollForward 策略
-          dotnet-quality: preview
+      # 2. 清理残留路径（可选但推荐）
+      - name: Clean residual paths
+        run: |
+          rm -rf src/RyujinxAndroid/app/src/main/cpp/libraries/adrenotools
 
-      # ----------------------------------
-      # 3. 设置 JDK 环境
-      # ----------------------------------
+      # 3. 后续步骤保持不变（设置 JDK、Android SDK、构建等）
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      # ----------------------------------
-      # 4. 安装 Android SDK 和 NDK
-      # ----------------------------------
       - name: Setup Android SDK
         run: |
-          # 接受 SDK 许可
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
-          
-          # 安装指定版本组件
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
-            "platforms;android-34" \
-            "build-tools;34.0.0" \
-            "ndk;25.2.9519653"  # 必须与 CMakeLists.txt 配置匹配
-          
-          # 设置环境变量
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
-          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          yes | sdkmanager --licenses
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;25.2.9519653"
 
-      # ----------------------------------
-      # 5. 缓存优化
-      # ----------------------------------
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            src/RyujinxAndroid/.gradle
-          key: ${{ runner.os }}-gradle-${{ hashFiles('src/RyujinxAndroid/gradle/wrapper/gradle-wrapper.properties') }}
-
-      - name: Cache NDK
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.ANDROID_NDK_HOME }}
-          key: ${{ runner.os }}-ndk-25.2.9519653
-
-      # ----------------------------------
-      # 6. 配置构建环境
-      # ----------------------------------
-      - name: Configure CMake dependencies
-        working-directory: src/RyujinxAndroid/app/src/main/cpp
-        run: |
-          # 确保 adrenotools 路径存在
-          mkdir -p libraries
-          if [ ! -d "libraries/adrenotools" ]; then
-            git clone https://github.com/bylaws/libadrenotools.git libraries/adrenotools
-          fi
-
-      # ----------------------------------
-      # 7. 构建项目
-      # ----------------------------------
       - name: Build with Gradle
         working-directory: src/RyujinxAndroid
         run: |
-          # 修复权限问题
           chmod +x gradlew
-          
-          # 清理并构建
-          ./gradlew clean
-          ./gradlew assembleDebug \
-            --stacktrace \
-            -Pandroid.debug.obsoleteApi=true \
-            -Dorg.gradle.java.home=$JAVA_HOME
-
-      # ----------------------------------
-      # 8. 上传产物
-      # ----------------------------------
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ryujinx-debug-apk
-          path: src/RyujinxAndroid/app/build/outputs/apk/debug/*.apk
+          ./gradlew assembleDebug --stacktrace
