@@ -107,22 +107,8 @@ jobs:
       # ================== [5] NuGet配置 ==================
       - name: Configure NuGet
         run: |
-          # 创建中央包管理文件
-          echo '<Project>
-            <PropertyGroup>
-              <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-            </PropertyGroup>
-            <ItemGroup>
-              <PackageVersion Include="Microsoft.DotNet.ILCompiler" Version="9.0.0-rtm.24516.5" />
-              <PackageVersion Include="System.Text.Json" Version="9.0.0" />
-              <PackageVersion Include="Silk.NET.Vulkan" Version="2.19.0" />
-              <PackageVersion Include="Silk.NET.Vulkan.Extensions.KHR" Version="2.19.0" />
-            </ItemGroup>
-          </Project>' > Directory.Packages.props
 
           # 配置NuGet源
-          dotnet nuget remove source dotnet9 || true
-          dotnet nuget add source https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet9/nuget/v3/index.json --name dotnet9
           dotnet nuget add source https://api.nuget.org/v3/index.json --name nuget
 
           # 创建包源映射配置
