@@ -2,9 +2,9 @@ name: Android CI with .NET Fi
 
 on:
   push:
-    branches: [main]
+    branches: [best]
   pull_request:
-    branches: [main]
+    branches: [best]
 
 jobs:
   build:
