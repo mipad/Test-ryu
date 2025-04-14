@@ -1,103 +1,71 @@
-name: Ryujinx Android CI
+name: Test-ryu-build
 
 on:
-  workflow_dispatch:
-    inputs:
-      should_release:
-        description: 'Create GitHub Release'
-        type: boolean
-        default: false
-      upload_artifact:
-        description: 'Upload APK as artifact'
-        type: boolean
-        default: true
-      release_tag:
-        description: 'Custom release tag (留空自动生成)'
-        type: string
-        default: ''
-      is_prerelease:
-        description: 'Mark as pre-release'
-        type: boolean
-        default: false
   push:
-    branches: [ "best" ]  # 同步您的实际分支
+    branches: [ "best" ]
+    paths-ignore:
+      - 'src/RyujinxAndroid/app/src/main/cpp/libraries/**'
   pull_request:
     branches: [ "best" ]
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  ryujinx_android_build:
     permissions:
       contents: write
-
-    env:
-      PROJECT_ROOT: .src/RyujinxAndroid  # 匹配您的项目结构
-      GRADLE_USER_HOME: ${{ github.workspace }}/.gradle
-
+    runs-on: ubuntu-latest
     steps:
-    # ========== 环境准备 ==========
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - uses: actions/setup-java@v4
       with:
-        repository: mipad/Test-ryu  # 您的仓库地址
-        ref: best                   # 默认分支
-        path: ${{ env.PROJECT_ROOT }}
-        submodules: false
+        distribution: temurin
+        java-version: 18
 
-    - name: Setup CCache
-      uses: hendrikmuhs/ccache-action@v1.2
-      with:
-        key: ryujinx-android-${{ github.sha }}
-        max_size: 500M
+    - name: Download ryujinx source code
+      run: |
+        cd ${{ github.workspace }}
+        git clone --branch ${{ github.event.inputs.branch }} https://github.com/mipad/Test-ryu.git --false
+        cd Test-ryu
+        
 
-    - name: Cache Gradle
+    - id: version
+      name: Get version
+      run: |
+        echo "date=$(/bin/date -u "+%Y%m%d")" >> $GITHUB_OUTPUT
+        cd ${{ github.workspace }}/Test-ryu
+        echo "hash=$(git log -1 --pretty=format:%H)" >> $GITHUB_OUTPUT
+        echo "short_hash=$(git describe --always --long)" >> $GITHUB_OUTPUT
+        echo "version=$(git describe --tags --always)" >> $GITHUB_OUTPUT
+
+    - name: Set up cache
       uses: actions/cache@v4
       with:
         path: |
-          ${{ env.GRADLE_USER_HOME }}/caches
-          ${{ env.GRADLE_USER_HOME }}/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-Test-ryu-${{ steps.version.outputs.hash }}
         restore-keys: |
-          ${{ runner.os }}-gradle-
+            ${{ runner.os }}-Test-ryu-
 
-    # ========== 安卓环境配置 ==========
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: temurin
-        java-version: 17
-
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-      with:
-        ndk-version: 25.2.9519653  # 根据项目需求调整
-
-    - name: Accept licenses
-      run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
-
-    # ========== 构建阶段 ==========
-    - name: Build with Gradle
-      working-directory: ${{ env.PROJECT_ROOT }}
-      env:
-        CMAKE_C_COMPILER_LAUNCHER: "ccache"
-        CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
-        CCACHE_DIR: /github/workspace/.ccache
+    #- name: Prepare environment
+    #  run: |
+    #    sudo apt-get install -y ninja-build
+    #      ln -s /usr/bin/ninja .
+    - name: Build Android
       run: |
-        chmod +x gradlew
-        ./gradlew clean assembleRelease --no-daemon --stacktrace
+        cd ${{ github.workspace }}/Test-ryu
+        chmod +x .src/RyujinxAndroid/gradlew
+        .src/RyujinxAndroid/gradlew "assembleRelease"
+        # bash gradlew build
+        mv $(find app/build/outputs/apk/release/* -type f | grep -E "\.apk$") ${{ github.workspace }}/Test-ryu-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
 
-    # ========== 产物处理 ==========
-    - name: Find APK
-      id: apk_path
-      working-directory: ${{ env.PROJECT_ROOT }}
-      run: |
-        APK_PATH=$(find . -path '*/outputs/apk/release/*.apk' -print -quit)
-        echo "path=${APK_PATH}" >> $GITHUB_OUTPUT
-        echo "APK_PATH=${APK_PATH}" >> $GITHUB_ENV
-
-    - name: Upload artifact
-      if: ${{ inputs.upload_artifact || github.event_name == 'push' }}
-      uses: actions/upload-artifact@v4
+    - name: Release ryujinx (Test-ryu)
+      uses: softprops/action-gh-release@v2
       with:
-        name: ryujinx-android
-        path: ${{ env.PROJECT_ROOT }}/${{ env.APK_PATH }}
+        name: ryujinx ${{ steps.version.outputs.date }}
+        tag_name: ryujinx
+        files: ${{ github.workspace }}/Test-ryu-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
+
+    - name: Release ryujinx ${{ steps.version.outputs.date }}
+      uses: softprops/action-gh-release@v2
+      with:
+        name: ${{ steps.version.outputs.date }}
+        tag_name: ${{ steps.version.outputs.date }}
+        files: ${{ github.workspace }}/Test-ryu-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
