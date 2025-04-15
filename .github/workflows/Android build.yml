@@ -38,7 +38,7 @@ jobs:
         repository: mipad/Test-ryu
         ref: ${{ github.event.inputs.branch || 'best' }}  # 动态分支处理
         path: ${{ env.PROJECT_ROOT }}  # 关键！将代码直接检出到 src/RyujinxAndroid
-        submodules: recursive  # 确保子模块被检出
+        submodules: false  # 确保子模块被检出
 
     # ========== 2. 安卓环境配置 ==========
     - name: Setup Java
