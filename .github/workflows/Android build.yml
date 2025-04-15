@@ -1,4 +1,3 @@
-
 name: Enhanced Android CI
 
 on:
@@ -29,9 +28,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # 允许创建 Release
+      contents: write
+      packages: write
+      actions: read
     env:
-      PROJECT_DIR: src/RyujinxAndroid
+      PROJECT_DIR: Test-ryu/src/RyujinxAndroid  # 修正路径
       NDK_VERSION: 25.1.8937393
 
     steps:
@@ -65,21 +66,27 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       with:
-        ndk-version: ${{ env.NDK_VERSION }}
+        packages: |
+          ndk;${{ env.NDK_VERSION }}  # 正确指定 NDK
+          platform-tools
+          cmdline-tools;latest
 
     # ========== 4. 安装构建工具 ==========
     - name: Install CMake
-      run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.31.6"
+      run: |
+        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.31.6"
 
     # ========== 5. 构建 APK ==========
     - name: Build with Gradle
-      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
+      working-directory: ${{ github.workspace }}/${{ env.PROJECT_DIR }}
       env:
         CMAKE_C_COMPILER_LAUNCHER: "ccache"
         CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
       run: |
         chmod +x gradlew
         ./gradlew clean assembleRelease --no-daemon --stacktrace
+
     # ========== 6. 上传产物 ==========
     - name: Upload APK
       uses: actions/upload-artifact@v4
@@ -91,7 +98,7 @@ jobs:
     # ========== 7. 创建 Release ==========
     - name: Create Release
       uses: softprops/action-gh-release@v2
-      if: ${{ inputs.should_release }}
+      if: ${{ inputs.should_release || false }}
       with:
         tag_name: ${{ inputs.release_tag || github.sha }}
         prerelease: ${{ inputs.is_prerelease }}
