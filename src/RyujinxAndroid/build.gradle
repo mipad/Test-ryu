@@ -1,7 +1,7 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 plugins {
-    id 'com.android.application' version '8.3.0' apply false  // 升级 AGP 到 8.3.0
-    id 'com.android.library' version '8.3.0' apply false      // 同步升级 Library 插件
+    id 'com.android.application' version '7.4.2' apply false  // 升级 AGP 到 8.3.0
+    id 'com.android.library' version '7.4.2' apply false      // 同步升级 Library 插件
     id("org.jetbrains.kotlin.android") version "2.2.0-Beta1" apply false  // 更新 Kotlin 插件
     id("org.jetbrains.compose") version "1.8.0-beta02" apply false  // 同步序列化插件版本
     id("org.jetbrains.kotlin.plugin.compose") version "2.2.0-Beta1" apply false
