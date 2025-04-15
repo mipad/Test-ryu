@@ -26,7 +26,7 @@ jobs:
           app/
           gradle/
           build.gradle
-        submodules: recursive
+        submodules: false
 
     # ========== 2. 全局搜索 gradlew ==========
     - name: Locate gradlew
