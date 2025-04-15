@@ -54,9 +54,9 @@ jobs:
           ${{ runner.os }}-gradle-
 
     - name: Build Android
-      working-directory: ${{ github.workspace }}/Test-ryu/.src/RyujinxAndroid  # 关键修复：进入 gradlew 所在目录
+      working-directory: ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid  # 关键修复：进入 gradlew 所在目录
       run: |
-        chmod +x gradlew  # 现在 gradlew 在 .src/RyujinxAndroid 下
+        chmod +x gradlew  # 现在 gradlew 在 src/RyujinxAndroid 下
         ./gradlew clean assembleRelease --no-daemon --stacktrace
         # 修复 APK 移动路径（根据实际输出路径调整）
         mv app/build/outputs/apk/release/*.apk ${{ github.workspace }}/Test-ryu-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
