@@ -11,7 +11,7 @@ android {
 
     defaultConfig {
         applicationId "org.ryujinx.android"
-        minSdk 30
+        minSdk 29
         targetSdk 34
         versionCode 10044
         versionName '1.0.44'
