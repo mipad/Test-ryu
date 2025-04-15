@@ -1,6 +1,12 @@
 name: Test-ryu-build
 
 on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build'
+        type: string
+        default: 'best'  # 关键修复：设置默认分支
   push:
     branches: [ "best" ]
     paths-ignore:
@@ -17,55 +23,45 @@ jobs:
     - uses: actions/setup-java@v4
       with:
         distribution: temurin
-        java-version: 18
+        java-version: 17
 
-    - name: Download ryujinx source code
+    - name: Clone repository
       run: |
         cd ${{ github.workspace }}
-        git clone --branch ${{ github.event.inputs.branch }} https://github.com/mipad/Test-ryu.git --recursive
-        cd Test-ryu
-        
+        # 关键修复：移除 --false，并为 branch 提供默认值
+        git clone --branch "${{ github.event.inputs.branch || 'test' }}" \
+          https://github.com/mipad/Test-ryu.git
 
     - id: version
       name: Get version
       run: |
-        echo "date=$(/bin/date -u "+%Y%m%d")" >> $GITHUB_OUTPUT
         cd ${{ github.workspace }}/Test-ryu
+        echo "date=$(date -u '+%Y%m%d')" >> $GITHUB_OUTPUT
         echo "hash=$(git log -1 --pretty=format:%H)" >> $GITHUB_OUTPUT
         echo "short_hash=$(git describe --always --long)" >> $GITHUB_OUTPUT
         echo "version=$(git describe --tags --always)" >> $GITHUB_OUTPUT
 
-    - name: Set up cache
+    - name: Cache Gradle
       uses: actions/cache@v4
       with:
         path: |
+          ~/.gradle/caches
           ~/.gradle/wrapper
-        key: ${{ runner.os }}-Test-ryu-${{ steps.version.outputs.hash }}
+        key: ${{ runner.os }}-gradle-${{ steps.version.outputs.hash }}
         restore-keys: |
-            ${{ runner.os }}-Test-ryu-
+          ${{ runner.os }}-gradle-
 
-    #- name: Prepare environment
-    #  run: |
-    #    sudo apt-get install -y ninja-build
-    #      ln -s /usr/bin/ninja .
     - name: Build Android
+      working-directory: ${{ github.workspace }}/Test-ryu
       run: |
-        cd ${{ github.workspace }}/Test-ryu
-        chmod +x .src/RyujinxAndroid/gradlew
-        .src/RyujinxAndroid/gradlew "assembleRelease"
-        # bash gradlew build
-        mv $(find app/build/outputs/apk/release/* -type f | grep -E "\.apk$") ${{ github.workspace }}/Test-ryu-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
+        chmod +x gradlew  # 直接使用仓库根目录的 gradlew
+        ./gradlew clean assembleRelease --no-daemon --stacktrace
+        # 修复 APK 移动路径
+        mv app/build/outputs/apk/release/*.apk ../Test-ryu-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
 
-    - name: Release ryujinx (Test-ryu)
+    - name: Upload Release
       uses: softprops/action-gh-release@v2
       with:
-        name: ryujinx ${{ steps.version.outputs.date }}
-        tag_name: ryujinx
-        files: ${{ github.workspace }}/Test-ryu-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
-
-    - name: Release ryujinx ${{ steps.version.outputs.date }}
-      uses: softprops/action-gh-release@v2
-      with:
-        name: ${{ steps.version.outputs.date }}
-        tag_name: ${{ steps.version.outputs.date }}
+        name: Ryujinx Android ${{ steps.version.outputs.date }}
+        tag_name: android-${{ steps.version.outputs.date }}
         files: ${{ github.workspace }}/Test-ryu-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
