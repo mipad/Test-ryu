@@ -44,7 +44,7 @@ jobs:
         repository: mipad/Test-ryu
         ref: best
         path: Test-ryu
-        fetch-depth: 0  # 完整克隆历史记录
+        fetch-depth: 0
 
     # ========== 2. 配置缓存 ==========
     - name: Setup CCache
@@ -69,6 +69,7 @@ jobs:
         java-version: 17
         cache: gradle
 
+    # ========== 修复点1: 修正Android SDK包配置 ==========
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       with:
@@ -76,14 +77,13 @@ jobs:
           ndk;${{ env.NDK_VERSION }}
           platform-tools
           cmdline-tools;latest
-          build-tools;34.0.0  # 必须明确指定build-tools版本
+          build-tools;34.0.0
           platforms;android-34
+          cmake;3.22.1  # 将cmake安装整合到SDK安装步骤
+        cmdline-tools-version: 9.0  # 使用稳定版本的cmdline-tools
+        accept-android-sdk-licenses: true
 
-    # ========== 4. 安装构建工具 ==========
-    - name: Install CMake
-      run: |
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
-        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1"
+    # ========== 修复点2: 移除独立的CMake安装步骤 ==========
 
     # ========== 5. 构建 APK ==========
     - name: Build with Gradle
