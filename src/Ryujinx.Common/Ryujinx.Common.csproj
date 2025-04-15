@@ -8,7 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" />
-    <PackageReference Include="MsgPack.Cli" />
+    <PackageReference Include="MessagePack" />
     <PackageReference Include="System.Management" />
   </ItemGroup>
 
