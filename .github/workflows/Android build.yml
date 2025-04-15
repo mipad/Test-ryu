@@ -1,4 +1,4 @@
-name: Android CI Path Fix
+name: Android CI
 
 on:
   push:
@@ -9,31 +9,24 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      REPO_NAME: Test-ryu  # 显式定义仓库名
-      PROJECT_DIR: src/RyujinxAndroid
-
     steps:
-    # ========== 1. 正确克隆仓库 ==========
+    # ========== 1. 克隆代码到明确路径 ==========
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
         ref: best
-        # 关键！设置 path 为仓库名，确保路径为 ${{ github.workspace }}/Test-ryu
-        path: ${{ env.REPO_NAME }}
+        path: Test-ryu  # 关键！克隆到 ${{ github.workspace }}/Test-ryu
 
-    # ========== 2. 调试路径 ==========
-    - name: Verify directory structure
+    # ========== 2. 验证路径 ==========
+    - name: Check directory structure
       run: |
-        echo "Workspace root: ${{ github.workspace }}"
-        echo "Repo path: ${{ github.workspace }}/${{ env.REPO_NAME }}"
-        ls -la ${{ github.workspace }}/${{ env.REPO_NAME }}  # 验证仓库根目录
-        ls -la ${{ github.workspace }}/${{ env.REPO_NAME }}/${{ env.PROJECT_DIR }}  # 验证子目录
+        echo "项目路径: ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid"
+        ls -la ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid
 
     # ========== 3. 构建步骤 ==========
     - name: Build APK
-      working-directory: ${{ github.workspace }}/${{ env.REPO_NAME }}/${{ env.PROJECT_DIR }}
+      working-directory: ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid
       run: |
         chmod +x gradlew
         ./gradlew clean assembleRelease --no-daemon --stacktrace
@@ -43,4 +36,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: android-release
-        path: ${{ github.workspace }}/${{ env.REPO_NAME }}/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
+        path: ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
