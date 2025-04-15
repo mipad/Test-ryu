@@ -1,7 +1,7 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
-    id 'org.jetbrains.kotlin.plugin.compose' version '1.9.22'  // 添加 Compose Compiler 插件
+    id 'org.jetbrains.compose' 
 }
 
 android {
