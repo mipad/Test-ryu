@@ -1,4 +1,4 @@
-name: Android CI with .NET 9.0.101
+name: Android CI Build
 
 on:
   push:
@@ -27,15 +27,15 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # ========== 全局权限配置 ==========
+
+    # ========== 全局权限配置（作业层级） ==========
     permissions:
-      contents: read    # 默认克隆仓库的读权限
-      actions: write     # 允许上传构件
-      packages: write   # 如需发布包时启用（按需）
+      contents: read   # 默认克隆仓库的读权限
+      actions: write    # 允许上传构件
+
     env:
       PROJECT_DIR: src/RyujinxAndroid
       NDK_VERSION: 26.2.11394342
-      DOTNET_VERSION: "9.0.101"
 
     steps:
     # ========== 1. 克隆代码 ==========
@@ -65,15 +65,6 @@ jobs:
         distribution: temurin
         java-version: 17
 
-    - name: Setup .NET SDK
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-        include-prerelease: true  # 允许安装预览版
-
-    - name: Verify .NET Version
-      run: dotnet --version
-
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       with:
@@ -102,13 +93,13 @@ jobs:
         name: android-release
         path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
 
-    # ========== 7. 创建 Release ==========
+    # ========== 7. 创建 Release（局部权限覆盖） ==========
     - name: Create Release
       uses: softprops/action-gh-release@v2
       if: ${{ inputs.should_release }}
-      # 局部覆盖权限（需在全局 permissions 中已定义 contents: read）
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 自动注入的 Token
+      # ========== 步骤层级的权限覆盖 ==========
+      permissions:
+        contents: write  # 仅在创建 Release 时提升权限
       with:
         tag_name: ${{ inputs.release_tag || github.sha }}
         prerelease: ${{ inputs.is_prerelease }}
