@@ -28,10 +28,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    # ========== 全局权限配置（作业层级） ==========
     permissions:
-      contents: read   # 默认克隆仓库的读权限
-      actions: write    # 允许上传构件
+      contents: read
+      actions: write
 
     env:
       PROJECT_DIR: src/RyujinxAndroid
@@ -58,7 +57,7 @@ jobs:
           ~/.gradle/wrapper
         key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
 
-    # ========== 3. 配置环境 ==========
+    # ========== 3. 配置环境（已移除 _JAVA_OPTIONS） ==========
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
@@ -75,7 +74,7 @@ jobs:
       run: |
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.31.6"
 
-    # ========== 5. 构建 APK ==========
+    # ========== 5. 构建 APK（已移除 _JAVA_OPTIONS） ==========
     - name: Build with Gradle
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       env:
@@ -83,6 +82,7 @@ jobs:
         CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
       run: |
         chmod +x gradlew
+        # 不再设置 _JAVA_OPTIONS，直接运行 Gradle
         ./gradlew clean assembleRelease --no-daemon --stacktrace
 
     # ========== 6. 上传产物 ==========
@@ -93,13 +93,12 @@ jobs:
         name: android-release
         path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
 
-    # ========== 7. 创建 Release（局部权限覆盖） ==========
+    # ========== 7. 创建 Release ==========
     - name: Create Release
       uses: softprops/action-gh-release@v2
       if: ${{ inputs.should_release }}
-      # ========== 步骤层级的权限覆盖 ==========
       permissions:
-        contents: write  # 仅在创建 Release 时提升权限
+        contents: write
       with:
         tag_name: ${{ inputs.release_tag || github.sha }}
         prerelease: ${{ inputs.is_prerelease }}
