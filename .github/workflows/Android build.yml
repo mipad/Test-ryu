@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "best" ]
   pull_request:
-    branches: [ "best" ]
+    branches: [best]
   workflow_dispatch:
     inputs:
       should_release:
@@ -32,8 +32,9 @@ jobs:
       packages: write
       actions: read
     env:
-      PROJECT_DIR: Test-ryu/src/RyujinxAndroid  # 修正路径
+      PROJECT_DIR: Test-ryu/src/RyujinxAndroid
       NDK_VERSION: 25.1.8937393
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true
 
     steps:
     # ========== 1. 克隆代码 ==========
@@ -43,10 +44,13 @@ jobs:
         repository: mipad/Test-ryu
         ref: best
         path: Test-ryu
+        fetch-depth: 0  # 完整克隆历史记录
 
     # ========== 2. 配置缓存 ==========
     - name: Setup CCache
       uses: hendrikmuhs/ccache-action@v1.2
+      with:
+        key: ${{ runner.os }}-ccache-android
 
     - name: Cache Gradle
       uses: actions/cache@v4
@@ -54,7 +58,8 @@ jobs:
         path: |
           ~/.gradle/caches
           ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+          ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid/.gradle
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
 
     # ========== 3. 配置环境 ==========
     - name: Setup Java
@@ -62,45 +67,58 @@ jobs:
       with:
         distribution: temurin
         java-version: 17
+        cache: gradle
 
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       with:
         packages: |
-          ndk;${{ env.NDK_VERSION }}  # 正确指定 NDK
+          ndk;${{ env.NDK_VERSION }}
           platform-tools
           cmdline-tools;latest
+          build-tools;34.0.0  # 必须明确指定build-tools版本
+          platforms;android-34
 
     # ========== 4. 安装构建工具 ==========
     - name: Install CMake
       run: |
-        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
-        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.31.6"
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1"
 
     # ========== 5. 构建 APK ==========
     - name: Build with Gradle
       working-directory: ${{ github.workspace }}/${{ env.PROJECT_DIR }}
       env:
-        CMAKE_C_COMPILER_LAUNCHER: "ccache"
-        CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
+        CCACHE_DIR: ~/.ccache
+        CMAKE_C_COMPILER_LAUNCHER: ccache
+        CMAKE_CXX_COMPILER_LAUNCHER: ccache
       run: |
         chmod +x gradlew
-        ./gradlew clean assembleRelease --no-daemon --stacktrace
+        ./gradlew clean assembleRelease \
+          --no-daemon \
+          --stacktrace \
+          --max-workers=2 \
+          -Pandroid.debug.obsoleteApi=true
 
     # ========== 6. 上传产物 ==========
     - name: Upload APK
       uses: actions/upload-artifact@v4
       if: ${{ inputs.upload_artifact || github.event_name == 'push' }}
       with:
-        name: android-release
+        name: android-release-${{ github.run_number }}
         path: ${{ github.workspace }}/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
+        retention-days: 7
 
     # ========== 7. 创建 Release ==========
     - name: Create Release
       uses: softprops/action-gh-release@v2
       if: ${{ inputs.should_release || false }}
       with:
-        tag_name: ${{ inputs.release_tag || github.sha }}
+        tag_name: ${{ inputs.release_tag || format('v{0}', github.run_number) }}
         prerelease: ${{ inputs.is_prerelease }}
         files: |
           ${{ github.workspace }}/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
+        body: |
+          Android Build #${{ github.run_number }}
+          - Commit: [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
+          - Build Date: ${{ steps.date.outputs.current-date }}
