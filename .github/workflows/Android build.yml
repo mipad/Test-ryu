@@ -1,4 +1,4 @@
-name: Android CI Fix
+name: Android CI Path Fix
 
 on:
   push:
@@ -13,44 +13,30 @@ jobs:
       PROJECT_DIR: src/RyujinxAndroid  # 项目子目录
 
     steps:
-    # ========== 1. 克隆仓库到默认路径 ==========
+    # ========== 1. 正确克隆仓库 ==========
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
         ref: best
-        # 不指定 path 参数，默认克隆到 $GITHUB_WORKSPACE/Test-ryu
+        # 不指定 path 参数，默认克隆到 ${{ github.workspace }}/Test-ryu
 
-    # ========== 2. 验证目录结构（调试步骤） ==========
-    - name: Verify directory
+    # ========== 2. 调试路径（关键验证） ==========
+    - name: Verify paths
       run: |
-        echo "Workspace: ${{ github.workspace }}"
-        ls -la ${{ github.workspace }}/Test-ryu  # 确保 Test-ryu 目录存在
-        ls -la ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}  # 检查项目子目录
+        echo "Workspace root: ${{ github.workspace }}"  # 应为 /home/runner/work/Test-ryu/Test-ryu
+        echo "Repo directory: ${{ github.workspace }}/Test-ryu"  # 克隆后的实际路径
+        ls -la ${{ github.workspace }}/Test-ryu  # 验证仓库根目录
+        ls -la ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}  # 验证项目子目录
 
-    # ========== 3. 配置 Java 和 Android 环境 ==========
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: temurin
-        java-version: 17
-
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-      with:
-        ndk-version: 25.2.9519653
-
-    - name: Accept licenses
-      run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
-
-    # ========== 4. 进入正确目录并构建 ==========
+    # ========== 3. 构建步骤 ==========
     - name: Build APK
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       run: |
         chmod +x gradlew
         ./gradlew clean assembleRelease --no-daemon --stacktrace
 
-    # ========== 5. 上传产物 ==========
+    # ========== 4. 上传产物 ==========
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
