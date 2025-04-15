@@ -1,4 +1,4 @@
-name: Android CI Build
+name: Android CI with .NET 9.0.101
 
 on:
   push:
@@ -27,14 +27,15 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    # ========== 全局权限配置 ==========
     permissions:
-      contents: read
-      actions: write
-
+      contents: read    # 默认克隆仓库的读权限
+      actions: write     # 允许上传构件
+      packages: write   # 如需发布包时启用（按需）
     env:
       PROJECT_DIR: src/RyujinxAndroid
       NDK_VERSION: 26.2.11394342
+      DOTNET_VERSION: "9.0.101"
 
     steps:
     # ========== 1. 克隆代码 ==========
@@ -57,12 +58,21 @@ jobs:
           ~/.gradle/wrapper
         key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
 
-    # ========== 3. 配置环境（已移除 _JAVA_OPTIONS） ==========
+    # ========== 3. 配置环境 ==========
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: temurin
         java-version: 17
+
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        include-prerelease: true  # 允许安装预览版
+
+    - name: Verify .NET Version
+      run: dotnet --version
 
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
@@ -73,8 +83,7 @@ jobs:
     - name: Install CMake
       run: |
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.31.6"
-
-    # ========== 5. 构建 APK（已移除 _JAVA_OPTIONS） ==========
+    # ========== 5. 构建 APK ==========
     - name: Build with Gradle
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       env:
@@ -82,9 +91,7 @@ jobs:
         CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
       run: |
         chmod +x gradlew
-        # 不再设置 _JAVA_OPTIONS，直接运行 Gradle
         ./gradlew clean assembleRelease --no-daemon --stacktrace
-
     # ========== 6. 上传产物 ==========
     - name: Upload APK
       uses: actions/upload-artifact@v4
@@ -97,8 +104,9 @@ jobs:
     - name: Create Release
       uses: softprops/action-gh-release@v2
       if: ${{ inputs.should_release }}
-      permissions:
-        contents: write
+      # 局部覆盖权限（需在全局 permissions 中已定义 contents: read）
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 自动注入的 Token
       with:
         tag_name: ${{ inputs.release_tag || github.sha }}
         prerelease: ${{ inputs.is_prerelease }}
