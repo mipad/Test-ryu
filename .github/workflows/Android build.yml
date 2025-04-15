@@ -1,4 +1,4 @@
-name: Android CI
+name: Android CI Fix
 
 on:
   push:
@@ -9,31 +9,58 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      PROJECT_DIR: src/RyujinxAndroid
+
     steps:
-    # ========== 1. 克隆代码到明确路径 ==========
+    # ========== 1. 克隆代码 ==========
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
         ref: best
-        path: Test-ryu  # 关键！克隆到 ${{ github.workspace }}/Test-ryu
+        path: Test-ryu
 
-    # ========== 2. 验证路径 ==========
-    - name: Check directory structure
+    # ========== 2. 安装 .NET SDK ==========
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 9.0.203
+
+    # ========== 3. 配置 Java 和 Android 环境 ==========
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: 17
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+      with:
+        ndk-version: 25.1.8937393  # 与错误日志中的版本一致
+
+    - name: Accept licenses
+      run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+
+    # ========== 4. 配置 NDK 路径 ==========
+    - name: Set NDK environment
       run: |
-        echo "项目路径: ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid"
-        ls -la ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid
+        echo "NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
+        echo "LLVM_PATH=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_ENV
 
-    # ========== 3. 构建步骤 ==========
+    # ========== 5. 构建步骤 ==========
     - name: Build APK
-      working-directory: ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid
+      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       run: |
         chmod +x gradlew
-        ./gradlew clean assembleRelease --no-daemon --stacktrace
+        ./gradlew clean assembleRelease \
+          -DllvmToolchainPath=$LLVM_PATH \
+          --no-daemon \
+          --stacktrace
 
-    # ========== 4. 上传产物 ==========
+    # ========== 6. 上传产物 ==========
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: android-release
-        path: ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
+        path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
