@@ -1,4 +1,4 @@
-name: Advanced Android CI/CD
+name: Enhanced Android CI
 
 on:
   push:
@@ -7,147 +7,92 @@ on:
     branches: [ "best" ]
   workflow_dispatch:
     inputs:
-      release_settings:
-        description: 'Release Configuration'
-        required: true
-        type: choice
-        options:
-          - nightly
-          - stable
-          - custom
-        default: 'nightly'
-
-env:
-  PROJECT_DIR: Test-ryu/src/RyujinxAndroid
-  NDK_VERSION: 26.2.11394342      # 最新 LTS 版本 NDK
-  CMAKE_VERSION: 3.27.7           # NDK 26+ 推荐版本
-  BUILD_TOOLS: 34.0.0
-  TARGET_SDK: 34
-  GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.caching=true
+      should_release:
+        description: 'Create GitHub Release'
+        type: boolean
+        default: false
+      upload_artifact:
+        description: 'Upload APK as artifact'
+        type: boolean
+        default: true
+      release_tag:
+        description: 'Custom release tag'
+        type: string
+        default: ''
+      is_prerelease:
+        description: 'Mark as pre-release'
+        type: boolean
+        default: false
 
 jobs:
-  android-build:
-    name: Build Android APK
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
     permissions:
-      contents: write
-      packages: write
-      actions: read
+      contents: write  # 允许创建 Release
+    env:
+      PROJECT_DIR: src/RyujinxAndroid
+      NDK_VERSION: 26.2.11394342
 
     steps:
-    # ========== 代码仓库准备 ==========
-    - name: Checkout codebase
+    # ========== 1. 克隆代码 ==========
+    - name: Checkout code
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
         ref: best
         path: Test-ryu
-        fetch-depth: 0
-        sparse-checkout: |       # 优化大仓库克隆速度
-          src/RyujinxAndroid/
-          gradle/
-          build.gradle
 
-    # ========== 构建环境配置 ==========
-    - name: Setup build tools
-      uses: actions/setup-java@v4
-      with:
-        distribution: temurin
-        java-version: 17
-        cache: gradle
-        check-latest: true
+    # ========== 2. 配置缓存 ==========
+    - name: Setup CCache
+      uses: hendrikmuhs/ccache-action@v1.2
 
-    - name: Configure Android SDK
-      uses: android-actions/setup-android@v3
-      with:
-        packages: |
-          ndk;${{ env.NDK_VERSION }}
-          cmake;${{ env.CMAKE_VERSION }}
-          platform-tools
-          build-tools;${{ env.BUILD_TOOLS }}
-          platforms;android-${{ env.TARGET_SDK }}
-          cmdline-tools;latest
-        accept-android-sdk-licenses: true
-        disable-confirmation: true
-
-    # ========== 缓存加速策略 ==========
-    - name: CCache configuration
-      uses: hendrikmuhs/ccache-action@v1.4
-      with:
-        key: ${{ runner.os }}-ndk-${{ env.NDK_VERSION }}-ccache
-        max-size: 500M
-        restore-keys: |
-          ${{ runner.os }}-ndk-${{ env.NDK_VERSION }}-ccache
-
-    - name: Gradle dependency cache
+    - name: Cache Gradle
       uses: actions/cache@v4
       with:
         path: |
           ~/.gradle/caches
           ~/.gradle/wrapper
-          ${{ github.workspace }}/Test-ryu/gradle
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties', '**/build.gradle') }}
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
 
-    # ========== 构建过程优化 ==========
-    - name: Build Android package
-      working-directory: ${{ github.workspace }}/${{ env.PROJECT_DIR }}
+    # ========== 3. 配置环境 ==========
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: 17
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+      with:
+        ndk-version: ${{ env.NDK_VERSION }}
+
+    # ========== 4. 安装构建工具 ==========
+    - name: Install CMake
+      run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.31.6"
+
+    # ========== 5. 构建 APK ==========
+    - name: Build with Gradle
+      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       env:
-        CCACHE_DIR: /github/home/.ccache
-        CCACHE_COMPRESS: true
-        CCACHE_COMPRESSLEVEL: 6
+        CMAKE_C_COMPILER_LAUNCHER: "ccache"
+        CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
       run: |
-        # 预配置构建环境
-        ./gradlew --configure-on-demand
-
-        # 主构建命令
-        ./gradlew clean assembleRelease \
-          --build-cache \
-          --no-daemon \
-          --parallel \
-          --max-workers=$(nproc) \
-          -Pandroid.debug.obsoleteApi=true \
-          -Pkotlin.incremental=true
-
-    # ========== 构建产物处理 ==========
-    - name: APK artifact management
+        chmod +x gradlew
+        ./gradlew clean assembleRelease --no-daemon --stacktrace
+    # ========== 6. 上传产物 ==========
+    - name: Upload APK
       uses: actions/upload-artifact@v4
+      if: ${{ inputs.upload_artifact || github.event_name == 'push' }}
       with:
-        name: android-${{ github.run_number }}
-        path: |
-          ${{ github.workspace }}/${{ env.PROJECT_DIR }}/app/build/outputs/apk/**/*.apk
-          ${{ github.workspace }}/${{ env.PROJECT_DIR }}/app/build/outputs/mapping/**/*.txt
-        retention-days: 7
-        if-no-files-found: error
+        name: android-release
+        path: ${{ github.workspace }}/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
 
-    # ========== 自动发布流程 ==========
-    - name: Release orchestration
-      if: ${{ github.event.inputs.release_settings != 'custom' || github.ref == 'refs/heads/best' }}
+    # ========== 7. 创建 Release ==========
+    - name: Create Release
       uses: softprops/action-gh-release@v2
+      if: ${{ inputs.should_release }}
       with:
-        tag_name: ${{ format('v{0}-{1}', github.run_number, env.NDK_VERSION) }}
-        prerelease: ${{ contains(github.event.inputs.release_settings, 'nightly') }}
-        generate_release_notes: true
+        tag_name: ${{ inputs.release_tag || github.sha }}
+        prerelease: ${{ inputs.is_prerelease }}
         files: |
           ${{ github.workspace }}/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
-        body: |
-          ### Build Metadata
-          | Component       | Version          |
-          |-----------------|------------------|
-          | NDK             | ${{ env.NDK_VERSION }} |
-          | Build Tools     | ${{ env.BUILD_TOOLS }} |
-          | Target SDK      | ${{ env.TARGET_SDK }} |
-          | CMake           | ${{ env.CMAKE_VERSION }} |
-
-          **Build Environment**:  
-          - Runner: ${{ runner.os }} (Ubuntu 22.04)  
-          - Java: Temurin 17  
-          - Cache Efficiency: ${{ steps.ccache.outputs.cache-hit-rate }}
-
-    # ========== 安全扫描集成 ==========
-    - name: Security scanning
-      uses: ShiftLeftSecurity/scan-action@v2
-      if: always()
-      with:
-        output: reports/
-        fail-build: false
