@@ -28,10 +28,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # 允许创建 Release
+      contents: write
     env:
       PROJECT_DIR: src/RyujinxAndroid
       NDK_VERSION: 25.1.8937393
+      ANDROID_CMAKE_VERSION: 3.31.6  # 显式定义 CMake 版本
 
     steps:
     # ========== 1. 克隆代码 ==========
@@ -66,11 +67,26 @@ jobs:
       with:
         ndk-version: ${{ env.NDK_VERSION }}
 
-    # ========== 4. 安装构建工具 ==========
-    - name: Install CMake
-      run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.31.6"
+    # ========== 4. 接受 Android 许可证 ==========
+    - name: Accept Android Licenses
+      run: |
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
 
-    # ========== 5. 构建 APK ==========
+    # ========== 5. 安装 CMake ==========
+    - name: Install CMake
+      run: |
+        # 显式安装 CMake 并添加到 PATH
+        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;${{ env.ANDROID_CMAKE_VERSION }}"
+        echo "CMake 路径: $ANDROID_HOME/cmake/${{ env.ANDROID_CMAKE_VERSION }}/bin"
+        echo "$ANDROID_HOME/cmake/${{ env.ANDROID_CMAKE_VERSION }}/bin" >> $GITHUB_PATH
+
+    # ========== 6. 验证 CMake 安装 ==========
+    - name: Check CMake Version
+      run: |
+        cmake --version
+        which cmake
+
+    # ========== 7. 构建 APK ==========
     - name: Build with Gradle
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       env:
@@ -80,7 +96,7 @@ jobs:
         chmod +x gradlew
         ./gradlew clean assembleRelease --no-daemon --stacktrace
 
-    # ========== 6. 上传产物 ==========
+    # ========== 8. 上传产物 ==========
     - name: Upload APK
       uses: actions/upload-artifact@v4
       if: ${{ inputs.upload_artifact || github.event_name == 'push' }}
@@ -88,7 +104,7 @@ jobs:
         name: android-release
         path: ${{ github.workspace }}/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
 
-    # ========== 7. 创建 Release ==========
+    # ========== 9. 创建 Release ==========
     - name: Create Release
       uses: softprops/action-gh-release@v2
       if: ${{ inputs.should_release }}
