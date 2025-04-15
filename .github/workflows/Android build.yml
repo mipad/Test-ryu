@@ -1,4 +1,4 @@
-name: Android CI - Full Fix
+name: Android CI - Fixed NDK Paths
 
 on:
   push:
@@ -10,19 +10,19 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      REPO_NAME: Test-ryu          # 显式定义仓库名
-      PROJECT_DIR: src/RyujinxAndroid  # 项目子目录
-      NDK_VERSION: 25.1.8937393    # NDK 版本
-      DOTNET_VERSION: 9.0.203      # .NET SDK 版本
+      REPO_NAME: Test-ryu                   # 仓库名称
+      PROJECT_DIR: src/RyujinxAndroid        # 项目子目录
+      NDK_VERSION: 25.2.9519653             # 确认兼容的 NDK 版本
+      DOTNET_VERSION: 9.0.203               # .NET SDK 版本
 
     steps:
-    # ========== 1. 克隆仓库到明确路径 ==========
+    # ========== 1. 克隆仓库 ==========
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
         ref: best
-        path: ${{ env.REPO_NAME }}  # 克隆到 ${{ github.workspace }}/Test-ryu
+        path: ${{ env.REPO_NAME }}
 
     # ========== 2. 安装交叉编译工具链 ==========
     - name: Install ARM64 toolchain
@@ -48,20 +48,26 @@ jobs:
     - name: Accept Android licenses
       run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
 
-    # ========== 5. 配置 NDK 路径 ==========
+    # ========== 5. 定义动态 NDK 路径（关键修复） ==========
     - name: Set NDK environment
       run: |
+        # 定义 NDK 根目录
         echo "NDK_HOME=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
+        # 定义 Sysroot 路径
         echo "SYSROOT=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot" >> $GITHUB_ENV
-        echo "LIB_DIR=$SYSROOT/usr/lib/aarch64-linux-android/24" >> $GITHUB_ENV
+        # 动态选择最高 API 级别目录（避免硬编码）
+        echo "LIB_DIR=$SYSROOT/usr/lib/aarch64-linux-android/$(ls $SYSROOT/usr/lib/aarch64-linux-android | sort -n | tail -1)" >> $GITHUB_ENV
 
-    # ========== 6. 验证 NDK 安装 ==========
-    - name: Verify NDK libraries
+    # ========== 6. 验证 NDK 路径 ==========
+    - name: Verify NDK paths
       run: |
-        echo "检查 NDK 路径: $NDK_HOME"
-        ls -la $NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/24
+        echo "NDK根目录: $NDK_HOME"
+        echo "Sysroot路径: $SYSROOT"
+        echo "库目录: $LIB_DIR"
+        echo "检查库文件是否存在:"
+        ls -la $LIB_DIR  # 应列出 crtbegin_so.o、liblog.so 等文件
 
-    # ========== 7. 构建步骤 ==========
+    # ========== 7. 构建 APK ==========
     - name: Build APK
       working-directory: ${{ github.workspace }}/${{ env.REPO_NAME }}/${{ env.PROJECT_DIR }}
       run: |
