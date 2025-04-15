@@ -1,20 +1,6 @@
-name: Ryujinx Android CI
+name: Android CI with Gradlew Search
 
 on:
-  workflow_dispatch:
-    inputs:
-      branch:  # 允许手动指定分支
-        description: 'Branch to build'
-        type: string
-        default: 'best'  # 默认分支
-      should_release:
-        description: 'Create GitHub Release'
-        type: boolean
-        default: false
-      upload_artifact:
-        description: 'Upload APK as artifact'
-        type: boolean
-        default: true
   push:
     branches: [ "best" ]
   pull_request:
@@ -23,29 +9,57 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
     env:
-      PROJECT_ROOT: src/RyujinxAndroid  # 关键路径配置
-      GRADLE_USER_HOME: ${{ github.workspace }}/.gradle
+      PROJECT_ROOT: src/RyujinxAndroid  # 项目根目录
+      GRADLEW_SEARCH_PATTERN: "**/gradlew"  # 支持多级目录搜索
 
     steps:
-    # ========== 1. 克隆代码到指定子目录 ==========
+    # ========== 1. 克隆代码 ==========
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: ${{ github.event.inputs.branch || 'best' }}  # 动态分支处理
-        path: ${{ env.PROJECT_ROOT }}  # 关键！将代码直接检出到 src/RyujinxAndroid
-        submodules: false  # 确保子模块被检出
+        ref: best
+        path: ${{ env.PROJECT_ROOT }}
+        sparse-checkout: |  # 稀疏检出优化（可选）
+          ${{ env.GRADLEW_SEARCH_PATTERN }}
+          app/
+          gradle/
+          build.gradle
+        submodules: recursive
 
-    # ========== 2. 安卓环境配置 ==========
+    # ========== 2. 全局搜索 gradlew ==========
+    - name: Locate gradlew
+      id: find_gradlew
+      working-directory: ${{ env.PROJECT_ROOT }}
+      run: |
+        # 递归搜索 gradlew 文件
+        GRADLEW_PATH=$(find . -type f -name "gradlew" -print -quit)
+        
+        if [ -z "$GRADLEW_PATH" ]; then
+          echo "::error::gradlew not found in repository!"
+          exit 1
+        fi
+
+        # 标准化路径并输出
+        GRADLEW_DIR=$(dirname "$GRADLEW_PATH")
+        echo "gradlew_path=$GRADLEW_PATH" >> $GITHUB_OUTPUT
+        echo "GRADLEW_DIR=$GRADLEW_DIR" >> $GITHUB_ENV
+        echo "Found gradlew at: $GRADLEW_PATH"
+
+    # ========== 3. 动态配置环境变量 ==========
+    - name: Set dynamic paths
+      working-directory: ${{ env.PROJECT_ROOT }}
+      run: |
+        # 将 gradlew 所在目录设为工作目录
+        echo "PROJECT_ROOT=${{ env.PROJECT_ROOT }}/${{ env.GRADLEW_DIR }}" >> $GITHUB_ENV
+
+    # ========== 4. 后续构建步骤 ==========
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: temurin
-        java-version: 17  # Android 官方推荐 JDK 17
+        java-version: 17
 
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
@@ -55,45 +69,14 @@ jobs:
     - name: Accept licenses
       run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
 
-    # ========== 3. 验证目录结构（调试） ==========
-    - name: Verify project structure
+    - name: Build APK
       working-directory: ${{ env.PROJECT_ROOT }}
-      run: |
-        echo "当前目录: $(pwd)"
-        ls -la  # 确认 gradlew 存在
-
-    # ========== 4. 构建阶段 ==========
-    - name: Build with Gradle
-      working-directory: ${{ env.PROJECT_ROOT }}
-      env:
-        CMAKE_C_COMPILER_LAUNCHER: "ccache"
-        CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
-        CCACHE_DIR: /github/workspace/.ccache
       run: |
         chmod +x gradlew
         ./gradlew clean assembleRelease --no-daemon --stacktrace
 
-    # ========== 5. 产物处理 ==========
-    - name: Find APK
-      id: apk_path
-      working-directory: ${{ env.PROJECT_ROOT }}
-      run: |
-        APK_PATH=$(find . -path '*/outputs/apk/release/*.apk' -print -quit)
-        echo "path=${APK_PATH}" >> $GITHUB_OUTPUT
-        echo "APK_PATH=${APK_PATH}" >> $GITHUB_ENV
-
-    - name: Upload artifact
-      if: ${{ inputs.upload_artifact || github.event_name == 'push' }}
+    - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ryujinx-android
-        path: ${{ env.PROJECT_ROOT }}/${{ env.APK_PATH }}
-
-    # ========== 6. 发布逻辑 ==========
-    - name: Create Release
-      if: ${{ inputs.should_release }}
-      uses: softprops/action-gh-release@v2
-      with:
-        name: Ryujinx Android ${{ github.sha }}
-        tag_name: android-${{ github.run_number }}
-        files: ${{ env.PROJECT_ROOT }}/${{ env.APK_PATH }}
+        name: android-release
+        path: ${{ env.PROJECT_ROOT }}/app/build/outputs/apk/release/*.apk
