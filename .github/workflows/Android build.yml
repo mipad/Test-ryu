@@ -32,7 +32,8 @@ jobs:
     env:
       PROJECT_DIR: src/RyujinxAndroid
       NDK_VERSION: 25.1.8937393
-      ANDROID_CMAKE_VERSION: 3.31.6  # 显式定义 CMake 版本
+      ANDROID_CMAKE_VERSION: 3.31.6
+      DOTNET_SDK_VERSION: 9.0.203
 
     steps:
     # ========== 1. 克隆代码 ==========
@@ -46,6 +47,8 @@ jobs:
     # ========== 2. 配置缓存 ==========
     - name: Setup CCache
       uses: hendrikmuhs/ccache-action@v1.2
+      with:
+        key: ccache-${{ runner.os }}-${{ github.sha }}
 
     - name: Cache Gradle
       uses: actions/cache@v4
@@ -53,38 +56,46 @@ jobs:
         path: |
           ~/.gradle/caches
           ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+        key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*') }}
 
-    # ========== 3. 配置环境 ==========
+    # ========== 3. 配置基础环境 ==========
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: temurin
         java-version: 17
 
+    # ========== 4. 安装 Android SDK 和工具链 ==========
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       with:
+        cmdline-tools-version: "latest"
         ndk-version: ${{ env.NDK_VERSION }}
+        cmake-version: ${{ env.ANDROID_CMAKE_VERSION }}
 
-    # ========== 4. 接受 Android 许可证 ==========
     - name: Accept Android Licenses
       run: |
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
 
-    # ========== 5. 安装 CMake ==========
-    - name: Install CMake
+    # ========== 5. 安装 .NET SDK ==========
+    - name: Install .NET SDK ${{ env.DOTNET_SDK_VERSION }}
       run: |
-        # 显式安装 CMake 并添加到 PATH
-        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;${{ env.ANDROID_CMAKE_VERSION }}"
+        wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb
+        sudo dpkg -i packages-microsoft-prod.deb
+        sudo apt update
+        sudo apt install -y dotnet-sdk-9.0=9.0.203-1
+
+    - name: Verify .NET SDK
+      run: dotnet --list-sdks
+
+    # ========== 6. 配置 CMake 路径 ==========
+    - name: Add CMake to PATH
+      run: |
         echo "CMake 路径: $ANDROID_HOME/cmake/${{ env.ANDROID_CMAKE_VERSION }}/bin"
         echo "$ANDROID_HOME/cmake/${{ env.ANDROID_CMAKE_VERSION }}/bin" >> $GITHUB_PATH
 
-    # ========== 6. 验证 CMake 安装 ==========
-    - name: Check CMake Version
-      run: |
-        cmake --version
-        which cmake
+    - name: Verify CMake
+      run: cmake --version
 
     # ========== 7. 构建 APK ==========
     - name: Build with Gradle
@@ -93,6 +104,10 @@ jobs:
         CMAKE_C_COMPILER_LAUNCHER: "ccache"
         CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
       run: |
+        # 强制更新 Gradle Wrapper 到 8.4
+        sed -i 's/gradle-8.11.1-bin.zip/gradle-8.4-bin.zip/' gradle/wrapper/gradle-wrapper.properties
+        ./gradlew wrapper --gradle-version 8.4
+        
         chmod +x gradlew
         ./gradlew clean assembleRelease --no-daemon --stacktrace
 
@@ -102,7 +117,7 @@ jobs:
       if: ${{ inputs.upload_artifact || github.event_name == 'push' }}
       with:
         name: android-release
-        path: ${{ github.workspace }}/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
+        path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
 
     # ========== 9. 创建 Release ==========
     - name: Create Release
@@ -112,4 +127,4 @@ jobs:
         tag_name: ${{ inputs.release_tag || github.sha }}
         prerelease: ${{ inputs.is_prerelease }}
         files: |
-          ${{ github.workspace }}/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
+          ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
