@@ -1,4 +1,4 @@
-name: Android CI - Fixed NDK Paths
+name: Android CI with Android Studio Integration
 
 on:
   push:
@@ -10,77 +10,82 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      REPO_NAME: Test-ryu                   # 仓库名称
-      PROJECT_DIR: src/RyujinxAndroid        # 项目子目录
-      NDK_VERSION: 25.2.9519653             # 确认兼容的 NDK 版本
-      DOTNET_VERSION: 9.0.203               # .NET SDK 版本
+      ANDROID_API_LEVEL: 34          # 目标 API 级别
+      BUILD_TOOLS_VERSION: "34.0.0"  # 构建工具版本
+      NDK_VERSION: 25.2.9519653      # NDK 版本
+      GRADLE_VERSION: 8.7            # Gradle 版本
 
     steps:
-    # ========== 1. 克隆仓库 ==========
+    # ========== 1. 克隆代码 ==========
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        repository: mipad/Test-ryu
-        ref: best
-        path: ${{ env.REPO_NAME }}
+        fetch-depth: 0  # 完整克隆历史（用于版本信息）
 
-    # ========== 2. 安装交叉编译工具链 ==========
-    - name: Install ARM64 toolchain
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          gcc-aarch64-linux-gnu \
-          g++-aarch64-linux-gnu \
-          libc6-dev-arm64-cross
-
-    # ========== 3. 配置 .NET 环境 ==========
-    - name: Setup .NET SDK
-      uses: actions/setup-dotnet@v4
+    # ========== 2. 设置 JDK ==========
+    - name: Setup Java
+      uses: actions/setup-java@v4
       with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
+        distribution: temurin
+        java-version: 17
 
-    # ========== 4. 配置 Android 环境 ==========
+    # ========== 3. 配置 Android 环境 ==========
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       with:
+        api-level: ${{ env.ANDROID_API_LEVEL }}
+        build-tools: ${{ env.BUILD_TOOLS_VERSION }}
         ndk-version: ${{ env.NDK_VERSION }}
+        cmake-version: 3.22.1  # 可选：如果使用 CMake
 
-    - name: Accept Android licenses
+    # ========== 4. 接受 Android 许可证 ==========
+    - name: Accept licenses
       run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
 
-    # ========== 5. 定义动态 NDK 路径（关键修复） ==========
-    - name: Set NDK environment
-      run: |
-        # 定义 NDK 根目录
-        echo "NDK_HOME=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
-        # 定义 Sysroot 路径
-        echo "SYSROOT=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot" >> $GITHUB_ENV
-        # 动态选择最高 API 级别目录（避免硬编码）
-        echo "LIB_DIR=$SYSROOT/usr/lib/aarch64-linux-android/$(ls $SYSROOT/usr/lib/aarch64-linux-android | sort -n | tail -1)" >> $GITHUB_ENV
+    # ========== 5. 配置 Gradle 缓存 ==========
+    - name: Cache Gradle
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', 'gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
 
-    # ========== 6. 验证 NDK 路径 ==========
-    - name: Verify NDK paths
+    # ========== 6. 构建 APK ==========
+    - name: Build with Gradle
+      working-directory: src/RyujinxAndroid  # 项目子目录
       run: |
-        echo "NDK根目录: $NDK_HOME"
-        echo "Sysroot路径: $SYSROOT"
-        echo "库目录: $LIB_DIR"
-        echo "检查库文件是否存在:"
-        ls -la $LIB_DIR  # 应列出 crtbegin_so.o、liblog.so 等文件
-
-    # ========== 7. 构建 APK ==========
-    - name: Build APK
-      working-directory: ${{ github.workspace }}/${{ env.REPO_NAME }}/${{ env.PROJECT_DIR }}
-      run: |
+        # 赋予 gradlew 执行权限
         chmod +x gradlew
+        # 执行 clean 和 release 构建
         ./gradlew clean assembleRelease \
-          -DllvmToolchainPath=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin \
-          -DlinkerFlags="-Wl,--sysroot=$SYSROOT -L$LIB_DIR -llog -ldl -lz -lm -lgcc -lc" \
           --no-daemon \
-          --stacktrace
+          --stacktrace \
+          -Dorg.gradle.parallel=true \
+          -Dorg.gradle.daemon=false
 
-    # ========== 8. 上传产物 ==========
+    # ========== 7. 运行单元测试 ==========
+    - name: Run unit tests
+      working-directory: src/RyujinxAndroid
+      run: ./gradlew testReleaseUnitTest
+
+    # ========== 8. 上传 APK 产物 ==========
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: android-release
-        path: ${{ github.workspace }}/${{ env.REPO_NAME }}/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
+        name: ryujinx-android-release
+        path: |
+          src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
+          src/RyujinxAndroid/app/build/reports/**/*.xml  # 测试报告
+
+    # ========== 9. 上传到 Firebase App Distribution (可选) ==========
+    - name: Deploy to Firebase
+      if: github.ref == 'refs/heads/best'  # 仅主分支触发
+      uses: wzieba/Firebase-Distribution-Github-Action@v2
+      with:
+        appId: ${{ secrets.FIREBASE_APP_ID }}
+        token: ${{ secrets.FIREBASE_TOKEN }}
+        groups: testers
+        file: src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
