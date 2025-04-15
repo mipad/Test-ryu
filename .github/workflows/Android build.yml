@@ -1,58 +1,97 @@
-name: Android CI with Firebase Deployment
+name: Enhanced Android CI
 
 on:
   push:
     branches: [ "best" ]
+  pull_request:
+    branches: [ "best" ]
+  workflow_dispatch:
+    inputs:
+      should_release:
+        description: 'Create GitHub Release'
+        type: boolean
+        default: false
+      upload_artifact:
+        description: 'Upload APK as artifact'
+        type: boolean
+        default: true
+      release_tag:
+        description: 'Custom release tag'
+        type: string
+        default: ''
+      is_prerelease:
+        description: 'Mark as pre-release'
+        type: boolean
+        default: false
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      id-token: write  # 使用 Firebase 官方 Action 需要
+      contents: write  # 允许创建 Release
+    env:
+      PROJECT_DIR: src/RyujinxAndroid
+      NDK_VERSION: 25.1.8937393
 
     steps:
     # ========== 1. 克隆代码 ==========
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        submodules: recursive
 
-    # ========== 2. 设置 JDK ==========
+    # ========== 2. 配置缓存 ==========
+    - name: Setup CCache
+      uses: hendrikmuhs/ccache-action@v1.2
+
+    - name: Cache Gradle
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+
+    # ========== 3. 配置环境 ==========
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: temurin
         java-version: 17
 
-    # ========== 3. 配置 Android SDK ==========
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       with:
-        api-level: 34
-        build-tools: 34.0.0
-        ndk-version: 25.2.9519653
+        ndk-version: ${{ env.NDK_VERSION }}
 
-    # ========== 4. 接受许可证 ==========
-    - name: Accept licenses
-      run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+    # ========== 4. 安装构建工具 ==========
+    - name: Install CMake
+      run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.31.6"
 
     # ========== 5. 构建 APK ==========
-    - name: Build APK
+    - name: Build with Gradle
+      working-directory: ${{ github.workspace }}/${{ env.PROJECT_DIR }}
+      env:
+        CMAKE_C_COMPILER_LAUNCHER: "ccache"
+        CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
       run: |
         chmod +x gradlew
-        ./gradlew clean assembleRelease --stacktrace
+        ./gradlew clean assembleRelease --no-daemon --stacktrace
 
-    # ========== 6. 上传 APK 到 GitHub Artifacts ==========
+    # ========== 6. 上传产物 ==========
     - name: Upload APK
       uses: actions/upload-artifact@v4
+      if: ${{ inputs.upload_artifact || github.event_name == 'push' }}
       with:
-        name: ryujinx-android
-        path: app/build/outputs/apk/release/*.apk
+        name: android-release
+        path: ${{ github.workspace }}/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
 
-    # ========== 7. 部署到 Firebase (官方 Action) ==========
-    - name: Deploy to Firebase
-      uses: FirebaseExtended/action-hosting-deploy@v0
+    # ========== 7. 创建 Release ==========
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      if: ${{ inputs.should_release }}
       with:
-        repoToken: '${{ secrets.GITHUB_TOKEN }}'
-        firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
-        projectId: your-project-id
-        channelId: live
+        tag_name: ${{ inputs.release_tag || github.sha }}
+        prerelease: ${{ inputs.is_prerelease }}
+        files: |
+          ${{ github.workspace }}/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
