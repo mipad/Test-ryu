@@ -8,8 +8,8 @@
     <LinkerFlavor Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">lld</LinkerFlavor>
     <DefineConstants>$(DefineConstants);FORCE_EXTERNAL_BASE_DIR</DefineConstants>
     <!-- AOT 优化配置 -->
-    <PublishAot>false</PublishAot>
-    <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
+    <!-- <PublishAot>false</PublishAot> -->
+    <!-- <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack> -->
     <NativeLib Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">Shared</NativeLib>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
