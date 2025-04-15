@@ -1,26 +1,20 @@
-name: Android CI with Android Studio Integration
+name: Android CI with Firebase Deployment
 
 on:
   push:
     branches: [ "best" ]
-  pull_request:
-    branches: [ "best" ]
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    env:
-      ANDROID_API_LEVEL: 34          # 目标 API 级别
-      BUILD_TOOLS_VERSION: "34.0.0"  # 构建工具版本
-      NDK_VERSION: 25.2.9519653      # NDK 版本
-      GRADLE_VERSION: 8.7            # Gradle 版本
+    permissions:
+      contents: write
+      id-token: write  # 使用 Firebase 官方 Action 需要
 
     steps:
     # ========== 1. 克隆代码 ==========
     - name: Checkout code
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0  # 完整克隆历史（用于版本信息）
 
     # ========== 2. 设置 JDK ==========
     - name: Setup Java
@@ -29,63 +23,36 @@ jobs:
         distribution: temurin
         java-version: 17
 
-    # ========== 3. 配置 Android 环境 ==========
+    # ========== 3. 配置 Android SDK ==========
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       with:
-        api-level: ${{ env.ANDROID_API_LEVEL }}
-        build-tools: ${{ env.BUILD_TOOLS_VERSION }}
-        ndk-version: ${{ env.NDK_VERSION }}
-        cmake-version: 3.22.1  # 可选：如果使用 CMake
+        api-level: 34
+        build-tools: 34.0.0
+        ndk-version: 25.2.9519653
 
-    # ========== 4. 接受 Android 许可证 ==========
+    # ========== 4. 接受许可证 ==========
     - name: Accept licenses
       run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
 
-    # ========== 5. 配置 Gradle 缓存 ==========
-    - name: Cache Gradle
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', 'gradle-wrapper.properties') }}
-        restore-keys: |
-          ${{ runner.os }}-gradle-
-
-    # ========== 6. 构建 APK ==========
-    - name: Build with Gradle
-      working-directory: src/RyujinxAndroid  # 项目子目录
+    # ========== 5. 构建 APK ==========
+    - name: Build APK
       run: |
-        # 赋予 gradlew 执行权限
         chmod +x gradlew
-        # 执行 clean 和 release 构建
-        ./gradlew clean assembleRelease \
-          --no-daemon \
-          --stacktrace \
-          -Dorg.gradle.parallel=true \
-          -Dorg.gradle.daemon=false
+        ./gradlew clean assembleRelease --stacktrace
 
-    # ========== 7. 运行单元测试 ==========
-    - name: Run unit tests
-      working-directory: src/RyujinxAndroid
-      run: ./gradlew testReleaseUnitTest
-
-    # ========== 8. 上传 APK 产物 ==========
+    # ========== 6. 上传 APK 到 GitHub Artifacts ==========
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: ryujinx-android-release
-        path: |
-          src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
-          src/RyujinxAndroid/app/build/reports/**/*.xml  # 测试报告
+        name: ryujinx-android
+        path: app/build/outputs/apk/release/*.apk
 
-    # ========== 9. 上传到 Firebase App Distribution (可选) ==========
+    # ========== 7. 部署到 Firebase (官方 Action) ==========
     - name: Deploy to Firebase
-      if: github.ref == 'refs/heads/best'  # 仅主分支触发
-      uses: wzieba/Firebase-Distribution-Github-Action@v2
+      uses: FirebaseExtended/action-hosting-deploy@v0
       with:
-        appId: ${{ secrets.FIREBASE_APP_ID }}
-        token: ${{ secrets.FIREBASE_TOKEN }}
-        groups: testers
-        file: src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
+        repoToken: '${{ secrets.GITHUB_TOKEN }}'
+        firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
+        projectId: your-project-id
+        channelId: live
