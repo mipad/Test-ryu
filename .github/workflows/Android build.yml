@@ -1,4 +1,4 @@
-name: Enhanced Android CI
+name: Android CI with .NET 9.0.101
 
 on:
   push:
@@ -27,11 +27,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write  # 允许创建 Release
     env:
       PROJECT_DIR: src/RyujinxAndroid
       NDK_VERSION: 26.2.11394342
+      DOTNET_VERSION: "9.0.101"  # 定义 .NET 版本变量
 
     steps:
     # ========== 1. 克隆代码 ==========
@@ -61,6 +60,15 @@ jobs:
         distribution: temurin
         java-version: 17
 
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}  # 使用预定义的 .NET 版本
+        include-prerelease: true  # 允许安装预览版（若需要）
+
+    - name: Verify .NET Version
+      run: dotnet --version  # 验证 .NET 安装是否成功
+
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       with:
@@ -68,7 +76,8 @@ jobs:
 
     # ========== 4. 安装构建工具 ==========
     - name: Install CMake
-      run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.31.6"
+      run: |
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.31.6"
 
     # ========== 5. 构建 APK ==========
     - name: Build with Gradle
@@ -79,20 +88,23 @@ jobs:
       run: |
         chmod +x gradlew
         ./gradlew clean assembleRelease --no-daemon --stacktrace
+
     # ========== 6. 上传产物 ==========
     - name: Upload APK
       uses: actions/upload-artifact@v4
       if: ${{ inputs.upload_artifact || github.event_name == 'push' }}
       with:
         name: android-release
-        path: ${{ github.workspace }}/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
+        path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
 
     # ========== 7. 创建 Release ==========
     - name: Create Release
       uses: softprops/action-gh-release@v2
       if: ${{ inputs.should_release }}
+      permissions:
+        contents: write  # 最小化权限
       with:
         tag_name: ${{ inputs.release_tag || github.sha }}
         prerelease: ${{ inputs.is_prerelease }}
         files: |
-          ${{ github.workspace }}/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
+          ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
