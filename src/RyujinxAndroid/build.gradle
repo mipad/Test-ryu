@@ -4,4 +4,5 @@ plugins {
     id 'com.android.library' version '8.3.0' apply false      // 同步升级 Library 插件
     id("org.jetbrains.kotlin.android") version "2.2.0-Beta1" apply false  // 更新 Kotlin 插件
     id("org.jetbrains.compose") version "1.8.0-beta02" apply false  // 同步序列化插件版本
+    id("org.jetbrains.kotlin.plugin.compose") version "2.2.0-Beta1" apply false
 }
