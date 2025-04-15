@@ -3,26 +3,43 @@
     <TargetFramework>net9.0</TargetFramework>
     <RuntimeIdentifiers>linux-bionic-arm64;ios-arm64</RuntimeIdentifiers>
     <Nullable>enable</Nullable>
+    <!-- 显式定义 Sysroot 路径 -->
+    <SysRootPath Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">$(AndroidNdkPath)/toolchains/llvm/prebuilt/linux-x86_64/sysroot</SysRootPath>
     <LinkerFlavor Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">lld</LinkerFlavor>
     <DefineConstants>$(DefineConstants);FORCE_EXTERNAL_BASE_DIR</DefineConstants>
-  </PropertyGroup>
-  <PropertyGroup>
+    <!-- AOT 优化配置 -->
     <PublishAot>true</PublishAot>
     <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
-    <!-- Not sure why, but on iOS this results in an error. Result is still a .dylib. -->
     <NativeLib Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">Shared</NativeLib>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <InvariantGlobalization>true</InvariantGlobalization>
     <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
     <IlcInstructionSet>armv8.2-a</IlcInstructionSet>
+    <!-- Trim 模式配置 -->
+    <TrimMode>link</TrimMode>
+    <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
+    <IlcInvariantGlobalization>true</IlcInvariantGlobalization>
   </PropertyGroup>
+
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
     <Optimize>true</Optimize>
     <OptimizationPreference>Speed</OptimizationPreference>
   </PropertyGroup>
 
-  <!-- iOS Linking Fixes -->
+  <!-- Linux Bionic ARM64 链接参数 -->
+  <ItemGroup Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">
+    <LinkerArg Include="-Wl,--sysroot=$(SysRootPath)" />
+    <LinkerArg Include="-L$(SysRootPath)/usr/lib/aarch64-linux-android/24" />
+    <LinkerArg Include="-llog" />
+    <LinkerArg Include="-ldl" />
+    <LinkerArg Include="-lz" />
+    <LinkerArg Include="-lm" />
+    <LinkerArg Include="-lgcc" />
+    <LinkerArg Include="-lc" />
+  </ItemGroup>
+
+  <!-- iOS 配置（保留原始逻辑） -->
   <Target Condition="'$(RuntimeIdentifier)'=='ios-arm64'" Name="PrepareBeforeIlcCompile" BeforeTargets="IlcCompile">
     <Exec Command="xcrun xcode-select -p" ConsoleToMSBuild="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="XcodeSelect" />
@@ -38,20 +55,20 @@
       <LinkerArg Include="-isysroot %22$(XcodePath)Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk%22" Condition=" !$(RuntimeIdentifier.Contains('simulator')) " />
     </ItemGroup>
   </Target>
+
   <Target Condition="'$(RuntimeIdentifier)'=='ios-arm64'" Name="FixDylib" AfterTargets="Publish">
     <Exec Command="install_name_tool -id @rpath/$(TargetName).dylib $(NativeBinary)" ConsoleToMSBuild="true" />
   </Target>
+
   <Target Condition="'$(RuntimeIdentifier)'=='ios-arm64'" Name="FixSymbols" AfterTargets="Publish">
     <RemoveDir Directories="$(PublishDir)$(TargetName).framework.dSYM" />
-    <!-- create-xcframework (called from the export plugin wants the symbol files in a directory
-    with a slightly different name from the one created by dotnet publish, so we copy them over
-    to the correctly-named directory -->
     <ItemGroup>
       <SymbolFiles Include="$(NativeBinary).dsym\**\*.*" />
     </ItemGroup>
     <Copy SourceFiles="@(SymbolFiles)" DestinationFolder="$(PublishDir)$(TargetName).framework.dSYM" />
   </Target>
-  <!-- End iOS Linking Fixes -->
+
+  <!-- 项目引用 -->
   <ItemGroup>
     <ProjectReference Include="..\Ryujinx.Audio.Backends.OpenAL\Ryujinx.Audio.Backends.OpenAL.csproj" />
     <ProjectReference Include="..\Ryujinx.Audio.Backends.SDL2\Ryujinx.Audio.Backends.SDL2.csproj" />
@@ -64,13 +81,12 @@
     <ProjectReference Include="..\Ryujinx.Graphics.Gpu\Ryujinx.Graphics.Gpu.csproj" />
     <ProjectReference Include="..\Ryujinx.UI.Common\Ryujinx.UI.Common.csproj" />
   </ItemGroup>
+
+  <!-- NuGet 包引用 -->
   <ItemGroup>
-    <RdXmlFile Include="rd.xml" />
-  </ItemGroup>
-  <ItemGroup>
+    <PackageReference Include="MessagePack" />  
     <PackageReference Include="Rxmxnx.PInvoke.Extensions" />
     <PackageReference Include="Silk.NET.Vulkan" />
     <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" />
-    <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-llog" />
   </ItemGroup>
 </Project>
