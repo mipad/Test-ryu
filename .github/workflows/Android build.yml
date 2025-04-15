@@ -27,10 +27,15 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # ========== 全局权限配置 ==========
+    permissions:
+      contents: read    # 默认克隆仓库的读权限
+      actions: write     # 允许上传构件
+      packages: write   # 如需发布包时启用（按需）
     env:
       PROJECT_DIR: src/RyujinxAndroid
       NDK_VERSION: 26.2.11394342
-      DOTNET_VERSION: "9.0.101"  # 定义 .NET 版本变量
+      DOTNET_VERSION: "9.0.101"
 
     steps:
     # ========== 1. 克隆代码 ==========
@@ -63,11 +68,11 @@ jobs:
     - name: Setup .NET SDK
       uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}  # 使用预定义的 .NET 版本
-        include-prerelease: true  # 允许安装预览版（若需要）
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        include-prerelease: true  # 允许安装预览版
 
     - name: Verify .NET Version
-      run: dotnet --version  # 验证 .NET 安装是否成功
+      run: dotnet --version
 
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
@@ -101,8 +106,9 @@ jobs:
     - name: Create Release
       uses: softprops/action-gh-release@v2
       if: ${{ inputs.should_release }}
-      permissions:
-        contents: write  # 最小化权限
+      # 局部覆盖权限（需在全局 permissions 中已定义 contents: read）
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 自动注入的 Token
       with:
         tag_name: ${{ inputs.release_tag || github.sha }}
         prerelease: ${{ inputs.is_prerelease }}
