@@ -6,7 +6,7 @@ on:
       branch:
         description: 'Branch to build'
         type: string
-        default: 'best'  # 关键修复：设置默认分支
+        default: 'best'
   push:
     branches: [ "best" ]
     paths-ignore:
@@ -28,17 +28,19 @@ jobs:
     - name: Clone repository
       run: |
         cd ${{ github.workspace }}
-        # 关键修复：移除 --false，并为 branch 提供默认值
         git clone --branch "${{ github.event.inputs.branch || 'best' }}" \
           https://github.com/mipad/Test-ryu.git
 
+    - name: Verify gradlew existence (调试步骤)
+      run: |
+        ls -la ${{ github.workspace }}/Test-ryu/.src/RyujinxAndroid  # 确认 gradlew 存在
+
     - id: version
       name: Get version
+      working-directory: ${{ github.workspace }}/Test-ryu  # 确保版本获取在仓库目录
       run: |
-        cd ${{ github.workspace }}/Test-ryu
         echo "date=$(date -u '+%Y%m%d')" >> $GITHUB_OUTPUT
         echo "hash=$(git log -1 --pretty=format:%H)" >> $GITHUB_OUTPUT
-        echo "short_hash=$(git describe --always --long)" >> $GITHUB_OUTPUT
         echo "version=$(git describe --tags --always)" >> $GITHUB_OUTPUT
 
     - name: Cache Gradle
@@ -52,12 +54,12 @@ jobs:
           ${{ runner.os }}-gradle-
 
     - name: Build Android
-      working-directory: ${{ github.workspace }}/Test-ryu
+      working-directory: ${{ github.workspace }}/Test-ryu/.src/RyujinxAndroid  # 关键修复：进入 gradlew 所在目录
       run: |
-        chmod +x src/RyujinxAndroid/gradlew  # 直接使用仓库根目录的 gradlew
-        .src/RyujinxAndroid/gradlew clean assembleRelease --no-daemon --stacktrace
-        # 修复 APK 移动路径
-        mv app/build/outputs/apk/release/*.apk ../Test-ryu-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
+        chmod +x gradlew  # 现在 gradlew 在 .src/RyujinxAndroid 下
+        ./gradlew clean assembleRelease --no-daemon --stacktrace
+        # 修复 APK 移动路径（根据实际输出路径调整）
+        mv app/build/outputs/apk/release/*.apk ${{ github.workspace }}/Test-ryu-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
 
     - name: Upload Release
       uses: softprops/action-gh-release@v2
