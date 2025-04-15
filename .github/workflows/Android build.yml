@@ -10,7 +10,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      PROJECT_DIR: src/RyujinxAndroid  # 项目子目录
+      REPO_NAME: Test-ryu  # 显式定义仓库名
+      PROJECT_DIR: src/RyujinxAndroid
 
     steps:
     # ========== 1. 正确克隆仓库 ==========
@@ -19,19 +20,20 @@ jobs:
       with:
         repository: mipad/Test-ryu
         ref: best
-        # 不指定 path 参数，默认克隆到 ${{ github.workspace }}/Test-ryu
+        # 关键！设置 path 为仓库名，确保路径为 ${{ github.workspace }}/Test-ryu
+        path: ${{ env.REPO_NAME }}
 
-    # ========== 2. 调试路径（关键验证） ==========
-    - name: Verify paths
+    # ========== 2. 调试路径 ==========
+    - name: Verify directory structure
       run: |
-        echo "Workspace root: ${{ github.workspace }}"  # 应为 /home/runner/work/Test-ryu/Test-ryu
-        echo "Repo directory: ${{ github.workspace }}/Test-ryu"  # 克隆后的实际路径
-        ls -la ${{ github.workspace }}/Test-ryu  # 验证仓库根目录
-        ls -la ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}  # 验证项目子目录
+        echo "Workspace root: ${{ github.workspace }}"
+        echo "Repo path: ${{ github.workspace }}/${{ env.REPO_NAME }}"
+        ls -la ${{ github.workspace }}/${{ env.REPO_NAME }}  # 验证仓库根目录
+        ls -la ${{ github.workspace }}/${{ env.REPO_NAME }}/${{ env.PROJECT_DIR }}  # 验证子目录
 
     # ========== 3. 构建步骤 ==========
     - name: Build APK
-      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
+      working-directory: ${{ github.workspace }}/${{ env.REPO_NAME }}/${{ env.PROJECT_DIR }}
       run: |
         chmod +x gradlew
         ./gradlew clean assembleRelease --no-daemon --stacktrace
@@ -41,4 +43,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: android-release
-        path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
+        path: ${{ github.workspace }}/${{ env.REPO_NAME }}/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
