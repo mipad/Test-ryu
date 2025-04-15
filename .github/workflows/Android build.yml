@@ -55,7 +55,7 @@ jobs:
       working-directory: ${{ github.workspace }}/Test-ryu
       run: |
         chmod +x gradlew  # 直接使用仓库根目录的 gradlew
-        ./gradlew clean assembleRelease --no-daemon --stacktrace
+        .src/RyujinxAndroid/gradlew clean assembleRelease --no-daemon --stacktrace
         # 修复 APK 移动路径
         mv app/build/outputs/apk/release/*.apk ../Test-ryu-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
 
