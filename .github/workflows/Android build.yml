@@ -33,7 +33,7 @@ jobs:
       PROJECT_DIR: src/RyujinxAndroid
       NDK_VERSION: 25.1.8937393
       ANDROID_CMAKE_VERSION: 3.31.6
-      DOTNET_SDK_VERSION: 9.0.203
+      DOTNET_VERSION: 9.0.203
 
     steps:
     # ========== 1. 克隆代码 ==========
@@ -44,7 +44,37 @@ jobs:
         ref: best
         path: Test-ryu
 
-    # ========== 2. 配置缓存 ==========
+    # ========== 2. 强制清理旧版 .NET ==========
+    - name: Purge existing .NET
+      run: |
+        # 移除所有可能的残留
+        sudo apt remove --purge dotnet-* aspnetcore-* -y || true
+        sudo apt autoremove -y
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/bin/dotnet
+        sudo rm -rf ~/.dotnet
+
+    # ========== 3. 安装 .NET SDK 9.0.203 ==========
+    - name: Install .NET SDK ${{ env.DOTNET_VERSION }}
+      run: |
+        # 使用微软官方脚本安装到隔离目录
+        wget https://dot.net/v1/dotnet-install.sh
+        chmod +x dotnet-install.sh
+        sudo ./dotnet-install.sh --version ${{ env.DOTNET_VERSION }} --install-dir /opt/dotnet --no-path
+        
+        # 配置全局环境变量
+        echo "DOTNET_ROOT=/opt/dotnet" | sudo tee -a /etc/environment
+        echo "PATH=/opt/dotnet:/opt/dotnet/tools:$PATH" | sudo tee -a /etc/environment
+        source /etc/environment
+
+    # ========== 4. 验证 .NET 环境 ==========
+    - name: Verify .NET
+      run: |
+        echo "Dotnet Path: $(which dotnet)"
+        dotnet --list-sdks
+        dotnet --info
+
+    # ========== 5. 配置缓存加速 ==========
     - name: Setup CCache
       uses: hendrikmuhs/ccache-action@v1.2
       with:
@@ -58,14 +88,14 @@ jobs:
           ~/.gradle/wrapper
         key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*') }}
 
-    # ========== 3. 配置基础环境 ==========
+    # ========== 6. 配置基础环境 ==========
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: temurin
         java-version: 17
 
-    # ========== 4. 安装 Android SDK 和工具链 ==========
+    # ========== 7. 配置 Android 工具链 ==========
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       with:
@@ -74,44 +104,34 @@ jobs:
         cmake-version: ${{ env.ANDROID_CMAKE_VERSION }}
 
     - name: Accept Android Licenses
-      run: |
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+      run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
 
-    # ========== 5. 安装 .NET SDK ==========
-    - name: Install .NET SDK ${{ env.DOTNET_SDK_VERSION }}
-      run: |
-        wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb
-        sudo dpkg -i packages-microsoft-prod.deb
-        sudo apt update
-        sudo apt install -y dotnet-sdk-9.0=9.0.203-1
-
-    - name: Verify .NET SDK
-      run: dotnet --list-sdks
-
-    # ========== 6. 配置 CMake 路径 ==========
+    # ========== 8. 配置 CMake 路径 ==========
     - name: Add CMake to PATH
       run: |
-        echo "CMake 路径: $ANDROID_HOME/cmake/${{ env.ANDROID_CMAKE_VERSION }}/bin"
         echo "$ANDROID_HOME/cmake/${{ env.ANDROID_CMAKE_VERSION }}/bin" >> $GITHUB_PATH
 
     - name: Verify CMake
       run: cmake --version
 
-    # ========== 7. 构建 APK ==========
+    # ========== 9. 强制更新 Gradle ==========
+    - name: Force Gradle 8.4
+      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
+      run: |
+        sed -i 's/gradle-8.11.1-bin.zip/gradle-8.4-bin.zip/' gradle/wrapper/gradle-wrapper.properties
+        ./gradlew wrapper --gradle-version 8.4
+
+    # ========== 10. 构建 APK ==========
     - name: Build with Gradle
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       env:
         CMAKE_C_COMPILER_LAUNCHER: "ccache"
         CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
       run: |
-        # 强制更新 Gradle Wrapper 到 8.4
-        sed -i 's/gradle-8.11.1-bin.zip/gradle-8.4-bin.zip/' gradle/wrapper/gradle-wrapper.properties
-        ./gradlew wrapper --gradle-version 8.4
-        
         chmod +x gradlew
         ./gradlew clean assembleRelease --no-daemon --stacktrace
 
-    # ========== 8. 上传产物 ==========
+    # ========== 11. 上传产物 ==========
     - name: Upload APK
       uses: actions/upload-artifact@v4
       if: ${{ inputs.upload_artifact || github.event_name == 'push' }}
@@ -119,7 +139,7 @@ jobs:
         name: android-release
         path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
 
-    # ========== 9. 创建 Release ==========
+    # ========== 12. 创建 Release ==========
     - name: Create Release
       uses: softprops/action-gh-release@v2
       if: ${{ inputs.should_release }}
