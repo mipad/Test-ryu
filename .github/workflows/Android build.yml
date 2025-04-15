@@ -1,3 +1,4 @@
+
 name: Enhanced Android CI
 
 on:
@@ -26,14 +27,12 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04  # 显式指定新版本系统
+    runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write  # 允许创建 Release
     env:
       PROJECT_DIR: src/RyujinxAndroid
       NDK_VERSION: 25.1.8937393
-      ANDROID_CMAKE_VERSION: 3.31.6
-      DOTNET_VERSION: 9.0.203
 
     steps:
     # ========== 1. 克隆代码 ==========
@@ -43,69 +42,10 @@ jobs:
         repository: mipad/Test-ryu
         ref: best
         path: Test-ryu
-        fetch-depth: 0  # 获取完整提交历史
 
-    # ========== 2. 深度清理 .NET 环境 ==========
-    - name: Nuclear cleanup .NET
-      run: |
-        # 删除所有关联包
-        sudo apt remove --purge 'dotnet-*' 'aspnetcore-*' 'netstandard-*' -y || true
-        
-        # 删除所有残留文件和配置
-        sudo rm -rf /usr/share/dotnet
-        sudo rm -rf /usr/local/bin/dotnet
-        sudo rm -rf ~/.dotnet
-        sudo rm -rf /etc/apt/sources.list.d/microsoft-prod.list
-        
-        # 清理系统缓存
-        sudo apt autoremove -y
-        sudo apt clean
-
-    # ========== 3. 安装基础依赖 ==========
-    - name: Install prerequisites
-      run: |
-        sudo apt update
-        sudo apt install -y \
-          libssl3 \
-          libicu70 \
-          zlib1g \
-          libgssapi-krb5-2
-
-    # ========== 4. 安装 .NET SDK ==========
-    - name: Install .NET SDK ${{ env.DOTNET_VERSION }}
-      run: |
-        # 创建安装目录并设置权限
-        sudo mkdir -p /opt/dotnet
-        sudo chown -R $USER:$USER /opt/dotnet
-        
-        # 使用官方脚本安装
-        wget https://dot.net/v1/dotnet-install.sh
-        chmod +x dotnet-install.sh
-        ./dotnet-install.sh \
-          --version ${{ env.DOTNET_VERSION }} \
-          --install-dir /opt/dotnet \
-          --no-path  # 禁止自动修改PATH
-        
-        # 永久环境变量配置
-        echo "DOTNET_ROOT=/opt/dotnet" | sudo tee -a /etc/environment
-        echo "PATH=/opt/dotnet:/opt/dotnet/tools:$PATH" | sudo tee -a /etc/environment
-        
-        # 立即生效配置
-        source /etc/environment
-
-    # ========== 5. 验证 .NET 环境 ==========
-    - name: Validate .NET
-      run: |
-        echo "Dotnet Path: $(which dotnet)"
-        dotnet --list-sdks
-        dotnet --info || (echo "::error::.NET 环境异常"; exit 1)
-
-    # ========== 6. 配置缓存 ==========
+    # ========== 2. 配置缓存 ==========
     - name: Setup CCache
       uses: hendrikmuhs/ccache-action@v1.2
-      with:
-        key: ccache-${{ runner.os }}-${{ github.sha }}
-        max-size: 500M
 
     - name: Cache Gradle
       uses: actions/cache@v4
@@ -113,82 +53,47 @@ jobs:
         path: |
           ~/.gradle/caches
           ~/.gradle/wrapper
-        key: gradle-${{ runner.os }}-${{ hashFiles('**/gradle-wrapper.properties') }}
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
 
-    # ========== 7. 配置 Java 环境 ==========
-    - name: Setup Java 17
+    # ========== 3. 配置环境 ==========
+    - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: temurin
         java-version: 17
-        check-latest: true
 
-    # ========== 8. 配置 Android 环境 ==========
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       with:
-        cmdline-tools-version: "latest"
         ndk-version: ${{ env.NDK_VERSION }}
-        cmake-version: ${{ env.ANDROID_CMAKE_VERSION }}
 
-    - name: Accept licenses
-      run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+    # ========== 4. 安装构建工具 ==========
+    - name: Install CMake
+      run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.31.6"
 
-    # ========== 9. 环境最终验证 ==========
-    - name: Final environment check
-      run: |
-        echo "===== PATH ====="
-        echo $PATH
-        echo "===== .NET ====="
-        dotnet --info
-        echo "===== Java ====="
-        java -version
-        echo "===== CMake ====="
-        cmake --version
-
-    # ========== 10. 强制更新 Gradle ==========
-    - name: Enforce Gradle 8.4
-      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
-      run: |
-        sed -i 's/gradle-8.11.1-bin.zip/gradle-8.4-bin.zip/' gradle/wrapper/gradle-wrapper.properties
-        ./gradlew wrapper --gradle-version 8.4 --distribution-type bin
-
-    # ========== 11. 构建 APK ==========
+    # ========== 5. 构建 APK ==========
     - name: Build with Gradle
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       env:
-        CCACHE_DIR: /home/runner/.ccache
         CMAKE_C_COMPILER_LAUNCHER: "ccache"
         CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
       run: |
         chmod +x gradlew
-        ./gradlew clean assembleRelease \
-          --no-daemon \
-          --stacktrace \
-          --info \
-          -Dorg.gradle.java.home=$JAVA_HOME
-
-    # ========== 12. 上传产物 ==========
+        ./gradlew clean assembleRelease --no-daemon --stacktrace
+    # ========== 6. 上传产物 ==========
     - name: Upload APK
       uses: actions/upload-artifact@v4
       if: ${{ inputs.upload_artifact || github.event_name == 'push' }}
       with:
-        name: android-release-${{ github.sha }}
-        path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
-        retention-days: 7
+        name: android-release
+        path: ${{ github.workspace }}/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
 
-    # ========== 13. 创建 Release ==========
-    - name: Publish Release
+    # ========== 7. 创建 Release ==========
+    - name: Create Release
       uses: softprops/action-gh-release@v2
       if: ${{ inputs.should_release }}
       with:
-        tag_name: ${{ inputs.release_tag || format('v{0}', github.sha) }}
+        tag_name: ${{ inputs.release_tag || github.sha }}
         prerelease: ${{ inputs.is_prerelease }}
         files: |
-          ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
-        body: |
-          ### Build Information
-          - Commit: ${{ github.sha }}
-          - Date: ${{ github.event.head_commit.timestamp }}
-          - Android NDK: ${{ env.NDK_VERSION }}
-          - .NET SDK: ${{ env.DOTNET_VERSION }}
+          ${{ github.workspace }}/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
