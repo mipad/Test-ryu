@@ -6,6 +6,9 @@ project("ryujinxjni")
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
+# 显式设置库输出路径
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/../../../../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
+
 FetchContent_Declare(
     adrenotools
     GIT_REPOSITORY https://github.com/bylaws/libadrenotools.git
@@ -22,8 +25,8 @@ add_library(
 
 find_library(log-lib log)
 
-# 修改：使用绝对路径确保JNI_PATH正确
-set(JNI_PATH ${CMAKE_SOURCE_DIR}/../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
+# 修正 JNI 路径
+set(JNI_PATH ${CMAKE_SOURCE_DIR}/../../../../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
 cmake_path(ABSOLUTE_PATH JNI_PATH NORMALIZE)
 
 cmake_path(APPEND JNI_PATH libcrypto.so OUTPUT_VARIABLE LIBCRYPTO_JNI_PATH)
@@ -40,4 +43,6 @@ target_link_libraries(
     -lvulkan
     -landroid
     adrenotools
+    -lcrypto  # 显式链接 OpenSSL 库
+    -lssl
 )
