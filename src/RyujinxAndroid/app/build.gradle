@@ -1,7 +1,7 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
-    // 已移除 Compose Multiplatform 插件（org.jetbrains.compose）
+    id 'org.jetbrains.compose'
 }
 
 android {
