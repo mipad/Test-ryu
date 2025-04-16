@@ -80,7 +80,7 @@ tasks.named("preBuild") {
 dependencies {
     // Kotlin 和 Android 核心依赖
     implementation 'androidx.core:core-ktx:1.13.1'
-    implementation platform('org.jetbrains.kotlin:kotlin-bom:1.9.22') // Kotlin BOM
+    implementation platform('org.jetbrains.kotlin:kotlin-bom:2.0.0') // Kotlin BOM
 
     // Jetpack Compose 依赖（Android 官方）
     implementation platform('androidx.compose:compose-bom:2025.02.00')
