@@ -78,6 +78,15 @@ jobs:
     - name: Install CMake
       run: |
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1"
+        # 将 CMake 3.22.1 的路径添加到环境变量
+        echo "PATH=$ANDROID_HOME/cmake/3.22.1/bin:$PATH" >> $GITHUB_ENV
+
+    - name: Clean Gradle and .NET artifacts
+      run: |
+        # 清理 Gradle 和 .NET 构建残留
+        ./gradlew clean
+        dotnet clean
+        rm -rf ~/.gradle/caches
 
     - name: Build with Gradle
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
@@ -86,9 +95,14 @@ jobs:
         CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
       run: |
         chmod +x gradlew
-        # 显式移除 _JAVA_OPTIONS 环境变量
         unset _JAVA_OPTIONS
-        ./gradlew clean assembleRelease --no-daemon --stacktrace
+        # 强制重新构建原生库
+        ./gradlew clean :libryujinx:compileLibRyujinx assembleRelease --no-daemon --stacktrace
+
+    - name: Verify APK Contents
+      run: |
+        # 检查 APK 是否包含 .so 文件
+        unzip -l ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk | grep 'lib/arm64-v8a'
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
