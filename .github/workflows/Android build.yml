@@ -2,9 +2,9 @@ name: Android CI with .NET 9.0.203
 
 on:
   push:
-    branches: [ "best" ]
+    branches: [ "arm" ]
   pull_request:
-    branches: [ "best" ]
+    branches: [ "arm" ]
   workflow_dispatch:
     inputs:
       should_release:
