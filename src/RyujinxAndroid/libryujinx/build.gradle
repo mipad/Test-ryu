@@ -4,9 +4,8 @@ plugins {
     id 'base'
 }
 
-// Configurable properties
 def toolchainPath = providers.gradleProperty("org.ryujinx.llvm.toolchain.path").getOrNull()
-def dotnetExecutable = providers.gradleProperty("org.ryujinx.dotnet.bin").getOrElse("/usr/share/dotnet/dotnet") // 显式指定 .NET 路径
+def dotnetExecutable = providers.gradleProperty("org.ryujinx.dotnet.bin").getOrElse("/usr/share/dotnet/dotnet")
 def configuration = providers.gradleProperty("org.ryujinx.config").getOrElse("debug").toLowerCase()
 def publishDirectory = providers.gradleProperty("org.ryujinx.publish.path").getOrNull()
 def stripSymbols = providers.gradleProperty("org.ryujinx.symbols.strip").getOrElse("")
@@ -28,13 +27,9 @@ switch (stripSymbols) {
 def additionalArgs = project.hasProperty("org.ryujinx.args") ? project.property("org.ryujinx.args") : ""
 configuration = configuration.substring(0, 1).toUpperCase() + configuration.substring(1)
 
-if (publishDirectory != null) {
-    publishDirectory = "${rootProject.projectDir}/${publishDirectory}"
-} else {
-    publishDirectory = libsDirectory.get().toString()
-}
+// 修改：直接输出到主模块的 jniLibs 目录
+publishDirectory = "${rootProject.projectDir}/app/src/main/jniLibs"
 
-// Trees
 ext.outputTree = fileTree("${buildDir}/publish") {
     include "*/${configuration.toLowerCase()}_*/*"
     builtBy 'compileLibRyujinx'
@@ -45,7 +40,6 @@ ext.publishTree = fileTree(publishDirectory) {
     builtBy 'compileLibRyujinx'
 }
 
-// Tasks
 tasks.register('compileLibRyujinx', Exec) {
     def projectName = "LibRyujinx"
     workingDir "../../${projectName}"
@@ -63,7 +57,7 @@ tasks.register('compileLibRyujinx', Exec) {
             .withPathSensitivity(PathSensitivity.RELATIVE)
             .ignoreEmptyDirectories()
 
-    outputs.file("${publishDirectory}/${projectName.toLowerCase()}.so")
+    outputs.file("${publishDirectory}/arm64-v8a/libryujinx.so")
 
     OperatingSystem os = DefaultNativePlatform.currentOperatingSystem
     if (toolchainPath != null) {
@@ -76,11 +70,7 @@ tasks.register('compileLibRyujinx', Exec) {
 
     doFirst {
         println "Building ${projectName} in ${configuration} mode."
-        println "Configuration:"
-        println "\tusing: ${dotnetExecutable}"
-        println "\tStripSymbols: ${stripSymbols}"
-        println "\tadditional args: ${additionalArgs.split(" ")}"
-        println "\tcustom LLVM toolchain path: ${toolchainPath}"
+        println "Output Directory: ${publishDirectory}"
     }
 
     executable dotnetExecutable
@@ -96,24 +86,21 @@ tasks.register('compileLibRyujinx', Exec) {
 
     doLast {
         project.sync {
-            from project.ext.outputTree.getFiles()
-            include '*.so'
+            from "${buildDir}/publish"
+            include '**/*.so'
             into publishDirectory
-            rename { originalName -> originalName.toLowerCase() }
-            duplicatesStrategy 'fail'
-            preserve {
-                include '.gitkeep'
-                include '*.so'
-                exclude {
-                    project.ext.publishTree
-                }
+            eachFile { file ->
+                file.path = "arm64-v8a/${file.name}"
             }
+            includeEmptyDirs = false
         }
     }
 }
 
 tasks.register("cleanLibRyujinx", Delete) {
-    delete project.ext.publishTree.getFiles()
+    delete fileTree(publishDirectory) {
+        include '**/*.so'
+    }
 }
 
 assemble.dependsOn("compileLibRyujinx")
