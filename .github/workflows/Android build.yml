@@ -32,18 +32,20 @@ jobs:
       actions: write
       packages: write
     env:
-      PROJECT_DIR: src/RyujinxAndroid
+      PROJECT_DIR: src/RyujinxAndroid  # 项目核心路径
       NDK_VERSION: 26.2.11394342
       DOTNET_VERSION: "9.0.203"
 
     steps:
+    # -------------------------- 代码检出 --------------------------
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
         ref: best
-        path: Test-ryu
+        path: Test-ryu  # 代码检出到 Test-ryu 子目录
 
+    # -------------------------- 初始化构建工具 --------------------------
     - name: Setup CCache
       uses: hendrikmuhs/ccache-action@v1.2
 
@@ -70,6 +72,7 @@ jobs:
     - name: Verify .NET Version
       run: dotnet --version
 
+    # -------------------------- 配置 Android 环境 --------------------------
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       with:
@@ -77,17 +80,20 @@ jobs:
 
     - name: Install CMake
       run: |
+        # 安装 CMake 3.22.1 并设置路径
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1"
-        # 将 CMake 3.22.1 的路径添加到环境变量
         echo "PATH=$ANDROID_HOME/cmake/3.22.1/bin:$PATH" >> $GITHUB_ENV
 
+    # -------------------------- 清理步骤 --------------------------
     - name: Clean Gradle and .NET artifacts
+      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}  # 关键修复：设置工作目录
       run: |
         # 清理 Gradle 和 .NET 构建残留
         ./gradlew clean
         dotnet clean
         rm -rf ~/.gradle/caches
 
+    # -------------------------- 构建阶段 --------------------------
     - name: Build with Gradle
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       env:
@@ -99,10 +105,12 @@ jobs:
         # 强制重新构建原生库
         ./gradlew clean :libryujinx:compileLibRyujinx assembleRelease --no-daemon --stacktrace
 
+    # -------------------------- 验证与发布 --------------------------
     - name: Verify APK Contents
+      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       run: |
         # 检查 APK 是否包含 .so 文件
-        unzip -l ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk | grep 'lib/arm64-v8a'
+        unzip -l app/build/outputs/apk/release/*.apk | grep 'lib/arm64-v8a'
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
