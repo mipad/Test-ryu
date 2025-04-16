@@ -54,7 +54,7 @@ android {
     }
     composeOptions {
         // 使用 Android Compose 的编译器扩展版本
-        kotlinCompilerExtensionVersion '1.6.0' // 对应 compose-bom:2024.04.00
+        kotlinCompilerExtensionVersion '1.5.3' // 对应 compose-bom:2024.04.00
     }
     packagingOptions {
         jniLibs {
