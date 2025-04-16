@@ -27,7 +27,7 @@ switch (stripSymbols) {
 def additionalArgs = project.hasProperty("org.ryujinx.args") ? project.property("org.ryujinx.args") : ""
 configuration = configuration.substring(0, 1).toUpperCase() + configuration.substring(1)
 
-// 修改：直接输出到主模块的 jniLibs 目录
+// 目标目录：app/src/main/jniLibs/arm64-v8a
 publishDirectory = "${rootProject.projectDir}/app/src/main/jniLibs/arm64-v8a"
 
 ext.outputTree = fileTree("${buildDir}/publish") {
@@ -53,11 +53,12 @@ tasks.register('compileLibRyujinx', Exec) {
     }
 
     inputs.files(solutionFiles)
-            .withPropertyName('sourceFiles')
-            .withPathSensitivity(PathSensitivity.RELATIVE)
-            .ignoreEmptyDirectories()
+            。withPropertyName('sourceFiles')
+            。withPathSensitivity(PathSensitivity.RELATIVE)
+            。ignoreEmptyDirectories()
 
-    outputs.file("${publishDirectory}/arm64-v8a/libryujinx.so")
+    // 修正输出路径
+    outputs.file("${publishDirectory}/libryujinx.so")
 
     OperatingSystem os = DefaultNativePlatform.currentOperatingSystem
     if (toolchainPath != null) {
@@ -89,10 +90,15 @@ tasks.register('compileLibRyujinx', Exec) {
             from "${buildDir}/publish"
             include '**/*.so'
             into publishDirectory
+            // 移除冗余路径
             eachFile { file ->
-                file.path = "arm64-v8a/${file.name}"
+                文件。path = file.name
             }
             includeEmptyDirs = false
+        }
+        // 可选：重命名文件
+        fileTree(publishDirectory).include('**/*.so').each { file ->
+            文件。renameTo(new File(file.parent, "libryujinx.so"))
         }
     }
 }
