@@ -28,7 +28,7 @@ def additionalArgs = project.hasProperty("org.ryujinx.args") ? project.property(
 configuration = configuration.substring(0, 1).toUpperCase() + configuration.substring(1)
 
 // 修改：直接输出到主模块的 jniLibs 目录
-publishDirectory = "${rootProject.projectDir}/app/src/main/jniLibs"
+publishDirectory = "${rootProject.projectDir}/app/src/main/jniLibs/arm64-v8a"
 
 ext.outputTree = fileTree("${buildDir}/publish") {
     include "*/${configuration.toLowerCase()}_*/*"
