@@ -8,6 +8,7 @@ using Ryujinx.Graphics.Vulkan.Queries;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.EXT;
 using Silk.NET.Vulkan.Extensions.KHR;
+using Silk.NET.Vulkan.Extensions.ARM;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -15,10 +16,14 @@ using Format = Ryujinx.Graphics.GAL.Format;
 using PrimitiveTopology = Ryujinx.Graphics.GAL.PrimitiveTopology;
 using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
 
+
+
 namespace Ryujinx.Graphics.Vulkan
 {
     public sealed class VulkanRenderer : IRenderer
     {
+        private ArmRasterizationOrderAttachmentAccess _armRasterizationOrderAttachmentAccess;
+        private MaliTextureMirrorSampler _maliTextureMirrorSampler;
         private VulkanInstance _instance;
         private SurfaceKHR _surface;
         private VulkanPhysicalDevice _physicalDevice;
@@ -100,6 +105,8 @@ namespace Ryujinx.Graphics.Vulkan
         public string GpuRenderer { get; private set; }
         public string GpuVersion { get; private set; }
 
+        public bool SupportsRasterizationOrderAttachmentAccess { get; internal set; }
+    
         public bool PreferThreading => true;
 
         public event EventHandler<ScreenCaptureImageInfo> ScreenCaptured;
@@ -127,6 +134,13 @@ namespace Ryujinx.Graphics.Vulkan
         {
             FormatCapabilities = new FormatCapabilities(Api, _physicalDevice.PhysicalDevice);
 
+if (Api.TryGetDeviceExtension<ArmRasterizationOrderAttachmentAccess>(_instance.Instance, _device, out var armExtension))
+    {
+        Capabilities.SupportsRasterizationOrderAttachmentAccess = true;
+        // 可选：保存扩展方法实例供后续使用
+        _armRasterizationOrderAttachmentAccess = armExtension;
+    }
+    
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtConditionalRendering conditionalRenderingApi))
             {
                 ConditionalRenderingApi = conditionalRenderingApi;
@@ -487,6 +501,56 @@ namespace Ryujinx.Graphics.Vulkan
 
             _device = VulkanInitialization.CreateDevice(Api, _physicalDevice, queueFamilyIndex, maxQueueCount);
 
+// ---------- 修改开始 ----------
+// 1. 获取物理设备支持的扩展列表
+// 1. 获取物理设备支持的扩展列表
+uint extensionCount = 0;
+Api.EnumerateDeviceExtensionProperties(_physicalDevice.PhysicalDevice, (byte*)null, ref extensionCount, null);
+var extensions = new ExtensionProperties[extensionCount];
+fixed (ExtensionProperties* pExtensions = extensions)
+{
+    Api.EnumerateDeviceExtensionProperties(_physicalDevice.PhysicalDevice, (byte*)null, ref extensionCount, pExtensions);
+}
+var supportedExtensions = extensions.Select(e => Marshal.PtrToStringAnsi((IntPtr)e.ExtensionName)).ToList();
+
+// 2. 合并原有启用的扩展与新扩展
+var enabledExtensions = _physicalDevice.GetEnabledExtensions().ToList(); // 保留原有扩展
+enabledExtensions.Add(KhrSwapchain.ExtensionName); // 确保交换链扩展存在
+
+// 3. 按需添加ARM和Mali扩展
+if (supportedExtensions.Contains("VK_ARM_rasterization_order_attachment_access"))
+{
+    enabledExtensions.Add("VK_ARM_rasterization_order_attachment_access");
+}
+
+// 4. 配置队列信息
+float queuePriority = 1.0f;
+var queueCreateInfo = new DeviceQueueCreateInfo
+{
+    SType = StructureType.DeviceQueueCreateInfo,
+    QueueFamilyIndex = queueFamilyIndex,
+    QueueCount = 1,
+    PQueuePriorities = &queuePriority
+};
+
+// 5. 配置设备创建信息
+var deviceCreateInfo = new DeviceCreateInfo
+{
+    SType = StructureType.DeviceCreateInfo,
+    QueueCreateInfoCount = 1,
+    PQueueCreateInfos = &queueCreateInfo,
+    EnabledExtensionCount = (uint)enabledExtensions.Count,
+    PpEnabledExtensionNames = (byte**)SilkMarshal.StringArrayToPtr(enabledExtensions),
+    PEnabledFeatures = &_physicalDevice.PhysicalDeviceFeatures
+};
+
+// 6. 直接调用Vulkan API创建设备
+Api.CreateDevice(_physicalDevice.PhysicalDevice, in deviceCreateInfo, null, out _device);
+
+// 释放非托管内存
+SilkMarshal.Free((nint)deviceCreateInfo.PpEnabledExtensionNames);
+// ---------- 修改结束 ----------
+
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrSwapchain swapchainApi))
             {
                 SwapchainApi = swapchainApi;
@@ -631,433 +695,4 @@ namespace Ryujinx.Graphics.Vulkan
                 Format.Bc2Srgb,
                 Format.Bc2Unorm,
                 Format.Bc3Srgb,
-                Format.Bc3Unorm);
-
-            bool supportsBc45CompressionFormat = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags,
-                Format.Bc4Snorm,
-                Format.Bc4Unorm,
-                Format.Bc5Snorm,
-                Format.Bc5Unorm);
-
-            bool supportsBc67CompressionFormat = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags,
-                Format.Bc6HSfloat,
-                Format.Bc6HUfloat,
-                Format.Bc7Srgb,
-                Format.Bc7Unorm);
-
-            bool supportsEtc2CompressionFormat = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags,
-                Format.Etc2RgbaSrgb,
-                Format.Etc2RgbaUnorm,
-                Format.Etc2RgbPtaSrgb,
-                Format.Etc2RgbPtaUnorm,
-                Format.Etc2RgbSrgb,
-                Format.Etc2RgbUnorm);
-
-            bool supports5BitComponentFormat = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags,
-                Format.R5G6B5Unorm,
-                Format.R5G5B5A1Unorm,
-                Format.R5G5B5X1Unorm,
-                Format.B5G6R5Unorm,
-                Format.B5G5R5A1Unorm,
-                Format.A1B5G5R5Unorm);
-
-            bool supportsR4G4B4A4Format = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags,
-                Format.R4G4B4A4Unorm);
-
-            bool supportsAstcFormats = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags,
-                Format.Astc4x4Unorm,
-                Format.Astc5x4Unorm,
-                Format.Astc5x5Unorm,
-                Format.Astc6x5Unorm,
-                Format.Astc6x6Unorm,
-                Format.Astc8x5Unorm,
-                Format.Astc8x6Unorm,
-                Format.Astc8x8Unorm,
-                Format.Astc10x5Unorm,
-                Format.Astc10x6Unorm,
-                Format.Astc10x8Unorm,
-                Format.Astc10x10Unorm,
-                Format.Astc12x10Unorm,
-                Format.Astc12x12Unorm,
-                Format.Astc4x4Srgb,
-                Format.Astc5x4Srgb,
-                Format.Astc5x5Srgb,
-                Format.Astc6x5Srgb,
-                Format.Astc6x6Srgb,
-                Format.Astc8x5Srgb,
-                Format.Astc8x6Srgb,
-                Format.Astc8x8Srgb,
-                Format.Astc10x5Srgb,
-                Format.Astc10x6Srgb,
-                Format.Astc10x8Srgb,
-                Format.Astc10x10Srgb,
-                Format.Astc12x10Srgb,
-                Format.Astc12x12Srgb);
-
-            PhysicalDeviceVulkan12Features featuresVk12 = new()
-            {
-                SType = StructureType.PhysicalDeviceVulkan12Features,
-            };
-
-            PhysicalDeviceFeatures2 features2 = new()
-            {
-                SType = StructureType.PhysicalDeviceFeatures2,
-                PNext = &featuresVk12,
-            };
-
-            Api.GetPhysicalDeviceFeatures2(_physicalDevice.PhysicalDevice, &features2);
-
-            var limits = _physicalDevice.PhysicalDeviceProperties.Limits;
-            var mainQueueProperties = _physicalDevice.QueueFamilyProperties[QueueFamilyIndex];
-
-            SystemMemoryType memoryType;
-
-            if (IsSharedMemory)
-            {
-                memoryType = SystemMemoryType.UnifiedMemory;
-            }
-            else
-            {
-                memoryType = Vendor == Vendor.Nvidia ?
-                    SystemMemoryType.DedicatedMemorySlowStorage :
-                    SystemMemoryType.DedicatedMemory;
-            }
-
-            return new Capabilities(
-                api: TargetApi.Vulkan,
-                GpuVendor,
-                memoryType: memoryType,
-                hasFrontFacingBug: IsIntelWindows,
-                hasVectorIndexingBug: IsQualcommProprietary,
-                needsFragmentOutputSpecialization: IsMoltenVk,
-                reduceShaderPrecision: IsMoltenVk,
-                supportsAstcCompression: features2.Features.TextureCompressionAstcLdr && supportsAstcFormats,
-                supportsBc123Compression: supportsBc123CompressionFormat,
-                supportsBc45Compression: supportsBc45CompressionFormat,
-                supportsBc67Compression: supportsBc67CompressionFormat,
-                supportsEtc2Compression: supportsEtc2CompressionFormat,
-                supports3DTextureCompression: true,
-                supportsBgraFormat: true,
-                supportsR4G4Format: false,
-                supportsR4G4B4A4Format: supportsR4G4B4A4Format,
-                supportsScaledVertexFormats: FormatCapabilities.SupportsScaledVertexFormats(),
-                supportsSnormBufferTextureFormat: true,
-                supports5BitComponentFormat: supports5BitComponentFormat,
-                supportsSparseBuffer: features2.Features.SparseBinding && mainQueueProperties.QueueFlags.HasFlag(QueueFlags.SparseBindingBit),
-                supportsBlendEquationAdvanced: Capabilities.SupportsBlendEquationAdvanced,
-                supportsFragmentShaderInterlock: Capabilities.SupportsFragmentShaderInterlock,
-                supportsFragmentShaderOrderingIntel: false,
-                supportsGeometryShader: Capabilities.SupportsGeometryShader,
-                supportsGeometryShaderPassthrough: Capabilities.SupportsGeometryShaderPassthrough,
-                supportsTransformFeedback: Capabilities.SupportsTransformFeedback,
-                supportsImageLoadFormatted: features2.Features.ShaderStorageImageReadWithoutFormat,
-                supportsLayerVertexTessellation: featuresVk12.ShaderOutputLayer,
-                supportsMismatchingViewFormat: true,
-                supportsCubemapView: !IsAmdGcn,
-                supportsNonConstantTextureOffset: false,
-                supportsQuads: false,
-                supportsSeparateSampler: true,
-                supportsShaderBallot: false,
-                supportsShaderBallotDivergence: Vendor != Vendor.Qualcomm,
-                supportsShaderBarrierDivergence: Vendor != Vendor.Intel,
-                supportsShaderFloat64: Capabilities.SupportsShaderFloat64,
-                supportsTextureGatherOffsets: features2.Features.ShaderImageGatherExtended && !IsMoltenVk,
-                supportsTextureShadowLod: false,
-                supportsVertexStoreAndAtomics: features2.Features.VertexPipelineStoresAndAtomics,
-                supportsViewportIndexVertexTessellation: featuresVk12.ShaderOutputViewportIndex,
-                supportsViewportMask: Capabilities.SupportsViewportArray2,
-                supportsViewportSwizzle: false,
-                supportsIndirectParameters: true,
-                supportsDepthClipControl: Capabilities.SupportsDepthClipControl,
-                uniformBufferSetIndex: PipelineBase.UniformSetIndex,
-                storageBufferSetIndex: PipelineBase.StorageSetIndex,
-                textureSetIndex: PipelineBase.TextureSetIndex,
-                imageSetIndex: PipelineBase.ImageSetIndex,
-                extraSetBaseIndex: PipelineBase.DescriptorSetLayouts,
-                maximumExtraSets: Math.Max(0, (int)limits.MaxBoundDescriptorSets - PipelineBase.DescriptorSetLayouts),
-                maximumUniformBuffersPerStage: Constants.MaxUniformBuffersPerStage,
-                maximumStorageBuffersPerStage: Constants.MaxStorageBuffersPerStage,
-                maximumTexturesPerStage: Constants.MaxTexturesPerStage,
-                maximumImagesPerStage: Constants.MaxImagesPerStage,
-                maximumComputeSharedMemorySize: (int)limits.MaxComputeSharedMemorySize,
-                maximumSupportedAnisotropy: (int)limits.MaxSamplerAnisotropy,
-                shaderSubgroupSize: (int)Capabilities.SubgroupSize,
-                storageBufferOffsetAlignment: (int)limits.MinStorageBufferOffsetAlignment,
-                textureBufferOffsetAlignment: (int)limits.MinTexelBufferOffsetAlignment,
-                gatherBiasPrecision: IsIntelWindows || IsAmdWindows ? (int)Capabilities.SubTexelPrecisionBits : 0,
-                maximumGpuMemory: GetTotalGPUMemory());
-        }
-
-        private ulong GetTotalGPUMemory()
-        {
-            ulong totalMemory = 0;
-
-            Api.GetPhysicalDeviceMemoryProperties(_physicalDevice.PhysicalDevice, out PhysicalDeviceMemoryProperties memoryProperties);
-
-            for (int i = 0; i < memoryProperties.MemoryHeapCount; i++)
-            {
-                var heap = memoryProperties.MemoryHeaps[i];
-                if ((heap.Flags & MemoryHeapFlags.DeviceLocalBit) == MemoryHeapFlags.DeviceLocalBit)
-                {
-                    totalMemory += heap.Size;
-                }
-            }
-
-            return totalMemory;
-        }
-
-        public HardwareInfo GetHardwareInfo()
-        {
-            return new HardwareInfo(GpuVendor, GpuRenderer, GpuDriver);
-        }
-
-        /// <summary>
-        /// Gets the available Vulkan devices using the default Vulkan API
-        /// object returned by <see cref="Vk.GetApi()"/>
-        /// </summary>
-        /// <returns></returns>
-        public static DeviceInfo[] GetPhysicalDevices()
-        {
-            try
-            {
-                return VulkanInitialization.GetSuitablePhysicalDevices(Vk.GetApi());
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.PrintMsg(LogClass.Gpu, $"Error querying Vulkan devices: {ex.Message}");
-
-                return Array.Empty<DeviceInfo>();
-            }
-        }
-
-        public static DeviceInfo[] GetPhysicalDevices(Vk api)
-        {
-            try
-            {
-                return VulkanInitialization.GetSuitablePhysicalDevices(api);
-            }
-            catch (Exception)
-            {
-                // If we got an exception here, Vulkan is most likely not supported.
-                return Array.Empty<DeviceInfo>();
-            }
-        }
-
-        private static string ParseStandardVulkanVersion(uint version)
-        {
-            return $"{version >> 22}.{(version >> 12) & 0x3FF}.{version & 0xFFF}";
-        }
-
-        private static string ParseDriverVersion(ref PhysicalDeviceProperties properties)
-        {
-            uint driverVersionRaw = properties.DriverVersion;
-
-            // NVIDIA differ from the standard here and uses a different format.
-            if (properties.VendorID == 0x10DE)
-            {
-                return $"{(driverVersionRaw >> 22) & 0x3FF}.{(driverVersionRaw >> 14) & 0xFF}.{(driverVersionRaw >> 6) & 0xFF}.{driverVersionRaw & 0x3F}";
-            }
-
-            return ParseStandardVulkanVersion(driverVersionRaw);
-        }
-
-        internal PrimitiveTopology TopologyRemap(PrimitiveTopology topology)
-        {
-            return topology switch
-            {
-                PrimitiveTopology.Quads => PrimitiveTopology.Triangles,
-                PrimitiveTopology.QuadStrip => PrimitiveTopology.TriangleStrip,
-                PrimitiveTopology.TriangleFan or PrimitiveTopology.Polygon => Capabilities.PortabilitySubset.HasFlag(PortabilitySubsetFlags.NoTriangleFans)
-                    ? PrimitiveTopology.Triangles
-                    : topology,
-                _ => topology,
-            };
-        }
-
-        internal bool TopologyUnsupported(PrimitiveTopology topology)
-        {
-            return topology switch
-            {
-                PrimitiveTopology.Quads => true,
-                PrimitiveTopology.TriangleFan or PrimitiveTopology.Polygon => Capabilities.PortabilitySubset.HasFlag(PortabilitySubsetFlags.NoTriangleFans),
-                _ => false,
-            };
-        }
-
-        private void PrintGpuInformation()
-        {
-            Logger.Notice.Print(LogClass.Gpu, $"{GpuVendor} {GpuRenderer} ({GpuVersion})");
-            Logger.Notice.Print(LogClass.Gpu, $"GPU Memory: {GetTotalGPUMemory() / (1024 * 1024)} MiB");
-        }
-
-        public void Initialize(GraphicsDebugLevel logLevel)
-        {
-            SetupContext(logLevel);
-
-            PrintGpuInformation();
-        }
-
-        internal bool NeedsVertexBufferAlignment(int attrScalarAlignment, out int alignment)
-        {
-            if (Capabilities.VertexBufferAlignment > 1)
-            {
-                alignment = (int)Capabilities.VertexBufferAlignment;
-
-                return true;
-            }
-            else if (Vendor != Vendor.Nvidia)
-            {
-                // Vulkan requires that vertex attributes are globally aligned by their component size,
-                // so buffer strides that don't divide by the largest scalar element are invalid.
-                // Guest applications do this, NVIDIA GPUs are OK with it, others are not.
-
-                alignment = attrScalarAlignment;
-
-                return true;
-            }
-
-            alignment = 1;
-
-            return false;
-        }
-
-        public void PreFrame()
-        {
-            SyncManager.Cleanup();
-        }
-
-        public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
-        {
-            return _counters.QueueReport(type, resultHandler, divisor, hostReserved);
-        }
-
-        public void ResetCounter(CounterType type)
-        {
-            _counters.QueueReset(type);
-        }
-
-        public void SetBufferData(BufferHandle buffer, int offset, ReadOnlySpan<byte> data)
-        {
-            BufferManager.SetData(buffer, offset, data, _pipeline.CurrentCommandBuffer, _pipeline.EndRenderPassDelegate);
-        }
-
-        public void UpdateCounters()
-        {
-            _counters.Update();
-        }
-
-        public void ResetCounterPool()
-        {
-            _counters.ResetCounterPool();
-        }
-
-        public void ResetFutureCounters(CommandBuffer cmd, int count)
-        {
-            _counters?.ResetFutureCounters(cmd, count);
-        }
-
-        public void BackgroundContextAction(Action action, bool alwaysBackground = false)
-        {
-            action();
-        }
-
-        public void CreateSync(ulong id, bool strict)
-        {
-            SyncManager.Create(id, strict);
-        }
-
-        public IProgram LoadProgramBinary(byte[] programBinary, bool isFragment, ShaderInfo info)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void WaitSync(ulong id)
-        {
-            SyncManager.Wait(id);
-        }
-
-        public ulong GetCurrentSync()
-        {
-            return SyncManager.GetCurrent();
-        }
-
-        public void SetInterruptAction(Action<Action> interruptAction)
-        {
-            InterruptAction = interruptAction;
-        }
-
-        public void Screenshot()
-        {
-            _window.ScreenCaptureRequested = true;
-        }
-
-        public void OnScreenCaptured(ScreenCaptureImageInfo bitmap)
-        {
-            ScreenCaptured?.Invoke(this, bitmap);
-        }
-
-        public bool SupportsRenderPassBarrier(PipelineStageFlags flags)
-        {
-            return !(IsMoltenVk || IsQualcommProprietary);
-        }
-
-        internal unsafe void RecreateSurface()
-        {
-            SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
-
-            _surface = _getSurface(_instance.Instance, Api);
-
-            (_window as Window)?.SetSurface(_surface);
-        }
-
-        public unsafe void Dispose()
-        {
-            if (!_initialized)
-            {
-                return;
-            }
-
-            CommandBufferPool.Dispose();
-            BackgroundResources.Dispose();
-            _counters.Dispose();
-            _window.Dispose();
-            HelperShader.Dispose();
-            _pipeline.Dispose();
-            BufferManager.Dispose();
-            PipelineLayoutCache.Dispose();
-            Barriers.Dispose();
-
-            MemoryAllocator.Dispose();
-
-            foreach (var shader in Shaders)
-            {
-                shader.Dispose();
-            }
-
-            foreach (var texture in Textures)
-            {
-                texture.Release();
-            }
-
-            foreach (var sampler in Samplers)
-            {
-                sampler.Dispose();
-            }
-
-            SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
-
-            Api.DestroyDevice(_device, null);
-
-            _debugMessenger.Dispose();
-
-            // Last step destroy the instance
-            _instance.Dispose();
-        }
-
-        public bool PrepareHostMapping(nint address, ulong size)
-        {
-            return Capabilities.SupportsHostImportedMemory &&
-                HostMemoryAllocator.TryImport(BufferManager.HostImportedBufferMemoryRequirements, BufferManager.DefaultBufferMemoryFlags, address, size);
-        }
-    }
-}
+          
