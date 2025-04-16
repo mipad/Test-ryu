@@ -84,7 +84,7 @@
 
   <!-- NuGet 包引用 -->
   <ItemGroup>
-    <PackageReference Include="MessagePack" />  
+    <PackageReference Include="MsgPack.Cli" />  
     <PackageReference Include="Rxmxnx.PInvoke.Extensions" />
     <PackageReference Include="Silk.NET.Vulkan" />
     <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" />
