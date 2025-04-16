@@ -32,7 +32,7 @@ jobs:
       actions: write
       packages: write
     env:
-      PROJECT_DIR: src/RyujinxAndroid  # 项目核心路径
+      PROJECT_DIR: src/RyujinxAndroid
       NDK_VERSION: 25.1.8937393
       DOTNET_VERSION: "9.0.203"
 
@@ -43,7 +43,7 @@ jobs:
       with:
         repository: mipad/Test-ryu
         ref: best
-        path: Test-ryu  # 代码检出到 Test-ryu 子目录
+        path: Test-ryu  # 代码检出到 Test-ryu 目录
 
     # -------------------------- 初始化构建工具 --------------------------
     - name: Setup CCache
@@ -80,18 +80,17 @@ jobs:
 
     - name: Install CMake
       run: |
-        # 安装 CMake 3.22.1 并设置路径
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1"
-        echo "PATH=$ANDROID_HOME/cmake/3.22.1/bin:$PATH" >> $GITHUB_ENV
+        echo "PATH=$ANDROID_HOME/cmake/3.22.1/bin:$PATH" >> $GITHUB_ENV  # 显式设置 CMake 路径
 
     # -------------------------- 清理步骤 --------------------------
     - name: Clean Gradle and .NET artifacts
-      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}  # 关键修复：设置工作目录
+      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}  # 设置正确的工作目录
       run: |
-        # 清理 Gradle 和 .NET 构建残留
+        chmod +x gradlew  # 赋予执行权限
         ./gradlew clean
         dotnet clean
-        rm -rf ~/.gradle/caches
+        rm -rf ~/.gradle/caches  # 清理全局缓存
 
     # -------------------------- 构建阶段 --------------------------
     - name: Build with Gradle
@@ -100,18 +99,18 @@ jobs:
         CMAKE_C_COMPILER_LAUNCHER: "ccache"
         CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
       run: |
-        chmod +x gradlew
-        unset _JAVA_OPTIONS
-        # 强制重新构建原生库
-        ./gradlew clean :libryujinx:compileLibRyujinx assembleRelease --no-daemon --stacktrace
+        chmod +x gradlew  # 再次确保权限
+        unset _JAVA_OPTIONS  # 避免 Java 环境干扰
+        ./gradlew clean :libryujinx:compileLibRyujinx assembleRelease --no-daemon --stacktrace  # 强制重新构建
 
-    # -------------------------- 验证与发布 --------------------------
+    # -------------------------- 验证 APK 内容 --------------------------
     - name: Verify APK Contents
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       run: |
-        # 检查 APK 是否包含 .so 文件
-        unzip -l app/build/outputs/apk/release/*.apk | grep 'lib/arm64-v8a'
+        apk_path=$(ls app/build/outputs/apk/release/*.apk)
+        unzip -l "$apk_path" | grep 'lib/arm64-v8a/libryujinx.so' || (echo "Error: .so file missing!"; exit 1)
 
+    # -------------------------- 发布与上传 --------------------------
     - name: Upload APK
       uses: actions/upload-artifact@v4
       if: ${{ inputs.upload_artifact || github.event_name == 'push' }}
