@@ -1,4 +1,5 @@
-using MessagePack;
+using MsgPack;
+using MsgPack.Serialization;
 using Ryujinx.Common.Logging;
 using Ryujinx.Common.Utilities;
 using Ryujinx.Horizon.Common;
@@ -70,6 +71,9 @@ namespace Ryujinx.Horizon.Prepo.Ipc
         {
             _immediateTransmissionEnabled = true;
 
+            // It signals an event of nn::prepo::detail::service::core::TransmissionStatusManager that requests the transmission of the report.
+            // Since we don't use reports, it's fine to do nothing.
+
             return Result.Success;
         }
 
@@ -136,6 +140,11 @@ namespace Ryujinx.Horizon.Prepo.Ipc
             if (_permissionLevel == PrepoServicePermissionLevel.User || _permissionLevel == PrepoServicePermissionLevel.System)
             {
                 enabled = _userAgreementCheckEnabled;
+
+                // If "enabled" is false, it sets some internal fields to 0.
+                // Then, it mounts "prepo-sys:/is_user_agreement_check_enabled.bin" and returns the contained bool.
+                // We can return the private bool instead, we don't care about the agreement since we don't send reports.
+
                 return Result.Success;
             }
 
@@ -148,6 +157,11 @@ namespace Ryujinx.Horizon.Prepo.Ipc
             if (_permissionLevel == PrepoServicePermissionLevel.User || _permissionLevel == PrepoServicePermissionLevel.System)
             {
                 _userAgreementCheckEnabled = enabled;
+
+                // If "enabled" is false, it sets some internal fields to 0.
+                // Then, it mounts "prepo-sys:/is_user_agreement_check_enabled.bin" and stores the "enabled" value.
+                // We can store in the private bool instead, we don't care about the agreement since we don't send reports.
+
                 return Result.Success;
             }
 
@@ -156,9 +170,12 @@ namespace Ryujinx.Horizon.Prepo.Ipc
 
         private Result ProcessPlayReport(PlayReportKind playReportKind, ReadOnlySpan<byte> gameRoomBuffer, ReadOnlySpan<byte> reportBuffer, ulong pid, Uid userId, bool withUserId = false, ApplicationId applicationId = default)
         {
-            if (withUserId && userId.IsNull)
+            if (withUserId)
             {
-                return PrepoResult.InvalidArgument;
+                if (userId.IsNull)
+                {
+                    return PrepoResult.InvalidArgument;
+                }
             }
 
             if (gameRoomBuffer.Length > 31)
@@ -167,7 +184,8 @@ namespace Ryujinx.Horizon.Prepo.Ipc
             }
 
             string gameRoom = Encoding.UTF8.GetString(gameRoomBuffer).TrimEnd();
-            if (string.IsNullOrEmpty(gameRoom))
+
+            if (gameRoom == string.Empty)
             {
                 return PrepoResult.InvalidState;
             }
@@ -177,9 +195,14 @@ namespace Ryujinx.Horizon.Prepo.Ipc
                 return PrepoResult.InvalidBufferSize;
             }
 
-            var builder = new StringBuilder();
-            builder.AppendLine("\nPlayReport log:");
+            StringBuilder builder = new();
+            MessagePackObject deserializedReport = MessagePackSerializer.UnpackMessagePackObject(reportBuffer.ToArray());
+
+            builder.AppendLine();
+            builder.AppendLine("PlayReport log:");
             builder.AppendLine($" Kind: {playReportKind}");
+
+            // NOTE: Reports are stored internally and an event is signaled to transmit them.
 
             if (pid != 0)
             {
@@ -197,6 +220,7 @@ namespace Ryujinx.Horizon.Prepo.Ipc
             }
 
             _arp.GetApplicationLaunchProperty(out ApplicationLaunchProperty applicationLaunchProperty, applicationInstanceId).AbortOnFailure();
+
             builder.AppendLine($" ApplicationVersion: {applicationLaunchProperty.Version}");
 
             if (!userId.IsNull)
@@ -205,9 +229,7 @@ namespace Ryujinx.Horizon.Prepo.Ipc
             }
 
             builder.AppendLine($" Room: {gameRoom}");
-            
-            // 调用新的MessagePack格式化工具
-            builder.AppendLine($" Report: {MessagePackFormatter.Format(reportBuffer.ToArray())}");
+            builder.AppendLine($" Report: {MessagePackObjectFormatter.Format(deserializedReport)}");
 
             Logger.Info?.Print(LogClass.ServicePrepo, builder.ToString());
 
