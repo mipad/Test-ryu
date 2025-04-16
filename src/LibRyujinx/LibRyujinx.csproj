@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <!-- 指定目标框架为 Android -->
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net9.0-android</TargetFramework>
     <!-- 显式声明运行时标识符 -->
     <RuntimeIdentifier>linux-bionic-arm64</RuntimeIdentifier>
     <OutputType>NativeLib</OutputType>
