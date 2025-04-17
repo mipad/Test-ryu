@@ -55,19 +55,6 @@ jobs:
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1"
         echo "PATH=$ANDROID_HOME/cmake/3.22.1/bin:$PATH" >> $GITHUB_ENV  # 强制使用 CMake 3.22.1
 
-    # -------------------------- 清理步骤 --------------------------
-    - name: Clean Gradle Project
-      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
-      run: |
-        chmod +x gradlew  # 修复权限问题
-        ./gradlew clean
-        rm -rf ~/.gradle/caches  # 清理全局缓存
-
-    - name: Clean .NET Project
-      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.LIB_PROJECT_DIR }}
-      run: |
-        dotnet clean  # 在 .NET 项目目录下执行
-
     # -------------------------- 构建阶段 --------------------------
     - name: Build with Gradle
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
