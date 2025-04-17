@@ -85,7 +85,7 @@ jobs:
 
     - name: Install CMake
       run: |
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.31.6"
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.32.1"
 
     - name: Build with Gradle
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
@@ -95,7 +95,6 @@ jobs:
       run: |
         chmod +x gradlew
         ./gradlew  "assembleRelease"
-        mv $(find app/build/outputs/apk/release/* -type f | grep -E "\.apk$") ${{ github.workspace }}/Test-ryu-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
