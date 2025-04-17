@@ -9,26 +9,20 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: write
-      packages: write
     env:
-      PROJECT_DIR: src/RyujinxAndroid      # Android 项目路径
-      LIB_PROJECT_DIR: src/LibRyujinx      # .NET 原生库项目路径
+      PROJECT_DIR: src/RyujinxAndroid
+      LIB_PROJECT_DIR: src/LibRyujinx
       NDK_VERSION: 25.1.8937393
       DOTNET_VERSION: "9.0.203"
+      ANDROID_NDK_HOME: ${{ github.workspace }}/android-ndk
 
     steps:
-    # -------------------------- 代码检出 --------------------------
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
         ref: arm
         path: Test-ryu
-
-    # -------------------------- 初始化构建工具 --------------------------
 
     - name: Setup Java
       uses: actions/setup-java@v4
@@ -39,71 +33,51 @@ jobs:
     - name: Setup .NET SDK
       uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: 9.0.203
+        dotnet-version: ${{ env.DOTNET_VERSION }}
 
-
-    - name: Verify .NET Version
-      run: dotnet --version
-
-    # -------------------------- 配置 Android 环境 --------------------------
-    - name: Setup Android SDK and NDK  # 合并 Android SDK 和 NDK 安装
+    - name: Setup Android SDK and NDK
       uses: android-actions/setup-android@v3
       with:
-        ndk-version: 25.1.8937393  # 显式安装指定版本的 NDK
+        ndk-version: ${{ env.NDK_VERSION }}
 
     - name: Set NDK Home Environment
       run: |
-        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
 
+    - name: Debug NDK Path
+      run: |
+        echo "NDK Path: $ANDROID_NDK_HOME"
+        ls -l $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64  # 检查工具链文件
 
     - name: Install CMake
       run: |
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1"
-        echo "PATH=$ANDROID_HOME/cmake/3.22.1/bin:$PATH" >> $GITHUB_ENV  # 强制使用 CMake 3.22.1
+        echo "PATH=$ANDROID_HOME/cmake/3.22.1/bin:$PATH" >> $GITHUB_ENV
 
-    # -------------------------- 生成 local.properties --------------------------
     - name: Generate local.properties
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       run: |
         echo "sdk.dir=$ANDROID_HOME" > local.properties
-        echo "ndk.dir=$ANDROID_NDK_HOME" >> local.properties  # 确保 NDK 路径被识别
-        
-    # -------------------------- 构建阶段 --------------------------
+        echo "ndk.dir=$ANDROID_NDK_HOME" >> local.properties
+
     - name: Build with Gradle
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
-      
       run: |
-        chmod +x gradlew  # 再次确保权限
-        unset _JAVA_OPTIONS  # 避免 Java 环境变量冲突
-        ./gradlew :libryujinx:compileLibRyujinx assembleRelease --no-daemon --stacktrace  # 强制重新构建
+        chmod +x gradlew
+        unset _JAVA_OPTIONS
+        ./gradlew :libryujinx:compileLibRyujinx assembleRelease \
+          --no-daemon \
+          --stacktrace \
+          -Pandroid.ndkPath="$ANDROID_NDK_HOME"  # 显式传递 NDK 路径
 
-    # -------------------------- 验证 APK 内容 --------------------------
     - name: Verify APK Contents
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       run: |
         apk_path=$(ls app/build/outputs/apk/release/*.apk)
-        if ! unzip -l "$apk_path" | grep -q 'lib/arm64-v8a/libryujinx.so'; then
-          echo "❌ Error: APK 中缺少 libryujinx.so 文件！"
-          exit 1
-        else
-          echo "✅ 验证通过：APK 包含 libryujinx.so"
-        fi
+        unzip -l "$apk_path" | grep 'lib/arm64-v8a/libryujinx.so' || exit 1
 
-    # -------------------------- 发布与上传 --------------------------
     - name: Upload APK
       uses: actions/upload-artifact@v4
-      if: ${{ inputs.upload_artifact || github.event_name == 'push' }}
       with:
         name: android-release
         path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
-
-    - name: Create Release
-      uses: softprops/action-gh-release@v2
-      if: ${{ inputs.should_release }}
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ inputs.release_tag || github.sha }}
-        prerelease: ${{ inputs.is_prerelease }}
-        files: |
-          ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
