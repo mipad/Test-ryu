@@ -57,6 +57,32 @@ jobs:
       with:
         ndk-version: ${{ env.NDK_VERSION }}
 
+    - name: Verify NDK Installation
+      run: |
+        # 设置 NDK 路径
+        NDK_PATH="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
+        
+        # 检查 NDK 目录是否存在
+        if [ ! -d "$NDK_PATH" ]; then
+          echo "::error::NDK directory not found at $NDK_PATH"
+          exit 1
+        fi
+
+        # 检查版本文件
+        if [ -f "$NDK_PATH/source.properties" ]; then
+          echo "NDK Version Info:"
+          grep "Pkg.Revision" "$NDK_PATH/source.properties"
+          echo "Expected version: ${{ env.NDK_VERSION }}"
+        else
+          echo "::warning::NDK version file not found, cannot verify exact version"
+        fi
+
+        # 验证基础工具链
+        $NDK_PATH/ndk-build --version || {
+          echo "::error::Failed to run ndk-build"
+          exit 1
+        }
+
     - name: Install CMake
       run: |
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.31.6"
@@ -69,18 +95,16 @@ jobs:
       run: |
         chmod +x gradlew
         ./gradlew  "assembleRelease"
-         mv $(find app/build/outputs/apk/release/* -type f | grep -E "\.apk$") ${{ github.workspace }}/Test-ryu-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
+        mv $(find app/build/outputs/apk/release/* -type f | grep -E "\.apk$") ${{ github.workspace }}/Test-ryu-${{ steps.version.outputs.date }}-${{ steps.version.outputs.version }}.apk
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
-      if: ${{ inputs.upload_artifact || github.event_name == 'push' }}
       with:
         name: android-release
         path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
 
     - name: Create Release
       uses: softprops/action-gh-release@v2
-      if: ${{ inputs.should_release }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
