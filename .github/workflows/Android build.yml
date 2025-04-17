@@ -94,6 +94,7 @@ jobs:
         CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
       run: |
         chmod +x gradlew
+        unset _JAVA_OPTIONS
         ./gradlew clean assembleRelease
 
     - name: Upload APK
