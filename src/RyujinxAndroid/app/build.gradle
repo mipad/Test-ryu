@@ -5,6 +5,7 @@ plugins {
 
 android {
     namespace 'org.ryujinx.android'
+    ndkVersion '26.3.11579264'
     compileSdk 34
 
     // 新增：指定jniLibs路径
