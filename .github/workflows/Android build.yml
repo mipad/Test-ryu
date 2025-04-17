@@ -16,7 +16,7 @@ jobs:
     env:
       PROJECT_DIR: src/RyujinxAndroid      # Android 项目路径
       LIB_PROJECT_DIR: src/LibRyujinx      # .NET 原生库项目路径
-      NDK_VERSION: 29.0.13113456
+      NDK_VERSION: 25.1.8937393
       DOTNET_VERSION: "9.0.203"
 
     steps:
