@@ -5,24 +5,6 @@ on:
     branches: [ "arm" ]
   pull_request:
     branches: [ "arm" ]
-  workflow_dispatch:
-    inputs:
-      should_release:
-        description: 'Create GitHub Release'
-        type: boolean
-        default: false
-      upload_artifact:
-        description: 'Upload APK as artifact'
-        type: boolean
-        default: true
-      release_tag:
-        description: 'Custom release tag'
-        type: string
-        default: ''
-      is_prerelease:
-        description: 'Mark as pre-release'
-        type: boolean
-        default: false
 
 jobs:
   build:
