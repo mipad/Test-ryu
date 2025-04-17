@@ -9,75 +9,120 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+      packages: write
     env:
       PROJECT_DIR: src/RyujinxAndroid
       LIB_PROJECT_DIR: src/LibRyujinx
       NDK_VERSION: 25.1.8937393
       DOTNET_VERSION: "9.0.203"
-      ANDROID_NDK_HOME: ${{ github.workspace }}/android-ndk
+      ANDROID_NDK_HOME: ${{ github.workspace }}/android-ndk  # 统一 NDK 路径变量
 
     steps:
+    # -------------------------- 代码检出 --------------------------
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
         ref: arm
         path: Test-ryu
+        fetch-depth: 0  # 确保获取完整提交历史
 
+    # -------------------------- 初始化构建工具 --------------------------
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: temurin
         java-version: 17
+        check-latest: true  # 确保使用最新小版本
 
     - name: Setup .NET SDK
       uses: actions/setup-dotnet@v3
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
+    # -------------------------- 配置 Android 环境 --------------------------
     - name: Setup Android SDK and NDK
       uses: android-actions/setup-android@v3
       with:
         ndk-version: ${{ env.NDK_VERSION }}
+        cmake-version: 3.22.1  # 直接指定 CMake 版本
 
     - name: Set NDK Home Environment
       run: |
         echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
+        echo "NDK 路径已设置为：$ANDROID_NDK_HOME"
 
-    - name: Debug NDK Path
+    - name: Validate NDK Installation
       run: |
-        echo "NDK Path: $ANDROID_NDK_HOME"
-        ls -l $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64  # 检查工具链文件
+        # 验证关键文件是否存在
+        if [ ! -d "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64" ]; then
+          echo "❌ 错误：NDK 工具链路径不存在！"
+          exit 1
+        fi
+        echo "✅ NDK 工具链验证通过："
+        ls -l $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
 
-    - name: Install CMake
-      run: |
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1"
-        echo "PATH=$ANDROID_HOME/cmake/3.22.1/bin:$PATH" >> $GITHUB_ENV
-
+    # -------------------------- 生成配置 --------------------------
     - name: Generate local.properties
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       run: |
         echo "sdk.dir=$ANDROID_HOME" > local.properties
         echo "ndk.dir=$ANDROID_NDK_HOME" >> local.properties
+        echo "👉 生成 local.properties 内容："
+        cat local.properties
 
+    # -------------------------- 构建阶段 --------------------------
     - name: Build with Gradle
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       run: |
+        # 权限修复
         chmod +x gradlew
+        # 清理 Java 环境干扰
         unset _JAVA_OPTIONS
+        
+        # 带详细日志的构建命令
         ./gradlew :libryujinx:compileLibRyujinx assembleRelease \
           --no-daemon \
           --stacktrace \
-          -Pandroid.ndkPath="$ANDROID_NDK_HOME"  # 显式传递 NDK 路径
+          --info \
+          -Pandroid.ndkPath="$ANDROID_NDK_HOME" \
+          -Dorg.gradle.parallel=false  # 禁用并行构建避免日志混乱
 
-    - name: Verify APK Contents
+    # -------------------------- 产物验证 --------------------------
+    - name: Verify APK Structure
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       run: |
-        apk_path=$(ls app/build/outputs/apk/release/*.apk)
-        unzip -l "$apk_path" | grep 'lib/arm64-v8a/libryujinx.so' || exit 1
+        apk_path=$(find app/build/outputs/apk/release -name '*.apk' | head -1)
+        if [ -z "$apk_path" ]; then
+          echo "❌ 错误：未找到 APK 文件！"
+          exit 1
+        fi
+        
+        echo "🔍 分析 APK 文件：$apk_path"
+        unzip -l "$apk_path" | grep -E 'lib/.*/libryujinx.so' || {
+          echo "❌ 错误：APK 中缺少原生库！";
+          exit 1;
+        }
+        echo "✅ APK 结构验证通过"
 
-    - name: Upload APK
+    # -------------------------- 产物上传 --------------------------
+    - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: android-release
+        name: android-release-${{ github.sha }}
         path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
+        retention-days: 3  # 自动清理旧构建
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      if: ${{ github.event_name == 'push' }}  # 仅 push 事件触发
+      with:
+        tag_name: build-${{ github.run_id }}
+        name: "Android Build ${{ github.run_number }}"
+        body: "自动构建版本 - ${{ github.sha }}"
+        prerelease: true
+        files: |
+          ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
