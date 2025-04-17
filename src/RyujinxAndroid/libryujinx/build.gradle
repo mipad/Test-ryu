@@ -55,7 +55,7 @@ tasks.register('compileLibRyujinx', Exec) {
     inputs.files(solutionFiles)
             .withPropertyName('sourceFiles')
             .withPathSensitivity(PathSensitivity.RELATIVE)
-            。ignoreEmptyDirectories()
+            .ignoreEmptyDirectories()
 
     // 修正输出路径
     outputs.file("${publishDirectory}/libryujinx.so")
