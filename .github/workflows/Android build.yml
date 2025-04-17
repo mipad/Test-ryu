@@ -54,7 +54,7 @@ jobs:
     - name: Install CMake
       run: |
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1"
-        echo "PATH=$ANDROID_HOME/cmake/3.18.1/bin:$PATH" >> $GITHUB_ENV  # 强制使用 CMake 3.22.1
+        echo "PATH=$ANDROID_HOME/cmake/3.22.1/bin:$PATH" >> $GITHUB_ENV  # 强制使用 CMake 3.22.1
 
     # -------------------------- 清理步骤 --------------------------
     - name: Clean Gradle Project
