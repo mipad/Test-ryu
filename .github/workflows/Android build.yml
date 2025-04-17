@@ -39,8 +39,9 @@ jobs:
     - name: Setup .NET SDK
       uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-        include-prerelease: true
+        dotnet-version: 9.0.203
+        dotnet-quality: 'preview'
+
 
     - name: Verify .NET Version
       run: dotnet --version
