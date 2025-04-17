@@ -16,9 +16,9 @@ jobs:
     env:
       PROJECT_DIR: src/RyujinxAndroid
       LIB_PROJECT_DIR: src/LibRyujinx
-      NDK_VERSION: 25.1.8937393
+      NDK_VERSION: 25.1.8937393  # 确认此版本在官方列表存在
       DOTNET_VERSION: "9.0.203"
-      ANDROID_NDK_HOME: ${{ github.workspace }}/android-ndk  # 统一 NDK 路径变量
+      ANDROID_NDK_HOME: $ANDROID_HOME/ndk/${{ env.NDK_VERSION }}  # 使用标准路径
 
     steps:
     # -------------------------- 代码检出 --------------------------
@@ -28,7 +28,7 @@ jobs:
         repository: mipad/Test-ryu
         ref: arm
         path: Test-ryu
-        fetch-depth: 0  # 确保获取完整提交历史
+        fetch-depth: 0
 
     # -------------------------- 初始化构建工具 --------------------------
     - name: Setup Java
@@ -36,34 +36,34 @@ jobs:
       with:
         distribution: temurin
         java-version: 17
-        check-latest: true  # 确保使用最新小版本
+        check-latest: true
 
     - name: Setup .NET SDK
       uses: actions/setup-dotnet@v3
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
-    # -------------------------- 配置 Android 环境 --------------------------
+    # -------------------------- 配置 Android 环境 (关键修复部分) --------------------------
     - name: Setup Android SDK and NDK
       uses: android-actions/setup-android@v3
       with:
-        ndk-version: ${{ env.NDK_VERSION }}
-        cmake-version: 3.22.1  # 直接指定 CMake 版本
+        ndk: ${{ env.NDK_VERSION }}        # 使用正确的参数名
+        cmake: 3.22.1                      # 直接指定 CMake 版本
+        packages: |                        # 显式声明要安装的包
+          tools
+          platform-tools
+          ndk;${{ env.NDK_VERSION }}       # 必须显式包含 NDK 包
+        accept-android-sdk-licenses: true
 
-    - name: Set NDK Home Environment
+    - name: Verify NDK Installation
       run: |
-        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
-        echo "NDK 路径已设置为：$ANDROID_NDK_HOME"
-
-    - name: Validate NDK Installation
-      run: |
-        # 验证关键文件是否存在
+        echo "NDK 路径: $ANDROID_NDK_HOME"
         if [ ! -d "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64" ]; then
-          echo "❌ 错误：NDK 工具链路径不存在！"
+          echo "❌ NDK 安装失败！工具链目录不存在"
           exit 1
         fi
-        echo "✅ NDK 工具链验证通过："
-        ls -l $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
+        echo "✅ NDK 验证通过，已安装以下内容："
+        ls -l $ANDROID_NDK_HOME
 
     # -------------------------- 生成配置 --------------------------
     - name: Generate local.properties
@@ -71,25 +71,24 @@ jobs:
       run: |
         echo "sdk.dir=$ANDROID_HOME" > local.properties
         echo "ndk.dir=$ANDROID_NDK_HOME" >> local.properties
-        echo "👉 生成 local.properties 内容："
+        echo "👉 生成的 local.properties 内容："
         cat local.properties
 
     # -------------------------- 构建阶段 --------------------------
     - name: Build with Gradle
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       run: |
-        # 权限修复
         chmod +x gradlew
-        # 清理 Java 环境干扰
         unset _JAVA_OPTIONS
         
-        # 带详细日志的构建命令
+        # 添加详细的 NDK 路径日志
+        echo "正在使用 NDK 路径: $ANDROID_NDK_HOME"
         ./gradlew :libryujinx:compileLibRyujinx assembleRelease \
           --no-daemon \
           --stacktrace \
           --info \
           -Pandroid.ndkPath="$ANDROID_NDK_HOME" \
-          -Dorg.gradle.parallel=false  # 禁用并行构建避免日志混乱
+          -Dorg.gradle.parallel=false
 
     # -------------------------- 产物验证 --------------------------
     - name: Verify APK Structure
@@ -102,11 +101,12 @@ jobs:
         fi
         
         echo "🔍 分析 APK 文件：$apk_path"
-        unzip -l "$apk_path" | grep -E 'lib/.*/libryujinx.so' || {
-          echo "❌ 错误：APK 中缺少原生库！";
-          exit 1;
-        }
-        echo "✅ APK 结构验证通过"
+        if unzip -l "$apk_path" | grep -q 'lib/.*/libryujinx.so'; then
+          echo "✅ 原生库验证通过"
+        else
+          echo "❌ 错误：APK 中缺少原生库！"
+          exit 1
+        fi
 
     # -------------------------- 产物上传 --------------------------
     - name: Upload APK Artifact
@@ -114,11 +114,11 @@ jobs:
       with:
         name: android-release-${{ github.sha }}
         path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
-        retention-days: 3  # 自动清理旧构建
+        retention-days: 3
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
-      if: ${{ github.event_name == 'push' }}  # 仅 push 事件触发
+      if: ${{ github.event_name == 'push' }}
       with:
         tag_name: build-${{ github.run_id }}
         name: "Android Build ${{ github.run_number }}"
