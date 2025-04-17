@@ -8,7 +8,6 @@ using Ryujinx.Graphics.Vulkan.Queries;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.EXT;
 using Silk.NET.Vulkan.Extensions.KHR;
-using Silk.NET.Vulkan.Extensions.ARM;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -16,14 +15,10 @@ using Format = Ryujinx.Graphics.GAL.Format;
 using PrimitiveTopology = Ryujinx.Graphics.GAL.PrimitiveTopology;
 using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
 
-
-
 namespace Ryujinx.Graphics.Vulkan
 {
     public sealed class VulkanRenderer : IRenderer
     {
-        private ArmRasterizationOrderAttachmentAccess _armRasterizationOrderAttachmentAccess;
-        private MaliTextureMirrorSampler _maliTextureMirrorSampler;
         private VulkanInstance _instance;
         private SurfaceKHR _surface;
         private VulkanPhysicalDevice _physicalDevice;
@@ -105,8 +100,6 @@ namespace Ryujinx.Graphics.Vulkan
         public string GpuRenderer { get; private set; }
         public string GpuVersion { get; private set; }
 
-        public bool SupportsRasterizationOrderAttachmentAccess { get; internal set; }
-    
         public bool PreferThreading => true;
 
         public event EventHandler<ScreenCaptureImageInfo> ScreenCaptured;
@@ -134,13 +127,6 @@ namespace Ryujinx.Graphics.Vulkan
         {
             FormatCapabilities = new FormatCapabilities(Api, _physicalDevice.PhysicalDevice);
 
-if (Api.TryGetDeviceExtension<ArmRasterizationOrderAttachmentAccess>(_instance.Instance, _device, out var armExtension))
-    {
-        Capabilities.SupportsRasterizationOrderAttachmentAccess = true;
-        // 可选：保存扩展方法实例供后续使用
-        _armRasterizationOrderAttachmentAccess = armExtension;
-    }
-    
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtConditionalRendering conditionalRenderingApi))
             {
                 ConditionalRenderingApi = conditionalRenderingApi;
@@ -501,56 +487,6 @@ if (Api.TryGetDeviceExtension<ArmRasterizationOrderAttachmentAccess>(_instance.I
 
             _device = VulkanInitialization.CreateDevice(Api, _physicalDevice, queueFamilyIndex, maxQueueCount);
 
-// ---------- 修改开始 ----------
-// 1. 获取物理设备支持的扩展列表
-// 1. 获取物理设备支持的扩展列表
-uint extensionCount = 0;
-Api.EnumerateDeviceExtensionProperties(_physicalDevice.PhysicalDevice, (byte*)null, ref extensionCount, null);
-var extensions = new ExtensionProperties[extensionCount];
-fixed (ExtensionProperties* pExtensions = extensions)
-{
-    Api.EnumerateDeviceExtensionProperties(_physicalDevice.PhysicalDevice, (byte*)null, ref extensionCount, pExtensions);
-}
-var supportedExtensions = extensions.Select(e => Marshal.PtrToStringAnsi((IntPtr)e.ExtensionName)).ToList();
-
-// 2. 合并原有启用的扩展与新扩展
-var enabledExtensions = _physicalDevice.GetEnabledExtensions().ToList(); // 保留原有扩展
-enabledExtensions.Add(KhrSwapchain.ExtensionName); // 确保交换链扩展存在
-
-// 3. 按需添加ARM和Mali扩展
-if (supportedExtensions.Contains("VK_ARM_rasterization_order_attachment_access"))
-{
-    enabledExtensions.Add("VK_ARM_rasterization_order_attachment_access");
-}
-
-// 4. 配置队列信息
-float queuePriority = 1.0f;
-var queueCreateInfo = new DeviceQueueCreateInfo
-{
-    SType = StructureType.DeviceQueueCreateInfo,
-    QueueFamilyIndex = queueFamilyIndex,
-    QueueCount = 1,
-    PQueuePriorities = &queuePriority
-};
-
-// 5. 配置设备创建信息
-var deviceCreateInfo = new DeviceCreateInfo
-{
-    SType = StructureType.DeviceCreateInfo,
-    QueueCreateInfoCount = 1,
-    PQueueCreateInfos = &queueCreateInfo,
-    EnabledExtensionCount = (uint)enabledExtensions.Count,
-    PpEnabledExtensionNames = (byte**)SilkMarshal.StringArrayToPtr(enabledExtensions),
-    PEnabledFeatures = &_physicalDevice.PhysicalDeviceFeatures
-};
-
-// 6. 直接调用Vulkan API创建设备
-Api.CreateDevice(_physicalDevice.PhysicalDevice, in deviceCreateInfo, null, out _device);
-
-// 释放非托管内存
-SilkMarshal.Free((nint)deviceCreateInfo.PpEnabledExtensionNames);
-// ---------- 修改结束 ----------
-
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrSwapchain swapchainApi))
             {
                 SwapchainApi = swapchainApi;
@@ -689,6 +625,70 @@ SilkMarshal.Free((nint)deviceCreateInfo.PpEnabledExtensionNames);
                 FormatFeatureFlags.TransferSrcBit |
                 FormatFeatureFlags.TransferDstBit;
 
+            bool supportsBc123CompressionFormat = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags,
+                Format.Bc1RgbaSrgb,
+                Format.Bc1RgbaUnorm,
+                Format.Bc2Srgb,
+                Format.Bc2Unorm,
+                Format.Bc3Srgb,
+                Format.Bc3Unorm);
+
+            bool supportsBc45CompressionFormat = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags,
+                Format.Bc4Snorm,
+                Format.Bc4Unorm,
+                Format.Bc5Snorm,
+                Format.Bc5Unorm);
+
+            bool supportsBc67CompressionFormat = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags,
+                Format.Bc6HSfloat,
+                Format.Bc6HUfloat,
+                Format.Bc7Srgb,
+                Format.Bc7Unorm);
+
+            bool supportsEtc2CompressionFormat = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags,
+                Format.Etc2RgbaSrgb,
+                Format.Etc2RgbaUnorm,
+                Format.Etc2RgbPtaSrgb,
+                Format.Etc2RgbPtaUnorm,
+                Format.Etc2RgbSrgb,
+                Format.Etc2RgbUnorm);
+
+            bool supports5BitComponentFormat = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags,
+                Format.R5G6B5Unorm,
+                Format.R5G5B5A1Unorm,
+                Format.R5G5B5X1Unorm,
+                Format.B5G6R5Unorm,
+                Format.B5G5R5A1Unorm,
+                Format.A1B5G5R5Unorm);
+
+            bool supportsR4G4B4A4Format = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags,
+                Format.R4G4B4A4Unorm);
+
+            bool supportsAstcFormats = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags,
+                Format.Astc4x4Unorm,
+                Format.Astc5x4Unorm,
+                Format.Astc5x5Unorm,
+                Format.Astc6x5Unorm,
+                Format.Astc6x6Unorm,
+                Format.Astc8x5Unorm,
+                Format.Astc8x6Unorm,
+                Format.Astc8x8Unorm,
+                Format.Astc10x5Unorm,
+                Format.Astc10x6Unorm,
+                Format.Astc10x8Unorm,
+                Format.Astc10x10Unorm,
+                Format.Astc12x10Unorm,
+                Format.Astc12x12Unorm,
+                Format.Astc4x4Srgb,
+                Format.Astc5x4Srgb,
+                Format.Astc5x5Srgb,
+                Format.Astc6x5Srgb,
+                Format.Astc6x6Srgb,
+                Format.Astc8x5Srgb,
+                Format.Astc8x6Srgb,
+                Format.Astc8x8Srgb,
+                Format.Astc10x5Srgb,
+                
             bool supportsBc123CompressionFormat = FormatCapabilities.OptimalFormatsSupport(compressedFormatFeatureFlags,
                 Format.Bc1RgbaSrgb,
                 Format.Bc1RgbaUnorm,
