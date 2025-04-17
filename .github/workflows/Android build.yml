@@ -1,113 +1,109 @@
-name: Android CI with NDK Fix
+name: Android CI with .NET 9.0.203
 
 on:
   push:
-    branches: [ "arm" ]
+    branches: [ "best" ]
   pull_request:
-    branches: [ "arm" ]
-
-env:
-  NDK_VERSION: "26.3.11579264"  # 确认可用的 NDK 版本
-  ANDROID_HOME: ${{ github.workspace }}/android-sdk  # 显式定义 SDK 路径
-  PROJECT_DIR: "Test-ryu/src/RyujinxAndroid"  # 项目路径
+    branches: [ "best" ]
+  workflow_dispatch:
+    inputs:
+      should_release:
+        description: 'Create GitHub Release'
+        type: boolean
+        default: false
+      upload_artifact:
+        description: 'Upload APK as artifact'
+        type: boolean
+        default: true
+      release_tag:
+        description: 'Custom release tag'
+        type: string
+        default: ''
+      is_prerelease:
+        description: 'Mark as pre-release'
+        type: boolean
+        default: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+      packages: write
+    env:
+      PROJECT_DIR: src/RyujinxAndroid
+      NDK_VERSION: 26.2.11394342
+      DOTNET_VERSION: "9.0.203"
 
     steps:
-    # -------------------------- 代码检出 --------------------------
-    - name: Checkout repository
+    - name: Checkout code
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: arm
+        ref: best
         path: Test-ryu
 
-    # -------------------------- Android 环境配置 (核心修复) --------------------------
-    - name: Install Android SDK and NDK
+    - name: Setup CCache
+      uses: hendrikmuhs/ccache-action@v1.2
+
+    - name: Cache Gradle
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: 17
+
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        include-prerelease: true
+
+    - name: Verify .NET Version
+      run: dotnet --version
+
+    - name: Setup Android SDK
       uses: android-actions/setup-android@v3
-      id: android-setup
       with:
-        cmdline-tools-version: "latest"  # 必须指定命令行工具版本
-        packages: "tools,platform-tools,ndk;${{ env.NDK_VERSION }},cmake;3.22.1"  # 逗号分隔！
-        accept-android-sdk-licenses: true
-        log-accepted-android-sdk-licenses: true  # 调试用
+        ndk-version: ${{ env.NDK_VERSION }}
 
-    # -------------------------- NDK 路径验证 --------------------------
-    - name: Validate NDK Installation
+    - name: Install CMake
       run: |
-        NDK_DIR="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
-        echo "检查 NDK 路径: $NDK_DIR"
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.31.6"
 
-        # 基础目录检查
-        if [ ! -d "$NDK_DIR" ]; then
-          echo "::error::❌ NDK 目录不存在: $NDK_DIR"
-          echo "已安装的 NDK 版本:"
-          ls -l $ANDROID_HOME/ndk || true
-          exit 1
-        fi
-
-        # 关键文件检查
-        REQUIRED_FILES=(
-          "$NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
-          "$NDK_DIR/build/cmake/android.toolchain.cmake"
-        )
-        
-        MISSING_FILES=0
-        for file in "${REQUIRED_FILES[@]}"; do
-          if [ ! -f "$file" ]; then
-            echo "::error::❌ 关键文件缺失: $file"
-            MISSING_FILES=1
-          fi
-        done
-
-        if [ $MISSING_FILES -ne 0 ]; then
-          exit 1
-        fi
-
-        echo "✅ NDK 验证通过"
-        echo "ANDROID_NDK_HOME=$NDK_DIR" >> $GITHUB_ENV
-
-    # -------------------------- 备用手动安装 (保险机制) --------------------------
-    - name: Manual NDK Installation (Fallback)
-      if: ${{ failure() && steps.android-setup.outcome == 'failure' }}
+    - name: Build with Gradle
+      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
+      env:
+        CMAKE_C_COMPILER_LAUNCHER: "ccache"
+        CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
       run: |
-        echo "::warning::⚠️ 自动安装失败，尝试手动安装 NDK..."
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --verbose "ndk;${{ env.NDK_VERSION }}"
-        
-        # 二次验证
-        if [ ! -d "$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" ]; then
-          echo "::error::❌ 手动安装仍失败！请检查 NDK 版本有效性"
-          exit 1
-        fi
-
-    # -------------------------- 生成 Gradle 配置文件 --------------------------
-    - name: Configure local.properties
-      working-directory: ${{ github.workspace }}/${{ env.PROJECT_DIR }}
-      run: |
-        echo "sdk.dir=$ANDROID_HOME" > local.properties
-        echo "ndk.dir=$ANDROID_NDK_HOME" >> local.properties
-        echo "生成配置内容:"
-        cat local.properties
-
-    # -------------------------- 构建阶段 --------------------------
-    - name: Build Android Project
-      working-directory: ${{ github.workspace }}/${{ env.PROJECT_DIR }}
-      run: |
-        # 修复权限问题
         chmod +x gradlew
+        # 显式移除 _JAVA_OPTIONS 环境变量
+        unset _JAVA_OPTIONS
+        ./gradlew clean assembleRelease --no-daemon --stacktrace
 
-        # 清理并构建
-        ./gradlew clean assembleRelease \
-          --no-daemon \
-          --stacktrace \
-          -Pandroid.ndkPath="$ANDROID_NDK_HOME"
-
-    # -------------------------- 产物处理 --------------------------
-    - name: Upload APK Artifact
+    - name: Upload APK
       uses: actions/upload-artifact@v4
+      if: ${{ inputs.upload_artifact || github.event_name == 'push' }}
       with:
-        name: ryujinx-release
-        path: ${{ github.workspace }}/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
-        retention-days: 3
+        name: android-release
+        path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      if: ${{ inputs.should_release }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ inputs.release_tag || github.sha }}
+        prerelease: ${{ inputs.is_prerelease }}
+        files: |
+          ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
