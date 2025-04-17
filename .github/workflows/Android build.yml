@@ -48,8 +48,7 @@ jobs:
     # -------------------------- 配置 Android 环境 --------------------------
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
-      with:
-        ndk-version: ${{ env.NDK_VERSION }}
+
 
     - name: Install CMake
       run: |
