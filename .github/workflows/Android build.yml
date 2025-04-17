@@ -13,12 +13,13 @@ jobs:
       contents: read
       actions: write
       packages: write
+
+    # -------------------------- 全局静态环境变量 --------------------------
     env:
       PROJECT_DIR: src/RyujinxAndroid
       LIB_PROJECT_DIR: src/LibRyujinx
-      NDK_VERSION: 25.1.8937393  # 确认此版本在官方列表存在
+      NDK_VERSION: 25.1.8937393  # 直接硬编码版本号
       DOTNET_VERSION: "9.0.203"
-      ANDROID_NDK_HOME: $ANDROID_HOME/ndk/${{ env.NDK_VERSION }}  # 使用标准路径
 
     steps:
     # -------------------------- 代码检出 --------------------------
@@ -43,26 +44,36 @@ jobs:
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
-    # -------------------------- 配置 Android 环境 (关键修复部分) --------------------------
+    # -------------------------- 配置 Android 环境 (关键修复) --------------------------
     - name: Setup Android SDK and NDK
       uses: android-actions/setup-android@v3
+      id: android-setup
       with:
-        ndk: ${{ env.NDK_VERSION }}        # 使用正确的参数名
-        cmake: 3.22.1                      # 直接指定 CMake 版本
-        packages: |                        # 显式声明要安装的包
+        ndk: ${{ env.NDK_VERSION }}  # 使用正确的参数名
+        cmake: 3.22.1
+        packages: |
           tools
           platform-tools
-          ndk;${{ env.NDK_VERSION }}       # 必须显式包含 NDK 包
+          ndk;${{ env.NDK_VERSION }}  # 显式包含 NDK 包
         accept-android-sdk-licenses: true
 
+    # 动态设置 NDK 路径（必须在此步骤后）
+    - name: Set Android NDK Home
+      run: |
+        echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
+        echo "📌 Android SDK 路径: $ANDROID_HOME"
+        echo "📌 Android NDK 路径: $ANDROID_NDK_HOME"
+
+    # -------------------------- NDK 安装验证 --------------------------
     - name: Verify NDK Installation
       run: |
-        echo "NDK 路径: $ANDROID_NDK_HOME"
         if [ ! -d "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64" ]; then
-          echo "❌ NDK 安装失败！工具链目录不存在"
+          echo "::error::❌ NDK 安装失败！工具链目录不存在"
           exit 1
         fi
-        echo "✅ NDK 验证通过，已安装以下内容："
+        echo "✅ NDK 验证通过"
+        echo "已安装的 NDK 内容:"
         ls -l $ANDROID_NDK_HOME
 
     # -------------------------- 生成配置 --------------------------
@@ -71,7 +82,7 @@ jobs:
       run: |
         echo "sdk.dir=$ANDROID_HOME" > local.properties
         echo "ndk.dir=$ANDROID_NDK_HOME" >> local.properties
-        echo "👉 生成的 local.properties 内容："
+        echo "生成的文件内容:"
         cat local.properties
 
     # -------------------------- 构建阶段 --------------------------
@@ -81,8 +92,11 @@ jobs:
         chmod +x gradlew
         unset _JAVA_OPTIONS
         
-        # 添加详细的 NDK 路径日志
-        echo "正在使用 NDK 路径: $ANDROID_NDK_HOME"
+        echo "::group::🔧 构建环境信息"
+        echo "NDK 路径: $ANDROID_NDK_HOME"
+        ./gradlew --version
+        echo "::endgroup::"
+
         ./gradlew :libryujinx:compileLibRyujinx assembleRelease \
           --no-daemon \
           --stacktrace \
@@ -96,15 +110,15 @@ jobs:
       run: |
         apk_path=$(find app/build/outputs/apk/release -name '*.apk' | head -1)
         if [ -z "$apk_path" ]; then
-          echo "❌ 错误：未找到 APK 文件！"
+          echo "::error::❌ 未找到 APK 文件！"
           exit 1
         fi
         
-        echo "🔍 分析 APK 文件：$apk_path"
+        echo "🔍 分析 APK: $apk_path"
         if unzip -l "$apk_path" | grep -q 'lib/.*/libryujinx.so'; then
           echo "✅ 原生库验证通过"
         else
-          echo "❌ 错误：APK 中缺少原生库！"
+          echo "::error::❌ APK 中缺少原生库！"
           exit 1
         fi
 
