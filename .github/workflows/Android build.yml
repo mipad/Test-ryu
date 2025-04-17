@@ -7,7 +7,7 @@ on:
     branches: [ "arm" ]
 
 env:
-  NDK_VERSION: "25.2.9519653"  # 确认可用的 NDK 版本
+  NDK_VERSION: "25.1.8937393"  # 确认可用的 NDK 版本
   ANDROID_HOME: ${{ github.workspace }}/android-sdk  # 显式定义 SDK 路径
   PROJECT_DIR: "Test-ryu/src/RyujinxAndroid"  # 项目路径
 
