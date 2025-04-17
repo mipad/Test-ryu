@@ -46,8 +46,14 @@ jobs:
       run: dotnet --version
 
     # -------------------------- 配置 Android 环境 --------------------------
-    - name: Setup Android SDK
+    - name: Setup Android SDK and NDK  # 合并 Android SDK 和 NDK 安装
       uses: android-actions/setup-android@v3
+      with:
+        ndk-version: 25.1.8937393  # 显式安装指定版本的 NDK
+
+    - name: Set NDK Home Environment
+      run: |
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
 
 
     - name: Install CMake
