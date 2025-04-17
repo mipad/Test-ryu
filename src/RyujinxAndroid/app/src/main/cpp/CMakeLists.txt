@@ -116,6 +116,10 @@ find_library(android-lib android)
 find_library(vulkan-lib vulkan)
 
 target_link_libraries(ryujinxjni
+    log     # 链接 liblog
+    dl      # 链接 libdl
+    z       # 链接 libz
+    m       #
     ${log-lib}
     ${android-lib}
     ${vulkan-lib}
