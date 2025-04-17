@@ -92,13 +92,13 @@ tasks.register('compileLibRyujinx', Exec) {
             into publishDirectory
             // 移除冗余路径
             eachFile { file ->
-                文件。path = file.name
+                file.path = file.name
             }
             includeEmptyDirs = false
         }
         // 可选：重命名文件
         fileTree(publishDirectory).include('**/*.so').each { file ->
-            文件。renameTo(new File(file.parent, "libryujinx.so"))
+            file.renameTo(new File(file.parent, "libryujinx.so"))
         }
     }
 }
