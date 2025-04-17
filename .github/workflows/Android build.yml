@@ -5,24 +5,6 @@ on:
     branches: [ "arm" ]
   pull_request:
     branches: [ "arm" ]
-  workflow_dispatch:
-    inputs:
-      should_release:
-        description: 'Create GitHub Release'
-        type: boolean
-        default: false
-      upload_artifact:
-        description: 'Upload APK as artifact'
-        type: boolean
-        default: true
-      release_tag:
-        description: 'Custom release tag'
-        type: string
-        default: ''
-      is_prerelease:
-        description: 'Mark as pre-release'
-        type: boolean
-        default: false
 
 jobs:
   build:
@@ -47,16 +29,6 @@ jobs:
         path: Test-ryu
 
     # -------------------------- 初始化构建工具 --------------------------
-    - name: Setup CCache
-      uses: hendrikmuhs/ccache-action@v1.2
-
-    - name: Cache Gradle
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
 
     - name: Setup Java
       uses: actions/setup-java@v4
