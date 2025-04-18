@@ -5,7 +5,17 @@ on:
     branches: [ "arm" ]
   pull_request:
     branches: [ "arm" ]
-
+  workflow_dispatch:
+    inputs:
+      should_release:
+        description: 'Create GitHub Release'
+        type: boolean
+        default: false
+      upload_artifact:
+        description: 'Upload APK as artifact'
+        type: boolean
+        default: true
+        
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -70,7 +80,7 @@ jobs:
 
     - name: Install CMake
       run: |
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.31.7"
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;cmake;3.31.6"
 
     - name: Build with Gradle
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
