@@ -1,155 +1,47 @@
-name: Android CI - Best Branch (Final)
+name: Android CI with .NET 9.0.203
 
 on:
   push:
-    branches: [bes]
+    branches: [ "arm优化" ]
   pull_request:
-    branches: [bes]
-
+    branches: [ "arm优化" ]
+  workflow_dispatch:
+    inputs:
+      should_release:
+        description: 'Create GitHub Release'
+        type: boolean
+        default: false
+      upload_artifact:
+        description: 'Upload APK as artifact'
+        type: boolean
+        default: true
+        
 jobs:
-  build-android:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-
+    permissions:
+      contents: read
+      actions: write
+      packages: write
     steps:
-      # ----------------------------------
-      # 1. 代码检出（精准路径控制）
-      # ----------------------------------
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GHH_PAT }}
-          ref: best
-          path: src/RyujinxAndroid  # 直接检出到项目目录
-          sparse-checkout: |
-            /*
-            !app/src/main/jniLibs/arm64-v8a
-            gradlew
-            gradle/wrapper
-            app/src/main/cpp
-          sparse-checkout-cone-mode: false
-          fetch-depth: 0
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        repository: mipad/Test-ryu
+        ref: arm优化
+        path: Test-ryu
 
-      # ----------------------------------
-      # 2. 环境预检（关键文件验证）
-      # ----------------------------------
-      - name: Validate environment
-        working-directory: src/RyujinxAndroid
-        run: |
-          echo "===== 关键文件检查 ====="
-          required_files=(
-            "gradlew"
-            "app/src/main/cpp/CMakeLists.txt"
-            "gradle/wrapper/gradle-wrapper.jar"
-          )
-          for file in "${required_files[@]}"; do
-            if [ ! -f "$file" ]; then
-              echo "::error::文件缺失: $file"
-              exit 1
-            else
-              echo "✔️ $(ls -l $file)"
-            fi
-          done
-
-          echo "===== 权限修复 ====="
-          chmod +x gradlew
-          ls -l gradlew
-
-      # ----------------------------------
-      # 3. Android SDK 安装（优化版）
-      # ----------------------------------
-      - name: Setup Android SDK
-        run: |
-          export ANDROID_SDK_ROOT="$HOME/android-sdk-best"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-          echo "ANDROID_HOME=" >> $GITHUB_ENV
-
-          # 创建干净的 SDK 目录
-          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
-
-          # 带重试机制的下载
-          for i in {1..3}; do
-            wget -q --retry-connrefused https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip && break
-            sleep 30
-          done
-
-          # 解压并修正目录结构
-          unzip -q commandlinetools-linux-9477386_latest.zip -d "$ANDROID_SDK_ROOT/cmdline-tools"
-          mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
-
-          # 配置环境变量
-          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
-
-          # 接受许可协议（增强兼容性）
-          (yes || true) | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses
-
-          # 安装核心组件（带时间戳日志）
-          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
-            "platforms;android-34" \
-            "build-tools;34.0.0" \
-            "ndk;25.2.9519653" 2>&1 | awk '{print strftime("[%Y-%m-%d %H:%M:%S]"), $0}'
-
-      # ----------------------------------
-      # 4. 生成构建配置文件
-      # ----------------------------------
-      - name: Configure build
-        working-directory: src/RyujinxAndroid
-        run: |
-          {
-            echo "sdk.dir=$ANDROID_SDK_ROOT"
-            echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/25.2.9519653"
-            echo "cmake.dir=$ANDROID_SDK_ROOT/cmake/3.22.1"
-          } > local.properties
-          echo "===== 配置文件内容 ====="
-          cat local.properties
-
-      # ----------------------------------
-      # 5. 构建执行（带智能缓存）
-      # ----------------------------------
-      - name: Build with Gradle
-        working-directory: src/RyujinxAndroid
-        env:
-          GRADLE_OPTS: -Dorg.gradle.daemon=false
-        run: |
-          # 预热 Gradle
-          ./gradlew --version
-
-          # 正式构建
-          ./gradlew clean assembleDebug \
-            --stacktrace \
-            --no-daemon \
-            --build-cache \
-            -Pandroid.debug.obsoleteApi=true \
-            -Dorg.gradle.parallel=true \
-            -Dorg.gradle.caching=true
-
-          # 三级产物验证
-          apk_path="app/build/outputs/apk/debug/app-debug.apk"
-          if [ -f "$apk_path" ]; then
-            echo "✅ APK 生成成功 | 大小: $(du -h $apk_path | cut -f1)"
-            file "$apk_path" | grep "Android package"
-            unzip -l "$apk_path" | grep lib/arm64-v8a
-          else
-            echo "::error::APK 文件未找到！"
-            find . -name "*.apk"
-            exit 1
-          fi
-
-      # ----------------------------------
-      # 6. 产物与日志处理
-      # ----------------------------------
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: ryujinx-best-${{ github.run_number }}
-          path: src/RyujinxAndroid/app/build/outputs/apk/debug/*.apk
-          retention-days: 7
-
-      - name: Archive build logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-logs
-          path: |
-            src/RyujinxAndroid/app/build/reports
-            ${{ env.ANDROID_SDK_ROOT }}/cmdline-tools/latest/bin/sdkmanager.log
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: 18
+        
+    - name: Build Android
+      run: |
+        cd ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid
+        chmod +x ./gradlew
+        ./gradlew "assembleRelease"
+        
+        
+        
