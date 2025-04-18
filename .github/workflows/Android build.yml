@@ -25,8 +25,8 @@ jobs:
       packages: write
     env:
       PROJECT_DIR: src/RyujinxAndroid
-      NDK_VERSION: 26.3.11579264
-      CMAKE_VERSION: "3.22.1"  # 使用已验证的 CMake 版本
+      NDK_VERSION: 28.0.13004108
+      CMAKE_VERSION: "3.31.6"  # 使用已验证的 CMake 版本
       DOTNET_VERSION: "9.0.203"
       ANDROID_HOME: /usr/local/lib/android/sdk
 
