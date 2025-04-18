@@ -26,7 +26,9 @@ jobs:
     env:
       PROJECT_DIR: src/RyujinxAndroid
       NDK_VERSION: 26.3.11579264
+      CMAKE_VERSION: "3.22.1"  # 使用已验证的 CMake 版本
       DOTNET_VERSION: "9.0.203"
+      ANDROID_HOME: /usr/local/lib/android/sdk
 
     steps:
     - name: Checkout code
@@ -48,39 +50,36 @@ jobs:
         dotnet-version: ${{ env.DOTNET_VERSION }}
         include-prerelease: true
 
-    - name: Verify .NET Version
-      run: dotnet --version
+    - name: Install Android SDK and NDK
+      run: |
+        # 安装命令行工具
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "cmdline-tools;latest"
+        # 安装 NDK 和 CMake
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;${{ env.NDK_VERSION }}"
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;${{ env.CMAKE_VERSION }}"
+        # 安装必要平台工具
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "build-tools;34.0.0"
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-      with:
-        ndk-version: ${{ env.NDK_VERSION }}
+    - name: Install System Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libc6-dev lib32stdc++6 lib32z1 zlib1g-dev
 
     - name: Verify NDK Installation
       run: |
         NDK_PATH="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
-        
-        if [ ! -d "$NDK_PATH" ]; then
-          echo "::error::NDK directory not found at $NDK_PATH"
-          exit 1
-        fi
+        echo "NDK Path: $NDK_PATH"
+        ls -l $NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/24
 
-        if [ -f "$NDK_PATH/source.properties" ]; then
-          echo "NDK Version Info:"
-          grep "Pkg.Revision" "$NDK_PATH/source.properties"
-          echo "Expected version: ${{ env.NDK_VERSION }}"
-        else
-          echo "::warning::NDK version file not found, cannot verify exact version"
-        fi
-
-        $NDK_PATH/ndk-build --version || {
-          echo "::error::Failed to run ndk-build"
-          exit 1
-        }
-
-    - name: Install CMake
+    - name: Build Native Libraries
+      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/libryujinx
       run: |
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.31.6"
+        mkdir build && cd build
+        cmake .. \
+          -DCMAKE_TOOLCHAIN_FILE=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}/build/cmake/android.toolchain.cmake \
+          -DANDROID_ABI=arm64-v8a \
+          -DANDROID_NATIVE_API_LEVEL=24
+        make -j4
 
     - name: Build with Gradle
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
@@ -94,13 +93,3 @@ jobs:
       with:
         name: android-release
         path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
-
-    - name: Create Release
-      uses: softprops/action-gh-release@v2
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ inputs.release_tag || github.sha }}
-        prerelease: ${{ inputs.is_prerelease }}
-        files: |
-          ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
