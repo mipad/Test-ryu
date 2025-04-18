@@ -37,11 +37,13 @@ jobs:
         distribution: temurin
         java-version: 18
         
-    - name: Setup LLVM 14
+
+    - name: 安装 LLVM
       run: |
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 14
+         $LLVM_VERSION = "16.0.0"
+         Invoke-WebRequest -Uri "https://github.com/llvm/llvm-project/releases/download/llvmorg-$LLVM_VERSION/LLVM-$LLVM_VERSION-win64.exe" -OutFile "llvm-installer.exe"
+         Start-Process -Wait -FilePath "llvm-installer.exe" -ArgumentList "/S"
+         echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
           
     - name: Build Android
       run: |
