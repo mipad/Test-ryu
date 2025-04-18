@@ -62,6 +62,8 @@ target_link_libraries( # Specifies the target library.
                         -lvulkan
                        -landroid
                         adrenotools
+                        ${JNI_PATH}/libcrypto.so  # 显式指定路径
+                        ${JNI_PATH}/libssl.so
         )
 
 # Build external libraries if prebuilt files don't exist
