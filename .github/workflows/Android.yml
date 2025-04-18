@@ -5,7 +5,17 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
-
+  workflow_dispatch:
+    inputs:
+      should_release:
+        description: 'Create GitHub Release'
+        type: boolean
+        default: false
+      upload_artifact:
+        description: 'Upload APK as artifact'
+        type: boolean
+        default: true
+        
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -13,11 +23,6 @@ jobs:
       contents: read
       actions: write
       packages: write
-    env:
-      PROJECT_DIR: src/RyujinxAndroid
-      NDK_VERSION: 26.3.11579264
-      DOTNET_VERSION: "9.0.203"
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -26,88 +31,17 @@ jobs:
         ref: main
         path: Test-ryu
 
-    - name: Setup CCache
-      uses: hendrikmuhs/ccache-action@v1.2
-
-    - name: Cache Gradle
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
-
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: temurin
-        java-version: 17
-
-    - name: Setup .NET SDK
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-        include-prerelease: true
-
-    - name: Verify .NET Version
-      run: dotnet --version
-
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-      with:
-        ndk-version: ${{ env.NDK_VERSION }}
-
-    - name: Verify NDK Installation
-      run: |
-        # 设置 NDK 路径
-        NDK_PATH="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
+        java-version: 18
         
-        # 检查 NDK 目录是否存在
-        if [ ! -d "$NDK_PATH" ]; then
-          echo "::error::NDK directory not found at $NDK_PATH"
-          exit 1
-        fi
-
-        # 检查版本文件
-        if [ -f "$NDK_PATH/source.properties" ]; then
-          echo "NDK Version Info:"
-          grep "Pkg.Revision" "$NDK_PATH/source.properties"
-          echo "Expected version: ${{ env.NDK_VERSION }}"
-        else
-          echo "::warning::NDK version file not found, cannot verify exact version"
-        fi
-
-        # 验证基础工具链
-        $NDK_PATH/ndk-build --version || {
-          echo "::error::Failed to run ndk-build"
-          exit 1
-        }
-
-    - name: Install CMake
+    - name: Build Android
       run: |
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.31.6"
-
-    - name: Build with Gradle
-      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
-      env:
-        CMAKE_C_COMPILER_LAUNCHER: "ccache"
-        CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
-      run: |
-        chmod +x gradlew
-        ./gradlew  "assembleRelease"
-
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: android-release
-        path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
-
-    - name: Create Release
-      uses: softprops/action-gh-release@v2
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ inputs.release_tag || github.sha }}
-        prerelease: ${{ inputs.is_prerelease }}
-        files: |
-          ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
+        cd ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid
+        chmod +x ./gradlew
+        ./gradlew "assembleRelease"
+        
+        
+        
