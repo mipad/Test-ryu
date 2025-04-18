@@ -16,10 +16,6 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
     <IlcInstructionSet>armv8.2-a</IlcInstructionSet>
-    <!-- Trim 模式配置 -->
-    <TrimMode>link</TrimMode>
-    <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
-    <IlcInvariantGlobalization>true</IlcInvariantGlobalization>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
