@@ -4,12 +4,24 @@ plugins {
     id 'base'
 }
 
-def toolchainPath = providers.gradleProperty("org.ryujinx.llvm.toolchain.path").getOrNull()
-def dotnetExecutable = providers.gradleProperty("org.ryujinx.dotnet.bin").getOrElse("/usr/share/dotnet/dotnet")
-def configuration = providers.gradleProperty("org.ryujinx.config").getOrElse("debug").toLowerCase()
-def publishDirectory = providers.gradleProperty("org.ryujinx.publish.path").getOrNull()
-def stripSymbols = providers.gradleProperty("org.ryujinx.symbols.strip").getOrElse("")
+// Configurable properties
 
+// Path to the LLVM toolchain to use. This should be configured in your global gradle.properties
+// See: https://docs.gradle.org/current/userguide/directory_layout.html#dir:gradle_user_home
+def toolchainPath = providers.gradleProperty("org.ryujinx.llvm.toolchain.path").getOrNull()
+// Path to the dotnet executable This should be configured in your global gradle.properties
+// See: https://docs.gradle.org/current/userguide/directory_layout.html#dir:gradle_user_home
+def dotnetExecutable = providers.gradleProperty("org.ryujinx.dotnet.bin").getOrElse("dotnet")
+// Build configuration
+def configuration = providers.gradleProperty("org.ryujinx.config").getOrElse("debug").toLowerCase()
+// Publish directory
+def publishDirectory = providers.gradleProperty("org.ryujinx.publish.path").getOrNull()
+// Should the symbols be stripped from the published library?
+// Per default the symbols will be stripped for release builds, but not for debug builds.
+// This can be overridden using this property.
+// Valid values are: ["auto", "-1", "true", "1", "false", "0"]
+def stripSymbols = providers.gradleProperty("org.ryujinx.symbols.strip").getOrElse("")
+//noinspection GroovyFallthrough
 switch (stripSymbols) {
     case "true":
     case "1":
@@ -23,12 +35,19 @@ switch (stripSymbols) {
         stripSymbols = configuration == "release"
         break
 }
-
+// Additional arguments for the dotnet publish command.
 def additionalArgs = project.hasProperty("org.ryujinx.args") ? project.property("org.ryujinx.args") : ""
+
 configuration = configuration.substring(0, 1).toUpperCase() + configuration.substring(1)
 
-// 目标目录：app/src/main/jniLibs/arm64-v8a
-publishDirectory = "${rootProject.projectDir}/app/src/main/jniLibs/arm64-v8a"
+if (publishDirectory != null) {
+    publishDirectory = "${rootProject.projectDir}/${publishDirectory}"
+}
+else {
+    publishDirectory = libsDirectory.get().toString()
+}
+
+// Trees
 
 ext.outputTree = fileTree("${buildDir}/publish") {
     include "*/${configuration.toLowerCase()}_*/*"
@@ -40,8 +59,11 @@ ext.publishTree = fileTree(publishDirectory) {
     builtBy 'compileLibRyujinx'
 }
 
+// Tasks
+
 tasks.register('compileLibRyujinx', Exec) {
     def projectName = "LibRyujinx"
+
     workingDir "../../${projectName}"
 
     def solutionFiles = fileTree("../../") {
@@ -57,21 +79,26 @@ tasks.register('compileLibRyujinx', Exec) {
             .withPathSensitivity(PathSensitivity.RELATIVE)
             .ignoreEmptyDirectories()
 
-    // 修正输出路径
-    outputs.file("${publishDirectory}/libryujinx.so")
+    outputs.file("${publishDirectory}/${projectName.toLowerCase()}.so")
 
     OperatingSystem os = DefaultNativePlatform.currentOperatingSystem
     if (toolchainPath != null) {
         if (os.isWindows()) {
+            // NOTE: This is not a typo. dotnet.exe actually uses Path instead of PATH.
             environment "Path", "${toolchainPath};${providers.environmentVariable("PATH").get()}"
-        } else {
+        }
+        else {
             environment "PATH", "${toolchainPath}:${providers.environmentVariable("PATH").get()}"
         }
     }
 
     doFirst {
         println "Building ${projectName} in ${configuration} mode."
-        println "Output Directory: ${publishDirectory}"
+        println "Configuration:"
+        println "\tusing: ${dotnetExecutable}"
+        println "\tStripSymbols: ${stripSymbols}"
+        println "\tadditional args: ${additionalArgs.split(" ")}"
+        println "\tcustom LLVM toolchain path: ${toolchainPath}"
     }
 
     executable dotnetExecutable
@@ -87,27 +114,26 @@ tasks.register('compileLibRyujinx', Exec) {
 
     doLast {
         project.sync {
-            from "${buildDir}/publish"
-            include '**/*.so'
+            from project.ext.outputTree.getFiles()
+            include '*.so'
             into publishDirectory
-            // 移除冗余路径
-            eachFile { file ->
-                file.path = file.name
+            rename (String originalName) -> originalName.toLowerCase()
+            duplicatesStrategy 'fail'
+            preserve {
+                include '.gitkeep'
+                include '*.so'
+                exclude {
+                    project.ext.publishTree
+                }
             }
-            includeEmptyDirs = false
-        }
-        // 可选：重命名文件
-        fileTree(publishDirectory).include('**/*.so').each { file ->
-            file.renameTo(new File(file.parent, "libryujinx.so"))
         }
     }
 }
 
 tasks.register("cleanLibRyujinx", Delete) {
-    delete fileTree(publishDirectory) {
-        include '**/*.so'
-    }
+    delete project.ext.publishTree.getFiles()
 }
 
+// Register tasks as standard lifecycle tasks
 assemble.dependsOn("compileLibRyujinx")
 clean.dependsOn("cleanLibRyujinx")
