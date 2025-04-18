@@ -1,103 +1,151 @@
 cmake_minimum_required(VERSION 3.18...3.31)
 
 # ==================== 核心配置 ====================
-# 显式指定 NDK 路径并加载工具链
-set(ANDROID_NDK $ENV{ANDROID_NDK})
-if(NOT ANDROID_NDK)
-    message(FATAL_ERROR "ANDROID_NDK 环境变量未设置！")
-endif()
-include(${ANDROID_NDK}/build/cmake/android.toolchain.cmake)
-
+# 加载 Android NDK 工具链
+include($ENV{ANDROID_NDK}/build/cmake/android.toolchain.cmake)
 set(CMAKE_SYSTEM_NAME Android)
 set(CMAKE_ANDROID_ARCH_ABI arm64-v8a)
-set(CMAKE_ANDROID_NDK ${ANDROID_NDK})  # 显式设置 NDK 路径
+set(CMAKE_ANDROID_NDK $ENV{ANDROID_NDK})
 
-# ==================== 全局路径配置 ====================
 project("ryujinxjni")
+
+# ==================== 路径设置 ====================
 set(PROJECT_ROOT ${CMAKE_SOURCE_DIR})
 set(OPENSSL_ROOT ${PROJECT_ROOT}/libs/openssl)
 set(OPENSSL_BUILD_DIR ${PROJECT_ROOT}/build/openssl)
-set(MODULES_BASE_DIR ${CMAKE_SOURCE_DIR}/../../src)
-set(THIRDPARTY_DIR ${PROJECT_ROOT}/../thirdparty)
 
-# ==================== 输出目录统一配置 ====================
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_ROOT}/../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
-
-# ==================== 编译器与链接器配置 ====================
+# ==================== 编译选项 ====================
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -Wno-deprecated-declarations")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_ROOT}/../jniLibs/${CMAKE_ANDROID_ARCH_ABI})  # 强制输出到jniLibs
 
-# 设置系统根目录和工具链路径
-set(ANDROID_TOOLCHAIN_ROOT ${ANDROID_NDK}/toolchains/llvm/prebuilt/${CMAKE_HOST_SYSTEM_NAME})
-set(ANDROID_SYSROOT ${ANDROID_TOOLCHAIN_ROOT}/sysroot)
-set(CMAKE_SYSROOT ${ANDROID_SYSROOT})
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --sysroot=${ANDROID_SYSROOT}")
-
-# 添加关键链接器标志
-set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} \
-    -Wl,--build-id=sha1 \
-    -Wl,--no-undefined \
-    -Wl,-z,relro -Wl,-z,now \
-    -Wl,--gc-sections \
-    -B${ANDROID_TOOLCHAIN_ROOT}/aarch64-linux-android/bin \
-    -L${ANDROID_SYSROOT}/usr/lib/aarch64-linux-android/21 \
-")
-
-# ==================== OpenSSL 配置 ====================
+# ==================== 引入 OpenSSL 编译 ====================
 include(${PROJECT_ROOT}/libs/OpenSSL.cmake)
 
-# ==================== 自定义宏：强制子模块为共享库 ====================
-macro(add_shared_subdirectory dir)
-    add_subdirectory(${dir})
-    get_filename_component(MODULE_NAME ${dir} NAME)
-    if(TARGET ${MODULE_NAME})
-        set_target_properties(${MODULE_NAME} PROPERTIES
-            LIBRARY_OUTPUT_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}
-            POSITION_INDEPENDENT_CODE ON
-            CXX_VISIBILITY_PRESET hidden
-        )
-        install(TARGETS ${MODULE_NAME} LIBRARY DESTINATION ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
-    endif()
-endmacro()
+# ==================== 包含外部模块 ====================
+set(MODULES_BASE_DIR ${CMAKE_SOURCE_DIR}/../../src)
 
-# ==================== 添加所有子模块 ====================
-add_shared_subdirectory(${MODULES_BASE_DIR}/ARMeilleure)
-add_shared_subdirectory(${MODULES_BASE_DIR}/LibRyujinx.NativeSample)
-# ...（其他子模块添加，保持原有顺序）
-
-# ==================== 第三方库处理 ====================
-# SDL2
-add_subdirectory(${THIRDPARTY_DIR}/SDL2)
-if(TARGET SDL2)
-    target_include_directories(SDL2 PUBLIC ${THIRDPARTY_DIR}/SDL2/include)
-    install(TARGETS SDL2 LIBRARY DESTINATION ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
-endif()
-
-# FFmpeg
-add_subdirectory(${THIRDPARTY_DIR}/FFmpeg)
-if(TARGET avcodec)
-    target_link_libraries(avcodec INTERFACE log dl z)
-    install(TARGETS avcodec avutil swresample swscale
-        LIBRARY DESTINATION ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}
+# 强制所有子模块生成动态库（SHARED）
+foreach(module
+    ARMeilleure
+    LibRyujinx.NativeSample
+    LibRyujinx
+    Ryujinx.Audio.Backends.OpenAL
+    Ryujinx.Audio.Backends.SDL2
+    Ryujinx.Audio.Backends.SoundIo
+    Ryujinx.Audio
+    Ryujinx.Common
+    Ryujinx.Cpu
+    Ryujinx.Graphics.Device
+    Ryujinx.Graphics.GAL
+    Ryujinx.Graphics.Gpu
+    Ryujinx.Graphics.Host1x
+    Ryujinx.Graphics.Nvdec.FFmpeg
+    Ryujinx.Graphics.Nvdec.Vp9
+    Ryujinx.Graphics.Nvdec
+    Ryujinx.Graphics.OpenGL
+    Ryujinx.Graphics.Shader
+    Ryujinx.Graphics.Texture
+    Ryujinx.Graphics.Vic
+    Ryujinx.Graphics.Video
+    Ryujinx.Graphics.Vulkan
+    Ryujinx.HLE.Generators
+    Ryujinx.HLE
+    Ryujinx.Headless.SDL2
+    Ryujinx.Horizon.Common
+    Ryujinx.Horizon.Generators
+    Ryujinx.Horizon.Kernel.Generators
+    Ryujinx.Horizon
+    Ryujinx.Input.SDL2
+    Ryujinx.Input
+    Ryujinx.Memory
+    Ryujinx.SDL2.Common
+    Ryujinx.ShaderTools
+    Ryujinx.Tests.Memory
+    Ryujinx.Tests.Unicorn
+    Ryujinx.Tests
+    Ryujinx.UI.Common
+    Ryujinx.UI.LocaleGenerator
+    Ryujinx
+    Spv.Generator
+)
+    add_subdirectory(${MODULES_BASE_DIR}/${module})
+    # 强制模块生成动态库
+    set_target_properties(${module} PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}
+        POSITION_INDEPENDENT_CODE ON
     )
-endif()
+endforeach()
 
-# ==================== 主库定义与链接 ====================
-add_library(ryujinxjni SHARED vulkan_wrapper.cpp ryujinx.cpp)
+# ==================== 主库定义 ====================
+add_library(
+    ryujinxjni
+    SHARED
+    vulkan_wrapper.cpp
+    ryujinx.cpp
+)
+
 set_target_properties(ryujinxjni PROPERTIES SUFFIX ".so")
 
-# 显式链接系统库和第三方库
-target_link_libraries(ryujinxjni
-    log dl z m  # Android 系统库
-    android vulkan  # NDK 提供的库
+# ==================== 链接依赖 ====================
+find_library(log-lib log)
+find_library(android-lib android)
+find_library(vulkan-lib vulkan)
+
+# 显式链接第三方动态库
+target_link_libraries(
+    ryujinxjni
+    ${log-lib}
+    ${android-lib}
+    ${vulkan-lib}
     ${OPENSSL_BUILD_DIR}/libcrypto.a
     ${OPENSSL_BUILD_DIR}/libssl.a
-    # 子模块和第三方库
-    ARMeilleure LibRyujinx SDL2 avcodec avutil swresample swscale
-    # ...（其他子模块，保持原有顺序）
+    # 链接外部模块（动态库）
+    Ryujinx.UI.Common
+    Ryujinx.Tests
+    Ryujinx.Tests.Unicorn
+    Ryujinx.Tests.Memory
+    Ryujinx.ShaderTools
+    Ryujinx.SDL2.Common
+    Ryujinx.Memory
+    Ryujinx.Input
+    Ryujinx.Input.SDL2
+    Ryujinx.Horizon
+    Ryujinx.Horizon.Kernel.Generators
+    Ryujinx.Horizon.Generators
+    Ryujinx.Horizon.Common
+    Ryujinx.Headless.SDL2
+    Ryujinx.HLE
+    Ryujinx.HLE.Generators
+    Ryujinx.Graphics.Nvdec.Vp9
+    Ryujinx.Graphics.Vulkan
+    Ryujinx.Graphics.Shader
+    Ryujinx.Graphics.Video
+    Ryujinx.Graphics.Nvdec
+    Ryujinx.Graphics.Vic
+    Ryujinx.Graphics.Texture
+    Ryujinx.Graphics.OpenGL
+    Ryujinx.Graphics.Host1x
+    Ryujinx.Graphics.Nvdec.FFmpeg
+    Ryujinx.Graphics.Gpu
+    Ryujinx.Common
+    Ryujinx.Graphics.GAL
+    Ryujinx.Graphics.Device
+    Ryujinx.Cpu
+    Ryujinx.Audio
+    Ryujinx.Audio.Backends.SoundIo
+    Ryujinx.Audio.Backends.SDL2
+    Ryujinx.Audio.Backends.OpenAL
+    LibRyujinx
+    LibRyujinx.NativeSample
+    ARMeilleure
+    Ryujinx.UI.LocaleGenerator
+    Spv.Generator
+    Ryujinx
+    # 第三方库
+    avcodec avutil swresample swscale  # FFmpeg
+    OpenAL  # OpenAL
+    SDL2    # SDL2
 )
 
 # ==================== 头文件包含 ====================
@@ -106,9 +154,4 @@ target_include_directories(ryujinxjni PRIVATE
     ${MODULES_BASE_DIR}/Ryujinx.Common/include
     ${MODULES_BASE_DIR}/Ryujinx.Cpu/include
     ${MODULES_BASE_DIR}/Ryujinx.Graphics/include
-    ${THIRDPARTY_DIR}/SDL2/include
-    ${THIRDPARTY_DIR}/FFmpeg/include
 )
-
-# ==================== 安装指令 ====================
-install(TARGETS ryujinxjni LIBRARY DESTINATION ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
