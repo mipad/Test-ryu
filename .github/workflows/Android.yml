@@ -47,10 +47,19 @@ jobs:
           
     - name: Build Android
       run: |
-        cd ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid
-        chmod +x ./gradlew
+        $projectRoot = "${{ github.workspace }}/Test-ryu/src/RyujinxAndroid"
+        cd $projectRoot
         
-        ./gradlew clean assembleRelease --no-daemon --stacktrace
+        # 启用详细日志记录
+        $env:GRADLE_OPTS = "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2"
         
+        # 分步执行构建
+        ./gradlew clean --no-daemon --stacktrace --scan
+        ./gradlew assembleRelease --no-daemon --stacktrace --scan --info
         
-        
+        # 当失败时导出日志
+        if (-not $?) {
+          Get-Content "$projectRoot/build/outputs/logs/*.log" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY
+          exit 1
+        }
+      shell: pwsh
