@@ -18,19 +18,24 @@ on:
         
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: Windows-latest
     permissions:
       contents: read
       actions: write
       packages: write
     steps:
+    - name: Enable Long Paths
+      run: |
+       reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f
+       
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
         ref: main1
         path: Test-ryu
-
+        git-config: "core.longpaths: true"
+        
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
