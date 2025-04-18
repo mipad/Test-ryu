@@ -2,9 +2,9 @@ name: Android CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main1" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main1" ]
   workflow_dispatch:
     inputs:
       should_release:
@@ -28,7 +28,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: main
+        ref: main1
         path: Test-ryu
 
     - name: Setup Java
