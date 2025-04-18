@@ -1,7 +1,10 @@
 include(ExternalProject)
 find_package(Perl 5 REQUIRED)
 
-set(PROJECT_ENV "ANDROID_NDK_ROOT=${CMAKE_ANDROID_NDK}")
+set(PROJECT_ENV 
+    "ANDROID_NDK_ROOT=${CMAKE_ANDROID_NDK}"
+    "ARFLAGS=rc --quiet"
+)
 
 # 定义 OpenSSL 安装路径（与 CMakeLists.txt 一致）
 set(OPENSSL_INSTALL_DIR "${CMAKE_BINARY_DIR}/openssl_install")
