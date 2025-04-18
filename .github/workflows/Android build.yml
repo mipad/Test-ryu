@@ -24,7 +24,7 @@ jobs:
       actions: write
       packages: write
     env:
-      PROJECT_DIR: src/
+      PROJECT_DIR: src/ryujinxAndroid
       NDK_VERSION: 26.3.11579264
       DOTNET_VERSION: "9.0.203"
 
