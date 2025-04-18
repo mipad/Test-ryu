@@ -26,7 +26,7 @@ jobs:
     env:
       PROJECT_DIR: src/RyujinxAndroid
       NDK_VERSION: 28.0.13004108
-      CMAKE_VERSION: "3.31.6"  # 使用已验证的 CMake 版本
+      CMAKE_VERSION: "3.31.6"
       DOTNET_VERSION: "9.0.203"
       ANDROID_HOME: /usr/local/lib/android/sdk
 
@@ -52,12 +52,9 @@ jobs:
 
     - name: Install Android SDK and NDK
       run: |
-        # 安装命令行工具
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "cmdline-tools;latest"
-        # 安装 NDK 和 CMake
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;${{ env.NDK_VERSION }}"
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;${{ env.CMAKE_VERSION }}"
-        # 安装必要平台工具
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "build-tools;34.0.0"
 
     - name: Install System Dependencies
@@ -74,16 +71,14 @@ jobs:
     - name: Build Native Libraries
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/src/main/cpp
       run: |
-       mkdir -p build && cd build
-    
+        mkdir -p build && cd build
         export OPENSSL_INSTALL_DIR="$PWD/openssl_install"
         mkdir -p "$OPENSSL_INSTALL_DIR"
         cmake .. \
-       -DCMAKE_TOOLCHAIN_FILE=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}/build/cmake/android.toolchain.cmake \
-       -DANDROID_ABI=arm64-v8a \
-       -DANDROID_STL=c++_shared \
-       -DANDROID_NATIVE_API_LEVEL=29 \
-       -DCMAKE_INSTALL_PREFIX="$OPENSSL_INSTALL_DIR"
+          -DCMAKE_TOOLCHAIN_FILE=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}/build/cmake/android.toolchain.cmake \
+          -DANDROID_ABI=arm64-v8a \
+          -DANDROID_NATIVE_API_LEVEL=29 \
+          -DCMAKE_INSTALL_PREFIX="$OPENSSL_INSTALL_DIR"
         make -j4
 
     - name: Build with Gradle
@@ -95,6 +90,7 @@ jobs:
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
+      if: ${{ inputs.upload_artifact }}
       with:
         name: android-release
         path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
