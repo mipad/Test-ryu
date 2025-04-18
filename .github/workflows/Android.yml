@@ -34,7 +34,6 @@ jobs:
         repository: mipad/Test-ryu
         ref: main1
         path: Test-ryu
-        git-config: "core.longpaths: true"
         
     - name: Setup Java
       uses: actions/setup-java@v4
