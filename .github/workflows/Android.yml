@@ -50,7 +50,7 @@ jobs:
         cd ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid
         chmod +x ./gradlew
         
-        ./gradlew "assembleRelease"
+        ./gradlew clean assembleRelease --no-daemon --stacktrace
         
         
         
