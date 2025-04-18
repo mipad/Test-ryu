@@ -46,6 +46,6 @@ ExternalProject_Add(
                                 --prefix=${OPENSSL_INSTALL_DIR}  # 关键修改
                                 --libdir=""
     BUILD_COMMAND               ${CMAKE_COMMAND} -E env ${PROJECT_ENV}
-                                ${MAKE_COMMAND}
+                                ${MAKE_COMMAND} -j4
     INSTALL_COMMAND             ${MAKE_COMMAND} install_sw  # 使用 install_sw 目标
 )
