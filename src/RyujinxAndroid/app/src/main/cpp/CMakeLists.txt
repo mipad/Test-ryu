@@ -6,7 +6,6 @@ project("ryujinxjni")
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
-# 定义 OpenSSL 安装路径
 set(OPENSSL_INSTALL_DIR "${CMAKE_BINARY_DIR}/openssl_install")
 file(MAKE_DIRECTORY ${OPENSSL_INSTALL_DIR})
 
@@ -25,9 +24,14 @@ add_library(
     ryujinx.cpp
 )
 
+# 关键修改：设置主库输出路径
+set_target_properties(ryujinxjni
+    PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/../jniLibs/${CMAKE_ANDROID_ARCH_ABI}
+)
+
 find_library(log-lib log)
 
-# 定义 JNI 库路径为 OpenSSL 安装路径
 set(JNI_PATH ${OPENSSL_INSTALL_DIR}/lib)
 cmake_path(ABSOLUTE_PATH JNI_PATH NORMALIZE)
 
@@ -38,6 +42,18 @@ if (NOT (EXISTS ${LIBCRYPTO_JNI_PATH} AND EXISTS ${LIBSSL_JNI_PATH}))
     include(../../../../libryujinx/libs/OpenSSL.cmake)
     add_dependencies(ryujinxjni openssl)
 endif()
+
+# 关键修改：添加后构建命令复制 OpenSSL 库
+add_custom_command(
+    TARGET ryujinxjni POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${LIBCRYPTO_JNI_PATH}
+        ${CMAKE_SOURCE_DIR}/../jniLibs/${CMAKE_ANDROID_ARCH_ABI}/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${LIBSSL_JNI_PATH}
+        ${CMAKE_SOURCE_DIR}/../jniLibs/${CMAKE_ANDROID_ARCH_ABI}/
+    COMMENT "Copying OpenSSL libraries to jniLibs"
+)
 
 target_link_libraries(
     ryujinxjni
