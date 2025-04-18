@@ -1,6 +1,7 @@
 using Ryujinx.Common.Memory;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.EXT;
+using System;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -27,6 +28,7 @@ namespace Ryujinx.Graphics.Vulkan
         public uint ViewportsCount;
         public Array16<Viewport> Viewports;
 
+        [Flags]
         private enum DirtyFlags
         {
             None = 0,
@@ -146,7 +148,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (_dirty.HasFlag(DirtyFlags.FeedbackLoop) && gd.Capabilities.SupportsDynamicAttachmentFeedbackLoop)
             {
-                RecordFeedbackLoop(gd.DynamicFeedbackLoopApi, commandBuffer);
+                RecordFeedbackLoop(gd.DynamicFeedbackLoopApi, commandBuffer, gd);
             }
 
             _dirty = DirtyFlags.None;
@@ -188,16 +190,20 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        private readonly void RecordFeedbackLoop(ExtAttachmentFeedbackLoopDynamicState api, CommandBuffer commandBuffer)
+        private readonly void RecordFeedbackLoop(ExtAttachmentFeedbackLoopDynamicState api, CommandBuffer commandBuffer, VulkanRenderer gd)
         {
-            ImageAspectFlags aspects = (_feedbackLoopAspects & FeedbackLoopAspects.Color) != 0 ? ImageAspectFlags.ColorBit : 0;
-
-            if ((_feedbackLoopAspects & FeedbackLoopAspects.Depth) != 0)
+            // AMD Radeon RX GPUs + Qualcomm SoCs only
+            if ((gd.Vendor == Vendor.Amd && gd.GpuRenderer.Contains("RX")) || gd.Vendor == Vendor.Qualcomm)
             {
-                aspects |= ImageAspectFlags.DepthBit | ImageAspectFlags.StencilBit;
-            }
+                ImageAspectFlags aspects = (_feedbackLoopAspects & FeedbackLoopAspects.Color) != 0 ? ImageAspectFlags.ColorBit : 0;
 
-            api.CmdSetAttachmentFeedbackLoopEnable(commandBuffer, aspects);
+                if ((_feedbackLoopAspects & FeedbackLoopAspects.Depth) != 0)
+                {
+                    aspects |= ImageAspectFlags.DepthBit | ImageAspectFlags.StencilBit;
+                }
+
+                api.CmdSetAttachmentFeedbackLoopEnable(commandBuffer, aspects);
+            }
         }
     }
 }
