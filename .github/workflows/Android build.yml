@@ -77,7 +77,7 @@ jobs:
 
     - name: Install CMake
       run: |
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.31.6"
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;4.0.1"
 
     - name: Build with Gradle
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
