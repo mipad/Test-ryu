@@ -49,8 +49,7 @@ jobs:
       run: |
         cd ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid
         chmod +x ./gradlew
-        # 显式移除 _JAVA_OPTIONS 环境变量
-        unset _JAVA_OPTIONS
+        
         ./gradlew "assembleRelease"
         
         
