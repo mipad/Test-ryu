@@ -7,7 +7,7 @@
     <DefineConstants>$(DefineConstants);FORCE_EXTERNAL_BASE_DIR</DefineConstants>
   </PropertyGroup>
   <PropertyGroup>
-    <PublishAot>true</PublishAot>
+    <PublishAot>false</PublishAot>
     <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
     <!-- Not sure why, but on iOS this results in an error. Result is still a .dylib. -->
     <NativeLib Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">Shared</NativeLib>
