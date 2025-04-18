@@ -74,11 +74,16 @@ jobs:
     - name: Build Native Libraries
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/src/main/cpp
       run: |
-        mkdir build && cd build
+       mkdir -p build && cd build
+    
+        export OPENSSL_INSTALL_DIR="$PWD/openssl_install"
+        mkdir -p "$OPENSSL_INSTALL_DIR"
         cmake .. \
-          -DCMAKE_TOOLCHAIN_FILE=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}/build/cmake/android.toolchain.cmake \
-          -DANDROID_ABI=arm64-v8a \
-          -DANDROID_NATIVE_API_LEVEL=29
+       -DCMAKE_TOOLCHAIN_FILE=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}/build/cmake/android.toolchain.cmake \
+       -DANDROID_ABI=arm64-v8a \
+       -DANDROID_STL=c++_shared \
+       -DANDROID_NATIVE_API_LEVEL=29 \
+       -DCMAKE_INSTALL_PREFIX="$OPENSSL_INSTALL_DIR"
         make -j4
 
     - name: Build with Gradle
