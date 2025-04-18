@@ -1,0 +1,65 @@
+name: Android CI 
+
+on:
+  push:
+    branches: [ "test" ]
+  pull_request:
+    branches: [ "test" ]
+  workflow_dispatch:
+    inputs:
+      should_release:
+        description: 'Create GitHub Release'
+        type: boolean
+        default: false
+      upload_artifact:
+        description: 'Upload APK as artifact'
+        type: boolean
+        default: true
+        
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+      actions: write
+      packages: write
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        repository: mipad/Test-ryu
+        ref: test
+        path: Test-ryu
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: 18
+        
+
+    - name: 安装 LLVM
+      run: |
+         $LLVM_VERSION = "16.0.0"
+         Invoke-WebRequest -Uri "https://github.com/llvm/llvm-project/releases/download/llvmorg-$LLVM_VERSION/LLVM-$LLVM_VERSION-win64.exe" -OutFile "llvm-installer.exe"
+         Start-Process -Wait -FilePath "llvm-installer.exe" -ArgumentList "/S"
+         echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+          
+    - name: Build Android
+      run: |
+        $projectRoot = "${{ github.workspace }}/Test-ryu/src/RyujinxAndroid"
+        cd $projectRoot
+        
+        # 启用详细日志记录
+        $env:GRADLE_OPTS = "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2"
+        
+        # 分步执行构建
+        ./gradlew clean --no-daemon --stacktrace --scan
+        ./gradlew assembleRelease --no-daemon --stacktrace --scan --info
+        
+        # 当失败时导出日志
+        if (-not $?) {
+          Get-Content "$projectRoot/build/outputs/logs/*.log" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY
+          exit 1
+        }
+      shell: pwsh
