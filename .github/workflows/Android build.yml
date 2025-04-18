@@ -72,7 +72,7 @@ jobs:
         ls -l $NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/24
 
     - name: Build Native Libraries
-      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/libryujinx
+      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/src/main/cpp
       run: |
         mkdir build && cd build
         cmake .. \
