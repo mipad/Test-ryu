@@ -55,6 +55,14 @@ jobs:
       run: |
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1"
 
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+          dotnet-version: 9.0.x
+
+    - name: Install .NET Android Workload
+      run: dotnet workload install android
+        
     - name: Build Android
       env:
         ORG_RYUJINX_LLVM_TOOLCHAIN_PATH: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/darwin-x86_64
