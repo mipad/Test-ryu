@@ -7,8 +7,8 @@
     <DefineConstants>$(DefineConstants);FORCE_EXTERNAL_BASE_DIR</DefineConstants>
   </PropertyGroup>
   <PropertyGroup>
-    <PublishAot>true</PublishAot>
-    <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
+    <PublishAot>false</PublishAot>
+    <PublishAotUsingRuntimePack>false</PublishAotUsingRuntimePack>
     <!-- Not sure why, but on iOS this results in an error. Result is still a .dylib. -->
     <NativeLib Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">Shared</NativeLib>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -25,7 +25,7 @@
 <!-- Linux Bionic ARM64 链接参数 -->
   <ItemGroup Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">
     <LinkerArg Include="-Wl,--sysroot=$(SysRootPath)" />
-    <LinkerArg Include="-L$(SysRootPath)/usr/lib/aarch64-linux-android/33" />
+    <LinkerArg Include="-L$(SysRootPath)/usr/lib/aarch64-linux-android/24" />
     <LinkerArg Include="-llog" />
     <LinkerArg Include="-ldl" />
     <LinkerArg Include="-lz" />
