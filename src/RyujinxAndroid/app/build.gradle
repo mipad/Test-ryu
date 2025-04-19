@@ -35,7 +35,7 @@ android {
 // 添加 sourceSets 配置
     sourceSets {
         main {
-            jniLibs.srcDirs = ['src/main/jniLibs']
+            jniLibs.srcDirs = ['app/src/main/jniLibs/arm64-v8a']
         }
     }
     
