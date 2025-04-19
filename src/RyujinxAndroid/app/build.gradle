@@ -32,12 +32,6 @@ android {
         }
     }
 
-// 添加 sourceSets 配置
-    sourceSets {
-        main {
-            jniLibs.srcDirs = ['src/RyujinxAndroid/app/src/main/jniLibs/arm64-v8a']
-        }
-    }
     
     buildTypes {
         release {
