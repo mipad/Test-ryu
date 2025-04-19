@@ -37,30 +37,36 @@ jobs:
         distribution: temurin
         java-version: 17
 
+    - name: Install Android NDK
+      run: |
+        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;26.2.11394342"
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.2.11394342" >> $GITHUB_ENV
+
     - name: Install CMake
       run: |
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1"
 
     - name: Build Android
+      env:
+        ORG_RYUJINX_LLVM_TOOLCHAIN_PATH: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/darwin-x86_64
       run: |
         cd ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid
         chmod +x ./gradlew
-        ./gradlew "assembleRelease"
+        ./gradlew clean
+        ./gradlew "assembleRelease" -Porg.ryujinx.llvm.toolchain.path=$ORG_RYUJINX_LLVM_TOOLCHAIN_PATH
 
     - name: Check Generated Files
       run: |
-        # 检查 APK 文件
         echo "----- APK 路径 -----"
         ls -al ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid/app/build/outputs/apk/release/
 
-        # 检查 libryujinx 动态库文件
         echo "----- libryujinx 动态库路径 -----"
-        LIB_PATH="${{ github.workspace }}/Test-ryu/src/RyujinxAndroid/libryujinx/build/bin/LibRyujinx/release_linux-bionic-arm64"
+        LIB_PATH="${{ github.workspace }}/Test-ryu/src/RyujinxAndroid/libryujinx/build/bin/LibRyujinx/release_android-arm64"
         if [ -d "$LIB_PATH" ]; then
           cd "$LIB_PATH"
           ls -al
           echo "----- 文件类型验证 -----"
-          file *  # 确认是 ELF .so 还是其他格式
+          file *
         else
           echo "警告：动态库路径不存在！"
         fi
