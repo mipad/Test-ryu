@@ -32,6 +32,13 @@ android {
         }
     }
 
+// 添加 sourceSets 配置
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ['src/main/jniLibs']
+        }
+    }
+    
     buildTypes {
         release {
             minifyEnabled false
