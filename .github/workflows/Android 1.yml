@@ -15,7 +15,7 @@ on:
         description: 'Upload APK as artifact'
         type: boolean
         default: true
-        
+
 jobs:
   build:
     runs-on: macOS-latest
@@ -24,36 +24,50 @@ jobs:
       actions: write
       packages: write
     steps:
-    - name: Enable Long Paths
-      run: |
-      
-       
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
         ref: main1
         path: Test-ryu
-        
+
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: temurin
         java-version: 17
-        
+
     - name: Install CMake
       run: |
-         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1" 
-         
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1"
+
     - name: Build Android
       run: |
         cd ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid
         chmod +x ./gradlew
         ./gradlew "assembleRelease"
 
+    - name: Check Generated Files
+      run: |
+        # 检查 APK 文件
+        echo "----- APK 路径 -----"
+        ls -al ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid/app/build/outputs/apk/release/
+
+        # 检查 libryujinx 动态库文件
+        echo "----- libryujinx 动态库路径 -----"
+        LIB_PATH="${{ github.workspace }}/Test-ryu/src/RyujinxAndroid/libryujinx/build/bin/LibRyujinx/release_linux-bionic-arm64"
+        if [ -d "$LIB_PATH" ]; then
+          cd "$LIB_PATH"
+          ls -al
+          echo "----- 文件类型验证 -----"
+          file *  # 确认是 ELF .so 还是其他格式
+        else
+          echo "警告：动态库路径不存在！"
+        fi
+
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-          name: ryujinx-main1-${{ github.run_number }}
-          path: Test-ryu/src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
-          retention-days: 7
+        name: ryujinx-main1-${{ github.run_number }}
+        path: Test-ryu/src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
+        retention-days: 7
