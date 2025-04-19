@@ -15,7 +15,8 @@ def dotnetExecutable = providers.gradleProperty("org.ryujinx.dotnet.bin").getOrE
 // Build configuration
 def configuration = providers.gradleProperty("org.ryujinx.config").getOrElse("debug").toLowerCase()
 // Publish directory
-def publishDirectory = providers.gradleProperty("org.ryujinx.publish.path").getOrNull()
+def publishDirectory = providers.gradleProperty("org.ryujinx.publish.path").orElse("app/src/main/jniLibs/arm64-v8a")
+publishDirectory = "${rootProject.projectDir}/${publishDirectory}"
 // Should the symbols be stripped from the published library?
 // Per default the symbols will be stripped for release builds, but not for debug builds.
 // This can be overridden using this property.
