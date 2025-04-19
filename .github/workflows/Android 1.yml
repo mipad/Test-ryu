@@ -41,7 +41,10 @@ jobs:
         distribution: temurin
         java-version: 17
         
-          
+    - name: Install CMake
+      run: |
+         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1" 
+         
     - name: Build Android
       run: |
         cd ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid
