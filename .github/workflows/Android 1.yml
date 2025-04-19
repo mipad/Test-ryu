@@ -55,5 +55,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
           name: ryujinx-main1-${{ github.run_number }}
-          path: src/RyujinxAndroid/app/build/outputs/apk/debug/*.apk
+          path: src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
           retention-days: 7
