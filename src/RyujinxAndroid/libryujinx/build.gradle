@@ -75,9 +75,9 @@ tasks.register('compileLibRyujinx', Exec) {
     }
 
     inputs.files(solutionFiles)
-            .withPropertyName('sourceFiles')
-            .withPathSensitivity(PathSensitivity.RELATIVE)
-            .ignoreEmptyDirectories()
+            。withPropertyName('sourceFiles')
+            。withPathSensitivity(PathSensitivity.RELATIVE)
+            。ignoreEmptyDirectories()
 
     outputs.file("${publishDirectory}/${projectName.toLowerCase()}.so")
 
@@ -103,7 +103,7 @@ tasks.register('compileLibRyujinx', Exec) {
 
     executable dotnetExecutable
     args 'publish',
-            '-r', 'linux-bionic-arm64',
+            '-r', 'android-arm64',
             '-c', configuration,
             "-p:DisableUnsupportedError=true",
             "-p:PublishAotUsingRuntimePack=true",
