@@ -104,7 +104,7 @@ tasks.register('compileLibRyujinx', Exec) {
 
     executable dotnetExecutable
     args 'publish',
-            '-r', 'android-arm64',
+            '-r', 'linux-bionic-arm64',
             '-c', configuration,
             "-p:DisableUnsupportedError=true",
             "-p:PublishAotUsingRuntimePack=true",
