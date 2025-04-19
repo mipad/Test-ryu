@@ -10,7 +10,7 @@
     <DefineConstants>$(DefineConstants);FORCE_EXTERNAL_BASE_DIR</DefineConstants>
 
     <!-- AOT 编译配置 -->
-    <PublishAot>true</PublishAot>
+    <PublishAot>false</PublishAot>
     <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
     <NativeLib>Shared</NativeLib>
 
