@@ -1,30 +1,39 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
-    <RuntimeIdentifiers>linux-bionic-arm64;ios-arm64</RuntimeIdentifiers>
+    <!-- 明确指定 Android 目标框架 -->
+    <TargetFramework>net8.0-android</TargetFramework>
+    <!-- 仅保留 Android 运行时标识符 -->
+    <RuntimeIdentifiers>linux-bionic-arm64</RuntimeIdentifiers>
     <Nullable>enable</Nullable>
+    <!-- 强制使用 LLD 链接器 -->
     <LinkerFlavor Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">lld</LinkerFlavor>
+    <!-- 自定义符号定义 -->
     <DefineConstants>$(DefineConstants);FORCE_EXTERNAL_BASE_DIR</DefineConstants>
-  </PropertyGroup>
-  <PropertyGroup>
-    <PublishAot>false</PublishAot>
+    <!-- AOT 编译配置 -->
+    <PublishAot>true</PublishAot>
     <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
-    <!-- Not sure why, but on iOS this results in an error. Result is still a .dylib. -->
+    <!-- 指定生成共享库 -->
     <NativeLib Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">Shared</NativeLib>
+    <!-- 通用编译选项 -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <InvariantGlobalization>true</InvariantGlobalization>
     <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
+    <!-- ARMv8.2-A 指令集支持 -->
     <IlcInstructionSet>armv8.2-a</IlcInstructionSet>
   </PropertyGroup>
+
+  <!-- Release 模式优化配置 -->
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
     <Optimize>true</Optimize>
     <OptimizationPreference>Speed</OptimizationPreference>
   </PropertyGroup>
 
-<!-- Linux Bionic ARM64 链接参数 -->
+  <!-- Android 链接参数 -->
   <ItemGroup Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">
+    <!-- 确保 SysRootPath 指向 Android NDK 的 sysroot -->
     <LinkerArg Include="-Wl,--sysroot=$(SysRootPath)" />
+    <!-- 链接 Android NDK 系统库 -->
     <LinkerArg Include="-L$(SysRootPath)/usr/lib/aarch64-linux-android/33" />
     <LinkerArg Include="-llog" />
     <LinkerArg Include="-ldl" />
@@ -34,36 +43,7 @@
     <LinkerArg Include="-lc" />
   </ItemGroup>
 
-  <!-- iOS Linking Fixes -->
-  <Target Condition="'$(RuntimeIdentifier)'=='ios-arm64'" Name="PrepareBeforeIlcCompile" BeforeTargets="IlcCompile">
-    <Exec Command="xcrun xcode-select -p" ConsoleToMSBuild="true">
-      <Output TaskParameter="ConsoleOutput" PropertyName="XcodeSelect" />
-    </Exec>
-    <PropertyGroup>
-      <XcodePath>$(XcodeSelect)</XcodePath>
-      <XcodePath>$([MSBuild]::EnsureTrailingSlash('$(XCodePath)'))</XcodePath>
-    </PropertyGroup>
-    <Message Importance="normal" Text="Found Xcode at $(XcodeSelect)" />
-    <ItemGroup>
-      <LinkerArg Include="-Wl,-ld_classic" />
-      <LinkerArg Include="-isysroot %22$(XcodePath)Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk%22" Condition=" $(RuntimeIdentifier.Contains('simulator')) " />
-      <LinkerArg Include="-isysroot %22$(XcodePath)Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk%22" Condition=" !$(RuntimeIdentifier.Contains('simulator')) " />
-    </ItemGroup>
-  </Target>
-  <Target Condition="'$(RuntimeIdentifier)'=='ios-arm64'" Name="FixDylib" AfterTargets="Publish">
-    <Exec Command="install_name_tool -id @rpath/$(TargetName).dylib $(NativeBinary)" ConsoleToMSBuild="true" />
-  </Target>
-  <Target Condition="'$(RuntimeIdentifier)'=='ios-arm64'" Name="FixSymbols" AfterTargets="Publish">
-    <RemoveDir Directories="$(PublishDir)$(TargetName).framework.dSYM" />
-    <!-- create-xcframework (called from the export plugin wants the symbol files in a directory
-    with a slightly different name from the one created by dotnet publish, so we copy them over
-    to the correctly-named directory -->
-    <ItemGroup>
-      <SymbolFiles Include="$(NativeBinary).dsym\**\*.*" />
-    </ItemGroup>
-    <Copy SourceFiles="@(SymbolFiles)" DestinationFolder="$(PublishDir)$(TargetName).framework.dSYM" />
-  </Target>
-  <!-- End iOS Linking Fixes -->
+  <!-- 项目引用 -->
   <ItemGroup>
     <ProjectReference Include="..\Ryujinx.Audio.Backends.OpenAL\Ryujinx.Audio.Backends.OpenAL.csproj" />
     <ProjectReference Include="..\Ryujinx.Audio.Backends.SDL2\Ryujinx.Audio.Backends.SDL2.csproj" />
@@ -76,13 +56,16 @@
     <ProjectReference Include="..\Ryujinx.Graphics.Gpu\Ryujinx.Graphics.Gpu.csproj" />
     <ProjectReference Include="..\Ryujinx.UI.Common\Ryujinx.UI.Common.csproj" />
   </ItemGroup>
+
+  <!-- RD XML 文件 -->
   <ItemGroup>
     <RdXmlFile Include="rd.xml" />
   </ItemGroup>
+
+  <!-- NuGet 包依赖 -->
   <ItemGroup>
     <PackageReference Include="Rxmxnx.PInvoke.Extensions" />
     <PackageReference Include="Silk.NET.Vulkan" />
     <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" />
-    <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-llog" />
   </ItemGroup>
 </Project>
