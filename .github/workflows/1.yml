@@ -91,7 +91,7 @@ jobs:
 
       - name: Build with Gradle
         run: |
-         cd ${{ env.PROJECT_ROOT }}Test-ryu/src/RyujinxAndroid
+         cd ${{ env.PROJECT_ROOT }}/Test-ryu/src/RyujinxAndroid
          chmod +x ./gradlew
          ./gradlew clean assembleRelease \
           -Pandroid.ndkPath="$NDK_DIR" \
