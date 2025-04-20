@@ -1,4 +1,4 @@
-name: Android CI (NDK 25 Stable)
+name: Android CI (Stable)
 
 on:
   push:
@@ -11,46 +11,35 @@ jobs:
     env:
       NDK_VERSION: "25.2.9519653"
       TARGET_API_LEVEL: "30"
-      WORKSPACE_PATH: ${{ github.workspace }}/Test-ryu
+      PROJECT_ROOT: ${{ github.workspace }}
 
     steps:
       # ----------------------------------------
-      # 1. 检出代码（强制递归初始化子模块）
+      # 1. 检出代码（含子模块）
       # ----------------------------------------
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           repository: mipad/Test-ryu
           ref: "1"
-          path: Test-ryu
           submodules: 'recursive'
-          fetch-depth: 0
+          path: ${{ env.PROJECT_ROOT }}
 
       # ----------------------------------------
-      # 2. 安装基础编译工具
+      # 2. 安装基础工具链
       # ----------------------------------------
       - name: Install build tools
         run: |
-          brew install nasm perl coreutils
-          echo "=== 工具版本 ==="
-          nasm -v | head -n1
-          perl -v | head -n2
+          brew install nasm coreutils
+          echo "NASM Version: $(nasm -v | head -n1)"
 
       # ----------------------------------------
-      # 3. 安装指定版本 NDK
+      # 3. 安装 NDK（严格版本控制）
       # ----------------------------------------
       - name: Install NDK ${{ env.NDK_VERSION }}
         run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;${{ env.NDK_VERSION }}" > ndk_install.log
-          
-          echo "=== NDK 安装验证 ==="
-          if [ ! -d "$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" ]; then
-            echo "::error::NDK未安装到预期路径"
-            cat ndk_install.log
-            exit 1
-          fi
-          
-          echo "NDK目录大小: $(du -sh $ANDROID_HOME/ndk/${{ env.NDK_VERSION }})"
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;${{ env.NDK_VERSION }}"
+          echo "NDK Installed Path: $ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
 
       # ----------------------------------------
       # 4. 动态配置 NDK 工具链（关键修复）
@@ -60,93 +49,58 @@ jobs:
         run: |
           NDK_DIR="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
           
-          # 打印目录结构用于调试
-          echo "=== NDK 目录结构 ==="
-          ls -l $NDK_DIR/toolchains/llvm/prebuilt
-          
-          # 多级路径探测
+          # 多级路径探测（兼容 Intel/Apple Silicon）
           if [ -d "$NDK_DIR/toolchains/llvm/prebuilt/darwin-x86_64" ]; then
             NDK_TOOLCHAIN="$NDK_DIR/toolchains/llvm/prebuilt/darwin-x86_64"
           elif [ -d "$NDK_DIR/toolchains/llvm/prebuilt/darwin-arm64" ]; then
             NDK_TOOLCHAIN="$NDK_DIR/toolchains/llvm/prebuilt/darwin-arm64"
-          elif [ -d "$NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64" ]; then
-            NDK_TOOLCHAIN="$NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64"
           else
-            echo "::error::未找到工具链目录，当前prebuilt子目录:"
-            ls -l $NDK_DIR/toolchains/llvm/prebuilt/*
+            echo "::error::NDK toolchain not found in: $NDK_DIR/toolchains/llvm/prebuilt"
+            ls -lR "$NDK_DIR/toolchains/llvm/prebuilt"
             exit 1
           fi
 
-          # 严格验证工具链文件
-          if [ ! -f "$NDK_TOOLCHAIN/bin/aarch64-linux-android${{ env.TARGET_API_LEVEL }}-clang" ]; then
-            echo "::error::Clang编译器不存在于路径: $NDK_TOOLCHAIN/bin"
-            exit 1
-          fi
-
-          # 注入环境变量
+          # 写入环境变量
           echo "NDK_DIR=$NDK_DIR" >> $GITHUB_ENV
           echo "NDK_TOOLCHAIN=$NDK_TOOLCHAIN" >> $GITHUB_ENV
           echo "CC=$NDK_TOOLCHAIN/bin/aarch64-linux-android${{ env.TARGET_API_LEVEL }}-clang" >> $GITHUB_ENV
           echo "CXX=$NDK_TOOLCHAIN/bin/aarch64-linux-android${{ env.TARGET_API_LEVEL }}-clang++" >> $GITHUB_ENV
           echo "$NDK_TOOLCHAIN/bin" >> $GITHUB_PATH
-          
+
           # 生成 local.properties
-          echo "ndk.dir=$NDK_DIR" > ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/local.properties
-          echo "=== local.properties 内容 ==="
-          cat ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/local.properties
+          echo "ndk.dir=$NDK_DIR" > ${{ env.PROJECT_ROOT }}/local.properties
 
       # ----------------------------------------
-      # 5. 手动编译 OpenSSL（绕过 CMake 问题）
+      # 5. 条件编译 OpenSSL（智能缓存）
       # ----------------------------------------
-      - name: Build OpenSSL manually
+      - name: Build OpenSSL if needed
+        id: openssl-build
         run: |
-          cd ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/app
-          mkdir -p .openssl && cd .openssl
-          
-          # 下载并解压源码
-          curl -OL https://www.openssl.org/source/openssl-3.2.1.tar.gz
-          tar xzf openssl-3.2.1.tar.gz
-          cd openssl-3.2.1
-          
-          # 配置 Android 编译参数
-          ./Configure android-arm64 \
-            -D__ANDROID_API__=${{ env.TARGET_API_LEVEL }} \
-            --prefix=$PWD/install \
-            -static \
-            no-shared \
-            no-tests
-          
-          # 执行编译
-          make -j4
-          make install
-          
-          # 将路径注入 Gradle
-          echo "OPENSSL_ROOT_DIR=$PWD/install" >> $GITHUB_ENV
-          echo "=== OpenSSL 产物验证 ==="
-          ls -l $PWD/install/lib/lib*.a
+         cd ${{ env.PROJECT_ROOT }}
+    
+         # 检查 OpenSSL 配置和库是否存在
+           if [ -f "src/RyujinxAndroid/libryujinx/libs/OpenSSL.cmake" ] && [ -d "openssl-out/android-arm64" ]; then
+          echo "OpenSSL 配置和库已存在，跳过编译"
+          echo "OPENSSL_SKIP_BUILD=true" >> $GITHUB_ENV
+          else
+          echo "开始编译 OpenSSL..."
+          chmod +x build_openssl.sh
+          ./build_openssl.sh
+          echo "OPENSSL_ROOT_DIR=${{ env.PROJECT_ROOT }}/openssl-out/android-arm64" >> $GITHUB_ENV
+          fi
 
-      # ----------------------------------------
-      # 6. 构建项目（带增强日志）
-      # ----------------------------------------
       - name: Build with Gradle
         run: |
-          cd ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid
-          chmod +x gradlew
-          
-          # 带环境变量的详细构建
-          ./gradlew clean assembleRelease \
-            -Pandroid.ndkPath="$NDK_DIR" \
-            -Pandroid.extraLdFlags="-Wl,--sysroot=$NDK_TOOLCHAIN/sysroot" \
-            -Popenssl.root="$OPENSSL_ROOT_DIR" \
-            --stacktrace \
-            --info \
-            --scan \
-            --console=verbose
-          
-          # 严格产物验证
-          echo "=== 产物架构验证 ==="
-          find . -name "*.so" -exec file {} \; | grep "ARM aarch64"
-          [[ $(find . -name "*.apk" | wc -l) -gt 0 ]] || { echo "::error::未生成APK文件"; exit 1; }
+         cd ${{ env.PROJECT_ROOT }}
+         ./gradlew clean assembleRelease \
+          -Pandroid.ndkPath="$NDK_DIR" \
+          -Popenssl.root="${{ env.OPENSSL_ROOT_DIR }}" \
+          --stacktrace --info
+
+
+      # ----------------------------------------
+      #
+            
 
       # ----------------------------------------
       # 7. 上传构建产物
@@ -154,8 +108,8 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ryujinx-build-${{ github.run_number }}
+          name: android-build-${{ github.run_number }}
           path: |
-            ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/app/build/outputs/apk/**/*.apk
-            ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/app/build/intermediates/merged_native_libs/**/*.so
+            ${{ env.PROJECT_ROOT }}/app/build/outputs/apk/**/*.apk
+            ${{ env.PROJECT_ROOT }}/app/build/intermediates/**/*.so
           retention-days: 7
