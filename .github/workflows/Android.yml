@@ -41,16 +41,22 @@ jobs:
       run: |
          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1" 
 
-    - name: Install LLVM (with llvm-objcopy)
+    
+    - name: Install LLVM and lld
       run: |
-       brew install llvm
-       # 将 LLVM 工具链路径添加到 PATH
-       echo "$(brew --prefix llvm)/bin" >> $GITHUB_PATH
+          brew install llvm lld
+          # 配置环境变量
+          echo "LLVM_PATH=$HOMEBREW_LLVM_PATH" >> $GITHUB_ENV
+          echo "PATH=$HOMEBREW_LLVM_PATH/bin:$PATH" >> $GITHUB_ENV
+          echo "LDFLAGS=-L$HOMEBREW_LLVM_PATH/lib" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I$HOMEBREW_LLVM_PATH/include" >> $GITHUB_ENV
+
       
-    - name: Install and Link lld
+    - name: Check LLVM Tools
       run: |
-          brew install lld
-          sudo ln -s $(brew --prefix lld)/bin/ld64.lld /usr/local/bin/ld64.lld
+          clang --version       # 应指向 Homebrew 的 LLVM
+          ld64.lld --version    # 确保 lld 可用
+          llvm-objcopy --version
           
     - name: Build Android
       run: |
