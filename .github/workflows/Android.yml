@@ -92,7 +92,7 @@ jobs:
       - name: Build Project
         run: |
           cd ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid
-          
+          chmod +x ./gradlew
           ./gradlew clean assembleRelease \
               -Pandroid.ndkPath="${{ env.NDK_DIR }}" \
               -Pandroid.extraLdFlags="-Wl,--sysroot=${{ env.NDK_TOOLCHAIN }}/sysroot" \
