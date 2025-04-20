@@ -41,6 +41,12 @@ jobs:
       run: |
          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1" 
 
+    - name: Install LLVM (with llvm-objcopy)
+      run: |
+       brew install llvm
+       # 将 LLVM 工具链路径添加到 PATH
+       echo "$(brew --prefix llvm)/bin" >> $GITHUB_PATH
+      
     - name: Install and Link lld
       run: |
           brew install lld
