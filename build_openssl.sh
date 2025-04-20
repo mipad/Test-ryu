@@ -18,7 +18,7 @@ else
 fi
 
 export PATH="$NDK_TOOLCHAIN/bin:$PATH"
-export TARGET_API_LEVEL=21  # 与你的 CI 配置一致
+export TARGET_API_LEVEL=30  # 与你的 CI 配置一致
 
 # ---------------------------------------------------------------
 # 2. 进入 OpenSSL 源码目录（假设代码已检出）
