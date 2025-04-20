@@ -7,12 +7,13 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest  # 使用 Apple Silicon 运行器
+    runs-on: macos-latest  # 使用 ARM64 架构运行器
     env:
-      NDK_VERSION: "25.1.8937393"           # 指定 NDK 版本
-      NDK_DIR: "${{ github.workspace }}/Test-ryu/android-sdk/ndk/${{ env.NDK_VERSION }}"
-      NDK_TOOLCHAIN: "${{ env.NDK_DIR }}/toolchains/llvm/prebuilt/darwin-arm64"  # ARM64 工具链路径
-      TARGET_ARCH: "aarch64-linux-android21"  # 目标架构
+      # 直接硬编码 NDK 版本和路径（避免 env 上下文互相引用）
+      NDK_VERSION: "25.1.8937393"
+      WORKSPACE_PATH: ${{ github.workspace }}/Test-ryu
+      NDK_DIR: ${{ github.workspace }}/Test-ryu/android-sdk/ndk/25.1.8937393  # 直接硬编码版本号
+      TARGET_ARCH: "aarch64-linux-android21"
 
     steps:
       # ----------------------------------------
@@ -41,36 +42,38 @@ jobs:
         run: |
           # 安装指定版本 NDK
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;${{ env.NDK_VERSION }}"
-          
           # 接受所有 Android 许可证
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
 
       # ----------------------------------------
-      # 4. 配置 NDK 路径
+      # 4. 配置 NDK 路径和验证工具链
       # ----------------------------------------
       - name: Configure NDK Path
         run: |
           # 写入 NDK 路径到 local.properties
-          echo "ndk.dir=${{ env.NDK_DIR }}" >> Test-ryu/src/RyujinxAndroid/local.properties
+          echo "ndk.dir=${{ env.NDK_DIR }}" >> ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/local.properties
 
-          # 验证关键路径存在性
-          echo "=== NDK 工具链验证 ==="
-          echo "Clang 路径: ${{ env.NDK_TOOLCHAIN }}/bin/clang"
-          ls -l "${{ env.NDK_TOOLCHAIN }}/bin/clang"
+          # 定义 NDK 工具链路径（在步骤内动态计算）
+          NDK_TOOLCHAIN="${{ env.NDK_DIR }}/toolchains/llvm/prebuilt/darwin-arm64"
           
-          echo "=== Sysroot 库验证 ==="
-          echo "Liblog 路径: ${{ env.NDK_TOOLCHAIN }}/sysroot/usr/lib/${{ env.TARGET_ARCH }}/liblog.so"
-          ls -l "${{ env.NDK_TOOLCHAIN }}/sysroot/usr/lib/${{ env.TARGET_ARCH }}/liblog.so"
+          # 验证关键路径
+          echo "=== 验证 NDK 工具链 ==="
+          ls -l "$NDK_TOOLCHAIN/bin/clang"
+          echo "=== 验证 Sysroot 库 ==="
+          ls -l "$NDK_TOOLCHAIN/sysroot/usr/lib/${{ env.TARGET_ARCH }}/liblog.so"
+
+          # 将工具链路径注入环境变量供后续步骤使用
+          echo "NDK_TOOLCHAIN=$NDK_TOOLCHAIN" >> $GITHUB_ENV
 
       # ----------------------------------------
-      # 5. 配置构建环境变量
+      # 5. 配置编译环境变量
       # ----------------------------------------
       - name: Setup Build Environment
         run: |
           # 将 NDK 工具链添加到 PATH
           echo "${{ env.NDK_TOOLCHAIN }}/bin" >> $GITHUB_PATH
           
-          # 设置编译器标志
+          # 设置编译器参数
           echo "CC=${{ env.NDK_TOOLCHAIN }}/bin/clang" >> $GITHUB_ENV
           echo "CXX=${{ env.NDK_TOOLCHAIN }}/bin/clang++" >> $GITHUB_ENV
           echo "LDFLAGS=-L${{ env.NDK_TOOLCHAIN }}/sysroot/usr/lib/${{ env.TARGET_ARCH }}" >> $GITHUB_ENV
@@ -80,7 +83,7 @@ jobs:
       # ----------------------------------------
       - name: Build Project
         run: |
-          cd Test-ryu/src/RyujinxAndroid
+          cd ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid
           
           # 清理并构建
           ./gradlew clean assembleRelease \
@@ -93,13 +96,13 @@ jobs:
           find . -name "*.so"
 
       # ----------------------------------------
-      # 7. 上传 APK 产物
+      # 7. 上传产物
       # ----------------------------------------
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ryujinx-arm64-build-${{ github.run_number }}
           path: |
-            Test-ryu/src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
-            Test-ryu/src/RyujinxAndroid/**/*.so  # 同时上传 .so 文件
+            ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
+            ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/**/*.so
           retention-days: 7
