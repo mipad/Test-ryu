@@ -75,16 +75,19 @@ jobs:
       # ----------------------------------------
       - name: Build OpenSSL
         run: |
-          cd ${{ env.PROJECT_ROOT }}
-          chmod +x build_openssl.sh
-          ./build_openssl.sh
-          echo "OPENSSL_ROOT_DIR=${{ env.PROJECT_ROOT }}/openssl-out/android-arm64" >> $GITHUB_ENV
-
-          # 严格验证产物
-          if [ ! -f "${{ env.PROJECT_ROOT }}/openssl-out/android-arm64/lib/libcrypto.a" ]; then
-            echo "::error::libcrypto.a 未生成"
-            exit 1
-          fi
+         cd src/RyujinxAndroid
+    
+         # 验证 NDK 工具链
+         echo "=== NDK 工具链验证 ==="
+         ls -l "$NDK_TOOLCHAIN/bin/aarch64-linux-android${{ env.TARGET_API_LEVEL}}-clang"
+    
+         # 执行编译
+         chmod +x build_openssl.sh
+         ./build_openssl.sh
+    
+         # 验证产物
+         echo "=== OpenSSL 产物验证 ==="
+         file openssl-out/android-arm64/lib/libcrypto.a | grep "ARM aarch64"
 
       - name: Build with Gradle
         run: |
