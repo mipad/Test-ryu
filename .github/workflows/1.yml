@@ -1,0 +1,134 @@
+name: Android CI (NDK 25 Stabilized)
+
+on:
+  push:
+    branches: [ "1" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest  # 必须使用 macOS 以兼容 Apple Silicon NDK
+    env:
+      NDK_VERSION: "25.2.9519653"  # 官方确认存在的 NDK 版本
+      TARGET_API_LEVEL: "21"        # 与 Ryujinx 的 minSdkVersion 一致
+      WORKSPACE_PATH: ${{ github.workspace }}/Test-ryu
+
+    steps:
+      # ----------------------------------------
+      # 1. 检出代码（包含子模块递归初始化）
+      # ----------------------------------------
+      - name: Checkout code with submodules
+        uses: actions/checkout@v4
+        with:
+          repository: mipad/Test-ryu
+          ref: "1"
+          path: Test-ryu
+          submodules: 'recursive'  # 关键修复：确保所有子模块初始化
+
+      # ----------------------------------------
+      # 2. 安装基础编译工具链
+      # ----------------------------------------
+      - name: Install build essentials
+        run: |
+          # 安装 OpenSSL 编译依赖
+          brew install nasm perl coreutils
+          # 验证工具版本
+          nasm -v
+          perl -v
+
+      # ----------------------------------------
+      # 3. NDK 环境配置（严格版本控制）
+      # ----------------------------------------
+      - name: Setup NDK ${{ env.NDK_VERSION }}
+        uses: android-actions/setup-android@v3
+        with:
+          ndk-version: ${{ env.NDK_VERSION }}
+
+      # ----------------------------------------
+      # 4. 动态配置 NDK 工具链路径
+      # ----------------------------------------
+      - name: Configure NDK Toolchain
+        id: ndk-config
+        run: |
+          # 定义 NDK 根目录
+          NDK_DIR="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
+          
+          # 动态探测工具链路径（兼容 Intel/Apple Silicon）
+          if [ -d "$NDK_DIR/toolchains/llvm/prebuilt/darwin-x86_64" ]; then
+            NDK_TOOLCHAIN="$NDK_DIR/toolchains/llvm/prebuilt/darwin-x86_64"
+          elif [ -d "$NDK_DIR/toolchains/llvm/prebuilt/darwin-arm64" ]; then
+            NDK_TOOLCHAIN="$NDK_DIR/toolchains/llvm/prebuilt/darwin-arm64"
+          else
+            echo "::error::NDK toolchain directory not found"
+            exit 1
+          fi
+
+          # 写入环境变量
+          echo "NDK_DIR=$NDK_DIR" >> $GITHUB_ENV
+          echo "NDK_TOOLCHAIN=$NDK_TOOLCHAIN" >> $GITHUB_ENV
+          echo "CC=$NDK_TOOLCHAIN/bin/aarch64-linux-android${{ env.TARGET_API_LEVEL }}-clang" >> $GITHUB_ENV
+          echo "CXX=$NDK_TOOLCHAIN/bin/aarch64-linux-android${{ env.TARGET_API_LEVEL }}-clang++" >> $GITHUB_ENV
+          
+          # 更新 PATH
+          echo "$NDK_TOOLCHAIN/bin" >> $GITHUB_PATH
+
+          # 生成 local.properties
+          echo "ndk.dir=$NDK_DIR" > ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/local.properties
+
+      # ----------------------------------------
+      # 5. 预编译 OpenSSL（绕过 CMake 问题）
+      # ----------------------------------------
+      - name: Build OpenSSL manually
+        run: |
+          cd ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/app/.cxx
+          mkdir -p openssl-build && cd openssl-build
+
+          # 下载 OpenSSL 源码
+          curl -O https://www.openssl.org/source/openssl-3.2.1.tar.gz
+          tar xzf openssl-3.2.1.tar.gz
+          cd openssl-3.2.1
+
+          # 配置 Android 交叉编译
+          ./Configure android-arm64 \
+            -D__ANDROID_API__=${{ env.TARGET_API_LEVEL }} \
+            --prefix=$PWD/install \
+            -static
+
+          # 执行编译
+          make -j4
+          make install
+
+          # 注入到 CMake 路径
+          echo "OPENSSL_ROOT_DIR=$PWD/install" >> $GITHUB_ENV
+
+      # ----------------------------------------
+      # 6. 构建项目（带详细日志）
+      # ----------------------------------------
+      - name: Build with Gradle
+        run: |
+          cd ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid
+          chmod +x gradlew
+
+          # 带环境变量的构建命令
+          ./gradlew clean assembleRelease \
+            -Pandroid.ndkPath="$NDK_DIR" \
+            -Pandroid.extraLdFlags="-Wl,--sysroot=$NDK_TOOLCHAIN/sysroot" \
+            -Popenssl.root="$OPENSSL_ROOT_DIR" \  # 传递手动编译的 OpenSSL 路径
+            --stacktrace \
+            --info \
+            --scan
+
+          # 产物验证
+          find . -name "*.so" -exec file {} \;
+
+      # ----------------------------------------
+      # 7. 产物归档与上传
+      # ----------------------------------------
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ryujinx-artifacts-${{ github.run_number }}
+          path: |
+            ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/app/build/outputs/apk/**/*.apk
+            ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/app/build/intermediates/stripped_native_libs/**/*.so
+          retention-days: 7
