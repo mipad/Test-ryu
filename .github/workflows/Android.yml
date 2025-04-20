@@ -18,48 +18,39 @@ on:
         
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: macOS-latest
     permissions:
       contents: read
       actions: write
       packages: write
     steps:
+    - name: Enable Long Paths
+      run: |
+      
+       
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
         ref: main
         path: Test-ryu
-
+        
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: temurin
-        java-version: 18
+        java-version: 17
         
-
-    - name: 安装 LLVM
-      run: |
-         $LLVM_VERSION = "16.0.0"
-         Invoke-WebRequest -Uri "https://github.com/llvm/llvm-project/releases/download/llvmorg-$LLVM_VERSION/LLVM-$LLVM_VERSION-win64.exe" -OutFile "llvm-installer.exe"
-         Start-Process -Wait -FilePath "llvm-installer.exe" -ArgumentList "/S"
-         echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
-          
+         
     - name: Build Android
       run: |
-        $projectRoot = "${{ github.workspace }}/Test-ryu/src/RyujinxAndroid"
-        cd $projectRoot
+        cd ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid
+        chmod +x ./gradlew
+        ./gradlew "assembleRelease"
         
-        # 启用详细日志记录
-        $env:GRADLE_OPTS = "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2"
-        
-        # 分步执行构建
-        ./gradlew clean --no-daemon --stacktrace --scan
-        ./gradlew assembleRelease --no-daemon --stacktrace --scan --info
-        
-        # 当失败时导出日志
-        if (-not $?) {
-          Get-Content "$projectRoot/build/outputs/logs/*.log" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY
-          exit 1
-        }
-      shell: pwsh
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+          name: ryujinx-main-${{ github.run_number }}
+          path: Test-ryu/src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
+          retention-days: 7 
