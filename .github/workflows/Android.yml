@@ -40,7 +40,12 @@ jobs:
     - name: Install CMake
       run: |
          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1" 
-         
+
+    - name: Install and Link lld
+      run: |
+          brew install lld
+          sudo ln -s $(brew --prefix lld)/bin/ld64.lld /usr/local/bin/ld64.lld
+          
     - name: Build Android
       run: |
         cd ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid
