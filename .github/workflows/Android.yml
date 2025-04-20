@@ -40,12 +40,6 @@ jobs:
         distribution: temurin
         java-version: 17
         
-    - name: Install Android SDK Components
-      run: |
-        # 安装 CMake 和 NDK
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1" "ndk;25.1.8937393"
-        # 接受所有 Android 许可证
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
 
     - name: Install LLVM and lld
       run: |
@@ -66,12 +60,7 @@ jobs:
         ld64.lld --version
         llvm-objcopy --version
 
-    - name: Configure NDK Path
-      run: |
-        # 写入 NDK 路径到 local.properties
-        echo "ndk.dir=$ANDROID_NDK_HOME" >> ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid/local.properties
-        # 验证 NDK 路径
-        ls -l $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang
+    
 
     - name: Build Android
       run: |
