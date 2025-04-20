@@ -1,147 +1,83 @@
-name: Android CI (NDK 25 + OpenSSL Fix)
+#!/bin/bash
+# File: build_openssl.sh
+# 目标：为 Android arm64-v8a 编译 OpenSSL
 
-on:
-  push:
-    branches: [ "1" ]
-  workflow_dispatch:
+# ------------------------------
+# 1. 基础配置
+# ------------------------------
+TARGET_ARCH="android-arm64"
+TARGET_API_LEVEL="30"
+NDK_VERSION="25.2.9519653"
+OPENSSL_VERSION="3.2.1"
+OPENSSL_SOURCE_URL="https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz"
+OUTPUT_DIR="${PWD}/openssl-out/${TARGET_ARCH}"
 
-jobs:
-  build:
-    runs-on: macos-latest
-    env:
-      NDK_VERSION: "25.2.9519653"
-      TARGET_API_LEVEL: "30"
-      WORKSPACE_PATH: ${{ github.workspace }}/Test-ryu
+# ------------------------------
+# 2. 探测 NDK 工具链路径（自动适配 Intel/Apple Silicon）
+# ------------------------------
+ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+NDK_ROOT="${ANDROID_HOME}/ndk/${NDK_VERSION}"
 
-    steps:
-      # ----------------------------------------
-      # 1. 检出代码（包含子模块）
-      # ----------------------------------------
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          repository: mipad/Test-ryu
-          ref: "1"
-          path: Test-ryu
-          submodules: 'recursive'
+detect_toolchain() {
+  local prebuilt_dir="${NDK_ROOT}/toolchains/llvm/prebuilt"
+  if [ -d "${prebuilt_dir}/darwin-x86_64" ]; then
+    echo "${prebuilt_dir}/darwin-x86_64"
+  elif [ -d "${prebuilt_dir}/darwin-arm64" ]; then
+    echo "${prebuilt_dir}/darwin-arm64"
+  else
+    echo "错误: 未找到 NDK 工具链目录" >&2
+    exit 1
+  fi
+}
 
-      # ----------------------------------------
-      # 2. 安装基础工具链
-      # ----------------------------------------
-      - name: Install build tools
-        run: |
-          brew install nasm coreutils
-          echo "=== 工具版本 ==="
-          nasm -v | head -n1
+TOOLCHAIN_DIR=$(detect_toolchain)
 
-      # ----------------------------------------
-      # 3. 安装指定版本 NDK
-      # ----------------------------------------
-      - name: Install NDK ${{ env.NDK_VERSION }}
-        run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;${{ env.NDK_VERSION }}" > ndk_install.log
-          echo "=== NDK 安装验证 ==="
-          find $ANDROID_HOME/ndk/${{ env.NDK_VERSION }} -name "aarch64-linux-android${{ env.TARGET_API_LEVEL }}-clang"
+# ------------------------------
+# 3. 设置编译器环境变量
+# ------------------------------
+export CC="${TOOLCHAIN_DIR}/bin/aarch64-linux-android${TARGET_API_LEVEL}-clang"
+export CXX="${TOOLCHAIN_DIR}/bin/aarch64-linux-android${TARGET_API_LEVEL}-clang++"
+export AR="${TOOLCHAIN_DIR}/bin/llvm-ar"
+export RANLIB="${TOOLCHAIN_DIR}/bin/llvm-ranlib"
+export PATH="${TOOLCHAIN_DIR}/bin:${PATH}"
 
-      # ----------------------------------------
-      # 4. 配置 NDK 工具链（关键修复）
-      # ----------------------------------------
-      - name: Configure NDK Toolchain
-        id: ndk-config
-        run: |
-          NDK_DIR="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
-          
-          # 动态探测工具链路径
-          if [ -d "$NDK_DIR/toolchains/llvm/prebuilt/darwin-x86_64" ]; then
-            NDK_TOOLCHAIN="$NDK_DIR/toolchains/llvm/prebuilt/darwin-x86_64"
-          else
-            NDK_TOOLCHAIN="$NDK_DIR/toolchains/llvm/prebuilt/darwin-arm64"
-          fi
+# ------------------------------
+# 4. 下载并编译 OpenSSL
+# ------------------------------
+mkdir -p openssl-src
+cd openssl-src
 
-          # 严格验证编译器存在性
-          CLANG_PATH="$NDK_TOOLCHAIN/bin/aarch64-linux-android${{ env.TARGET_API_LEVEL }}-clang"
-          if [ ! -f "$CLANG_PATH" ]; then
-            echo "::error::Clang 编译器不存在: $CLANG_PATH"
-            exit 1
-          fi
+if [ ! -f "openssl-${OPENSSL_VERSION}.tar.gz" ]; then
+  echo "正在下载 OpenSSL ${OPENSSL_VERSION}..."
+  curl -L -O "${OPENSSL_SOURCE_URL}" || exit 1
+fi
 
-          # 注入环境变量
-          echo "NDK_TOOLCHAIN=$NDK_TOOLCHAIN" >> $GITHUB_ENV
-          echo "CC=$CLANG_PATH" >> $GITHUB_ENV
-          echo "CXX=$NDK_TOOLCHAIN/bin/aarch64-linux-android${{ env.TARGET_API_LEVEL }}-clang++" >> $GITHUB_ENV
-          echo "$NDK_TOOLCHAIN/bin" >> $GITHUB_PATH
+if [ ! -d "openssl-${OPENSSL_VERSION}" ]; then
+  tar xzf "openssl-${OPENSSL_VERSION}.tar.gz"
+fi
 
-          # 生成 local.properties
-          echo "ndk.dir=$NDK_DIR" > ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/local.properties
+cd openssl-${OPENSSL_VERSION}
 
-      # ----------------------------------------
-      # 5. 手动编译 OpenSSL（核心修复）
-      # ----------------------------------------
-      - name: Build OpenSSL manually
-        run: |
-          cd ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/app
-          mkdir -p .openssl && cd .openssl
-          
-          # 下载源码
-          curl -OL https://www.openssl.org/source/openssl-3.2.1.tar.gz
-          tar xzf openssl-3.2.1.tar.gz
-          cd openssl-3.2.1
-          
-          # 配置编译参数（关键修复点）
-          export ANDROID_NDK_HOME=$NDK_TOOLCHAIN
-          ./Configure android-arm64 \
-            --prefix=$PWD/install \
-            -D__ANDROID_API__=${{ env.TARGET_API_LEVEL }} \
-            -fPIC \
-            -fstack-protector-strong \
-            --sysroot="$NDK_TOOLCHAIN/sysroot" \
-            -static \
-            no-shared \
-            no-tests \
-            no-legacy
+./Configure ${TARGET_ARCH} \
+  --prefix="${OUTPUT_DIR}" \
+  -D__ANDROID_API__=${TARGET_API_LEVEL} \
+  --sysroot="${TOOLCHAIN_DIR}/sysroot" \
+  -static no-shared no-tests
 
-          # 执行编译（显式指定工具链）
-          make CC="$CC" \
-               AR="$NDK_TOOLCHAIN/bin/llvm-ar" \
-               RANLIB="$NDK_TOOLCHAIN/bin/llvm-ranlib" \
-               LD="$NDK_TOOLCHAIN/bin/ld" \
-               -j4
-          
-          make install_sw
-          
-          # 注入路径
-          echo "OPENSSL_ROOT_DIR=$PWD/install" >> $GITHUB_ENV
-          echo "=== OpenSSL 产物 ==="
-          ls -l $PWD/install/lib/lib*.a
+make -j$(sysctl -n hw.logicalcpu)
+make install_sw
 
-      # ----------------------------------------
-      # 6. 构建项目
-      # ----------------------------------------
-      - name: Build with Gradle
-        run: |
-          cd ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid
-          chmod +x gradlew
-          
-          ./gradlew clean assembleRelease \
-            -Pandroid.ndkPath="$NDK_DIR" \
-            -Pandroid.extraLdFlags="-Wl,--sysroot=$NDK_TOOLCHAIN/sysroot" \
-            -Popenssl.root="$OPENSSL_ROOT_DIR" \
-            --stacktrace \
-            --info \
-            --console=verbose
-          
-          # 产物验证
-          echo "=== 产物架构验证 ==="
-          find . -name "*.so" -exec file {} \; | grep "ARM aarch64"
+# ------------------------------
+# 5. 生成 CMake 配置文件
+# ------------------------------
+CMAKE_CONFIG_DIR="../src/RyujinxAndroid/libryujinx/libs"
+mkdir -p "${CMAKE_CONFIG_DIR}"
 
-      # ----------------------------------------
-      # 7. 上传产物
-      # ----------------------------------------
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ryujinx-build-${{ github.run_number }}
-          path: |
-            ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/app/build/outputs/apk/**/*.apk
-            ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/app/build/intermediates/stripped_native_libs/**/*.so
-          retention-days: 7
+cat > "${CMAKE_CONFIG_DIR}/OpenSSL.cmake" << EOF
+set(OPENSSL_ROOT_DIR \${CMAKE_SOURCE_DIR}/openssl-out/android-arm64)
+set(OPENSSL_INCLUDE_DIR \${OPENSSL_ROOT_DIR}/include)
+set(OPENSSL_CRYPTO_LIBRARY \${OPENSSL_ROOT_DIR}/lib/libcrypto.a)
+set(OPENSSL_SSL_LIBRARY \${OPENSSL_ROOT_DIR}/lib/libssl.a)
+EOF
+
+echo "OpenSSL 编译完成！输出目录: ${OUTPUT_DIR}"
