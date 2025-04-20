@@ -15,63 +15,93 @@ on:
         description: 'Upload APK as artifact'
         type: boolean
         default: true
-        
+
 jobs:
   build:
-    runs-on: macOS-latest
+    runs-on: macos-latest
     env:
-      ANDROID_NDK_HOME: ${{ github.workspace }}/Test-ryu/android-sdk/ndk/25.1.8937393  # 确保与你的 NDK 路径一致
-      HOMEBREW_LLVM_PATH: /opt/homebrew/opt/llvm  # Homebrew LLVM 安装路径
+      ANDROID_NDK_HOME: ${{ github.workspace }}/Test-ryu/android-sdk/ndk/25.1.8937393
+      TARGET_ARCH: aarch64-linux-android21  # 根据你的目标架构调整
     permissions:
       contents: read
       actions: write
       packages: write
-    steps:      
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        repository: mipad/Test-ryu
-        ref: 1
-        path: Test-ryu
-        
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: temurin
-        java-version: 17
-        
 
-    - name: Install LLVM and lld
-      run: |
-        brew install llvm lld
-        # 强制覆盖 PATH，确保 Homebrew LLVM 优先级最高
-        echo "PATH=$HOMEBREW_LLVM_PATH/bin:/opt/homebrew/bin:$PATH" >> $GITHUB_ENV
-        # 设置正确的库和头文件路径
-        echo "LDFLAGS=-L$HOMEBREW_LLVM_PATH/lib" >> $GITHUB_ENV
-        echo "CPPFLAGS=-I$HOMEBREW_LLVM_PATH/include" >> $GITHUB_ENV
+    steps:
+      # ----------------------------------------
+      # 1. 代码检出
+      # ----------------------------------------
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          repository: mipad/Test-ryu
+          ref: 1
+          path: Test-ryu
 
-    - name: Check LLVM Tools
-      run: |
-        echo "当前 PATH: $PATH"
-        which clang          # 应输出 /opt/homebrew/opt/llvm/bin/clang
-        which ld64.lld       # 应输出 /opt/homebrew/opt/llvm/bin/ld64.lld
-        which llvm-objcopy   # 应输出 /opt/homebrew/opt/llvm/bin/llvm-objcopy
-        clang --version      # 应显示 Homebrew LLVM 版本
-        ld64.lld --version
-        llvm-objcopy --version
+      # ----------------------------------------
+      # 2. Java 环境配置
+      # ----------------------------------------
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
 
-    
+      # ----------------------------------------
+      # 3. Android SDK 组件安装
+      # ----------------------------------------
+      - name: Install Android SDK Components
+        run: |
+          # 安装指定版本的 NDK 和 CMake
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1" "ndk;25.1.8937393"
+          # 接受所有 Android 许可证
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
 
-    - name: Build Android
-      run: |
-        cd ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid
-        chmod +x ./gradlew
-        ./gradlew assembleRelease --stacktrace
+      # ----------------------------------------
+      # 4. NDK 路径配置
+      # ----------------------------------------
+      - name: Configure NDK Path
+        run: |
+          # 写入 NDK 路径到 local.properties
+          echo "ndk.dir=$ANDROID_NDK_HOME" >> Test-ryu/src/RyujinxAndroid/local.properties
+          # 验证 NDK 工具链存在
+          ls -l $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang
+          ls -l $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib/$TARGET_ARCH
 
-    - name: Upload APK
-      if: ${{ inputs.upload_artifact }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: ryujinx-main1-${{ github.run_number }}
-        path: ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
-        retention-days: 7
+      # ----------------------------------------
+      # 5. LLVM 工具链配置
+      # ----------------------------------------
+      - name: Setup LLVM Toolchain
+        run: |
+          # 安装 Homebrew LLVM（用于本地 macOS 工具）
+          brew install llvm lld
+          # 将 NDK 的 LLVM 工具链添加到 PATH 最前方
+          echo "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin" >> $GITHUB_PATH
+          # 设置编译器和链接器标志
+          echo "CC=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang" >> $GITHUB_ENV
+          echo "CXX=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang++" >> $GITHUB_ENV
+          echo "LDFLAGS=-L$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib/$TARGET_ARCH -llog -ldl -lz -lm -lc" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include" >> $GITHUB_ENV
+
+      # ----------------------------------------
+      # 6. 构建项目
+      # ----------------------------------------
+      - name: Build Android
+        run: |
+          cd Test-ryu/src/RyujinxAndroid
+          chmod +x ./gradlew
+          # 添加详细日志参数
+          ./gradlew clean assembleRelease --stacktrace --info \
+              -Pandroid.ndkPath="$ANDROID_NDK_HOME" \
+              -Pandroid.extraLdFlags="-Wl,--sysroot=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/sysroot"
+
+      # ----------------------------------------
+      # 7. 上传产物
+      # ----------------------------------------
+      - name: Upload APK
+        if: ${{ inputs.upload_artifact }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ryujinx-build-${{ github.run_number }}
+          path: Test-ryu/src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
+          retention-days: 7
