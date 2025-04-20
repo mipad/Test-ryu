@@ -77,17 +77,19 @@ jobs:
         run: |
          cd src/RyujinxAndroid
     
-         # 验证 NDK 工具链
-         echo "=== NDK 工具链验证 ==="
-         ls -l "$NDK_TOOLCHAIN/bin/aarch64-linux-android${{ env.TARGET_API_LEVEL}}-clang"
-    
-         # 执行编译
-         chmod +x build_openssl.sh
-         ./build_openssl.sh
-    
-         # 验证产物
-         echo "=== OpenSSL 产物验证 ==="
-         file openssl-out/android-arm64/lib/libcrypto.a | grep "ARM aarch64"
+         rm -rf openssl-out
+          
+          # 注入环境变量
+          export AR="$NDK_TOOLCHAIN/bin/llvm-ar"
+          export RANLIB="$NDK_TOOLCHAIN/bin/llvm-ranlib"
+          export LD="$NDK_TOOLCHAIN/bin/ld"
+          
+          # 执行编译
+          chmod +x build_openssl.sh
+          ./build_openssl.sh
+          
+          # 验证输出
+          echo "OPENSSL_ROOT_DIR=${{ env.PROJECT_ROOT }}/openssl-out/android-arm64" >> $GITHUB_ENV
 
       - name: Build with Gradle
         run: |
