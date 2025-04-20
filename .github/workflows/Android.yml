@@ -1,4 +1,4 @@
-name: Android CI (NDK 26 Fix)
+name: Android CI (NDK 25 Stable)
 
 on:
   push:
@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: macos-latest  # Apple Silicon 运行器
     env:
-      NDK_VERSION: "26.2.11394342"  # NDK 26.2 最新版
+      NDK_VERSION: "25.2.9519653"  # NDK 25 最新稳定版
       TARGET_API_LEVEL: "21"        # Android 5.0 (Lollipop)
       WORKSPACE_PATH: ${{ github.workspace }}/Test-ryu
 
@@ -34,11 +34,11 @@ jobs:
           java-version: "17"
 
       # ----------------------------------------
-      # 3. 安装 Android NDK 26
+      # 3. 安装 Android NDK 25
       # ----------------------------------------
       - name: Install Android NDK
         run: |
-          # 安装 NDK 26
+          # 安装指定版本 NDK
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;${{ env.NDK_VERSION }}"
           
           # 验证 NDK 安装路径
@@ -46,11 +46,11 @@ jobs:
           ls -l $ANDROID_HOME/ndk/${{ env.NDK_VERSION }}
 
       # ----------------------------------------
-      # 4. 配置 NDK 路径（关键修复）
+      # 4. 配置 NDK 路径（关键步骤）
       # ----------------------------------------
       - name: Configure NDK Path
         run: |
-          # 定义 NDK 工具链路径（强制指定 ARM64 路径）
+          # 定义 NDK 路径变量
           NDK_DIR="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
           NDK_TOOLCHAIN="$NDK_DIR/toolchains/llvm/prebuilt/darwin-arm64"
 
@@ -61,21 +61,12 @@ jobs:
           # 写入 local.properties
           echo "ndk.dir=$NDK_DIR" >> ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/local.properties
 
-          # 验证关键路径（严格模式）
+          # 严格路径验证
           echo "=== 工具链路径验证 ==="
-          if [ ! -d "$NDK_TOOLCHAIN" ]; then
-            echo "::error::NDK 工具链路径不存在: $NDK_TOOLCHAIN"
-            exit 1
-          fi
-          ls -l "$NDK_TOOLCHAIN/bin/clang"
-
-          echo "=== Sysroot 库路径验证 (NDK 26 新结构) ==="
-          SYSROOT_LIB_PATH="$NDK_TOOLCHAIN/sysroot/usr/lib/aarch64-linux-android/${{ env.TARGET_API_LEVEL }}/liblog.so"
-          if [ ! -f "$SYSROOT_LIB_PATH" ]; then
-            echo "::error::Sysroot 库文件不存在: $SYSROOT_LIB_PATH"
-            exit 1
-          fi
-          ls -l "$SYSROOT_LIB_PATH"
+          ls -l "$NDK_TOOLCHAIN/bin/clang" || { echo "::error::clang 不存在，NDK 安装异常"; exit 1; }
+          
+          echo "=== Sysroot 库验证 ==="
+          ls -l "$NDK_TOOLCHAIN/sysroot/usr/lib/aarch64-linux-android/${{ env.TARGET_API_LEVEL }}/liblog.so" || { echo "::error::liblog.so 不存在，检查 API 级别"; exit 1; }
 
       # ----------------------------------------
       # 5. 配置构建环境
@@ -97,13 +88,13 @@ jobs:
         run: |
           cd ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid
           
-          # 清理并构建（显式传递 NDK 参数）
+          # 清理并构建（关键参数传递）
           ./gradlew clean assembleRelease \
               -Pandroid.ndkPath="${{ env.NDK_DIR }}" \
               -Pandroid.extraLdFlags="-Wl,--sysroot=${{ env.NDK_TOOLCHAIN }}/sysroot" \
               --stacktrace --info
 
-          # 验证 .so 文件生成
+          # 验证产物
           echo "=== 生成的 .so 文件 ==="
           find . -name "*.so" | xargs ls -l
 
@@ -113,8 +104,17 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ryujinx-ndk26-arm64-${{ github.run_number }}
+          name: ryujinx-ndk25-arm64-${{ github.run_number }}
           path: |
             ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
             ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/**/*.so
           retention-days: 7
+
+      # ----------------------------------------
+      # [可选] 缓存 NDK 加速后续构建
+      # ----------------------------------------
+      - name: Cache NDK
+        uses: actions/cache@v3
+        with:
+          path: $ANDROID_HOME/ndk/${{ env.NDK_VERSION }}
+          key: ndk-${{ env.NDK_VERSION }}
