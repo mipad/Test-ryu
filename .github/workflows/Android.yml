@@ -1,10 +1,10 @@
-name: Android CI 
+name: Android & .NET Full Pipeline
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "1" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "1" ]
   workflow_dispatch:
     inputs:
       should_release:
@@ -15,51 +15,163 @@ on:
         description: 'Upload APK as artifact'
         type: boolean
         default: true
-        
+      release_tag:
+        description: 'Custom release tag'
+        type: string
+        default: ''
+      is_prerelease:
+        description: 'Mark as pre-release'
+        type: boolean
+        default: false
+
+env:
+  PROJECT_ROOT: ${{ github.workspace }}/Test-ryu/src
+  ANDROID_PROJECT: RyujinxAndroid
+  DOTNET_VERSION: "9.0.203"
+  NDK_VERSION: "26.2.11394342"
+  ANDROID_ABI: "arm64-v8a"
+
 jobs:
   build:
-    runs-on: windows-latest
+    name: Full Build Process
+    runs-on: ubuntu-latest
     permissions:
       contents: read
-      actions: write
       packages: write
+      actions: write
+
     steps:
-    - name: Checkout code
+    # ========== 代码检出 ==========
+    - name: Checkout repository
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: main
+        ref: 1
         path: Test-ryu
+        fetch-depth: 2
 
+    # ========== 缓存配置 ==========
+    - name: Cache .NET packages
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.nuget/packages
+          **/bin
+          **/obj
+        key: ${{ runner.os }}-dotnet-${{ hashFiles('**/*.csproj') }}
+
+    - name: Cache Gradle
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties') }}
+
+    # ========== 环境初始化 ==========
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: temurin
-        java-version: 18
-        
+        java-version: 17
 
-    - name: 安装 LLVM
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        include-prerelease: true
+
+    - name: Setup Android NDK
+      uses: android-actions/setup-android@v3
+      with:
+        ndk-version: ${{ env.NDK_VERSION }}
+
+    # ========== .NET 多项目构建 ==========
+    - name: Restore Core Dependencies
+      working-directory: ${{ env.PROJECT_ROOT }}
       run: |
-         $LLVM_VERSION = "16.0.0"
-         Invoke-WebRequest -Uri "https://github.com/llvm/llvm-project/releases/download/llvmorg-$LLVM_VERSION/LLVM-$LLVM_VERSION-win64.exe" -OutFile "llvm-installer.exe"
-         Start-Process -Wait -FilePath "llvm-installer.exe" -ArgumentList "/S"
-         echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
-          
-    - name: Build Android
+        # 按依赖顺序恢复关键项目
+        dotnet restore Ryujinx.Common/Ryujinx.Common.csproj
+        dotnet restore ARMeilleure/ARMeilleure.csproj
+        dotnet restore Ryujinx.Cpu/Ryujinx.Cpu.csproj
+        dotnet restore Ryujinx.Memory/Ryujinx.Memory.csproj
+        dotnet restore Ryujinx.HLE/Ryujinx.HLE.csproj
+        dotnet restore Ryujinx.Graphics.Vulkan/Ryujinx.Graphics.Vulkan.csproj
+
+    - name: Build Core Libraries
+      working-directory: ${{ env.PROJECT_ROOT }}
       run: |
-        $projectRoot = "${{ github.workspace }}/Test-ryu/src/RyujinxAndroid"
-        cd $projectRoot
-        
-        # 启用详细日志记录
-        $env:GRADLE_OPTS = "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2"
-        
-        # 分步执行构建
-        ./gradlew clean --no-daemon --stacktrace --scan
-        ./gradlew assembleRelease --no-daemon --stacktrace --scan --info
-        
-        # 当失败时导出日志
-        if (-not $?) {
-          Get-Content "$projectRoot/build/outputs/logs/*.log" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY
-          exit 1
-        }
-      shell: pwsh
+        # 严格按依赖顺序构建
+        dotnet build Ryujinx.Common -c Release --no-restore -p:ContinuousIntegrationBuild=true
+        dotnet build ARMeilleure -c Release --no-restore
+        dotnet build Ryujinx.Cpu -c Release --no-restore
+        dotnet build Ryujinx.Memory -c Release --no-restore
+        dotnet build Ryujinx.HLE -c Release --no-restore
+        dotnet build Ryujinx.Graphics.Vulkan -c Release --no-restore
+
+    # ========== 原生代码构建 ==========
+    - name: Configure CMake
+      working-directory: ${{ env.PROJECT_ROOT }}/${{ env.ANDROID_PROJECT }}/app/src/main/cpp
+      env:
+        ANDROID_NDK: ${{ github.workspace }}/android-ndk
+      run: |
+        cmake -B build \
+          -DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK}/build/cmake/android.toolchain.cmake \
+          -DANDROID_ABI=${{ env.ANDROID_ABI }} \
+          -DANDROID_PLATFORM=android-33 \
+          -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build Native Libraries
+      working-directory: ${{ env.PROJECT_ROOT }}/${{ env.ANDROID_PROJECT }}/app/src/main/cpp
+      run: cmake --build build --parallel 4
+
+    # ========== Android APK 打包 ==========
+    - name: Prepare Gradle
+      working-directory: ${{ env.PROJECT_ROOT }}/${{ env.ANDROID_PROJECT }}
+      run: |
+        chmod +x gradlew
+        ./gradlew --version
+
+    - name: Build Release APK
+      working-directory: ${{ env.PROJECT_ROOT }}/${{ env.ANDROID_PROJECT }}
+      env:
+        ORG_GRADLE_PROJECT_android_ndk_path: ${{ github.workspace }}/android-ndk
+      run: |
+        ./gradlew clean assembleRelease \
+          --no-daemon \
+          --stacktrace \
+          -Pandroid.ndkPath=${{ github.workspace }}/android-ndk \
+          -Porg.gradle.parallel=true
+
+    # ========== 产物验证 ==========
+    - name: Verify Build Outputs
+      run: |
+        echo "===== APK 文件 ====="
+        find ${{ env.PROJECT_ROOT }} -path "*/apk/release/*.apk" -ls
+
+        echo "===== 原生库文件 ====="
+        find ${{ env.PROJECT_ROOT }} -name "*.so" -exec file {} \; 
+
+    # ========== 产物处理 ==========
+    - name: Upload APK Artifact
+      if: ${{ inputs.upload_artifact || github.event_name == 'push' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-release
+        path: ${{ env.PROJECT_ROOT }}/${{ env.ANDROID_PROJECT }}/app/build/outputs/apk/release/*.apk
+        retention-days: 7
+
+    - name: Create GitHub Release
+      if: ${{ inputs.should_release }}
+      uses: softprops/action-gh-release@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ inputs.release_tag || 'build-' + github.run_number }}
+        prerelease: ${{ inputs.is_prerelease }}
+        files: |
+          ${{ env.PROJECT_ROOT }}/${{ env.ANDROID_PROJECT }}/app/build/outputs/apk/release/*.apk
+        body: |
+          Automated build for Android APK
+          - Commit: ${{ github.sha }}
+          - Build Number: ${{ github.run_number }}
