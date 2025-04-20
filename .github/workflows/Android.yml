@@ -45,18 +45,25 @@ jobs:
     - name: Install LLVM and lld
       run: |
           brew install llvm lld
-          # 配置环境变量
-          echo "LLVM_PATH=$HOMEBREW_LLVM_PATH" >> $GITHUB_ENV
-          echo "PATH=$HOMEBREW_LLVM_PATH/bin:$PATH" >> $GITHUB_ENV
+          # 将 Homebrew LLVM 的 bin 目录添加到 PATH 最前方
+          echo "$HOMEBREW_LLVM_PATH/bin" >> $GITHUB_PATH
+          # 设置库和头文件路径
           echo "LDFLAGS=-L$HOMEBREW_LLVM_PATH/lib" >> $GITHUB_ENV
           echo "CPPFLAGS=-I$HOMEBREW_LLVM_PATH/include" >> $GITHUB_ENV
 
       
     - name: Check LLVM Tools
       run: |
-          clang --version       # 应指向 Homebrew 的 LLVM
-          ld64.lld --version    # 确保 lld 可用
+          echo "当前 PATH: $PATH"
+          which clang          # 应输出 /opt/homebrew/opt/llvm/bin/clang
+          which ld64.lld       # 应输出 /opt/homebrew/opt/llvm/bin/ld64.lld
+          which llvm-objcopy   # 应输出 /opt/homebrew/opt/llvm/bin/llvm-objcopy
+          clang --version      # 应显示 Homebrew 的 LLVM 版本
+          ld64.lld --version
           llvm-objcopy --version
+
+      
+    
           
     - name: Build Android
       run: |
