@@ -1,4 +1,4 @@
-name: Android CI (NDK 26)
+name: Android CI (NDK 26 Fix)
 
 on:
   push:
@@ -9,9 +9,9 @@ jobs:
   build:
     runs-on: macos-latest  # Apple Silicon 运行器
     env:
-      NDK_VERSION: "26.2.11394342"  # NDK 26.2 最新稳定版
+      NDK_VERSION: "26.2.11394342"  # NDK 26.2 最新版
+      TARGET_API_LEVEL: "21"        # Android 5.0 (Lollipop)
       WORKSPACE_PATH: ${{ github.workspace }}/Test-ryu
-      TARGET_ARCH: "aarch64-linux-android21"
 
     steps:
       # ----------------------------------------
@@ -38,51 +38,57 @@ jobs:
       # ----------------------------------------
       - name: Install Android NDK
         run: |
-          # 安装指定版本 NDK
+          # 安装 NDK 26
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;${{ env.NDK_VERSION }}"
           
-          # 接受所有 Android 许可证
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
-
           # 验证 NDK 安装路径
-          echo "NDK 安装路径: $ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
+          echo "=== NDK 安装路径验证 ==="
           ls -l $ANDROID_HOME/ndk/${{ env.NDK_VERSION }}
 
       # ----------------------------------------
-      # 4. 配置 NDK 路径
+      # 4. 配置 NDK 路径（关键修复）
       # ----------------------------------------
       - name: Configure NDK Path
         run: |
-          # 定义 NDK 路径变量
+          # 定义 NDK 工具链路径（强制指定 ARM64 路径）
           NDK_DIR="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
-          echo "ndk.dir=$NDK_DIR" >> ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/local.properties
+          NDK_TOOLCHAIN="$NDK_DIR/toolchains/llvm/prebuilt/darwin-arm64"
 
-          # 动态探测 NDK 工具链路径（兼容不同平台）
-          NDK_TOOLCHAIN=$(find "$NDK_DIR/toolchains/llvm/prebuilt" -maxdepth 1 -type d -name "darwin*" | head -n 1)
-          if [ -z "$NDK_TOOLCHAIN" ]; then
-            echo "::error::NDK 工具链路径未找到，请检查 NDK 安装"
-            exit 1
-          fi
+          # 注入环境变量
+          echo "NDK_DIR=$NDK_DIR" >> $GITHUB_ENV
           echo "NDK_TOOLCHAIN=$NDK_TOOLCHAIN" >> $GITHUB_ENV
 
-          # 验证关键路径
-          echo "=== NDK 工具链验证 ==="
+          # 写入 local.properties
+          echo "ndk.dir=$NDK_DIR" >> ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/local.properties
+
+          # 验证关键路径（严格模式）
+          echo "=== 工具链路径验证 ==="
+          if [ ! -d "$NDK_TOOLCHAIN" ]; then
+            echo "::error::NDK 工具链路径不存在: $NDK_TOOLCHAIN"
+            exit 1
+          fi
           ls -l "$NDK_TOOLCHAIN/bin/clang"
-          echo "=== Sysroot 库验证 ==="
-          ls -l "$NDK_TOOLCHAIN/sysroot/usr/lib/${{ env.TARGET_ARCH }}/liblog.so"
+
+          echo "=== Sysroot 库路径验证 (NDK 26 新结构) ==="
+          SYSROOT_LIB_PATH="$NDK_TOOLCHAIN/sysroot/usr/lib/aarch64-linux-android/${{ env.TARGET_API_LEVEL }}/liblog.so"
+          if [ ! -f "$SYSROOT_LIB_PATH" ]; then
+            echo "::error::Sysroot 库文件不存在: $SYSROOT_LIB_PATH"
+            exit 1
+          fi
+          ls -l "$SYSROOT_LIB_PATH"
 
       # ----------------------------------------
       # 5. 配置构建环境
       # ----------------------------------------
       - name: Setup Build Environment
         run: |
-          # 将工具链添加到 PATH
-          echo "${{ env.NDK_TOOLCHAIN }}/bin" >> $GITHUB_PATH
-          
           # 设置编译器参数
           echo "CC=${{ env.NDK_TOOLCHAIN }}/bin/clang" >> $GITHUB_ENV
           echo "CXX=${{ env.NDK_TOOLCHAIN }}/bin/clang++" >> $GITHUB_ENV
-          echo "LDFLAGS=-L${{ env.NDK_TOOLCHAIN }}/sysroot/usr/lib/${{ env.TARGET_ARCH }}" >> $GITHUB_ENV
+          echo "LDFLAGS=-L${{ env.NDK_TOOLCHAIN }}/sysroot/usr/lib/aarch64-linux-android/${{ env.TARGET_API_LEVEL }}" >> $GITHUB_ENV
+          
+          # 将工具链添加到 PATH
+          echo "${{ env.NDK_TOOLCHAIN }}/bin" >> $GITHUB_PATH
 
       # ----------------------------------------
       # 6. 构建项目
@@ -91,33 +97,24 @@ jobs:
         run: |
           cd ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid
           
-          # 清理并构建
+          # 清理并构建（显式传递 NDK 参数）
           ./gradlew clean assembleRelease \
-              -Pandroid.ndkPath="${{ env.NDK_TOOLCHAIN }}" \
+              -Pandroid.ndkPath="${{ env.NDK_DIR }}" \
               -Pandroid.extraLdFlags="-Wl,--sysroot=${{ env.NDK_TOOLCHAIN }}/sysroot" \
               --stacktrace --info
 
-          # 验证产物
+          # 验证 .so 文件生成
           echo "=== 生成的 .so 文件 ==="
-          find . -name "*.so"
+          find . -name "*.so" | xargs ls -l
 
       # ----------------------------------------
-      # 7. 上传产物（含缓存优化）
+      # 7. 上传产物
       # ----------------------------------------
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ryujinx-ndk26-build-${{ github.run_number }}
+          name: ryujinx-ndk26-arm64-${{ github.run_number }}
           path: |
             ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
             ${{ env.WORKSPACE_PATH }}/src/RyujinxAndroid/**/*.so
           retention-days: 7
-
-      # ----------------------------------------
-      # [可选] 缓存 NDK 加速后续构建
-      # ----------------------------------------
-      - name: Cache NDK
-        uses: actions/cache@v3
-        with:
-          path: $ANDROID_HOME/ndk/${{ env.NDK_VERSION }}
-          key: ndk-${{ env.NDK_VERSION }}
