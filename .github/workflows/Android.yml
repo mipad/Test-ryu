@@ -19,6 +19,9 @@ on:
 jobs:
   build:
     runs-on: macOS-latest
+    env:
+      ANDROID_NDK_HOME: ${{ github.workspace }}/Test-ryu/android-sdk/ndk/25.1.8937393  # 确保与你的 NDK 路径一致
+      HOMEBREW_LLVM_PATH: /opt/homebrew/opt/llvm  # Homebrew LLVM 安装路径
     permissions:
       contents: read
       actions: write
@@ -37,42 +40,49 @@ jobs:
         distribution: temurin
         java-version: 17
         
-    - name: Install CMake
+    - name: Install Android SDK Components
       run: |
-         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1" 
+        # 安装 CMake 和 NDK
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1" "ndk;25.1.8937393"
+        # 接受所有 Android 许可证
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
 
-    
     - name: Install LLVM and lld
       run: |
-          brew install llvm lld
-          # 将 Homebrew LLVM 的 bin 目录添加到 PATH 最前方
-          echo "$HOMEBREW_LLVM_PATH/bin" >> $GITHUB_PATH
-          # 设置库和头文件路径
-          echo "LDFLAGS=-L$HOMEBREW_LLVM_PATH/lib" >> $GITHUB_ENV
-          echo "CPPFLAGS=-I$HOMEBREW_LLVM_PATH/include" >> $GITHUB_ENV
+        brew install llvm lld
+        # 强制覆盖 PATH，确保 Homebrew LLVM 优先级最高
+        echo "PATH=$HOMEBREW_LLVM_PATH/bin:/opt/homebrew/bin:$PATH" >> $GITHUB_ENV
+        # 设置正确的库和头文件路径
+        echo "LDFLAGS=-L$HOMEBREW_LLVM_PATH/lib" >> $GITHUB_ENV
+        echo "CPPFLAGS=-I$HOMEBREW_LLVM_PATH/include" >> $GITHUB_ENV
 
-      
     - name: Check LLVM Tools
       run: |
-          echo "当前 PATH: $PATH"
-          which clang          # 应输出 /opt/homebrew/opt/llvm/bin/clang
-          which ld64.lld       # 应输出 /opt/homebrew/opt/llvm/bin/ld64.lld
-          which llvm-objcopy   # 应输出 /opt/homebrew/opt/llvm/bin/llvm-objcopy
-          clang --version      # 应显示 Homebrew 的 LLVM 版本
-          ld64.lld --version
-          llvm-objcopy --version
+        echo "当前 PATH: $PATH"
+        which clang          # 应输出 /opt/homebrew/opt/llvm/bin/clang
+        which ld64.lld       # 应输出 /opt/homebrew/opt/llvm/bin/ld64.lld
+        which llvm-objcopy   # 应输出 /opt/homebrew/opt/llvm/bin/llvm-objcopy
+        clang --version      # 应显示 Homebrew LLVM 版本
+        ld64.lld --version
+        llvm-objcopy --version
 
-      
-    
-          
+    - name: Configure NDK Path
+      run: |
+        # 写入 NDK 路径到 local.properties
+        echo "ndk.dir=$ANDROID_NDK_HOME" >> ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid/local.properties
+        # 验证 NDK 路径
+        ls -l $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang
+
     - name: Build Android
       run: |
         cd ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid
         chmod +x ./gradlew
-        ./gradlew "assembleRelease"
+        ./gradlew assembleRelease --stacktrace
+
     - name: Upload APK
+      if: ${{ inputs.upload_artifact }}
       uses: actions/upload-artifact@v4
       with:
-          name: ryujinx-main1-${{ github.run_number }}
-          path: Test-ryu/src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
-          retention-days: 7
+        name: ryujinx-main1-${{ github.run_number }}
+        path: ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
+        retention-days: 7
