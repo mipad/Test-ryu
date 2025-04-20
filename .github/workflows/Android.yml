@@ -1,4 +1,4 @@
-name: Android & .NET Full Pipeline
+name: Android CI 
 
 on:
   push:
@@ -15,150 +15,40 @@ on:
         description: 'Upload APK as artifact'
         type: boolean
         default: true
-      release_tag:
-        description: 'Custom release tag'
-        type: string
-        default: ''
-      is_prerelease:
-        description: 'Mark as pre-release'
-        type: boolean
-        default: false
-
-env:
-  PROJECT_ROOT: ${{ github.workspace }}/Test-ryu/src
-  ANDROID_PROJECT: RyujinxAndroid
-  DOTNET_VERSION: "9.0.203"
-  NDK_VERSION: "26.2.11394342"
-  ANDROID_ABI: "arm64-v8a"
-
+        
 jobs:
   build:
-    name: Full Build Process
-    runs-on: ubuntu-latest
+    runs-on: macOS-latest
     permissions:
       contents: read
-      packages: write
       actions: write
-
-    steps:
-    # ========== 代码检出 ==========
-    - name: Checkout repository
+      packages: write
+    steps:      
+    - name: Checkout code
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: 1
+        ref: main1
         path: Test-ryu
-        fetch-depth: 2
-
-    # ========== 缓存配置 ==========
-    - name: Cache .NET packages
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.nuget/packages
-          **/bin
-          **/obj
-        key: ${{ runner.os }}-dotnet-${{ hashFiles('**/*.csproj') }}
-
-    - name: Cache Gradle
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties') }}
-
-    # ========== 环境初始化 ==========
+        
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: temurin
         java-version: 17
-
-    - name: Setup .NET SDK
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-        include-prerelease: true
-
-    - name: Setup Android NDK
-      uses: android-actions/setup-android@v3
-      with:
-        ndk-version: ${{ env.NDK_VERSION }}
-
-    # ========== .NET 多项目构建 ==========
-    - name: Restore Core Dependencies
-      working-directory: ${{ env.PROJECT_ROOT }}
+        
+    - name: Install CMake
       run: |
-        # 按依赖顺序恢复关键项目
-        dotnet restore Ryujinx.Common/Ryujinx.Common.csproj
-        dotnet restore ARMeilleure/ARMeilleure.csproj
-        dotnet restore Ryujinx.Cpu/Ryujinx.Cpu.csproj
-        dotnet restore Ryujinx.Memory/Ryujinx.Memory.csproj
-        dotnet restore Ryujinx.HLE/Ryujinx.HLE.csproj
-        dotnet restore Ryujinx.Graphics.Vulkan/Ryujinx.Graphics.Vulkan.csproj
-
-    - name: Build Core Libraries
-      working-directory: ${{ env.PROJECT_ROOT }}
+         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1" 
+         
+    - name: Build Android
       run: |
-        # 严格按依赖顺序构建
-        dotnet build Ryujinx.Common -c Release --no-restore -p:ContinuousIntegrationBuild=true
-        dotnet build ARMeilleure -c Release --no-restore
-        dotnet build Ryujinx.Cpu -c Release --no-restore
-        dotnet build Ryujinx.Memory -c Release --no-restore
-        dotnet build Ryujinx.HLE -c Release --no-restore
-        dotnet build Ryujinx.Graphics.Vulkan -c Release --no-restore
-
-    # ========== 原生代码构建 ==========
-    - name: Configure CMake
-      working-directory: ${{ env.PROJECT_ROOT }}/${{ env.ANDROID_PROJECT }}/app/src/main/cpp
-      env:
-        ANDROID_NDK: ${{ github.workspace }}/android-ndk
-      run: |
-        cmake -B build \
-          -DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK}/build/cmake/android.toolchain.cmake \
-          -DANDROID_ABI=${{ env.ANDROID_ABI }} \
-          -DANDROID_PLATFORM=android-33 \
-          -DCMAKE_BUILD_TYPE=Release
-
-    - name: Build Native Libraries
-      working-directory: ${{ env.PROJECT_ROOT }}/${{ env.ANDROID_PROJECT }}/app/src/main/cpp
-      run: cmake --build build --parallel 4
-
-    # ========== Android APK 打包 ==========
-    - name: Prepare Gradle
-      working-directory: ${{ env.PROJECT_ROOT }}/${{ env.ANDROID_PROJECT }}
-      run: |
-        chmod +x gradlew
-        ./gradlew --version
-
-    - name: Build Release APK
-      working-directory: ${{ env.PROJECT_ROOT }}/${{ env.ANDROID_PROJECT }}
-      env:
-        ORG_GRADLE_PROJECT_android_ndk_path: ${{ github.workspace }}/android-ndk
-      run: |
-        ./gradlew clean assembleRelease \
-          --no-daemon \
-          --stacktrace \
-          -Pandroid.ndkPath=${{ github.workspace }}/android-ndk \
-          -Porg.gradle.parallel=true
-
-    # ========== 产物验证 ==========
-    - name: Verify Build Outputs
-      run: |
-        echo "===== APK 文件 ====="
-        find ${{ env.PROJECT_ROOT }} -path "*/apk/release/*.apk" -ls
-
-        echo "===== 原生库文件 ====="
-        find ${{ env.PROJECT_ROOT }} -name "*.so" -exec file {} \; 
-
-    # ========== 产物处理 ==========
-    - name: Upload APK Artifact
-      if: ${{ inputs.upload_artifact || github.event_name == 'push' }}
+        cd ${{ github.workspace }}/Test-ryu/src/RyujinxAndroid
+        chmod +x ./gradlew
+        ./gradlew "assembleRelease"
+    - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: android-release
-        path: ${{ env.PROJECT_ROOT }}/${{ env.ANDROID_PROJECT }}/app/build/outputs/apk/release/*.apk
-        retention-days: 7
-
-    
+          name: ryujinx-main1-${{ github.run_number }}
+          path: Test-ryu/src/RyujinxAndroid/app/build/outputs/apk/release/*.apk
+          retention-days: 7
