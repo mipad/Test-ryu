@@ -161,17 +161,4 @@ jobs:
         path: ${{ env.PROJECT_ROOT }}/${{ env.ANDROID_PROJECT }}/app/build/outputs/apk/release/*.apk
         retention-days: 7
 
-    - name: Create GitHub Release
-      if: ${{ inputs.should_release }}
-      uses: softprops/action-gh-release@v2
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ inputs.release_tag || 'build-' + github.run_number }}
-        prerelease: ${{ inputs.is_prerelease }}
-        files: |
-          ${{ env.PROJECT_ROOT }}/${{ env.ANDROID_PROJECT }}/app/build/outputs/apk/release/*.apk
-        body: |
-          Automated build for Android APK
-          - Commit: ${{ github.sha }}
-          - Build Number: ${{ github.run_number }}
+    
