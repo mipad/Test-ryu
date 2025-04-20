@@ -2,7 +2,7 @@ name: Android CI (NDK 25 Fixed)
 
 on:
   push:
-    branches: [ "1" ]
+    branches: [ "" ]
   workflow_dispatch:
 
 jobs:
