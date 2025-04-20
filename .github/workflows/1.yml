@@ -92,6 +92,7 @@ jobs:
       - name: Build with Gradle
         run: |
          cd ${{ env.PROJECT_ROOT }}
+         chmod +x ./gradlew
          ./gradlew clean assembleRelease \
           -Pandroid.ndkPath="$NDK_DIR" \
           -Popenssl.root="${{ env.OPENSSL_ROOT_DIR }}" \
