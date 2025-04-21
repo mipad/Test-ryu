@@ -20,7 +20,13 @@ jobs:
         repository: mipad/Test-ryu
         ref: 1
         path: Test-ryu
-
+        
+    - name: Detect Architecture
+      run: |
+       echo "当前芯片架构: $(uname -m)"
+    # 输出结果：
+    # - arm64 → Apple Silicon (M1/M2)
+    # - x86_64 → Intel
 
     # ========== 3. 配置 Java 和 Android 环境 ==========
     - name: Setup Java
