@@ -75,7 +75,7 @@ jobs:
       # ----------------------------------------
       - name: Build OpenSSL
         run: |
-          cd ${{ env.PROJECT_ROOT }}
+          cd ${{ env.PROJECT_ROOT }}Test-ryu/src/RyujinxAndroid
           
           # 前置清理
           rm -rf openssl-out
