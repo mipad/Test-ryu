@@ -16,6 +16,7 @@ jobs:
       GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4"
       PROJECT_DIR: src/RyujinxAndroid
       ANDROID_NDK_VERSION: "26.3.11579264"
+      NDK_INSTALL_PATH: "/Volumes/AndroidNDK" 
       ANDROID_API_LEVEL: "33"
 
     steps:
@@ -35,41 +36,61 @@ jobs:
         java-version: 17
         architecture: arm64
 
-    - name: Setup Android SDK/NDK
-      uses: android-actions/setup-android@v3
-      with:
-         ndk-version: ${{ env.ANDROID_NDK_VERSION }}
-         cmake-version: 3.22.1
-
-    - name: Verify NDK Architecture
+    - name: Download and Mount NDK DMG
       shell: bash
       run: |
-        echo "=== 检查NDK安装路径 ==="
-        NDK_INSTALLED_PATH="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}"
-        echo "NDK路径: $NDK_INSTALLED_PATH"
+        # 下载DMG文件
+        NDK_DMG_URL="https://dl.google.com/android/repository/android-ndk-r26d-darwin.dmg"
+        curl -L -o ndk.dmg "$NDK_DMG_URL"
         
-        # 检查是否为ARM64版本
-        if [ -d "$NDK_INSTALLED_PATH/toolchains/llvm/prebuilt/darwin-aarch64" ]; then
-          echo "✅ 检测到ARM64 NDK (darwin-aarch64)"
-        elif [ -d "$NDK_INSTALLED_PATH/toolchains/llvm/prebuilt/darwin-x86_64" ]; then
-          echo "⚠️ 警告: 检测到x86_64 NDK，可能与Apple Silicon不兼容！"
-          # 可在此处添加强制失败逻辑（如需严格检查）
-          # exit 1
-        else
-          echo "❌ 错误: 无法识别NDK架构！"
+        # 挂载DMG并验证内容
+        hdiutil attach ndk.dmg -mountpoint "$NDK_INSTALL_PATH" -nobrowse
+        echo "NDK已挂载至: $NDK_INSTALL_PATH"
+        ls -l "$NDK_INSTALL_PATH"
+
+    # ========== 4. 安装NDK至Android SDK目录 ==========
+    - name: Install NDK from DMG
+      run: |
+        # 创建目标目录
+        TARGET_NDK_DIR="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}"
+        mkdir -p "$TARGET_NDK_DIR"
+        
+        # 复制文件（DMG内通常包含一个AndroidNDK.app包）
+        cp -R "$NDK_INSTALL_PATH/AndroidNDK.app/Contents/NDK"/* "$TARGET_NDK_DIR"
+        
+        # 卸载DMG
+        hdiutil detach "$NDK_INSTALL_PATH"
+        rm ndk.dmg
+        
+        echo "NDK已安装至: $TARGET_NDK_DIR"
+
+    # ========== 5. 严格架构验证 ==========
+    - name: Validate NDK Architecture
+      run: |
+        NDK_BIN_DIR="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}/toolchains/llvm/prebuilt/darwin-arm64/bin"
+        
+        # 检查目录是否存在
+        if [ ! -d "$NDK_BIN_DIR" ]; then
+          echo "❌ 错误: 未找到ARM64工具链目录，NDK可能为x86_64版本！"
           exit 1
         fi
-
+        
         # 检查关键二进制文件架构
-        echo "=== 检查关键工具链文件 ==="
         check_arch() {
-          file "$1" | grep -q "arm64" && echo "✅ $1 是ARM64版本" || (echo "❌ $1 架构不匹配！"; exit 1)
+          file "$1" | grep -q "arm64" && echo "✅ $1 是ARM64版本" || (echo "❌ $1 架构错误！"; exit 1)
         }
+        
+        check_arch "$NDK_BIN_DIR/clang"
+        check_arch "$NDK_BIN_DIR/lld"
+        check_arch "$NDK_BIN_DIR/ndk-stack"
 
-        CLANG_PATH="$NDK_INSTALLED_PATH/toolchains/llvm/prebuilt/darwin-*/bin/clang"
-        check_arch $CLANG_PATH
-        check_arch "${CLANG_PATH%/*}/lld"
-
+    # ========== 6. 配置LLVM路径 ==========
+    - name: Set LLVM Path
+      run: |
+        LLVM_PATH="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}/toolchains/llvm/prebuilt/darwin-arm64"
+        echo "LLVM_PATH=$LLVM_PATH" >> $GITHUB_ENV
+        echo "::notice::LLVM工具链路径已设置为: $LLVM_PATH"
+        
     # ========== 4. 查找LLVM工具链 ==========
     - name: Find LLVM Toolchain Path
       id: find-llvm
