@@ -23,7 +23,6 @@ jobs:
           repository: mipad/Test-ryu
           ref: "1"
           submodules: 'recursive'
-          path: ${{ env.PROJECT_ROOT }}
 
       # ----------------------------------------
       # 2. 安装基础工具链
@@ -75,7 +74,7 @@ jobs:
       # ----------------------------------------
       - name: Build OpenSSL
         run: |
-          cd ${{ env.PROJECT_ROOT }}
+          cd ${{ env.PROJECT_ROOT }}/Test-ryu/src/RyujinxAndroid/libryujinx/libs
           
           # 前置清理
           rm -rf openssl-out
