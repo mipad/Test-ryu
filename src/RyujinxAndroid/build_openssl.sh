@@ -18,7 +18,7 @@ ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
 NDK_ROOT="${ANDROID_HOME}/ndk/${NDK_VERSION}"
 OPENSSL_SOURCE_URL="https://github.com/openssl/openssl/archive/${OPENSSL_COMMIT}.tar.gz"
 OUTPUT_DIR="${PWD}/openssl-out/${TARGET_ARCH}"
-CORRECT_SHA256="c5ac01e760ee6ff0dab61d6b2bbd30146724d063eb322180c6f18a6f74e4b6aa"  # 该提交的官方校验和
+CORRECT_SHA256="a7e992847de83aa36be0c399c89db3fb827b0be2"  # 该提交的官方校验和
 
 # --------------------- 工具链强制配置 ---------------------
 TOOLCHAIN_DIR="${NDK_ROOT}/toolchains/llvm/prebuilt/darwin-x86_64"
