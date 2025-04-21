@@ -10,6 +10,8 @@ jobs:
   build:
     runs-on: macos-latest
     env:
+      JAVA_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
+      GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2"
       PROJECT_DIR: src/RyujinxAndroid
 
     steps:
