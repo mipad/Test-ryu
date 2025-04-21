@@ -40,24 +40,44 @@ jobs:
       with:
         ndk-version: ${{ env.ANDROID_NDK_VERSION }}
         cmake-version: 3.22.1
-
-    - name: Configure Environment Paths
+        
+    - name: Find LLVM Toolchain Path
+      id: find-llvm
       shell: bash
       run: |
-        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}" >> $GITHUB_ENV
-        echo "LLVM_PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-aarch64" >> $GITHUB_ENV
-        echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        # 定义可能的路径模式
+        NDK_BASE="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}/toolchains/llvm/prebuilt"
+        POSSIBLE_PATHS=(
+          "$NDK_BASE/darwin-x86_64"   # Intel Mac
+          "$NDK_BASE/darwin-aarch64"  # Apple Silicon Mac
+          "$NDK_BASE/linux-x86_64"    # Linux
+        )
 
-    # ========== 3.  ==========
-    - name: Check lld Path
+        # 遍历检查路径是否存在
+        for path in "${POSSIBLE_PATHS[@]}"; do
+          if [ -d "$path/bin" ] && [ -f "$path/bin/clang" ]; then
+            echo "✅ Found valid LLVM path: $path"
+            echo "LLVM_PATH=$path" >> $GITHUB_ENV
+            exit 0
+          fi
+        done
+
+        echo "❌ No valid LLVM toolchain found in paths:"
+        printf "  %s\n" "${POSSIBLE_PATHS[@]}"
+        exit 1
+
+    # ========== 4. 验证 lld 存在性 ==========
+    - name: Check lld
       shell: bash
       run: |
-       echo "当前 LLVM_PATH: $LLVM_PATH"
-       echo "检查 NDK LLVM 工具链内容:"
-       ls -l $LLVM_PATH/bin
-       # 查找 lld 或兼容的链接器（如 ld.lld）
-       ls -l $LLVM_PATH/bin/lld* || echo "❌ lld 未找到！"
-
+        echo "最终 LLVM_PATH: $LLVM_PATH"
+        echo "检查 lld 是否存在:"
+        ls -l $LLVM_PATH/bin/lld* || echo "❌ lld 未找到！"
+        echo "检查 Clang 版本:"
+        $LLVM_PATH/bin/clang --version
+        
+    
+    
     # ========== 4. 主构建流程 ==========
     - name: Build APK
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
