@@ -36,7 +36,11 @@ jobs:
       with:
         distribution: temurin
         java-version: 17
-          
+
+    - name: Install CMake
+      run: |
+         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1"
+         
     - name: Build APK
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       run: |
