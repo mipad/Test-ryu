@@ -75,21 +75,9 @@ jobs:
       # ----------------------------------------
       - name: Build OpenSSL
         run: |
-         cd src/RyujinxAndroid
-    
-         rm -rf openssl-out
-          
-          # 注入环境变量
-          export AR="$NDK_TOOLCHAIN/bin/llvm-ar"
-          export RANLIB="$NDK_TOOLCHAIN/bin/llvm-ranlib"
-          export LD="$NDK_TOOLCHAIN/bin/ld"
-          
-          # 执行编译
-          chmod +x build_openssl.sh
-          ./build_openssl.sh
-          
-          # 验证输出
-          echo "OPENSSL_ROOT_DIR=${{ env.PROJECT_ROOT }}/openssl-out/android-arm64" >> $GITHUB_ENV
+         cd ${{ env.PROJECT_ROOT }}/Test-ryu/src/RyujinxAndroid/libryujinx/libs
+         chmod +x  OpenSSL.cmake
+         ./ OpenSSL.cmake
 
       - name: Build with Gradle
         run: |
