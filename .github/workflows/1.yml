@@ -30,7 +30,7 @@ jobs:
         java-version: 17
 
     - name: Build APK
-      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/src/RyujinxAndroid/
+      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       run: |
         chmod +x gradlew
         ./gradlew clean assembleRelease \
