@@ -1,101 +1,45 @@
-name: Android CI (Stable)
+name: Android CI Fix
 
 on:
   push:
     branches: [ "1" ]
-  workflow_dispatch:
+  pull_request:
+    branches: [ "1" ]
 
 jobs:
   build:
     runs-on: macos-latest
     env:
-      NDK_VERSION: "25.2.9519653"
-      TARGET_API_LEVEL: "30"
-      
+      PROJECT_DIR: src/RyujinxAndroid
 
     steps:
-      # ----------------------------------------
-      # 1. 检出代码（含子模块）
-      # ----------------------------------------
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          repository: mipad/Test-ryu
-          ref: "1"
-          path: src/RyujinxAndroid
-          submodules: 'recursive'
-
-      # ----------------------------------------
-      # 2. 安装基础工具链
-      # ----------------------------------------
-      - name: Install build tools
-        run: |
-          brew install nasm coreutils
-          echo "NASM Version: $(nasm -v | head -n1)"
-
-      # ----------------------------------------
-      # 3. 安装 NDK（严格版本控制）
-      # ----------------------------------------
-      - name: Install NDK ${{ env.NDK_VERSION }}
-        run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;${{ env.NDK_VERSION }}"
-          echo "NDK Installed Path: $ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
-
-      # ----------------------------------------
-      # 4. 动态配置 NDK 工具链（关键修复）
-      # ----------------------------------------
-      - name: Configure NDK Toolchain
-        id: ndk-config
-        run: |
-          NDK_DIR="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
-          
-          # 多级路径探测（兼容 Intel/Apple Silicon）
-          if [ -d "$NDK_DIR/toolchains/llvm/prebuilt/darwin-x86_64" ]; then
-            NDK_TOOLCHAIN="$NDK_DIR/toolchains/llvm/prebuilt/darwin-x86_64"
-          elif [ -d "$NDK_DIR/toolchains/llvm/prebuilt/darwin-arm64" ]; then
-            NDK_TOOLCHAIN="$NDK_DIR/toolchains/llvm/prebuilt/darwin-arm64"
-          else
-            echo "::error::NDK toolchain not found in: $NDK_DIR/toolchains/llvm/prebuilt"
-            ls -lR "$NDK_DIR/toolchains/llvm/prebuilt"
-            exit 1
-          fi
-
-          # 写入环境变量
-          echo "NDK_DIR=$NDK_DIR" >> $GITHUB_ENV
-          echo "NDK_TOOLCHAIN=$NDK_TOOLCHAIN" >> $GITHUB_ENV
-          echo "CC=$NDK_TOOLCHAIN/bin/aarch64-linux-android${{ env.TARGET_API_LEVEL }}-clang" >> $GITHUB_ENV
-          echo "CXX=$NDK_TOOLCHAIN/bin/aarch64-linux-android${{ env.TARGET_API_LEVEL }}-clang++" >> $GITHUB_ENV
-          echo "$NDK_TOOLCHAIN/bin" >> $GITHUB_PATH
-
-          # 生成 local.properties
-          echo "ndk.dir=$NDK_DIR" > ${{ env.PROJECT_ROOT }}/local.properties
-
-      # ----------------------------------------
-      # 5. 条件编译 OpenSSL（智能缓存）
-      # ---------------------------------
-
-      - name: Build with Gradle
-        run: |
-         cd ${{ env.PROJECT_ROOT }}/Test-ryu/src/RyujinxAndroid
-         chmod +x ./gradlew
-         ./gradlew clean assembleRelease \
-          -Pandroid.ndkPath="$NDK_DIR" \
-          -Popenssl.root="${{ env.OPENSSL_ROOT_DIR }}" \
-          --stacktrace --info
+    # ========== 1. 克隆代码 ==========
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        repository: mipad/Test-ryu
+        ref: 1
+        path: Test-ryu
 
 
-      # ----------------------------------------
-      #
-            
+    # ========== 3. 配置 Java 和 Android 环境 ==========
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: 17
 
-      # ----------------------------------------
-      # 7. 上传构建产物
-      # ----------------------------------------
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-build-${{ github.run_number }}
-          path: |
-            ${{ env.PROJECT_ROOT }}/app/build/outputs/apk/**/*.apk
-            ${{ env.PROJECT_ROOT }}/app/build/intermediates/**/*.so
-          retention-days: 7
+    - name: Build APK
+      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/src/RyujinxAndroid/
+      run: |
+        chmod +x gradlew
+        ./gradlew clean assembleRelease \
+          -DllvmToolchainPath=$LLVM_PATH \
+          --no-daemon \
+          --stacktrace
+    # ========== 6. 上传产物 ==========
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-release
+        path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
