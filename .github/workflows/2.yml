@@ -35,11 +35,20 @@ jobs:
         java-version: 17
         architecture: arm64
 
-    - name: Setup Android SDK/NDK
-      uses: android-actions/setup-android@v3
-      with:
-        ndk-version: ${{ env.ANDROID_NDK_VERSION }}
+    - name: Download NDK (ARM64)
+      run: |
+        NDK_URL="https://dl.google.com/android/repository/android-ndk-r26b-darwin-arm64.zip"
+        curl -L $NDK_URL -o ndk.zip
+        unzip ndk.zip -d $ANDROID_HOME/ndk/
+        echo "NDK_PATH=$ANDROID_HOME/ndk/android-ndk-r26b" >> $GITHUB_ENV
+        echo "LLVM_PATH=$ANDROID_HOME/ndk/android-ndk-r26b/toolchains/llvm/prebuilt/darwin-arm64" >> $GITHUB_ENV
         cmake-version: 3.22.1
+
+    - name: Check NDK Architecture
+      run: |
+        echo "验证 NDK 是否为 ARM64 版本:"
+        file $LLVM_PATH/bin/clang
+        # 期望输出: Mach-O 64-bit executable arm64
         
     - name: Find LLVM Toolchain Path
       id: find-llvm
