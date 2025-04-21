@@ -19,3 +19,4 @@ dependencyResolutionManagement {
 rootProject.name = "RyujinxAndroid"
 include ':app'
 include ':libryujinx'
+enableFeaturePreview('STABLE_CONFIGURATION_CACHE')
