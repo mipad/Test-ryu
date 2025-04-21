@@ -10,6 +10,7 @@ jobs:
   build:
     runs-on: macos-latest
     timeout-minutes: 45
+    
     env:
       JAVA_OPTS: "-Xmx6g -XX:MaxMetaspaceSize=2g"
       GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4"
@@ -26,7 +27,7 @@ jobs:
         ref: 1
         path: Test-ryu
 
-    # ========== 2. Java 环境配置 ==========
+    # ========== 2. 环境配置 ==========
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
@@ -34,37 +35,51 @@ jobs:
         java-version: 17
         architecture: arm64
 
-    # ========== 3. Android SDK/NDK 配置 ==========
-    - name: Setup Android
+    - name: Setup Android SDK/NDK
       uses: android-actions/setup-android@v3
       with:
         ndk-version: ${{ env.ANDROID_NDK_VERSION }}
         cmake-version: 3.22.1
 
-    - name: Configure Android Paths
+    - name: Configure Environment Paths
+      shell: bash
       run: |
-        echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
         echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}" >> $GITHUB_ENV
+        echo "LLVM_PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-aarch64" >> $GITHUB_ENV
         echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
-    # ========== 4. 构建工具安装 ==========
-    - name: Install Build Tools
+    # ========== 3. OpenSSL 编译 ==========
+    - name: Build OpenSSL (ARM64)
+      env:
+        CC: $LLVM_PATH/bin/aarch64-linux-android${{ env.ANDROID_API_LEVEL }}-clang
+        AR: $LLVM_PATH/bin/llvm-ar
+        RANLIB: $LLVM_PATH/bin/llvm-ranlib
       run: |
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
-          "platform-tools" \
-          "platforms;android-${{ env.ANDROID_API_LEVEL }}" \
-          "build-tools;34.0.0"
+        cd ${{ runner.temp }}
+        git clone --depth 1 --branch openssl-3.2.1 https://github.com/openssl/openssl.git
+        cd openssl
 
-    # ========== 5. OpenSSL 编译 (ARM64优化) ======
+        ./Configure android-arm64 \
+          -D__ANDROID_API__=${{ env.ANDROID_API_LEVEL }} \
+          no-shared \
+          no-tests \
+          --prefix=/opt/openssl-arm64
 
-    # ========== 6. 主构建流程 ==========
+        make -j$(sysctl -n hw.logicalcpu)
+        sudo make install
+        sudo chmod -R a+r /opt/openssl-arm64
+
+    # ========== 4. 主构建流程 ==========
     - name: Build APK
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       env:
-        LLVM_PATH: ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/darwin-aarch64
         OPENSSL_ROOT_DIR: /opt/openssl-arm64
       run: |
+        # 修复文件权限
         chmod +x gradlew
+        find . -name "*.sh" -exec chmod +x {} \;
+
+        # 执行构建
         ./gradlew clean assembleRelease \
           -DllvmToolchainPath=$LLVM_PATH \
           -Dopenssl.root=$OPENSSL_ROOT_DIR \
@@ -73,9 +88,9 @@ jobs:
           --stacktrace \
           --scan
 
-    # ========== 7. 产物上传 ==========
-    - name: Upload APK
+    # ========== 5. 产物处理 ==========
+    - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: android-release
+        name: android-arm64-release
         path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
