@@ -52,12 +52,11 @@ jobs:
     - name: Check lld Path
       shell: bash
       run: |
-        echo "当前 LLVM_PATH: $LLVM_PATH"
-        echo "检查 lld 是否存在:"
-        ls -l $LLVM_PATH/bin/lld || echo "❌ lld 未找到！"
-        echo "检查链接器参数是否有效:"
-        clang -fuse-ld=lld --version || echo "❌ 链接器配置错误！"
-        
+       echo "当前 LLVM_PATH: $LLVM_PATH"
+       echo "检查 NDK LLVM 工具链内容:"
+       ls -l $LLVM_PATH/bin
+       # 查找 lld 或兼容的链接器（如 ld.lld）
+       ls -l $LLVM_PATH/bin/lld* || echo "❌ lld 未找到！"
 
     # ========== 4. 主构建流程 ==========
     - name: Build APK
