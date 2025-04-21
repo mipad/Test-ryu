@@ -49,25 +49,7 @@ jobs:
         echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
     # ========== 3. OpenSSL 编译 ==========
-    - name: Build OpenSSL (ARM64)
-      env:
-        CC: $LLVM_PATH/bin/aarch64-linux-android${{ env.ANDROID_API_LEVEL }}-clang
-        AR: $LLVM_PATH/bin/llvm-ar
-        RANLIB: $LLVM_PATH/bin/llvm-ranlib
-      run: |
-        cd ${{ runner.temp }}
-        git clone --depth 1 --branch openssl-3.2.1 https://github.com/openssl/openssl.git
-        cd openssl
-
-        ./Configure android-arm64 \
-          -D__ANDROID_API__=${{ env.ANDROID_API_LEVEL }} \
-          no-shared \
-          no-tests \
-          --prefix=/opt/openssl-arm64
-
-        make -j$(sysctl -n hw.logicalcpu)
-        sudo make install
-        sudo chmod -R a+r /opt/openssl-arm64
+    
 
     # ========== 4. 主构建流程 ==========
     - name: Build APK
