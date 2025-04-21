@@ -55,25 +55,7 @@ jobs:
           "platforms;android-${{ env.ANDROID_API_LEVEL }}" \
           "build-tools;34.0.0"
 
-    # ========== 5. OpenSSL 编译 (ARM64优化) ==========
-    - name: Build OpenSSL
-      shell: bash
-      env:
-        TOOLCHAIN: $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-aarch64
-      run: |
-        cd ${{ runner.temp }}
-        git clone --depth 1 --branch openssl-3.2.1 https://github.com/openssl/openssl.git
-        cd openssl
-
-        export PATH="$TOOLCHAIN/bin:$PATH"
-        ./Configure android-arm64 \
-          -D__ANDROID_API__=${{ env.ANDROID_API_LEVEL }} \
-          no-shared \
-          no-tests \
-          --prefix=/opt/openssl-arm64
-
-        make -j$(sysctl -n hw.logicalcpu)
-        sudo make install
+    # ========== 5. OpenSSL 编译 (ARM64优化) ======
 
     # ========== 6. 主构建流程 ==========
     - name: Build APK
