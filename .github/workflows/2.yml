@@ -39,14 +39,13 @@ jobs:
     - name: Download and Mount NDK DMG
       shell: bash
       run: |
-        # 下载DMG文件
-        NDK_DMG_URL="https://dl.google.com/android/repository/android-ndk-r26d-darwin.dmg"
-        curl -L -o ndk.dmg "$NDK_DMG_URL"
-        
-        # 挂载DMG并验证内容
-        hdiutil attach ndk.dmg -mountpoint "$NDK_INSTALL_PATH" -nobrowse
-        echo "NDK已挂载至: $NDK_INSTALL_PATH"
-        ls -l "$NDK_INSTALL_PATH"
+       NDK_DMG_URL="https://dl.google.com/android/repository/android-ndk-r26d-darwin.dmg"
+       curl -L -o ndk.dmg "$NDK_DMG_URL"
+    
+       # 挂载DMG并列出内容
+       hdiutil attach ndk.dmg -mountpoint "$NDK_INSTALL_PATH" -nobrowse
+       echo "=== DMG内容列表 ==="
+       ls -l "$NDK_INSTALL_PATH"  # 关键：此处显示真实路径结构 
 
     # ========== 4. 安装NDK至Android SDK目录 ==========
     - name: Install NDK from DMG
