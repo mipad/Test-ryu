@@ -3,9 +3,9 @@ name: Android CI Fix
 
 on:
   push:
-    branches: [ "1" ]
+    branches: [ "2" ]
   pull_request:
-    branches: [ "1" ]
+    branches: [ "2" ]
 
 jobs:
   build:
