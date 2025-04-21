@@ -39,56 +39,68 @@ jobs:
     - name: Download and Mount NDK DMG
       shell: bash
       run: |
-       NDK_DMG_URL="https://dl.google.com/android/repository/android-ndk-r26d-darwin.dmg"
-       curl -L -o ndk.dmg "$NDK_DMG_URL"
-    
-       # 挂载DMG并列出内容
-       hdiutil attach ndk.dmg -mountpoint "$NDK_INSTALL_PATH" -nobrowse
-       echo "=== DMG内容列表 ==="
-       ls -l "$NDK_INSTALL_PATH"  # 关键：此处显示真实路径结构 
+        NDK_DMG_URL="https://dl.google.com/android/repository/android-ndk-r26d-darwin.dmg"
+        
+        # 下载并挂载DMG
+        curl -L -o ndk.dmg "$NDK_DMG_URL"
+        hdiutil attach ndk.dmg -mountpoint "$NDK_INSTALL_PATH" -nobrowse -quiet
+        
+        # 显示详细目录结构
+        echo "=== DMG深度扫描 ==="
+        find "$NDK_INSTALL_PATH" -maxdepth 3 -type d
 
-    # ========== 4. 安装NDK至Android SDK目录 ==========
-    - name: Install NDK from DMG
+    # ========== 4. 精准安装NDK ==========
+    - name: Install NDK from .app Bundle
       run: |
-        # 创建目标目录
+        # 定义目标路径
         TARGET_NDK_DIR="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}"
         mkdir -p "$TARGET_NDK_DIR"
         
-        # 复制文件（DMG内通常包含一个AndroidNDK.app包）
-        cp -R "$NDK_INSTALL_PATH/AndroidNDK.app/Contents/NDK"/* "$TARGET_NDK_DIR"
+        # 精确提取.app包内资源（根据上一步的find输出调整）
+        APP_BUNDLE="$NDK_INSTALL_PATH/AndroidNDK11579264.app/Contents/Resources"
         
-        # 卸载DMG
-        hdiutil detach "$NDK_INSTALL_PATH"
-        rm ndk.dmg
-        
-        echo "NDK已安装至: $TARGET_NDK_DIR"
-
-    # ========== 5. 严格架构验证 ==========
-    - name: Validate NDK Architecture
-      run: |
-        NDK_BIN_DIR="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}/toolchains/llvm/prebuilt/darwin-arm64/bin"
-        
-        # 检查目录是否存在
-        if [ ! -d "$NDK_BIN_DIR" ]; then
-          echo "❌ 错误: 未找到ARM64工具链目录，NDK可能为x86_64版本！"
+        # 验证关键文件存在性
+        if [ ! -d "$APP_BUNDLE/NDK" ]; then
+          echo "❌ 错误: 未找到NDK核心文件！"
+          hdiutil detach "$NDK_INSTALL_PATH"
           exit 1
         fi
         
-        # 检查关键二进制文件架构
+        # 复制NDK内容
+        cp -R "$APP_BUNDLE/NDK"/* "$TARGET_NDK_DIR"
+        
+        # 清理
+        hdiutil detach "$NDK_INSTALL_PATH"
+        rm ndk.dmg
+        echo "NDK已安装至: $TARGET_NDK_DIR"
+
+        # 打印版本信息
+        cat "$TARGET_NDK_DIR/source.properties"
+
+    # ========== 5. 强化架构验证 ==========
+    - name: Validate ARM64 Toolchain
+      run: |
+        NDK_BIN_DIR="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}/toolchains/llvm/prebuilt/darwin-arm64/bin"
+        
+        # 检查工具链目录
+        if [ ! -d "$NDK_BIN_DIR" ]; then
+          echo "❌ 错误: darwin-arm64工具链缺失！"
+          exit 1
+        fi
+        
+        # 检查关键二进制架构
         check_arch() {
-          file "$1" | grep -q "arm64" && echo "✅ $1 是ARM64版本" || (echo "❌ $1 架构错误！"; exit 1)
+          if ! file "$1" | grep -q "arm64"; then
+            echo "❌ 文件 $1 不是ARM64架构"
+            exit 1
+          fi
         }
         
         check_arch "$NDK_BIN_DIR/clang"
         check_arch "$NDK_BIN_DIR/lld"
-        check_arch "$NDK_BIN_DIR/ndk-stack"
-
-    # ========== 6. 配置LLVM路径 ==========
-    - name: Set LLVM Path
-      run: |
-        LLVM_PATH="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}/toolchains/llvm/prebuilt/darwin-arm64"
-        echo "LLVM_PATH=$LLVM_PATH" >> $GITHUB_ENV
-        echo "::notice::LLVM工具链路径已设置为: $LLVM_PATH"
+        check_arch "$NDK_BIN_DIR/ndk-build"
+        
+        echo "✅ NDK ARM64工具链验证通过""
         
     # ========== 4. 查找LLVM工具链 ==========
     - name: Find LLVM Toolchain Path
