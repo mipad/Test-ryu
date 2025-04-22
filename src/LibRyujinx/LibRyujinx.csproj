@@ -7,8 +7,6 @@
     <DefineConstants>$(DefineConstants);FORCE_EXTERNAL_BASE_DIR</DefineConstants>
   </PropertyGroup>
   <PropertyGroup>
-    <PublishTrimmed>false</PublishTrimmed>
-    <TrimMode>copyused</TrimMode>
     <PublishAot>true</PublishAot>
     <MonoRuntimeFeatures>aot,interpreter</MonoRuntimeFeatures>
     <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
