@@ -8,15 +8,14 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     
     env:
       JAVA_OPTS: "-Xmx6g -XX:MaxMetaspaceSize=2g"
       GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4"
       PROJECT_DIR: src/RyujinxAndroid
-      ANDROID_NDK_VERSION: "26.3.11579264"
-      NDK_INSTALL_PATH: "/Volumes/AndroidNDK" 
+      ANDROID_NDK_VERSION: "25.2.9519653"
       ANDROID_API_LEVEL: "33"
 
     steps:
@@ -36,115 +35,21 @@ jobs:
         java-version: 17
         architecture: arm64
 
-    - name: Download and Mount NDK DMG
+    - name: Setup Android SDK/NDK
+      uses: android-actions/setup-android@v3
+      with:
+        ndk-version: ${{ env.ANDROID_NDK_VERSION }}
+        cmake-version: 3.22.1
+
+    - name: Configure Environment Paths
       shell: bash
       run: |
-        NDK_DMG_URL="https://dl.google.com/android/repository/android-ndk-r26d-darwin.dmg"
-        
-        # 下载并挂载DMG
-        curl -L -o ndk.dmg "$NDK_DMG_URL"
-        hdiutil attach ndk.dmg -mountpoint "$NDK_INSTALL_PATH" -nobrowse -quiet
-        
-        # 显示详细目录结构
-        echo "=== DMG深度扫描 ==="
-        find "$NDK_INSTALL_PATH" -maxdepth 3 -type d
-
-    # ========== 4. 精准安装NDK ==========
-    - name: Install NDK from .app Bundle
-      run: |
-        # 定义目标路径
-        TARGET_NDK_DIR="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}"
-        mkdir -p "$TARGET_NDK_DIR"
-        
-        # 精确提取.app包内资源（根据上一步的find输出调整）
-        APP_BUNDLE="$NDK_INSTALL_PATH/AndroidNDK11579264.app/Contents/Resources"
-        
-        # 验证关键文件存在性
-        if [ ! -d "$APP_BUNDLE/NDK" ]; then
-          echo "❌ 错误: 未找到NDK核心文件！"
-          hdiutil detach "$NDK_INSTALL_PATH"
-          exit 1
-        fi
-        
-        # 复制NDK内容
-        cp -R "$APP_BUNDLE/NDK"/* "$TARGET_NDK_DIR"
-        
-        # 清理
-        hdiutil detach "$NDK_INSTALL_PATH"
-        rm ndk.dmg
-        echo "NDK已安装至: $TARGET_NDK_DIR"
-
-        # 打印版本信息
-        cat "$TARGET_NDK_DIR/source.properties"
-
-    # ========== 5. 强化架构验证 ==========
-    - name: Validate ARM64 Toolchain
-      run: |
-        NDK_BIN_DIR="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}/toolchains/llvm/prebuilt/darwin-arm64/bin"
-        
-        # 检查工具链目录
-        if [ ! -d "$NDK_BIN_DIR" ]; then
-          echo "❌ 错误: darwin-arm64工具链缺失！"
-          exit 1
-        fi
-        
-        # 检查关键二进制架构
-        check_arch() {
-          if ! file "$1" | grep -q "arm64"; then
-            echo "❌ 文件 $1 不是ARM64架构"
-            exit 1
-          fi
-        }
-        
-        check_arch "$NDK_BIN_DIR/clang"
-        check_arch "$NDK_BIN_DIR/lld"
-        check_arch "$NDK_BIN_DIR/ndk-build"
-        
-        echo "✅ NDK ARM64工具链验证通过""
-        
-    # ========== 4. 查找LLVM工具链 ==========
-    - name: Find LLVM Toolchain Path
-      id: find-llvm
-      shell: bash
-      run: |
-        # 调整路径优先级，优先检测ARM64
-        NDK_BASE="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}/toolchains/llvm/prebuilt"
-        POSSIBLE_PATHS=(
-          "$NDK_BASE/darwin-aarch64"  # Apple Silicon优先
-          "$NDK_BASE/darwin-x86_64"    # Intel兼容
-          "$NDK_BASE/linux-x86_64"     # Linux
-        )
-
-        # 循环检查路径
-        for path in "${POSSIBLE_PATHS[@]}"; do
-          if [ -d "$path/bin" ] && [ -f "$path/bin/clang" ]; then
-            echo "✅ 找到有效LLVM路径: $path"
-            echo "LLVM_PATH=$path" >> $GITHUB_ENV
-            # 额外验证架构
-            if [[ "$path" == *"aarch64"* ]]; then
-              echo "::notice::已选择ARM64原生工具链"
-            else
-              echo "::warning::使用非ARM64工具链，可能影响性能！"
-            fi
-            exit 0
-          fi
-        done
-
-        echo "❌ 错误: 未找到有效的LLVM工具链！"
-        exit 1
-
-    # ========== 4. 验证 lld 存在性 ==========
-    - name: Check lld
-      shell: bash
-      run: |
-        echo "最终 LLVM_PATH: $LLVM_PATH"
-        echo "检查 lld 是否存在:"
-        ls -l $LLVM_PATH/bin/lld* || echo "❌ lld 未找到！"
-        echo "检查 Clang 版本:"
-        $LLVM_PATH/bin/clang --version
-        
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}" >> $GITHUB_ENV
+        echo "LLVM_PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-aarch64" >> $GITHUB_ENV
+        echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+    # ========== 3. OpenSSL 编译 ==========
     
-    
+
     # ========== 4. 主构建流程 ==========
     - name: Build APK
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
@@ -154,7 +59,6 @@ jobs:
         # 修复文件权限
         chmod +x gradlew
         find . -name "*.sh" -exec chmod +x {} \;
-
         # 执行构建
         ./gradlew clean assembleRelease \
           -DllvmToolchainPath=$LLVM_PATH \
@@ -163,7 +67,6 @@ jobs:
           --no-daemon \
           --stacktrace \
           --scan
-
     # ========== 5. 产物处理 ==========
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
