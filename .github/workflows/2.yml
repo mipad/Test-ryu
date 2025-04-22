@@ -19,6 +19,13 @@ jobs:
       ANDROID_API_LEVEL: "33"
 
     steps:
+
+    - name: Detect Architecture
+      run: |
+       echo "当前芯片架构: $(uname -m)"
+    # 输出结果：
+    # - arm64 → Apple Silicon (M1/M2)
+    # - x86_64 → Intel
     # ========== 1. 代码检出 ==========
     - name: Checkout code
       uses: actions/checkout@v4
