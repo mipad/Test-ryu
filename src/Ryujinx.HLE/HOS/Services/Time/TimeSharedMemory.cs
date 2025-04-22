@@ -160,4 +160,5 @@ private uint AtomicIncrement(ref uint location)
         newValue = original + 1;
     } while (Interlocked.CompareExchange(ref location, newValue, original) != original);
     return newValue;
+    }
 }
