@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.Versioning;
 using System.Threading;
 
 namespace Ryujinx.Memory
@@ -7,6 +8,10 @@ namespace Ryujinx.Memory
     /// <summary>
     /// Represents a block of contiguous physical guest memory.
     /// </summary>
+    [SupportedOSPlatform("windows")]
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("android")]
     public sealed class MemoryBlock : IWritableBlock, IDisposable
     {
         private readonly bool _usesSharedMemory;
@@ -29,23 +34,31 @@ namespace Ryujinx.Memory
         /// <summary>
         /// Creates a new instance of the memory block class.
         /// </summary>
-        /// <param name="size">Size of the memory block in bytes</param>
-        /// <param name="flags">Flags that controls memory block memory allocation</param>
-        /// <exception cref="SystemException">Throw when there's an error while allocating the requested size</exception>
-        /// <exception cref="PlatformNotSupportedException">Throw when the current platform is not supported</exception>
         public MemoryBlock(ulong size, MemoryAllocationFlags flags = MemoryAllocationFlags.None)
+{
+    if (flags.HasFlag(MemoryAllocationFlags.Mirrorable))
+    {
+        if (OperatingSystem.IsAndroid())
         {
-            if (flags.HasFlag(MemoryAllocationFlags.Mirrorable))
-            {
-                _sharedMemory = MemoryManagement.CreateSharedMemory(size, flags.HasFlag(MemoryAllocationFlags.Reserve));
+            // Android 使用 ASharedMemory_create
+            _sharedMemory = MemoryManagementUnix.CreateSharedMemory(size, flags.HasFlag(MemoryAllocationFlags.Reserve));
+        }
+        else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+        {
+            // Linux/macOS 使用其他实现
+            _sharedMemory = MemoryManagement.CreateSharedMemory(size, flags.HasFlag(MemoryAllocationFlags.Reserve));
+        }
+        else
+        {
+            throw new PlatformNotSupportedException("Shared memory is not supported on this platform.");
+        }
 
-                if (!flags.HasFlag(MemoryAllocationFlags.NoMap))
-                {
-                    _pointer = MemoryManagement.MapSharedMemory(_sharedMemory, size);
-                }
-
-                _usesSharedMemory = true;
-            }
+        if (!flags.HasFlag(MemoryAllocationFlags.NoMap))
+        {
+            _pointer = MemoryManagement.MapSharedMemory(_sharedMemory, size);
+        }
+        _usesSharedMemory = true;
+    }
             else if (flags.HasFlag(MemoryAllocationFlags.Reserve))
             {
                 _viewCompatible = flags.HasFlag(MemoryAllocationFlags.ViewCompatible);
@@ -62,12 +75,8 @@ namespace Ryujinx.Memory
         }
 
         /// <summary>
-        /// Creates a new instance of the memory block class, with a existing backing storage.
+        /// Creates a new instance with existing backing storage.
         /// </summary>
-        /// <param name="size">Size of the memory block in bytes</param>
-        /// <param name="sharedMemory">Shared memory to use as backing storage for this block</param>
-        /// <exception cref="SystemException">Throw when there's an error while mapping the shared memory</exception>
-        /// <exception cref="PlatformNotSupportedException">Throw when the current platform is not supported</exception>
         private MemoryBlock(ulong size, IntPtr sharedMemory)
         {
             _pointer = MemoryManagement.MapSharedMemory(sharedMemory, size);
@@ -77,71 +86,60 @@ namespace Ryujinx.Memory
         }
 
         /// <summary>
-        /// Creates a memory block that shares the backing storage with this block.
-        /// The memory and page commitments will be shared, however memory protections are separate.
+        /// Creates a memory mirror.
         /// </summary>
-        /// <returns>A new memory block that shares storage with this one</returns>
-        /// <exception cref="NotSupportedException">Throw when the current memory block does not support mirroring</exception>
-        /// <exception cref="SystemException">Throw when there's an error while mapping the shared memory</exception>
-        /// <exception cref="PlatformNotSupportedException">Throw when the current platform is not supported</exception>
         public MemoryBlock CreateMirror()
         {
             if (_sharedMemory == IntPtr.Zero)
             {
-                throw new NotSupportedException("Mirroring is not supported on the memory block because the Mirrorable flag was not set.");
+                throw new NotSupportedException("Mirroring requires Mirrorable flag.");
             }
-
             return new MemoryBlock(Size, _sharedMemory);
         }
 
         /// <summary>
-        /// Commits a region of memory that has previously been reserved.
-        /// This can be used to allocate memory on demand.
+        /// Commits reserved memory.
         /// </summary>
-        /// <param name="offset">Starting offset of the range to be committed</param>
-        /// <param name="size">Size of the range to be committed</param>
-        /// <exception cref="SystemException">Throw when the operation was not successful</exception>
-        /// <exception cref="ObjectDisposedException">Throw when the memory block has already been disposed</exception>
-        /// <exception cref="InvalidMemoryRegionException">Throw when either <paramref name="offset"/> or <paramref name="size"/> are out of range</exception>
+        [SupportedOSPlatform("windows")]
+        [SupportedOSPlatform("linux")]
+        [SupportedOSPlatform("android")]
         public void Commit(ulong offset, ulong size)
         {
             MemoryManagement.Commit(GetPointerInternal(offset, size), size, _forJit);
         }
 
         /// <summary>
-        /// Decommits a region of memory that has previously been reserved and optionally comitted.
-        /// This can be used to free previously allocated memory on demand.
+        /// Decommits memory.
         /// </summary>
-        /// <param name="offset">Starting offset of the range to be decommitted</param>
-        /// <param name="size">Size of the range to be decommitted</param>
-        /// <exception cref="SystemException">Throw when the operation was not successful</exception>
-        /// <exception cref="ObjectDisposedException">Throw when the memory block has already been disposed</exception>
-        /// <exception cref="InvalidMemoryRegionException">Throw when either <paramref name="offset"/> or <paramref name="size"/> are out of range</exception>
+        [SupportedOSPlatform("windows")]
+        [SupportedOSPlatform("linux")]
+        [SupportedOSPlatform("android")]
         public void Decommit(ulong offset, ulong size)
         {
             MemoryManagement.Decommit(GetPointerInternal(offset, size), size);
         }
 
         /// <summary>
-        /// Maps a view of memory from another memory block.
+        /// Maps a memory view.
         /// </summary>
-        /// <param name="srcBlock">Memory block from where the backing memory will be taken</param>
-        /// <param name="srcOffset">Offset on <paramref name="srcBlock"/> of the region that should be mapped</param>
-        /// <param name="dstOffset">Offset to map the view into on this block</param>
-        /// <param name="size">Size of the range to be mapped</param>
-        /// <exception cref="NotSupportedException">Throw when the source memory block does not support mirroring</exception>
-        /// <exception cref="ObjectDisposedException">Throw when the memory block has already been disposed</exception>
-        /// <exception cref="InvalidMemoryRegionException">Throw when either <paramref name="offset"/> or <paramref name="size"/> are out of range</exception>
+        [SupportedOSPlatform("windows")]
+        [SupportedOSPlatform("linux")]
+        [SupportedOSPlatform("android")]
         public void MapView(MemoryBlock srcBlock, ulong srcOffset, ulong dstOffset, ulong size)
         {
             if (srcBlock._sharedMemory == IntPtr.Zero)
             {
-                throw new ArgumentException("The source memory block is not mirrorable, and thus cannot be mapped on the current block.");
+                throw new ArgumentException("Source block is not mirrorable.");
             }
-
             MemoryManagement.MapView(srcBlock._sharedMemory, srcOffset, GetPointerInternal(dstOffset, size), size, this);
         }
 
+        /// <summary>
+        /// Reprotects memory.
+        /// </summary>
+        [SupportedOSPlatform("windows")]
+        [SupportedOSPlatform("linux")]
+        [SupportedOSPlatform("android")]
         /// <summary>
         /// Unmaps a view of memory from another memory block.
         /// </summary>
