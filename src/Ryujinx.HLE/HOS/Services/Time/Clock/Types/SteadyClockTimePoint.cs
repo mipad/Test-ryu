@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 namespace Ryujinx.HLE.HOS.Services.Time.Clock
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    struct SteadyClockTimePoint
+    public struct SteadyClockTimePoint // 添加 public 修饰符
     {
         public long TimePoint;
         public UInt128 ClockSourceId;
@@ -19,7 +19,6 @@ namespace Ryujinx.HLE.HOS.Services.Time.Clock
                 try
                 {
                     outSpan = checked(other.TimePoint - TimePoint);
-
                     return ResultCode.Success;
                 }
                 catch (OverflowException)
