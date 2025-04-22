@@ -77,8 +77,8 @@ namespace Ryujinx.HLE.HOS.Services.Time
                         TimePoint = 0,
                     },
                 },
-               
-            };        
+            };
+
             WriteObjectToSharedMemory(ContinuousAdjustmentTimePointOffset, 4, adjustmentTimePoint);
 
             SteadyClockContext context = new()
@@ -101,59 +101,54 @@ namespace Ryujinx.HLE.HOS.Services.Time
         }
 
         private unsafe T ReadObjectFromSharedMemory<T>(ulong offset, ulong padding) where T : unmanaged
-{
-    if (!OperatingSystem.IsAndroid() && 
-        !OperatingSystem.IsWindows() && 
-        !OperatingSystem.IsLinux() && 
-        !OperatingSystem.IsMacOS())
-    {
-        throw new PlatformNotSupportedException("Memory operations are only supported on Android, Windows, Linux, and macOS.");
-    }
+        {
+            if (!OperatingSystem.IsAndroid() && 
+                !OperatingSystem.IsWindows() && 
+                !OperatingSystem.IsLinux() && 
+                !OperatingSystem.IsMacOS())
+            {
+                throw new PlatformNotSupportedException("Memory operations are only supported on Android, Windows, Linux, and macOS.");
+            }
 
-    T result;
-    uint index;
-    uint possiblyNewIndex;
+            T result;
+            uint index;
+            uint possiblyNewIndex;
 
-    do
-    {
-        
-        index = _timeSharedMemoryStorage.GetRef<uint>(offset);
+            do
+            {
+                index = _timeSharedMemoryStorage.GetRef<uint>(offset);
+                ulong objectOffset = offset + 4 + padding + (ulong)((index & 1) * Unsafe.SizeOf<T>());
+                byte* ptr = (byte*)_timeSharedMemoryStorage.GetPointer(objectOffset).ToPointer();
+                result = Unsafe.Read<T>(ptr);
 
-       
-        ulong objectOffset = offset + 4 + padding + (ulong)((index & 1) * Unsafe.SizeOf<T>());
+                byte* indexPtr = (byte*)_device.Memory.GetPointer(offset).ToPointer();
+                possiblyNewIndex = Unsafe.Read<uint>(indexPtr);
+            } while (index != possiblyNewIndex);
 
-        
-        byte* ptr = (byte*)_timeSharedMemoryStorage.GetPointer(objectOffset).ToPointer();
-        result = Unsafe.Read<T>(ptr);
-
-        
-        byte* indexPtr = (byte*)_device.Memory.GetPointer(offset).ToPointer();
-        possiblyNewIndex = Unsafe.Read<uint>(indexPtr);
-    } while (index != possiblyNewIndex);
-
-    return result;
-} 
+            return result;
+        } 
 
         private void WriteObjectToSharedMemory<T>(ulong offset, ulong padding, T value) where T : unmanaged
-{
-    uint newIndex = AtomicIncrement(ref _timeSharedMemoryStorage.GetRef<uint>(offset));
+        {
+            uint newIndex = AtomicIncrement(ref _timeSharedMemoryStorage.GetRef<uint>(offset));
+            ulong objectOffset = offset + 4 + padding + (ulong)((newIndex & 1) * Unsafe.SizeOf<T>());
 
-    ulong objectOffset = offset + 4 + padding + (ulong)((newIndex & 1) * Unsafe.SizeOf<T>());
+            unsafe
+            {
+                byte* ptr = (byte*)_timeSharedMemoryStorage.GetPointer(objectOffset).ToPointer();
+                Unsafe.Write(ptr, value);
+            }
+        }
 
-    unsafe
-    {
-        byte* ptr = (byte*)_timeSharedMemoryStorage.GetPointer(objectOffset).ToPointer();
-        Unsafe.Write(ptr, value);
-    }
-}
-
-private uint AtomicIncrement(ref uint location)
-{
-    uint original, newValue;
-    do
-    {
-        original = Volatile.Read(ref location);
-        newValue = original + 1;
-    } while (Interlocked.CompareExchange(ref location, newValue, original) != original);
-    return newValue;
-}
+        private uint AtomicIncrement(ref uint location)
+        {
+            uint original, newValue;
+            do
+            {
+                original = Volatile.Read(ref location);
+                newValue = original + 1;
+            } while (Interlocked.CompareExchange(ref location, newValue, original) != original);
+            return newValue;
+        }
+    } // 类 TimeSharedMemory 的闭合括号
+} // 命名空间的闭合括号
