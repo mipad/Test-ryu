@@ -16,6 +16,7 @@ jobs:
       GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4"
       PROJECT_DIR: src/RyujinxAndroid
       ANDROID_NDK_VERSION: "26.3.11579264"
+      DOTNET_VERSION: "9.0.203"
       ANDROID_API_LEVEL: "33"
 
     steps:
