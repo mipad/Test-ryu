@@ -17,7 +17,7 @@ jobs:
       PROJECT_DIR: src/RyujinxAndroid
       ANDROID_NDK_VERSION: "27.2.12479018"
       DOTNET_VERSION: "9.0.203"
-      ANDROID_API_LEVEL: "33"
+      ANDROID_API_LEVEL: "35"
 
     steps:
     # ========== 1. 代码检出 ==========
