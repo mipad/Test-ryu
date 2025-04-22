@@ -15,7 +15,7 @@ namespace Ryujinx.HLE.HOS.Services.Time
         private Switch _device;
         private KSharedMemory _sharedMemory;
         private SharedMemoryStorage _timeSharedMemoryStorage;
-#pragma warning disable IDE0052 // Remove unread private member
+#pragma warning disable IDE0052
         private int _timeSharedMemorySize;
 #pragma warning restore IDE0052
 
@@ -31,8 +31,6 @@ namespace Ryujinx.HLE.HOS.Services.Time
             _sharedMemory = sharedMemory;
             _timeSharedMemoryStorage = timeSharedMemoryStorage;
             _timeSharedMemorySize = timeSharedMemorySize;
-
-            // Clean the shared memory
             timeSharedMemoryStorage.ZeroFill();
         }
 
@@ -48,14 +46,12 @@ namespace Ryujinx.HLE.HOS.Services.Time
 
         public void SetAutomaticCorrectionEnabled(bool isAutomaticCorrectionEnabled)
         {
-            // We convert the bool to byte here as a bool in C# takes 4 bytes...
             WriteObjectToSharedMemory(AutomaticCorrectionEnabledOffset, 0, Convert.ToByte(isAutomaticCorrectionEnabled));
         }
 
         public void SetSteadyClockRawTimePoint(ITickSource tickSource, TimeSpanType currentTimePoint)
         {
             SteadyClockContext context = ReadObjectFromSharedMemory<SteadyClockContext>(SteadyClockContextOffset, 4);
-
             UpdateSteadyClock(tickSource, context.ClockSourceId, currentTimePoint);
         }
 
@@ -118,15 +114,18 @@ namespace Ryujinx.HLE.HOS.Services.Time
             {
                 index = _timeSharedMemoryStorage.GetRef<uint>(offset);
                 ulong objectOffset = offset + 4 + padding + (ulong)((index & 1) * Unsafe.SizeOf<T>());
-                byte* ptr = (byte*)_timeSharedMemoryStorage.GetPointer(objectOffset).ToPointer();
+                
+                // 修正：通过 MemoryBlock 获取指针，并传入 size 参数
+                byte* ptr = (byte*)_timeSharedMemoryStorage.Block.GetPointer(objectOffset, (ulong)Unsafe.SizeOf<T>()).ToPointer();
                 result = Unsafe.Read<T>(ptr);
 
-                byte* indexPtr = (byte*)_device.Memory.GetPointer(offset).ToPointer();
+                // 修正：补全 GetPointer 的 size 参数
+                byte* indexPtr = (byte*)_device.Memory.GetPointer(offset, (ulong)Unsafe.SizeOf<uint>()).ToPointer();
                 possiblyNewIndex = Unsafe.Read<uint>(indexPtr);
             } while (index != possiblyNewIndex);
 
             return result;
-        } 
+        }
 
         private void WriteObjectToSharedMemory<T>(ulong offset, ulong padding, T value) where T : unmanaged
         {
@@ -135,7 +134,8 @@ namespace Ryujinx.HLE.HOS.Services.Time
 
             unsafe
             {
-                byte* ptr = (byte*)_timeSharedMemoryStorage.GetPointer(objectOffset).ToPointer();
+                // 修正：通过 MemoryBlock 获取指针，并传入 size 参数
+                byte* ptr = (byte*)_timeSharedMemoryStorage.Block.GetPointer(objectOffset, (ulong)Unsafe.SizeOf<T>()).ToPointer();
                 Unsafe.Write(ptr, value);
             }
         }
@@ -150,5 +150,5 @@ namespace Ryujinx.HLE.HOS.Services.Time
             } while (Interlocked.CompareExchange(ref location, newValue, original) != original);
             return newValue;
         }
-    } // 类 TimeSharedMemory 的闭合括号
-} // 命名空间的闭合括号
+    }
+}
