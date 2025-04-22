@@ -49,6 +49,11 @@ jobs:
         ndk-version: ${{ env.ANDROID_NDK_VERSION }}
         cmake-version: 3.22.1
 
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v4
+      with:
+       dotnet-version: 9.0.203  # 或更高兼容版本，如 "9.0.x"
+       
     - name: Configure Environment Paths
       shell: bash
       run: |
