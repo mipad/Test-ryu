@@ -6,6 +6,7 @@ using Ryujinx.HLE.HOS.Services.Time.Types;
 using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Runtime.InteropServices;
 
 namespace Ryujinx.HLE.HOS.Services.Time
 {
@@ -99,39 +100,65 @@ namespace Ryujinx.HLE.HOS.Services.Time
             WriteObjectToSharedMemory(NetworkSystemClockContextOffset, 4, context);
         }
 
-        private T ReadObjectFromSharedMemory<T>(ulong offset, ulong padding) where T : unmanaged
-        {
-            T result;
-            uint index;
-            uint possiblyNewIndex;
+        private unsafe T ReadObjectFromSharedMemory<T>(ulong offset, ulong padding) where T : unmanaged
+{
+    // 添加平台检查（在循环外只检查一次）
+    if (!OperatingSystem.IsAndroid() && 
+        !OperatingSystem.IsWindows() && 
+        !OperatingSystem.IsLinux() && 
+        !OperatingSystem.IsMacOS())
+    {
+        throw new PlatformNotSupportedException("Memory operations are only supported on Android, Windows, Linux, and macOS.");
+    }
 
-            do
-            {
-                index = _timeSharedMemoryStorage.GetRef<uint>(offset);
+    T result;
+    uint index;
+    uint possiblyNewIndex;
 
-                ulong objectOffset = offset + 4 + padding + (ulong)((index & 1) * Unsafe.SizeOf<T>());
+    do
+    {
+        // 读取索引
+        index = _timeSharedMemoryStorage.GetRef<uint>(offset);
 
-                result = _timeSharedMemoryStorage.GetRef<T>(objectOffset);
+        // 计算对象偏移量
+        ulong objectOffset = offset + 4 + padding + (ulong)((index & 1) * Unsafe.SizeOf<T>());
 
-                Thread.MemoryBarrier();
+        // 直接通过指针读取对象
+        byte* ptr = (byte*)_timeSharedMemoryStorage.GetPointer(objectOffset).ToPointer();
+        result = Unsafe.Read<T>(ptr);
 
-                possiblyNewIndex = _device.Memory.Read<uint>(offset);
-            } while (index != possiblyNewIndex);
+        // 替换 MemoryBlock.Read 为指针操作
+        byte* indexPtr = (byte*)_device.Memory.GetPointer(offset).ToPointer();
+        possiblyNewIndex = Unsafe.Read<uint>(indexPtr);
 
-            return result;
-        }
+    } while (index != possiblyNewIndex);
+
+    return result;
+}
 
         private void WriteObjectToSharedMemory<T>(ulong offset, ulong padding, T value) where T : unmanaged
-        {
-            uint newIndex = _timeSharedMemoryStorage.GetRef<uint>(offset) + 1;
+{
+    // 使用原子操作更新索引
+    uint newIndex = AtomicIncrement(ref _timeSharedMemoryStorage.GetRef<uint>(offset));
 
-            ulong objectOffset = offset + 4 + padding + (ulong)((newIndex & 1) * Unsafe.SizeOf<T>());
+    ulong objectOffset = offset + 4 + padding + (ulong)((newIndex & 1) * Unsafe.SizeOf<T>());
 
-            _timeSharedMemoryStorage.GetRef<T>(objectOffset) = value;
-
-            Thread.MemoryBarrier();
-
-            _timeSharedMemoryStorage.GetRef<uint>(offset) = newIndex;
-        }
+    // 直接写入内存
+    unsafe
+    {
+        byte* ptr = (byte*)_timeSharedMemoryStorage.GetPointer(objectOffset).ToPointer();
+        Unsafe.Write(ptr, value);
     }
+}
+
+// 原子递增辅助方法
+private uint AtomicIncrement(ref uint location)
+{
+    uint original, newValue;
+    do
+    {
+        original = Volatile.Read(ref location);
+        newValue = original + 1;
+    } while (Interlocked.CompareExchange(ref location, newValue, original) != original);
+    return newValue;
 }
