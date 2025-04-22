@@ -115,8 +115,8 @@ namespace Ryujinx.HLE.HOS.Services.Time
                 index = _timeSharedMemoryStorage.GetRef<uint>(offset);
                 ulong objectOffset = offset + 4 + padding + (ulong)((index & 1) * Unsafe.SizeOf<T>());
                 
-                // 修正：通过 MemoryBlock 获取指针，并传入 size 参数
-                byte* ptr = (byte*)_timeSharedMemoryStorage.Block.GetPointer(objectOffset, (ulong)Unsafe.SizeOf<T>()).ToPointer();
+                // 修正：直接调用 MemoryBlock 的 GetPointer，并传入 size 参数
+                byte* ptr = (byte*)_device.Memory.GetPointer(objectOffset, (ulong)Unsafe.SizeOf<T>()).ToPointer();
                 result = Unsafe.Read<T>(ptr);
 
                 // 修正：补全 GetPointer 的 size 参数
@@ -134,8 +134,8 @@ namespace Ryujinx.HLE.HOS.Services.Time
 
             unsafe
             {
-                // 修正：通过 MemoryBlock 获取指针，并传入 size 参数
-                byte* ptr = (byte*)_timeSharedMemoryStorage.Block.GetPointer(objectOffset, (ulong)Unsafe.SizeOf<T>()).ToPointer();
+                // 修正：直接调用 MemoryBlock 的 GetPointer，并传入 size 参数
+                byte* ptr = (byte*)_device.Memory.GetPointer(objectOffset, (ulong)Unsafe.SizeOf<T>()).ToPointer();
                 Unsafe.Write(ptr, value);
             }
         }
