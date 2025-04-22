@@ -77,8 +77,10 @@ namespace Ryujinx.HLE.HOS.Services.Time
                         TimePoint = 0,
                     },
                 },
-            };
+               
+            },
 
+        };
             WriteObjectToSharedMemory(ContinuousAdjustmentTimePointOffset, 4, adjustmentTimePoint);
 
             SteadyClockContext context = new()
@@ -160,5 +162,4 @@ private uint AtomicIncrement(ref uint location)
         newValue = original + 1;
     } while (Interlocked.CompareExchange(ref location, newValue, original) != original);
     return newValue;
-    }
 }
