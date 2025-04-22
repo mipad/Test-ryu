@@ -61,7 +61,7 @@ jobs:
     - name: Build APK
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       env:
-        OPENSSL_ROOT_DIR: /opt/openssl-arm64
+        OPENSSL_ROOT_DIR: /opt/openssl-x64
       run: |
         # 修复文件权限
         chmod +x gradlew
