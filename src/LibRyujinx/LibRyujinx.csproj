@@ -8,7 +8,7 @@
   </PropertyGroup>
   <PropertyGroup>
     <PublishAot>true</PublishAot>
-    <MonoRuntimeFeatures>aot,interpreter</MonoRuntimeFeatures>
+    <!--<MonoRuntimeFeatures>aot,interpreter</MonoRuntimeFeatures> -->
     <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
     <!-- Not sure why, but on iOS this results in an error. Result is still a .dylib. -->
     <NativeLib Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">Shared</NativeLib>
