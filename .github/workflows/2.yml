@@ -61,10 +61,10 @@ jobs:
     - name: Configure Environment Paths
       shell: bash
       run: |
-        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}" >> $GITHUB_ENV
-        echo "LLVM_PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64" >> $GITHUB_ENV
-        echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
-    # ========== 3. OpenSSL 编译 ==========
+       echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}" >> $GITHUB_ENV
+       echo "LLVM_PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64" >> $GITHUB_ENV  # 关键修正
+       echo "LIB_DIR=$LLVM_PATH/sysroot/usr/lib/aarch64-linux-android/${{ env.ANDROID_API_LEVEL }}" >> $GITHUB_ENV
+       echo "$LLVM_PATH/bin" >> $GITHUB_PATH
     
 
     # ========== 4. 主构建流程 ==========
