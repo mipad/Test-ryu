@@ -40,7 +40,7 @@ jobs:
       with:
         distribution: temurin
         java-version: 17
-        architecture: arm64
+        architecture: x64
 
     - name: Setup Android SDK/NDK
       uses: android-actions/setup-android@v3
