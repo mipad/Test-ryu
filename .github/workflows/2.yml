@@ -53,6 +53,10 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
        dotnet-version: 9.0.203  # 或更高兼容版本，如 "9.0.x"
+
+    - name: Install NDK Platform Libraries
+      run: |
+       $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-${{ env.ANDROID_API_LEVEL }}"
        
     - name: Configure Environment Paths
       shell: bash
