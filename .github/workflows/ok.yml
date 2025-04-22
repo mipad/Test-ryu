@@ -1,0 +1,75 @@
+name: Android CI Fix
+
+on:
+  push:
+    branches: [ "11" ]
+  pull_request:
+    branches: [ "11" ]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    
+    env:
+      JAVA_OPTS: "-Xmx6g -XX:MaxMetaspaceSize=2g"
+      GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4"
+      PROJECT_DIR: src/RyujinxAndroid
+      ANDROID_NDK_VERSION: "25.2.9519653"
+      ANDROID_API_LEVEL: "33"
+
+    steps:
+    # ========== 1. 代码检出 ==========
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        repository: mipad/Test-ryu
+        ref: 1
+        path: Test-ryu
+
+    # ========== 2. 环境配置 ==========
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: 17
+        architecture: arm64
+
+    - name: Setup Android SDK/NDK
+      uses: android-actions/setup-android@v3
+      with:
+        ndk-version: ${{ env.ANDROID_NDK_VERSION }}
+        cmake-version: 3.22.1
+
+    - name: Configure Environment Paths
+      shell: bash
+      run: |
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}" >> $GITHUB_ENV
+        echo "LLVM_PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-aarch64" >> $GITHUB_ENV
+        echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+    # ========== 3. OpenSSL 编译 ==========
+    
+
+    # ========== 4. 主构建流程 ==========
+    - name: Build APK
+      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
+      env:
+        OPENSSL_ROOT_DIR: /opt/openssl-arm64
+      run: |
+        # 修复文件权限
+        chmod +x gradlew
+        find . -name "*.sh" -exec chmod +x {} \;
+        # 执行构建
+        ./gradlew clean assembleRelease \
+          -DllvmToolchainPath=$LLVM_PATH \
+          -Dopenssl.root=$OPENSSL_ROOT_DIR \
+          -Pandroid.overridePathCheck=true \
+          --no-daemon \
+          --stacktrace \
+          --scan
+    # ========== 5. 产物处理 ==========
+    - name: Upload APK Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-arm64-release
+        path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
