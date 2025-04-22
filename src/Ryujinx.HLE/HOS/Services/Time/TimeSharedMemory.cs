@@ -130,11 +130,10 @@ namespace Ryujinx.HLE.HOS.Services.Time
         // 替换 MemoryBlock.Read 为指针操作
         byte* indexPtr = (byte*)_device.Memory.GetPointer(offset).ToPointer();
         possiblyNewIndex = Unsafe.Read<uint>(indexPtr);
-
     } while (index != possiblyNewIndex);
 
     return result;
-}
+} // 确保此处有闭合大括号
 
         private void WriteObjectToSharedMemory<T>(ulong offset, ulong padding, T value) where T : unmanaged
 {
