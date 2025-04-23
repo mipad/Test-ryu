@@ -693,10 +693,10 @@ namespace Ryujinx.Graphics.Gpu.Image
                 dependency.Other.Handle.RemoveDependency(dependency.Other);
             }
         }
-        public void ValidateResource()
+        public bool ValidateResource()
        {
-       // 暂时留空，或添加具体实现
-       return true;
+          // 新增的方法
+           return true;
        }
     }
 }
