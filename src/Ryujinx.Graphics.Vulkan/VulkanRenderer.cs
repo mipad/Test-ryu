@@ -956,10 +956,13 @@ namespace Ryujinx.Graphics.Vulkan
             _counters?.ResetFutureCounters(cmd, count);
         }
 
-        public void BackgroundContextAction(Action action, bool alwaysBackground = false)
-        {
-            action();
-        }
+        public void BackgroundContextAction(Action action, bool alwaysBackground) {
+         if (alwaysBackground) {
+             Task.Run(action); 
+         } else {
+             action();
+         }
+     }
 
         public void CreateSync(ulong id, bool strict)
         {
