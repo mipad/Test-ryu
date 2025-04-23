@@ -98,6 +98,13 @@ jobs:
           --no-daemon \
           --stacktrace
 
+    - name: Find Native Libraries (.so)
+      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
+      run: |
+       echo "========== 开始搜索 .so 文件 =========="
+       find app/build -name "*.so" -print
+       echo "========== 搜索完成 =========="
+       
     # ========== 5. 产物处理 ==========
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
