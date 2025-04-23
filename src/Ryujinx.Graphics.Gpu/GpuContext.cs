@@ -541,5 +541,6 @@ private async Task InitializeVideoMemoryAsync()
     // 新增重置状态
     _pendingSync = false;
     SyncNumber = 0;
-   }
+    }
+  }
 }
