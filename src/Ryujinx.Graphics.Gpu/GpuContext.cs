@@ -10,8 +10,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Ryujinx.Common.Memory;
-using Ryujinx.Common.Logging; 
 
 namespace Ryujinx.Graphics.Gpu
 {
@@ -133,7 +131,7 @@ public void SafeSceneSwitch(Action unloadOldScene, Action loadNewScene)
           BufferMigrations.Clear();
       }
 
-      Renderer.WaitForIdle(); // 同步等待
+      //Renderer.WaitForIdle(); // 同步等待
       bool requireInit = _requiresVramInitialization;
 
       if (requireInit)
@@ -144,7 +142,7 @@ public void SafeSceneSwitch(Action unloadOldScene, Action loadNewScene)
 
       loadNewScene?.Invoke();
       CreateHostSyncIfNeeded(HostSyncFlags.Force);
-      Renderer.WaitForSync(SyncNumber - 1); // 同步等待
+     // Renderer.WaitForSync(SyncNumber - 1); // 同步等待
   }
 
 private void InitializeVideoMemory()
@@ -163,7 +161,7 @@ private void InitializeVideoMemory()
       for (int offset = 0; offset < initSize; offset += 65536)
       {
           int chunkSize = Math.Min(65536, initSize - offset);
-          tempTexture.SetData(MemoryOwner<byte>.FromArray(initData), offset, chunkSize);
+          tempTexture.SetData(MemoryOwner<byte>.Wrap(initData), offset, chunkSize);
       }
 
       (tempTexture as IDisposable)?.Dispose();
@@ -431,7 +429,6 @@ private void InitializeVideoMemory()
     {
         if (!action.ValidateResource())
         {
-            Logger.Error("资源校验失败，已跳过");
             SyncActions.Remove(action);
         }
     } // 修复：删除多余的闭合括号
