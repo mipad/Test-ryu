@@ -541,4 +541,4 @@ private async Task InitializeVideoMemoryAsync()
     // 新增重置状态
     _pendingSync = false;
     SyncNumber = 0;
-  }
+} // 正确闭合 Dispose 方法
