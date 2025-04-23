@@ -469,7 +469,8 @@ private async Task InitializeVideoMemoryAsync()
             SyncActions.Remove(action);
         }
     }
-    
+  
+ }  
     if (BufferMigrations.Count > 0)
     {
         ulong currentSyncNumber = Renderer.GetCurrentSync();
@@ -541,6 +542,4 @@ private async Task InitializeVideoMemoryAsync()
     // 新增重置状态
     _pendingSync = false;
     SyncNumber = 0;
-    }
   }
-}
