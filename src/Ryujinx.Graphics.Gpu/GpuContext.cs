@@ -119,37 +119,35 @@ namespace Ryujinx.Graphics.Gpu
         /// </summary>
         /// <param name="renderer">Host renderer</param>
    
-        public async Task SafeSceneSwitchAsync(Action unloadOldScene, Action loadNewScene)
-    {
-        // 同步操作放在 lock 块内
-        lock (_sceneSwitchLock)
-        {
-            RunDeferredActions();
-            unloadOldScene?.Invoke();
-            
-            foreach (var migration in BufferMigrations)
-            {
-                migration.Dispose();
-            }
-            BufferMigrations.Clear();
-        }
+public void SafeSceneSwitch(Action unloadOldScene, Action loadNewScene)
+  {
+      lock (_sceneSwitchLock)
+      {
+          RunDeferredActions();
+          unloadOldScene?.Invoke();
+          
+          foreach (var migration in BufferMigrations)
+          {
+              migration.Dispose();
+          }
+          BufferMigrations.Clear();
+      }
 
-        // 异步操作放在 lock 块外
-        await Renderer.WaitForIdleAsync(); // 假设是异步方法
-        bool requireInit = _requiresVramInitialization;
+      Renderer.WaitForIdle(); // 同步等待
+      bool requireInit = _requiresVramInitialization;
 
-        if (requireInit)
-        {
-            await InitializeVideoMemoryAsync();
-            _requiresVramInitialization = false;
-        }
+      if (requireInit)
+      {
+          InitializeVideoMemory(); // 同步初始化
+          _requiresVramInitialization = false;
+      }
 
-        loadNewScene?.Invoke();
-        CreateHostSyncIfNeeded(HostSyncFlags.Force);
-        await Renderer.WaitForSyncAsync(SyncNumber - 1); // 假设是异步方法
-    }
+      loadNewScene?.Invoke();
+      CreateHostSyncIfNeeded(HostSyncFlags.Force);
+      Renderer.WaitForSync(SyncNumber - 1); // 同步等待
+  }
 
-private void InitializeVideoMemory() // 移除 async
+private void InitializeVideoMemory()
   {
       const int initSize = 4 * 1024 * 1024;
       byte[] initData = new byte[initSize];
