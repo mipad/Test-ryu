@@ -104,6 +104,12 @@ jobs:
        echo "========== 开始搜索 .so 文件 =========="
        find app/build -name "*.so" -print
        echo "========== 搜索完成 =========="
+
+    - name: Upload Native Libraries
+      uses: actions/upload-artifact@v4
+      with:
+       name: native-libs
+       path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/**/*.so
        
     # ========== 5. 产物处理 ==========
     - name: Upload APK Artifact
