@@ -146,26 +146,29 @@ public void SafeSceneSwitch(Action unloadOldScene, Action loadNewScene)
   }
 
 private void InitializeVideoMemory()
-  {
-      const int initSize = 4 * 1024 * 1024;
-      byte[] initData = new byte[initSize];
-      Array.Fill(initData, (byte)0xFF);
+{
+    const int initSize = 4 * 1024 * 1024;
+    byte[] initData = new byte[initSize];
+    Array.Fill(initData, (byte)0xFF);
 
-      var tempTexture = Renderer.CreateTexture(new ImageParams
-      {
-          Width = 1024,
-          Height = 1024,
-          Format = Format.R8G8B8A8Unorm
-      });
+    // 移除 ImageParams 相关代码
+    // var tempTexture = Renderer.CreateTexture(new ImageParams
+    // {
+    //     Width = 1024,
+    //     Height = 1024,
+    //     Format = Format.R8G8B8A8Unorm
+    // });
 
-      for (int offset = 0; offset < initSize; offset += 65536)
-      {
-          int chunkSize = Math.Min(65536, initSize - offset);
-          tempTexture.SetData(MemoryOwner<byte>.Wrap(initData), offset, chunkSize);
-      }
+    // 移除 MemoryOwner 相关代码
+    // for (int offset = 0; offset < initSize; offset += 65536)
+    // {
+    //     int chunkSize = Math.Min(65536, initSize - offset);
+    //     tempTexture.SetData(MemoryOwner<byte>.Wrap(initData), offset, chunkSize);
+    // }
 
-      (tempTexture as IDisposable)?.Dispose();
-  }
+    // 移除 Dispose 调用
+    // (tempTexture as IDisposable)?.Dispose();
+}
 
         public GpuContext(IRenderer renderer)
         {
