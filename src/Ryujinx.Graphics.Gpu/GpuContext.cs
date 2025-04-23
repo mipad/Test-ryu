@@ -17,6 +17,9 @@ namespace Ryujinx.Graphics.Gpu
     /// </summary>
     public sealed class GpuContext : IDisposable
     {
+    // 插入位置：GpuContext 类的字段声明区域
+        private readonly object _sceneSwitchLock = new object();
+        private bool _requiresVramInitialization = true;
         private const int NsToTicksFractionNumerator = 384;
         private const int NsToTicksFractionDenominator = 625;
 
@@ -113,6 +116,93 @@ namespace Ryujinx.Graphics.Gpu
         /// Creates a new instance of the GPU emulation context.
         /// </summary>
         /// <param name="renderer">Host renderer</param>
+        // 新增方法（插入到类中）
+   public void LoadTextureSafe(Texture texture, byte[] data)
+   {
+       try
+       {
+           texture.SetData(data);
+       }
+       catch
+    {
+        byte[] fallback = new byte[texture.Size];
+        unsafe
+        {
+            fixed (byte* pFallback = fallback)
+            {
+                // 按32位写入品红色 (0xFF00FFFF)
+                int pixelCount = fallback.Length / 4;
+                for (int i = 0; i < pixelCount; i++)
+                {
+                    ((uint*)pFallback)[i] = 0xFF00FFFF;
+                }
+
+                // 处理剩余字节（非4的倍数时）
+                int remainder = fallback.Length % 4;
+                if (remainder != 0)
+                {
+                    byte* pRemainder = pFallback + (pixelCount * 4);
+                    for (int i = 0; i < remainder; i++)
+                    {
+                        pRemainder[i] = 0xFF; // 填充剩余字节为红色
+                    }
+                }
+            }
+        }
+        texture.SetData(fallback);
+    }
+}
+   
+        public async Task SafeSceneSwitchAsync(Action unloadOldScene, Action loadNewScene)
+{
+    lock (_sceneSwitchLock)
+    {
+        RunDeferredActions();
+        unloadOldScene?.Invoke();
+        
+        foreach (var migration in BufferMigrations)
+        {
+            migration.Dispose();
+        }
+        BufferMigrations.Clear();
+        
+        Renderer.WaitForIdle();
+        requireInit = _requiresVramInitialization;
+    }
+
+    if (_requiresVramInitialization)
+    {
+        await InitializeVideoMemoryAsync();
+        _requiresVramInitialization = false;
+    }
+
+    loadNewScene?.Invoke();
+    CreateHostSyncIfNeeded(HostSyncFlags.Force);
+    Renderer.WaitForSync(SyncNumber - 1);
+}
+
+private async Task InitializeVideoMemoryAsync()
+{
+    const int initSize = 4 * 1024 * 1024;
+    byte[] initData = new byte[initSize];
+    Array.Fill(initData, (byte)0xFF);
+
+    var tempTexture = Renderer.CreateTexture(new ImageParams
+    {
+        Width = 1024,
+        Height = 1024,
+        Format = Format.R8G8B8A8Unorm
+    });
+
+    for (int offset = 0; offset < initSize; offset += 65536)
+    {
+        int chunkSize = Math.Min(65536, initSize - offset);
+        tempTexture.SetData(initData, offset, chunkSize);
+       // await Task.Delay(1);
+    }
+    tempTexture.Dispose();
+}
+
         public GpuContext(IRenderer renderer)
         {
             Renderer = renderer;
@@ -187,15 +277,16 @@ namespace Ryujinx.Graphics.Gpu
         /// <param name="cpuMemory">Virtual memory owned by the process</param>
         /// <exception cref="ArgumentException">Thrown if <paramref name="pid"/> was already registered</exception>
         public void RegisterProcess(ulong pid, Cpu.IVirtualMemoryManagerTracked cpuMemory)
-        {
-            var physicalMemory = new PhysicalMemory(this, cpuMemory);
-            if (!PhysicalMemoryRegistry.TryAdd(pid, physicalMemory))
-            {
-                throw new ArgumentException("The PID was already registered", nameof(pid));
-            }
+{
+    var physicalMemory = new PhysicalMemory(this, cpuMemory);
+    if (!PhysicalMemoryRegistry.TryAdd(pid, physicalMemory))
+    {
+        throw new ArgumentException("PID已被注册", nameof(pid));
+    }
 
-            physicalMemory.ShaderCache.ShaderCacheStateChanged += ShaderCacheStateUpdate;
-        }
+    _requiresVramInitialization = true; // 新增标记
+    physicalMemory.ShaderCache.ShaderCacheStateChanged += ShaderCacheStateUpdate;
+}
 
         /// <summary>
         /// Unregisters a process, indicating that its memory will no longer be used, and that caches can be freed.
@@ -369,50 +460,47 @@ namespace Ryujinx.Graphics.Gpu
         /// </summary>
         /// <param name="flags">Modifiers for how host sync should be created</param>
         internal void CreateHostSyncIfNeeded(HostSyncFlags flags)
+{
+  foreach (var action in SyncActions.ToArray())
+    {
+        if (!action.ValidateResource())
         {
-            bool syncpoint = flags.HasFlag(HostSyncFlags.Syncpoint);
-            bool strict = flags.HasFlag(HostSyncFlags.Strict);
-            bool force = flags.HasFlag(HostSyncFlags.Force);
-
-            if (BufferMigrations.Count > 0)
-            {
-                ulong currentSyncNumber = Renderer.GetCurrentSync();
-
-                for (int i = 0; i < BufferMigrations.Count; i++)
-                {
-                    BufferMigration migration = BufferMigrations[i];
-                    long diff = (long)(currentSyncNumber - migration.SyncNumber);
-
-                    if (diff >= 0)
-                    {
-                        migration.Dispose();
-                        BufferMigrations.RemoveAt(i--);
-                    }
-                }
-            }
-
-            if (force || _pendingSync || (syncpoint && SyncpointActions.Count > 0))
-            {
-                foreach (var action in SyncActions)
-                {
-                    action.SyncPreAction(syncpoint);
-                }
-
-                foreach (var action in SyncpointActions)
-                {
-                    action.SyncPreAction(syncpoint);
-                }
-
-                Renderer.CreateSync(SyncNumber, strict);
-
-                SyncNumber++;
-
-                SyncActions.RemoveAll(action => action.SyncAction(syncpoint));
-                SyncpointActions.RemoveAll(action => action.SyncAction(syncpoint));
-            }
-
-            _pendingSync = false;
+            Logger.Error("资源校验失败，已跳过");
+            SyncActions.Remove(action);
         }
+    }
+    
+    if (BufferMigrations.Count > 0)
+    {
+        ulong currentSyncNumber = Renderer.GetCurrentSync();
+        for (int i = BufferMigrations.Count - 1; i >= 0; i--)
+        {
+            if (currentSyncNumber >= BufferMigrations[i].SyncNumber)
+            {
+                BufferMigrations[i].Dispose();
+                BufferMigrations.RemoveAt(i);
+            }
+        }
+    }
+
+    bool needsSync = _pendingSync || 
+                    (flags.HasFlag(HostSyncFlags.Syncpoint) && SyncpointActions.Count > 0) ||
+                    flags.HasFlag(HostSyncFlags.Force);
+
+    if (needsSync)
+    {
+        foreach (var action in SyncActions)
+        {
+            action.SyncPreAction(flags.HasFlag(HostSyncFlags.Syncpoint));
+        }
+        
+        Renderer.CreateSync(SyncNumber, flags.HasFlag(HostSyncFlags.Strict));
+        SyncNumber++;
+        
+        SyncActions.RemoveAll(action => action.SyncAction(flags.HasFlag(HostSyncFlags.Syncpoint)));
+        _pendingSync = false;
+    }
+}
 
         /// <summary>
         /// Performs deferred actions.
@@ -433,24 +521,24 @@ namespace Ryujinx.Graphics.Gpu
         /// and processing of all commands must have finished.
         /// </summary>
         public void Dispose()
-        {
-            GPFifo.Dispose();
-            HostInitalized.Dispose();
-            _gpuReadyEvent.Dispose();
+{
+    RunDeferredActions(); // 强制处理延迟操作
 
-            // Has to be disposed before processing deferred actions, as it will produce some.
-            foreach (var physicalMemory in PhysicalMemoryRegistry.Values)
-            {
-                physicalMemory.Dispose();
-            }
+    GPFifo.Dispose();
+    HostInitalized.Dispose();
+    _gpuReadyEvent.Dispose();
 
-            SupportBufferUpdater.Dispose();
-
-            PhysicalMemoryRegistry.Clear();
-
-            RunDeferredActions();
-
-            Renderer.Dispose();
-        }
+    foreach (var physicalMemory in PhysicalMemoryRegistry.Values)
+    {
+        physicalMemory.ShaderCache.ShaderCacheStateChanged -= ShaderCacheStateUpdate;
+        physicalMemory.Dispose();
     }
+    PhysicalMemoryRegistry.Clear();
+
+    SupportBufferUpdater.Dispose();
+    Renderer.Dispose();
+
+    // 新增重置状态
+    _pendingSync = false;
+    SyncNumber = 0;
 }
