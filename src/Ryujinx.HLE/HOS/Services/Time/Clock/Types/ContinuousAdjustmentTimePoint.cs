@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace Ryujinx.HLE.HOS.Services.Time.Clock.Types
 {
-    [StructLayout(LayoutKind.Explicit, Size = 32)]
+    [StructLayout(LayoutKind.Explicit, Size = 40)]
     public struct ContinuousAdjustmentTimePoint
     {
         [FieldOffset(0)]  public ulong ClockOffset;
