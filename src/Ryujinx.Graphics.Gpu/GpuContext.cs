@@ -17,7 +17,6 @@ namespace Ryujinx.Graphics.Gpu
     /// </summary>
     public sealed class GpuContext : IDisposable
     {
-    // 插入位置：GpuContext 类的字段声明区域
         private readonly object _sceneSwitchLock = new object();
         private bool _requiresVramInitialization = true;
         private const int NsToTicksFractionNumerator = 384;
@@ -117,14 +116,16 @@ namespace Ryujinx.Graphics.Gpu
         /// </summary>
         /// <param name="renderer">Host renderer</param>
         // 新增方法（插入到类中）
-   public void LoadTextureSafe(Texture texture, byte[] data)
-   {
-       try
-       {
-           texture.SetData(data);
-       }
-       catch
+public void LoadTextureSafe(Texture texture, byte[] data)
+{
+    try
     {
+        texture.SetData(data);
+    }
+    catch (Exception ex) when (ex is ArgumentException || ex is GraphicsException)
+    {
+        Logger.Error($"纹理数据设置失败: {ex.Message}");
+        
         byte[] fallback = new byte[texture.Size];
         unsafe
         {
@@ -134,7 +135,7 @@ namespace Ryujinx.Graphics.Gpu
                 int pixelCount = fallback.Length / 4;
                 for (int i = 0; i < pixelCount; i++)
                 {
-                    ((uint*)pFallback)[i] = 0xFF00FFFF;
+                    ((uint*)pFallback)[i] = 0xFF00FFFF; // ARGB: 0xFF 0x00 0xFF 0xFF
                 }
 
                 // 处理剩余字节（非4的倍数时）
@@ -142,9 +143,10 @@ namespace Ryujinx.Graphics.Gpu
                 if (remainder != 0)
                 {
                     byte* pRemainder = pFallback + (pixelCount * 4);
+                    // 假设格式为 RGBA，剩余字节填充 Alpha 通道为 0xFF（不透明）
                     for (int i = 0; i < remainder; i++)
                     {
-                        pRemainder[i] = 0xFF; // 填充剩余字节为红色
+                        pRemainder[i] = 0xFF;
                     }
                 }
             }
@@ -154,32 +156,34 @@ namespace Ryujinx.Graphics.Gpu
 }
    
         public async Task SafeSceneSwitchAsync(Action unloadOldScene, Action loadNewScene)
-{
-    lock (_sceneSwitchLock)
     {
-        RunDeferredActions();
-        unloadOldScene?.Invoke();
-        
-        foreach (var migration in BufferMigrations)
+        // 同步操作放在 lock 块内
+        lock (_sceneSwitchLock)
         {
-            migration.Dispose();
+            RunDeferredActions();
+            unloadOldScene?.Invoke();
+            
+            foreach (var migration in BufferMigrations)
+            {
+                migration.Dispose();
+            }
+            BufferMigrations.Clear();
         }
-        BufferMigrations.Clear();
-        
-        Renderer.WaitForIdle();
-        requireInit = _requiresVramInitialization;
-    }
 
-    if (_requiresVramInitialization)
-    {
-        await InitializeVideoMemoryAsync();
-        _requiresVramInitialization = false;
-    }
+        // 异步操作放在 lock 块外
+        await Renderer.WaitForIdleAsync(); // 假设是异步方法
+        bool requireInit = _requiresVramInitialization;
 
-    loadNewScene?.Invoke();
-    CreateHostSyncIfNeeded(HostSyncFlags.Force);
-    Renderer.WaitForSync(SyncNumber - 1);
-}
+        if (requireInit)
+        {
+            await InitializeVideoMemoryAsync();
+            _requiresVramInitialization = false;
+        }
+
+        loadNewScene?.Invoke();
+        CreateHostSyncIfNeeded(HostSyncFlags.Force);
+        await Renderer.WaitForSyncAsync(SyncNumber - 1); // 假设是异步方法
+    }
 
 private async Task InitializeVideoMemoryAsync()
 {
@@ -542,3 +546,5 @@ private async Task InitializeVideoMemoryAsync()
     _pendingSync = false;
     SyncNumber = 0;
 } // 正确闭合 Dispose 方法
+}
+}
