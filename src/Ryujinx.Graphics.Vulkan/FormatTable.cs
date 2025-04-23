@@ -181,7 +181,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (!_reverseMap.TryGetValue(format, out Format result))
             {
-                return Format.R8G8B8A8Unorm;
+                return Format.B8G8R8A8Unorm;
             }
 
             return result;
