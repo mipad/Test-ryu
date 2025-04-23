@@ -461,16 +461,15 @@ private async Task InitializeVideoMemoryAsync()
         /// <param name="flags">Modifiers for how host sync should be created</param>
         internal void CreateHostSyncIfNeeded(HostSyncFlags flags)
 {
-  foreach (var action in SyncActions.ToArray())
+    foreach (var action in SyncActions.ToArray())
     {
         if (!action.ValidateResource())
         {
             Logger.Error("资源校验失败，已跳过");
             SyncActions.Remove(action);
         }
-    }
-  
- }  
+    } // 修复：删除多余的闭合括号
+    
     if (BufferMigrations.Count > 0)
     {
         ulong currentSyncNumber = Renderer.GetCurrentSync();
