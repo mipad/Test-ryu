@@ -14,15 +14,11 @@ using System.Runtime.InteropServices;
 using Format = Ryujinx.Graphics.GAL.Format;
 using PrimitiveTopology = Ryujinx.Graphics.GAL.PrimitiveTopology;
 using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
-using System.Threading.Tasks;  // 用于 Task 功能
-using System.Threading;        // 用于 CancellationToken
 
 namespace Ryujinx.Graphics.Vulkan
 {
     public sealed class VulkanRenderer : IRenderer
-    {   
-        private readonly object _syncLock = new object();  // 同步锁，保护共享资源
-        private CancellationTokenSource _cts;              // 用于取消任务
+    {
         private VulkanInstance _instance;
         private SurfaceKHR _surface;
         private VulkanPhysicalDevice _physicalDevice;
@@ -109,24 +105,23 @@ namespace Ryujinx.Graphics.Vulkan
         public event EventHandler<ScreenCaptureImageInfo> ScreenCaptured;
 
         public VulkanRenderer(Vk api, Func<Instance, Vk, SurfaceKHR> surfaceFunc, Func<string[]> requiredExtensionsFunc, string preferredGpuId)
-{
-    _getSurface = surfaceFunc;
-    _getRequiredExtensions = requiredExtensionsFunc;
-    _preferredGpuId = preferredGpuId;
-    Api = api;
-    Shaders = new HashSet<ShaderCollection>();
-    Textures = new HashSet<ITexture>();
-    Samplers = new HashSet<SamplerHolder>();
+        {
+            _getSurface = surfaceFunc;
+            _getRequiredExtensions = requiredExtensionsFunc;
+            _preferredGpuId = preferredGpuId;
+            Api = api;
+            Shaders = new HashSet<ShaderCollection>();
+            Textures = new HashSet<ITexture>();
+            Samplers = new HashSet<SamplerHolder>();
 
-    // 初始化取消令牌（新增代码）
-    _cts = new CancellationTokenSource();
+            if (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS())
+            {
+                MVKInitialization.Initialize();
 
-    if (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS())
-    {
-        MVKInitialization.Initialize();
-        IsMoltenVk = true;
-    }
-}
+                // Any device running on Darwin is using MoltenVK, even Intel and AMD vendors.
+                IsMoltenVk = true;
+            }
+        }
 
         private unsafe void LoadFeatures(uint maxQueueCount, uint queueFamilyIndex)
         {
@@ -598,12 +593,6 @@ namespace Ryujinx.Graphics.Vulkan
             return new TextureStorage(this, _device, info);
         }
 
-        public void CancelBackgroundTasks()
-{
-    _cts.Cancel();            // 取消当前任务
-    _cts = new CancellationTokenSource();  // 重置令牌，允许新任务
-}
-
         public void DeleteBuffer(BufferHandle buffer)
         {
             BufferManager.Delete(buffer);
@@ -967,35 +956,10 @@ namespace Ryujinx.Graphics.Vulkan
             _counters?.ResetFutureCounters(cmd, count);
         }
 
-        public void BackgroundContextAction(Action action, bool alwaysBackground)
-{
-    // 包装操作：添加异常处理和同步锁
-    Action safeAction = () =>
-    {
-        try
+        public void BackgroundContextAction(Action action, bool alwaysBackground = false)
         {
-            lock (_syncLock)  // 加锁保护共享资源
-            {
-                action();    // 执行实际任务
-            }
+            action();
         }
-        catch (Exception ex)
-        {
-            // 简单记录错误（可根据需要替换为日志）
-            Console.WriteLine($"后台任务出错: {ex.Message}");
-        }
-    };
-
-    // 选择执行方式
-    if (alwaysBackground)
-    {
-        Task.Run(safeAction, _cts.Token);  // 后台执行
-    }
-    else
-    {
-        safeAction();  // 当前线程执行
-    }
-}
 
         public void CreateSync(ulong id, bool strict)
         {
