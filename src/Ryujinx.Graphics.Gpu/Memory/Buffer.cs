@@ -185,6 +185,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         public void ValidateResource()
        {
        // 暂时留空，或添加具体实现
+       return true;
        }
    
         private void ChangeBacking()
