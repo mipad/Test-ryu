@@ -9,7 +9,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace Ryujinx.Graphics.Gpu
 {
@@ -18,8 +17,6 @@ namespace Ryujinx.Graphics.Gpu
     /// </summary>
     public sealed class GpuContext : IDisposable
     {
-        private readonly object _sceneSwitchLock = new object();
-        private bool _requiresVramInitialization = true;
         private const int NsToTicksFractionNumerator = 384;
         private const int NsToTicksFractionDenominator = 625;
 
@@ -116,60 +113,6 @@ namespace Ryujinx.Graphics.Gpu
         /// Creates a new instance of the GPU emulation context.
         /// </summary>
         /// <param name="renderer">Host renderer</param>
-   
-public void SafeSceneSwitch(Action unloadOldScene, Action loadNewScene)
-  {
-      lock (_sceneSwitchLock)
-      {
-          RunDeferredActions();
-          unloadOldScene?.Invoke();
-          
-          foreach (var migration in BufferMigrations)
-          {
-              migration.Dispose();
-          }
-          BufferMigrations.Clear();
-      }
-
-      //Renderer.WaitForIdle(); // 同步等待
-      bool requireInit = _requiresVramInitialization;
-
-      if (requireInit)
-      {
-          InitializeVideoMemory(); // 同步初始化
-          _requiresVramInitialization = false;
-      }
-
-      loadNewScene?.Invoke();
-      CreateHostSyncIfNeeded(HostSyncFlags.Force);
-     // Renderer.WaitForSync(SyncNumber - 1); // 同步等待
-  }
-
-private void InitializeVideoMemory()
-{
-    const int initSize = 4 * 1024 * 1024;
-    byte[] initData = new byte[initSize];
-    Array.Fill(initData, (byte)0xFF);
-
-    // 移除 ImageParams 相关代码
-    // var tempTexture = Renderer.CreateTexture(new ImageParams
-    // {
-    //     Width = 1024,
-    //     Height = 1024,
-    //     Format = Format.R8G8B8A8Unorm
-    // });
-
-    // 移除 MemoryOwner 相关代码
-    // for (int offset = 0; offset < initSize; offset += 65536)
-    // {
-    //     int chunkSize = Math.Min(65536, initSize - offset);
-    //     tempTexture.SetData(MemoryOwner<byte>.Wrap(initData), offset, chunkSize);
-    // }
-
-    // 移除 Dispose 调用
-    // (tempTexture as IDisposable)?.Dispose();
-}
-
         public GpuContext(IRenderer renderer)
         {
             Renderer = renderer;
@@ -244,16 +187,15 @@ private void InitializeVideoMemory()
         /// <param name="cpuMemory">Virtual memory owned by the process</param>
         /// <exception cref="ArgumentException">Thrown if <paramref name="pid"/> was already registered</exception>
         public void RegisterProcess(ulong pid, Cpu.IVirtualMemoryManagerTracked cpuMemory)
-{
-    var physicalMemory = new PhysicalMemory(this, cpuMemory);
-    if (!PhysicalMemoryRegistry.TryAdd(pid, physicalMemory))
-    {
-        throw new ArgumentException("PID已被注册", nameof(pid));
-    }
+        {
+            var physicalMemory = new PhysicalMemory(this, cpuMemory);
+            if (!PhysicalMemoryRegistry.TryAdd(pid, physicalMemory))
+            {
+                throw new ArgumentException("The PID was already registered", nameof(pid));
+            }
 
-    _requiresVramInitialization = true; // 新增标记
-    physicalMemory.ShaderCache.ShaderCacheStateChanged += ShaderCacheStateUpdate;
-}
+            physicalMemory.ShaderCache.ShaderCacheStateChanged += ShaderCacheStateUpdate;
+        }
 
         /// <summary>
         /// Unregisters a process, indicating that its memory will no longer be used, and that caches can be freed.
@@ -427,46 +369,50 @@ private void InitializeVideoMemory()
         /// </summary>
         /// <param name="flags">Modifiers for how host sync should be created</param>
         internal void CreateHostSyncIfNeeded(HostSyncFlags flags)
-{
-    foreach (var action in SyncActions.ToArray())
-    {
-        if (!action.ValidateResource())
         {
-            SyncActions.Remove(action);
-        }
-    } // 修复：删除多余的闭合括号
-    
-    if (BufferMigrations.Count > 0)
-    {
-        ulong currentSyncNumber = Renderer.GetCurrentSync();
-        for (int i = BufferMigrations.Count - 1; i >= 0; i--)
-        {
-            if (currentSyncNumber >= BufferMigrations[i].SyncNumber)
+            bool syncpoint = flags.HasFlag(HostSyncFlags.Syncpoint);
+            bool strict = flags.HasFlag(HostSyncFlags.Strict);
+            bool force = flags.HasFlag(HostSyncFlags.Force);
+
+            if (BufferMigrations.Count > 0)
             {
-                BufferMigrations[i].Dispose();
-                BufferMigrations.RemoveAt(i);
+                ulong currentSyncNumber = Renderer.GetCurrentSync();
+
+                for (int i = 0; i < BufferMigrations.Count; i++)
+                {
+                    BufferMigration migration = BufferMigrations[i];
+                    long diff = (long)(currentSyncNumber - migration.SyncNumber);
+
+                    if (diff >= 0)
+                    {
+                        migration.Dispose();
+                        BufferMigrations.RemoveAt(i--);
+                    }
+                }
             }
-        }
-    }
 
-    bool needsSync = _pendingSync || 
-                    (flags.HasFlag(HostSyncFlags.Syncpoint) && SyncpointActions.Count > 0) ||
-                    flags.HasFlag(HostSyncFlags.Force);
+            if (force || _pendingSync || (syncpoint && SyncpointActions.Count > 0))
+            {
+                foreach (var action in SyncActions)
+                {
+                    action.SyncPreAction(syncpoint);
+                }
 
-    if (needsSync)
-    {
-        foreach (var action in SyncActions)
-        {
-            action.SyncPreAction(flags.HasFlag(HostSyncFlags.Syncpoint));
+                foreach (var action in SyncpointActions)
+                {
+                    action.SyncPreAction(syncpoint);
+                }
+
+                Renderer.CreateSync(SyncNumber, strict);
+
+                SyncNumber++;
+
+                SyncActions.RemoveAll(action => action.SyncAction(syncpoint));
+                SyncpointActions.RemoveAll(action => action.SyncAction(syncpoint));
+            }
+
+            _pendingSync = false;
         }
-        
-        Renderer.CreateSync(SyncNumber, flags.HasFlag(HostSyncFlags.Strict));
-        SyncNumber++;
-        
-        SyncActions.RemoveAll(action => action.SyncAction(flags.HasFlag(HostSyncFlags.Syncpoint)));
-        _pendingSync = false;
-    }
-}
 
         /// <summary>
         /// Performs deferred actions.
@@ -487,26 +433,24 @@ private void InitializeVideoMemory()
         /// and processing of all commands must have finished.
         /// </summary>
         public void Dispose()
-{
-    RunDeferredActions(); // 强制处理延迟操作
+        {
+            GPFifo.Dispose();
+            HostInitalized.Dispose();
+            _gpuReadyEvent.Dispose();
 
-    GPFifo.Dispose();
-    HostInitalized.Dispose();
-    _gpuReadyEvent.Dispose();
+            // Has to be disposed before processing deferred actions, as it will produce some.
+            foreach (var physicalMemory in PhysicalMemoryRegistry.Values)
+            {
+                physicalMemory.Dispose();
+            }
 
-    foreach (var physicalMemory in PhysicalMemoryRegistry.Values)
-    {
-        physicalMemory.ShaderCache.ShaderCacheStateChanged -= ShaderCacheStateUpdate;
-        physicalMemory.Dispose();
+            SupportBufferUpdater.Dispose();
+
+            PhysicalMemoryRegistry.Clear();
+
+            RunDeferredActions();
+
+            Renderer.Dispose();
+        }
     }
-    PhysicalMemoryRegistry.Clear();
-
-    SupportBufferUpdater.Dispose();
-    Renderer.Dispose();
-
-    // 新增重置状态
-    _pendingSync = false;
-    SyncNumber = 0;
-} // 正确闭合 Dispose 方法
-}
 }
