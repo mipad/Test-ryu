@@ -47,19 +47,7 @@ jobs:
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
     
-    # ========== 3. 缓存配置 ========== [新增]
-    - name: Cache Gradle dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-          ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/.gradle/build-cache
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties') }}
-        restore-keys: |
-          ${{ runner.os }}-gradle-
-
-    # ========== 4. 验证环境 ==========
+    # ========== 3. 验证环境 ==========
     - name: Verify .NET SDK Installation
       run: |
         dotnet --list-sdks
@@ -72,6 +60,7 @@ jobs:
     - name: Configure Environment Paths
       shell: bash
       run: |
+        # 显式定义 ANDROID_NDK_HOME，避免路径拼接错误
         ANDROID_NDK_HOME="/usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}"
         LLVM_PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
         LIB_DIR="$LLVM_PATH/sysroot/usr/lib/aarch64-linux-android/${{ env.ANDROID_API_LEVEL }}"
@@ -81,40 +70,42 @@ jobs:
         echo "LIB_DIR=$LIB_DIR" >> $GITHUB_ENV
         echo "$LLVM_PATH/bin" >> $GITHUB_PATH
 
+        # 调试输出：验证路径是否存在
         echo "检查 NDK 路径:"
         ls -l $ANDROID_NDK_HOME
         echo "检查 LLVM 工具链:"
         ls -l $LLVM_PATH/bin/clang
 
-    # ========== 5. 主构建流程 ==========
+    # ========== 4. 主构建流程 ==========
     - name: Build APK
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       env:
         OPENSSL_ROOT_DIR: /opt/openssl-x64
       run: |
+        # 修复文件权限
         chmod +x gradlew
         find . -name "*.sh" -exec chmod +x {} \;
 
+        # 调试输出：关键环境变量
         echo "LLVM_PATH: $LLVM_PATH"
         echo "OPENSSL_ROOT_DIR: $OPENSSL_ROOT_DIR"
 
-        # 启用 Gradle 构建缓存
+        # 执行构建
         ./gradlew clean assembleRelease \
           -DllvmToolchainPath=$LLVM_PATH \
           -Dopenssl.root=$OPENSSL_ROOT_DIR \
           -Pandroid.overridePathCheck=true \
-          --build-cache \          # 启用构建缓存
           --no-daemon \
           --stacktrace
 
     - name: Find Native Libraries (.so)
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       run: |
-        echo "========== 开始搜索 .so 文件 =========="
-        find app/build -name "*.so" -print
-        echo "========== 搜索完成 =========="
+       echo "========== 开始搜索 .so 文件 =========="
+       find app/build -name "*.so" -print
+       echo "========== 搜索完成 =========="
        
-    # ========== 6. 产物处理 ==========
+    # ========== 5. 产物处理 ==========
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
