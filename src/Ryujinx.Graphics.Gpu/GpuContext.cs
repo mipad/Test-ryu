@@ -10,6 +10,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Ryujinx.Common.Memory;
+using Ryujinx.Common.Logging; 
 
 namespace Ryujinx.Graphics.Gpu
 {
@@ -147,27 +149,27 @@ namespace Ryujinx.Graphics.Gpu
         await Renderer.WaitForSyncAsync(SyncNumber - 1); // 假设是异步方法
     }
 
-private async Task InitializeVideoMemoryAsync()
-{
-    const int initSize = 4 * 1024 * 1024;
-    byte[] initData = new byte[initSize];
-    Array.Fill(initData, (byte)0xFF);
+private void InitializeVideoMemory() // 移除 async
+  {
+      const int initSize = 4 * 1024 * 1024;
+      byte[] initData = new byte[initSize];
+      Array.Fill(initData, (byte)0xFF);
 
-    var tempTexture = Renderer.CreateTexture(new ImageParams
-    {
-        Width = 1024,
-        Height = 1024,
-        Format = Format.R8G8B8A8Unorm
-    });
+      var tempTexture = Renderer.CreateTexture(new ImageParams
+      {
+          Width = 1024,
+          Height = 1024,
+          Format = Format.R8G8B8A8Unorm
+      });
 
-    for (int offset = 0; offset < initSize; offset += 65536)
-    {
-        int chunkSize = Math.Min(65536, initSize - offset);
-        tempTexture.SetData(initData, offset, chunkSize);
-       // await Task.Delay(1);
-    }
-    tempTexture.Dispose();
-}
+      for (int offset = 0; offset < initSize; offset += 65536)
+      {
+          int chunkSize = Math.Min(65536, initSize - offset);
+          tempTexture.SetData(MemoryOwner<byte>.FromArray(initData), offset, chunkSize);
+      }
+
+      (tempTexture as IDisposable)?.Dispose();
+  }
 
         public GpuContext(IRenderer renderer)
         {
