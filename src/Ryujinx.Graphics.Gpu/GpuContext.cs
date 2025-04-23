@@ -10,7 +10,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Ryujinx.Graphics.Gpu.Image;
 
 namespace Ryujinx.Graphics.Gpu
 {
@@ -117,45 +116,6 @@ namespace Ryujinx.Graphics.Gpu
         /// Creates a new instance of the GPU emulation context.
         /// </summary>
         /// <param name="renderer">Host renderer</param>
-        // 新增方法（插入到类中）
-public void LoadTextureSafe(ITexture texture, byte[] data)
-{
-    try
-    {
-        texture.SetData(data);
-    }
-    catch (Exception ex) when (ex is ArgumentException || ex is GraphicsException)
-    {
-        Logger.Error($"纹理数据设置失败: {ex.Message}");
-        
-        byte[] fallback = new byte[texture.Size];
-        unsafe
-        {
-            fixed (byte* pFallback = fallback)
-            {
-                // 按32位写入品红色 (0xFF00FFFF)
-                int pixelCount = fallback.Length / 4;
-                for (int i = 0; i < pixelCount; i++)
-                {
-                    ((uint*)pFallback)[i] = 0xFF00FFFF; // ARGB: 0xFF 0x00 0xFF 0xFF
-                }
-
-                // 处理剩余字节（非4的倍数时）
-                int remainder = fallback.Length % 4;
-                if (remainder != 0)
-                {
-                    byte* pRemainder = pFallback + (pixelCount * 4);
-                    // 假设格式为 RGBA，剩余字节填充 Alpha 通道为 0xFF（不透明）
-                    for (int i = 0; i < remainder; i++)
-                    {
-                        pRemainder[i] = 0xFF;
-                    }
-                }
-            }
-        }
-        texture.SetData(fallback);
-    }
-}
    
         public async Task SafeSceneSwitchAsync(Action unloadOldScene, Action loadNewScene)
     {
