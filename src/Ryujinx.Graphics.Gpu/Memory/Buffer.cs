@@ -182,6 +182,12 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// Recreates the backing buffer based on the desired access type
         /// reported by the backing state struct.
         /// </summary>
+                public bool ValidateResource()
+       {
+           // 新增的方法
+           return true;
+       }
+       
         private void ChangeBacking()
         {
             BufferAccess access = BackingState.SwitchAccess(this);
