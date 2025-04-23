@@ -1,19 +1,22 @@
-// 文件：ISyncActionHandler.cs
 namespace Ryujinx.Graphics.Gpu.Synchronization
 {
     /// <summary>
-    /// 需要实现资源验证的同步操作接口
+    /// This interface indicates that a class can be registered for a sync action.
     /// </summary>
-    public interface ISyncActionHandler
+    interface ISyncActionHandler
     {
         /// <summary>
-        /// 新增：验证资源是否有效
+        /// Action to be performed when some synchronizing action is reached after modification.
+        /// Generally used to register read/write tracking to flush resources from GPU when their memory is used.
         /// </summary>
-        /// <returns>验证通过返回true，否则false</returns>
-        bool ValidateResource();
-
-        // 原有方法保持不变
+        /// <param name="syncpoint">True if the action is a guest syncpoint</param>
+        /// <returns>True if the action is to be removed, false otherwise</returns>
         bool SyncAction(bool syncpoint);
-        void SyncPreAction(bool syncpoint);
+
+        /// <summary>
+        /// Action to be performed immediately before sync is created.
+        /// </summary>
+        /// <param name="syncpoint">True if the action is a guest syncpoint</param>
+        void SyncPreAction(bool syncpoint) { }
     }
 }
