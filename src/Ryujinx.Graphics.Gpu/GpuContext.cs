@@ -118,7 +118,7 @@ namespace Ryujinx.Graphics.Gpu
         /// </summary>
         /// <param name="renderer">Host renderer</param>
         // 新增方法（插入到类中）
-public void LoadTextureSafe(Texture texture, byte[] data)
+public void LoadTextureSafe(Ryujinx.Graphics.GAL.Texture texture, byte[] data)
 {
     try
     {
