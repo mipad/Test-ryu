@@ -696,6 +696,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         public void ValidateResource()
        {
        // 暂时留空，或添加具体实现
+       return true;
        }
     }
 }
