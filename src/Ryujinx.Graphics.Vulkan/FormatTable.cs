@@ -15,134 +15,111 @@ namespace Ryujinx.Graphics.Vulkan
             _table = new VkFormat[Enum.GetNames(typeof(Format)).Length];
             _reverseMap = new Dictionary<VkFormat, Format>();
 
-            // 基础单通道格式
-            Add(Format.R8Unorm, VkFormat.R8Unorm);
-            Add(Format.R8Snorm, VkFormat.R8SNorm);
-            Add(Format.R8Uint, VkFormat.R8Uint);
-            Add(Format.R8Sint, VkFormat.R8Sint);
-            Add(Format.R16Float, VkFormat.R16Sfloat);
-            Add(Format.R16Unorm, VkFormat.R16Unorm);
-            Add(Format.R16Snorm, VkFormat.R16SNorm);
-            Add(Format.R16Uint, VkFormat.R16Uint);
-            Add(Format.R16Sint, VkFormat.R16Sint);
-            Add(Format.R32Float, VkFormat.R32Sfloat);
-            Add(Format.R32Uint, VkFormat.R32Uint);
-            Add(Format.R32Sint, VkFormat.R32Sint);
+#pragma warning disable IDE0055 // Disable formatting
+            Add(Format.R8Unorm,                VkFormat.R8Unorm);
+            Add(Format.R8Snorm,                VkFormat.R8SNorm);
+            Add(Format.R8Uint,                 VkFormat.R8Uint);
+            Add(Format.R8Sint,                 VkFormat.R8Sint);
+            Add(Format.R16Float,               VkFormat.R16Sfloat);
+            Add(Format.R16Unorm,               VkFormat.R16Unorm);
+            Add(Format.R16Snorm,               VkFormat.R16SNorm);
+            Add(Format.R16Uint,                VkFormat.R16Uint);
+            Add(Format.R16Sint,                VkFormat.R16Sint);
+            Add(Format.R32Float,               VkFormat.R32Sfloat);
+            Add(Format.R32Uint,                VkFormat.R32Uint);
+            Add(Format.R32Sint,                VkFormat.R32Sint);
 
-            // 双通道格式
-            Add(Format.R8G8Unorm, VkFormat.R8G8Unorm);
-            Add(Format.R8G8Snorm, VkFormat.R8G8SNorm);
-            Add(Format.R8G8Uint, VkFormat.R8G8Uint);
-            Add(Format.R8G8Sint, VkFormat.R8G8Sint);
-            Add(Format.R16G16Float, VkFormat.R16G16Sfloat);
-            Add(Format.R16G16Unorm, VkFormat.R16G16Unorm);
-            Add(Format.R16G16Snorm, VkFormat.R16G16SNorm);
-            Add(Format.R16G16Uint, VkFormat.R16G16Uint);
-            Add(Format.R16G16Sint, VkFormat.R16G16Sint);
-            Add(Format.R32G32Float, VkFormat.R32G32Sfloat);
-            Add(Format.R32G32Uint, VkFormat.R32G32Uint);
-            Add(Format.R32G32Sint, VkFormat.R32G32Sint);
+            // RG 格式
+            Add(Format.R8G8Unorm,              VkFormat.R8G8Unorm);
+            Add(Format.R8G8Snorm,              VkFormat.R8G8SNorm);
+            Add(Format.R8G8Uint,               VkFormat.R8G8Uint);
+            Add(Format.R8G8Sint,               VkFormat.R8G8Sint);
+            Add(Format.R16G16Float,            VkFormat.R16G16Sfloat);
+            Add(Format.R16G16Unorm,           VkFormat.R16G16Unorm);
+            Add(Format.R16G16Snorm,           VkFormat.R16G16SNorm);
+            Add(Format.R16G16Uint,            VkFormat.R16G16Uint);
+            Add(Format.R16G16Sint,            VkFormat.R16G16Sint);
+            Add(Format.R32G32Float,           VkFormat.R32G32Sfloat);
+            Add(Format.R32G32Uint,             VkFormat.R32G32Uint);
+            Add(Format.R32G32Sint,             VkFormat.R32G32Sint);
 
-            // 三通道格式
-            Add(Format.R8G8B8Unorm, VkFormat.R8G8B8Unorm);
-            Add(Format.R8G8B8Snorm, VkFormat.R8G8B8SNorm);
-            Add(Format.R8G8B8Uint, VkFormat.R8G8B8Uint);
-            Add(Format.R8G8B8Sint, VkFormat.R8G8B8Sint);
-            Add(Format.R16G16B16Float, VkFormat.R16G16B16Sfloat);
-            Add(Format.R16G16B16Unorm, VkFormat.R16G16B16Unorm);
-            Add(Format.R16G16B16Snorm, VkFormat.R16G16B16SNorm);
-            Add(Format.R16G16B16Uint, VkFormat.R16G16B16Uint);
-            Add(Format.R16G16B16Sint, VkFormat.R16G16B16Sint);
-            Add(Format.R32G32B32Float, VkFormat.R32G32B32Sfloat);
-            Add(Format.R32G32B32Uint, VkFormat.R32G32B32Uint);
-            Add(Format.R32G32B32Sint, VkFormat.R32G32B32Sint);
+            // RGB 格式
+            Add(Format.R8G8B8Unorm,            VkFormat.R8G8B8Unorm);
+            Add(Format.R8G8B8Snorm,            VkFormat.R8G8B8SNorm);
+            Add(Format.R8G8B8Uint,             VkFormat.R8G8B8Uint);
+            Add(Format.R8G8B8Sint,             VkFormat.R8G8B8Sint);
+            Add(Format.R16G16B16Float,         VkFormat.R16G16B16Sfloat);
+            Add(Format.R16G16B16Unorm,        VkFormat.R16G16B16Unorm);
+            Add(Format.R16G16B16Snorm,        VkFormat.R16G16B16SNorm);
+            Add(Format.R16G16B16Uint,         VkFormat.R16G16B16Uint);
+            Add(Format.R16G16B16Sint,         VkFormat.R16G16B16Sint);
+            Add(Format.R32G32B32Float,        VkFormat.R32G32B32Sfloat);
+            Add(Format.R32G32B32Uint,          VkFormat.R32G32B32Uint);
+            Add(Format.R32G32B32Sint,          VkFormat.R32G32B32Sint);
 
-            // 四通道格式（RGBA）
-            Add(Format.R8G8B8A8Unorm, VkFormat.R8G8B8A8Unorm);
-            Add(Format.R8G8B8A8Snorm, VkFormat.R8G8B8A8SNorm);
-            Add(Format.R8G8B8A8Uint, VkFormat.R8G8B8A8Uint);
-            Add(Format.R8G8B8A8Sint, VkFormat.R8G8B8A8Sint);
-            Add(Format.R8G8B8A8Srgb, VkFormat.R8G8B8A8Srgb);
-            Add(Format.R16G16B16A16Float, VkFormat.R16G16B16A16Sfloat);
-            Add(Format.R16G16B16A16Unorm, VkFormat.R16G16B16A16Unorm);
-            Add(Format.R16G16B16A16Snorm, VkFormat.R16G16B16A16SNorm);
-            Add(Format.R16G16B16A16Uint, VkFormat.R16G16B16A16Uint);
-            Add(Format.R16G16B16A16Sint, VkFormat.R16G16B16A16Sint);
-            Add(Format.R32G32B32A32Float, VkFormat.R32G32B32A32Sfloat);
-            Add(Format.R32G32B32A32Uint, VkFormat.R32G32B32A32Uint);
-            Add(Format.R32G32B32A32Sint, VkFormat.R32G32B32A32Sint);
-
-            // 四通道格式（BGRA）
-            Add(Format.B8G8R8A8Unorm, VkFormat.B8G8R8A8Unorm);
-            Add(Format.B8G8R8A8Srgb, VkFormat.B8G8R8A8Srgb);
+            // RGBA 格式（关键修复：确保 RGBA 与 BGRA 正确分离）
+            Add(Format.R8G8B8A8Unorm,          VkFormat.R8G8B8A8Unorm);
+            Add(Format.R8G8B8A8Snorm,          VkFormat.R8G8B8A8SNorm);
+            Add(Format.R8G8B8A8Uint,           VkFormat.R8G8B8A8Uint);
+            Add(Format.R8G8B8A8Sint,           VkFormat.R8G8B8A8Sint);
+            Add(Format.R8G8B8A8Srgb,           VkFormat.R8G8B8A8Srgb);
+            Add(Format.R16G16B16A16Float,      VkFormat.R16G16B16A16Sfloat);
+            Add(Format.R16G16B16A16Unorm,      VkFormat.R16G16B16A16Unorm);
+            Add(Format.R16G16B16A16Snorm,      VkFormat.R16G16B16A16SNorm);
+            Add(Format.R16G16B16A16Uint,       VkFormat.R16G16B16A16Uint);
+            Add(Format.R16G16B16A16Sint,       VkFormat.R16G16B16A16Sint);
+            Add(Format.R32G32B32A32Float,      VkFormat.R32G32B32A32Sfloat);
+            Add(Format.R32G32B32A32Uint,       VkFormat.R32G32B32A32Uint);
+            Add(Format.R32G32B32A32Sint,       VkFormat.R32G32B32A32Sint);
 
             // 深度/模板格式
-            Add(Format.S8Uint, VkFormat.S8Uint);
-            Add(Format.D16Unorm, VkFormat.D16Unorm);
-            Add(Format.S8UintD24Unorm, VkFormat.D24UnormS8Uint);
-            Add(Format.X8UintD24Unorm, VkFormat.X8D24UnormPack32);
-            Add(Format.D32Float, VkFormat.D32Sfloat);
-            Add(Format.D24UnormS8Uint, VkFormat.D24UnormS8Uint);
-            Add(Format.D32FloatS8Uint, VkFormat.D32SfloatS8Uint);
+            Add(Format.S8Uint,                 VkFormat.S8Uint);
+            Add(Format.D16Unorm,               VkFormat.D16Unorm);
+            Add(Format.S8UintD24Unorm,         VkFormat.D24UnormS8Uint);
+            Add(Format.X8UintD24Unorm,         VkFormat.X8D24UnormPack32);
+            Add(Format.D32Float,               VkFormat.D32Sfloat);
+            Add(Format.D24UnormS8Uint,         VkFormat.D24UnormS8Uint);
+            Add(Format.D32FloatS8Uint,         VkFormat.D32SfloatS8Uint);
 
-            // 压缩纹理格式
-            Add(Format.Bc1RgbaUnorm, VkFormat.BC1RgbaUnormBlock);
-            Add(Format.Bc2Unorm, VkFormat.BC2UnormBlock);
-            Add(Format.Bc3Unorm, VkFormat.BC3UnormBlock);
-            Add(Format.Bc1RgbaSrgb, VkFormat.BC1RgbaSrgbBlock);
-            Add(Format.Bc2Srgb, VkFormat.BC2SrgbBlock);
-            Add(Format.Bc3Srgb, VkFormat.BC3SrgbBlock);
-            Add(Format.Bc4Unorm, VkFormat.BC4UnormBlock);
-            Add(Format.Bc4Snorm, VkFormat.BC4SNormBlock);
-            Add(Format.Bc5Unorm, VkFormat.BC5UnormBlock);
-            Add(Format.Bc5Snorm, VkFormat.BC5SNormBlock);
-            Add(Format.Bc7Unorm, VkFormat.BC7UnormBlock);
-            Add(Format.Bc7Srgb, VkFormat.BC7SrgbBlock);
-            Add(Format.Bc6HSfloat, VkFormat.BC6HSfloatBlock);
-            Add(Format.Bc6HUfloat, VkFormat.BC6HUfloatBlock);
-            Add(Format.Etc2RgbUnorm, VkFormat.Etc2R8G8B8UnormBlock);
-            Add(Format.Etc2RgbaUnorm, VkFormat.Etc2R8G8B8A8UnormBlock);
-            Add(Format.Etc2RgbPtaUnorm, VkFormat.Etc2R8G8B8A1UnormBlock);
-            Add(Format.Etc2RgbSrgb, VkFormat.Etc2R8G8B8SrgbBlock);
-            Add(Format.Etc2RgbaSrgb, VkFormat.Etc2R8G8B8A8SrgbBlock);
-            Add(Format.Etc2RgbPtaSrgb, VkFormat.Etc2R8G8B8A1SrgbBlock);
+            // 压缩格式（BC/ASTC/ETC）
+            Add(Format.Bc1RgbaUnorm,           VkFormat.BC1RgbaUnormBlock);
+            Add(Format.Bc2Unorm,               VkFormat.BC2UnormBlock);
+            Add(Format.Bc3Unorm,               VkFormat.BC3UnormBlock);
+            Add(Format.Bc1RgbaSrgb,            VkFormat.BC1RgbaSrgbBlock);
+            Add(Format.Bc2Srgb,                VkFormat.BC2SrgbBlock);
+            Add(Format.Bc3Srgb,                VkFormat.BC3SrgbBlock);
+            Add(Format.Bc4Unorm,               VkFormat.BC4UnormBlock);
+            Add(Format.Bc4Snorm,               VkFormat.BC4SNormBlock);
+            Add(Format.Bc5Unorm,               VkFormat.BC5UnormBlock);
+            Add(Format.Bc5Snorm,               VkFormat.BC5SNormBlock);
+            Add(Format.Bc7Unorm,               VkFormat.BC7UnormBlock);
+            Add(Format.Bc7Srgb,                VkFormat.BC7SrgbBlock);
+            Add(Format.Bc6HSfloat,             VkFormat.BC6HSfloatBlock);
+            Add(Format.Bc6HUfloat,             VkFormat.BC6HUfloatBlock);
+            Add(Format.Etc2RgbUnorm,           VkFormat.Etc2R8G8B8UnormBlock);
+            Add(Format.Etc2RgbaUnorm,          VkFormat.Etc2R8G8B8A8UnormBlock);
+            Add(Format.Etc2RgbPtaUnorm,        VkFormat.Etc2R8G8B8A1UnormBlock);
+            Add(Format.Etc2RgbSrgb,            VkFormat.Etc2R8G8B8SrgbBlock);
+            Add(Format.Etc2RgbaSrgb,           VkFormat.Etc2R8G8B8A8SrgbBlock);
+            Add(Format.Etc2RgbPtaSrgb,         VkFormat.Etc2R8G8B8A1SrgbBlock);
 
-            // 特殊格式
-            Add(Format.R4G4Unorm, VkFormat.R4G4UnormPack8);
-            Add(Format.R4G4B4A4Unorm, VkFormat.A4B4G4R4UnormPack16Ext);
-            Add(Format.R5G5B5X1Unorm, VkFormat.A1R5G5B5UnormPack16);
-            Add(Format.R5G5B5A1Unorm, VkFormat.A1R5G5B5UnormPack16);
-            Add(Format.R5G6B5Unorm, VkFormat.R5G6B5UnormPack16);
-            Add(Format.R10G10B10A2Unorm, VkFormat.A2B10G10R10UnormPack32);
-            Add(Format.R10G10B10A2Uint, VkFormat.A2B10G10R10UintPack32);
-            Add(Format.R11G11B10Float, VkFormat.B10G11R11UfloatPack32);
-            Add(Format.R9G9B9E5Float, VkFormat.E5B9G9R9UfloatPack32);
-            Add(Format.B5G6R5Unorm, VkFormat.R5G6B5UnormPack16);
-            Add(Format.B5G5R5A1Unorm, VkFormat.A1R5G5B5UnormPack16);
-            Add(Format.A1B5G5R5Unorm, VkFormat.R5G5B5A1UnormPack16);
-            Add(Format.B10G10R10A2Unorm, VkFormat.A2R10G10B10UnormPack32);
+            // 特殊格式（修复 BGRA 与 RGBA 混淆问题）
+            Add(Format.B5G6R5Unorm,            VkFormat.R5G6B5UnormPack16);
+            Add(Format.B5G5R5A1Unorm,          VkFormat.A1R5G5B5UnormPack16);
+            Add(Format.A1B5G5R5Unorm,          VkFormat.R5G5B5A1UnormPack16);
+            Add(Format.B8G8R8A8Unorm,          VkFormat.B8G8R8A8Unorm);
+            Add(Format.B8G8R8A8Srgb,           VkFormat.B8G8R8A8Srgb);
+            Add(Format.B10G10R10A2Unorm,       VkFormat.A2R10G10B10UnormPack32);
 
-            // 补充缺失的映射
-            Add(Format.R8Uscaled, VkFormat.R8Uscaled);
-            Add(Format.R8Sscaled, VkFormat.R8Sscaled);
-            Add(Format.R16Uscaled, VkFormat.R16Uscaled);
-            Add(Format.R16Sscaled, VkFormat.R16Sscaled);
-            Add(Format.R8G8Uscaled, VkFormat.R8G8Uscaled);
-            Add(Format.R8G8Sscaled, VkFormat.R8G8Sscaled);
-            Add(Format.R16G16Uscaled, VkFormat.R16G16Uscaled);
-            Add(Format.R16G16Sscaled, VkFormat.R16G16Sscaled);
-            Add(Format.R8G8B8Uscaled, VkFormat.R8G8B8Uscaled);
-            Add(Format.R8G8B8Sscaled, VkFormat.R8G8B8Sscaled);
-            Add(Format.R16G16B16Uscaled, VkFormat.R16G16B16Uscaled);
-            Add(Format.R16G16B16Sscaled, VkFormat.R16G16B16Sscaled);
-            Add(Format.R8G8B8A8Uscaled, VkFormat.R8G8B8A8Uscaled);
-            Add(Format.R8G8B8A8Sscaled, VkFormat.R8G8B8A8Sscaled);
-            Add(Format.R16G16B16A16Uscaled, VkFormat.R16G16B16A16Uscaled);
-            Add(Format.R16G16B16A16Sscaled, VkFormat.R16G16B16A16Sscaled);
-            Add(Format.R10G10B10A2Snorm, VkFormat.A2B10G10R10SNormPack32);
-            Add(Format.R10G10B10A2Sint, VkFormat.A2B10G10R10SintPack32);
-            Add(Format.R10G10B10A2Uscaled, VkFormat.A2B10G10R10UscaledPack32);
-            Add(Format.R10G10B10A2Sscaled, VkFormat.A2B10G10R10SscaledPack32);
+            // 补充缺失的格式映射
+            Add(Format.R4G4Unorm,              VkFormat.R4G4UnormPack8);
+            Add(Format.R4G4B4A4Unorm,          VkFormat.A4B4G4R4UnormPack16Ext);
+            Add(Format.R5G5B5X1Unorm,          VkFormat.A1R5G5B5UnormPack16);
+            Add(Format.R10G10B10A2Unorm,       VkFormat.A2B10G10R10UnormPack32);
+            Add(Format.R10G10B10A2Uint,        VkFormat.A2B10G10R10UintPack32);
+            Add(Format.R11G11B10Float,         VkFormat.B10G11R11UfloatPack32);
+            Add(Format.R9G9B9E5Float,          VkFormat.E5B9G9R9UfloatPack32);
+#pragma warning restore IDE0055
         }
 
         private static void Add(Format format, VkFormat vkFormat)
@@ -160,22 +137,21 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (!_reverseMap.TryGetValue(format, out Format result))
             {
-                // 关键修复：默认返回 RGBA 而非 BGRA
-                Logger.Warning?.Print(LogClass.Gpu, $"未映射的 Vulkan 格式: {format}");
-                return Format.R8G8B8A8Unorm;
+                return Format.B8G8R8A8Unorm;
             }
+
             return result;
         }
 
         public static Format ConvertRgba8SrgbToUnorm(Format format)
-        {
-            return format switch
-            {
-                Format.R8G8B8A8Srgb => Format.R8G8B8A8Unorm,
-                Format.B8G8R8A8Srgb => Format.B8G8R8A8Unorm,
-                _ => format,
-            };
-        }
+   {
+       return format switch
+       {
+           Format.R8G8B8A8Srgb => Format.R8G8B8A8Unorm,
+           Format.B8G8R8A8Srgb => Format.B8G8R8A8Unorm,
+           _ => format,
+       };
+   }
 
         public static int GetAttributeFormatSize(VkFormat format)
         {
