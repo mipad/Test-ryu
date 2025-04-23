@@ -653,7 +653,8 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <returns>True if the format is valid, false otherwise</returns>
         public static bool TryGetTextureFormat(uint encoded, bool isSrgb, out FormatInfo format)
         {
-            bool isPacked = (encoded & 0x80000000u) != 0;
+            //bool isPacked = (encoded & 0x80000000u) != 0;//
+            bool isPacked = false;
             if (isPacked)
             {
                 encoded &= ~0x80000000u;
