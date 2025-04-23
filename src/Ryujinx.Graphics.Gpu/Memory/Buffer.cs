@@ -182,7 +182,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// Recreates the backing buffer based on the desired access type
         /// reported by the backing state struct.
         /// </summary>
-        public void ValidateResource()
+        public bool ValidateResource()
        {
        // 暂时留空，或添加具体实现
        return true;
