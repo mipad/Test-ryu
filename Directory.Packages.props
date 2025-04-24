@@ -37,14 +37,14 @@
     <PackageVersion Include="securifybv.ShellLink" Version="0.1.0" />
     <PackageVersion Include="shaderc.net" Version="0.1.0" />
     <PackageVersion Include="SharpZipLib" Version="1.4.2" />
-    <PackageVersion Include="Silk.NET.Vulkan" Version="2.22.0" />
-    <PackageVersion Include="Silk.NET.Vulkan.Extensions.EXT" Version="2.22.0" />
-    <PackageVersion Include="Silk.NET.Vulkan.Extensions.KHR" Version="2.22.0" />
+    <PackageVersion Include="Silk.NET.Vulkan" Version="2.21.0" />
+    <PackageVersion Include="Silk.NET.Vulkan.Extensions.EXT" Version="2.21.0" />
+    <PackageVersion Include="Silk.NET.Vulkan.Extensions.KHR" Version="2.21.0" />
     <PackageVersion Include="SkiaSharp" Version="3.119.0-preview.1.2" />
     <PackageVersion Include="SkiaSharp.NativeAssets.Linux" Version="3.119.0-preview.1.2" />
     <PackageVersion Include="SPB" Version="0.0.4-build32" />
-    <PackageVersion Include="System.IO.Hashing" Version="8.0.0" />
-    <PackageVersion Include="System.Management" Version="8.0.0" />
+    <PackageVersion Include="System.IO.Hashing" Version="10.0.0-preview.3.25171.5" />
+    <PackageVersion Include="System.Management" Version="10.0.0-preview.3.25171.5" />
     <PackageVersion Include="UnicornEngine.Unicorn" Version="2.0.2-rc1-fb78016" />
     <PackageVersion Include="Rxmxnx.PInvoke.Extensions" Version="1.5.0" />
   </ItemGroup>
