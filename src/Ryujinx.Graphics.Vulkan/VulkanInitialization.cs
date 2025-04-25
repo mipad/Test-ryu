@@ -140,15 +140,40 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             result.ThrowOnError();
-// 新增代码：加载扩展函数指针
-    var instanceHandle = instance.Instance;
-    _getFragmentDensityMapFeaturesEXT = (delegate* unmanaged<PhysicalDevice, PhysicalDeviceFragmentDensityMapFeaturesEXT*, void>)
-        api.GetInstanceProcAddr(instanceHandle, "vkGetPhysicalDeviceFragmentDensityMapFeaturesEXT");
-            return instance;
-        }
+            // 新增代码：加载扩展函数指针
+            var instanceHandle = instance.Instance;
 
-        internal static VulkanPhysicalDevice FindSuitablePhysicalDevice(Vk api, VulkanInstance instance, SurfaceKHR surface, string preferredGpuId)
-        {
+            // 加载 VK_EXT_fragment_density_map 相关函数
+            var pfnFeatures = api.GetInstanceProcAddr(instanceHandle, "vkGetPhysicalDeviceFragmentDensityMapFeaturesEXT");
+            if (pfnFeatures.Handle != IntPtr.Zero)
+            {
+                _getFragmentDensityMapFeaturesEXT = (delegate* unmanaged<PhysicalDevice, PhysicalDeviceFragmentDensityMapFeaturesEXT*, void>)pfnFeatures.Handle;
+            }
+
+             var pfnProperties = api.GetInstanceProcAddr(instanceHandle, "vkGetPhysicalDeviceFragmentDensityMapPropertiesEXT");
+             if (pfnProperties.Handle != IntPtr.Zero)
+             {
+                _getFragmentDensityMapPropertiesEXT = (delegate* unmanaged<PhysicalDevice, PhysicalDeviceFragmentDensityMapPropertiesEXT*, void>)pfnProperties.Handle;
+             }
+
+            // 加载 VK_EXT_fragment_density_map2 相关函数
+            var pfn2Features = api.GetInstanceProcAddr(instanceHandle, "vkGetPhysicalDeviceFragmentDensityMap2FeaturesEXT");
+            if (pfn2Features.Handle != IntPtr.Zero)
+            {
+                _getFragmentDensityMap2FeaturesEXT = (delegate* unmanaged<PhysicalDevice, PhysicalDeviceFragmentDensityMap2FeaturesEXT*, void>)pfn2Features.Handle;
+             }
+
+             var pfn2Properties = api.GetInstanceProcAddr(instanceHandle, "vkGetPhysicalDeviceFragmentDensityMap2PropertiesEXT");
+             if (pfn2Properties.Handle != IntPtr.Zero)
+             {
+                _getFragmentDensityMap2PropertiesEXT = (delegate* unmanaged<PhysicalDevice, PhysicalDeviceFragmentDensityMap2PropertiesEXT*, void>)pfn2Properties.Handle;
+             }
+        
+            return instance;
+            }
+
+            internal static VulkanPhysicalDevice FindSuitablePhysicalDevice(Vk api, VulkanInstance instance, SurfaceKHR surface, string preferredGpuId)
+            {
             instance.EnumeratePhysicalDevices(out var physicalDevices).ThrowOnError();
 
             // First we try to pick the user preferred GPU.
@@ -280,8 +305,8 @@ namespace Ryujinx.Graphics.Vulkan
         internal static Device CreateDevice(Vk api, VulkanPhysicalDevice physicalDevice, uint queueFamilyIndex, uint queueCount)
         {
             // 新增代码：检查扩展支持
-    bool supportsFragmentDensityMap = physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map");
-    bool supportsFragmentDensityMap2 = physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map2");
+            bool supportsFragmentDensityMap = physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map");
+            bool supportsFragmentDensityMap2 = physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map2");
     
             if (queueCount > QueuesCount)
             {
