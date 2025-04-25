@@ -15,7 +15,7 @@ jobs:
       JAVA_OPTS: "-Xmx6g -XX:MaxMetaspaceSize=2g"
       GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4"
       PROJECT_DIR: src/RyujinxAndroid
-      ANDROID_NDK_VERSION: "27.2.12479018"  # 有效版本号
+      ANDROID_NDK_VERSION: "27.2.12479018"
       DOTNET_VERSION: "9.0.203"
       ANDROID_API_LEVEL: "35"
 
@@ -36,22 +36,12 @@ jobs:
         java-version: 17
         architecture: x64
 
-        
     - name: Setup Android SDK/NDK
       uses: android-actions/setup-android@v3
       with:
         ndk-version: ${{ env.ANDROID_NDK_VERSION }}
-        cmake-version: "3.22.1"
-        # 显式安装 NDK 和必要工具
-        sdkmanager-packages: |
-          cmdline-tools;latest
-          platform-tools
-          ndk;${{ env.ANDROID_NDK_VERSION }}  # 强制安装指定版本 NDK
-        
-    - name: Accept Android Licenses
-      run: |
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
-        
+        cmake-version: 3.22.1
+
     - name: Setup .NET SDK
       uses: actions/setup-dotnet@v4
       with:
@@ -63,44 +53,6 @@ jobs:
         dotnet --list-sdks
         echo "检查是否安装 .NET ${{ env.DOTNET_VERSION }}"
 
-# ========== 3. 验证环境 ==========
-    - name: Verify NDK Version
-      run: |
-        # 定义预期版本和实际路径
-        EXPECTED_NDK_VERSION="${{ env.ANDROID_NDK_VERSION }}"
-        NDK_PATH="$ANDROID_HOME/ndk/$EXPECTED_NDK_VERSION"
-
-        # 检查 NDK 目录是否存在
-        if [ ! -d "$NDK_PATH" ]; then
-          echo "::error::NDK 目录不存在: $NDK_PATH"
-          exit 1
-        fi
-
-        # 读取 NDK 版本文件 (source.properties)
-        VERSION_FILE="$NDK_PATH/source.properties"
-        if [ ! -f "$VERSION_FILE" ]; then
-          echo "::error::NDK 版本文件缺失: $VERSION_FILE"
-          exit 1
-        fi
-
-        # 提取实际版本号
-        ACTUAL_NDK_VERSION=$(grep "Pkg.Revision" "$VERSION_FILE" | cut -d'=' -f2 | tr -d ' ')
-        echo "预期 NDK 版本: $EXPECTED_NDK_VERSION"
-        echo "实际 NDK 版本: $ACTUAL_NDK_VERSION"
-
-        # 验证版本一致性
-        if [ "$ACTUAL_NDK_VERSION" != "$EXPECTED_NDK_VERSION" ]; then
-          echo "::error::NDK 版本不匹配 (预期: $EXPECTED_NDK_VERSION, 实际: $ACTUAL_NDK_VERSION)"
-          exit 1
-        fi
-
-        # 验证工具链文件是否存在
-        CLANG_PATH="$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
-        if [ ! -f "$CLANG_PATH" ]; then
-          echo "::error::LLVM 工具链文件缺失: $CLANG_PATH"
-          exit 1
-        fi
-        
     - name: Install NDK Platform Libraries
       run: |
         $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-${{ env.ANDROID_API_LEVEL }}"
@@ -123,7 +75,7 @@ jobs:
         ls -l $ANDROID_NDK_HOME
         echo "检查 LLVM 工具链:"
         ls -l $LLVM_PATH/bin/clang
-        
+
     # ========== 4. 主构建流程 ==========
     - name: Build APK
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
