@@ -81,8 +81,5 @@
     
     <!-- 排除 Silk.NET.Core 的裁剪（第三方库） -->
     <TrimmerRootAssembly Include="Silk.NET.Core" />
-    
-    <!-- 使用根描述文件排除多个类型（高级用法） -->
-    <TrimmerRootDescriptor Include="TrimmerExclusions.xml" />
   </ItemGroup>
 </Project>
