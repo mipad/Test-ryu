@@ -6,7 +6,7 @@ plugins {
 android {
     namespace 'org.ryujinx.android'
     compileSdk 35
-    ndkVersion "28.1.13356709"
+    ndkVersion "27.2.12479018"
     
     defaultConfig {
         applicationId "org.ryujinx.android"
