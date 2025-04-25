@@ -45,7 +45,11 @@ jobs:
         sdkmanager-packages: |
           cmdline-tools;latest
           ndk;${{ env.ANDROID_NDK_VERSION }}
-
+          
+    - name: Accept Android Licenses
+      run: |
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+        
     - name: Setup .NET SDK
       uses: actions/setup-dotnet@v4
       with:
