@@ -176,15 +176,6 @@ int InitVulkan(void) {
     vkGetDisplayPlaneCapabilitiesKHR = reinterpret_cast<PFN_vkGetDisplayPlaneCapabilitiesKHR>(dlsym(libvulkan, "vkGetDisplayPlaneCapabilitiesKHR"));
     vkCreateDisplayPlaneSurfaceKHR = reinterpret_cast<PFN_vkCreateDisplayPlaneSurfaceKHR>(dlsym(libvulkan, "vkCreateDisplayPlaneSurfaceKHR"));
     vkCreateSharedSwapchainsKHR = reinterpret_cast<PFN_vkCreateSharedSwapchainsKHR>(dlsym(libvulkan, "vkCreateSharedSwapchainsKHR"));
-// 在 InitVulkan 函数末尾添加以下内容
-vkGetPhysicalDeviceFragmentDensityMapFeaturesEXT = 
-    reinterpret_cast<PFN_vkGetPhysicalDeviceFragmentDensityMapFeaturesEXT>(dlsym(libvulkan, "vkGetPhysicalDeviceFragmentDensityMapFeaturesEXT"));
-vkGetPhysicalDeviceFragmentDensityMapPropertiesEXT = 
-    reinterpret_cast<PFN_vkGetPhysicalDeviceFragmentDensityMapPropertiesEXT>(dlsym(libvulkan, "vkGetPhysicalDeviceFragmentDensityMapPropertiesEXT"));
-vkGetPhysicalDeviceFragmentDensityMap2FeaturesEXT = 
-    reinterpret_cast<PFN_vkGetPhysicalDeviceFragmentDensityMap2FeaturesEXT>(dlsym(libvulkan, "vkGetPhysicalDeviceFragmentDensityMap2FeaturesEXT"));
-vkGetPhysicalDeviceFragmentDensityMap2PropertiesEXT = 
-    reinterpret_cast<PFN_vkGetPhysicalDeviceFragmentDensityMap2PropertiesEXT>(dlsym(libvulkan, "vkGetPhysicalDeviceFragmentDensityMap2PropertiesEXT"));
 
 #ifdef VK_USE_PLATFORM_XLIB_KHR
     vkCreateXlibSurfaceKHR = reinterpret_cast<PFN_vkCreateXlibSurfaceKHR>(dlsym(libvulkan, "vkCreateXlibSurfaceKHR"));
@@ -380,4 +371,27 @@ PFN_vkCreateDisplayPlaneSurfaceKHR vkCreateDisplayPlaneSurfaceKHR;
 PFN_vkCreateSharedSwapchainsKHR vkCreateSharedSwapchainsKHR;
 
 #ifdef VK_USE_PLATFORM_XLIB_KHR
-PFN_vkCreateXlibS
+PFN_vkCreateXlibSurfaceKHR vkCreateXlibSurfaceKHR;
+PFN_vkGetPhysicalDeviceXlibPresentationSupportKHR vkGetPhysicalDeviceXlibPresentationSupportKHR;
+#endif
+
+#ifdef VK_USE_PLATFORM_XCB_KHR
+PFN_vkCreateXcbSurfaceKHR vkCreateXcbSurfaceKHR;
+PFN_vkGetPhysicalDeviceXcbPresentationSupportKHR vkGetPhysicalDeviceXcbPresentationSupportKHR;
+#endif
+
+#ifdef VK_USE_PLATFORM_WAYLAND_KHR
+PFN_vkCreateWaylandSurfaceKHR vkCreateWaylandSurfaceKHR;
+PFN_vkGetPhysicalDeviceWaylandPresentationSupportKHR vkGetPhysicalDeviceWaylandPresentationSupportKHR;
+#endif
+
+#ifdef VK_USE_PLATFORM_MIR_KHR
+PFN_vkCreateMirSurfaceKHR vkCreateMirSurfaceKHR;
+PFN_vkGetPhysicalDeviceMirPresentationSupportKHR vkGetPhysicalDeviceMirPresentationSupportKHR;
+#endif
+
+#ifdef VK_USE_PLATFORM_ANDROID_KHR
+PFN_vkCreateAndroidSurfaceKHR vkCreateAndroidSurfaceKHR;
+#endif
+
+#ifdef VK_USE_PLATFORM_WIN32_
