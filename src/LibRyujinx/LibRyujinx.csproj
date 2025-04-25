@@ -13,6 +13,7 @@
     <!-- Not sure why, but on iOS this results in an error. Result is still a .dylib. -->
     <NativeLib Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">Shared</NativeLib>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TrimMode>partial</TrimMode>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <InvariantGlobalization>true</InvariantGlobalization>
     <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
@@ -73,5 +74,15 @@
     <PackageReference Include="Silk.NET.Vulkan" />
     <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" />
     <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-llog" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- 排除 System.Diagnostics.StackTrace 的裁剪 -->
+    <TrimmerRootAssembly Include="System.Diagnostics.StackTrace" />
+    
+    <!-- 排除 Silk.NET.Core 的裁剪（第三方库） -->
+    <TrimmerRootAssembly Include="Silk.NET.Core" />
+    
+    <!-- 使用根描述文件排除多个类型（高级用法） -->
+    <TrimmerRootDescriptor Include="TrimmerExclusions.xml" />
   </ItemGroup>
 </Project>
