@@ -145,28 +145,32 @@ namespace Ryujinx.Graphics.Vulkan
 
             // 加载 VK_EXT_fragment_density_map 相关函数
             var pfnFeatures = api.GetInstanceProcAddr(instanceHandle, "vkGetPhysicalDeviceFragmentDensityMapFeaturesEXT");
-            if (pfnFeatures.Handle != IntPtr.Zero)
+            var funcPtrFeatures = (delegate* unmanaged<PhysicalDevice, PhysicalDeviceFragmentDensityMapFeaturesEXT*, void>)pfnFeatures.Handle;
+            if (funcPtrFeatures != null)
             {
-                _getFragmentDensityMapFeaturesEXT = (delegate* unmanaged<PhysicalDevice, PhysicalDeviceFragmentDensityMapFeaturesEXT*, void>)pfnFeatures.Handle;
+                _getFragmentDensityMapFeaturesEXT = funcPtrFeatures;
             }
 
              var pfnProperties = api.GetInstanceProcAddr(instanceHandle, "vkGetPhysicalDeviceFragmentDensityMapPropertiesEXT");
-             if (pfnProperties.Handle != IntPtr.Zero)
+             var funcPtrProperties = (delegate* unmanaged<PhysicalDevice, PhysicalDeviceFragmentDensityMapPropertiesEXT*, void>)pfnProperties.Handle;
+             if (funcPtrProperties != null)
              {
-                _getFragmentDensityMapPropertiesEXT = (delegate* unmanaged<PhysicalDevice, PhysicalDeviceFragmentDensityMapPropertiesEXT*, void>)pfnProperties.Handle;
+                 _getFragmentDensityMapPropertiesEXT = funcPtrProperties;
              }
 
             // 加载 VK_EXT_fragment_density_map2 相关函数
             var pfn2Features = api.GetInstanceProcAddr(instanceHandle, "vkGetPhysicalDeviceFragmentDensityMap2FeaturesEXT");
-            if (pfn2Features.Handle != IntPtr.Zero)
+            var funcPtr2Features = (delegate* unmanaged<PhysicalDevice, PhysicalDeviceFragmentDensityMap2FeaturesEXT*, void>)pfn2Features.Handle;
+            if (funcPtr2Features != null)
             {
-                _getFragmentDensityMap2FeaturesEXT = (delegate* unmanaged<PhysicalDevice, PhysicalDeviceFragmentDensityMap2FeaturesEXT*, void>)pfn2Features.Handle;
+                 _getFragmentDensityMap2FeaturesEXT = funcPtr2Features;
              }
 
              var pfn2Properties = api.GetInstanceProcAddr(instanceHandle, "vkGetPhysicalDeviceFragmentDensityMap2PropertiesEXT");
-             if (pfn2Properties.Handle != IntPtr.Zero)
+             var funcPtr2Properties = (delegate* unmanaged<PhysicalDevice, PhysicalDeviceFragmentDensityMap2PropertiesEXT*, void>)pfn2Properties.Handle;
+             if (funcPtr2Properties != null)
              {
-                _getFragmentDensityMap2PropertiesEXT = (delegate* unmanaged<PhysicalDevice, PhysicalDeviceFragmentDensityMap2PropertiesEXT*, void>)pfn2Properties.Handle;
+                _getFragmentDensityMap2PropertiesEXT = funcPtr2Properties;
              }
         
             return instance;
