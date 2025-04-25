@@ -15,8 +15,8 @@ jobs:
       JAVA_OPTS: "-Xmx6g -XX:MaxMetaspaceSize=2g"
       GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4"
       PROJECT_DIR: src/RyujinxAndroid
-      ANDROID_NDK_VERSION: "25.1.8937393"  # 有效版本号
-      NDK_DOWNLOAD_URL: "https://dl.google.com/android/repository/android-ndk-r25b-linux.zip"
+      ANDROID_NDK_VERSION: "28.1.13356709"  # 有效版本号
+      NDK_DOWNLOAD_URL: "https://dl.google.com/android/repository/android-ndk-r28b-linux.zip"
       ANDROID_HOME: /usr/local/lib/android/sdk  # 默认 SDK 路径
       DOTNET_VERSION: "9.0.203"
       ANDROID_API_LEVEL: "35"
@@ -47,14 +47,14 @@ jobs:
         sudo rm ndk.zip
 
         # 处理嵌套目录
-        if [ -d "$NDK_DIR/android-ndk-r25b" ]; then
-          sudo mv $NDK_DIR/android-ndk-r25b/* $NDK_DIR
-          sudo rm -r $NDK_DIR/android-ndk-r25b
+        if [ -d "$NDK_DIR/android-ndk-r28b" ]; then
+          sudo mv $NDK_DIR/android-ndk-r28b/* $NDK_DIR
+          sudo rm -r $NDK_DIR/android-ndk-r28b
         fi
 
     - name: Verify NDK Installation
       run: |
-        EXPECTED_NDK_VERSION="25.1.8937393"
+        EXPECTED_NDK_VERSION="28.1.13356709"
         NDK_PATH="$ANDROID_HOME/ndk/$EXPECTED_NDK_VERSION"
         
         # 检查目录存在性
