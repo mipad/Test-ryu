@@ -47,33 +47,6 @@ jobs:
           cmdline-tools;latest
           platform-tools
           ndk;${{ env.ANDROID_NDK_VERSION }}  # 强制安装指定版本 NDK
-
-    - name: Download and Install NDK
-      run: |
-         # 创建 NDK 目录
-         NDK_DIR="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}"
-         sudo mkdir -p $NDK_DIR
-
-         # 下载 NDK 压缩包
-          echo "下载 NDK..."
-          wget -q ${{ env.NDK_DOWNLOAD_URL }} -O ndk.zip
-
-          # 解压并调整目录结构
-          echo "解压 NDK..."
-          sudo unzip -q ndk.zip -d $NDK_DIR
-          sudo rm ndk.zip
-
-          # 检查解压后的子目录并移动文件
-          if [ -d "$NDK_DIR/android-ndk-r29-beta1-linux.zip" ]; then
-          sudo mv $NDK_DIR/android-ndk-r29-beta1-linux.zip/* $NDK_DIR
-          sudo rm -r $NDK_DIR/android-ndk-r29-beta1-linux.zip
-         fi
-
-         # 验证 source.properties 是否存在
-          if [ ! -f "$NDK_DIR/source.properties" ]; then
-         echo "::error::source.properties 文件缺失"
-         exit 1
-         fi
         
     - name: Accept Android Licenses
       run: |
