@@ -15,8 +15,7 @@ jobs:
       JAVA_OPTS: "-Xmx6g -XX:MaxMetaspaceSize=2g"
       GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4"
       PROJECT_DIR: src/RyujinxAndroid
-      ANDROID_NDK_VERSION: "29.0.13113456"
-      NDK_DOWNLOAD_URL: "https://dl.google.com/android/repository/android-ndk-r29-beta1-linux.zip"  # 官方下载链接
+      ANDROID_NDK_VERSION: "28.1.13356709"
       ANDROID_HOME: /usr/local/lib/android/sdk  # 默认 SDK 路径
       DOTNET_VERSION: "9.0.203"
       ANDROID_API_LEVEL: "35"
