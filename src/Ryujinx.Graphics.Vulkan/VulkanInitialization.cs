@@ -16,238 +16,40 @@ namespace Ryujinx.Graphics.Vulkan
         private const uint InvalidIndex = uint.MaxValue;
         private static readonly uint _minimalVulkanVersion = Vk.Version11.Value;
         private static readonly uint _minimalInstanceVulkanVersion = Vk.Version12.Value;
-        private static readonly uint _maximumVulkanVersion = Vk.Version12.Value; 
-        // 在类顶部添加以下常量定义：
-private const string ExtBlendOperationAdvanced = "VK_EXT_blend_operation_advanced";
-private const string ExtDescriptorIndexing = "VK_EXT_descriptor_indexing";
-private const string ExtShaderStencilExport = "VK_EXT_shader_stencil_export";
-private const string KhrShaderFloat16Int8 = "VK_KHR_shader_float16_int8";
-private const string ExtShaderSubgroupBallot = "VK_EXT_shader_subgroup_ballot";
-private const string NvGeometryShaderPassthrough = "VK_NV_geometry_shader_passthrough";
-private const string NvViewportArray2 = "VK_NV_viewport_array2";
-private const string KhrPortabilitySubset = "VK_KHR_portability_subset";
-private const string Ext4444Formats = "VK_EXT_4444_formats";
-private const string Khr8bitStorage = "VK_KHR_8bit_storage";
-private const string KhrMaintenance2 = "VK_KHR_maintenance2";
-        
-        private const string ExtRobustness2 = "VK_EXT_robustness2";
-   private const string ExtFragmentInterlock = "VK_EXT_fragment_shader_interlock";      
-        private const string ExtAttachmentFeedbackLoopLayout = "VK_EXT_attachment_feedback_loop_layout";
-   private const string ExtAttachmentFeedbackLoopDynamicState = "VK_EXT_attachment_feedback_loop_dynamic_state";
-   private const string ExtPrimitiveTopologyListRestart = "VK_EXT_primitive_topology_list_restart";
-   private const string ExtCustomBorderColor = "VK_EXT_custom_border_color";
-        private const string ExtIndexTypeUint8 = "VK_EXT_index_type_uint8";
-   private const string ExtDepthClipControl = "VK_EXT_depth_clip_control";
+        private static readonly uint _maximumVulkanVersion = Vk.Version12.Value;
         private const string AppName = "Ryujinx.Graphics.Vulkan";
         private const int QueuesCount = 2;
 
         private static readonly string[] _desirableExtensions = {
-    ExtConditionalRendering.ExtensionName,
-    ExtExtendedDynamicState.ExtensionName,
-    ExtTransformFeedback.ExtensionName,
-    KhrDrawIndirectCount.ExtensionName,
-    KhrPushDescriptor.ExtensionName,
-    ExtExternalMemoryHost.ExtensionName,
-    ExtBlendOperationAdvanced,        // 替换为常量
-    ExtCustomBorderColor,
-    ExtDescriptorIndexing,            // 替换为常量
-    ExtFragmentInterlock,
-    ExtIndexTypeUint8,
-    ExtPrimitiveTopologyListRestart,
-    ExtRobustness2,
-    ExtShaderStencilExport,           // 替换为常量
-    KhrShaderFloat16Int8,             // 替换为常量
-    ExtShaderSubgroupBallot,          // 替换为常量
-    NvGeometryShaderPassthrough,      // 替换为常量
-    NvViewportArray2,                 // 替换为常量
-    ExtDepthClipControl,
-    KhrPortabilitySubset,             // 替换为常量
-    Ext4444Formats,                   // 替换为常量
-    Khr8bitStorage,                   // 替换为常量
-    KhrMaintenance2,                  // 替换为常量
-    ExtAttachmentFeedbackLoopLayout,
-    ExtAttachmentFeedbackLoopDynamicState
-};
+            ExtConditionalRendering.ExtensionName,
+            ExtExtendedDynamicState.ExtensionName,
+            ExtTransformFeedback.ExtensionName,
+            KhrDrawIndirectCount.ExtensionName,
+            KhrPushDescriptor.ExtensionName,
+            ExtExternalMemoryHost.ExtensionName,
+            "VK_EXT_blend_operation_advanced",
+            "VK_EXT_custom_border_color",
+            "VK_EXT_descriptor_indexing", // Enabling this works around an issue with disposed buffer bindings on RADV.
+            "VK_EXT_fragment_shader_interlock",
+            "VK_EXT_index_type_uint8",
+            "VK_EXT_primitive_topology_list_restart",
+            "VK_EXT_robustness2",
+            "VK_EXT_shader_stencil_export",
+            "VK_KHR_shader_float16_int8",
+            "VK_EXT_shader_subgroup_ballot",
+            "VK_NV_geometry_shader_passthrough",
+            "VK_NV_viewport_array2",
+            "VK_EXT_depth_clip_control",
+            "VK_KHR_portability_subset", // As per spec, we should enable this if present.
+            "VK_EXT_4444_formats",
+            "VK_KHR_8bit_storage",
+            "VK_KHR_maintenance2",
+            "VK_EXT_attachment_feedback_loop_layout",
+            "VK_EXT_attachment_feedback_loop_dynamic_state",
+            "VK_EXT_fragment_density_map", //
+            "VK_EXT_fragment_density_map2", //
+        };
 
-private static ApplicationInfo CreateApplicationInfo(IntPtr appNamePtr)
-   {
-       return new ApplicationInfo
-       {
-           PApplicationName = (byte*)appNamePtr,
-           ApplicationVersion = 1,
-           PEngineName = (byte*)appNamePtr,
-           EngineVersion = 1,
-           ApiVersion = _maximumVulkanVersion
-       };
-   }
-
-private static void SetupExternalMemoryHostFeatures(
-    VulkanPhysicalDevice physicalDevice,
-    ref void* pExtendedFeatures)
-{
-    if (!physicalDevice.IsDeviceExtensionPresent(ExtExternalMemoryHost.ExtensionName))
-        return;
-
-    // 该扩展无需特殊功能结构体，但为了统一代码结构，可以添加空操作或占位符
-    // 如果有需要启用特定功能，可在此处添加对应的结构体初始化
-    // 例如：
-    // var features = new PhysicalDeviceExternalMemoryHostPropertiesEXT
-    // {
-    //     SType = StructureType.PhysicalDeviceExternalMemoryHostPropertiesExt,
-    //     PNext = pExtendedFeatures,
-    // };
-    // pExtendedFeatures = &features;
-
-    // 当前仅启用扩展，无需额外操作
-}
-
-private static void SetupAttachmentFeedbackLoopDynamicStateFeatures(
-       VulkanPhysicalDevice physicalDevice,
-       ref void* pExtendedFeatures,
-       PhysicalDeviceAttachmentFeedbackLoopDynamicStateFeaturesEXT supportedFeatures)
-   {
-       if (!physicalDevice.IsDeviceExtensionPresent(ExtAttachmentFeedbackLoopDynamicState) ||
-           !supportedFeatures.AttachmentFeedbackLoopDynamicState)
-           return;
-
-       var features = new PhysicalDeviceAttachmentFeedbackLoopDynamicStateFeaturesEXT
-       {
-           SType = StructureType.PhysicalDeviceAttachmentFeedbackLoopDynamicStateFeaturesExt,
-           PNext = pExtendedFeatures,
-           AttachmentFeedbackLoopDynamicState = true
-       };
-       pExtendedFeatures = &features;
-   }
-
-private static void SetupDepthClipControlFeatures(
-       VulkanPhysicalDevice physicalDevice,
-       ref void* pExtendedFeatures,
-       PhysicalDeviceDepthClipControlFeaturesEXT supportedFeatures)
-   {
-       if (!physicalDevice.IsDeviceExtensionPresent(ExtDepthClipControl) ||
-           !supportedFeatures.DepthClipControl)
-           return;
-
-       var features = new PhysicalDeviceDepthClipControlFeaturesEXT
-       {
-           SType = StructureType.PhysicalDeviceDepthClipControlFeaturesExt,
-           PNext = pExtendedFeatures,
-           DepthClipControl = true
-       };
-       pExtendedFeatures = &features;
-   }
-
-private static void SetupAttachmentFeedbackLoopFeatures(
-       VulkanPhysicalDevice physicalDevice,
-       ref void* pExtendedFeatures,
-       PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT supportedFeatures)
-   {
-       if (!physicalDevice.IsDeviceExtensionPresent(ExtAttachmentFeedbackLoopLayout) ||
-           !supportedFeatures.AttachmentFeedbackLoopLayout)
-           return;
-
-       var features = new PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT
-       {
-           SType = StructureType.PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesExt,
-           PNext = pExtendedFeatures,
-           AttachmentFeedbackLoopLayout = true
-       };
-       pExtendedFeatures = &features;
-   }
-
-private static void SetupPrimitiveTopologyListRestartFeatures(
-       VulkanPhysicalDevice physicalDevice,
-       ref void* pExtendedFeatures,
-       PhysicalDevicePrimitiveTopologyListRestartFeaturesEXT supportedFeatures)
-   {
-       //const string ExtPrimitiveTopology = "VK_EXT_primitive_topology_list_restart";
-       if (!physicalDevice.IsDeviceExtensionPresent(ExtPrimitiveTopologyListRestart))
-           return;
-
-       var features = new PhysicalDevicePrimitiveTopologyListRestartFeaturesEXT
-       {
-           SType = StructureType.PhysicalDevicePrimitiveTopologyListRestartFeaturesExt,
-           PNext = pExtendedFeatures,
-           PrimitiveTopologyListRestart = supportedFeatures.PrimitiveTopologyListRestart,
-           PrimitiveTopologyPatchListRestart = supportedFeatures.PrimitiveTopologyPatchListRestart
-       };
-       pExtendedFeatures = &features;
-   }
-
-private static void SetupCustomBorderColorFeatures(
-    VulkanPhysicalDevice physicalDevice,
-    ref void* pExtendedFeatures,
-    PhysicalDeviceCustomBorderColorFeaturesEXT supportedFeatures)
-{
-    //const string ExtCustomBorderColor = "VK_EXT_custom_border_color";
-    if (!physicalDevice.IsDeviceExtensionPresent(ExtCustomBorderColor) ||
-        !supportedFeatures.CustomBorderColors ||
-        !supportedFeatures.CustomBorderColorWithoutFormat)
-        return;
-
-    var features = new PhysicalDeviceCustomBorderColorFeaturesEXT
-    {
-        SType = StructureType.PhysicalDeviceCustomBorderColorFeaturesExt,
-        PNext = pExtendedFeatures,
-        CustomBorderColors = true,
-        CustomBorderColorWithoutFormat = true
-    };
-    pExtendedFeatures = &features;
-}
-
-private static void SetupFragmentShaderInterlockFeatures(
-    VulkanPhysicalDevice physicalDevice,
-    ref void* pExtendedFeatures)
-{
-    //const string ExtFragmentInterlock = "VK_EXT_fragment_shader_interlock";
-    if (!physicalDevice.IsDeviceExtensionPresent(ExtFragmentInterlock))
-        return;
-
-    var features = new PhysicalDeviceFragmentShaderInterlockFeaturesEXT
-    {
-        SType = StructureType.PhysicalDeviceFragmentShaderInterlockFeaturesExt,
-        PNext = pExtendedFeatures,
-        FragmentShaderPixelInterlock = true
-    };
-    pExtendedFeatures = &features;
-}
-   
-private static void SetupRobustness2Features(
-    VulkanPhysicalDevice physicalDevice,
-    ref void* pExtendedFeatures,
-    PhysicalDeviceRobustness2FeaturesEXT supportedFeatures)
-{
-    const string ExtRobustness2 = "VK_EXT_robustness2";
-    if (!physicalDevice.IsDeviceExtensionPresent(ExtRobustness2))
-        return;
-
-    var features = new PhysicalDeviceRobustness2FeaturesEXT
-    {
-        SType = StructureType.PhysicalDeviceRobustness2FeaturesExt,
-        PNext = pExtendedFeatures,
-        NullDescriptor = supportedFeatures.NullDescriptor
-    };
-    pExtendedFeatures = &features;
-}
-   
-   
-private static void SetupTransformFeedbackFeatures(
-    VulkanPhysicalDevice physicalDevice,
-    ref void* pExtendedFeatures,
-    PhysicalDeviceTransformFeedbackFeaturesEXT supportedFeatures)
-{
-    if (!physicalDevice.IsDeviceExtensionPresent(ExtTransformFeedback.ExtensionName))
-        return;
-
-    var features = new PhysicalDeviceTransformFeedbackFeaturesEXT
-    {
-        SType = StructureType.PhysicalDeviceTransformFeedbackFeaturesExt,
-        PNext = pExtendedFeatures,
-        TransformFeedback = supportedFeatures.TransformFeedback
-    };
-    pExtendedFeatures = &features;
-}
-   
         private static readonly string[] _requiredExtensions = {
             KhrSwapchain.ExtensionName,
         };
@@ -285,7 +87,14 @@ private static void SetupTransformFeedbackFeatures(
 
             var appName = Marshal.StringToHGlobalAnsi(AppName);
 
-            var applicationInfo = CreateApplicationInfo(appName);
+            var applicationInfo = new ApplicationInfo
+            {
+                PApplicationName = (byte*)appName,
+                ApplicationVersion = 1,
+                PEngineName = (byte*)appName,
+                EngineVersion = 1,
+                ApiVersion = _maximumVulkanVersion,
+            };
 
             IntPtr* ppEnabledExtensions = stackalloc IntPtr[enabledExtensions.Length];
             IntPtr* ppEnabledLayers = stackalloc IntPtr[enabledLayers.Count];
@@ -315,10 +124,9 @@ private static void SetupTransformFeedbackFeatures(
             Marshal.FreeHGlobal(appName);
 
             for (int i = 0; i < enabledExtensions.Length; i++)
-{
-    IntPtr ptr = ppEnabledExtensions[i];
-    Marshal.FreeHGlobal(ptr);
-}
+            {
+                Marshal.FreeHGlobal(ppEnabledExtensions[i]);
+            }
 
             for (int i = 0; i < enabledLayers.Count; i++)
             {
@@ -359,7 +167,14 @@ private static void SetupTransformFeedbackFeatures(
         {
             var appName = Marshal.StringToHGlobalAnsi(AppName);
 
-            var applicationInfo = CreateApplicationInfo(appName);
+            var applicationInfo = new ApplicationInfo
+            {
+                PApplicationName = (byte*)appName,
+                ApplicationVersion = 1,
+                PEngineName = (byte*)appName,
+                EngineVersion = 1,
+                ApiVersion = _maximumVulkanVersion,
+            };
 
             var instanceCreateInfo = new InstanceCreateInfo
             {
@@ -415,10 +230,18 @@ private static void SetupTransformFeedbackFeatures(
 
         private static bool IsSuitableDevice(Vk api, VulkanPhysicalDevice physicalDevice, SurfaceKHR surface)
         {
-            var supportedExtensions = new HashSet<string>(physicalDevice.DeviceExtensions);
-       return _requiredExtensions.All(supportedExtensions.Contains) 
-       && FindSuitableQueueFamily(api, physicalDevice, surface, out _) != InvalidIndex;
-   }
+            int extensionMatches = 0;
+
+            foreach (string requiredExtension in _requiredExtensions)
+            {
+                if (physicalDevice.IsDeviceExtensionPresent(requiredExtension))
+                {
+                    extensionMatches++;
+                }
+            }
+
+            return extensionMatches == _requiredExtensions.Length && FindSuitableQueueFamily(api, physicalDevice, surface, out _) != InvalidIndex;
+        }
 
         internal static uint FindSuitableQueueFamily(Vk api, VulkanPhysicalDevice physicalDevice, SurfaceKHR surface, out uint queueCount)
         {
@@ -488,7 +311,7 @@ private static void SetupTransformFeedbackFeatures(
                 PNext = features2.PNext,
             };
 
-            if (physicalDevice.IsDeviceExtensionPresent(ExtCustomBorderColor))
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_custom_border_color"))
             {
                 features2.PNext = &supportedFeaturesCustomBorderColor;
             }
@@ -499,7 +322,7 @@ private static void SetupTransformFeedbackFeatures(
                 PNext = features2.PNext,
             };
 
-            if (physicalDevice.IsDeviceExtensionPresent(ExtPrimitiveTopologyListRestart))
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_primitive_topology_list_restart"))
             {
                 features2.PNext = &supportedFeaturesPrimitiveTopologyListRestart;
             }
@@ -520,7 +343,7 @@ private static void SetupTransformFeedbackFeatures(
                 SType = StructureType.PhysicalDeviceRobustness2FeaturesExt,
             };
 
-            if (physicalDevice.IsDeviceExtensionPresent(ExtRobustness2))
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_robustness2"))
             {
                 supportedFeaturesRobustness2.PNext = features2.PNext;
 
@@ -533,7 +356,7 @@ private static void SetupTransformFeedbackFeatures(
                 PNext = features2.PNext,
             };
 
-            if (physicalDevice.IsDeviceExtensionPresent(ExtDepthClipControl))
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_depth_clip_control"))
             {
                 features2.PNext = &supportedFeaturesDepthClipControl;
             }
@@ -544,7 +367,7 @@ private static void SetupTransformFeedbackFeatures(
                 PNext = features2.PNext,
             };
 
-            if (physicalDevice.IsDeviceExtensionPresent(ExtAttachmentFeedbackLoopLayout))
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_attachment_feedback_loop_layout"))
             {
                 features2.PNext = &supportedFeaturesAttachmentFeedbackLoopLayout;
             }
@@ -555,9 +378,28 @@ private static void SetupTransformFeedbackFeatures(
                 PNext = features2.PNext,
             };
 
-            if (physicalDevice.IsDeviceExtensionPresent(ExtAttachmentFeedbackLoopDynamicState))
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_attachment_feedback_loop_dynamic_state"))
             {
                 features2.PNext = &supportedFeaturesDynamicAttachmentFeedbackLoopLayout;
+            }
+            // 新增：查询 VK_EXT_fragment_density_map 和 VK_EXT_fragment_density_map2 特性
+            PhysicalDeviceFragmentDensityMapFeaturesEXT supportedFeaturesFragmentDensityMap = new()
+            {
+                SType = StructureType.PhysicalDeviceFragmentDensityMapFeaturesExt,
+                PNext = features2.PNext,
+            };
+
+            features2.PNext = &supportedFeaturesFragmentDensityMap;
+
+            PhysicalDeviceFragmentDensityMap2FeaturesEXT supportedFeaturesFragmentDensityMap2 = new()
+            {
+                SType = StructureType.PhysicalDeviceFragmentDensityMap2FeaturesExt,
+                PNext = features2.PNext,
+            };
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map2"))
+            {
+                features2.PNext = &supportedFeaturesFragmentDensityMap2;
             }
 
             PhysicalDeviceVulkan12Features supportedPhysicalDeviceVulkan12Features = new()
@@ -599,16 +441,69 @@ private static void SetupTransformFeedbackFeatures(
             };
 
             void* pExtendedFeatures = null;
+            // 新增：启用 VK_EXT_fragment_density_map 和 VK_EXT_fragment_density_map2 特性
+            PhysicalDeviceFragmentDensityMapFeaturesEXT featuresFragmentDensityMap = new()
+            {
+                SType = StructureType.PhysicalDeviceFragmentDensityMapFeaturesExt,
+                PNext = pExtendedFeatures,
+                FragmentDensityMap = supportedFeaturesFragmentDensityMap.FragmentDensityMap,
+            };
 
+            pExtendedFeatures = &featuresFragmentDensityMap;
+
+                if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map2"))
+                {
+            PhysicalDeviceFragmentDensityMap2FeaturesEXT featuresFragmentDensityMap2 = new()
+            {
+                SType = StructureType.PhysicalDeviceFragmentDensityMap2FeaturesExt,
+                PNext = pExtendedFeatures,
+                FragmentDensityMapDeferred = supportedFeaturesFragmentDensityMap2.FragmentDensityMapDeferred,
+            };
+
+            pExtendedFeatures = &featuresFragmentDensityMap2;
+            }
             PhysicalDeviceTransformFeedbackFeaturesEXT featuresTransformFeedback;
 
-            SetupTransformFeedbackFeatures(physicalDevice, ref pExtendedFeatures, supportedFeaturesTransformFeedback);
+            if (physicalDevice.IsDeviceExtensionPresent(ExtTransformFeedback.ExtensionName))
+            {
+                featuresTransformFeedback = new PhysicalDeviceTransformFeedbackFeaturesEXT
+                {
+                    SType = StructureType.PhysicalDeviceTransformFeedbackFeaturesExt,
+                    PNext = pExtendedFeatures,
+                    TransformFeedback = supportedFeaturesTransformFeedback.TransformFeedback,
+                };
+
+                pExtendedFeatures = &featuresTransformFeedback;
+            }
 
             PhysicalDevicePrimitiveTopologyListRestartFeaturesEXT featuresPrimitiveTopologyListRestart;
 
-            SetupPrimitiveTopologyListRestartFeatures(physicalDevice, ref pExtendedFeatures, supportedFeaturesPrimitiveTopologyListRestart);
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_primitive_topology_list_restart"))
+            {
+                featuresPrimitiveTopologyListRestart = new PhysicalDevicePrimitiveTopologyListRestartFeaturesEXT
+                {
+                    SType = StructureType.PhysicalDevicePrimitiveTopologyListRestartFeaturesExt,
+                    PNext = pExtendedFeatures,
+                    PrimitiveTopologyListRestart = supportedFeaturesPrimitiveTopologyListRestart.PrimitiveTopologyListRestart,
+                    PrimitiveTopologyPatchListRestart = supportedFeaturesPrimitiveTopologyListRestart.PrimitiveTopologyPatchListRestart,
+                };
 
-            SetupRobustness2Features(physicalDevice, ref pExtendedFeatures, supportedFeaturesRobustness2);
+                pExtendedFeatures = &featuresPrimitiveTopologyListRestart;
+            }
+
+            PhysicalDeviceRobustness2FeaturesEXT featuresRobustness2;
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_robustness2"))
+            {
+                featuresRobustness2 = new PhysicalDeviceRobustness2FeaturesEXT
+                {
+                    SType = StructureType.PhysicalDeviceRobustness2FeaturesExt,
+                    PNext = pExtendedFeatures,
+                    NullDescriptor = supportedFeaturesRobustness2.NullDescriptor,
+                };
+
+                pExtendedFeatures = &featuresRobustness2;
+            }
 
             var featuresExtendedDynamicState = new PhysicalDeviceExtendedDynamicStateFeaturesEXT
             {
@@ -643,7 +538,7 @@ private static void SetupTransformFeedbackFeatures(
 
             PhysicalDeviceIndexTypeUint8FeaturesEXT featuresIndexU8;
 
-            if (physicalDevice.IsDeviceExtensionPresent(ExtIndexTypeUint8))
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_index_type_uint8"))
             {
                 featuresIndexU8 = new PhysicalDeviceIndexTypeUint8FeaturesEXT
                 {
@@ -655,20 +550,81 @@ private static void SetupTransformFeedbackFeatures(
                 pExtendedFeatures = &featuresIndexU8;
             }
 
-            SetupFragmentShaderInterlockFeatures(physicalDevice, ref pExtendedFeatures);
+            PhysicalDeviceFragmentShaderInterlockFeaturesEXT featuresFragmentShaderInterlock;
 
-            SetupCustomBorderColorFeatures(physicalDevice, ref pExtendedFeatures, supportedFeaturesCustomBorderColor);
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_shader_interlock"))
+            {
+                featuresFragmentShaderInterlock = new PhysicalDeviceFragmentShaderInterlockFeaturesEXT
+                {
+                    SType = StructureType.PhysicalDeviceFragmentShaderInterlockFeaturesExt,
+                    PNext = pExtendedFeatures,
+                    FragmentShaderPixelInterlock = true,
+                };
 
-            SetupDepthClipControlFeatures(physicalDevice, ref pExtendedFeatures, supportedFeaturesDepthClipControl);
+                pExtendedFeatures = &featuresFragmentShaderInterlock;
+            }
 
- SetupExternalMemoryHostFeatures(physicalDevice, ref pExtendedFeatures); // 新增
-           SetupAttachmentFeedbackLoopFeatures(physicalDevice, ref pExtendedFeatures, supportedFeaturesAttachmentFeedbackLoopLayout);
+            PhysicalDeviceCustomBorderColorFeaturesEXT featuresCustomBorderColor;
 
-            
-            SetupAttachmentFeedbackLoopDynamicStateFeatures(
-    physicalDevice,
-    ref pExtendedFeatures,
-    supportedFeaturesDynamicAttachmentFeedbackLoopLayout);
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_custom_border_color") &&
+                supportedFeaturesCustomBorderColor.CustomBorderColors &&
+                supportedFeaturesCustomBorderColor.CustomBorderColorWithoutFormat)
+            {
+                featuresCustomBorderColor = new PhysicalDeviceCustomBorderColorFeaturesEXT
+                {
+                    SType = StructureType.PhysicalDeviceCustomBorderColorFeaturesExt,
+                    PNext = pExtendedFeatures,
+                    CustomBorderColors = true,
+                    CustomBorderColorWithoutFormat = true,
+                };
+
+                pExtendedFeatures = &featuresCustomBorderColor;
+            }
+
+            PhysicalDeviceDepthClipControlFeaturesEXT featuresDepthClipControl;
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_depth_clip_control") &&
+                supportedFeaturesDepthClipControl.DepthClipControl)
+            {
+                featuresDepthClipControl = new PhysicalDeviceDepthClipControlFeaturesEXT
+                {
+                    SType = StructureType.PhysicalDeviceDepthClipControlFeaturesExt,
+                    PNext = pExtendedFeatures,
+                    DepthClipControl = true,
+                };
+
+                pExtendedFeatures = &featuresDepthClipControl;
+            }
+
+            PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT featuresAttachmentFeedbackLoopLayout;
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_attachment_feedback_loop_layout") &&
+                supportedFeaturesAttachmentFeedbackLoopLayout.AttachmentFeedbackLoopLayout)
+            {
+                featuresAttachmentFeedbackLoopLayout = new()
+                {
+                    SType = StructureType.PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesExt,
+                    PNext = pExtendedFeatures,
+                    AttachmentFeedbackLoopLayout = true,
+                };
+
+                pExtendedFeatures = &featuresAttachmentFeedbackLoopLayout;
+            }
+
+            PhysicalDeviceAttachmentFeedbackLoopDynamicStateFeaturesEXT featuresDynamicAttachmentFeedbackLoopLayout;
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_attachment_feedback_loop_dynamic_state") &&
+                supportedFeaturesDynamicAttachmentFeedbackLoopLayout.AttachmentFeedbackLoopDynamicState)
+            {
+                featuresDynamicAttachmentFeedbackLoopLayout = new()
+                {
+                    SType = StructureType.PhysicalDeviceAttachmentFeedbackLoopDynamicStateFeaturesExt,
+                    PNext = pExtendedFeatures,
+                    AttachmentFeedbackLoopDynamicState = true,
+                };
+
+                pExtendedFeatures = &featuresDynamicAttachmentFeedbackLoopLayout;
+            }
 
             var enabledExtensions = _requiredExtensions.Union(_desirableExtensions.Intersect(physicalDevice.DeviceExtensions)).ToArray();
 
@@ -693,10 +649,9 @@ private static void SetupTransformFeedbackFeatures(
             api.CreateDevice(physicalDevice.PhysicalDevice, in deviceCreateInfo, null, out var device).ThrowOnError();
 
             for (int i = 0; i < enabledExtensions.Length; i++)
-{
-    IntPtr ptr = ppEnabledExtensions[i];
-    Marshal.FreeHGlobal(ptr);
-}
+            {
+                Marshal.FreeHGlobal(ppEnabledExtensions[i]);
+            }
 
             return device;
         }
