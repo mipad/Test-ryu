@@ -24,10 +24,7 @@
  */
 int InitVulkan(void);
 
-// 添加扩展头文件
-#include <vulkan/vk_ext_fragment_density_map.h>
-#include <vulkan/vk_ext_fragment_density_map2.h>  //vk_ext_fragment_density_map2.h
-
+// VK_core
 extern PFN_vkCreateInstance vkCreateInstance;
 extern PFN_vkDestroyInstance vkDestroyInstance;
 extern PFN_vkEnumeratePhysicalDevices vkEnumeratePhysicalDevices;
@@ -165,15 +162,6 @@ extern PFN_vkCmdBeginRenderPass vkCmdBeginRenderPass;
 extern PFN_vkCmdNextSubpass vkCmdNextSubpass;
 extern PFN_vkCmdEndRenderPass vkCmdEndRenderPass;
 extern PFN_vkCmdExecuteCommands vkCmdExecuteCommands;
-
-// ================ 新增扩展函数声明 ================
-// VK_EXT_fragment_density_map
-extern PFN_vkGetPhysicalDeviceFragmentDensityMapFeaturesEXT vkGetPhysicalDeviceFragmentDensityMapFeaturesEXT;
-extern PFN_vkGetPhysicalDeviceFragmentDensityMapPropertiesEXT vkGetPhysicalDeviceFragmentDensityMapPropertiesEXT;
-
-// VK_EXT_fragment_density_map2
-extern PFN_vkGetPhysicalDeviceFragmentDensityMap2FeaturesEXT vkGetPhysicalDeviceFragmentDensityMap2FeaturesEXT;
-extern PFN_vkGetPhysicalDeviceFragmentDensityMap2PropertiesEXT vkGetPhysicalDeviceFragmentDensityMap2PropertiesEXT;
 
 // VK_KHR_surface
 extern PFN_vkDestroySurfaceKHR vkDestroySurfaceKHR;
