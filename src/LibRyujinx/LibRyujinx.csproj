@@ -73,6 +73,7 @@
     <PackageReference Include="Rxmxnx.PInvoke.Extensions" />
     <PackageReference Include="Silk.NET.Vulkan" />
     <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" />
+    <PackageReference Include="OpenTK.Audio.OpenAL" />
     <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-llog" />
   </ItemGroup>
   <ItemGroup>
