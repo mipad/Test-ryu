@@ -36,6 +36,7 @@ namespace Ryujinx.Graphics.Vulkan
             "VK_EXT_robustness2",
             "VK_EXT_shader_stencil_export",
             "VK_KHR_shader_float16_int8",
+            "VK_KHR_shader_float_controls",
             "VK_EXT_shader_subgroup_ballot",
             "VK_NV_geometry_shader_passthrough",
             "VK_NV_viewport_array2",
@@ -412,6 +413,18 @@ namespace Ryujinx.Graphics.Vulkan
 
             api.GetPhysicalDeviceFeatures2(physicalDevice.PhysicalDevice, &features2);
 
+            // 新增：查询 VK_KHR_shader_float_controls 特性
+            PhysicalDeviceShaderFloatControlsFeaturesKHR supportedFeaturesFloatControls = new()
+            {
+                SType = StructureType.PhysicalDeviceShaderFloatControlsFeaturesKhr,
+                PNext = features2.PNext,
+            };
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_shader_float_controls"))
+            {
+                features2.PNext = &supportedFeaturesFloatControls;
+            }
+
             var supportedFeatures = features2.Features;
 
             var features = new PhysicalDeviceFeatures
@@ -535,6 +548,19 @@ namespace Ryujinx.Graphics.Vulkan
             };
 
             pExtendedFeatures = &featuresVk12;
+
+             // 新增：启用 VK_KHR_shader_float_controls 特性
+            PhysicalDeviceShaderFloatControlsFeaturesKHR featuresFloatControls = new()
+            {
+                SType = StructureType.PhysicalDeviceShaderFloatControlsFeaturesKhr,
+                PNext = pExtendedFeatures,
+                ShaderFloatControls = supportedFeaturesFloatControls.ShaderFloatControls,
+            };
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_shader_float_controls"))
+            {
+                pExtendedFeatures = &featuresFloatControls;
+            }
 
             PhysicalDeviceIndexTypeUint8FeaturesEXT featuresIndexU8;
 
