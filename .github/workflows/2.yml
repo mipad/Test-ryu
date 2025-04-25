@@ -178,33 +178,6 @@ jobs:
         ls -l $ANDROID_NDK_HOME
         echo "检查 LLVM 工具链:"
         ls -l $LLVM_PATH/bin/clang
-
-# ========== 新增步骤：验证 NDK 中的 Vulkan 头文件路径 ==========
-    - name: Check Vulkan Headers Path
-      run: |
-        # 定义 Vulkan 头文件路径
-        VULKAN_HEADER_DIR="/usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/vulkan"
-        
-        echo "检查 Vulkan 头文件目录是否存在: $VULKAN_HEADER_DIR"
-        ls -l $VULKAN_HEADER_DIR
-
-        echo "检查 vk_ext_fragment_density_map2.h 是否存在:"
-        ls -l $VULKAN_HEADER_DIR/vk_ext_fragment_density_map2.h
-
-        # 如果代码依赖旧版头文件，检查符号链接（可选）
-        echo "检查旧版头文件符号链接:"
-        cd $VULKAN_HEADER_DIR
-        ln -s vk_ext_fragment_density_map2.h vk_ext_fragment_density_map.h 2>/dev/null || true
-        ls -l vk_ext_fragment_density_map.h
-
-    # ========== 新增步骤：验证 Vulkan 库路径 ==========
-    - name: Check Vulkan Library Path
-      run: |
-        # 定义 Vulkan 库路径
-        VULKAN_LIB_DIR="/usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/${{ env.ANDROID_API_LEVEL}}"
-        
-        echo "检查 Vulkan 库文件 libvulkan.so 是否存在:"
-        ls -l $VULKAN_LIB_DIR/libvulkan.so
         
     # ========== 4. 主构建流程 ==========
     - name: Build APK
