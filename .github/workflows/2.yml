@@ -16,6 +16,8 @@ jobs:
       GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4"
       PROJECT_DIR: src/RyujinxAndroid
       ANDROID_NDK_VERSION: "29.0.13113456"
+      NDK_DOWNLOAD_URL: "https://dl.google.com/android/repository/android-ndk-r29-beta1-linux.zip"  # 官方下载链接
+      ANDROID_HOME: /usr/local/lib/android/sdk  # 默认 SDK 路径
       DOTNET_VERSION: "9.0.203"
       ANDROID_API_LEVEL: "35"
 
@@ -46,7 +48,29 @@ jobs:
           cmdline-tools;latest
           platform-tools
           ndk;${{ env.ANDROID_NDK_VERSION }}  # 强制安装指定版本 NDK
-          
+
+          - name: Download and Install NDK
+      run: |
+        # 创建 NDK 目录
+        NDK_DIR="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}"
+        sudo mkdir -p $NDK_DIR
+
+        # 下载 NDK 压缩包
+        echo "正在下载 NDK..."
+        wget -q ${{ env.NDK_DOWNLOAD_URL }} -O ndk.zip
+
+        # 解压到目标目录
+        echo "解压 NDK..."
+        sudo unzip -q ndk.zip -d $NDK_DIR
+        sudo rm ndk.zip
+
+        # 调整目录结构（不同版本压缩包可能路径不同）
+        # 示例：将解压后的子目录移动到 NDK_DIR 下
+        if [ -d "$NDK_DIR/android-ndk-r29-beta1-linux.zip" ]; then
+          sudo mv $NDK_DIR/android-ndk-r29-beta1-linux.zip/* $NDK_DIR
+          sudo rm -r $NDK_DIR/android-ndk-r29-beta1-linux.zip
+        fi
+        
     - name: Accept Android Licenses
       run: |
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
