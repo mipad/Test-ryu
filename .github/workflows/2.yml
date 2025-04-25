@@ -39,8 +39,12 @@ jobs:
     - name: Setup Android SDK/NDK
       uses: android-actions/setup-android@v3
       with:
-        ndk-version: ${{ env.ANDROID_NDK_VERSION }}
+        ndk-version: ${{ env.ANDROID_NDK_VERSION }}  # 使用有效版本
         cmake-version: 3.22.1
+        # 添加以下配置确保安装 SDK 命令行工具和 NDK
+        sdkmanager-packages: |
+          cmdline-tools;latest
+          ndk;${{ env.ANDROID_NDK_VERSION }}
 
     - name: Setup .NET SDK
       uses: actions/setup-dotnet@v4
