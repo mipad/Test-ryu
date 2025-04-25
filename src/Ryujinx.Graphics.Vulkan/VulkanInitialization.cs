@@ -14,10 +14,10 @@ namespace Ryujinx.Graphics.Vulkan
     public unsafe static class VulkanInitialization
     {
         // 新增扩展函数指针
-    private static delegate* unmanaged<VkPhysicalDevice, PhysicalDeviceFragmentDensityMapFeaturesEXT*, void> _getFragmentDensityMapFeaturesEXT;
-    private static delegate* unmanaged<VkPhysicalDevice, PhysicalDeviceFragmentDensityMapPropertiesEXT*, void> _getFragmentDensityMapPropertiesEXT;
-    private static delegate* unmanaged<VkPhysicalDevice, PhysicalDeviceFragmentDensityMap2FeaturesEXT*, void> _getFragmentDensityMap2FeaturesEXT;
-    private static delegate* unmanaged<VkPhysicalDevice, PhysicalDeviceFragmentDensityMap2PropertiesEXT*, void> _getFragmentDensityMap2PropertiesEXT;
+    private static delegate* unmanaged<PhysicalDevice, PhysicalDeviceFragmentDensityMapFeaturesEXT*, void> _getFragmentDensityMapFeaturesEXT;
+    private static delegate* unmanaged<PhysicalDevice, PhysicalDeviceFragmentDensityMapPropertiesEXT*, void> _getFragmentDensityMapPropertiesEXT;
+    private static delegate* unmanaged<PhysicalDevice, PhysicalDeviceFragmentDensityMap2FeaturesEXT*, void> _getFragmentDensityMap2FeaturesEXT;
+    private static delegate* unmanaged<PhysicalDevice, PhysicalDeviceFragmentDensityMap2PropertiesEXT*, void> _getFragmentDensityMap2PropertiesEXT;
         private const uint InvalidIndex = uint.MaxValue;
         private static readonly uint _minimalVulkanVersion = Vk.Version11.Value;
         private static readonly uint _minimalInstanceVulkanVersion = Vk.Version12.Value;
@@ -142,7 +142,7 @@ namespace Ryujinx.Graphics.Vulkan
             result.ThrowOnError();
 // 新增代码：加载扩展函数指针
     var instanceHandle = instance.Instance;
-    _getFragmentDensityMapFeaturesEXT = (delegate* unmanaged<VkPhysicalDevice, PhysicalDeviceFragmentDensityMapFeaturesEXT*, void>)
+    _getFragmentDensityMapFeaturesEXT = (delegate* unmanaged<PhysicalDevice, PhysicalDeviceFragmentDensityMapFeaturesEXT*, void>)
         api.GetInstanceProcAddr(instanceHandle, "vkGetPhysicalDeviceFragmentDensityMapFeaturesEXT");
             return instance;
         }
