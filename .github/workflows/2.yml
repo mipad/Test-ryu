@@ -15,7 +15,7 @@ jobs:
       JAVA_OPTS: "-Xmx6g -XX:MaxMetaspaceSize=2g"
       GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4"
       PROJECT_DIR: src/RyujinxAndroid
-      ANDROID_NDK_VERSION: "29.0.13113456"
+      ANDROID_NDK_VERSION: "25.1.8937393"
       DOTNET_VERSION: "9.0.203"
       ANDROID_API_LEVEL: "35"
 
