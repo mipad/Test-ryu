@@ -52,11 +52,9 @@ jobs:
       run: |
         dotnet --list-sdks
         echo "检查是否安装 .NET ${{ env.DOTNET_VERSION }}"
-
     - name: Install NDK Platform Libraries
       run: |
         $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-${{ env.ANDROID_API_LEVEL }}"
-
     - name: Configure Environment Paths
       shell: bash
       run: |
@@ -64,18 +62,15 @@ jobs:
         ANDROID_NDK_HOME="/usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}"
         LLVM_PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
         LIB_DIR="$LLVM_PATH/sysroot/usr/lib/aarch64-linux-android/${{ env.ANDROID_API_LEVEL }}"
-
         echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
         echo "LLVM_PATH=$LLVM_PATH" >> $GITHUB_ENV
         echo "LIB_DIR=$LIB_DIR" >> $GITHUB_ENV
         echo "$LLVM_PATH/bin" >> $GITHUB_PATH
-
         # 调试输出：验证路径是否存在
         echo "检查 NDK 路径:"
         ls -l $ANDROID_NDK_HOME
         echo "检查 LLVM 工具链:"
         ls -l $LLVM_PATH/bin/clang
-
     # ========== 4. 主构建流程 ==========
     - name: Build APK
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
@@ -85,11 +80,9 @@ jobs:
         # 修复文件权限
         chmod +x gradlew
         find . -name "*.sh" -exec chmod +x {} \;
-
         # 调试输出：关键环境变量
         echo "LLVM_PATH: $LLVM_PATH"
         echo "OPENSSL_ROOT_DIR: $OPENSSL_ROOT_DIR"
-
         # 执行构建
         ./gradlew clean assembleRelease \
           -DllvmToolchainPath=$LLVM_PATH \
@@ -97,14 +90,12 @@ jobs:
           -Pandroid.overridePathCheck=true \
           --no-daemon \
           --stacktrace
-
     - name: Find Native Libraries (.so)
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       run: |
        echo "========== 开始搜索 .so 文件 =========="
        find app/build -name "*.so" -print
        echo "========== 搜索完成 =========="
-
     - name: Upload Native Libraries
       uses: actions/upload-artifact@v4
       with:
