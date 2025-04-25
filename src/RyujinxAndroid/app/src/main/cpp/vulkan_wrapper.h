@@ -24,7 +24,10 @@
  */
 int InitVulkan(void);
 
-// VK_core
+// 添加扩展头文件
+#include <vulkan/vk_ext_fragment_density_map.h>
+#include <vulkan/vk_ext_fragment_density_map2.h>  //vk_ext_fragment_density_map2.h
+
 extern PFN_vkCreateInstance vkCreateInstance;
 extern PFN_vkDestroyInstance vkDestroyInstance;
 extern PFN_vkEnumeratePhysicalDevices vkEnumeratePhysicalDevices;
