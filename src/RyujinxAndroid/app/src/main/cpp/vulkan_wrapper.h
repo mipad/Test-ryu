@@ -163,6 +163,15 @@ extern PFN_vkCmdNextSubpass vkCmdNextSubpass;
 extern PFN_vkCmdEndRenderPass vkCmdEndRenderPass;
 extern PFN_vkCmdExecuteCommands vkCmdExecuteCommands;
 
+// ================ 新增扩展函数声明 ================
+// VK_EXT_fragment_density_map
+extern PFN_vkGetPhysicalDeviceFragmentDensityMapFeaturesEXT vkGetPhysicalDeviceFragmentDensityMapFeaturesEXT;
+extern PFN_vkGetPhysicalDeviceFragmentDensityMapPropertiesEXT vkGetPhysicalDeviceFragmentDensityMapPropertiesEXT;
+
+// VK_EXT_fragment_density_map2
+extern PFN_vkGetPhysicalDeviceFragmentDensityMap2FeaturesEXT vkGetPhysicalDeviceFragmentDensityMap2FeaturesEXT;
+extern PFN_vkGetPhysicalDeviceFragmentDensityMap2PropertiesEXT vkGetPhysicalDeviceFragmentDensityMap2PropertiesEXT;
+
 // VK_KHR_surface
 extern PFN_vkDestroySurfaceKHR vkDestroySurfaceKHR;
 extern PFN_vkGetPhysicalDeviceSurfaceSupportKHR vkGetPhysicalDeviceSurfaceSupportKHR;
