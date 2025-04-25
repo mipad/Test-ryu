@@ -41,6 +41,8 @@ jobs:
     - name: Install NDK
       run: |
         NDK_DIR="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}"
+        # 清空旧目录
+        sudo rm -rf $NDK_DIR
         sudo mkdir -p $NDK_DIR
         wget -q ${{ env.NDK_DOWNLOAD_URL }} -O ndk.zip
         sudo unzip -q ndk.zip -d $NDK_DIR
