@@ -44,6 +44,7 @@ jobs:
         # 添加以下配置确保安装 SDK 命令行工具和 NDK
         sdkmanager-packages: |
           cmdline-tools;latest
+          platform-tools
           ndk;${{ env.ANDROID_NDK_VERSION }}
           
     - name: Accept Android Licenses
