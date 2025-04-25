@@ -78,8 +78,8 @@
   <ItemGroup>
     <!-- 排除 System.Diagnostics.StackTrace 的裁剪 -->
     <TrimmerRootAssembly Include="System.Diagnostics.StackTrace" />
-    
-    <!-- 排除 Silk.NET.Core 的裁剪（第三方库） -->
+    <TrimmerRootAssembly Include="MsgPack" />
+    <TrimmerRootAssembly Include="System.CodeDom" />
     <TrimmerRootAssembly Include="Silk.NET.Core" />
   </ItemGroup>
 </Project>
