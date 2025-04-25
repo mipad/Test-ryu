@@ -413,17 +413,17 @@ namespace Ryujinx.Graphics.Vulkan
 
             api.GetPhysicalDeviceFeatures2(physicalDevice.PhysicalDevice, &features2);
 
-            // 新增：查询 VK_KHR_shader_float_controls 特性
-            PhysicalDeviceShaderFloatControlsFeaturesKHR supportedFeaturesFloatControls = new()
-            {
-                SType = StructureType.PhysicalDeviceShaderFloatControlsFeaturesKhr,
-                PNext = features2.PNext,
-            };
+// 新增：查询 VK_KHR_shader_float_controls 特性
+PhysicalDeviceFloatControlsFeaturesKHR supportedFeaturesFloatControls = new()
+{
+    SType = StructureType.PhysicalDeviceFloatControlsFeaturesKhr,
+    PNext = features2.PNext,
+};
 
-            if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_shader_float_controls"))
-            {
-                features2.PNext = &supportedFeaturesFloatControls;
-            }
+if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_shader_float_controls"))
+{
+    features2.PNext = &supportedFeaturesFloatControls;
+}
 
             var supportedFeatures = features2.Features;
 
@@ -549,18 +549,18 @@ namespace Ryujinx.Graphics.Vulkan
 
             pExtendedFeatures = &featuresVk12;
 
-             // 新增：启用 VK_KHR_shader_float_controls 特性
-            PhysicalDeviceShaderFloatControlsFeaturesKHR featuresFloatControls = new()
-            {
-                SType = StructureType.PhysicalDeviceShaderFloatControlsFeaturesKhr,
-                PNext = pExtendedFeatures,
-                ShaderFloatControls = supportedFeaturesFloatControls.ShaderFloatControls,
-            };
+// 新增：启用 VK_KHR_shader_float_controls 特性
+PhysicalDeviceFloatControlsFeaturesKHR featuresFloatControls = new()
+{
+    SType = StructureType.PhysicalDeviceFloatControlsFeaturesKhr,
+    PNext = pExtendedFeatures,
+    ShaderFloatControls = supportedFeaturesFloatControls.ShaderFloatControls,
+};
 
-            if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_shader_float_controls"))
-            {
-                pExtendedFeatures = &featuresFloatControls;
-            }
+if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_shader_float_controls"))
+{
+    pExtendedFeatures = &featuresFloatControls;
+}
 
             PhysicalDeviceIndexTypeUint8FeaturesEXT featuresIndexU8;
 
