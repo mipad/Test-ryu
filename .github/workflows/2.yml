@@ -15,7 +15,8 @@ jobs:
       JAVA_OPTS: "-Xmx6g -XX:MaxMetaspaceSize=2g"
       GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4"
       PROJECT_DIR: src/RyujinxAndroid
-      ANDROID_NDK_VERSION: "25.2.9519653"
+      ANDROID_NDK_VERSION: "25.1.8937393"  # 有效版本号
+      NDK_DOWNLOAD_URL: "https://dl.google.com/android/repository/android-ndk-r25b-linux.zip"
       ANDROID_HOME: /usr/local/lib/android/sdk  # 默认 SDK 路径
       DOTNET_VERSION: "9.0.203"
       ANDROID_API_LEVEL: "35"
@@ -37,6 +38,58 @@ jobs:
         java-version: 17
         architecture: x64
 
+    - name: Install NDK
+      run: |
+        NDK_DIR="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}"
+        sudo mkdir -p $NDK_DIR
+        wget -q ${{ env.NDK_DOWNLOAD_URL }} -O ndk.zip
+        sudo unzip -q ndk.zip -d $NDK_DIR
+        sudo rm ndk.zip
+
+        # 处理嵌套目录
+        if [ -d "$NDK_DIR/android-ndk-r25b" ]; then
+          sudo mv $NDK_DIR/android-ndk-r25b/* $NDK_DIR
+          sudo rm -r $NDK_DIR/android-ndk-r25b
+        fi
+
+    - name: Verify NDK Installation
+      run: |
+        EXPECTED_NDK_VERSION="25.1.8937393"
+        NDK_PATH="$ANDROID_HOME/ndk/$EXPECTED_NDK_VERSION"
+        
+        # 检查目录存在性
+        if [ ! -d "$NDK_PATH" ]; then
+          echo "::error::NDK 目录不存在: $NDK_PATH"
+          exit 1
+        fi
+
+        # 检查版本文件
+        VERSION_FILE="$NDK_PATH/source.properties"
+        if [ ! -f "$VERSION_FILE" ]; then
+          echo "::error::NDK 版本文件缺失: $VERSION_FILE"
+          exit 1
+        fi
+
+        # 提取实际版本号
+        ACTUAL_NDK_VERSION=$(grep "Pkg.Revision" "$VERSION_FILE" | cut -d'=' -f2 | tr -d ' ')
+        echo "预期 NDK 版本: $EXPECTED_NDK_VERSION"
+        echo "实际 NDK 版本: $ACTUAL_NDK_VERSION"
+
+        # 验证版本一致性
+        if [ "$ACTUAL_NDK_VERSION" != "$EXPECTED_NDK_VERSION" ]; then
+          echo "::error::NDK 版本不匹配 (预期: $EXPECTED_NDK_VERSION, 实际: $ACTUAL_NDK_VERSION)"
+          exit 1
+        fi
+
+        # 检查工具链文件
+        CLANG_PATH="$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
+        if [ ! -f "$CLANG_PATH" ]; then
+          echo "::error::LLVM 工具链文件缺失: $CLANG_PATH"
+          exit 1
+        fi
+
+        echo "NDK 验证通过"
+        
     - name: Setup Android SDK/NDK
       uses: android-actions/setup-android@v3
       with:
