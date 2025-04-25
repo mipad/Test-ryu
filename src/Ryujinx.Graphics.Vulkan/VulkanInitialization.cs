@@ -36,7 +36,6 @@ namespace Ryujinx.Graphics.Vulkan
             "VK_EXT_robustness2",
             "VK_EXT_shader_stencil_export",
             "VK_KHR_shader_float16_int8",
-            
             "VK_EXT_shader_subgroup_ballot",
             "VK_NV_geometry_shader_passthrough",
             "VK_NV_viewport_array2",
@@ -47,8 +46,6 @@ namespace Ryujinx.Graphics.Vulkan
             "VK_KHR_maintenance2",
             "VK_EXT_attachment_feedback_loop_layout",
             "VK_EXT_attachment_feedback_loop_dynamic_state",
-            "VK_EXT_fragment_density_map", //
-            "VK_EXT_fragment_density_map2", //
         };
 
         private static readonly string[] _requiredExtensions = {
@@ -383,25 +380,6 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 features2.PNext = &supportedFeaturesDynamicAttachmentFeedbackLoopLayout;
             }
-            // 新增：查询 VK_EXT_fragment_density_map 和 VK_EXT_fragment_density_map2 特性
-            PhysicalDeviceFragmentDensityMapFeaturesEXT supportedFeaturesFragmentDensityMap = new()
-            {
-                SType = StructureType.PhysicalDeviceFragmentDensityMapFeaturesExt,
-                PNext = features2.PNext,
-            };
-
-            features2.PNext = &supportedFeaturesFragmentDensityMap;
-
-            PhysicalDeviceFragmentDensityMap2FeaturesEXT supportedFeaturesFragmentDensityMap2 = new()
-            {
-                SType = StructureType.PhysicalDeviceFragmentDensityMap2FeaturesExt,
-                PNext = features2.PNext,
-            };
-
-            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map2"))
-            {
-                features2.PNext = &supportedFeaturesFragmentDensityMap2;
-            }
 
             PhysicalDeviceVulkan12Features supportedPhysicalDeviceVulkan12Features = new()
             {
@@ -412,8 +390,6 @@ namespace Ryujinx.Graphics.Vulkan
             features2.PNext = &supportedPhysicalDeviceVulkan12Features;
 
             api.GetPhysicalDeviceFeatures2(physicalDevice.PhysicalDevice, &features2);
-
-
 
             var supportedFeatures = features2.Features;
 
@@ -444,27 +420,7 @@ namespace Ryujinx.Graphics.Vulkan
             };
 
             void* pExtendedFeatures = null;
-            // 新增：启用 VK_EXT_fragment_density_map 和 VK_EXT_fragment_density_map2 特性
-            PhysicalDeviceFragmentDensityMapFeaturesEXT featuresFragmentDensityMap = new()
-            {
-                SType = StructureType.PhysicalDeviceFragmentDensityMapFeaturesExt,
-                PNext = pExtendedFeatures,
-                FragmentDensityMap = supportedFeaturesFragmentDensityMap.FragmentDensityMap,
-            };
 
-            pExtendedFeatures = &featuresFragmentDensityMap;
-
-                if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map2"))
-                {
-            PhysicalDeviceFragmentDensityMap2FeaturesEXT featuresFragmentDensityMap2 = new()
-            {
-                SType = StructureType.PhysicalDeviceFragmentDensityMap2FeaturesExt,
-                PNext = pExtendedFeatures,
-                FragmentDensityMapDeferred = supportedFeaturesFragmentDensityMap2.FragmentDensityMapDeferred,
-            };
-
-            pExtendedFeatures = &featuresFragmentDensityMap2;
-            }
             PhysicalDeviceTransformFeedbackFeaturesEXT featuresTransformFeedback;
 
             if (physicalDevice.IsDeviceExtensionPresent(ExtTransformFeedback.ExtensionName))
@@ -539,6 +495,19 @@ namespace Ryujinx.Graphics.Vulkan
 
             pExtendedFeatures = &featuresVk12;
 
+            PhysicalDeviceIndexTypeUint8FeaturesEXT featuresIndexU8;
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_index_type_uint8"))
+            {
+                featuresIndexU8 = new PhysicalDeviceIndexTypeUint8FeaturesEXT
+                {
+                    SType = StructureType.PhysicalDeviceIndexTypeUint8FeaturesExt,
+                    PNext = pExtendedFeatures,
+                    IndexTypeUint8 = true,
+                };
+
+                pExtendedFeatures = &featuresIndexU8;
+            }
 
             PhysicalDeviceFragmentShaderInterlockFeaturesEXT featuresFragmentShaderInterlock;
 
