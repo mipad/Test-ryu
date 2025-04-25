@@ -49,7 +49,7 @@ jobs:
           platform-tools
           ndk;${{ env.ANDROID_NDK_VERSION }}  # 强制安装指定版本 NDK
 
-          - name: Download and Install NDK
+    - name: Download and Install NDK
       run: |
         # 创建 NDK 目录
         NDK_DIR="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}"
