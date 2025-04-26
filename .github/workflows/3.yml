@@ -111,7 +111,7 @@ jobs:
         echo "LLVM_PATH: $LLVM_PATH"
         echo "VULKAN_SDK: $VULKAN_SDK"
         echo "Vulkan 头文件存在性验证:"
-        ls $VULKAN_SDK/include/vulkan/vulkan.h
+        ls $VULKAN_SDK/include/x86_64/vulkan/vulkan.h
 
         # 执行构建命令
         ./gradlew clean assembleRelease \
