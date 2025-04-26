@@ -49,32 +49,19 @@ jobs:
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
-    - name: 安装 Vulkan SDK（直接指定目录）
+    - name: 下载并解压 Vulkan SDK
       run: |
-       # 1. 创建固定名称的目录
-       mkdir -p vulkan-sdk-1.4.309.0
-
-       # 2. 下载并解压到该目录（强制覆盖已有文件）
+       # 下载 SDK
        wget -O vulkan-sdk.tar.xz "https://sdk.lunarg.com/sdk/download/1.4.309.0/linux/vulkansdk-linux-x86_64-1.4.309.0.tar.xz"
-       tar -xJf vulkan-sdk.tar.xz -C vulkan-sdk-1.4.309.0 --strip-components=1
+    
+       # 解压到临时目录
+       mkdir -p vulkan-sdk-temp
+       tar -xJf vulkan-sdk.tar.xz -C vulkan-sdk-temp
+    
+       # 打印解压后的完整目录结构
+       echo "解压后的目录结构:"
+       tree vulkan-sdk-temp
 
-       # 3. 进入目录并执行安装脚本（如果存在）
-       cd vulkan-sdk-1.4.309.0
-       if [ -f "install.sh" ]; then
-       chmod +x install.sh
-       ./install.sh
-       fi
-
-       # 4. 设置环境变量（直接指向当前目录）
-       echo "VULKAN_SDK=$PWD" >> $GITHUB_ENV
-       echo "LD_LIBRARY_PATH=$PWD/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-       echo "PATH=$PWD/bin:$PATH" >> $GITHUB_PATH
-
-    - name: 验证安装
-      run: |
-       # 直接检查关键文件和工具
-       ls -l $VULKAN_SDK/lib/libvulkan.so
-       vulkaninfo --summary
             
     - name: Install Build Dependencies
       run: |
