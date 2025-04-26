@@ -72,42 +72,57 @@ jobs:
 
     - name: Build FFmpeg for Android
       run: |
-        export NDK_ROOT=/usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
-        export TOOLCHAIN=$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64
-        export TARGET=aarch64-linux-android
-        export API=${{ env.ANDROID_API_LEVEL }}
+       export NDK_ROOT="/usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}"
+       export TOOLCHAIN="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
+       export TARGET="aarch64-linux-android"
+       export API="${{ env.ANDROID_API_LEVEL }}"
+       export SYSROOT="$TOOLCHAIN/sysroot"
 
-        # 下载并编译 FFmpeg
-        if [ ! -d "ffmpeg-$FFMPEG_VERSION" ]; then
-          wget https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.gz
-          tar -xzf ffmpeg-$FFMPEG_VERSION.tar.gz
-        fi
-        cd ffmpeg-$FFMPEG_VERSION
+       # 设置工具链环境变量
+       export AR="$TOOLCHAIN/bin/llvm-ar"
+       export CC="$TOOLCHAIN/bin/$TARGET$API-clang"
+       export CXX="$TOOLCHAIN/bin/$TARGET$API-clang++"
+       export LD="$TOOLCHAIN/bin/ld"
+       export STRIP="$TOOLCHAIN/bin/llvm-strip"
+       export RANLIB="$TOOLCHAIN/bin/llvm-ranlib"
 
-        ./configure \
-          --target-os=android \
-          --arch=arm64 \
-          --enable-shared \
-          --disable-static \
-          --cross-prefix=$TOOLCHAIN/bin/$TARGET- \
-          --sysroot=$TOOLCHAIN/sysroot \
-          --prefix=./android-build \
-          --enable-jni \
-          --enable-mediacodec \
-          --enable-neon \
-          --enable-asm \
-          --enable-pic \
-          --enable-gpl \
-          --enable-libx264 \
-          --enable-libx265 \
-          --extra-cflags="-fPIC -DANDROID -I$TOOLCHAIN/sysroot/usr/include" \
-          --extra-ldflags="-Wl,-rpath-link=$TOOLCHAIN/sysroot/usr/lib/$TARGET/$API"
+       # 下载并解压 FFmpeg
+       if [ ! -d "ffmpeg-$FFMPEG_VERSION" ]; then
+        wget "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.gz"
+        tar -xzf "ffmpeg-$FFMPEG_VERSION.tar.gz"
+       fi
+       cd "ffmpeg-$FFMPEG_VERSION"
 
-        make -j$(nproc) && make install
+       # 清理旧配置
+       make distclean || true
 
-        # 复制生成的库
-        mkdir -p ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/src/main/jniLibs/arm64-v8a
-        cp -r android-build/lib/*.so ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/src/main/jniLibs/arm64-v8a
+       # 配置 FFmpeg
+       ./configure \
+       --target-os=android \
+       --arch=aarch64 \
+       --enable-shared \
+       --disable-static \
+       --cross-prefix="$TOOLCHAIN/bin/$TARGET-" \
+       --sysroot="$SYSROOT" \
+       --prefix=./android-build \
+       --enable-jni \
+       --enable-mediacodec \
+       --enable-neon \
+       --enable-asm \
+       --enable-pic \
+       --enable-gpl \
+       --enable-libx264 \
+       --enable-libx265 \
+       --extra-cflags="-fPIC -DANDROID -I$SYSROOT/usr/include" \
+       --extra-ldflags="-Wl,-rpath-link=$SYSROOT/usr/lib/$TARGET/$API -L$SYSROOT/usr/lib/$TARGET/$API"
+
+       # 编译并安装
+       make -j$(nproc) && make install
+
+       # 复制生成的库
+       mkdir -p ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/src/main/jniLibs/arm64-v8a
+       cp -r android-build/lib/*.so ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/src/main/jniLibs/arm64-v8a
+    
 
     - name: Build APK
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
