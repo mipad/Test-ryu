@@ -2,14 +2,14 @@ name: Android CI Fix
 
 on:
   push:
-    branches: [ "4" ]
+    branches: ["4"]
   pull_request:
     branches: ["4"]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60  # 延长超时时间
+    timeout-minutes: 60
 
     env:
       JAVA_OPTS: "-Xmx6g -XX:MaxMetaspaceSize=2g"
@@ -18,11 +18,10 @@ jobs:
       ANDROID_NDK_VERSION: "27.2.12479018"
       DOTNET_VERSION: "9.0.203"
       ANDROID_API_LEVEL: "35"
-      FFMPEG_VERSION: "6.1.1"  # 新增 FFmpeg 版本变量
-      VULKAN_SDK_VERSION: "1.4.309.0"  # 新增 Vulkan SDK 版本变量
+      FFMPEG_VERSION: "6.1.1"
+      VULKAN_SDK_VERSION: "1.4.309.0"
 
     steps:
-    # ========== 1. 代码检出 ==========
     - name: Checkout code
       uses: actions/checkout@v4
       with:
@@ -30,7 +29,6 @@ jobs:
         ref: 4
         path: Test-ryu
 
-    # ========== 2. 环境配置 ==========
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
@@ -42,7 +40,7 @@ jobs:
       uses: android-actions/setup-android@v3
       with:
         ndk-version: ${{ env.ANDROID_NDK_VERSION }}
-        cmake-version: 3.22.1
+        cmake-version: "3.22.1"
 
     - name: Setup .NET SDK
       uses: actions/setup-dotnet@v4
@@ -51,134 +49,81 @@ jobs:
 
     - name: 下载并解压 Vulkan SDK
       run: |
-       # 下载 SDK
-       wget -O vulkan-sdk.tar.xz "https://sdk.lunarg.com/sdk/download/1.4.309.0/linux/vulkansdk-linux-x86_64-1.4.309.0.tar.xz"
-    
-       # 解压到临时目录
-       mkdir -p vulkan-sdk-temp
-       tar -xJf vulkan-sdk.tar.xz -C vulkan-sdk-temp
-    
-       # 打印解压后的完整目录结构
-       echo "解压后的目录结构:"
-       tree vulkan-sdk-temp
+        wget -O vulkan-sdk.tar.xz "https://sdk.lunarg.com/sdk/download/${{ env.VULKAN_SDK_VERSION }}/linux/vulkansdk-linux-x86_64-${{ env.VULKAN_SDK_VERSION }}.tar.xz"
+        mkdir -p vulkan-sdk-temp
+        tar -xJf vulkan-sdk.tar.xz -C vulkan-sdk-temp
+        echo "解压后的目录结构:"
+        tree vulkan-sdk-temp
 
-            
+    - name: 配置 Vulkan SDK 环境变量
+      run: |
+        VULKAN_SDK_PATH="${{ github.workspace }}/vulkan-sdk-temp/${{ env.VULKAN_SDK_VERSION }}"
+        echo "VULKAN_SDK=$VULKAN_SDK_PATH" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=$VULKAN_SDK_PATH/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+        echo "PATH=$VULKAN_SDK_PATH/bin:$PATH" >> $GITHUB_ENV
+
     - name: Install Build Dependencies
       run: |
         sudo apt-get update && sudo apt-get install -y \
-        nasm yasm pkg-config clang \
-        libssl-dev zlib1g-dev \
-        libx264-dev libx265-dev
-      
-    # ========== 4. 交叉编译 FFmpeg ==========
+          nasm yasm pkg-config clang \
+          libssl-dev zlib1g-dev \
+          libx264-dev libx265-dev \
+          ninja-build libvulkan-dev libgl1-mesa-dev
+
     - name: Build FFmpeg for Android
       run: |
-       # 确保 NDK 路径正确（根据实际路径调整）
-       export NDK_ROOT=/usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
-       export TOOLCHAIN=$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64
-       export TARGET=aarch64-linux-android
-       export API=${{ env.ANDROID_API_LEVEL }}
+        export NDK_ROOT=/usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
+        export TOOLCHAIN=$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64
+        export TARGET=aarch64-linux-android
+        export API=${{ env.ANDROID_API_LEVEL }}
 
-       # 添加关键环境变量
-       export AR=$TOOLCHAIN/bin/llvm-ar
-       export CC=$TOOLCHAIN/bin/$TARGET$API-clang
-       export CXX=$TOOLCHAIN/bin/$TARGET$API-clang++
-       export LD=$TOOLCHAIN/bin/ld
-       export STRIP=$TOOLCHAIN/bin/llvm-strip
-       export RANLIB=$TOOLCHAIN/bin/llvm-ranlib
-   
-       # 验证编译器能否运行
-       $CC --version || echo "Compiler check failed!"
+        # 下载并编译 FFmpeg
+        if [ ! -d "ffmpeg-$FFMPEG_VERSION" ]; then
+          wget https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.gz
+          tar -xzf ffmpeg-$FFMPEG_VERSION.tar.gz
+        fi
+        cd ffmpeg-$FFMPEG_VERSION
 
         ./configure \
-        --target-os=android \
-        --arch=arm64 \
-        --enable-shared \
-        --disable-static \
-        --cross-prefix=$TOOLCHAIN/bin/$TARGET- \
-        --sysroot=$TOOLCHAIN/sysroot \
-        --prefix=./android-build \
-        --enable-jni \
-        --enable-mediacodec \
-        --enable-neon \
-        --enable-asm \
-        --enable-pic \
-        --extra-cflags="-fPIC -DANDROID" \
-        --extra-ldflags="-Wl,-rpath-link=$TOOLCHAIN/sysroot/usr/lib/$TARGET/$API"
+          --target-os=android \
+          --arch=arm64 \
+          --enable-shared \
+          --disable-static \
+          --cross-prefix=$TOOLCHAIN/bin/$TARGET- \
+          --sysroot=$TOOLCHAIN/sysroot \
+          --prefix=./android-build \
+          --enable-jni \
+          --enable-mediacodec \
+          --enable-neon \
+          --enable-asm \
+          --enable-pic \
+          --enable-gpl \
+          --enable-libx264 \
+          --enable-libx265 \
+          --extra-cflags="-fPIC -DANDROID -I$TOOLCHAIN/sysroot/usr/include" \
+          --extra-ldflags="-Wl,-rpath-link=$TOOLCHAIN/sysroot/usr/lib/$TARGET/$API"
 
-        # 编译并安装
         make -j$(nproc) && make install
 
-        # 复制生成的 .so 文件到项目的 jniLibs 目录
+        # 复制生成的库
         mkdir -p ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/src/main/jniLibs/arm64-v8a
         cp -r android-build/lib/*.so ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/src/main/jniLibs/arm64-v8a
 
-    # ========== 5. 环境验证 ==========
-    - name: Verify .NET SDK Installation
-      run: |
-        dotnet --list-sdks
-        echo "检查是否安装 .NET ${{ env.DOTNET_VERSION }}"
-
-    - name: Install NDK Platform Libraries
-      run: |
-        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-${{ env.ANDROID_API_LEVEL }}"
-
-    - name: Configure Environment Paths
-      shell: bash
-      run: |
-        ANDROID_NDK_HOME="/usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}"
-        LLVM_PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
-        LIB_DIR="$LLVM_PATH/sysroot/usr/lib/aarch64-linux-android/${{ env.ANDROID_API_LEVEL }}"
-
-        echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
-        echo "LLVM_PATH=$LLVM_PATH" >> $GITHUB_ENV
-        echo "LIB_DIR=$LIB_DIR" >> $GITHUB_ENV
-        echo "$LLVM_PATH/bin" >> $GITHUB_PATH
-
-        # 检查路径是否存在
-        echo "检查 NDK 路径:"
-        ls -l $ANDROID_NDK_HOME
-        echo "检查 LLVM 工具链:"
-        ls -l $LLVM_PATH/bin/clang
-
-    # ========== 6. 主构建流程 ==========
     - name: Build APK
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       env:
         OPENSSL_ROOT_DIR: /opt/openssl-x64
-        VULKAN_SDK: ${{ env.VULKAN_SDK }}  # 传递 Vulkan SDK 路径
+        VULKAN_SDK: ${{ env.VULKAN_SDK }}
       run: |
-        # 修复文件权限
         chmod +x gradlew
-        find . -name "*.sh" -exec chmod +x {} \;
-
-        # 调试输出：关键环境变量
-        echo "LLVM_PATH: $LLVM_PATH"
-        echo "OPENSSL_ROOT_DIR: $OPENSSL_ROOT_DIR"
-        echo "VULKAN_SDK: $VULKAN_SDK"
-
-        # 执行构建
         ./gradlew clean assembleRelease \
           -DllvmToolchainPath=$LLVM_PATH \
           -Dopenssl.root=$OPENSSL_ROOT_DIR \
           -Dffmpeg.dir=${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/src/main/jniLibs/arm64-v8a \
+          -Dvulkan.sdk.path=$VULKAN_SDK \
           -Pandroid.overridePathCheck=true \
           --no-daemon \
           --stacktrace
-
-    # ========== 7. 检查产物 ==========
-    - name: Find Native Libraries (.so)
-      working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
-      run: |
-        echo "========== 开始搜索 .so 文件 =========="
-        find app/build -name "*.so" -print
-        echo "========== 搜索完成 =========="
-
-    - name: Upload Native Libraries
-      uses: actions/upload-artifact@v4
-      with:
-        name: native-libs
-        path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/**/*.so
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
