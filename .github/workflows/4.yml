@@ -53,7 +53,7 @@ jobs:
     - name: Install Vulkan SDK
       run: |
         # 下载并解压 Vulkan SDK
-        VULKAN_SDK_URL="https://sdk.lunarg.com/sdk/download/${{ env.VULKAN_SDK_VERSION }}/linux/vulkansdk-linux-x86_64-${{ env.VULKAN_SDK_VERSION }}.tar.gz"
+        VULKAN_SDK_URL="https://sdk.lunarg.com/sdk/download/1.4.309.0/linux/vulkansdk-linux-x86_64-1.4.309.0.tar.xz"
         wget -O vulkan-sdk.tar.gz "$VULKAN_SDK_URL"
         tar -xzf vulkan-sdk.tar.gz -C /opt
         echo "VULKAN_SDK=/opt/${{ env.VULKAN_SDK_VERSION }}" >> $GITHUB_ENV
