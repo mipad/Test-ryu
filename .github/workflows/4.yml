@@ -49,28 +49,26 @@ jobs:
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
-    # ========== 3. 安装 Vulkan SDK ==========
     - name: Install Vulkan SDK
       run: |
-       # 下载并解压
-       wget -O vulkan-sdk.tar.xz "https://sdk.lunarg.com/sdk/download/1.4.309.0/linux/vulkansdk-linux-x86_64-1.4.309.0.tar.xz"
-       tar -xJf vulkan-sdk.tar.xz -C /opt
+          # 下载并解压
+          wget -O vulkan-sdk.tar.xz "https://sdk.lunarg.com/sdk/download/1.4.309.0/linux/vulkansdk-linux-x86_64-1.4.309.0.tar.xz"
+          tar -xJf vulkan-sdk.tar.xz -C /opt
 
-       # 进入目录并查找安装脚本
-       cd /opt/vulkansdk-linux-x86_64-1.4.309.0
-       INSTALL_SCRIPTS=$(find . -maxdepth 1 -type f -name "*.sh" \( -iname "*install*" -o -iname "*setup*" \))
+          # 动态匹配目录名（支持带时间戳的目录）
+          VULKAN_SDK_DIR=$(ls /opt | grep "vulkansdk.*1.4.309.0")
+          if [ -z "$VULKAN_SDK_DIR" ]; then
+            echo "错误: 解压后未找到 Vulkan SDK 目录"
+            exit 1
+          fi
 
-       # 执行脚本
-       if [ -n "$INSTALL_SCRIPTS" ]; then
-       echo "执行安装脚本: $INSTALL_SCRIPTS"
-       for script in $INSTALL_SCRIPTS; do
-        chmod +x "$script"
-        ./"$script"
-       done
-       fi
+          # 设置环境变量
+          echo "VULKAN_SDK=/opt/${VULKAN_SDK_DIR}/x86_64" >> $GITHUB_ENV
 
-       # 设置环境变量（假设安装脚本未自动设置）
-       echo "VULKAN_SDK=/opt/vulkansdk-linux-x86_64-1.4.309.0/x86_64" >> $GITHUB_ENV
+    - name: Verify Installation
+      run: |
+          echo "验证路径: $VULKAN_SDK"
+          ls -l "$VULKAN_SDK/lib/libvulkan.so"
     
     - name: Verify Vulkan SDK Installation
       run: |
