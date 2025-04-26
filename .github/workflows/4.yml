@@ -58,7 +58,66 @@ jobs:
         tar -xJf vulkan-sdk.tar.gz -C /opt
         echo "VULKAN_SDK=/opt/1.4.309.0" >> $GITHUB_ENV
         echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/1.4.309.0/lib" >> $GITHUB_ENV
-        
+    - name: Verify Vulkan SDK Installation
+      run: |
+       # 1. 检查环境变量
+       echo "验证环境变量:"
+       echo "VULKAN_SDK = $VULKAN_SDK"
+       if [ -z "$VULKAN_SDK" ]; then
+       echo "错误: VULKAN_SDK 环境变量未设置!"
+       exit 1
+       fi
+
+       # 2. 检查 SDK 目录是否存在
+       echo "检查 Vulkan SDK 目录:"
+       ls -l $VULKAN_SDK
+       if [ ! -d "$VULKAN_SDK" ]; then
+        echo "错误: Vulkan SDK 目录不存在!"
+        exit 1
+       fi
+
+       # 3. 检查关键文件是否存在
+       REQUIRED_FILES=(
+        "$VULKAN_SDK/lib/libvulkan.so"
+        "$VULKAN_SDK/bin/vulkaninfo"
+        "$VULKAN_SDK/include/vulkan/vulkan.h"
+       )
+
+       echo "验证关键文件:"
+       for file in "${REQUIRED_FILES[@]}"; do
+         if [ -e "$file" ]; then
+        echo "存在: $file"
+         else
+        echo "错误: 缺少文件 $file"
+        exit 1
+        fi
+       done
+
+       # 4. 验证版本号
+       echo "验证版本号:"
+       SDK_VERSION_FILE="$VULKAN_SDK/source.json"
+       if [ -f "$SDK_VERSION_FILE" ]; then
+      SDK_VERSION=$(grep -oP '"version": "\K[^"]+' $SDK_VERSION_FILE)
+      echo "安装的 Vulkan SDK 版本: $SDK_VERSION"
+      if [ "$SDK_VERSION" != "1.4.309.0" ]; then
+        echo "错误: 版本不匹配 (预期: 1.4.309.0, 实际: $SDK_VERSION)"
+        exit 1
+      fi
+    else
+      echo "错误: 未找到版本文件 source.json"
+      exit 1
+    fi
+
+    # 5. 运行 vulkaninfo 验证功能
+    echo "运行 vulkaninfo:"
+    $VULKAN_SDK/bin/vulkaninfo --summary
+    if [ $? -ne 0 ]; then
+      echo "错误: vulkaninfo 运行失败!"
+      exit 1
+    fi
+
+    echo "✅ Vulkan SDK 验证通过!"
+    
     - name: Install Build Dependencies
       run: |
         sudo apt-get update && sudo apt-get install -y \
