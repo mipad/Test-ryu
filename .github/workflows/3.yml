@@ -57,12 +57,20 @@ jobs:
         echo "解压后的目录结构:"
         tree vulkan-sdk-temp
 
-    - name: 配置 Vulkan SDK 环境变量
+    - name: 配置 Vulkan 环境变量
       run: |
+        # 根据实际路径调整（示例路径为 vulkan-sdk-temp/1.4.309.0/x86_64）
         VULKAN_SDK_PATH="${{ github.workspace }}/vulkan-sdk-temp/${{ env.VULKAN_SDK_VERSION }}/x86_64"
+        
+        # 验证路径
+        echo "Vulkan SDK 路径: $VULKAN_SDK_PATH"
+        ls -l $VULKAN_SDK_PATH/include/vulkan/vulkan.h
+        
+        # 导出环境变量
         echo "VULKAN_SDK=$VULKAN_SDK_PATH" >> $GITHUB_ENV
+        echo "PATH=$VULKAN_SDK_PATH/bin:$PATH" >> $GITHUB_PATH
         echo "LD_LIBRARY_PATH=$VULKAN_SDK_PATH/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-        echo "PATH=$VULKAN_SDK_PATH/bin:$PATH" >> $GITHUB_ENV
+        
       
 
     # ========== 4. 验证环境 ==========
