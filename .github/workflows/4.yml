@@ -97,26 +97,26 @@ jobs:
        echo "验证版本号:"
        SDK_VERSION_FILE="$VULKAN_SDK/source.json"
        if [ -f "$SDK_VERSION_FILE" ]; then
-      SDK_VERSION=$(grep -oP '"version": "\K[^"]+' $SDK_VERSION_FILE)
-      echo "安装的 Vulkan SDK 版本: $SDK_VERSION"
-      if [ "$SDK_VERSION" != "1.4.309.0" ]; then
+       SDK_VERSION=$(grep -oP '"version": "\K[^"]+' $SDK_VERSION_FILE)
+       echo "安装的 Vulkan SDK 版本: $SDK_VERSION"
+       if [ "$SDK_VERSION" != "1.4.309.0" ]; then
         echo "错误: 版本不匹配 (预期: 1.4.309.0, 实际: $SDK_VERSION)"
         exit 1
-      fi
-    else
-      echo "错误: 未找到版本文件 source.json"
-      exit 1
-    fi
+       fi
+       else
+       echo "错误: 未找到版本文件 source.json"
+       exit 1
+       fi
 
-    # 5. 运行 vulkaninfo 验证功能
-    echo "运行 vulkaninfo:"
-    $VULKAN_SDK/bin/vulkaninfo --summary
-    if [ $? -ne 0 ]; then
-      echo "错误: vulkaninfo 运行失败!"
-      exit 1
-    fi
+       # 5. 运行 vulkaninfo 验证功能
+       echo "运行 vulkaninfo:"
+       $VULKAN_SDK/bin/vulkaninfo --summary
+       if [ $? -ne 0 ]; then
+       echo "错误: vulkaninfo 运行失败!"
+       exit 1
+       fi
 
-    echo "✅ Vulkan SDK 验证通过!"
+       echo "✅ Vulkan SDK 验证通过!"
     
     - name: Install Build Dependencies
       run: |
