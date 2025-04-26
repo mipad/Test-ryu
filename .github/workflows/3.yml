@@ -93,7 +93,7 @@ jobs:
         echo "===== NDK 路径验证 ====="
         ls -l $ANDROID_NDK_HOME
         echo "===== Vulkan SDK 头文件验证 ====="
-        ls -l $VULKAN_SDK/include/vulkan/vulkan.h
+        ls -l $VULKAN_SDK/include/x86_64/vulkan/vulkan.h
 
     # ========== 5. 主构建流程 ==========
     - name: Build APK
