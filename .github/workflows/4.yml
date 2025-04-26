@@ -58,35 +58,49 @@ jobs:
         tar -xJf vulkan-sdk.tar.gz -C /opt
         echo "VULKAN_SDK=/opt/${{ env.VULKAN_SDK_VERSION }}" >> $GITHUB_ENV
         echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/${{ env.VULKAN_SDK_VERSION }}/lib" >> $GITHUB_ENV
-
+        
+    - name: Install Build Dependencies
+      run: |
+        sudo apt-get update && sudo apt-get install -y \
+        nasm yasm pkg-config clang \
+        libssl-dev zlib1g-dev \
+        libx264-dev libx265-dev
+      
     # ========== 4. 交叉编译 FFmpeg ==========
     - name: Build FFmpeg for Android
       run: |
-        # 安装依赖
-        sudo apt-get update && sudo apt-get install -y \
-          nasm yasm pkg-config clang
+       # 确保 NDK 路径正确（根据实际路径调整）
+       export NDK_ROOT=/usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
+       export TOOLCHAIN=$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64
+       export TARGET=aarch64-linux-android
+       export API=${{ env.ANDROID_API_LEVEL }}
 
-        # 下载 FFmpeg 源码
-        wget https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.gz
-        tar -xzf ffmpeg-${{ env.FFMPEG_VERSION }}.tar.gz
-        cd ffmpeg-${{ env.FFMPEG_VERSION }}
-
-        # 配置编译参数（arm64-v8a）
-        export NDK_ROOT=/usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
-        export TOOLCHAIN=$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64
-        export TARGET=aarch64-linux-android
-        export API=${{ env.ANDROID_API_LEVEL }}
+       # 添加关键环境变量
+       export AR=$TOOLCHAIN/bin/llvm-ar
+       export CC=$TOOLCHAIN/bin/$TARGET$API-clang
+       export CXX=$TOOLCHAIN/bin/$TARGET$API-clang++
+       export LD=$TOOLCHAIN/bin/ld
+       export STRIP=$TOOLCHAIN/bin/llvm-strip
+       export RANLIB=$TOOLCHAIN/bin/llvm-ranlib
+   
+       # 验证编译器能否运行
+       $CC --version || echo "Compiler check failed!"
 
         ./configure \
-          --target-os=android \
-          --arch=arm64 \
-          --enable-shared \
-          --disable-static \
-          --cross-prefix=$TOOLCHAIN/bin/$TARGET- \
-          --sysroot=$TOOLCHAIN/sysroot \
-          --prefix=./android-build \
-          --enable-jni \
-          --enable-mediacodec
+        --target-os=android \
+        --arch=arm64 \
+        --enable-shared \
+        --disable-static \
+        --cross-prefix=$TOOLCHAIN/bin/$TARGET- \
+        --sysroot=$TOOLCHAIN/sysroot \
+        --prefix=./android-build \
+        --enable-jni \
+        --enable-mediacodec \
+        --enable-neon \
+        --enable-asm \
+        --enable-pic \
+        --extra-cflags="-fPIC -DANDROID" \
+        --extra-ldflags="-Wl,-rpath-link=$TOOLCHAIN/sysroot/usr/lib/$TARGET/$API"
 
         # 编译并安装
         make -j$(nproc) && make install
