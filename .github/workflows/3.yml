@@ -51,28 +51,19 @@ jobs:
     # ========== 3. 安装 Vulkan SDK ==========
     - name: 下载并解压 Vulkan SDK
       run: |
-        # 下载 Vulkan SDK
         wget -O vulkan-sdk.tar.xz "https://sdk.lunarg.com/sdk/download/${{ env.VULKAN_SDK_VERSION }}/linux/vulkansdk-linux-x86_64-${{ env.VULKAN_SDK_VERSION }}.tar.xz"
-        
-        # 解压到指定目录
-        mkdir -p vulkan-sdk
-        tar -xJf vulkan-sdk.tar.xz -C vulkan-sdk --strip-components=1
-        
-        # 验证目录结构
-        echo "Vulkan SDK 目录结构:"
-        tree vulkan-sdk
+        mkdir -p vulkan-sdk-temp
+        tar -xJf vulkan-sdk.tar.xz -C vulkan-sdk-temp
+        echo "解压后的目录结构:"
+        tree vulkan-sdk-temp
 
-    - name: 配置 Vulkan 环境变量
+    - name: 配置 Vulkan SDK 环境变量
       run: |
-        # 设置永久环境变量
-        VULKAN_SDK_PATH="${{ github.workspace }}/vulkan-sdk/${{ env.VULKAN_SDK_VERSION }}"
+        VULKAN_SDK_PATH="${{ github.workspace }}/vulkan-sdk-temp/${{ env.VULKAN_SDK_VERSION }}"
         echo "VULKAN_SDK=$VULKAN_SDK_PATH" >> $GITHUB_ENV
         echo "LD_LIBRARY_PATH=$VULKAN_SDK_PATH/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-        echo "PATH=$VULKAN_SDK_PATH/bin:$PATH" >> $GITHUB_PATH
-        
-        # 验证环境变量
-        echo "VULKAN_SDK 路径: $VULKAN_SDK_PATH"
-        ls -l $VULKAN_SDK_PATH/include/vulkan/
+        echo "PATH=$VULKAN_SDK_PATH/bin:$PATH" >> $GITHUB_ENV
+      
 
     # ========== 4. 验证环境 ==========
     - name: Verify .NET SDK Installation
