@@ -9,20 +9,39 @@ namespace Ryujinx.Horizon.Sdk.Codec.Detail
     partial class HardwareOpusDecoderManager : IHardwareOpusDecoderManager
     {
         [CmifCommand(0)]
-        public Result OpenHardwareOpusDecoder(
-            out IHardwareOpusDecoder decoder,
-            HardwareOpusDecoderParameterInternal parameter,
-            [CopyHandle] int workBufferHandle,
-            int workBufferSize)
+public Result OpenHardwareOpusDecoder(
+    out IHardwareOpusDecoder decoder,
+    HardwareOpusDecoderParameterInternal parameter,
+    [CopyHandle] int workBufferHandle,
+    int workBufferSize)
+{
+    decoder = null;
+    try
+    {
+        if (!IsValidSampleRate(parameter.SampleRate))
         {
-            decoder = null;
+            HorizonStatic.Syscall.CloseHandle(workBufferHandle);
+            return CodecResult.InvalidSampleRate;
+        }
 
-            if (!IsValidSampleRate(parameter.SampleRate))
-            {
-                HorizonStatic.Syscall.CloseHandle(workBufferHandle);
+        if (!IsValidChannelCount(parameter.ChannelsCount))
+        {
+            HorizonStatic.Syscall.CloseHandle(workBufferHandle);
+            return CodecResult.InvalidChannelCount;
+        }
 
-                return CodecResult.InvalidSampleRate;
-            }
+        decoder = new HardwareOpusDecoder(parameter.SampleRate, parameter.ChannelsCount, workBufferHandle);
+        return Result.Success;
+    }
+    finally
+    {
+        // 确保在创建失败时关闭句柄
+        if (decoder == null && workBufferHandle != 0)
+        {
+            HorizonStatic.Syscall.CloseHandle(workBufferHandle);
+        }
+    }
+}
 
             if (!IsValidChannelCount(parameter.ChannelsCount))
             {
@@ -54,7 +73,10 @@ namespace Ryujinx.Horizon.Sdk.Codec.Detail
             int opusDecoderSize = GetOpusDecoderSize(parameter.ChannelsCount);
 
             int sampleRateRatio = parameter.SampleRate != 0 ? 48000 / parameter.SampleRate : 0;
-            int frameSize = BitUtils.AlignUp(sampleRateRatio != 0 ? parameter.ChannelsCount * 1920 / sampleRateRatio : 0, 64);
+            int frameSize = BitUtils.AlignUp(
+    sampleRateRatio != 0 ? parameter.ChannelsCount * 1920 / sampleRateRatio : 0,
+    Constants.WorkBufferAlignment
+);
             size = opusDecoderSize + 1536 + frameSize;
 
             return Result.Success;
@@ -120,14 +142,17 @@ namespace Ryujinx.Horizon.Sdk.Codec.Detail
 
             if (!IsValidNumberOfStreams(parameter.NumberOfStreams, parameter.NumberOfStereoStreams, parameter.ChannelsCount))
             {
-                return CodecResult.InvalidSampleRate;
+                return CodecResult.InvalidNumberOfStreams;
             }
 
             int opusDecoderSize = GetOpusMultistreamDecoderSize(parameter.NumberOfStreams, parameter.NumberOfStereoStreams);
 
             int streamSize = BitUtils.AlignUp(parameter.NumberOfStreams * 1500, 64);
             int sampleRateRatio = parameter.SampleRate != 0 ? 48000 / parameter.SampleRate : 0;
-            int frameSize = BitUtils.AlignUp(sampleRateRatio != 0 ? parameter.ChannelsCount * 1920 / sampleRateRatio : 0, 64);
+            int frameSize = BitUtils.AlignUp(
+    sampleRateRatio != 0 ? parameter.ChannelsCount * 1920 / sampleRateRatio : 0,
+    Constants.WorkBufferAlignment
+);
             size = opusDecoderSize + streamSize + frameSize;
 
             return Result.Success;
@@ -248,7 +273,10 @@ namespace Ryujinx.Horizon.Sdk.Codec.Detail
 
             int frameSizeMono48KHz = parameter.Flags.HasFlag(OpusDecoderFlags.LargeFrameSize) ? 5760 : 1920;
             int sampleRateRatio = parameter.SampleRate != 0 ? 48000 / parameter.SampleRate : 0;
-            int frameSize = BitUtils.AlignUp(sampleRateRatio != 0 ? parameter.ChannelsCount * frameSizeMono48KHz / sampleRateRatio : 0, 64);
+            int frameSize = BitUtils.AlignUp(
+    sampleRateRatio != 0 ? parameter.ChannelsCount * frameSizeMono48KHz / sampleRateRatio : 0,
+    Constants.WorkBufferAlignment
+);
             size = opusDecoderSize + 1536 + frameSize;
 
             return Result.Success;
@@ -280,7 +308,10 @@ namespace Ryujinx.Horizon.Sdk.Codec.Detail
             int frameSizeMono48KHz = parameter.Flags.HasFlag(OpusDecoderFlags.LargeFrameSize) ? 5760 : 1920;
             int streamSize = BitUtils.AlignUp(parameter.NumberOfStreams * 1500, 64);
             int sampleRateRatio = parameter.SampleRate != 0 ? 48000 / parameter.SampleRate : 0;
-            int frameSize = BitUtils.AlignUp(sampleRateRatio != 0 ? parameter.ChannelsCount * frameSizeMono48KHz / sampleRateRatio : 0, 64);
+            int frameSize = BitUtils.AlignUp(
+    sampleRateRatio != 0 ? parameter.ChannelsCount * frameSizeMono48KHz / sampleRateRatio : 0,
+    Constants.WorkBufferAlignment
+);
             size = opusDecoderSize + streamSize + frameSize;
 
             return Result.Success;
@@ -288,33 +319,29 @@ namespace Ryujinx.Horizon.Sdk.Codec.Detail
 
         private static int GetDspOpusDecoderSize(int channelsCount)
         {
-            // TODO: Figure out the size returned here.
-            // Not really important because we don't use the work buffer, and the size being lower is fine.
-
-            return 0;
+            // 临时实现：假设 DSP 解码器大小是标准值的 1.5 倍
+    return (int)(GetOpusDecoderSize(channelsCount) * 1.5);
         }
 
         private static int GetDspOpusMultistreamDecoderSize(int streams, int coupledStreams)
         {
-            // TODO: Figure out the size returned here.
-            // Not really important because we don't use the work buffer, and the size being lower is fine.
-
-            return 0;
+            return (int)(GetOpusMultistreamDecoderSize(streams, coupledStreams) * 1.2);
+           
         }
 
         private static int GetOpusDecoderSize(int channelsCount)
         {
             const int SilkDecoderSize = 0x2160;
 
-            if (channelsCount < 1 || channelsCount > 2)
-            {
-                return 0;
-            }
+    if (channelsCount < 1 || channelsCount > 2)
+    {
+        return 0;
+    }
 
-            int celtDecoderSize = GetCeltDecoderSize(channelsCount);
-            int opusDecoderSize = GetOpusDecoderAllocSize(channelsCount) | 0x50;
+    int celtDecoderSize = GetCeltDecoderSize(channelsCount);
+    int opusDecoderSize = GetOpusDecoderAllocSize(channelsCount) + 0x50; // 使用加法而非按位或
 
-            return opusDecoderSize + SilkDecoderSize + celtDecoderSize;
+    return opusDecoderSize + SilkDecoderSize + celtDecoderSize;
         }
 
         private static int GetOpusMultistreamDecoderSize(int streams, int coupledStreams)
@@ -352,12 +379,13 @@ namespace Ryujinx.Horizon.Sdk.Codec.Detail
 
         private static bool IsValidChannelCount(int channelsCount)
         {
-            return channelsCount > 0 && channelsCount <= 2;
+            return channelsCount > 0 && channelsCount <= Constants.ChannelCountMax;
         }
 
         private static bool IsValidMultiChannelCount(int channelsCount)
         {
-            return channelsCount > 0 && channelsCount <= 255;
+           
+    return channelsCount > 0 && channelsCount <= Constants.ChannelCountMax;
         }
 
         private static bool IsValidSampleRate(int sampleRate)
