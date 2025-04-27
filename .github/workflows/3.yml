@@ -110,8 +110,9 @@ jobs:
         OPENSSL_ROOT_DIR: /opt/openssl-x64
         VULKAN_SDK: ${{ env.VULKAN_SDK }}  # 传递 Vulkan SDK 路径
       run: |
-        # 修复文件权限
-        chmod +x gradlew
+       echo "当前目录: $(pwd)"
+        ls -l
+        
       
 
         # 调试输出
@@ -121,6 +122,7 @@ jobs:
         echo "Vulkan 头文件存在性验证:"
         ls $VULKAN_SDK/include/vulkan/vulkan.h
 
+        chmod +x gradlew
         # 执行构建命令
         ./gradlew clean assembleRelease \
           -DllvmToolchainPath=$LLVM_PATH \
