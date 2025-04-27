@@ -88,7 +88,7 @@ namespace LibRyujinx.Android
         private static void CallVoidMethod(string name, string descriptor, params JValue[] values)
         {
             using var env = JniEnv.Create();
-            if (_methodCache.TryGetValue((name, descriptor), out var method))
+            if (env != null && _methodCache.TryGetValue((name, descriptor), out var method))
             {
                 if (descriptor.EndsWith("V"))
                 {
@@ -100,7 +100,7 @@ namespace LibRyujinx.Android
         private static JLong CallLongMethod(string name, string descriptor, params JValue[] values)
         {
             using var env = JniEnv.Create();
-            if (_methodCache.TryGetValue((name, descriptor), out var method))
+            if (env != null && _methodCache.TryGetValue((name, descriptor), out var method))
             {
                 if (descriptor.EndsWith("J"))
                     return JniHelper.CallStaticLongMethod(env.Env, (JClassLocalRef)(_classId.Value.Value), method, values) ?? (JLong)(-1);
@@ -212,20 +212,34 @@ namespace LibRyujinx.Android
 
             public void Dispose()
             {
-                if(_newAttach)
+                try
                 {
-                    JniHelper.Detach(_jvm!.Value);
+                    if (_newAttach && _jvm.HasValue)
+                    {
+                        JniHelper.Detach(_jvm.Value);
+                    }
+                }
+                catch
+                {
+                    // 静默处理所有异常
                 }
             }
 
             public static JniEnv? Create()
             {
-                bool newAttach = false;
-                ReadOnlySpan<Byte> threadName = "JvmCall"u8;
-                var env = _jvm == null ? default : JniHelper.Attach(_jvm.Value, threadName.GetUnsafeValPtr().GetUnsafeFixedContext(threadName.Length),
-                                         out newAttach);
+                try
+                {
+                    bool newAttach = false;
+                    ReadOnlySpan<Byte> threadName = "JvmCall"u8;
+                    var env = _jvm == null ? default : JniHelper.Attach(_jvm.Value, threadName.GetUnsafeValPtr().GetUnsafeFixedContext(threadName.Length),
+                                             out newAttach);
 
-                return env != null ? new JniEnv(env.Value, newAttach) : null;
+                    return env != null ? new JniEnv(env.Value, newAttach) : null;
+                }
+                catch
+                {
+                    return null;
+                }
             }
         }
     }
