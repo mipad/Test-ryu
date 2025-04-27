@@ -57,6 +57,18 @@ jobs:
           libssl-dev zlib1g-dev \
           libx264-dev libx265-dev
 
+    - name: Build libx264
+      run: |
+       git clone https://code.videolan.org/videolan/x264.git
+       cd x264
+       ./configure \
+         --prefix=./android-build \
+         --host=aarch64-linux-android \
+         --cross-prefix=$TOOLCHAIN/bin/aarch64-linux-android- \
+         --sysroot=$SYSROOT \
+         --enable-pic
+       make && make install
+    
     # ========== 4. 交叉编译 FFmpeg ==========
     - name: Build FFmpeg for Android
       run: |
