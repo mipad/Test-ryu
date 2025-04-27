@@ -124,7 +124,7 @@ jobs:
 
         chmod +x gradlew
         # 执行构建命令
-        ./gradlew clean assembleRelease \
+        ./gradlew clean :app:assembleRelease \
           -DllvmToolchainPath=$LLVM_PATH \
           -Dopenssl.root=$OPENSSL_ROOT_DIR \
           -Dvulkan.sdk.path=$VULKAN_SDK \  # 显式传递 Vulkan SDK 路径
