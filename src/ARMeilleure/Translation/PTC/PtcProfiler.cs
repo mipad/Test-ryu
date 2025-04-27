@@ -41,7 +41,7 @@ namespace ARMeilleure.Translation.PTC
 
         private readonly ManualResetEvent _waitEvent;
 
-        private readonly Lock _lock = new();
+        private readonly object _lock;
 
         private bool _disposed;
 
