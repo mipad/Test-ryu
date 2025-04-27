@@ -112,7 +112,7 @@ jobs:
       run: |
         # 修复文件权限
         chmod +x gradlew
-        find . -name "*.sh" -exec chmod +x {} \;
+      
 
         # 调试输出
         echo "===== 关键环境变量 ====="
