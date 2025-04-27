@@ -109,7 +109,7 @@ jobs:
       env:
         OPENSSL_ROOT_DIR: /opt/openssl-x64
         VULKAN_SDK: ${{ env.VULKAN_SDK }}
-        run: |
+      run: |
          chmod +x gradlew  # 修复权限
 
          # 清理并同步依赖
