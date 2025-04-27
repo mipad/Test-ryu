@@ -33,6 +33,15 @@ android {
         }
     }
 
+     signingConfigs {
+        debug {
+            storeFile file('debug.keystore')  // 确保此文件存在或使用默认路径
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+     }
+    
     buildTypes {
         release {
             minifyEnabled false
