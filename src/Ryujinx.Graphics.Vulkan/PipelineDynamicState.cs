@@ -148,7 +148,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (_dirty.HasFlag(DirtyFlags.FeedbackLoop) && gd.Capabilities.SupportsDynamicAttachmentFeedbackLoop)
             {
-                RecordFeedbackLoop(gd.DynamicFeedbackLoopApi, commandBuffer, gd);
+                RecordFeedbackLoop(gd.DynamicFeedbackLoopApi, commandBuffer);
             }
 
             _dirty = DirtyFlags.None;
@@ -190,20 +190,16 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        private readonly void RecordFeedbackLoop(ExtAttachmentFeedbackLoopDynamicState api, CommandBuffer commandBuffer, VulkanRenderer gd)
+        private readonly void RecordFeedbackLoop(ExtAttachmentFeedbackLoopDynamicState api, CommandBuffer commandBuffer)
         {
-            // AMD Radeon RX GPUs + Qualcomm SoCs only
-            if ((gd.Vendor == Vendor.Amd && gd.GpuRenderer.Contains("RX")) || gd.Vendor == Vendor.Qualcomm)
+            ImageAspectFlags aspects = (_feedbackLoopAspects & FeedbackLoopAspects.Color) != 0 ? ImageAspectFlags.ColorBit : 0;
+
+            if ((_feedbackLoopAspects & FeedbackLoopAspects.Depth) != 0)
             {
-                ImageAspectFlags aspects = (_feedbackLoopAspects & FeedbackLoopAspects.Color) != 0 ? ImageAspectFlags.ColorBit : 0;
-
-                if ((_feedbackLoopAspects & FeedbackLoopAspects.Depth) != 0)
-                {
-                    aspects |= ImageAspectFlags.DepthBit | ImageAspectFlags.StencilBit;
-                }
-
-                api.CmdSetAttachmentFeedbackLoopEnable(commandBuffer, aspects);
+                aspects |= ImageAspectFlags.DepthBit | ImageAspectFlags.StencilBit;
             }
+
+            api.CmdSetAttachmentFeedbackLoopEnable(commandBuffer, aspects);
         }
     }
 }

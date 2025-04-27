@@ -1525,20 +1525,24 @@ namespace Ryujinx.Graphics.Vulkan
 
         private bool ChangeFeedbackLoop(FeedbackLoopAspects aspects)
         {
-            if (_feedbackLoop != aspects)
+            // AMD Radeon RX GPUs + Qualcomm SoCs only
+            if ((Gd.Vendor == Vendor.Amd && Gd.GpuRenderer.Contains("RX")) || Gd.Vendor == Vendor.Qualcomm)
             {
-                if (Gd.Capabilities.SupportsDynamicAttachmentFeedbackLoop)
+                if (_feedbackLoop != aspects)
                 {
-                    DynamicState.SetFeedbackLoop(aspects);
-                }
-                else
-                {
-                    _newState.FeedbackLoopAspects = aspects;
-                }
+                    if (Gd.Capabilities.SupportsDynamicAttachmentFeedbackLoop)
+                    {
+                        DynamicState.SetFeedbackLoop(aspects);
+                    }
+                    else
+                    {
+                        _newState.FeedbackLoopAspects = aspects;
+                    }
 
-                _feedbackLoop = aspects;
+                    _feedbackLoop = aspects;
 
-                return true;
+                    return true;
+                }
             }
 
             return false;

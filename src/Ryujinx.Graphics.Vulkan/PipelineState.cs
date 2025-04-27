@@ -7,7 +7,6 @@ namespace Ryujinx.Graphics.Vulkan
 {
     struct PipelineState : IDisposable
     {
-        private const int RequiredSubgroupSize = 32;
         private const int MaxDynamicStatesCount = 9;
 
         public PipelineUid Internal;
