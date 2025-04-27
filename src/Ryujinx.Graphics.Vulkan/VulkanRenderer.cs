@@ -11,6 +11,7 @@ using Silk.NET.Vulkan.Extensions.KHR;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Format = Ryujinx.Graphics.GAL.Format;
 using PrimitiveTopology = Ryujinx.Graphics.GAL.PrimitiveTopology;
 using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
@@ -27,6 +28,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         private bool _initialized;
 
+        public uint ProgramCount { get; set; } = 0;
+
         internal FormatCapabilities FormatCapabilities { get; private set; }
         internal HardwareCapabilities Capabilities;
 
@@ -38,13 +41,12 @@ namespace Ryujinx.Graphics.Vulkan
         internal KhrPushDescriptor PushDescriptorApi { get; private set; }
         internal ExtTransformFeedback TransformFeedbackApi { get; private set; }
         internal KhrDrawIndirectCount DrawIndirectCountApi { get; private set; }
-        internal ExtAttachmentFeedbackLoopDynamicState DynamicFeedbackLoopApi { get; private set; }
 
         internal uint QueueFamilyIndex { get; private set; }
         internal Queue Queue { get; private set; }
         internal Queue BackgroundQueue { get; private set; }
-        internal object BackgroundQueueLock { get; private set; }
-        internal object QueueLock { get; private set; }
+        internal Lock BackgroundQueueLock { get; private set; }
+        internal Lock QueueLock { get; private set; }
 
         internal MemoryAllocator MemoryAllocator { get; private set; }
         internal HostMemoryAllocator HostMemoryAllocator { get; private set; }
@@ -73,8 +75,6 @@ namespace Ryujinx.Graphics.Vulkan
         public IPipeline Pipeline => _pipeline;
 
         public IWindow Window => _window;
-
-        public SurfaceTransformFlagsKHR CurrentTransform => _window.CurrentTransform;
 
         private readonly Func<Instance, Vk, SurfaceKHR> _getSurface;
         private readonly Func<string[]> _getRequiredExtensions;
@@ -114,11 +114,11 @@ namespace Ryujinx.Graphics.Vulkan
             Textures = new HashSet<ITexture>();
             Samplers = new HashSet<SamplerHolder>();
 
-            if (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS())
+            if (OperatingSystem.IsMacOS())
             {
                 MVKInitialization.Initialize();
 
-                // Any device running on Darwin is using MoltenVK, even Intel and AMD vendors.
+                // Any device running on MacOS is using MoltenVK, even Intel and AMD vendors.
                 IsMoltenVk = true;
             }
         }
@@ -152,16 +152,11 @@ namespace Ryujinx.Graphics.Vulkan
                 DrawIndirectCountApi = drawIndirectCountApi;
             }
 
-            if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtAttachmentFeedbackLoopDynamicState dynamicFeedbackLoopApi))
-            {
-                DynamicFeedbackLoopApi = dynamicFeedbackLoopApi;
-            }
-
             if (maxQueueCount >= 2)
             {
                 Api.GetDeviceQueue(_device, queueFamilyIndex, 1, out var backgroundQueue);
                 BackgroundQueue = backgroundQueue;
-                BackgroundQueueLock = new object();
+                BackgroundQueueLock = new();
             }
 
             PhysicalDeviceProperties2 properties2 = new()
@@ -251,16 +246,6 @@ namespace Ryujinx.Graphics.Vulkan
                 SType = StructureType.PhysicalDeviceDepthClipControlFeaturesExt,
             };
 
-            PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT featuresAttachmentFeedbackLoop = new()
-            {
-                SType = StructureType.PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesExt,
-            };
-
-            PhysicalDeviceAttachmentFeedbackLoopDynamicStateFeaturesEXT featuresDynamicAttachmentFeedbackLoop = new()
-            {
-                SType = StructureType.PhysicalDeviceAttachmentFeedbackLoopDynamicStateFeaturesExt,
-            };
-
             PhysicalDevicePortabilitySubsetFeaturesKHR featuresPortabilitySubset = new()
             {
                 SType = StructureType.PhysicalDevicePortabilitySubsetFeaturesKhr,
@@ -295,22 +280,6 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 featuresDepthClipControl.PNext = features2.PNext;
                 features2.PNext = &featuresDepthClipControl;
-            }
-
-            bool supportsAttachmentFeedbackLoop = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_attachment_feedback_loop_layout");
-
-            if (supportsAttachmentFeedbackLoop)
-            {
-                featuresAttachmentFeedbackLoop.PNext = features2.PNext;
-                features2.PNext = &featuresAttachmentFeedbackLoop;
-            }
-
-            bool supportsDynamicAttachmentFeedbackLoop = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_attachment_feedback_loop_dynamic_state");
-
-            if (supportsDynamicAttachmentFeedbackLoop)
-            {
-                featuresDynamicAttachmentFeedbackLoop.PNext = features2.PNext;
-                features2.PNext = &featuresDynamicAttachmentFeedbackLoop;
             }
 
             bool usePortability = _physicalDevice.IsDeviceExtensionPresent("VK_KHR_portability_subset");
@@ -435,8 +404,6 @@ namespace Ryujinx.Graphics.Vulkan
                 _physicalDevice.IsDeviceExtensionPresent("VK_NV_viewport_array2"),
                 _physicalDevice.IsDeviceExtensionPresent(ExtExternalMemoryHost.ExtensionName),
                 supportsDepthClipControl && featuresDepthClipControl.DepthClipControl,
-                supportsAttachmentFeedbackLoop && featuresAttachmentFeedbackLoop.AttachmentFeedbackLoopLayout,
-                supportsDynamicAttachmentFeedbackLoop && featuresDynamicAttachmentFeedbackLoop.AttachmentFeedbackLoopDynamicState,
                 propertiesSubgroup.SubgroupSize,
                 supportedSampleCounts,
                 portabilityFlags,
@@ -494,7 +461,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             Api.GetDeviceQueue(_device, queueFamilyIndex, 0, out var queue);
             Queue = queue;
-            QueueLock = new object();
+            QueueLock = new();
 
             LoadFeatures(maxQueueCount, queueFamilyIndex);
 
@@ -546,6 +513,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         public IProgram CreateProgram(ShaderSource[] sources, ShaderInfo info)
         {
+            ProgramCount++;
+            
             bool isCompute = sources.Length == 1 && sources[0].Stage == ShaderStage.Compute;
 
             if (info.State.HasValue || isCompute)
@@ -758,7 +727,6 @@ namespace Ryujinx.Graphics.Vulkan
                 supportsQuads: false,
                 supportsSeparateSampler: true,
                 supportsShaderBallot: false,
-                supportsShaderBallotDivergence: Vendor != Vendor.Qualcomm,
                 supportsShaderBarrierDivergence: Vendor != Vendor.Intel,
                 supportsShaderFloat64: Capabilities.SupportsShaderFloat64,
                 supportsTextureGatherOffsets: features2.Features.ShaderImageGatherExtended && !IsMoltenVk,
@@ -999,15 +967,6 @@ namespace Ryujinx.Graphics.Vulkan
         public bool SupportsRenderPassBarrier(PipelineStageFlags flags)
         {
             return !(IsMoltenVk || IsQualcommProprietary);
-        }
-
-        internal unsafe void RecreateSurface()
-        {
-            SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
-
-            _surface = _getSurface(_instance.Instance, Api);
-
-            (_window as Window)?.SetSurface(_surface);
         }
 
         public unsafe void Dispose()
