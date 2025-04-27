@@ -1,5 +1,4 @@
 using ARMeilleure.Common;
-using System;
 
 namespace ARMeilleure.Decoders
 {
@@ -150,7 +149,7 @@ namespace ARMeilleure.Decoders
             return (((long)opCode << 45) >> 48) & ~3;
         }
 
-        public static bool VectorArgumentsInvalid(bool q, params ReadOnlySpan<int> args)
+        public static bool VectorArgumentsInvalid(bool q, params int[] args)
         {
             if (q)
             {
