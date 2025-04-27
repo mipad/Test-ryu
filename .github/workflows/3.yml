@@ -108,29 +108,24 @@ jobs:
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       env:
         OPENSSL_ROOT_DIR: /opt/openssl-x64
-        VULKAN_SDK: ${{ env.VULKAN_SDK }}  # 传递 Vulkan SDK 路径
-      run: |
-       echo "当前目录: $(pwd)"
-        ls -l
-        
-      
+        VULKAN_SDK: ${{ env.VULKAN_SDK }}
+        run: |
+         chmod +x gradlew  # 修复权限
 
-        # 调试输出
-        echo "===== 关键环境变量 ====="
-        echo "LLVM_PATH: $LLVM_PATH"
-        echo "VULKAN_SDK: $VULKAN_SDK"
-        echo "Vulkan 头文件存在性验证:"
-        ls $VULKAN_SDK/include/vulkan/vulkan.h
+         # 清理并同步依赖
+         ./gradlew clean
+         ./gradlew --refresh-dependencies
 
-        chmod +x gradlew
-        # 执行构建命令
-        ./gradlew clean :app:assembleRelease \
-          -DllvmToolchainPath=$LLVM_PATH \
-          -Dopenssl.root=$OPENSSL_ROOT_DIR \
-          -Dvulkan.sdk.path=$VULKAN_SDK \  # 显式传递 Vulkan SDK 路径
-          -Pandroid.overridePathCheck=true \
-          --no-daemon \
-          --stacktrace
+         # 构建主模块（带调试日志）
+         ./gradlew :app:assembleRelease \
+         -DllvmToolchainPath=$LLVM_PATH \
+         -Dopenssl.root=$OPENSSL_ROOT_DIR \
+         -Dvulkan.sdk.path=$VULKAN_SDK \
+         -Pandroid.overridePathCheck=true \
+         --stacktrace \
+         --info \
+         --no-daemon
+
 
     # ========== 6. 产物处理 ==========
     - name: Find Native Libraries (.so)
