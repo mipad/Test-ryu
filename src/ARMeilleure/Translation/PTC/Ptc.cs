@@ -29,7 +29,7 @@ namespace ARMeilleure.Translation.PTC
         private const string OuterHeaderMagicString = "PTCohd\0\0";
         private const string InnerHeaderMagicString = "PTCihd\0\0";
 
-        private const uint InternalVersion = 6950; //! To be incremented manually for each change to the ARMeilleure project.
+        private const uint InternalVersion = 6997; //! To be incremented manually for each change to the ARMeilleure project.
 
         private const string ActualDir = "0";
         private const string BackupDir = "1";
@@ -40,6 +40,7 @@ namespace ARMeilleure.Translation.PTC
         public static readonly Symbol PageTableSymbol = new(SymbolType.Special, 1);
         public static readonly Symbol CountTableSymbol = new(SymbolType.Special, 2);
         public static readonly Symbol DispatchStubSymbol = new(SymbolType.Special, 3);
+        public static readonly Symbol FunctionTableSymbol = new(SymbolType.Special, 4);
 
         private const byte FillingByte = 0x00;
         private const CompressionLevel SaveCompressionLevel = CompressionLevel.Fastest;
@@ -57,7 +58,7 @@ namespace ARMeilleure.Translation.PTC
 
         private readonly ManualResetEvent _waitEvent;
 
-        private readonly object _lock;
+        private readonly Lock _lock = new();
 
         private bool _disposed;
 
@@ -87,8 +88,6 @@ namespace ARMeilleure.Translation.PTC
 
             _waitEvent = new ManualResetEvent(true);
 
-            _lock = new object();
-
             _disposed = false;
 
             TitleIdText = TitleIdTextDefault;
@@ -100,7 +99,7 @@ namespace ARMeilleure.Translation.PTC
             Disable();
         }
 
-        public void Initialize(string titleIdText, string displayVersion, bool enabled, MemoryManagerType memoryMode)
+        public void Initialize(string titleIdText, string displayVersion, bool enabled, MemoryManagerType memoryMode, string cacheSelector)
         {
             Wait();
 
@@ -126,6 +125,8 @@ namespace ARMeilleure.Translation.PTC
             DisplayVersion = !string.IsNullOrEmpty(displayVersion) ? displayVersion : DisplayVersionDefault;
             _memoryMode = memoryMode;
 
+            Logger.Info?.Print(LogClass.Ptc, $"PPTC (v{InternalVersion}) Profile: {DisplayVersion}-{cacheSelector}");
+
             string workPathActual = Path.Combine(AppDataManager.GamesDirPath, TitleIdText, "cache", "cpu", ActualDir);
             string workPathBackup = Path.Combine(AppDataManager.GamesDirPath, TitleIdText, "cache", "cpu", BackupDir);
 
@@ -139,8 +140,8 @@ namespace ARMeilleure.Translation.PTC
                 Directory.CreateDirectory(workPathBackup);
             }
 
-            CachePathActual = Path.Combine(workPathActual, DisplayVersion);
-            CachePathBackup = Path.Combine(workPathBackup, DisplayVersion);
+            CachePathActual = Path.Combine(workPathActual, DisplayVersion) + "-" + cacheSelector;
+            CachePathBackup = Path.Combine(workPathBackup, DisplayVersion) + "-" + cacheSelector;
 
             PreLoad();
             Profiler.PreLoad();
@@ -413,6 +414,8 @@ namespace ARMeilleure.Translation.PTC
             finally
             {
                 ResetCarriersIfNeeded();
+
+                GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
             }
 
             _waitEvent.Set();
@@ -703,6 +706,10 @@ namespace ARMeilleure.Translation.PTC
                 {
                     imm = translator.Stubs.DispatchStub;
                 }
+                else if (symbol == FunctionTableSymbol)
+                {
+                    imm = translator.FunctionTable.Base;
+                }
 
                 if (imm == null)
                 {
@@ -788,13 +795,20 @@ namespace ARMeilleure.Translation.PTC
             {
                 ResetCarriersIfNeeded();
 
+                GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+
                 return;
             }
 
+
+
             int degreeOfParallelism = Environment.ProcessorCount;
 
+            if (Optimizations.EcoFriendly)
+                degreeOfParallelism /= 3;
+
             // If there are enough cores lying around, we leave one alone for other tasks.
-            if (degreeOfParallelism > 4)
+            if (degreeOfParallelism > 4 && !Optimizations.EcoFriendly)
             {
                 degreeOfParallelism--;
             }
@@ -1006,7 +1020,6 @@ namespace ARMeilleure.Translation.PTC
             osPlatform |= (OperatingSystem.IsLinux()   ? 1u : 0u) << 1;
             osPlatform |= (OperatingSystem.IsMacOS()   ? 1u : 0u) << 2;
             osPlatform |= (OperatingSystem.IsWindows() ? 1u : 0u) << 3;
-            osPlatform |= (Ryujinx.Common.PlatformInfo.IsBionic ? 1u : 0u) << 4;
 #pragma warning restore IDE0055
 
             return osPlatform;
