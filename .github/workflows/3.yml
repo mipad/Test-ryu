@@ -56,69 +56,6 @@ jobs:
           nasm yasm pkg-config clang \
           libssl-dev zlib1g-dev \
           libx264-dev libx265-dev
-
-    - name: Build libx264
-      run: |
-       git clone https://code.videolan.org/videolan/x264.git
-       cd x264
-       ./configure \
-         --prefix=./android-build \
-         --host=aarch64-linux-android \
-         --cross-prefix=$TOOLCHAIN/bin/aarch64-linux-android- \
-         --sysroot=$SYSROOT \
-         --enable-pic
-       make && make install
-    
-    # ========== 4. 交叉编译 FFmpeg ==========
-    - name: Build FFmpeg for Android
-      run: |
-       export NDK_ROOT="/usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}"
-       export TOOLCHAIN="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
-       export TARGET="aarch64-linux-android"
-       export API="${{ env.ANDROID_API_LEVEL }}"
-
-       # 设置工具链变量
-       export AR="$TOOLCHAIN/bin/llvm-ar"
-       export CC="$TOOLCHAIN/bin/${TARGET}${API}-clang"
-       export CXX="$TOOLCHAIN/bin/${TARGET}${API}-clang++"
-       export LD="$TOOLCHAIN/bin/ld"
-       export STRIP="$TOOLCHAIN/bin/llvm-strip"
-       export RANLIB="$TOOLCHAIN/bin/llvm-ranlib"
-       export SYSROOT="$TOOLCHAIN/sysroot"
-
-       # 验证编译器
-       echo 'int main(){return 0;}' > test.c
-       $CC test.c -o test || { echo "编译器验证失败！"; exit 1; }
-
-       # 下载并编译 FFmpeg
-       wget "https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.gz"
-       tar -xzf "ffmpeg-${{ env.FFMPEG_VERSION }}.tar.gz"
-       cd "ffmpeg-${{ env.FFMPEG_VERSION }}"
-
-       ./configure \
-        --target-os=android \
-        --arch=aarch64 \
-        --enable-shared \
-        --disable-static \
-        --enable-gpl \
-        --enable-libx264 \
-        --enable-libx265 \
-        --enable-neon \
-        --enable-mediacodec \
-        --enable-jni \
-        --enable-pic \
-        --cross-prefix="$TOOLCHAIN/bin/$TARGET-" \
-        --sysroot="$SYSROOT" \
-        --prefix=./android-build \
-        --extra-cflags="-fPIC -DANDROID -I$SYSROOT/usr/include" \
-        --extra-ldflags="-Wl,-rpath-link=$SYSROOT/usr/lib/$TARGET/$API -L$SYSROOT/usr/lib/$TARGET/$API"
-
-       make -j$(nproc) && make install
-
-       # 复制库文件到项目
-       mkdir -p ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/src/main/jniLibs/arm64-v8a
-       cp -v android-build/lib/*.so ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/src/main/jniLibs/arm64-v8a/
-    
         
           
     # ========== 5. 安装 Vulkan SDK ==========
