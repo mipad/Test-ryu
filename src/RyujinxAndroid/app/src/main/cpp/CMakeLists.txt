@@ -1,70 +1,71 @@
-include(FetchContent)
-
-# For more information about using CMake with Android Studio, read the
-# documentation: https://d.android.com/studio/projects/add-native-code.html
-
-# Sets the minimum version of CMake required to build the native library.
-
 cmake_minimum_required(VERSION 3.22.1)
 
-# Declares and names the project.
-
-project("ryujinxjni")
+# 项目名称和类型
+project("ryujinxjni" LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
+# 设置 FFmpeg 和 Vulkan 库路径
+set(FFMPEG_LIB_DIR ${CMAKE_SOURCE_DIR}/../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
+set(VULKAN_SDK_DIR $ENV{VULKAN_SDK})
+
+# 引入 adrenotools 依赖
+include(FetchContent)
 FetchContent_Declare(
     adrenotools
     GIT_REPOSITORY https://github.com/bylaws/libadrenotools.git
     GIT_TAG        deec5f75ee1a8ccbe32c8780b1d17284fc87b0f1 # v1.0-14-gdeec5f7
 )
-
 FetchContent_MakeAvailable(adrenotools)
 
-# Creates and names a library, sets it as either STATIC
-# or SHARED, and provides the relative paths to its source code.
-# You can define multiple libraries, and CMake builds them for you.
-# Gradle automatically packages shared libraries with your APK.
+# 定义目标库和源文件
+add_library(
+    ryujinxjni
+    SHARED
+    vulkan_wrapper.cpp
+    ryujinx.cpp
+)
 
-add_library( # Sets the name of the library.
-            ryujinxjni
+# 查找系统库（Log、Android、Vulkan）
+find_library(log-lib log)
+find_library(android-lib android)
+find_library(vulkan-lib vulkan)
 
-            # Sets the library as a shared library.
-            SHARED
+# 查找 FFmpeg 库
+find_library(avcodec-lib avcodec PATHS ${FFMPEG_LIB_DIR} REQUIRED)
+find_library(avutil-lib avutil PATHS ${FFMPEG_LIB_DIR} REQUIRED)
+find_library(swresample-lib swresample PATHS ${FFMPEG_LIB_DIR} REQUIRED)
+find_library(swscale-lib swscale PATHS ${FFMPEG_LIB_DIR} REQUIRED)
 
-            # Provides a relative path to your source file(s).
-            vulkan_wrapper.cpp
-        ryujinx.cpp)
+# 查找 Vulkan 验证层库
+find_library(vulkan-validation-layer-lib
+    NAMES VkLayer_khronos_validation
+    PATHS ${VULKAN_SDK_DIR}/lib
+    REQUIRED
+)
 
-# Searches for a specified prebuilt library and stores the path as a
-# variable. Because CMake includes system libraries in the search path by
-# default, you only need to specify the name of the public NDK library
-# you want to add. CMake verifies that the library exists before
-# completing its build.
+# 链接所有库到目标
+target_link_libraries(
+    ryujinxjni
+    ${log-lib}
+    ${android-lib}
+    ${vulkan-lib}
+    ${avcodec-lib}
+    ${avutil-lib}
+    ${swresample-lib}
+    ${swscale-lib}
+    ${vulkan-validation-layer-lib}
+    adrenotools
+)
 
-find_library( # Sets the name of the path variable.
-              log-lib
+# 包含头文件目录（如果 FFmpeg 头文件在 jniLibs 中）
+target_include_directories(ryujinxjni
+    PRIVATE
+    ${FFMPEG_LIB_DIR}/../include  # 假设头文件在 jniLibs/../include
+)
 
-              # Specifies the name of the NDK library that
-              # you want CMake to locate.
-              log )
-
-# Specifies libraries CMake should link to your target library. You
-# can link multiple libraries, such as libraries you define in this
-# build script, prebuilt third-party libraries, or system libraries.
-
-target_link_libraries( # Specifies the target library.
-                       ryujinxjni
-                       # Links the target library to the log library
-                       # included in the NDK.
-                       ${log-lib}
-                        -lvulkan
-                       -landroid
-                        adrenotools
-        )
-
-# Build external libraries if prebuilt files don't exist
+# 处理 OpenSSL 依赖
 set(JNI_PATH ../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
 cmake_path(ABSOLUTE_PATH JNI_PATH NORMALIZE)
 
@@ -72,6 +73,12 @@ cmake_path(APPEND JNI_PATH libcrypto.so OUTPUT_VARIABLE LIBCRYPTO_JNI_PATH)
 cmake_path(APPEND JNI_PATH libssl.so OUTPUT_VARIABLE LIBSSL_JNI_PATH)
 
 if (NOT (EXISTS ${LIBCRYPTO_JNI_PATH} AND EXISTS ${LIBSSL_JNI_PATH}))
+    message(STATUS "OpenSSL 未预编译，开始构建...")
     include(../../../../libryujinx/libs/OpenSSL.cmake)
     add_dependencies(ryujinxjni openssl)
-endif ()
+else()
+    message(STATUS "使用预编译的 OpenSSL 库")
+endif()
+
+# 设置生成 .so 的输出路径（可选）
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
