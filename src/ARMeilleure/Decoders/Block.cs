@@ -17,7 +17,7 @@ namespace ARMeilleure.Decoders
 
         public Block()
         {
-            OpCodes = [];
+            OpCodes = new List<OpCode>();
         }
 
         public Block(ulong address) : this()
