@@ -37,13 +37,13 @@ jobs:
         java-version: 17
         
 
-    - name: Setup Android SDK/NDK
-      uses: android-actions/setup-android@v3
-      with:
-        ndk-version: ${{ env.ANDROID_NDK_VERSION }}
-        cmake-version: 3.22.1
 
-  
+
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    
 
     # ========== 3. 安装 Vulkan SDK ==========
     - name: 下载并解压 Vulkan SDK
