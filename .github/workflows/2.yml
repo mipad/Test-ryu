@@ -76,6 +76,11 @@ jobs:
         echo "检查 LLVM 工具链:"
         ls -l $LLVM_PATH/bin/clang
 
+    - name: Install Ninja Build
+      run: |
+          sudo apt-get install -y ninja-build
+          ln -s /usr/bin/ninja 
+          
     # ========== 4. 主构建流程 ==========
     - name: Build APK
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
