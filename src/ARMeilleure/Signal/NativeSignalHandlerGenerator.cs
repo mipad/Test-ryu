@@ -8,7 +8,7 @@ namespace ARMeilleure.Signal
 {
     public static class NativeSignalHandlerGenerator
     {
-        public const int MaxTrackedRanges = 8;
+        public const int MaxTrackedRanges = 16;
 
         private const int StructAddressOffset = 0;
         private const int StructWriteOffset = 4;
@@ -87,13 +87,13 @@ namespace ARMeilleure.Signal
 
         private static Operand GenerateUnixFaultAddress(EmitterContext context, Operand sigInfoPtr)
         {
-            ulong structAddressOffset = (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS()) ? 24ul : 16ul; // si_addr
+            ulong structAddressOffset = OperatingSystem.IsMacOS() ? 24ul : 16ul; // si_addr
             return context.Load(OperandType.I64, context.Add(sigInfoPtr, Const(structAddressOffset)));
         }
 
         private static Operand GenerateUnixWriteFlag(EmitterContext context, Operand ucontextPtr)
         {
-            if (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS())
+            if (OperatingSystem.IsMacOS())
             {
                 const ulong McontextOffset = 48; // uc_mcontext
                 Operand ctxPtr = context.Load(OperandType.I64, context.Add(ucontextPtr, Const(McontextOffset)));
