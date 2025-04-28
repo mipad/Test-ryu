@@ -14,7 +14,7 @@ project("ryujinxjni")
 # 编译器优化
 add_compile_options(
     -O3                   # 最高优化级别
-    -ffast-math           # 快速浮点运算（需数学安全验证）
+    -flto      # 快速浮点运算（需数学安全验证）
                # ThinLTO（链接时优化）
     -march=armv8.2-a+dotprod+crypto  # 启用 ARMv8.2 指令扩展（如点积、加密指令）
     -mtune=cortex-a55
