@@ -2,12 +2,12 @@ using System.Runtime.InteropServices;
 
 namespace Ryujinx.HLE.HOS.Services.Time.Clock.Types
 {
-    [StructLayout(LayoutKind.Explicit, Size = 40)]
-    public struct ContinuousAdjustmentTimePoint
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    struct ContinuousAdjustmentTimePoint
     {
-        [FieldOffset(0)]  public ulong ClockOffset;
-        [FieldOffset(8)]  public uint Multiplier;
-        [FieldOffset(12)] public uint DivisorLog2;
-        [FieldOffset(16)] public SystemClockContext Context; // 类型已为 public
+        public ulong ClockOffset;
+        public long Multiplier;
+        public long DivisorLog2;
+        public SystemClockContext Context;
     }
 }
