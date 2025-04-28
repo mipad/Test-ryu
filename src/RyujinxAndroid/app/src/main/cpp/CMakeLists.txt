@@ -13,17 +13,17 @@ project("ryujinxjni")
 
 # 编译器优化
 add_compile_options(
-    -O3
-    -ffast-math
-    -flto
-    -march=armv8-a
-    -mtune=generic
-    -fvectorize
-    -fomit-frame-pointer
-    -fno-exceptions
-    -fno-rtti
-    -fuse-ld=lld
+    -O3                   # 最高优化级别
+    -ffast-math           # 快速浮点运算（需数学安全验证）
+    -flto=thin            # ThinLTO（链接时优化）
+    -march=armv8.2-a+dotprod+crypto  # 启用 ARMv8.2 指令扩展（如点积、加密指令）
+    -mtune=cortex-a75     # 针对常见 CPU 微架构优化
+    -fvectorize           # 自动向量化
+    -fomit-frame-pointer  # 减少栈帧开销
+    -fno-exceptions       # 禁用异常（如代码允许）
+    -fno-rtti             # 禁用 RTTI（如代码允许）
 )
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)  # 启用 LTO
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
