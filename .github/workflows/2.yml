@@ -72,6 +72,9 @@ jobs:
         echo "PATH=$VULKAN_SDK_PATH/bin:$PATH" >> $GITHUB_PATH
         echo "LD_LIBRARY_PATH=$VULKAN_SDK_PATH/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
         
+    - name: Install NDK Platform Libraries
+      run: |
+        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-${{ env.ANDROID_API_LEVEL }}"
     
     # ========== 5. 主构建流程 ==========
     - name: Build APK
