@@ -8,12 +8,13 @@
   </PropertyGroup>
   <PropertyGroup>
     <PublishAot>true</PublishAot>
-    <!--<MonoRuntimeFeatures>aot,interpreter</MonoRuntimeFeatures> -->
     <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
     <!-- Not sure why, but on iOS this results in an error. Result is still a .dylib. -->
     <NativeLib Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">Shared</NativeLib>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks> 
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
     <IlcInstructionSet>armv8.2-a</IlcInstructionSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
@@ -70,14 +71,6 @@
     <PackageReference Include="Rxmxnx.PInvoke.Extensions" />
     <PackageReference Include="Silk.NET.Vulkan" />
     <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" />
-    <PackageReference Include="OpenTK.Audio.OpenAL" />
     <LinkerArg Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'" Include="-llog" />
-  </ItemGroup>
-  <ItemGroup>
-    <!-- 排除 System.Diagnostics.StackTrace 的裁剪 -->
-    <TrimmerRootAssembly Include="System.Diagnostics.StackTrace" />
-    <TrimmerRootAssembly Include="MsgPack" />
-    <TrimmerRootAssembly Include="System.CodeDom" />
-    <TrimmerRootAssembly Include="Silk.NET.Core" />
   </ItemGroup>
 </Project>
