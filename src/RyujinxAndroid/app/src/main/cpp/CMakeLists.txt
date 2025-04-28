@@ -15,9 +15,10 @@ project("ryujinxjni")
 add_compile_options(
     -O3                   # 最高优化级别
     -ffast-math           # 快速浮点运算（需数学安全验证）
-    -flto=thin            # ThinLTO（链接时优化）
+               # ThinLTO（链接时优化）
     -march=armv8.2-a+dotprod+crypto  # 启用 ARMv8.2 指令扩展（如点积、加密指令）
-    -mtune=cortex-a75     # 针对常见 CPU 微架构优化
+    -mtune=cortex-a55
+    -mtune=cortex-a78# 针对常见 CPU 微架构优化
     -fvectorize           # 自动向量化
     -fomit-frame-pointer  # 减少栈帧开销
     -fno-exceptions       # 禁用异常（如代码允许）
