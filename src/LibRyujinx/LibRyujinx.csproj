@@ -12,11 +12,8 @@
     <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
     <!-- Not sure why, but on iOS this results in an error. Result is still a .dylib. -->
     <NativeLib Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">Shared</NativeLib>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <TrimMode>partial</TrimMode>
-    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks> 
     <InvariantGlobalization>true</InvariantGlobalization>
-    <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
     <IlcInstructionSet>armv8.2-a</IlcInstructionSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
