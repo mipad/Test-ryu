@@ -47,7 +47,7 @@
     <PackageReference Include="Avalonia.Svg" />
     <PackageReference Include="Avalonia.Svg.Skia" />
     <PackageReference Include="DynamicData" />
-    <PackageReference Include="FluentAvaloniaUI.NoAnim" />
+    <PackageReference Include="FluentAvaloniaUI" />
 
     <PackageReference Include="OpenTK.Core" />
     <PackageReference Include="Ryujinx.Audio.OpenAL.Dependencies" Condition="'$(RuntimeIdentifier)' == 'win-x64' OR '$(RuntimeIdentifier)' == 'win-arm64'" />

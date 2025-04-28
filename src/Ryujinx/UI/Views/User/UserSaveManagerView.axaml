@@ -38,16 +38,14 @@
                     <ComboBoxItem>
                         <Label
                             VerticalAlignment="Center"
-                            HorizontalContentAlignment="Left">
-                            <TextBlock Text="{locale:Locale Name}" />
-                        </Label>
+                            HorizontalContentAlignment="Left"
+                            Content="{locale:Locale Name}" />
                     </ComboBoxItem>
                     <ComboBoxItem>
                         <Label
                             VerticalAlignment="Center"
-                            HorizontalContentAlignment="Left">
-                            <TextBlock Text="{locale:Locale Size}" />
-                        </Label>
+                            HorizontalContentAlignment="Left"
+                            Content="{locale:Locale Size}" />
                     </ComboBoxItem>
                     <ComboBox.Styles>
                         <Style Selector="ContentControl#ContentPresenter">
@@ -59,16 +57,14 @@
                     <ComboBoxItem>
                         <Label
                             VerticalAlignment="Center"
-                            HorizontalContentAlignment="Left">
-                            <TextBlock Text="{locale:Locale OrderAscending}" />
-                        </Label>
+                            HorizontalContentAlignment="Left"
+                            Content="{locale:Locale OrderAscending}" />
                     </ComboBoxItem>
                     <ComboBoxItem>
                         <Label
                             VerticalAlignment="Center"
-                            HorizontalContentAlignment="Left">
-                            <TextBlock Text="{locale:Locale OrderDescending}" />
-                        </Label>
+                            HorizontalContentAlignment="Left"
+                            Content="{locale:Locale OrderDescending}" />
                     </ComboBoxItem>
                     <ComboBox.Styles>
                         <Style Selector="ContentControl#ContentPresenter">
