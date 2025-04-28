@@ -71,9 +71,10 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <summary>
         /// Initializes the cache, setting the maximum texture capacity for the specified GPU context.
         /// </summary>
-        public void Initialize()
+        /// <param name="cpuMemorySize">The amount of physical CPU Memory Avaiable on the device.</param>
+        public void Initialize(ulong cpuMemorySize)
         {
-            _cache.Initialize(_context);
+            _cache.Initialize(_context, cpuMemorySize);
         }
 
         /// <summary>
@@ -737,7 +738,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                         // If the GPU VA for the texture has ever been unmapped, then the range must be checked regardless.
                         if ((overlap.Info.GpuAddress != info.GpuAddress || overlap.ChangedMapping) &&
                             !memoryManager.CompareRange(overlap.Range, info.GpuAddress))
-                        {
+                                            {
                             continue;
                         }
                     }
