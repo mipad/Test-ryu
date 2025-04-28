@@ -18,7 +18,6 @@ jobs:
       ANDROID_NDK_VERSION: "27.2.12479018"
       DOTNET_VERSION: "9.0.203"
       ANDROID_API_LEVEL: "35"
-      VULKAN_SDK_VERSION: "1.4.309.0"  # 新增 Vulkan SDK 版本变量
 
     steps:
     # ========== 1. 代码检出 ==========
@@ -47,91 +46,74 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
-
-    # ========== 3. 安装 Vulkan SDK ==========
-    - name: 下载并解压 Vulkan SDK
-      run: |
-        wget -O vulkan-sdk.tar.xz "https://sdk.lunarg.com/sdk/download/${{ env.VULKAN_SDK_VERSION }}/linux/vulkansdk-linux-x86_64-${{ env.VULKAN_SDK_VERSION }}.tar.xz"
-        mkdir -p vulkan-sdk-temp
-        tar -xJf vulkan-sdk.tar.xz -C vulkan-sdk-temp
-        echo "解压后的目录结构:"
-        tree vulkan-sdk-temp
-    - name: 配置 Vulkan 环境变量
-      run: |
-        # 根据实际路径调整（示例路径为 vulkan-sdk-temp/1.4.309.0/x86_64）
-        VULKAN_SDK_PATH="${{ github.workspace }}/vulkan-sdk-temp/${{ env.VULKAN_SDK_VERSION }}/x86_64"
-        
-        # 验证路径
-        echo "Vulkan SDK 路径: $VULKAN_SDK_PATH"
-        ls -l $VULKAN_SDK_PATH/include/vulkan/vulkan.h
-        
-        # 导出环境变量
-        echo "VULKAN_SDK=$VULKAN_SDK_PATH" >> $GITHUB_ENV
-        echo "PATH=$VULKAN_SDK_PATH/bin:$PATH" >> $GITHUB_PATH
-        echo "LD_LIBRARY_PATH=$VULKAN_SDK_PATH/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-        
-      
-    # ========== 4. 验证环境 ==========
+    
+    # ========== 3. 验证环境 ==========
     - name: Verify .NET SDK Installation
       run: |
         dotnet --list-sdks
         echo "检查是否安装 .NET ${{ env.DOTNET_VERSION }}"
+
     - name: Install NDK Platform Libraries
       run: |
         $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-${{ env.ANDROID_API_LEVEL }}"
+
     - name: Configure Environment Paths
       shell: bash
       run: |
-        # 显式定义关键路径
+        # 显式定义 ANDROID_NDK_HOME，避免路径拼接错误
         ANDROID_NDK_HOME="/usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}"
         LLVM_PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
         LIB_DIR="$LLVM_PATH/sysroot/usr/lib/aarch64-linux-android/${{ env.ANDROID_API_LEVEL }}"
-        # 导出到全局环境
+
         echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
         echo "LLVM_PATH=$LLVM_PATH" >> $GITHUB_ENV
         echo "LIB_DIR=$LIB_DIR" >> $GITHUB_ENV
         echo "$LLVM_PATH/bin" >> $GITHUB_PATH
-        # 调试输出
-        echo "===== NDK 路径验证 ====="
+
+        # 调试输出：验证路径是否存在
+        echo "检查 NDK 路径:"
         ls -l $ANDROID_NDK_HOME
-        echo "===== Vulkan SDK 头文件验证 ====="
-        ls -l $VULKAN_SDK/include/vulkan/vulkan.h
-    # ========== 5. 主构建流程 ==========
+        echo "检查 LLVM 工具链:"
+        ls -l $LLVM_PATH/bin/clang
+
+    # ========== 4. 主构建流程 ==========
     - name: Build APK
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       env:
         OPENSSL_ROOT_DIR: /opt/openssl-x64
-        VULKAN_SDK: ${{ env.VULKAN_SDK }}
       run: |
-         chmod +x gradlew  # 修复权限
-         # 清理并同步依赖
-         ./gradlew clean
-         ./gradlew --refresh-dependencies
-         # 构建主模块（带调试日志）
-         ./gradlew :app:assembleRelease \
-         -DllvmToolchainPath=$LLVM_PATH \
-         -Dopenssl.root=$OPENSSL_ROOT_DIR \
-         -Dvulkan.sdk.path=$VULKAN_SDK \
-         -Pandroid.overridePathCheck=true \
-         --stacktrace \
-         --info \
-         --no-daemon
-    # ========== 6. 产物处理 ==========
+        # 修复文件权限
+        chmod +x gradlew
+        find . -name "*.sh" -exec chmod +x {} \;
+
+        # 调试输出：关键环境变量
+        echo "LLVM_PATH: $LLVM_PATH"
+        echo "OPENSSL_ROOT_DIR: $OPENSSL_ROOT_DIR"
+
+        # 执行构建
+        ./gradlew clean assembleRelease \
+          -DllvmToolchainPath=$LLVM_PATH \
+          -Dopenssl.root=$OPENSSL_ROOT_DIR \
+          -Pandroid.overridePathCheck=true \
+          --no-daemon \
+          --stacktrace
+
     - name: Find Native Libraries (.so)
       working-directory: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}
       run: |
-        echo "========== 开始搜索 .so 文件 =========="
-        find app/build -name "*.so" -print
-        echo "========== 搜索完成 =========="
+       echo "========== 开始搜索 .so 文件 =========="
+       find app/build -name "*.so" -print
+       echo "========== 搜索完成 =========="
+
     - name: Upload Native Libraries
       uses: actions/upload-artifact@v4
       with:
-        name: native-libs
-        path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/**/*.so
+       name: native-libs
+       path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/**/*.so
        
+    # ========== 5. 产物处理 ==========
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: android-arm64-release
         path: ${{ github.workspace }}/Test-ryu/${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
- 
