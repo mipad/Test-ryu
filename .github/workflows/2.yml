@@ -89,7 +89,7 @@ jobs:
       run: |
         # 修复文件权限
         chmod +x gradlew
-        find . -name "*.sh" -exec chmod +x {} \;
+        
 
         # 调试输出：关键环境变量
         echo "LLVM_PATH: $LLVM_PATH"
@@ -99,7 +99,7 @@ jobs:
         ./gradlew clean assembleRelease \
           -DllvmToolchainPath=$LLVM_PATH \
           -Dopenssl.root=$OPENSSL_ROOT_DIR \
-          -Pandroid.overridePathCheck=true \
+          
           --no-daemon \
           --stacktrace
 
