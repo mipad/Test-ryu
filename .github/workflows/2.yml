@@ -62,19 +62,15 @@ jobs:
       run: |
         # 显式定义 ANDROID_NDK_HOME，避免路径拼接错误
         ANDROID_NDK_HOME="/usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}"
-        LLVM_PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
+      
         LIB_DIR="$LLVM_PATH/sysroot/usr/lib/aarch64-linux-android/${{ env.ANDROID_API_LEVEL }}"
 
         echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
-        echo "LLVM_PATH=$LLVM_PATH" >> $GITHUB_ENV
+        
         echo "LIB_DIR=$LIB_DIR" >> $GITHUB_ENV
         echo "$LLVM_PATH/bin" >> $GITHUB_PATH
 
-        # 调试输出：验证路径是否存在
-        echo "检查 NDK 路径:"
-        ls -l $ANDROID_NDK_HOME
-        echo "检查 LLVM 工具链:"
-        ls -l $LLVM_PATH/bin/clang
+  
 
     - name: Install Ninja Build
       run: |
