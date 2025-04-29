@@ -12,13 +12,13 @@ jobs:
     timeout-minutes: 45
     
     env:
-      JAVA_OPTS: "-Xmx6g -XX:MaxMetaspaceSize=2g"
-      GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4"
-      PROJECT_DIR: src/RyujinxAndroid
-      ANDROID_NDK_VERSION: "25.2.9519653"  # 修正版本号
-      DOTNET_VERSION: "9.0.203"
-      ANDROID_API_LEVEL: "35"
-
+     JAVA_OPTS: "-Xmx6g -XX:MaxMetaspaceSize=2g"
+     GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4"
+     PROJECT_DIR: src/RyujinxAndroid
+     ANDROID_NDK_VERSION: "26.3.11579264"  # 匹配已安装版本
+     DOTNET_VERSION: "9.0.203"
+     ANDROID_API_LEVEL: "35"
+ 
     steps:
     # ========== 1. 代码检出 ==========
     - name: Checkout code
