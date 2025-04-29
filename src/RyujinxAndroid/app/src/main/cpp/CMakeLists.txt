@@ -14,6 +14,9 @@ project("ryujinxjni")
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 # 启用优化
+
+set(CMAKE_C_COMPILER clang)
+set(CMAKE_CXX_COMPILER clang++)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -ffast-math -flto")  # C 代码优化
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -ffast-math -flto")  # C++ 代码优化
 
@@ -22,8 +25,10 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mfpu=neon -mfloat-abi=softfp")
 endif()
 
-# 剥离调试符号（Release 构建）
-set(CMAKE_BUILD_TYPE "Release")
+
+# 剥离符号（减小体积并防止逆向）
+set(CMAKE_BUILD_TYPE Release)
+add_compile_options(-g0)  # 禁用调试符号
 
 FetchContent_Declare(
     adrenotools
