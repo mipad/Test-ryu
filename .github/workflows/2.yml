@@ -96,7 +96,8 @@ jobs:
         echo "OPENSSL_ROOT_DIR: $OPENSSL_ROOT_DIR"
 
         # 执行构建
-        ./gradlew clean assembleRelease \
+        ./gradlew clean compileLibRyujinx -Porg.ryujinx.config=release \
+        
           -DllvmToolchainPath=$LLVM_PATH \
           -Dopenssl.root=$OPENSSL_ROOT_DIR \
           
