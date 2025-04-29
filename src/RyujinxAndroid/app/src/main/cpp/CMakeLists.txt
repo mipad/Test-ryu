@@ -28,7 +28,7 @@ endif()
 
 # 剥离符号（减小体积并防止逆向）
 set(CMAKE_BUILD_TYPE Release)
-add_compile_options(-g0)  # 禁用调试符号
+
 
 FetchContent_Declare(
     adrenotools
