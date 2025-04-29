@@ -74,10 +74,10 @@ tasks.register('compileLibRyujinx', Exec) {
         exclude '**/RyujinxAndroid/**'
     }
 
-    inputs.files(solutionFiles)
-            。withPropertyName('sourceFiles')
-            。withPathSensitivity(PathSensitivity.RELATIVE)
-            。ignoreEmptyDirectories()
+    inputs.files(solutionFiles)            
+    .withPropertyName('sourceFiles')            
+    .withPathSensitivity(PathSensitivity.RELATIVE)         
+    .ignoreEmptyDirectories()
 
     outputs.file("${publishDirectory}/${projectName.toLowerCase()}.so")
 
