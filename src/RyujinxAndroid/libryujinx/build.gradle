@@ -75,9 +75,9 @@ tasks.register('compileLibRyujinx', Exec) {
     }
 
     inputs.files(solutionFiles)
-            .withPropertyName('sourceFiles')
-            .withPathSensitivity(PathSensitivity.RELATIVE)
-            .ignoreEmptyDirectories()
+            。withPropertyName('sourceFiles')
+            。withPathSensitivity(PathSensitivity.RELATIVE)
+            。ignoreEmptyDirectories()
 
     outputs.file("${publishDirectory}/${projectName.toLowerCase()}.so")
 
@@ -109,6 +109,10 @@ tasks.register('compileLibRyujinx', Exec) {
             "-p:PublishAotUsingRuntimePack=true",
             "-p:StripSymbols=${stripSymbols}",
             "--artifacts-path", buildDir
+            // 添加以下优化参数
+            "-p:OptimizationPreference=Speed",  // 优先速度优化
+            "-p:EnableAggressiveTrimming=true", // 启用代码剪枝， 
+            "-p:NativeLTO=LLVMThinLTO"
 
     args additionalArgs.split(" ")
 
