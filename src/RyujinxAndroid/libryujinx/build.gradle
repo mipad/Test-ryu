@@ -112,7 +112,7 @@ tasks.register('compileLibRyujinx', Exec) {
             // 添加以下优化参数
             "-p:OptimizationPreference=Speed",  // 优先速度优化
             "-p:EnableAggressiveTrimming=true", // 启用代码剪枝
-            "-p:NativeLTO=LLVMThinLTO",
+            
 
     args additionalArgs.split(" ")
 
