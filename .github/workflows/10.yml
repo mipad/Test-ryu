@@ -17,21 +17,22 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GHH_PAT }}
-          ref: 10  # 你的目标分支
+          ref: 10
           fetch-depth: 0
 
       - name: Add Kenji-NX remote
         run: |
-          # 添加远程仓库并明确拉取 master 分支
           git remote add kenji https://github.com/Kenji-NX/Kenji-NX.git
-          git fetch kenji master  # 重点：明确指定 master 分支
+          git fetch kenji master
+
+      # 新增步骤：配置 Git 用户身份
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
 
       - name: Merge Kenji-NX master
         run: |
-          git checkout 10  # 切换到你的分支
-          
-          # 合并 Kenji-NX 的 master 分支
+          git checkout 10
           git merge kenji/master --allow-unrelated-histories -m "Merge Kenji-NX/master into branch-10"
-          
-          # 推送变更
           git push origin 10
