@@ -703,7 +703,6 @@ namespace Ryujinx.HLE.FileSystem
 
         public SystemVersion VerifyFirmwarePackage(Stream file, bool isXci)
         {   
-         SystemVersion systemVersion = null;
             if (!isXci)
             {
                 using ZipArchive archive = new ZipArchive(file, ZipArchiveMode.Read);
@@ -716,12 +715,6 @@ namespace Ryujinx.HLE.FileSystem
                 if (xci.HasPartition(XciPartitionType.Update))
                 {
                     XciPartition partition = xci.OpenPartition(XciPartitionType.Update);
-
-                    foreach (var entry in partition.EnumerateEntries("*.nca", SearchOptions.Default))
-            {
-                using var fileRef = new UniqueRef<IFile>();
-                partition.OpenFile(ref fileRef.Ref, entry.FullPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
-                IStorage storage = fileRef.Get.AsStorage();
                         
                         Nca nca = new(_virtualFileSystem.KeySet, storage);
 
@@ -735,9 +728,7 @@ namespace Ryujinx.HLE.FileSystem
                         }
                      }
                   }
-            return systemVersion;
-       }
-    }
+            
 
                 if (updateNcas.TryGetValue(SystemUpdateTitleId, out var ncaEntry))
                 {
