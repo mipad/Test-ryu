@@ -1,4 +1,4 @@
-name: Sync Kenji-NX Master to Branch-10
+name: Auto-Sync Kenji-NX Master to Branch-10
 
 on:
   push:
@@ -6,33 +6,47 @@ on:
   pull_request:
     branches: [ "10" ]
   schedule:
-    - cron: '0 0 * * *'  # 每日自动触发
-  workflow_dispatch:     # 允许手动触发
+    - cron: '0 0 * * *'  # 每天UTC 0点自动同步
+  workflow_dispatch:      # 允许手动触发
 
 jobs:
-  sync:
+  sync-kenji:
     runs-on: ubuntu-latest
     steps:
+      # 步骤1：检出你的分支10
       - name: Checkout branch-10
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GHH_PAT }}
           ref: 10
-          fetch-depth: 0
+          fetch-depth: 0  # 必须获取完整提交历史
 
-      - name: Add Kenji-NX remote
+      # 步骤2：添加目标仓库并拉取代码
+      - name: Setup Kenji-NX Repository
         run: |
           git remote add kenji https://github.com/Kenji-NX/Kenji-NX.git
           git fetch kenji master
 
-      # 新增步骤：配置 Git 用户身份
-      - name: Configure Git
+      # 步骤3：配置Git身份（必须！）
+      - name: Configure Git Identity
         run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
+          git config --global user.name "Auto Syncer Bot"
+          git config --global user.email "auto-syncer@users.noreply.github.com"
 
-      - name: Merge Kenji-NX master
+      # 步骤4：强制合并（自动解决冲突）
+      - name: Auto-Merge and Push
         run: |
+          # 切换到你的分支10
           git checkout 10
-          git merge kenji/master --allow-unrelated-histories -m "Merge Kenji-NX/master into branch-10"
-          git push origin 10
+
+          # 强制合并策略（-X theirs接受对方版本）
+          git merge kenji/master \
+            --allow-unrelated-histories \
+            -X theirs \
+            -m "Auto-merge Kenji-NX/master into branch-10 (resolve conflicts by theirs)" 
+
+          # 强制推送（覆盖远程分支）
+          git push origin 10 --force
+
+          # 可选：推送后清理
+          git remote remove kenji
