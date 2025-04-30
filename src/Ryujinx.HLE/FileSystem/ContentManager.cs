@@ -726,8 +726,9 @@ namespace Ryujinx.HLE.FileSystem
                         {
                             updateNcas[nca.Header.TitleId].Add((nca.Header.ContentType, entry.FullName));
                         }
-                    }
-                }
+                  }
+               }
+            }
 
                 if (updateNcas.TryGetValue(SystemUpdateTitleId, out var ncaEntry))
                 {
