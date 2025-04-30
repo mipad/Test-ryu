@@ -1,38 +1,33 @@
-name: Sync External Repository
+name: Sync Kenji-NX Master to Branch-10
 
 on:
   schedule:
-   - cron: '0 0 * * *'  
-  workflow_dispatch:    
-  push:
-    branches: [ "10" ]
-  pull_request:
-    branches: [ "10" ]
-  
+    - cron: '0 0 * * *'  # 每日自动触发
+  workflow_dispatch:     # 允许手动触发
 
 jobs:
-  sync-external-repo:
+  sync:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout branch-10
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GHH_PAT }}
-          ref: 10  # 明确指定分支10
+          ref: 10  # 你的目标分支
           fetch-depth: 0
 
-      - name: Add external remote
+      - name: Add Kenji-NX remote
         run: |
-          git remote add external https://github.com/Kenji-NX/Kenji-NX.git
-          git fetch external
+          # 添加远程仓库并明确拉取 master 分支
+          git remote add kenji https://github.com/Kenji-NX/Kenji-NX.git
+          git fetch kenji master  # 重点：明确指定 master 分支
 
-      - name: Merge changes
+      - name: Merge Kenji-NX master
         run: |
-          git fetch origin 10
-          git checkout 10
-          git merge external/main --allow-unrelated-histories -m "Merge Kenji-NX/main into branch-10"
+          git checkout 10  # 切换到你的分支
+          
+          # 合并 Kenji-NX 的 master 分支
+          git merge kenji/master --allow-unrelated-histories -m "Merge Kenji-NX/master into branch-10"
+          
+          # 推送变更
           git push origin 10
-
-      - name: Push changes
-        run: |
-          git push origin 10           # 推送到你的分支10
