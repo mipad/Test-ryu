@@ -1,6 +1,10 @@
 name: Sync Kenji-NX Master to Branch-10
 
 on:
+  push:
+    branches: [ "10" ]
+  pull_request:
+    branches: [ "10" ]
   schedule:
     - cron: '0 0 * * *'  # 每日自动触发
   workflow_dispatch:     # 允许手动触发
