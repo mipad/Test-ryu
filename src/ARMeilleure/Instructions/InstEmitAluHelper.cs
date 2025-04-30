@@ -283,8 +283,6 @@ namespace ARMeilleure.Instructions
                 switch (op.ShiftType)
                 {
                     case ShiftType.Lsr:
-                        shift = 32;
-                        break;
                     case ShiftType.Asr:
                         shift = 32;
                         break;
@@ -332,8 +330,6 @@ namespace ARMeilleure.Instructions
                 switch (shiftType)
                 {
                     case ShiftType.Lsr:
-                        shift = 32;
-                        break;
                     case ShiftType.Asr:
                         shift = 32;
                         break;

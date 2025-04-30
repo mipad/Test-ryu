@@ -1,6 +1,8 @@
+using DynamicData;
+using DynamicData.Kernel;
+using Gommon;
 using LibHac;
 using LibHac.Common;
-using LibHac.Common.Keys;
 using LibHac.Fs;
 using LibHac.Fs.Fsa;
 using LibHac.FsSystem;
@@ -10,33 +12,46 @@ using LibHac.Tools.Fs;
 using LibHac.Tools.FsSystem;
 using LibHac.Tools.FsSystem.NcaUtils;
 using Ryujinx.Common.Configuration;
+using Ryujinx.Common.Configuration.Multiplayer;
 using Ryujinx.Common.Logging;
 using Ryujinx.Common.Utilities;
 using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE.HOS.SystemState;
 using Ryujinx.HLE.Loaders.Npdm;
 using Ryujinx.HLE.Loaders.Processes.Extensions;
+using Ryujinx.HLE.Utilities;
 using Ryujinx.UI.Common.Configuration;
 using Ryujinx.UI.Common.Configuration.System;
+using Ryujinx.UI.Common.Helper;
+using Ryujinx.UI.Common.Models;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using ContentType = LibHac.Ncm.ContentType;
+using MissingKeyException = LibHac.Common.Keys.MissingKeyException;
 using Path = System.IO.Path;
+using SpanHelpers = LibHac.Common.SpanHelpers;
 using TimeSpan = System.TimeSpan;
 
 namespace Ryujinx.UI.App.Common
 {
     public class ApplicationLibrary
     {
+        public static string DefaultLanPlayWebHost = "ryuldnweb.vudjun.com";
         public Language DesiredLanguage { get; set; }
-        public event EventHandler<ApplicationAddedEventArgs> ApplicationAdded;
         public event EventHandler<ApplicationCountUpdatedEventArgs> ApplicationCountUpdated;
+        public event EventHandler<LdnGameDataReceivedEventArgs> LdnGameDataReceived;
+
+        public readonly IObservableCache<ApplicationData, ulong> Applications;
+        public readonly IObservableCache<(TitleUpdateModel TitleUpdate, bool IsSelected), TitleUpdateModel> TitleUpdates;
+        public readonly IObservableCache<(DownloadableContentModel Dlc, bool IsEnabled), DownloadableContentModel> DownloadableContents;
 
         private readonly byte[] _nspIcon;
         private readonly byte[] _xciIcon;
@@ -47,13 +62,21 @@ namespace Ryujinx.UI.App.Common
         private readonly VirtualFileSystem _virtualFileSystem;
         private readonly IntegrityCheckLevel _checkLevel;
         private CancellationTokenSource _cancellationToken;
+        private readonly SourceCache<ApplicationData, ulong> _applications = new(it => it.Id);
+        private readonly SourceCache<(TitleUpdateModel TitleUpdate, bool IsSelected), TitleUpdateModel> _titleUpdates = new(it => it.TitleUpdate);
+        private readonly SourceCache<(DownloadableContentModel Dlc, bool IsEnabled), DownloadableContentModel> _downloadableContents = new(it => it.Dlc);
 
         private static readonly ApplicationJsonSerializerContext _serializerContext = new(JsonHelper.GetDefaultSerializerOptions());
+        private static readonly LdnGameDataSerializerContext _ldnDataSerializerContext = new(JsonHelper.GetDefaultSerializerOptions());
 
         public ApplicationLibrary(VirtualFileSystem virtualFileSystem, IntegrityCheckLevel checkLevel)
         {
             _virtualFileSystem = virtualFileSystem;
             _checkLevel = checkLevel;
+
+            Applications = _applications.AsObservableCache();
+            TitleUpdates = _titleUpdates.AsObservableCache();
+            DownloadableContents = _downloadableContents.AsObservableCache();
 
             _nspIcon = GetResourceBytes("Ryujinx.UI.Common.Resources.Icon_NSP.png");
             _xciIcon = GetResourceBytes("Ryujinx.UI.Common.Resources.Icon_XCI.png");
@@ -100,7 +123,7 @@ namespace Ryujinx.UI.App.Common
             return data;
         }
 
-        /// <exception cref="MissingKeyException">The configured key set is missing a key.</exception>
+        /// <exception cref="LibHac.Common.Keys.MissingKeyException">The configured key set is missing a key.</exception>
         /// <exception cref="InvalidDataException">The NCA header could not be decrypted.</exception>
         /// <exception cref="NotSupportedException">The NCA version is not supported.</exception>
         /// <exception cref="HorizonResultException">An error occured while reading PFS data.</exception>
@@ -176,7 +199,7 @@ namespace Ryujinx.UI.App.Common
             return null;
         }
 
-        /// <exception cref="MissingKeyException">The configured key set is missing a key.</exception>
+        /// <exception cref="LibHac.Common.Keys.MissingKeyException">The configured key set is missing a key.</exception>
         /// <exception cref="InvalidDataException">The NCA header could not be decrypted.</exception>
         /// <exception cref="NotSupportedException">The NCA version is not supported.</exception>
         /// <exception cref="HorizonResultException">An error occured while reading PFS data.</exception>
@@ -474,6 +497,148 @@ namespace Ryujinx.UI.App.Common
             return true;
         }
 
+        public bool TryGetDownloadableContentFromFile(string filePath, out List<DownloadableContentModel> titleUpdates)
+        {
+            titleUpdates = [];
+
+            try
+            {
+                string extension = Path.GetExtension(filePath).ToLower();
+
+                using FileStream file = new(filePath, FileMode.Open, FileAccess.Read);
+
+                switch (extension)
+                {
+                    case ".xci":
+                    case ".nsp":
+                        {
+                            IntegrityCheckLevel checkLevel = ConfigurationState.Instance.System.EnableFsIntegrityChecks
+                                ? IntegrityCheckLevel.ErrorOnInvalid
+                                : IntegrityCheckLevel.None;
+
+                            using IFileSystem pfs = PartitionFileSystemUtils.OpenApplicationFileSystem(filePath, _virtualFileSystem);
+
+                            foreach (DirectoryEntryEx fileEntry in pfs.EnumerateEntries("/", "*.nca"))
+                            {
+                                using var ncaFile = new UniqueRef<IFile>();
+
+                                pfs.OpenFile(ref ncaFile.Ref, fileEntry.FullPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
+
+                                Nca nca = TryOpenNca(ncaFile.Get.AsStorage());
+                                if (nca == null)
+                                {
+                                    continue;
+                                }
+
+                                if (nca.Header.ContentType == NcaContentType.PublicData)
+                                {
+                                    titleUpdates.Add(new DownloadableContentModel(nca.Header.TitleId, filePath, fileEntry.FullPath));
+                                }
+                            }
+
+                            return titleUpdates.Count != 0;
+                        }
+                }
+            }
+            catch (MissingKeyException exception)
+            {
+                Logger.Warning?.Print(LogClass.Application, $"Your key set is missing a key with the name: {exception.Name}");
+            }
+            catch (InvalidDataException)
+            {
+                Logger.Warning?.Print(LogClass.Application, $"The header key is incorrect or missing and therefore the NCA header content type check has failed. Errored File: {filePath}");
+            }
+            catch (IOException exception)
+            {
+                Logger.Warning?.Print(LogClass.Application, exception.Message);
+            }
+            catch (Exception exception)
+            {
+                Logger.Warning?.Print(LogClass.Application, $"The file encountered was not of a valid type. File: '{filePath}' Error: {exception}");
+            }
+
+            return false;
+        }
+
+        public bool TryGetTitleUpdatesFromFile(string filePath, out List<TitleUpdateModel> titleUpdates)
+        {
+            titleUpdates = [];
+
+            try
+            {
+                string extension = Path.GetExtension(filePath).ToLower();
+
+                using FileStream file = new(filePath, FileMode.Open, FileAccess.Read);
+
+                switch (extension)
+                {
+                    case ".xci":
+                    case ".nsp":
+                        {
+                            IntegrityCheckLevel checkLevel = ConfigurationState.Instance.System.EnableFsIntegrityChecks
+                                ? IntegrityCheckLevel.ErrorOnInvalid
+                                : IntegrityCheckLevel.None;
+
+                            using IFileSystem pfs =
+                                PartitionFileSystemUtils.OpenApplicationFileSystem(filePath, _virtualFileSystem);
+
+                            Dictionary<ulong, ContentMetaData> updates =
+                                pfs.GetContentData(ContentMetaType.Patch, _virtualFileSystem, checkLevel);
+
+                            if (updates.Count == 0)
+                            {
+                                return false;
+                            }
+
+                            foreach ((_, ContentMetaData content) in updates)
+                            {
+                                Nca patchNca = content.GetNcaByType(_virtualFileSystem.KeySet, ContentType.Program);
+                                Nca controlNca = content.GetNcaByType(_virtualFileSystem.KeySet, ContentType.Control);
+
+                                if (controlNca != null && patchNca != null)
+                                {
+                                    ApplicationControlProperty controlData = new();
+
+                                    using UniqueRef<IFile> nacpFile = new();
+
+                                    controlNca.OpenFileSystem(NcaSectionType.Data, IntegrityCheckLevel.None)
+                                        .OpenFile(ref nacpFile.Ref, "/control.nacp".ToU8Span(), OpenMode.Read)
+                                        .ThrowIfFailure();
+                                    nacpFile.Get.Read(out _, 0, SpanHelpers.AsByteSpan(ref controlData),
+                                        ReadOption.None).ThrowIfFailure();
+
+                                    var displayVersion = controlData.DisplayVersionString.ToString();
+                                    var update = new TitleUpdateModel(content.ApplicationId, content.Version.Version,
+                                        displayVersion, filePath);
+
+                                    titleUpdates.Add(update);
+                                }
+                            }
+
+                            return true;
+                        }
+                }
+            }
+            catch (MissingKeyException exception)
+            {
+                Logger.Warning?.Print(LogClass.Application, $"Your key set is missing a key with the name: {exception.Name}");
+            }
+            catch (InvalidDataException)
+            {
+                Logger.Warning?.Print(LogClass.Application, $"The header key is incorrect or missing and therefore the NCA header content type check has failed. Errored File: {filePath}");
+            }
+            catch (IOException exception)
+            {
+                Logger.Warning?.Print(LogClass.Application, exception.Message);
+            }
+            catch (Exception exception)
+            {
+                Logger.Warning?.Print(LogClass.Application, $"The file encountered was not of a valid type. File: '{filePath}' Error: {exception}");
+            }
+
+            return false;
+        }
+
         public void CancelLoading()
         {
             _cancellationToken?.Cancel();
@@ -493,9 +658,10 @@ namespace Ryujinx.UI.App.Common
             int numApplicationsLoaded = 0;
 
             _cancellationToken = new CancellationTokenSource();
+            _applications.Clear();
 
             // Builds the applications list with paths to found applications
-            List<string> applicationPaths = new();
+            List<string> applicationPaths = [];
 
             try
             {
@@ -524,12 +690,12 @@ namespace Ryujinx.UI.App.Common
                         IEnumerable<string> files = Directory.EnumerateFiles(appDir, "*", options).Where(file =>
                         {
                             return
-                            (Path.GetExtension(file).ToLower() is ".nsp" && ConfigurationState.Instance.UI.ShownFileTypes.NSP.Value) ||
-                            (Path.GetExtension(file).ToLower() is ".pfs0" && ConfigurationState.Instance.UI.ShownFileTypes.PFS0.Value) ||
-                            (Path.GetExtension(file).ToLower() is ".xci" && ConfigurationState.Instance.UI.ShownFileTypes.XCI.Value) ||
-                            (Path.GetExtension(file).ToLower() is ".nca" && ConfigurationState.Instance.UI.ShownFileTypes.NCA.Value) ||
-                            (Path.GetExtension(file).ToLower() is ".nro" && ConfigurationState.Instance.UI.ShownFileTypes.NRO.Value) ||
-                            (Path.GetExtension(file).ToLower() is ".nso" && ConfigurationState.Instance.UI.ShownFileTypes.NSO.Value);
+                                (Path.GetExtension(file).ToLower() is ".nsp" && ConfigurationState.Instance.UI.ShownFileTypes.NSP.Value) ||
+                                (Path.GetExtension(file).ToLower() is ".pfs0" && ConfigurationState.Instance.UI.ShownFileTypes.PFS0.Value) ||
+                                (Path.GetExtension(file).ToLower() is ".xci" && ConfigurationState.Instance.UI.ShownFileTypes.XCI.Value) ||
+                                (Path.GetExtension(file).ToLower() is ".nca" && ConfigurationState.Instance.UI.ShownFileTypes.NCA.Value) ||
+                                (Path.GetExtension(file).ToLower() is ".nro" && ConfigurationState.Instance.UI.ShownFileTypes.NRO.Value) ||
+                                (Path.GetExtension(file).ToLower() is ".nso" && ConfigurationState.Instance.UI.ShownFileTypes.NSO.Value);
                         });
 
                         foreach (string app in files)
@@ -560,6 +726,7 @@ namespace Ryujinx.UI.App.Common
                     }
                 }
 
+
                 // Loops through applications list, creating a struct and then firing an event containing the struct for each application
                 foreach (string applicationPath in applicationPaths)
                 {
@@ -570,13 +737,19 @@ namespace Ryujinx.UI.App.Common
 
                     if (TryGetApplicationsFromFile(applicationPath, out List<ApplicationData> applications))
                     {
-                        foreach (var application in applications)
+                        _applications.Edit(it =>
                         {
-                            OnApplicationAdded(new ApplicationAddedEventArgs
+                            foreach (var application in applications)
                             {
-                                AppData = application,
-                            });
-                        }
+                                it.AddOrUpdate(application);
+                                LoadDlcForApplication(application);
+                                if (LoadTitleUpdatesForApplication(application))
+                                {
+                                    // Trigger a reload of the version data
+                                    RefreshApplicationInfo(application.IdBase);
+                                }
+                            }
+                        });
 
                         if (applications.Count > 1)
                         {
@@ -610,9 +783,327 @@ namespace Ryujinx.UI.App.Common
             }
         }
 
-        protected void OnApplicationAdded(ApplicationAddedEventArgs e)
+        public async Task RefreshLdn()
         {
-            ApplicationAdded?.Invoke(null, e);
+
+            if (ConfigurationState.Instance.Multiplayer.Mode == MultiplayerMode.LdnRyu)
+            {
+                try
+                {
+                    string ldnWebHost = ConfigurationState.Instance.Multiplayer.LdnServer;
+                    if (string.IsNullOrEmpty(ldnWebHost))
+                    {
+                        ldnWebHost = DefaultLanPlayWebHost;
+                    }
+                    using HttpClient httpClient = new HttpClient();
+                    string ldnGameDataArrayString = await httpClient.GetStringAsync($"https://{ldnWebHost}/api/public_games");
+                    IEnumerable<LdnGameData> ldnGameDataArray = JsonHelper.Deserialize(ldnGameDataArrayString, _ldnDataSerializerContext.IEnumerableLdnGameData);
+                    var evt = new LdnGameDataReceivedEventArgs
+                    {
+                        LdnData = ldnGameDataArray
+                    };
+                    LdnGameDataReceived?.Invoke(null, evt);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning?.Print(LogClass.Application, $"Failed to fetch the public games JSON from the API. Player and game count in the game list will be unavailable.\n{ex.Message}");
+                    LdnGameDataReceived?.Invoke(null, new LdnGameDataReceivedEventArgs()
+                    {
+                        LdnData = Array.Empty<LdnGameData>()
+                    });
+                }
+            }
+            else
+            {
+                LdnGameDataReceived?.Invoke(null, new LdnGameDataReceivedEventArgs()
+                {
+                    LdnData = Array.Empty<LdnGameData>()
+                });
+            }
+        }
+
+        // Replace the currently stored DLC state for the game with the provided DLC state.
+        public void SaveDownloadableContentsForGame(ApplicationData application, List<(DownloadableContentModel, bool IsEnabled)> dlcs)
+        {
+            _downloadableContents.Edit(it =>
+            {
+                DownloadableContentsHelper.SaveDownloadableContentsJson(_virtualFileSystem, application.IdBase, dlcs);
+
+                it.Remove(it.Items.Where(item => item.Dlc.TitleIdBase == application.IdBase));
+                it.AddOrUpdate(dlcs);
+            });
+        }
+
+        // Replace the currently stored update state for the game with the provided update state.
+        public void SaveTitleUpdatesForGame(ApplicationData application, List<(TitleUpdateModel, bool IsSelected)> updates)
+        {
+            _titleUpdates.Edit(it =>
+            {
+                TitleUpdatesHelper.SaveTitleUpdatesJson(_virtualFileSystem, application.IdBase, updates);
+
+                it.Remove(it.Items.Where(item => item.TitleUpdate.TitleIdBase == application.IdBase));
+                it.AddOrUpdate(updates);
+                RefreshApplicationInfo(application.IdBase);
+            });
+        }
+
+        // Searches the provided directories for DLC NSP files that are _valid for the currently detected games in the
+        // library_, and then enables those DLC.
+        public int AutoLoadDownloadableContents(List<string> appDirs, out int numDlcRemoved)
+        {
+            _cancellationToken = new CancellationTokenSource();
+
+            List<string> dlcPaths = [];
+            int newDlcLoaded = 0;
+            numDlcRemoved = 0;
+
+            try
+            {
+                // Remove any downloadable content which can no longer be located on disk
+                Logger.Notice.Print(LogClass.Application, $"Removing non-existing Title DLCs");
+                var dlcToRemove = _downloadableContents.Items
+                    .Where(dlc => !File.Exists(dlc.Dlc.ContainerPath))
+                    .ToList();
+                dlcToRemove.ForEach(dlc =>
+                    Logger.Warning?.Print(LogClass.Application, $"Title DLC removed: {dlc.Dlc.ContainerPath}")
+                );
+                numDlcRemoved += dlcToRemove.Distinct().Count();
+                _downloadableContents.RemoveKeys(dlcToRemove.Select(dlc => dlc.Dlc));
+
+                foreach (string appDir in appDirs)
+                {
+                    Logger.Notice.Print(LogClass.Application, $"Auto loading DLC from: {appDir}");
+
+                    if (_cancellationToken.Token.IsCancellationRequested)
+                    {
+                        return newDlcLoaded;
+                    }
+
+                    if (!Directory.Exists(appDir))
+                    {
+                        Logger.Warning?.Print(LogClass.Application,
+                            $"The specified autoload directory \"{appDir}\" does not exist.");
+
+                        continue;
+                    }
+
+                    try
+                    {
+                        EnumerationOptions options = new()
+                        {
+                            RecurseSubdirectories = true,
+                            IgnoreInaccessible = false,
+                        };
+
+                        IEnumerable<string> files = Directory.EnumerateFiles(appDir, "*", options).Where(
+                            file => Path.GetExtension(file).ToLower() is ".nsp");
+
+                        foreach (string app in files)
+                        {
+                            if (_cancellationToken.Token.IsCancellationRequested)
+                            {
+                                return newDlcLoaded;
+                            }
+
+                            var fileInfo = new FileInfo(app);
+
+                            try
+                            {
+                                var fullPath = fileInfo.ResolveLinkTarget(true)?.FullName ?? fileInfo.FullName;
+
+                                dlcPaths.Add(fullPath);
+                            }
+                            catch (IOException exception)
+                            {
+                                Logger.Warning?.Print(LogClass.Application,
+                                    $"Failed to resolve the full path to file: \"{app}\" Error: {exception}");
+                            }
+                        }
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        Logger.Warning?.Print(LogClass.Application,
+                            $"Failed to get access to directory: \"{appDir}\"");
+                    }
+                }
+
+                var appIdLookup = Applications.Items.Select(it => it.IdBase).ToHashSet();
+
+                foreach (string dlcPath in dlcPaths)
+                {
+                    if (_cancellationToken.Token.IsCancellationRequested)
+                    {
+                        return newDlcLoaded;
+                    }
+
+                    if (TryGetDownloadableContentFromFile(dlcPath, out var foundDlcs))
+                    {
+                        foreach (var dlc in foundDlcs.Where(it => appIdLookup.Contains(it.TitleIdBase)))
+                        {
+                            if (!_downloadableContents.Lookup(dlc).HasValue)
+                            {
+                                _downloadableContents.AddOrUpdate((dlc, true));
+                                SaveDownloadableContentsForGame(dlc.TitleIdBase);
+                                newDlcLoaded++;
+                            }
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                _cancellationToken.Dispose();
+                _cancellationToken = null;
+            }
+
+            return newDlcLoaded;
+        }
+
+        // Searches the provided directories for update NSP files that are _valid for the currently detected games in the
+        // library_, and then applies those updates. If a newly-detected update is a newer version than the currently
+        // selected update (or if no update is currently selected), then that update will be selected.
+        public int AutoLoadTitleUpdates(List<string> appDirs, out int numUpdatesRemoved)
+        {
+            _cancellationToken = new CancellationTokenSource();
+
+            List<string> updatePaths = [];
+            int numUpdatesLoaded = 0;
+            numUpdatesRemoved = 0;
+
+            try
+            {
+                var titleIdsToSave = new HashSet<ulong>();
+                var titleIdsToRefresh = new HashSet<ulong>();
+
+                // Remove any updates which can no longer be located on disk
+                Logger.Notice.Print(LogClass.Application, $"Removing non-existing Title Updates");
+                var updatesToRemove = _titleUpdates.Items
+                    .Where(it => !File.Exists(it.TitleUpdate.Path))
+                    .ToList();
+
+                numUpdatesRemoved += updatesToRemove.Select(it => it.TitleUpdate).Distinct().Count();
+                updatesToRemove.ForEach(ti =>
+                    Logger.Warning?.Print(LogClass.Application, $"Title update removed: {ti.TitleUpdate.Path}")
+                );
+                _titleUpdates.RemoveKeys(updatesToRemove.Select(it => it.TitleUpdate));
+                titleIdsToSave.UnionWith(updatesToRemove.Select(it => it.TitleUpdate.TitleIdBase));
+                titleIdsToRefresh.UnionWith(updatesToRemove.Where(it => it.IsSelected).Select(update => update.TitleUpdate.TitleIdBase));
+
+                foreach (string appDir in appDirs)
+                {
+                    Logger.Notice.Print(LogClass.Application, $"Auto loading updates from: {appDir}");
+
+                    if (_cancellationToken.Token.IsCancellationRequested)
+                    {
+                        return numUpdatesLoaded;
+                    }
+
+                    if (!Directory.Exists(appDir))
+                    {
+                        Logger.Warning?.Print(LogClass.Application,
+                            $"The specified autoload directory \"{appDir}\" does not exist.");
+
+                        continue;
+                    }
+
+                    try
+                    {
+                        EnumerationOptions options = new()
+                        {
+                            RecurseSubdirectories = true,
+                            IgnoreInaccessible = false,
+                        };
+
+                        IEnumerable<string> files = Directory.EnumerateFiles(appDir, "*", options).Where(
+                            file => Path.GetExtension(file).ToLower() is ".nsp");
+
+                        foreach (string app in files)
+                        {
+                            if (_cancellationToken.Token.IsCancellationRequested)
+                            {
+                                return numUpdatesLoaded;
+                            }
+
+                            var fileInfo = new FileInfo(app);
+
+                            try
+                            {
+                                var fullPath = fileInfo.ResolveLinkTarget(true)?.FullName ?? fileInfo.FullName;
+
+                                updatePaths.Add(fullPath);
+                            }
+                            catch (IOException exception)
+                            {
+                                Logger.Warning?.Print(LogClass.Application,
+                                    $"Failed to resolve the full path to file: \"{app}\" Error: {exception}");
+                            }
+                        }
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        Logger.Warning?.Print(LogClass.Application,
+                            $"Failed to get access to directory: \"{appDir}\"");
+                    }
+                }
+
+                var appIdLookup = Applications.Items.Select(it => it.IdBase).ToHashSet();
+
+                foreach (string updatePath in updatePaths)
+                {
+                    if (_cancellationToken.Token.IsCancellationRequested)
+                    {
+                        return numUpdatesLoaded;
+                    }
+
+                    if (TryGetTitleUpdatesFromFile(updatePath, out var foundUpdates))
+                    {
+                        foreach (var update in foundUpdates.Where(it => appIdLookup.Contains(it.TitleIdBase)))
+                        {
+                            if (!_titleUpdates.Lookup(update).HasValue)
+                            {
+                                bool shouldSelect = AddAndAutoSelectUpdate(update);
+                                titleIdsToSave.Add(update.TitleIdBase);
+                                numUpdatesLoaded++;
+
+                                if (shouldSelect)
+                                {
+                                    titleIdsToRefresh.Add(update.TitleIdBase);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                titleIdsToSave.ForEach(titleId => SaveTitleUpdatesForGame(titleId));
+                titleIdsToRefresh.ForEach(titleId => RefreshApplicationInfo(titleId));
+            }
+            finally
+            {
+                _cancellationToken.Dispose();
+                _cancellationToken = null;
+            }
+
+            return numUpdatesLoaded;
+        }
+
+        private bool AddAndAutoSelectUpdate(TitleUpdateModel update)
+        {
+            if (update == null) return false;
+            
+            var currentlySelected = TitleUpdates.Items.FirstOrOptional(it =>
+                it.TitleUpdate.TitleIdBase == update.TitleIdBase && it.IsSelected);
+
+            var shouldSelect = !currentlySelected.HasValue ||
+                               currentlySelected.Value.TitleUpdate.Version < update.Version;
+
+            _titleUpdates.AddOrUpdate((update, shouldSelect));
+            
+            if (currentlySelected.HasValue && shouldSelect)
+            {
+                _titleUpdates.AddOrUpdate((currentlySelected.Value.TitleUpdate, false));
+            }
+
+            return shouldSelect;
         }
 
         protected void OnApplicationCountUpdated(ApplicationCountUpdatedEventArgs e)
@@ -668,7 +1159,7 @@ namespace Ryujinx.UI.App.Common
                     return _ncaIcon;
                 }
 
-                return Path.GetExtension(applicationPath).ToLower() switch
+                return Path.GetExtension(applicationPath)?.ToLower() switch
                 {
                     ".nsp" => _nspIcon,
                     ".pfs0" => _nspIcon,
@@ -685,7 +1176,7 @@ namespace Ryujinx.UI.App.Common
                 // Look for icon only if applicationPath is not a directory
                 if (!Directory.Exists(applicationPath))
                 {
-                    string extension = Path.GetExtension(applicationPath).ToLower();
+                    string extension = Path.GetExtension(applicationPath)?.ToLower();
 
                     using FileStream file = new(applicationPath, FileMode.Open, FileAccess.Read);
 
@@ -741,7 +1232,7 @@ namespace Ryujinx.UI.App.Common
                                 {
                                     using var icon = new UniqueRef<IFile>();
 
-                                    controlFs.OpenFile(ref icon.Ref, $"/icon_{desiredTitleLanguage}.dat".ToU8Span(), OpenMode.Read).ThrowIfFailure();
+                                    controlFs?.OpenFile(ref icon.Ref, $"/icon_{desiredTitleLanguage}.dat".ToU8Span(), OpenMode.Read).ThrowIfFailure();
 
                                     using MemoryStream stream = new();
 
@@ -759,7 +1250,7 @@ namespace Ryujinx.UI.App.Common
 
                                         using var icon = new UniqueRef<IFile>();
 
-                                        controlFs.OpenFile(ref icon.Ref, entry.FullPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
+                                        controlFs?.OpenFile(ref icon.Ref, entry.FullPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
 
                                         using MemoryStream stream = new();
                                         icon.Get.AsStream().CopyTo(stream);
@@ -935,6 +1426,133 @@ namespace Ryujinx.UI.App.Common
             }
 
             return false;
+        }
+
+        private Nca TryOpenNca(IStorage ncaStorage)
+        {
+            try
+            {
+                return new Nca(_virtualFileSystem.KeySet, ncaStorage);
+            }
+            catch (Exception)
+            {
+                // ignored
+            }
+
+            return null;
+        }
+
+        // Does a two-phase load of DLC. First reading the metadata on disk, then loading anything bundled in the game
+        // file itself
+        private void LoadDlcForApplication(ApplicationData application)
+        {
+            _downloadableContents.Edit(it =>
+            {
+                var savedDlc =
+                    DownloadableContentsHelper.LoadDownloadableContentsJson(_virtualFileSystem, application.IdBase);
+                it.AddOrUpdate(savedDlc);
+
+                if (TryGetDownloadableContentFromFile(application.Path, out var bundledDlc))
+                {
+                    var savedDlcLookup = savedDlc.Select(dlc => dlc.Item1).ToHashSet();
+
+                    bool addedNewDlc = false;
+                    foreach (var dlc in bundledDlc)
+                    {
+                        if (!savedDlcLookup.Contains(dlc))
+                        {
+                            addedNewDlc = true;
+                            it.AddOrUpdate((dlc, true));
+                        }
+                    }
+
+                    if (addedNewDlc)
+                    {
+                        var gameDlcs = it.Items.Where(dlc => dlc.Dlc.TitleIdBase == application.IdBase).ToList();
+                        DownloadableContentsHelper.SaveDownloadableContentsJson(_virtualFileSystem, application.IdBase,
+                            gameDlcs);
+                    }
+                }
+            });
+        }
+
+        // Does a two-phase load of updates. First reading the metadata on disk, then loading anything bundled in the game
+        // file itself
+        private bool LoadTitleUpdatesForApplication(ApplicationData application)
+        {
+            var modifiedVersion = false;
+
+            _titleUpdates.Edit(it =>
+            {
+                var savedUpdates =
+                    TitleUpdatesHelper.LoadTitleUpdatesJson(_virtualFileSystem, application.IdBase);
+                it.AddOrUpdate(savedUpdates);
+
+                var selectedUpdate = savedUpdates.FirstOrOptional(update => update.IsSelected);
+
+                if (TryGetTitleUpdatesFromFile(application.Path, out var bundledUpdates))
+                {
+                    var savedUpdateLookup = savedUpdates.Select(update => update.Update).ToHashSet();
+                    bool updatesChanged = false;
+
+                    foreach (var update in bundledUpdates.OrderByDescending(bundled => bundled.Version))
+                    {
+                        if (!savedUpdateLookup.Contains(update))
+                        {
+                            bool shouldSelect = false;
+                            if (!selectedUpdate.HasValue || selectedUpdate.Value.Update.Version < update.Version)
+                            {
+                                shouldSelect = true;
+                                _titleUpdates.AddOrUpdate((selectedUpdate.Value.Update, false));
+                                selectedUpdate = (update, true);
+                            }
+
+                            modifiedVersion = modifiedVersion || shouldSelect;
+                            it.AddOrUpdate((update, shouldSelect));
+
+                            updatesChanged = true;
+                        }
+                    }
+
+                    if (updatesChanged)
+                    {
+                        var gameUpdates = it.Items.Where(update => update.TitleUpdate.TitleIdBase == application.IdBase).ToList();
+                        TitleUpdatesHelper.SaveTitleUpdatesJson(_virtualFileSystem, application.IdBase, gameUpdates);
+                    }
+                }
+            });
+
+            return modifiedVersion;
+        }
+
+        // Save the _currently tracked_ DLC state for the game
+        private void SaveDownloadableContentsForGame(ulong titleIdBase)
+        {
+            var dlcs = DownloadableContents.Items.Where(dlc => dlc.Dlc.TitleIdBase == titleIdBase).ToList();
+            DownloadableContentsHelper.SaveDownloadableContentsJson(_virtualFileSystem, titleIdBase, dlcs);
+        }
+
+        // Save the _currently tracked_ update state for the game
+        private void SaveTitleUpdatesForGame(ulong titleIdBase)
+        {
+            var updates = TitleUpdates.Items.Where(update => update.TitleUpdate.TitleIdBase == titleIdBase).ToList();
+            TitleUpdatesHelper.SaveTitleUpdatesJson(_virtualFileSystem, titleIdBase, updates);
+        }
+
+        // ApplicationData isnt live-updating (e.g. when an update gets applied) and so this is meant to trigger a refresh
+        // of its state
+        private void RefreshApplicationInfo(ulong appIdBase)
+        {
+            var application = _applications.Lookup(appIdBase);
+
+            if (!application.HasValue)
+                return;
+
+            if (!TryGetApplicationsFromFile(application.Value.Path, out List<ApplicationData> newApplications))
+                return;
+
+            var newApplication = newApplications.First(it => it.IdBase == appIdBase);
+            _applications.AddOrUpdate(newApplication);
         }
     }
 }

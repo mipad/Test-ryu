@@ -703,8 +703,6 @@ namespace Ryujinx.Cpu.LightningJit.Arm32.Target.Arm64
                 switch ((ArmShiftType)sType)
                 {
                     case ArmShiftType.Lsr:
-                        shift = 32;
-                        break;
                     case ArmShiftType.Asr:
                         shift = 32;
                         break;

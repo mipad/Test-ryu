@@ -21,7 +21,7 @@ namespace Ryujinx.Graphics.Vulkan
             _api = api;
             _physicalDevice = physicalDevice;
             _device = device;
-            _blockLists = new List<MemoryAllocatorBlockList>();
+            _blockLists = [];
             _blockAlignment = (int)Math.Min(int.MaxValue, MaxDeviceMemoryUsageEstimate / _physicalDevice.PhysicalDeviceProperties.Limits.MaxMemoryAllocationCount);
             _lock = new(LockRecursionPolicy.NoRecursion);
         }
@@ -76,9 +76,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        internal int FindSuitableMemoryTypeIndex(
-            uint memoryTypeBits,
-            MemoryPropertyFlags flags)
+        internal int FindSuitableMemoryTypeIndex(uint memoryTypeBits, MemoryPropertyFlags flags)
         {
             for (int i = 0; i < _physicalDevice.PhysicalDeviceMemoryProperties.MemoryTypeCount; i++)
             {

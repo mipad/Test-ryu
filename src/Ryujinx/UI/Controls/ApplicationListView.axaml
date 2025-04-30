@@ -2,7 +2,6 @@
     x:Class="Ryujinx.Ava.UI.Controls.ApplicationListView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:controls="clr-namespace:Ryujinx.Ava.UI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:helpers="clr-namespace:Ryujinx.Ava.UI.Helpers"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -15,7 +14,6 @@
     x:DataType="viewModels:MainWindowViewModel">
     <UserControl.Resources>
         <helpers:BitmapArrayValueConverter x:Key="ByteImage" />
-        <controls:ApplicationContextMenu x:Key="ApplicationContextMenu" />
     </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
@@ -27,10 +25,10 @@
             Padding="8"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
-            ContextFlyout="{StaticResource ApplicationContextMenu}"
+            SelectedItem="{Binding ListSelectedApplication}"
+            ContextFlyout="{Binding ListAppContextMenu}"
             DoubleTapped="GameList_DoubleTapped"
-            ItemsSource="{Binding AppsObservableList}"
-            SelectionChanged="GameList_SelectionChanged">
+            ItemsSource="{Binding AppsObservableList}">
             <ListBox.ItemsPanel>
                 <ItemsPanelTemplate>
                     <StackPanel
@@ -55,14 +53,7 @@
                             VerticalAlignment="Stretch"
                             ClipToBounds="True"
                             CornerRadius="5">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="10" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="150" />
-                                    <ColumnDefinition Width="100" />
-                                </Grid.ColumnDefinitions>
+                            <Grid ColumnDefinitions="Auto,10,*,150,100">
                                 <Image
                                     Grid.RowSpan="3"
                                     Grid.Column="0"
@@ -107,16 +98,31 @@
                                     VerticalAlignment="Top"
                                     Orientation="Vertical"
                                     Spacing="5">
-                                    <TextBlock
-                                        HorizontalAlignment="Stretch"
-                                        Text="{Binding Id, StringFormat=X16}"
-                                        TextAlignment="Start"
-                                        TextWrapping="Wrap" />
+                                    <Button 
+                                        Click="IdString_OnClick" 
+                                        HorizontalContentAlignment="Left" 
+                                        VerticalAlignment="Center"
+                                        Background="{DynamicResource AppListBackgroundColor}"
+                                        Margin="-1, 0, 0, 0"
+                                        Padding="0" >
+                                        <TextBlock
+                                            Margin="1.5"
+                                            HorizontalAlignment="Stretch"
+                                            Text="{Binding IdString}"
+                                            Tag="{Binding Id, StringFormat=X16}"
+                                            TextAlignment="Start"
+                                            TextWrapping="Wrap" />
+                                    </Button>
                                     <TextBlock
                                         HorizontalAlignment="Stretch"
                                         Text="{Binding FileExtension}"
                                         TextAlignment="Start"
                                         TextWrapping="Wrap" />
+                                    <TextBlock
+                                        HorizontalAlignment="Stretch"
+                                        Text="{Binding Converter={helpers:MultiplayerInfoConverter}}"
+                                        TextAlignment="Start"
+                                        TextWrapping="Wrap"/>
                                 </StackPanel>
                                 <StackPanel
                                     Grid.Column="4"
@@ -147,7 +153,7 @@
                                     HorizontalAlignment="Left"
                                     VerticalAlignment="Top"
                                     FontSize="16"
-                                    Foreground="{DynamicResource SystemAccentColor}"
+                                    Foreground="{DynamicResource FavoriteApplicationIconColor}"
                                     IsVisible="{Binding Favorite}"
                                     Symbol="StarFilled" />
                             </Grid>

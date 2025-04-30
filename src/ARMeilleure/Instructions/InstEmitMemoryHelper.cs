@@ -305,8 +305,6 @@ namespace ARMeilleure.Instructions
                     context.Store16(physAddr, value);
                     break;
                 case 2:
-                    context.Store(physAddr, value);
-                    break;
                 case 3:
                     context.Store(physAddr, value);
                     break;
@@ -591,8 +589,6 @@ namespace ARMeilleure.Instructions
                     value = context.VectorInsert16(vector, value, elem);
                     break;
                 case 2:
-                    value = context.VectorInsert(vector, value, elem);
-                    break;
                 case 3:
                     value = context.VectorInsert(vector, value, elem);
                     break;
@@ -733,8 +729,6 @@ namespace ARMeilleure.Instructions
                 switch (op.ShiftType)
                 {
                     case ShiftType.Lsr:
-                        shift = 32;
-                        break;
                     case ShiftType.Asr:
                         shift = 32;
                         break;

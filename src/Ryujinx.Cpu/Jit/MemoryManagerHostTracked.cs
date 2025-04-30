@@ -8,7 +8,6 @@ using Ryujinx.Memory.Tracking;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 
 namespace Ryujinx.Cpu.Jit
@@ -469,7 +468,7 @@ namespace Ryujinx.Cpu.Jit
         {
             if (size == 0)
             {
-                return Enumerable.Empty<MemoryRange>();
+                return [];
             }
 
             return GetPhysicalRegionsImpl(va, size);

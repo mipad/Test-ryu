@@ -1,9 +1,11 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input.Platform;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Gommon;
 using Ryujinx.Ava.Common;
 using Ryujinx.Ava.Common.Locale;
 using Ryujinx.Ava.UI.Helpers;
@@ -19,6 +21,16 @@ namespace Ryujinx.Ava
 {
     public class App : Application
     {
+        public static MainWindow MainWindow => Current!
+            .ApplicationLifetime.Cast<IClassicDesktopStyleApplicationLifetime>()
+            .MainWindow.Cast<MainWindow>();
+
+        public static bool IsClipboardAvailable(out IClipboard clipboard)
+        {
+            clipboard = MainWindow.Clipboard;
+            return clipboard != null;
+        }
+
         public override void Initialize()
         {
             Name = $"Ryujinx {Program.Version}";
@@ -132,7 +144,7 @@ namespace Ryujinx.Ava
 
         public static ThemeVariant DetectSystemTheme()
         {
-            if (Application.Current is App app)
+            if (Current is App app)
             {
                 var colorValues = app.PlatformSettings.GetColorValues();
 

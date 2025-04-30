@@ -60,11 +60,21 @@
         Header="{locale:Locale GameListContextMenuOpenSdModsDirectory}"
         ToolTip.Tip="{locale:Locale GameListContextMenuOpenSdModsDirectoryToolTip}" />
     <Separator />
-    <MenuItem Header="{locale:Locale GameListContextMenuCacheManagement}">
+	<MenuItem
+		Click="TrimXCI_Click"
+		Header="{locale:Locale GameListContextMenuTrimXCI}"
+        IsEnabled="{Binding TrimXCIEnabled}"
+		ToolTip.Tip="{locale:Locale GameListContextMenuTrimXCIToolTip}" />
+    <Separator />
+    <MenuItem Header="{locale:Locale GameListContextMenuCacheManagement}" >
         <MenuItem
             Click="PurgePtcCache_Click"
             Header="{locale:Locale GameListContextMenuCacheManagementPurgePptc}"
             ToolTip.Tip="{locale:Locale GameListContextMenuCacheManagementPurgePptcToolTip}" />
+        <MenuItem
+            Click="NukePtcCache_Click"
+            Header="{locale:Locale GameListContextMenuCacheManagementNukePptc}"
+            ToolTip.Tip="{locale:Locale GameListContextMenuCacheManagementNukePptcToolTip}" />
         <MenuItem
             Click="PurgeShaderCache_Click"
             Header="{locale:Locale GameListContextMenuCacheManagementPurgeShaderCache}"

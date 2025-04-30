@@ -103,11 +103,11 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             for (int stage = 0; stage < stages; stage++)
             {
-                _textureBindings[stage] = Array.Empty<TextureBindingInfo>();
-                _imageBindings[stage] = Array.Empty<TextureBindingInfo>();
+                _textureBindings[stage] = [];
+                _imageBindings[stage] = [];
             }
 
-            _textureCounts = Array.Empty<int>();
+            _textureCounts = [];
         }
 
         /// <summary>
@@ -422,7 +422,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="texturePool">The current texture pool</param>
         /// <param name="samplerPool">The current sampler pool</param>
         /// <param name="stage">The shader stage using the textures to be bound</param>
-        /// <param name="stageIndex">The stage number of the specified shader stage</param
+        /// <param name="stageIndex">The stage number of the specified shader stage</param>
         /// <param name="poolModified">True if either the texture or sampler pool was modified, false otherwise</param>
         /// <param name="specState">Specialization state for the bound shader</param>
         /// <returns>True if all bound textures match the current shader specialiation state, false otherwise</returns>

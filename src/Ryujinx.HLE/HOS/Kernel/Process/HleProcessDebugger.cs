@@ -40,7 +40,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
         {
             _owner = owner;
 
-            _images = new List<Image>();
+            _images = [];
         }
 
         public string GetGuestStackTrace(KThread thread)

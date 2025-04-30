@@ -13,6 +13,7 @@ namespace Ryujinx.HLE.Generators
             var syntaxReceiver = (ServiceSyntaxReceiver)context.SyntaxReceiver;
             CodeGenerator generator = new CodeGenerator();
 
+            generator.AppendLine("#nullable enable");
             generator.AppendLine("using System;");
             generator.EnterScope($"namespace Ryujinx.HLE.HOS.Services.Sm");
             generator.EnterScope($"partial class IUserInterface");
@@ -38,7 +39,7 @@ namespace Ryujinx.HLE.Generators
                         var type = constructors.Where(x => x.ParameterList.Parameters.Count == 2).FirstOrDefault().ParameterList.Parameters[1].Type;
                         var model = context.Compilation.GetSemanticModel(type.SyntaxTree);
                         var typeSymbol = model.GetSymbolInfo(type).Symbol as INamedTypeSymbol;
-                        var fullName = typeSymbol.ToString();
+                        var fullName = typeSymbol?.ToString();
                         generator.EnterScope("if (parameter != null)");
                         generator.AppendLine($"return new {GetFullName(className, context)}(context, ({fullName})parameter);");
                         generator.LeaveScope();
@@ -58,6 +59,7 @@ namespace Ryujinx.HLE.Generators
 
             generator.LeaveScope();
             generator.LeaveScope();
+            generator.AppendLine("#nullable disable");            
             context.AddSource($"IUserInterface.g.cs", generator.ToString());
         }
 
@@ -65,7 +67,7 @@ namespace Ryujinx.HLE.Generators
         {
             var typeSymbol = context.Compilation.GetSemanticModel(syntaxNode.SyntaxTree).GetDeclaredSymbol(syntaxNode);
 
-            return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            return typeSymbol?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         }
 
         public void Initialize(GeneratorInitializationContext context)

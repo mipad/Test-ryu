@@ -4,6 +4,7 @@ using Ryujinx.Common.Logging;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Threading;
 using static SDL2.SDL;
 
 namespace Ryujinx.Input.SDL2
@@ -16,8 +17,8 @@ namespace Ryujinx.Input.SDL2
 
         private StandardControllerInputConfig _configuration;
 
-        private static readonly SDL_GameControllerButton[] _buttonsDriverMapping = new SDL_GameControllerButton[(int)GamepadButtonInputId.Count]
-        {
+        private static readonly SDL_GameControllerButton[] _buttonsDriverMapping =
+        [
             // Unbound, ignored.
             SDL_GameControllerButton.SDL_CONTROLLER_BUTTON_INVALID,
 
@@ -52,19 +53,19 @@ namespace Ryujinx.Input.SDL2
             SDL_GameControllerButton.SDL_CONTROLLER_BUTTON_INVALID,
             SDL_GameControllerButton.SDL_CONTROLLER_BUTTON_INVALID,
             SDL_GameControllerButton.SDL_CONTROLLER_BUTTON_INVALID,
-            SDL_GameControllerButton.SDL_CONTROLLER_BUTTON_INVALID,
-        };
+            SDL_GameControllerButton.SDL_CONTROLLER_BUTTON_INVALID
+        ];
 
-        private readonly object _userMappingLock = new();
+        private readonly Lock _userMappingLock = new();
 
         private readonly List<ButtonMappingEntry> _buttonsUserMapping;
 
-        private readonly StickInputId[] _stickUserMapping = new StickInputId[(int)StickInputId.Count]
-        {
+        private readonly StickInputId[] _stickUserMapping =
+        [
             StickInputId.Unbound,
             StickInputId.Left,
-            StickInputId.Right,
-        };
+            StickInputId.Right
+        ];
 
         public GamepadFeaturesFlag Features { get; }
 
@@ -313,6 +314,24 @@ namespace Ryujinx.Input.SDL2
             return value * ConvertRate;
         }
 
+        private JoyconConfigControllerStick<GamepadInputId, Common.Configuration.Hid.Controller.StickInputId> GetLogicalJoyStickConfig(StickInputId inputId)
+        {
+            switch (inputId)
+            {
+                case StickInputId.Left:
+                    if (_configuration.RightJoyconStick.Joystick == Common.Configuration.Hid.Controller.StickInputId.Left)
+                        return _configuration.RightJoyconStick;
+                    else
+                        return _configuration.LeftJoyconStick;
+                case StickInputId.Right:
+                    if (_configuration.LeftJoyconStick.Joystick == Common.Configuration.Hid.Controller.StickInputId.Right)
+                        return _configuration.LeftJoyconStick;
+                    else
+                        return _configuration.RightJoyconStick;
+            }
+            return null;
+        }
+
         public (float, float) GetStick(StickInputId inputId)
         {
             if (inputId == StickInputId.Unbound)
@@ -320,52 +339,46 @@ namespace Ryujinx.Input.SDL2
                 return (0.0f, 0.0f);
             }
 
-            short stickX;
-            short stickY;
-
-            if (inputId == StickInputId.Left)
-            {
-                stickX = SDL_GameControllerGetAxis(_gamepadHandle, SDL_GameControllerAxis.SDL_CONTROLLER_AXIS_LEFTX);
-                stickY = SDL_GameControllerGetAxis(_gamepadHandle, SDL_GameControllerAxis.SDL_CONTROLLER_AXIS_LEFTY);
-            }
-            else if (inputId == StickInputId.Right)
-            {
-                stickX = SDL_GameControllerGetAxis(_gamepadHandle, SDL_GameControllerAxis.SDL_CONTROLLER_AXIS_RIGHTX);
-                stickY = SDL_GameControllerGetAxis(_gamepadHandle, SDL_GameControllerAxis.SDL_CONTROLLER_AXIS_RIGHTY);
-            }
-            else
-            {
-                throw new NotSupportedException($"Unsupported stick {inputId}");
-            }
+            (short stickX, short stickY) = GetStickXY(inputId);
 
             float resultX = ConvertRawStickValue(stickX);
             float resultY = -ConvertRawStickValue(stickY);
 
             if (HasConfiguration)
             {
-                if ((inputId == StickInputId.Left && _configuration.LeftJoyconStick.InvertStickX) ||
-                    (inputId == StickInputId.Right && _configuration.RightJoyconStick.InvertStickX))
-                {
-                    resultX = -resultX;
-                }
+                var joyconStickConfig = GetLogicalJoyStickConfig(inputId);
 
-                if ((inputId == StickInputId.Left && _configuration.LeftJoyconStick.InvertStickY) ||
-                    (inputId == StickInputId.Right && _configuration.RightJoyconStick.InvertStickY))
+                if (joyconStickConfig != null)
                 {
-                    resultY = -resultY;
-                }
+                    if (joyconStickConfig.InvertStickX)
+                        resultX = -resultX;
 
-                if ((inputId == StickInputId.Left && _configuration.LeftJoyconStick.Rotate90CW) ||
-                    (inputId == StickInputId.Right && _configuration.RightJoyconStick.Rotate90CW))
-                {
-                    float temp = resultX;
-                    resultX = resultY;
-                    resultY = -temp;
+                    if (joyconStickConfig.InvertStickY)
+                        resultY = -resultY;
+
+                    if (joyconStickConfig.Rotate90CW)
+                    {
+                        float temp = resultX;
+                        resultX = resultY;
+                        resultY = -temp;
+                    }
                 }
             }
 
             return (resultX, resultY);
         }
+
+        private (short, short) GetStickXY(StickInputId inputId) =>
+            inputId switch
+            {
+                StickInputId.Left => (
+                    SDL_GameControllerGetAxis(_gamepadHandle, SDL_GameControllerAxis.SDL_CONTROLLER_AXIS_LEFTX),
+                    SDL_GameControllerGetAxis(_gamepadHandle, SDL_GameControllerAxis.SDL_CONTROLLER_AXIS_LEFTY)),
+                StickInputId.Right => (
+                    SDL_GameControllerGetAxis(_gamepadHandle, SDL_GameControllerAxis.SDL_CONTROLLER_AXIS_RIGHTX),
+                    SDL_GameControllerGetAxis(_gamepadHandle, SDL_GameControllerAxis.SDL_CONTROLLER_AXIS_RIGHTY)),
+                _ => throw new NotSupportedException($"Unsupported stick {inputId}")
+            };
 
         public bool IsPressed(GamepadButtonInputId inputId)
         {

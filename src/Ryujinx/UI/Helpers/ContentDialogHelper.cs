@@ -148,8 +148,8 @@ namespace Ryujinx.Ava.UI.Helpers
         {
             Grid content = new()
             {
-                RowDefinitions = new RowDefinitions { new(), new() },
-                ColumnDefinitions = new ColumnDefinitions { new(GridLength.Auto), new() },
+                RowDefinitions = [new(), new()],
+                ColumnDefinitions = [new(GridLength.Auto), new()],
 
                 MinHeight = 80,
             };
@@ -159,6 +159,7 @@ namespace Ryujinx.Ava.UI.Helpers
                 Symbol = (Symbol)symbol,
                 Margin = new Thickness(10),
                 FontSize = 40,
+                FlowDirection = FlowDirection.LeftToRight,
                 VerticalAlignment = VerticalAlignment.Center,
             };
 
@@ -229,6 +230,31 @@ namespace Ryujinx.Ava.UI.Helpers
                 (int)Symbol.Help,
                 primaryButtonResult);
         }
+        internal static async Task<UserResult> CreateConfirmationDialogExtended(
+            string primaryText,
+            string secondaryText,
+            string acceptButtonText,
+            string noacceptButtonText,
+            string cancelButtonText,
+            string title,
+            UserResult primaryButtonResult = UserResult.Yes)
+            => await ShowTextDialog(
+                string.IsNullOrWhiteSpace(title) ? LocaleManager.Instance[LocaleKeys.DialogConfirmationTitle] : title,
+                primaryText,
+                secondaryText,
+                acceptButtonText,
+                noacceptButtonText,
+                cancelButtonText,
+                (int)Symbol.Help,
+                primaryButtonResult);
+
+        internal static async Task<UserResult> CreateLocalizedConfirmationDialog(string primaryText, string secondaryText)
+            => await CreateConfirmationDialog(
+                primaryText,
+                secondaryText,
+                LocaleManager.Instance[LocaleKeys.InputDialogYes],
+                LocaleManager.Instance[LocaleKeys.InputDialogNo],
+                LocaleManager.Instance[LocaleKeys.RyujinxConfirm]);
 
         internal static async Task CreateUpdaterInfoDialog(string primary, string secondaryText)
         {

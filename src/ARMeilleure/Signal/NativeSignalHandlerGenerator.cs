@@ -8,7 +8,7 @@ namespace ARMeilleure.Signal
 {
     public static class NativeSignalHandlerGenerator
     {
-        public const int MaxTrackedRanges = 8;
+        public const int MaxTrackedRanges = 16;
 
         private const int StructAddressOffset = 0;
         private const int StructWriteOffset = 4;
@@ -198,7 +198,7 @@ namespace ARMeilleure.Signal
 
             ControlFlowGraph cfg = context.GetControlFlowGraph();
 
-            OperandType[] argTypes = new OperandType[] { OperandType.I32, OperandType.I64, OperandType.I64 };
+            OperandType[] argTypes = [OperandType.I32, OperandType.I64, OperandType.I64];
 
             return Compiler.Compile(cfg, argTypes, OperandType.None, CompilerOptions.HighCq, RuntimeInformation.ProcessArchitecture).Code;
         }
@@ -252,7 +252,7 @@ namespace ARMeilleure.Signal
 
             ControlFlowGraph cfg = context.GetControlFlowGraph();
 
-            OperandType[] argTypes = new OperandType[] { OperandType.I64 };
+            OperandType[] argTypes = [OperandType.I64];
 
             return Compiler.Compile(cfg, argTypes, OperandType.I32, CompilerOptions.HighCq, RuntimeInformation.ProcessArchitecture).Code;
         }

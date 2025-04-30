@@ -14,7 +14,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Common
         private readonly long[] _current2;
         private readonly long[] _peak;
 
-        private readonly object _lock;
+        private readonly object _lock = new();
 
         private readonly LinkedList<KThread> _waitingThreads;
 
@@ -27,9 +27,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Common
             _current2 = new long[(int)LimitableResource.Count];
             _peak = new long[(int)LimitableResource.Count];
 
-            _lock = new object();
-
-            _waitingThreads = new LinkedList<KThread>();
+            _waitingThreads = [];
         }
 
         public bool Reserve(LimitableResource resource, ulong amount)

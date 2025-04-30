@@ -21,6 +21,7 @@ namespace Ryujinx.HLE.HOS
         private readonly string _titleIdText;
         private readonly string _displayVersion;
         private readonly bool _diskCacheEnabled;
+        private readonly string _diskCacheSelector;
         private readonly ulong _codeAddress;
         private readonly ulong _codeSize;
 
@@ -32,6 +33,7 @@ namespace Ryujinx.HLE.HOS
             string titleIdText,
             string displayVersion,
             bool diskCacheEnabled,
+            string diskCacheSelector,
             ulong codeAddress,
             ulong codeSize)
         {
@@ -40,6 +42,7 @@ namespace Ryujinx.HLE.HOS
             _titleIdText = titleIdText;
             _displayVersion = displayVersion;
             _diskCacheEnabled = diskCacheEnabled;
+            _diskCacheSelector = diskCacheSelector;
             _codeAddress = codeAddress;
             _codeSize = codeSize;
         }
@@ -155,7 +158,7 @@ namespace Ryujinx.HLE.HOS
                 }
             }
 
-            DiskCacheLoadState = processContext.Initialize(_titleIdText, _displayVersion, _diskCacheEnabled, _codeAddress, _codeSize);
+            DiskCacheLoadState = processContext.Initialize(_titleIdText, _displayVersion, _diskCacheEnabled, _codeAddress, _codeSize, _diskCacheSelector ?? "default");
 
             return processContext;
         }

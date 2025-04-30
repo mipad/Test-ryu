@@ -4,7 +4,6 @@ using Ryujinx.Graphics.Gpu.Memory;
 using Ryujinx.Graphics.Shader;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 
 namespace Ryujinx.Graphics.Gpu.Image
@@ -549,7 +548,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             _channel = channel;
             _cacheFromBuffer = new Dictionary<CacheEntryFromBufferKey, CacheEntryFromBuffer>();
             _cacheFromPool = new Dictionary<CacheEntryFromPoolKey, CacheEntry>();
-            _lruCache = new LinkedList<CacheEntryFromBuffer>();
+            _lruCache = [];
         }
 
         /// <summary>
@@ -1116,7 +1115,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             {
                 if (key.MatchesPool(pool))
                 {
-                    (keysToRemove ??= new()).Add(key);
+                    (keysToRemove ??= []).Add(key);
 
                     if (key.IsImage)
                     {

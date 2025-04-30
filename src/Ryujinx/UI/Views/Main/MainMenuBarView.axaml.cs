@@ -10,6 +10,7 @@ using Ryujinx.Ava.UI.ViewModels;
 using Ryujinx.Ava.UI.Windows;
 using Ryujinx.Common;
 using Ryujinx.Common.Utilities;
+using Ryujinx.HLE.HOS.Services.Nfc.AmiiboDecryption;
 using Ryujinx.Modules;
 using Ryujinx.UI.App.Common;
 using Ryujinx.UI.Common;
@@ -37,7 +38,7 @@ namespace Ryujinx.Ava.UI.Views.Main
 
         private CheckBox[] GenerateToggleFileTypeItems()
         {
-            List<CheckBox> checkBoxes = new();
+            List<CheckBox> checkBoxes = [];
 
             foreach (var item in Enum.GetValues(typeof(FileTypes)))
             {
@@ -55,7 +56,7 @@ namespace Ryujinx.Ava.UI.Views.Main
 
         private static MenuItem[] GenerateLanguageMenuItems()
         {
-            List<MenuItem> menuItems = new();
+            List<MenuItem> menuItems = [];
 
             string localePath = "Ryujinx/Assets/Locales";
             string localeExt = ".json";
@@ -105,7 +106,7 @@ namespace Ryujinx.Ava.UI.Views.Main
 
         private async void StopEmulation_Click(object sender, RoutedEventArgs e)
         {
-            await Window.ViewModel.AppHost?.ShowExitPrompt();
+            await Window.ViewModel.AppHost.ShowExitPrompt();
         }
 
         private void PauseEmulation_Click(object sender, RoutedEventArgs e)
@@ -170,6 +171,9 @@ namespace Ryujinx.Ava.UI.Views.Main
             }
         }
 
+        public async void OpenBinFile(object sender, RoutedEventArgs e)
+            => await ViewModel.OpenBinFile();
+
         public async void OpenCheatManagerForCurrentApp(object sender, RoutedEventArgs e)
         {
             if (!ViewModel.IsGameRunning)
@@ -196,12 +200,17 @@ namespace Ryujinx.Ava.UI.Views.Main
             }
         }
 
+        private void ScanBinAmiiboMenuItem_AttachedToVisualTree(object sender, VisualTreeAttachmentEventArgs e)
+        {
+            if (sender is MenuItem)
+                ViewModel.IsAmiiboBinRequested = ViewModel.IsAmiiboRequested && AmiiboBinReader.HasKeyRetailBinPath;
+        }
+
         private async void InstallFileTypes_Click(object sender, RoutedEventArgs e)
         {
-            if (FileAssociationHelper.Install())
-            {
+            ViewModel.AreMimeTypesRegistered = FileAssociationHelper.Install();
+            if (ViewModel.AreMimeTypesRegistered)
                 await ContentDialogHelper.CreateInfoDialog(LocaleManager.Instance[LocaleKeys.DialogInstallFileTypesSuccessMessage], string.Empty, LocaleManager.Instance[LocaleKeys.InputDialogOk], string.Empty, string.Empty);
-            }
             else
             {
                 await ContentDialogHelper.CreateErrorDialog(LocaleManager.Instance[LocaleKeys.DialogInstallFileTypesErrorMessage]);
@@ -210,10 +219,9 @@ namespace Ryujinx.Ava.UI.Views.Main
 
         private async void UninstallFileTypes_Click(object sender, RoutedEventArgs e)
         {
-            if (FileAssociationHelper.Uninstall())
-            {
+            ViewModel.AreMimeTypesRegistered = !FileAssociationHelper.Uninstall();
+            if (!ViewModel.AreMimeTypesRegistered)
                 await ContentDialogHelper.CreateInfoDialog(LocaleManager.Instance[LocaleKeys.DialogUninstallFileTypesSuccessMessage], string.Empty, LocaleManager.Instance[LocaleKeys.InputDialogOk], string.Empty, string.Empty);
-            }
             else
             {
                 await ContentDialogHelper.CreateErrorDialog(LocaleManager.Instance[LocaleKeys.DialogUninstallFileTypesErrorMessage]);
@@ -239,6 +247,16 @@ namespace Ryujinx.Ava.UI.Views.Main
                         width = 1920;
                         break;
 
+                    case "1440":
+                        height = 1440;
+                        width = 2560;
+                        break;
+
+                    case "2160":
+                        height = 2160;
+                        width = 3840;
+                        break;
+
                     default:
                         throw new ArgumentNullException($"Invalid Tag for {item}");
                 }
@@ -260,6 +278,11 @@ namespace Ryujinx.Ava.UI.Views.Main
             {
                 await Updater.BeginParse(Window, true);
             }
+        }
+
+        public async void OpenXCITrimmerWindow(object sender, RoutedEventArgs e)
+        {
+            await XCITrimmerWindow.Show(ViewModel);
         }
 
         public async void OpenAboutWindow(object sender, RoutedEventArgs e)

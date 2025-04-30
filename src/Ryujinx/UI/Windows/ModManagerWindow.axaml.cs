@@ -6,6 +6,7 @@ using Ryujinx.Ava.Common.Locale;
 using Ryujinx.Ava.UI.Helpers;
 using Ryujinx.Ava.UI.Models;
 using Ryujinx.Ava.UI.ViewModels;
+using Ryujinx.UI.App.Common;
 using Ryujinx.UI.Common.Helper;
 using System.Threading.Tasks;
 using Button = Avalonia.Controls.Button;
@@ -14,7 +15,7 @@ namespace Ryujinx.Ava.UI.Windows
 {
     public partial class ModManagerWindow : UserControl
     {
-        public ModManagerViewModel ViewModel;
+        public readonly ModManagerViewModel ViewModel;
 
         public ModManagerWindow()
         {
@@ -23,21 +24,21 @@ namespace Ryujinx.Ava.UI.Windows
             InitializeComponent();
         }
 
-        public ModManagerWindow(ulong titleId)
+        public ModManagerWindow(ulong titleId, ulong titleIdBase, ApplicationLibrary applicationLibrary)
         {
-            DataContext = ViewModel = new ModManagerViewModel(titleId);
+            DataContext = ViewModel = new ModManagerViewModel(titleId, titleIdBase, applicationLibrary);
 
             InitializeComponent();
         }
 
-        public static async Task Show(ulong titleId, string titleName)
+        public static async Task Show(ulong titleId, ulong titleIdBase, ApplicationLibrary appLibrary, string titleName)
         {
             ContentDialog contentDialog = new()
             {
                 PrimaryButtonText = "",
                 SecondaryButtonText = "",
                 CloseButtonText = "",
-                Content = new ModManagerWindow(titleId),
+                Content = new ModManagerWindow(titleId, titleIdBase, appLibrary),
                 Title = string.Format(LocaleManager.Instance[LocaleKeys.ModWindowTitle], titleName, titleId.ToString("X16")),
             };
 

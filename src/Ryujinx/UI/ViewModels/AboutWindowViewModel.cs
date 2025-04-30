@@ -1,5 +1,4 @@
 using Avalonia.Media.Imaging;
-using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Ryujinx.Ava.Common;
@@ -83,8 +82,10 @@ namespace Ryujinx.Ava.UI.ViewModels
             }
         }
 
-        public string Developers => LocaleManager.Instance.UpdateAndGetDynamicValue(LocaleKeys.AboutPageDeveloperListMore, "gdkchan, Ac_K, marysaka, rip in peri peri, LDj3SNuD, emmaus, Thealexbarney, GoffyDude, TSRBerry, IsaacMarovitz");
+        public string FormerDevelopers => LocaleManager.Instance.UpdateAndGetDynamicValue(LocaleKeys.AboutPageDeveloperListMore, "gdkchan, Ac_K, marysaka, rip in peri peri, LDj3SNuD, emmaus, Thealexbarney, GoffyDude, TSRBerry, IsaacMarovitz");
 
+        public string Developers => LocaleManager.Instance.UpdateAndGetDynamicValue(LocaleKeys.AboutPageDeveloperListMore, "KeatonTheBot");
+        
         public AboutWindowViewModel()
         {
             Version = Program.Version;

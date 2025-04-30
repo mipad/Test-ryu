@@ -7,6 +7,7 @@ using Ryujinx.Memory.Range;
 using Ryujinx.Memory.Tracking;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 
 namespace Ryujinx.Graphics.Gpu.Image
@@ -1314,7 +1315,7 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             if (_isBuffer)
             {
-                handles = Array.Empty<TextureGroupHandle>();
+                handles = [];
             }
             else if (!(_hasMipViews || _hasLayerViews))
             {
@@ -1338,7 +1339,7 @@ namespace Ryujinx.Graphics.Gpu.Image
 
                 var groupHandle = new TextureGroupHandle(this, 0, Storage.Size, _views, 0, 0, 0, _allOffsets.Length, cpuRegionHandles);
 
-                handles = new TextureGroupHandle[] { groupHandle };
+                handles = [groupHandle];
             }
             else
             {
@@ -1555,7 +1556,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="copy">True if the overlap should register copy dependencies</param>
         public void RegisterIncompatibleOverlap(TextureIncompatibleOverlap other, bool copy)
         {
-            if (!_incompatibleOverlaps.Exists(overlap => overlap.Group == other.Group))
+            if (!_incompatibleOverlaps.Any(overlap => overlap.Group == other.Group))
             {
                 if (copy && other.Compatibility == TextureViewCompatibility.LayoutIncompatible)
                 {
@@ -1701,3 +1702,4 @@ namespace Ryujinx.Graphics.Gpu.Image
         }
     }
 }
+

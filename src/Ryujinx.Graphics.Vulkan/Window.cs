@@ -29,7 +29,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         private int _width;
         private int _height;
-        private bool _vsyncEnabled;
+        private VSyncMode _vSyncMode;
         private bool _swapchainIsDirty;
         private VkFormat _format;
         private AntiAliasing _currentAntiAliasing;
@@ -147,7 +147,7 @@ namespace Ryujinx.Graphics.Vulkan
                 ImageArrayLayers = 1,
                 PreTransform = Ryujinx.Common.PlatformInfo.IsBionic ? SurfaceTransformFlagsKHR.IdentityBitKhr : capabilities.CurrentTransform,
                 CompositeAlpha = ChooseCompositeAlpha(capabilities.SupportedCompositeAlpha),
-                PresentMode = ChooseSwapPresentMode(presentModes, _vsyncEnabled),
+                PresentMode = ChooseSwapPresentMode(presentModes, _vSyncMode),
                 Clipped = true,
             };
 
@@ -287,9 +287,9 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        private static PresentModeKHR ChooseSwapPresentMode(PresentModeKHR[] availablePresentModes, bool vsyncEnabled)
+        private static PresentModeKHR ChooseSwapPresentMode(PresentModeKHR[] availablePresentModes, VSyncMode vSyncMode)
         {
-            if (!vsyncEnabled && availablePresentModes.Contains(PresentModeKHR.ImmediateKhr))
+            if (vSyncMode == VSyncMode.Unbounded && availablePresentModes.Contains(PresentModeKHR.ImmediateKhr))
             {
                 return PresentModeKHR.ImmediateKhr;
             }
@@ -405,7 +405,7 @@ namespace Ryujinx.Graphics.Vulkan
                     _gd.CommandBufferPool.Return(
                         cbs,
                         null,
-                        stackalloc[] { PipelineStageFlags.ColorAttachmentOutputBit },
+                        [PipelineStageFlags.ColorAttachmentOutputBit],
                         null);
                     _gd.FlushAllCommands();
                     cbs.GetFence().Wait();
@@ -468,9 +468,9 @@ namespace Ryujinx.Graphics.Vulkan
 
             _gd.CommandBufferPool.Return(
                 cbs,
-                stackalloc[] { _imageAvailableSemaphores[semaphoreIndex] },
-                stackalloc[] { PipelineStageFlags.ColorAttachmentOutputBit },
-                stackalloc[] { _renderFinishedSemaphores[semaphoreIndex] });
+                [_imageAvailableSemaphores[semaphoreIndex]],
+                [PipelineStageFlags.ColorAttachmentOutputBit],
+                [_renderFinishedSemaphores[semaphoreIndex]]);
 
             // TODO: Present queue.
             var semaphore = _renderFinishedSemaphores[semaphoreIndex];
@@ -649,9 +649,10 @@ namespace Ryujinx.Graphics.Vulkan
             _swapchainIsDirty = true;
         }
 
-        public override void ChangeVSyncMode(bool vsyncEnabled)
+        public override void ChangeVSyncMode(VSyncMode vSyncMode)
         {
-            _vsyncEnabled = vsyncEnabled;
+            _vSyncMode = vSyncMode;
+            //present mode may change, so mark the swapchain for recreation
             _swapchainIsDirty = true;
         }
 

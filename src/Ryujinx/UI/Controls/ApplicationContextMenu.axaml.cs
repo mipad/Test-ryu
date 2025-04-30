@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using Avalonia.Platform.Storage;
 using LibHac.Fs;
 using LibHac.Tools.FsSystem.NcaUtils;
 using Ryujinx.Ava.Common;
@@ -86,7 +87,7 @@ namespace Ryujinx.Ava.UI.Controls
 
             if (viewModel?.SelectedApplication != null)
             {
-                await TitleUpdateWindow.Show(viewModel.VirtualFileSystem, viewModel.SelectedApplication);
+                await TitleUpdateWindow.Show(viewModel.ApplicationLibrary, viewModel.SelectedApplication);
             }
         }
 
@@ -96,7 +97,7 @@ namespace Ryujinx.Ava.UI.Controls
 
             if (viewModel?.SelectedApplication != null)
             {
-                await DownloadableContentManagerWindow.Show(viewModel.VirtualFileSystem, viewModel.SelectedApplication);
+                await DownloadableContentManagerWindow.Show(viewModel.ApplicationLibrary, viewModel.SelectedApplication);
             }
         }
 
@@ -146,7 +147,11 @@ namespace Ryujinx.Ava.UI.Controls
 
             if (viewModel?.SelectedApplication != null)
             {
-                await ModManagerWindow.Show(viewModel.SelectedApplication.Id, viewModel.SelectedApplication.Name);
+                await ModManagerWindow.Show(
+                    viewModel.SelectedApplication.Id,
+                    viewModel.SelectedApplication.IdBase, 
+                    viewModel.ApplicationLibrary,
+                    viewModel.SelectedApplication.Name);
             }
         }
 
@@ -168,7 +173,7 @@ namespace Ryujinx.Ava.UI.Controls
                     DirectoryInfo mainDir = new(Path.Combine(AppDataManager.GamesDirPath, viewModel.SelectedApplication.IdString, "cache", "cpu", "0"));
                     DirectoryInfo backupDir = new(Path.Combine(AppDataManager.GamesDirPath, viewModel.SelectedApplication.IdString, "cache", "cpu", "1"));
 
-                    List<FileInfo> cacheFiles = new();
+                    List<FileInfo> cacheFiles = [];
 
                     if (mainDir.Exists)
                     {
@@ -198,6 +203,52 @@ namespace Ryujinx.Ava.UI.Controls
             }
         }
 
+        public async void NukePtcCache_Click(object sender, RoutedEventArgs args)
+        {
+            if (sender is not MenuItem { DataContext: MainWindowViewModel { SelectedApplication: not null } viewModel })
+                return;
+
+            UserResult result = await ContentDialogHelper.CreateLocalizedConfirmationDialog(
+                LocaleManager.Instance[LocaleKeys.DialogWarning],
+                LocaleManager.Instance.UpdateAndGetDynamicValue(LocaleKeys.DialogPPTCNukeMessage, viewModel.SelectedApplication.Name)
+            );
+
+            if (result == UserResult.Yes)
+            {
+                DirectoryInfo mainDir = new(Path.Combine(AppDataManager.GamesDirPath, viewModel.SelectedApplication.IdString, "cache", "cpu", "0"));
+                DirectoryInfo backupDir = new(Path.Combine(AppDataManager.GamesDirPath, viewModel.SelectedApplication.IdString, "cache", "cpu", "1"));
+
+                List<FileInfo> cacheFiles = [];
+
+                if (mainDir.Exists)
+                {
+                    cacheFiles.AddRange(mainDir.EnumerateFiles("*.cache"));
+                    cacheFiles.AddRange(mainDir.EnumerateFiles("*.info"));
+                }
+
+                if (backupDir.Exists)
+                {
+                    cacheFiles.AddRange(backupDir.EnumerateFiles("*.cache"));
+                    cacheFiles.AddRange(backupDir.EnumerateFiles("*.info"));
+                }
+
+                if (cacheFiles.Count > 0)
+                {
+                    foreach (FileInfo file in cacheFiles)
+                    {
+                        try
+                        {
+                            file.Delete();
+                        }
+                        catch (Exception ex)
+                        {
+                            await ContentDialogHelper.CreateErrorDialog(LocaleManager.Instance.UpdateAndGetDynamicValue(LocaleKeys.DialogPPTCDeletionErrorMessage, file.Name, ex));
+                        }
+                    }
+                }
+            }
+        }
+
         public async void PurgeShaderCache_Click(object sender, RoutedEventArgs args)
         {
             var viewModel = (sender as MenuItem)?.DataContext as MainWindowViewModel;
@@ -215,8 +266,8 @@ namespace Ryujinx.Ava.UI.Controls
                 {
                     DirectoryInfo shaderCacheDir = new(Path.Combine(AppDataManager.GamesDirPath, viewModel.SelectedApplication.IdString, "cache", "shader"));
 
-                    List<DirectoryInfo> oldCacheDirectories = new();
-                    List<FileInfo> newCacheFiles = new();
+                    List<DirectoryInfo> oldCacheDirectories = [];
+                    List<FileInfo> newCacheFiles = [];
 
                     if (shaderCacheDir.Exists)
                     {
@@ -325,13 +376,29 @@ namespace Ryujinx.Ava.UI.Controls
         {
             var viewModel = (sender as MenuItem)?.DataContext as MainWindowViewModel;
 
-            if (viewModel?.SelectedApplication != null)
+            if (viewModel?.SelectedApplication is { } selectedApp)
             {
-                await ApplicationHelper.ExtractSection(
-                    viewModel.StorageProvider,
+                var result = await viewModel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+                {
+                    Title = LocaleManager.Instance[LocaleKeys.FolderDialogExtractTitle],
+                    AllowMultiple = false,
+                });
+
+                if (result.Count == 0)
+                {
+                    return;
+                }
+
+                ApplicationHelper.ExtractSection(
+                    result[0].Path.LocalPath,
                     NcaSectionType.Logo,
                     viewModel.SelectedApplication.Path,
                     viewModel.SelectedApplication.Name);
+
+                var iconFile = await result[0].CreateFileAsync(selectedApp.IdString + ".png");
+                await using var fileStream = await iconFile.OpenWriteAsync();
+
+                fileStream.Write(selectedApp.Icon);
             }
         }
 
@@ -353,6 +420,16 @@ namespace Ryujinx.Ava.UI.Controls
             if (viewModel?.SelectedApplication != null)
             {
                 await viewModel.LoadApplication(viewModel.SelectedApplication);
+            }
+        }
+
+        public async void TrimXCI_Click(object sender, RoutedEventArgs args)
+        {
+            var viewModel = (sender as MenuItem)?.DataContext as MainWindowViewModel;
+
+            if (viewModel?.SelectedApplication != null)
+            {
+                await viewModel.TrimXCIFile(viewModel.SelectedApplication.Path);
             }
         }
     }

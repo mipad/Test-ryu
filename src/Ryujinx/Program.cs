@@ -23,6 +23,7 @@ namespace Ryujinx.Ava
 {
     internal partial class Program
     {
+        //
         public static double WindowScaleFactor { get; set; }
         public static double DesktopScaleFactor { get; set; } = 1.0;
         public static string Version { get; private set; }
@@ -39,9 +40,9 @@ namespace Ryujinx.Ava
         {
             Version = ReleaseInformation.Version;
 
-            if (OperatingSystem.IsWindows() && !OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17134))
+            if (OperatingSystem.IsWindows() && !OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
             {
-                _ = MessageBoxA(IntPtr.Zero, "You are running an outdated version of Windows.\n\nRyujinx supports Windows 10 version 1803 and newer.\n", $"Ryujinx {Version}", MbIconwarning);
+                _ = MessageBoxA(IntPtr.Zero, "You are running an outdated version of Windows.\n\nRyujinx supports Windows 10 version 20H1 and newer.\n", $"Ryujinx {Version}", MbIconwarning);
             }
 
             PreviewerDetached = true;
@@ -92,7 +93,10 @@ namespace Ryujinx.Ava
             Console.Title = $"Ryujinx Console {Version}";
 
             // Hook unhandled exception and process exit events.
-            AppDomain.CurrentDomain.UnhandledException += (sender, e) => ProcessUnhandledException(e.ExceptionObject as Exception, e.IsTerminating);
+            AppDomain.CurrentDomain.UnhandledException += (sender, e) 
+                => ProcessUnhandledException(e.ExceptionObject as Exception, e.IsTerminating);
+            TaskScheduler.UnobservedTaskException += (sender, e)
+                => ProcessUnhandledException(e.Exception, false); 
             AppDomain.CurrentDomain.ProcessExit += (sender, e) => Exit();
 
             // Setup base data directory.
@@ -150,6 +154,11 @@ namespace Ryujinx.Ava
                 ConfigurationPath = appDataConfigurationPath;
             }
 
+            if (!string.IsNullOrEmpty(CommandLineState.OverrideConfigFile) && File.Exists(CommandLineState.OverrideConfigFile))
+            {
+                ConfigurationPath = CommandLineState.OverrideConfigFile;
+            }
+
             if (ConfigurationPath == null)
             {
                 // No configuration, we load the default values and save it to disk
@@ -190,6 +199,16 @@ namespace Ryujinx.Ava
                 }
             }
 
+            // Check if backend threading was overridden
+            if (CommandLineState.OverrideBackendThreading is not null)
+                ConfigurationState.Instance.Graphics.BackendThreading.Value = CommandLineState.OverrideBackendThreading.ToLower() switch
+                {
+                    "auto" => BackendThreading.Auto,
+                    "off" => BackendThreading.Off,
+                    "on" => BackendThreading.On,
+                    _ => ConfigurationState.Instance.Graphics.BackendThreading
+                };
+
             // Check if docked mode was overriden.
             if (CommandLineState.OverrideDockedMode.HasValue)
             {
@@ -218,6 +237,7 @@ namespace Ryujinx.Ava
         private static void PrintSystemInfo()
         {
             Logger.Notice.Print(LogClass.Application, $"Ryujinx Version: {Version}");
+            Logger.Notice.Print(LogClass.Application, $".NET Runtime: {RuntimeInformation.FrameworkDescription}");
             SystemInfo.Gather().Print();
 
             Logger.Notice.Print(LogClass.Application, $"Logs Enabled: {(Logger.GetEnabledLevels().Count == 0 ? "<None>" : string.Join(", ", Logger.GetEnabledLevels()))}");

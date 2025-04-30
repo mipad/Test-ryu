@@ -23,7 +23,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv
         private readonly TreeDictionary<ulong, ulong> _tree = new();
 
         private readonly Dictionary<ulong, LinkedListNode<ulong>> _dictionary = new();
-        private readonly LinkedList<ulong> _list = new();
+        private readonly LinkedList<ulong> _list = [];
 
         public NvMemoryAllocator()
         {
@@ -124,7 +124,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv
                             {
                                 targetPrevAddress = InvalidAddress;
                             }
-                            node = node.Previous;
+                            node = node?.Previous;
                             _tree.Remove(prevAddress);
                             _list.Remove(_dictionary[prevAddress]);
                             _dictionary.Remove(prevAddress);

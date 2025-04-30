@@ -4,6 +4,7 @@ using Ryujinx.Memory;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 
 namespace Ryujinx.Cpu.LightningJit.Cache
 {
@@ -11,7 +12,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
     {
         private const int CodeAlignment = 4; // Bytes.
         private const int SharedCacheSize = 2047 * 1024 * 1024;
-        private const int LocalCacheSize = 128 * 1024 * 1024;
+        private const int LocalCacheSize = 256 * 1024 * 1024;
 
         // How many calls to the same function we allow until we pad the shared cache to force the function to become available there
         // and allow the guest to take the fast path.
@@ -104,7 +105,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
         private readonly MemoryCache _sharedCache;
         private readonly MemoryCache _localCache;
         private readonly PageAlignedRangeList _pendingMap;
-        private readonly object _lock;
+        private readonly Lock _lock = new();
 
         class ThreadLocalCacheEntry
         {
@@ -137,7 +138,6 @@ namespace Ryujinx.Cpu.LightningJit.Cache
             _sharedCache = new(allocator, SharedCacheSize);
             _localCache = new(allocator, LocalCacheSize);
             _pendingMap = new(_sharedCache.ReprotectAsRx, RegisterFunction);
-            _lock = new();
         }
 
         public unsafe IntPtr Map(IntPtr framePointer, ReadOnlySpan<byte> code, ulong guestAddress, ulong guestSize)
@@ -231,7 +231,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
                 _sharedCache.Pointer,
                 SharedCacheSize);
 
-            List<(ulong, ThreadLocalCacheEntry)> toDelete = new();
+            List<(ulong, ThreadLocalCacheEntry)> toDelete = [];
 
             foreach ((ulong address, ThreadLocalCacheEntry entry) in _threadLocalCache)
             {

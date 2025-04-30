@@ -34,6 +34,16 @@
                     Header="{locale:Locale MenuBarFileOpenUnpacked}"
                     IsEnabled="{Binding EnableNonGameRunningControls}"
                     ToolTip.Tip="{locale:Locale LoadApplicationFolderTooltip}" />
+                <MenuItem
+                    Command="{Binding LoadDlcFromFolder}"
+                    Header="{locale:Locale MenuBarFileLoadDlcFromFolder}"
+                    IsEnabled="{Binding EnableNonGameRunningControls}"
+                    ToolTip.Tip="{locale:Locale LoadDlcFromFolderTooltip}" />
+                <MenuItem
+                    Command="{Binding LoadTitleUpdatesFromFolder}"
+                    Header="{locale:Locale MenuBarFileLoadTitleUpdatesFromFolder}"
+                    IsEnabled="{Binding EnableNonGameRunningControls}"
+                    ToolTip.Tip="{locale:Locale LoadTitleUpdatesFromFolderTooltip}" />
                 <MenuItem Header="{locale:Locale MenuBarFileOpenApplet}" IsEnabled="{Binding IsAppletMenuActive}">
                     <MenuItem
                         Click="OpenMiiApplet"
@@ -45,6 +55,10 @@
                     Command="{Binding OpenRyujinxFolder}"
                     Header="{locale:Locale MenuBarFileOpenEmuFolder}"
                     ToolTip.Tip="{locale:Locale OpenRyujinxFolderTooltip}" />
+                <MenuItem
+                    Command="{Binding OpenScreenshotsFolder}"
+                    Header="{locale:Locale MenuBarFileOpenScreenshotsFolder}"
+                    ToolTip.Tip="{locale:Locale OpenScreenshotFolderTooltip}"/>
                 <MenuItem
                     Command="{Binding OpenLogsFolder}"
                     Header="{locale:Locale MenuBarFileOpenLogsFolder}"
@@ -70,6 +84,29 @@
                             MinWidth="{DynamicResource CheckBoxSize}"
                             MinHeight="{DynamicResource CheckBoxSize}"
                             IsChecked="{Binding StartGamesInFullscreen, Mode=TwoWay}"
+                            Padding="0" />
+                    </MenuItem.Icon>
+                    <MenuItem.Styles>
+                        <Style Selector="Viewbox#PART_IconPresenter">
+                            <Setter Property="MaxHeight" Value="36" />
+                            <Setter Property="MinHeight" Value="36" />
+                            <Setter Property="MaxWidth" Value="36" />
+                            <Setter Property="MinWidth" Value="36" />
+                        </Style>
+                        <Style Selector="ContentPresenter#PART_HeaderPresenter">
+                            <Setter Property="Padding" Value="-10,0,0,0" />
+                        </Style>
+                    </MenuItem.Styles>
+                </MenuItem>
+                <MenuItem
+                    Padding="0"
+                    Command="{Binding ToggleStartGamesWithoutUI}"
+                    Header="{locale:Locale MenuBarOptionsStartGamesWithoutUI}">
+                    <MenuItem.Icon>
+                        <CheckBox
+                            MinWidth="{DynamicResource CheckBoxSize}"
+                            MinHeight="{DynamicResource CheckBoxSize}"
+                            IsChecked="{Binding StartGamesWithoutUI, Mode=TwoWay}"
                             Padding="0" />
                     </MenuItem.Icon>
                     <MenuItem.Styles>
@@ -160,7 +197,16 @@
                     AttachedToVisualTree="ScanAmiiboMenuItem_AttachedToVisualTree"
                     Click="OpenAmiiboWindow"
                     Header="{locale:Locale MenuBarActionsScanAmiibo}"
+                    InputGesture="Ctrl + A"
                     IsEnabled="{Binding IsAmiiboRequested}" />
+                <MenuItem
+                    Name="ScanAmiiboMenuItemFromBin"
+                    AttachedToVisualTree="ScanBinAmiiboMenuItem_AttachedToVisualTree"
+                    Click="OpenBinFile"
+                    Header="{locale:Locale MenuBarActionsScanAmiiboBin}"
+                    IsVisible="{Binding CanScanAmiiboBinaries}"
+                    InputGesture="Ctrl + B"
+                    IsEnabled="{Binding IsAmiiboBinRequested}" />
                 <MenuItem
                     Command="{Binding TakeScreenshot}"
                     Header="{locale:Locale MenuBarFileToolsTakeScreenshot}"
@@ -177,19 +223,27 @@
                     IsEnabled="{Binding IsGameRunning}" />
             </MenuItem>
             <MenuItem VerticalAlignment="Center" Header="{locale:Locale MenuBarTools}">
+                <MenuItem Header="{locale:Locale MenuBarToolsInstallKeys}" IsEnabled="{Binding EnableNonGameRunningControls}">
+                    <MenuItem Command="{Binding InstallKeysFromFile}" Header="{locale:Locale MenuBarFileToolsInstallKeysFromFile}"/>
+                    <MenuItem Command="{Binding InstallKeysFromFolder}" Header="{locale:Locale MenuBarFileToolsInstallKeysFromFolder}"/>
+                </MenuItem>
                 <MenuItem Header="{locale:Locale MenuBarToolsInstallFirmware}" IsEnabled="{Binding EnableNonGameRunningControls}">
                     <MenuItem Command="{Binding InstallFirmwareFromFile}" Header="{locale:Locale MenuBarFileToolsInstallFirmwareFromFile}" />
-                    <MenuItem Command="{Binding InstallFirmwareFromFolder}" Header="{locale:Locale MenuBarFileToolsInstallFirmwareFromDirectory}" />
+                    <MenuItem Command="{Binding InstallFirmwareFromFolder}" Header="{locale:Locale MenuBarFileToolsInstallFirmwareFromDirectory}"/>
                 </MenuItem>
                 <MenuItem Header="{locale:Locale MenuBarToolsManageFileTypes}" IsVisible="{Binding ManageFileTypesVisible}">
-                    <MenuItem Header="{locale:Locale MenuBarToolsInstallFileTypes}" Click="InstallFileTypes_Click"/>
-                    <MenuItem Header="{locale:Locale MenuBarToolsUninstallFileTypes}" Click="UninstallFileTypes_Click"/>
+                    <MenuItem Header="{locale:Locale MenuBarToolsInstallFileTypes}" Click="InstallFileTypes_Click" IsEnabled="{Binding AreMimeTypesRegistered, Converter={x:Static BoolConverters.Not}}" />
+                    <MenuItem Header="{locale:Locale MenuBarToolsUninstallFileTypes}" Click="UninstallFileTypes_Click" IsEnabled="{Binding AreMimeTypesRegistered}" />
                 </MenuItem>
+                <Separator />
+                <MenuItem Header="{locale:Locale MenuBarToolsXCITrimmer}" IsEnabled="{Binding EnableNonGameRunningControls}" Click="OpenXCITrimmerWindow" />
             </MenuItem>
             <MenuItem VerticalAlignment="Center" Header="{locale:Locale MenuBarView}">
                 <MenuItem VerticalAlignment="Center" Header="{locale:Locale MenuBarViewWindow}">
                     <MenuItem Header="{locale:Locale MenuBarViewWindow720}" Tag="720" Click="ChangeWindowSize_Click" />
                     <MenuItem Header="{locale:Locale MenuBarViewWindow1080}" Tag="1080" Click="ChangeWindowSize_Click" />
+                    <MenuItem Header="{locale:Locale MenuBarViewWindow1440}" Tag="1440" Click="ChangeWindowSize_Click" />
+                    <MenuItem Header="{locale:Locale MenuBarViewWindow2160}" Tag="2160" Click="ChangeWindowSize_Click" />
                 </MenuItem>
             </MenuItem>
             <MenuItem VerticalAlignment="Center" Header="{locale:Locale MenuBarHelp}">

@@ -1,3 +1,4 @@
+using Ryujinx.Common.Memory;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Shader;
 using Silk.NET.Vulkan;
@@ -8,7 +9,6 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using CompareOp = Ryujinx.Graphics.GAL.CompareOp;
-using Format = Ryujinx.Graphics.GAL.Format;
 using FrontFace = Ryujinx.Graphics.GAL.FrontFace;
 using IndexType = Ryujinx.Graphics.GAL.IndexType;
 using PolygonMode = Ryujinx.Graphics.GAL.PolygonMode;
@@ -133,8 +133,8 @@ namespace Ryujinx.Graphics.Vulkan
         {
             _descriptorSetUpdater.Initialize(IsMainPipeline);
 
-            QuadsToTrisPattern = new IndexBufferPattern(Gd, 4, 6, 0, new[] { 0, 1, 2, 0, 2, 3 }, 4, false);
-            TriFanToTrisPattern = new IndexBufferPattern(Gd, 3, 3, 2, new[] { int.MinValue, -1, 0 }, 1, true);
+            QuadsToTrisPattern = new IndexBufferPattern(Gd, 4, 6, 0, [0, 1, 2, 0, 2, 3], 4, false);
+            TriFanToTrisPattern = new IndexBufferPattern(Gd, 3, 3, 2, [int.MinValue, -1, 0], 1, true);
         }
 
         public unsafe void Barrier()
@@ -1525,20 +1525,24 @@ namespace Ryujinx.Graphics.Vulkan
 
         private bool ChangeFeedbackLoop(FeedbackLoopAspects aspects)
         {
-            if (_feedbackLoop != aspects)
+            // AMD Radeon RX GPUs + Qualcomm SoCs only
+            if ((Gd.Vendor == Vendor.Amd && Gd.GpuRenderer.Contains("RX")) || Gd.Vendor == Vendor.Qualcomm)
             {
-                if (Gd.Capabilities.SupportsDynamicAttachmentFeedbackLoop)
+                if (_feedbackLoop != aspects)
                 {
-                    DynamicState.SetFeedbackLoop(aspects);
-                }
-                else
-                {
-                    _newState.FeedbackLoopAspects = aspects;
-                }
+                    if (Gd.Capabilities.SupportsDynamicAttachmentFeedbackLoop)
+                    {
+                        DynamicState.SetFeedbackLoop(aspects);
+                    }
+                    else
+                    {
+                        _newState.FeedbackLoopAspects = aspects;
+                    }
 
-                _feedbackLoop = aspects;
+                    _feedbackLoop = aspects;
 
-                return true;
+                    return true;
+                }
             }
 
             return false;

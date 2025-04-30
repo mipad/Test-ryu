@@ -1,6 +1,7 @@
 using Ryujinx.Common.Memory;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.EXT;
+using System;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -27,6 +28,7 @@ namespace Ryujinx.Graphics.Vulkan
         public uint ViewportsCount;
         public Array16<Viewport> Viewports;
 
+        [Flags]
         private enum DirtyFlags
         {
             None = 0,

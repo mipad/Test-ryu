@@ -5,7 +5,6 @@ using Ryujinx.Memory.Tracking;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -250,7 +249,7 @@ namespace Ryujinx.Cpu.Jit
         {
             if (size == 0)
             {
-                return Enumerable.Empty<HostMemoryRange>();
+                return [];
             }
 
             var guestRegions = GetPhysicalRegionsImpl(va, size);
@@ -276,7 +275,7 @@ namespace Ryujinx.Cpu.Jit
         {
             if (size == 0)
             {
-                return Enumerable.Empty<MemoryRange>();
+                return [];
             }
 
             return GetPhysicalRegionsImpl(va, size);

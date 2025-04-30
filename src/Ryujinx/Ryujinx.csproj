@@ -1,16 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <RuntimeIdentifiers>win-x64;osx-x64;linux-x64</RuntimeIdentifiers>
+    <RuntimeIdentifiers>win-x64;osx-x64;linux-x64;win-arm64;osx-arm64;linux-arm64</RuntimeIdentifiers>
     <OutputType>Exe</OutputType>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Version>1.0.0-dirty</Version>
+    <Version>2.0.3</Version>
     <DefineConstants Condition=" '$(ExtraDefineConstants)' != '' ">$(DefineConstants);$(ExtraDefineConstants)</DefineConstants>
     <SigningCertificate Condition=" '$(SigningCertificate)' == '' ">-</SigningCertificate>
     <ApplicationIcon>Ryujinx.ico</ApplicationIcon>
-    <TieredPGO>true</TieredPGO>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <DefaultItemExcludes>$(DefaultItemExcludes);._*</DefaultItemExcludes>
+    <IncludeSourceRevisionInInformationalVersion Condition="'$(Configuration)'=='Release'">false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="$([MSBuild]::IsOSPlatform('OSX'))">
@@ -22,6 +22,10 @@
     <TrimmerSingleWarn>false</TrimmerSingleWarn>
     <PublishTrimmed>true</PublishTrimmed>
     <TrimMode>partial</TrimMode>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-arm64'">
+    <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
 
   <!--
@@ -46,9 +50,9 @@
     <PackageReference Include="FluentAvaloniaUI" />
 
     <PackageReference Include="OpenTK.Core" />
-    <PackageReference Include="Ryujinx.Audio.OpenAL.Dependencies" Condition="'$(RuntimeIdentifier)' != 'linux-x64' AND '$(RuntimeIdentifier)' != 'linux-arm64' AND '$(RuntimeIdentifier)' != 'osx-x64' AND '$(RuntimeIdentifier)' != 'osx-arm64'" />
-    <PackageReference Include="Ryujinx.Graphics.Nvdec.Dependencies" />
-    <PackageReference Include="Ryujinx.Graphics.Vulkan.Dependencies.MoltenVK" Condition="'$(RuntimeIdentifier)' != 'linux-x64' AND '$(RuntimeIdentifier)' != 'linux-arm64' AND '$(RuntimeIdentifier)' != 'win-x64'" />
+    <PackageReference Include="Ryujinx.Audio.OpenAL.Dependencies" Condition="'$(RuntimeIdentifier)' == 'win-x64' OR '$(RuntimeIdentifier)' == 'win-arm64'" />
+    <PackageReference Include="Ryujinx.Graphics.Nvdec.Dependencies.AllArch" />
+    <PackageReference Include="Ryujinx.Graphics.Vulkan.Dependencies.MoltenVK" Condition="'$(RuntimeIdentifier)' == 'osx-x64' OR '$(RuntimeIdentifier)' == 'osx-arm64'" />
     <PackageReference Include="Silk.NET.Vulkan" />
     <PackageReference Include="Silk.NET.Vulkan.Extensions.EXT" />
     <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" />
@@ -74,7 +78,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="..\..\distribution\windows\alsoft.ini" Condition="'$(RuntimeIdentifier)' != 'linux-x64' AND '$(RuntimeIdentifier)' != 'linux-arm64' AND '$(RuntimeIdentifier)' != 'osx-x64'">
+    <Content Include="..\..\distribution\windows\alsoft.ini" Condition="'$(RuntimeIdentifier)' == 'win-x64' OR '$(RuntimeIdentifier)' == 'win-arm64'" >
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <TargetPath>alsoft.ini</TargetPath>
     </Content>
@@ -88,7 +92,7 @@
     </Content>
   </ItemGroup>
 
-  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'linux-x64' OR '$(RuntimeIdentifier)' == 'linux-arm64' OR ('$(RuntimeIdentifier)' == '' AND $([MSBuild]::IsOSPlatform('Linux')))">
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'linux-x64' OR '$(RuntimeIdentifier)' == 'linux-arm64'" >
     <Content Include="..\..\distribution\linux\Ryujinx.sh">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>

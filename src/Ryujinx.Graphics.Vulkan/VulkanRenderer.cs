@@ -11,6 +11,7 @@ using Silk.NET.Vulkan.Extensions.KHR;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Format = Ryujinx.Graphics.GAL.Format;
 using PrimitiveTopology = Ryujinx.Graphics.GAL.PrimitiveTopology;
 using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
@@ -26,6 +27,8 @@ namespace Ryujinx.Graphics.Vulkan
         private WindowBase _window;
 
         private bool _initialized;
+
+        public uint ProgramCount { get; set; } = 0;
 
         internal FormatCapabilities FormatCapabilities { get; private set; }
         internal HardwareCapabilities Capabilities;
@@ -43,8 +46,8 @@ namespace Ryujinx.Graphics.Vulkan
         internal uint QueueFamilyIndex { get; private set; }
         internal Queue Queue { get; private set; }
         internal Queue BackgroundQueue { get; private set; }
-        internal object BackgroundQueueLock { get; private set; }
-        internal object QueueLock { get; private set; }
+        internal Lock BackgroundQueueLock { get; private set; }
+        internal Lock QueueLock { get; private set; }
 
         internal MemoryAllocator MemoryAllocator { get; private set; }
         internal HostMemoryAllocator HostMemoryAllocator { get; private set; }
@@ -81,8 +84,8 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly string _preferredGpuId;
 
         private int[] _pdReservedBindings;
-        private readonly static int[] _pdReservedBindingsNvn = { 3, 18, 21, 36, 30 };
-        private readonly static int[] _pdReservedBindingsOgl = { 17, 18, 34, 35, 36 };
+        private readonly static int[] _pdReservedBindingsNvn = [3, 18, 21, 36, 30];
+        private readonly static int[] _pdReservedBindingsOgl = [17, 18, 34, 35, 36];
 
         internal Vendor Vendor { get; private set; }
         internal bool IsAmdWindows { get; private set; }
@@ -110,9 +113,9 @@ namespace Ryujinx.Graphics.Vulkan
             _getRequiredExtensions = requiredExtensionsFunc;
             _preferredGpuId = preferredGpuId;
             Api = api;
-            Shaders = new HashSet<ShaderCollection>();
-            Textures = new HashSet<ITexture>();
-            Samplers = new HashSet<SamplerHolder>();
+            Shaders = [];
+            Textures = [];
+            Samplers = [];
 
             if (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS())
             {
@@ -161,7 +164,7 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 Api.GetDeviceQueue(_device, queueFamilyIndex, 1, out var backgroundQueue);
                 BackgroundQueue = backgroundQueue;
-                BackgroundQueueLock = new object();
+                BackgroundQueueLock = new();
             }
 
             PhysicalDeviceProperties2 properties2 = new()
@@ -494,7 +497,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             Api.GetDeviceQueue(_device, queueFamilyIndex, 0, out var queue);
             Queue = queue;
-            QueueLock = new object();
+            QueueLock = new();
 
             LoadFeatures(maxQueueCount, queueFamilyIndex);
 
@@ -517,7 +520,7 @@ namespace Ryujinx.Graphics.Vulkan
                 }
                 else
                 {
-                    _pdReservedBindings = Array.Empty<int>();
+                    _pdReservedBindings = [];
                 }
             }
 
@@ -546,6 +549,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         public IProgram CreateProgram(ShaderSource[] sources, ShaderInfo info)
         {
+            ProgramCount++;
+            
             bool isCompute = sources.Length == 1 && sources[0].Stage == ShaderStage.Compute;
 
             if (info.State.HasValue || isCompute)
@@ -826,7 +831,7 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 Logger.Error?.PrintMsg(LogClass.Gpu, $"Error querying Vulkan devices: {ex.Message}");
 
-                return Array.Empty<DeviceInfo>();
+                return [];
             }
         }
 
@@ -839,7 +844,7 @@ namespace Ryujinx.Graphics.Vulkan
             catch (Exception)
             {
                 // If we got an exception here, Vulkan is most likely not supported.
-                return Array.Empty<DeviceInfo>();
+                return [];
             }
         }
 

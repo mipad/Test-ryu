@@ -4,7 +4,6 @@ using ARMeilleure.IntermediateRepresentation;
 using ARMeilleure.State;
 using ARMeilleure.Translation.Cache;
 using System;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using static ARMeilleure.IntermediateRepresentation.Operand.Factory;
 
@@ -19,8 +18,8 @@ namespace ARMeilleure.Translation
 
         private bool _disposed;
 
-        private readonly AddressTable<ulong> _functionTable;
-        private readonly Lazy<IntPtr> _dispatchStub;
+        private readonly IAddressTable<ulong> _functionTable;
+        private readonly Lazy<nint> _dispatchStub;
         private readonly Lazy<DispatcherFunction> _dispatchLoop;
         private readonly Lazy<WrapperFunction> _contextWrapper;
 
@@ -86,7 +85,7 @@ namespace ARMeilleure.Translation
         /// </summary>
         /// <param name="functionTable">Function table used to store pointers to the functions that the guest code will call</param>
         /// <exception cref="ArgumentNullException"><paramref name="translator"/> is null</exception>
-        public TranslatorStubs(AddressTable<ulong> functionTable)
+        public TranslatorStubs(IAddressTable<ulong> functionTable)
         {
             ArgumentNullException.ThrowIfNull(functionTable);
 

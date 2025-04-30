@@ -30,7 +30,7 @@ namespace Ryujinx.Ava.UI.ViewModels
         private readonly string _amiiboJsonPath;
         private readonly byte[] _amiiboLogoBytes;
         private readonly HttpClient _httpClient;
-        private readonly StyleableWindow _owner;
+        private readonly AmiiboWindow _owner;
 
         private Bitmap _amiiboImage;
         private List<AmiiboApi> _amiiboList;
@@ -46,7 +46,7 @@ namespace Ryujinx.Ava.UI.ViewModels
 
         private static readonly AmiiboJsonSerializerContext _serializerContext = new(JsonHelper.GetDefaultSerializerOptions());
 
-        public AmiiboWindowViewModel(StyleableWindow owner, string lastScannedAmiiboId, string titleId)
+        public AmiiboWindowViewModel(AmiiboWindow owner, string lastScannedAmiiboId, string titleId)
         {
             _owner = owner;
 
@@ -61,9 +61,9 @@ namespace Ryujinx.Ava.UI.ViewModels
             Directory.CreateDirectory(Path.Join(AppDataManager.BaseDirPath, "system", "amiibo"));
 
             _amiiboJsonPath = Path.Join(AppDataManager.BaseDirPath, "system", "amiibo", "Amiibo.json");
-            _amiiboList = new List<AmiiboApi>();
-            _amiiboSeries = new ObservableCollection<string>();
-            _amiibos = new AvaloniaList<AmiiboApi>();
+            _amiiboList = [];
+            _amiiboSeries = [];
+            _amiibos = [];
 
             _amiiboLogoBytes = EmbeddedResources.Read("Ryujinx.UI.Common/Resources/Logo_Amiibo.png");
 
@@ -181,6 +181,22 @@ namespace Ryujinx.Ava.UI.ViewModels
 
                 OnPropertyChanged();
             }
+        }
+
+        public void Scan()
+        {
+            if (AmiiboSelectedIndex > -1)
+            {
+                _owner.ScannedAmiibo = AmiiboList[AmiiboSelectedIndex];
+                _owner.IsScanned = true;
+                _owner.Close();
+            }
+        }
+
+        public void Cancel()
+        {
+            _owner.IsScanned = false;
+            _owner.Close();
         }
 
         public void Dispose()
@@ -313,7 +329,7 @@ namespace Ryujinx.Ava.UI.ViewModels
 
         private void SelectLastScannedAmiibo()
         {
-            AmiiboApi scanned = _amiiboList.Find(amiibo => amiibo.GetId() == LastScannedAmiiboId);
+            AmiiboApi scanned = _amiiboList.FirstOrDefault(amiibo => amiibo.GetId() == LastScannedAmiiboId);
 
             SeriesSelectedIndex = AmiiboSeries.IndexOf(scanned.AmiiboSeries);
             AmiiboSelectedIndex = AmiiboList.IndexOf(scanned);
@@ -374,7 +390,7 @@ namespace Ryujinx.Ava.UI.ViewModels
 
             AmiiboApi selected = _amiibos[_amiiboSelectedIndex];
 
-            string imageUrl = _amiiboList.Find(amiibo => amiibo.Equals(selected)).Image;
+            string imageUrl = _amiiboList.FirstOrDefault(amiibo => amiibo.Equals(selected)).Image;
 
             StringBuilder usageStringBuilder = new();
 

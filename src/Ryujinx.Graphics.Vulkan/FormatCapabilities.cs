@@ -9,47 +9,49 @@ namespace Ryujinx.Graphics.Vulkan
 {
     class FormatCapabilities
     {
-        private static readonly GAL.Format[] _scaledFormats = {
-            GAL.Format.R8Uscaled,
-            GAL.Format.R8Sscaled,
-            GAL.Format.R16Uscaled,
-            GAL.Format.R16Sscaled,
-            GAL.Format.R8G8Uscaled,
-            GAL.Format.R8G8Sscaled,
-            GAL.Format.R16G16Uscaled,
-            GAL.Format.R16G16Sscaled,
-            GAL.Format.R8G8B8Uscaled,
-            GAL.Format.R8G8B8Sscaled,
-            GAL.Format.R16G16B16Uscaled,
-            GAL.Format.R16G16B16Sscaled,
-            GAL.Format.R8G8B8A8Uscaled,
-            GAL.Format.R8G8B8A8Sscaled,
-            GAL.Format.R16G16B16A16Uscaled,
-            GAL.Format.R16G16B16A16Sscaled,
-            GAL.Format.R10G10B10A2Uscaled,
-            GAL.Format.R10G10B10A2Sscaled,
-        };
+        private static readonly Format[] _scaledFormats =
+        [
+            Format.R8Uscaled,
+            Format.R8Sscaled,
+            Format.R16Uscaled,
+            Format.R16Sscaled,
+            Format.R8G8Uscaled,
+            Format.R8G8Sscaled,
+            Format.R16G16Uscaled,
+            Format.R16G16Sscaled,
+            Format.R8G8B8Uscaled,
+            Format.R8G8B8Sscaled,
+            Format.R16G16B16Uscaled,
+            Format.R16G16B16Sscaled,
+            Format.R8G8B8A8Uscaled,
+            Format.R8G8B8A8Sscaled,
+            Format.R16G16B16A16Uscaled,
+            Format.R16G16B16A16Sscaled,
+            Format.R10G10B10A2Uscaled,
+            Format.R10G10B10A2Sscaled
+        ];
 
-        private static readonly GAL.Format[] _intFormats = {
-            GAL.Format.R8Uint,
-            GAL.Format.R8Sint,
-            GAL.Format.R16Uint,
-            GAL.Format.R16Sint,
-            GAL.Format.R8G8Uint,
-            GAL.Format.R8G8Sint,
-            GAL.Format.R16G16Uint,
-            GAL.Format.R16G16Sint,
-            GAL.Format.R8G8B8Uint,
-            GAL.Format.R8G8B8Sint,
-            GAL.Format.R16G16B16Uint,
-            GAL.Format.R16G16B16Sint,
-            GAL.Format.R8G8B8A8Uint,
-            GAL.Format.R8G8B8A8Sint,
-            GAL.Format.R16G16B16A16Uint,
-            GAL.Format.R16G16B16A16Sint,
-            GAL.Format.R10G10B10A2Uint,
-            GAL.Format.R10G10B10A2Sint,
-        };
+        private static readonly Format[] _intFormats =
+        [
+            Format.R8Uint,
+            Format.R8Sint,
+            Format.R16Uint,
+            Format.R16Sint,
+            Format.R8G8Uint,
+            Format.R8G8Sint,
+            Format.R16G16Uint,
+            Format.R16G16Sint,
+            Format.R8G8B8Uint,
+            Format.R8G8B8Sint,
+            Format.R16G16B16Uint,
+            Format.R16G16B16Sint,
+            Format.R8G8B8A8Uint,
+            Format.R8G8B8A8Sint,
+            Format.R16G16B16A16Uint,
+            Format.R16G16B16A16Sint,
+            Format.R10G10B10A2Uint,
+            Format.R10G10B10A2Sint
+        ];
 
         private readonly FormatFeatureFlags[] _bufferTable;
         private readonly FormatFeatureFlags[] _optimalTable;
@@ -68,7 +70,7 @@ namespace Ryujinx.Graphics.Vulkan
             _optimalTable = new FormatFeatureFlags[totalFormats];
         }
 
-        public bool BufferFormatsSupport(FormatFeatureFlags flags, params Format[] formats)
+        public bool BufferFormatsSupport(FormatFeatureFlags flags, params ReadOnlySpan<Format> formats)
         {
             foreach (Format format in formats)
             {
@@ -81,7 +83,7 @@ namespace Ryujinx.Graphics.Vulkan
             return true;
         }
 
-        public bool OptimalFormatsSupport(FormatFeatureFlags flags, params Format[] formats)
+        public bool OptimalFormatsSupport(FormatFeatureFlags flags, params ReadOnlySpan<Format> formats)
         {
             foreach (Format format in formats)
             {
@@ -148,7 +150,7 @@ namespace Ryujinx.Graphics.Vulkan
             return (formatFeatureFlags & flags) == flags;
         }
 
-        public VkFormat ConvertToVkFormat(Format srcFormat)
+        public VkFormat ConvertToVkFormat(Format srcFormat, bool storageFeatureFlagRequired)
         {
             var format = FormatTable.GetFormat(srcFormat);
 
@@ -165,7 +167,7 @@ namespace Ryujinx.Graphics.Vulkan
                 requiredFeatures |= FormatFeatureFlags.ColorAttachmentBit;
             }
 
-            if (srcFormat.IsImageCompatible())
+            if (srcFormat.IsImageCompatible() && storageFeatureFlagRequired)
             {
                 requiredFeatures |= FormatFeatureFlags.StorageImageBit;
             }

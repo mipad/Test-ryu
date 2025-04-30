@@ -46,7 +46,7 @@ namespace ARMeilleure.Translation
         public IMemoryManager Memory { get; }
 
         public EntryTable<uint> CountTable { get; }
-        public AddressTable<ulong> FunctionTable { get; }
+        public IAddressTable<ulong> FunctionTable { get; }
         public TranslatorStubs Stubs { get; }
 
         public ulong EntryAddress { get; }
@@ -55,14 +55,14 @@ namespace ARMeilleure.Translation
         public Aarch32Mode Mode { get; }
 
         private int _ifThenBlockStateIndex = 0;
-        private Condition[] _ifThenBlockState = Array.Empty<Condition>();
+        private Condition[] _ifThenBlockState = [];
         public bool IsInIfThenBlock => _ifThenBlockStateIndex < _ifThenBlockState.Length;
         public Condition CurrentIfThenBlockCond => _ifThenBlockState[_ifThenBlockStateIndex];
 
         public ArmEmitterContext(
             IMemoryManager memory,
             EntryTable<uint> countTable,
-            AddressTable<ulong> funcTable,
+            IAddressTable<ulong> funcTable,
             TranslatorStubs stubs,
             ulong entryAddress,
             bool highCq,

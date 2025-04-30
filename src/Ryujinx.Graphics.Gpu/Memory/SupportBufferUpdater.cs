@@ -1,6 +1,5 @@
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Shader;
-using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -131,7 +130,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// Sets whether the format of a given render target is a BGRA format.
         /// </summary>
         /// <param name="index">Render target index</param>
-        /// <param name="isBgra">True if the format is BGRA< false otherwise</param>
+        /// <param name="isBgra">True if the format is BGRA, false otherwise</param>
         public void SetRenderTargetIsBgra(int index, bool isBgra)
         {
             bool isBgraChanged = _data.FragmentIsBgra[index].X != 0 != isBgra;

@@ -34,14 +34,14 @@ namespace Ryujinx.Horizon.Kernel.Generators
         private const string TypeResult = NamespaceHorizonCommon + "." + TypeResultName;
         private const string TypeExecutionContext = "IExecutionContext";
 
-        private static readonly string[] _expectedResults = new string[]
-        {
+        private static readonly string[] _expectedResults =
+        [
             $"{TypeResultName}.Success",
             $"{TypeKernelResultName}.TimedOut",
             $"{TypeKernelResultName}.Cancelled",
             $"{TypeKernelResultName}.PortRemoteClosed",
-            $"{TypeKernelResultName}.InvalidState",
-        };
+            $"{TypeKernelResultName}.InvalidState"
+        ];
 
         private readonly struct OutParameter
         {
@@ -145,7 +145,7 @@ namespace Ryujinx.Horizon.Kernel.Generators
             GenerateResultCheckHelper(generator);
             generator.AppendLine();
 
-            List<SyscallIdAndName> syscalls = new List<SyscallIdAndName>();
+            List<SyscallIdAndName> syscalls = [];
 
             foreach (var method in syntaxReceiver.SvcImplementations)
             {
@@ -202,15 +202,15 @@ namespace Ryujinx.Horizon.Kernel.Generators
 
             RegisterAllocatorA32 regAlloc = new RegisterAllocatorA32();
 
-            List<OutParameter> outParameters = new List<OutParameter>();
-            List<string> logInArgs = new List<string>();
-            List<string> logOutArgs = new List<string>();
+            List<OutParameter> outParameters = [];
+            List<string> logInArgs = [];
+            List<string> logOutArgs = [];
 
             foreach (var methodParameter in method.ParameterList.Parameters)
             {
                 string name = methodParameter.Identifier.Text;
                 string argName = GetPrefixedArgName(name);
-                string typeName = methodParameter.Type.ToString();
+                string typeName = methodParameter.Type?.ToString();
                 string canonicalTypeName = GetCanonicalTypeName(compilation, methodParameter.Type);
 
                 if (methodParameter.Modifiers.Any(SyntaxKind.OutKeyword))
@@ -321,15 +321,15 @@ namespace Ryujinx.Horizon.Kernel.Generators
             int registerIndex = 0;
             int index = 0;
 
-            List<OutParameter> outParameters = new List<OutParameter>();
-            List<string> logInArgs = new List<string>();
-            List<string> logOutArgs = new List<string>();
+            List<OutParameter> outParameters = [];
+            List<string> logInArgs = [];
+            List<string> logOutArgs = [];
 
             foreach (var methodParameter in method.ParameterList.Parameters)
             {
                 string name = methodParameter.Identifier.Text;
                 string argName = GetPrefixedArgName(name);
-                string typeName = methodParameter.Type.ToString();
+                string typeName = methodParameter.Type?.ToString();
                 string canonicalTypeName = GetCanonicalTypeName(compilation, methodParameter.Type);
 
                 if (methodParameter.Modifiers.Any(SyntaxKind.OutKeyword))
@@ -415,9 +415,9 @@ namespace Ryujinx.Horizon.Kernel.Generators
         private static string GetCanonicalTypeName(Compilation compilation, SyntaxNode syntaxNode)
         {
             TypeInfo typeInfo = compilation.GetSemanticModel(syntaxNode.SyntaxTree).GetTypeInfo(syntaxNode);
-            if (typeInfo.Type.ContainingNamespace == null)
+            if (typeInfo.Type?.ContainingNamespace == null)
             {
-                return typeInfo.Type.Name;
+                return typeInfo.Type?.Name;
             }
 
             return $"{typeInfo.Type.ContainingNamespace.ToDisplayString()}.{typeInfo.Type.Name}";

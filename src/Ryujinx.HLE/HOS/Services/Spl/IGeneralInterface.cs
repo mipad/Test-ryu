@@ -83,7 +83,6 @@ namespace Ryujinx.HLE.HOS.Services.Spl
                     }
                     break;
                 case ConfigItem.SecurityEngineInterruptNumber:
-                    return SmcResult.NotImplemented;
                 case ConfigItem.FuseVersion:
                     return SmcResult.NotImplemented;
                 case ConfigItem.HardwareType:
@@ -107,15 +106,10 @@ namespace Ryujinx.HLE.HOS.Services.Spl
                     configValue = 0;
                     break;
                 case ConfigItem.KernelConfiguration:
-                    return SmcResult.NotImplemented;
                 case ConfigItem.IsChargerHiZModeEnabled:
-                    return SmcResult.NotImplemented;
                 case ConfigItem.QuestState:
-                    return SmcResult.NotImplemented;
                 case ConfigItem.RegulatorType:
-                    return SmcResult.NotImplemented;
                 case ConfigItem.DeviceUniqueKeyGeneration:
-                    return SmcResult.NotImplemented;
                 case ConfigItem.Package2Hash:
                     return SmcResult.NotImplemented;
                 default:

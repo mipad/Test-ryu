@@ -6,7 +6,6 @@ using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE.HOS;
 using Ryujinx.UI.App.Common;
 using Ryujinx.UI.Common.Configuration;
-using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -35,7 +34,10 @@ namespace Ryujinx.Ava.UI.Windows
 
         public CheatWindow(VirtualFileSystem virtualFileSystem, string titleId, string titleName, string titlePath)
         {
-            LoadedCheats = new AvaloniaList<CheatNode>();
+            MinWidth = 500;
+            MinHeight = 650;
+            
+            LoadedCheats = [];
             IntegrityCheckLevel checkLevel = ConfigurationState.Instance.System.EnableFsIntegrityChecks
                 ? IntegrityCheckLevel.ErrorOnInvalid
                 : IntegrityCheckLevel.None;
@@ -51,7 +53,7 @@ namespace Ryujinx.Ava.UI.Windows
 
             _enabledCheatsPath = Path.Combine(titleModsPath, "cheats", "enabled.txt");
 
-            string[] enabled = Array.Empty<string>();
+            string[] enabled = [];
 
             if (File.Exists(_enabledCheatsPath))
             {
@@ -62,7 +64,7 @@ namespace Ryujinx.Ava.UI.Windows
 
             var mods = new ModLoader.ModCache();
 
-            ModLoader.QueryContentsDir(mods, new DirectoryInfo(Path.Combine(modsBasePath, "contents")), titleIdValue);
+            ModLoader.QueryContentsDir(mods, new DirectoryInfo(Path.Combine(modsBasePath, "contents")), titleIdValue, []);
 
             string currentCheatFile = string.Empty;
             string buildId = string.Empty;
@@ -105,7 +107,7 @@ namespace Ryujinx.Ava.UI.Windows
                 return;
             }
 
-            List<string> enabledCheats = new();
+            List<string> enabledCheats = [];
 
             foreach (var cheats in LoadedCheats)
             {

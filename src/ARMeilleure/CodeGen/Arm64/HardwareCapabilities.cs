@@ -141,8 +141,8 @@ namespace ARMeilleure.CodeGen.Arm64
             return false;
         }
 
-        private static readonly string[] _sysctlNames = new string[]
-        {
+        private static readonly string[] _sysctlNames =
+        [
             "hw.optional.floatingpoint",
             "hw.optional.AdvSIMD",
             "hw.optional.arm.FEAT_FP16",
@@ -151,8 +151,8 @@ namespace ARMeilleure.CodeGen.Arm64
             "hw.optional.arm.FEAT_LSE",
             "hw.optional.armv8_crc32",
             "hw.optional.arm.FEAT_SHA1",
-            "hw.optional.arm.FEAT_SHA256",
-        };
+            "hw.optional.arm.FEAT_SHA256"
+        ];
 
         [Flags]
         public enum MacOsFeatureFlags

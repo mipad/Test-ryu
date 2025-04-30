@@ -5,6 +5,7 @@ using Ryujinx.Ava.UI.Helpers;
 using Ryujinx.Ava.UI.ViewModels;
 using Ryujinx.UI.App.Common;
 using System;
+using System.Linq;
 
 namespace Ryujinx.Ava.UI.Controls
 {
@@ -35,17 +36,31 @@ namespace Ryujinx.Ava.UI.Controls
             }
         }
 
-        public void GameList_SelectionChanged(object sender, SelectionChangedEventArgs args)
-        {
-            if (sender is ListBox listBox)
-            {
-                (DataContext as MainWindowViewModel).ListSelectedApplication = listBox.SelectedItem as ApplicationData;
-            }
-        }
-
         private void SearchBox_OnKeyUp(object sender, KeyEventArgs args)
         {
             (DataContext as MainWindowViewModel).SearchText = (sender as TextBox).Text;
+        }
+
+        private async void IdString_OnClick(object sender, RoutedEventArgs e)
+        {
+            if (DataContext is not MainWindowViewModel mwvm)
+                return;
+            
+            if (sender is not Button { Content: TextBlock idText })
+                return;
+
+            if (!App.IsClipboardAvailable(out var clipboard))
+                return;
+            
+            var appData = mwvm.Applications.FirstOrDefault(it => it.IdString == idText.Text);
+            if (appData is null)
+                return;
+            
+            await clipboard.SetTextAsync(appData.IdString);
+                
+            NotificationHelper.ShowInformation(
+                "Copied Title ID", 
+                $"{appData.Name} ({appData.IdString})");
         }
     }
 }

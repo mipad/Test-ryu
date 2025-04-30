@@ -22,7 +22,6 @@ using Ryujinx.HLE.Loaders.Processes.Extensions;
 using Ryujinx.Horizon.Common;
 using Ryujinx.Horizon.Sdk.Arp;
 using System;
-using System.Linq;
 using System.Runtime.InteropServices;
 using ApplicationId = LibHac.Ncm.ApplicationId;
 
@@ -187,6 +186,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 string.Empty,
                 string.Empty,
                 false,
+                null,
                 codeAddress,
                 codeSize);
 
@@ -229,12 +229,13 @@ namespace Ryujinx.HLE.Loaders.Processes
             MetaLoader metaLoader,
             BlitStruct<ApplicationControlProperty> applicationControlProperties,
             bool diskCacheEnabled,
+            string diskCacheSelector,
             bool allowCodeMemoryForJit,
             string name,
             ulong programId,
             byte programIndex,
             byte[] arguments = null,
-            params IExecutable[] executables)
+            params ReadOnlySpan<IExecutable> executables)
         {
             context.Device.System.ServiceTable.WaitServicesReady();
 
@@ -254,12 +255,17 @@ namespace Ryujinx.HLE.Loaders.Processes
             ulong codeStart = ((meta.Flags & 1) != 0 ? 0x8000000UL : 0x200000UL) + CodeStartOffset;
             ulong codeSize = 0;
 
-            var buildIds = executables.Select(e => (e switch
+            var buildIds = new string[executables.Length];
+
+            for (int i = 0; i < executables.Length; i++)
             {
+                buildIds[i] = (executables[i] switch
+                {
                 NsoExecutable nso => Convert.ToHexString(nso.BuildId.ItemsRo.ToArray()),
                 NroExecutable nro => Convert.ToHexString(nro.Header.BuildId),
                 _ => "",
-            }).ToUpper());
+                }).ToUpper();
+            }
 
             NceCpuCodePatch[] nsoPatch = new NceCpuCodePatch[executables.Length];
             ulong[] nsoBase = new ulong[executables.Length];
@@ -388,6 +394,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 $"{programId:x16}",
                 displayVersion,
                 diskCacheEnabled,
+                diskCacheSelector,
                 codeStart,
                 codeSize);
 

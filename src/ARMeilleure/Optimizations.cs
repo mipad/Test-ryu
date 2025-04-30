@@ -1,10 +1,13 @@
 namespace ARMeilleure
 {
-    using Arm64HardwareCapabilities = ARMeilleure.CodeGen.Arm64.HardwareCapabilities;
-    using X86HardwareCapabilities = ARMeilleure.CodeGen.X86.HardwareCapabilities;
+    using Arm64HardwareCapabilities = CodeGen.Arm64.HardwareCapabilities;
+    using X86HardwareCapabilities = CodeGen.X86.HardwareCapabilities;
 
     public static class Optimizations
     {
+        // low-core count PPTC
+        public static bool EcoFriendly { get; set; } = false;
+
         public static bool FastFP { get; set; } = true;
 
         public static bool AllowLcqInFunctionTable { get; set; } = true;

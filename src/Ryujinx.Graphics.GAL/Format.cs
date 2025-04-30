@@ -275,8 +275,6 @@ namespace Ryujinx.Graphics.GAL
                 case Format.D24UnormS8Uint:
                     return 4;
                 case Format.D32FloatS8Uint:
-                    return 8;
-
                 case Format.Bc1RgbaUnorm:
                 case Format.Bc1RgbaSrgb:
                     return 8;
@@ -303,8 +301,6 @@ namespace Ryujinx.Graphics.GAL
 
                 case Format.Etc2RgbaUnorm:
                 case Format.Etc2RgbaSrgb:
-                    return 16;
-
                 case Format.Astc4x4Unorm:
                 case Format.Astc5x4Unorm:
                 case Format.Astc5x5Unorm:

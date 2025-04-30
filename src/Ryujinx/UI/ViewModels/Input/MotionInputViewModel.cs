@@ -68,13 +68,13 @@ namespace Ryujinx.Ava.UI.ViewModels.Input
             }
         }
 
-        private double _gryoDeadzone;
+        private double _gyroDeadzone;
         public double GyroDeadzone
         {
-            get => _gryoDeadzone;
+            get => _gyroDeadzone;
             set
             {
-                _gryoDeadzone = value;
+                _gyroDeadzone = value;
                 OnPropertyChanged();
             }
         }

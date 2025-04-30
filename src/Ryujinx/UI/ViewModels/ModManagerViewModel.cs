@@ -4,6 +4,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using DynamicData;
+using Gommon;
 using Ryujinx.Ava.Common.Locale;
 using Ryujinx.Ava.UI.Helpers;
 using Ryujinx.Ava.UI.Models;
@@ -11,6 +12,7 @@ using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
 using Ryujinx.Common.Utilities;
 using Ryujinx.HLE.HOS;
+using Ryujinx.UI.App.Common;
 using System;
 using System.IO;
 using System.Linq;
@@ -21,12 +23,13 @@ namespace Ryujinx.Ava.UI.ViewModels
     {
         private readonly string _modJsonPath;
 
-        private AvaloniaList<ModModel> _mods = new();
-        private AvaloniaList<ModModel> _views = new();
-        private AvaloniaList<ModModel> _selectedMods = new();
+        private AvaloniaList<ModModel> _mods = [];
+        private AvaloniaList<ModModel> _views = [];
+        private AvaloniaList<ModModel> _selectedMods = [];
 
         private string _search;
         private readonly ulong _applicationId;
+        private readonly ulong[] _installedDlcIds;
         private readonly IStorageProvider _storageProvider;
 
         private static readonly ModMetadataJsonSerializerContext _serializerContext = new(JsonHelper.GetDefaultSerializerOptions());
@@ -79,21 +82,26 @@ namespace Ryujinx.Ava.UI.ViewModels
             get => string.Format(LocaleManager.Instance[LocaleKeys.ModWindowHeading], Mods.Count);
         }
 
-        public ModManagerViewModel(ulong applicationId)
+        public ModManagerViewModel(ulong applicationId, ulong applicationIdBase, ApplicationLibrary appLibrary)
         {
             _applicationId = applicationId;
 
+            _installedDlcIds = appLibrary.DownloadableContents.Keys
+                .Where(x => x.TitleIdBase == applicationIdBase)
+                .Select(x => x.TitleId)
+                .ToArray();
+
             _modJsonPath = Path.Combine(AppDataManager.GamesDirPath, applicationId.ToString("x16"), "mods.json");
 
-            if (Application.Current.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
-                _storageProvider = desktop.MainWindow.StorageProvider;
+                _storageProvider = desktop.MainWindow?.StorageProvider;
             }
 
-            LoadMods(applicationId);
+            LoadMods(applicationId, _installedDlcIds);
         }
 
-        private void LoadMods(ulong applicationId)
+        private void LoadMods(ulong applicationId, ulong[] installedDlcIds)
         {
             Mods.Clear();
             SelectedMods.Clear();
@@ -105,12 +113,12 @@ namespace Ryujinx.Ava.UI.ViewModels
                 var inSd = path == ModLoader.GetSdModsBasePath();
                 var modCache = new ModLoader.ModCache();
 
-                ModLoader.QueryContentsDir(modCache, new DirectoryInfo(Path.Combine(path, "contents")), applicationId);
+                ModLoader.QueryContentsDir(modCache, new DirectoryInfo(Path.Combine(path, "contents")), applicationId, _installedDlcIds);
 
                 foreach (var mod in modCache.RomfsDirs)
                 {
-                    var modModel = new ModModel(mod.Path.Parent.FullName, mod.Name, mod.Enabled, inSd);
-                    if (Mods.All(x => x.Path != mod.Path.Parent.FullName))
+                    var modModel = new ModModel(mod.Path.Parent?.FullName, mod.Name, mod.Enabled, inSd);
+                    if (Mods.All(x => x.Path != mod.Path.Parent?.FullName))
                     {
                         Mods.Add(modModel);
                     }
@@ -123,8 +131,8 @@ namespace Ryujinx.Ava.UI.ViewModels
 
                 foreach (var mod in modCache.ExefsDirs)
                 {
-                    var modModel = new ModModel(mod.Path.Parent.FullName, mod.Name, mod.Enabled, inSd);
-                    if (Mods.All(x => x.Path != mod.Path.Parent.FullName))
+                    var modModel = new ModModel(mod.Path.Parent?.FullName, mod.Name, mod.Enabled, inSd);
+                    if (Mods.All(x => x.Path != mod.Path.Parent?.FullName))
                     {
                         Mods.Add(modModel);
                     }
@@ -182,7 +190,7 @@ namespace Ryujinx.Ava.UI.ViewModels
             JsonHelper.SerializeToFile(_modJsonPath, modData, _serializerContext.ModMetadata);
         }
 
-        public void Delete(ModModel model)
+        public void Delete(ModModel model, bool removeFromList = true)
         {
             var isSubdir = true;
             var pathToDelete = model.Path;
@@ -222,8 +230,11 @@ namespace Ryujinx.Ava.UI.ViewModels
             Logger.Info?.Print(LogClass.Application, $"Deleting mod at \"{pathToDelete}\"");
             Directory.Delete(pathToDelete, true);
 
-            Mods.Remove(model);
-            OnPropertyChanged(nameof(ModCount));
+            if (removeFromList)
+            {
+                Mods.Remove(model);
+                OnPropertyChanged(nameof(ModCount));
+            }
             Sort();
         }
 
@@ -294,7 +305,7 @@ namespace Ryujinx.Ava.UI.ViewModels
                 File.Copy(file, file.Replace(directory.Parent.ToString(), destinationDir), true);
             }
 
-            LoadMods(_applicationId);
+            LoadMods(_applicationId, _installedDlcIds);
         }
 
         public async void Add()
@@ -313,11 +324,7 @@ namespace Ryujinx.Ava.UI.ViewModels
 
         public void DeleteAll()
         {
-            foreach (var mod in Mods)
-            {
-                Delete(mod);
-            }
-
+            Mods.ForEach(it => Delete(it, false));
             Mods.Clear();
             OnPropertyChanged(nameof(ModCount));
             Sort();

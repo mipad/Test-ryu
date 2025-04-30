@@ -61,8 +61,8 @@ namespace Ryujinx.Graphics.Gpu.Memory
             _context = context;
             _physicalMemory = physicalMemory;
 
-            _buffers = new RangeList<Buffer>();
-            _multiRangeBuffers = new MultiRangeList<MultiRangeBuffer>();
+            _buffers = [];
+            _multiRangeBuffers = [];
 
             _bufferOverlaps = new Buffer[OverlapsBufferInitialCapacity];
 
@@ -395,7 +395,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
             ulong dstOffset = 0;
 
-            HashSet<Buffer> physicalBuffers = new();
+            HashSet<Buffer> physicalBuffers = [];
 
             for (int i = 0; i < virtualBuffer.Range.Count; i++)
             {
@@ -1041,7 +1041,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             {
                 if (entry.Value.UnmappedSequence != entry.Value.Buffer.UnmappedSequence)
                 {
-                    (toDelete ??= new()).Add(entry.Key);
+                    (toDelete ??= []).Add(entry.Key);
                 }
             }
 
