@@ -332,12 +332,12 @@ namespace Ryujinx.HLE.Loaders.Processes
                                                                        dummyExeFs.GetNpdm(),
                                                                        nacpData,
                                                                        diskCacheEnabled: false,
-                                                                       allowCodeMemoryForJit: true,
                                                                        programName,
                                                                        programId,
                                                                        0,
                                                                        null,
-                                                                       executable);
+                                                                       executable,
+                                                                       allowCodeMemoryForJit: true);
 
             // Make sure the process id is valid.
             if (processResult.ProcessId != 0)
