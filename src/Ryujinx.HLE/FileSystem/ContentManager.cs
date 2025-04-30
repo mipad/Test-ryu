@@ -858,7 +858,7 @@ namespace Ryujinx.HLE.FileSystem
                     throw new InvalidFirmwarePackageException("Update not found in xci file.");
                 }
             }
-        }
+        
 
         private SystemVersion VerifyAndGetVersionZip(ZipArchive archive)
         {
@@ -1248,4 +1248,5 @@ namespace Ryujinx.HLE.FileSystem
             }
             return false;
         }
+   }
 }
