@@ -1,0 +1,37 @@
+name: Sync External Repository
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # 每日UTC 0点自动触发
+  workflow_dispatch:      # 允许手动触发
+
+jobs:
+  sync-external-repo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch-10
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GHH_PAT }}  # 你的PAT密钥
+          ref: 10                        # 指定分支10
+          fetch-depth: 0                # 获取完整历史
+
+      - name: Add external repository as remote
+        run: |
+          git remote add external https://github.com/Kenji-NX/Kenji-NX.git
+          git fetch external            # 获取外部仓库所有分支
+
+      - name: Merge changes
+        run: |
+          # 切换到你的分支10（确保存在）
+          git checkout -b 10 origin/10 --force
+
+          # 合并策略（此处选择合并外部仓库的main分支）
+          git merge external/main --allow-unrelated-histories -m "Merge Kenji-NX/main into branch-10"
+
+          # 冲突处理（可选：自动接受所有变更）
+          # git checkout --theirs .   # 强制使用外部仓库的版本（谨慎！）
+
+      - name: Push changes
+        run: |
+          git push origin 10           # 推送到你的分支10
