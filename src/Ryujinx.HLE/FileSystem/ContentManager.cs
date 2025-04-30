@@ -717,6 +717,12 @@ namespace Ryujinx.HLE.FileSystem
                 {
                     XciPartition partition = xci.OpenPartition(XciPartitionType.Update);
 
+                    foreach (var entry in partition.EnumerateEntries("*.nca", SearchOptions.Default))
+            {
+                using var fileRef = new UniqueRef<IFile>();
+                partition.OpenFile(ref fileRef.Ref, entry.FullPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
+                IStorage storage = fileRef.Get.AsStorage();
+                        
                         Nca nca = new(_virtualFileSystem.KeySet, storage);
 
                         if (updateNcas.TryGetValue(nca.Header.TitleId, out var updateNcasItem))
