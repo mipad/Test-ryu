@@ -702,7 +702,8 @@ namespace Ryujinx.HLE.FileSystem
         }
 
         public SystemVersion VerifyFirmwarePackage(Stream file, bool isXci)
-        {
+        {   
+         SystemVersion systemVersion = null;
             if (!isXci)
             {
                 using ZipArchive archive = new ZipArchive(file, ZipArchiveMode.Read);
@@ -726,9 +727,11 @@ namespace Ryujinx.HLE.FileSystem
                         {
                             updateNcas[nca.Header.TitleId].Add((nca.Header.ContentType, entry.FullName));
                         }
+                     }
                   }
-               }
-            }
+            return systemVersion;
+       }
+    }
 
                 if (updateNcas.TryGetValue(SystemUpdateTitleId, out var ncaEntry))
                 {
