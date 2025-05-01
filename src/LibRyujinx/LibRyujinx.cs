@@ -749,36 +749,32 @@ namespace LibRyujinx
                 renderer = new ThreadedRenderer(renderer);
             }
 
-            HLEConfiguration configuration = new HLEConfiguration(VirtualFileSystem,
-    LibHacHorizonManager,
-    ContentManager,
-    AccountManager,
-    UserChannelPersistence,
-    renderer,
-    LibRyujinx.AudioDriver,
-    MemoryConfiguration.MemoryConfiguration4GiB,
-    HostUiHandler,
-    systemLanguage,
-    regionCode,
-    enableVsync,
-    enableDockedMode,
-    enablePtc,
-    enableInternetAccess,
-    IntegrityCheckLevel.None,
-    0,
-    0,
-    timeZone,
-    isHostMapped ? MemoryManagerMode.HostMappedUnsafe : MemoryManagerMode.SoftwarePageTable,
-    ignoreMissingServices,
-    LibRyujinx.GraphicsConfiguration.AspectRatio,
-    100,
-    useHypervisor,
-    "",
-    Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled,
-    multiplayerDisableP2p: false,    // 新增参数
-    multiplayerHostAddress: "",      // 默认空地址
-    multiplayerPort: "",            // 默认空端口
-    multiplayerHostPort: 0 );
+            HLEConfiguration configuration = new HLEConfiguration(virtualFileSystem: VirtualFileSystem,
+    libHacHorizonManager: LibHacHorizonManager,
+    contentManager: ContentManager,
+    accountManager: AccountManager,
+    userChannelPersistence: UserChannelPersistence,
+    renderer: renderer,
+    audioDriver: LibRyujinx.AudioDriver,
+    memoryConfiguration: MemoryConfiguration.MemoryConfiguration4GiB,
+    hostUiHandler: HostUiHandler,
+    systemLanguage: systemLanguage,
+    regionCode: regionCode,
+    enableVsync: enableVsync,
+    enableDockedMode: enableDockedMode,
+    enablePtc: enablePtc,
+    enableInternetAccess: enableInternetAccess,
+    integrityCheckLevel: IntegrityCheckLevel.None,
+    fsGlobalAccessLogMode: 0,
+    expandRam: 0,
+    timeZone: timeZone,
+    memoryManagerMode: isHostMapped ? MemoryManagerMode.HostMappedUnsafe : MemoryManagerMode.SoftwarePageTable,
+    ignoreMissingServices: ignoreMissingServices,
+    aspectRatio: LibRyujinx.GraphicsConfiguration.AspectRatio,
+    anisotropicFiltering: 100,
+    useHypervisor: useHypervisor,
+    preferredGpuVendor: "",
+    multiplayerMode: Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled   );
 
             EmulationContext = new Switch(configuration);
 
