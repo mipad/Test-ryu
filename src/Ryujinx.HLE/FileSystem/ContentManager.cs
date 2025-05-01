@@ -56,7 +56,7 @@ namespace Ryujinx.HLE.FileSystem
 
         private readonly VirtualFileSystem _virtualFileSystem;
 
-        private readonly Lock _lock = new();
+        private readonly object _lock = new();
 
         public ContentManager(VirtualFileSystem virtualFileSystem)
         {
