@@ -230,12 +230,13 @@ namespace Ryujinx.HLE.Loaders.Processes
                                                                        dummyExeFs.GetNpdm(),
                                                                        nacpData,
                                                                        diskCacheEnabled: false,
-                                                                       allowCodeMemoryForJit: true,
+                                                                       diskCacheSelector: null,
                                                                        programName,
                                                                        programId,
                                                                        0,
                                                                        null,
-                                                                       executable);
+                                                                       executable,
+                                                                       allowCodeMemoryForJit: true);
 
             // Make sure the process id is valid.
             if (processResult.ProcessId != 0)
@@ -331,12 +332,13 @@ namespace Ryujinx.HLE.Loaders.Processes
                                                                        dummyExeFs.GetNpdm(),
                                                                        nacpData,
                                                                        diskCacheEnabled: false,
-                                                                       allowCodeMemoryForJit: true,
+                                                                       diskCacheSelector: null,
                                                                        programName,
                                                                        programId,
                                                                        0,
                                                                        null,
-                                                                       executable);
+                                                                       executable,
+                                                                       allowCodeMemoryForJit: true);
 
             // Make sure the process id is valid.
             if (processResult.ProcessId != 0)
