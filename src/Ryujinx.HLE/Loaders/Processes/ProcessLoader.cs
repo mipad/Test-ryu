@@ -231,12 +231,12 @@ namespace Ryujinx.HLE.Loaders.Processes
                                                                        nacpData,
                                                                        diskCacheEnabled: false,
                                                                        diskCacheSelector: null,
+                                                                       allowCodeMemoryForJit: true,
                                                                        programName,
                                                                        programId,
                                                                        0,
                                                                        null,
-                                                                       executable,
-                                                                       allowCodeMemoryForJit: true);
+                                                                       executable);
 
             // Make sure the process id is valid.
             if (processResult.ProcessId != 0)
@@ -333,12 +333,12 @@ namespace Ryujinx.HLE.Loaders.Processes
                                                                        nacpData,
                                                                        diskCacheEnabled: false,
                                                                        diskCacheSelector: null,
+                                                                       allowCodeMemoryForJit: true,
                                                                        programName,
                                                                        programId,
                                                                        0,
                                                                        null,
-                                                                       executable,
-                                                                       allowCodeMemoryForJit: true);
+                                                                       executable);
 
             // Make sure the process id is valid.
             if (processResult.ProcessId != 0)
