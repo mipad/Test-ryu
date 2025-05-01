@@ -226,17 +226,17 @@ namespace Ryujinx.HLE.Loaders.Processes
             _device.Gpu.HostInitalized.Set();
 
             ProcessResult processResult = ProcessLoaderHelper.LoadNsos(_device,
-                                                                       _device.System.KernelContext,
-                                                                       dummyExeFs.GetNpdm(),
-                                                                       nacpData,
-                                                                       diskCacheEnabled: false,
-                                                                       diskCacheSelector: null,
-                                                                       allowCodeMemoryForJit: true,
-                                                                       programName,
-                                                                       programId,
-                                                                       0,
-                                                                       null,
-                                                                       executable);
+                                                                         _device.System.KernelContext,
+                                                                         dummyExeFs.GetNpdm(),
+                                                                         nacpData,
+                                                                         diskCacheEnabled: false,
+                                                                         diskCacheSelector: null,
+                                                                         allowCodeMemoryForJit: true,
+                                                                         programName: programName,     // 显式命名
+                                                                         programId: programId,         // 显式命名
+                                                                         someParameter: 0,            // 显式命名（假设参数名）
+                                                                         anotherParameter: null,       // 显式命名（假设参数名）
+                                                                         executable: executable);
 
             // Make sure the process id is valid.
             if (processResult.ProcessId != 0)
