@@ -226,18 +226,16 @@ namespace Ryujinx.HLE.Loaders.Processes
             _device.Gpu.HostInitalized.Set();
 
             ProcessResult processResult = ProcessLoaderHelper.LoadNsos(_device,
-                                                                         _device.System.KernelContext,
-                                                                         
-    dummyExeFs.GetNpdm(),
-    nacpData,
-    diskCacheEnabled: false,
-    diskCacheSelector: null,      // 新增参数（参数6）
-    allowCodeMemoryForJit: true,  // 参数7（命名参数）
-    programName,                  // 参数8（位置参数）
-    programId,                    // 参数9（位置参数）
-    0,
-    null,
-    executable);
+                                                                       _device.System.KernelContext,
+                                                                       dummyExeFs.GetNpdm(),
+                                                                       nacpData,
+                                                                       diskCacheEnabled: false,
+                                                                       allowCodeMemoryForJit: true,
+                                                                       programName,
+                                                                       programId,
+                                                                       0,
+                                                                       null,
+                                                                       executable);
 
             // Make sure the process id is valid.
             if (processResult.ProcessId != 0)
@@ -328,19 +326,17 @@ namespace Ryujinx.HLE.Loaders.Processes
             Graphics.Gpu.GraphicsConfig.TitleId = null;
             _device.Gpu.HostInitalized.Set();
 
-            ProcessResult processResult =  ProcessLoaderHelper.LoadNsos(
-    _device,                             // 参数1
-    _device.System.KernelContext,        // 参数2
-    dummyExeFs.GetNpdm(),                // 参数3
-    nacpData,                            // 参数4
-    diskCacheEnabled: false,             // 参数5（命名参数）
-    diskCacheSelector: null,             // 参数6（新增命名参数 👈 关键修复！）
-    programName,                         // 参数8（位置参数）
-    programId,                          // 参数9（位置参数）
-    0,                                   // 参数10（位置参数）
-    null,                                // 参数11（位置参数）
-    executable,                          // 参数12（位置参数）
-    allowCodeMemoryForJit: true);
+            ProcessResult processResult = ProcessLoaderHelper.LoadNsos(_device,
+                                                                       _device.System.KernelContext,
+                                                                       dummyExeFs.GetNpdm(),
+                                                                       nacpData,
+                                                                       diskCacheEnabled: false,
+                                                                       allowCodeMemoryForJit: true,
+                                                                       programName,
+                                                                       programId,
+                                                                       0,
+                                                                       null,
+                                                                       executable);
 
             // Make sure the process id is valid.
             if (processResult.ProcessId != 0)
