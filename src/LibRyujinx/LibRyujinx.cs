@@ -750,31 +750,35 @@ namespace LibRyujinx
             }
 
             HLEConfiguration configuration = new HLEConfiguration(VirtualFileSystem,
-                                                                  LibHacHorizonManager,
-                                                                  ContentManager,
-                                                                  AccountManager,
-                                                                  UserChannelPersistence,
-                                                                  renderer,
-                                                                  LibRyujinx.AudioDriver, //Audio
-                                                                  MemoryConfiguration.MemoryConfiguration4GiB,
-                                                                  HostUiHandler,
-                                                                  systemLanguage,
-                                                                  regionCode,
-                                                                  enableVsync,
-                                                                  enableDockedMode,
-                                                                  enablePtc,
-                                                                  enableInternetAccess,
-                                                                  IntegrityCheckLevel.None,
-                                                                  0,
-                                                                  0,
-                                                                  timeZone,
-                                                                  isHostMapped ? MemoryManagerMode.HostMappedUnsafe : MemoryManagerMode.SoftwarePageTable,
-                                                                  ignoreMissingServices,
-                                                                   LibRyujinx.GraphicsConfiguration.AspectRatio,
-                                                                  100,
-                                                                  useHypervisor,
-                                                                  "",
-                                                                  Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled);
+    LibHacHorizonManager,
+    ContentManager,
+    AccountManager,
+    UserChannelPersistence,
+    renderer,
+    LibRyujinx.AudioDriver,
+    MemoryConfiguration.MemoryConfiguration4GiB,
+    HostUiHandler,
+    systemLanguage,
+    regionCode,
+    enableVsync,
+    enableDockedMode,
+    enablePtc,
+    enableInternetAccess,
+    IntegrityCheckLevel.None,
+    0,
+    0,
+    timeZone,
+    isHostMapped ? MemoryManagerMode.HostMappedUnsafe : MemoryManagerMode.SoftwarePageTable,
+    ignoreMissingServices,
+    LibRyujinx.GraphicsConfiguration.AspectRatio,
+    100,
+    useHypervisor,
+    "",
+    Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled,
+    multiplayerDisableP2p: false,    // 新增参数
+    multiplayerHostAddress: "",      // 默认空地址
+    multiplayerPort: "",            // 默认空端口
+    multiplayerHostPort: 0 );
 
             EmulationContext = new Switch(configuration);
 
