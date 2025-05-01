@@ -340,8 +340,7 @@ namespace Ryujinx.HLE.Loaders.Processes
     0,                                   // 参数10（位置参数）
     null,                                // 参数11（位置参数）
     executable,                          // 参数12（位置参数）
-    allowCodeMemoryForJit: true          // 参数7（命名参数，移至正确位置）
-););
+    allowCodeMemoryForJit: true);
 
             // Make sure the process id is valid.
             if (processResult.ProcessId != 0)
