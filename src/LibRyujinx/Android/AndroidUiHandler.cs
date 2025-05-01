@@ -27,7 +27,44 @@ namespace LibRyujinx.Android
         {
             throw new NotImplementedException();
         }
+        // 新增方法：实现 DisplayCabinetDialog
+        public bool DisplayCabinetDialog(out string userText)
+        {
+            _input = null;
+            _resetEvent.Reset();
+            Interop.UpdateUiHandler("Cabinet Dialog",
+                "Please provide cabinet information",
+                "",
+                2,  // 假设类型码 2 对应输入对话框
+                0,
+                0,
+                KeyboardMode.Default,
+                "",
+                "");
 
+            _resetEvent.WaitOne();
+
+            userText = _input ?? "";
+            return _isOkPressed;
+        }
+
+        // 新增方法：实现 DisplayCabinetMessageDialog
+        public bool DisplayCabinetMessageDialog()
+        {
+            Interop.UpdateUiHandler("Cabinet Message",
+                "Cabinet configuration required",
+                "",
+                1,  // 假设类型码 1 对应消息对话框
+                0,
+                0,
+                KeyboardMode.Default,
+                "",
+                "");
+
+            _resetEvent.WaitOne();
+            return _isOkPressed;
+        }
+        
         public bool DisplayErrorAppletDialog(string title, string message, string[] buttonsText)
         {
             Interop.UpdateUiHandler(title ?? "",
