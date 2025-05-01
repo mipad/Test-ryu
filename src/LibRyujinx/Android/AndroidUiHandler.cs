@@ -28,7 +28,7 @@ namespace LibRyujinx.Android
             throw new NotImplementedException();
         }
         // 新增方法：实现 DisplayCabinetDialog
-        public void DisplayCabinetDialog(out string userText)
+        public bool DisplayCabinetDialog(out string userText)
         {
             _input = null;
             _resetEvent.Reset();
@@ -49,7 +49,7 @@ namespace LibRyujinx.Android
         }
 
         // 新增方法：实现 DisplayCabinetMessageDialog
-        public bool DisplayCabinetMessageDialog()
+        public void DisplayCabinetMessageDialog()
         {
             Interop.UpdateUiHandler("Cabinet Message",
                 "Cabinet configuration required",
@@ -62,7 +62,7 @@ namespace LibRyujinx.Android
                 "");
 
             _resetEvent.WaitOne();
-            return _isOkPressed;
+            
         }
         
         public bool DisplayErrorAppletDialog(string title, string message, string[] buttonsText)
