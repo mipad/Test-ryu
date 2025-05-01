@@ -28,7 +28,7 @@ namespace LibRyujinx.Android
             throw new NotImplementedException();
         }
         // 新增方法：实现 DisplayCabinetDialog
-        public bool DisplayCabinetDialog(out string userText)
+        public void DisplayCabinetDialog(out string userText)
         {
             _input = null;
             _resetEvent.Reset();
