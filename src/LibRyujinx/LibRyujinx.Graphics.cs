@@ -81,19 +81,12 @@ namespace LibRyujinx
             Renderer?.Window?.SetSize(width, height);
         }
 
-        
-// 
-public static void SetVSync()
-{
-    //
-    device.Renderer.Window.ChangeVSyncMode(Ryujinx.Graphics.GAL.VSyncMode.Switch);
-    
-    
-    var config = new Configuration 
-    { 
-        VSync = Ryujinx.Common.Configuration.VSyncMode.Unbounded 
-    };
-}
+        public static void SetVsyncState(bool enabled)
+        {
+            var device = SwitchDevice!.EmulationContext!;
+            device.EnableDeviceVsync = enabled;
+            device.Gpu.Renderer.Window.ChangeVSyncMode(enabled);
+        }
 
         public static void RunLoop()
         {
