@@ -755,7 +755,7 @@ namespace LibRyujinx
     contentManager: ContentManager,
     accountManager: AccountManager,
     userChannelPersistence: UserChannelPersistence,
-    graphicsRenderer: renderer,  // 使用实际参数名
+    renderer: renderer,  // 使用实际参数名
     audioDriver: LibRyujinx.AudioDriver,
     memoryConfiguration: MemoryConfiguration.MemoryConfiguration4GiB,
     hostUiHandler: HostUiHandler,
