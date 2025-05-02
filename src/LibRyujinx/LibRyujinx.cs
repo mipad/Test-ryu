@@ -760,7 +760,7 @@ namespace LibRyujinx
     memoryConfiguration: MemoryConfiguration.MemoryConfiguration4GiB,
     hostUIHandler: HostUiHandler,
     systemLanguage: systemLanguage,
-    regionCode: regionCode,
+    region: regionCode,
     enableVsync: enableVsync,
     enableDockedMode: enableDockedMode,
     enablePtc: enablePtc,
