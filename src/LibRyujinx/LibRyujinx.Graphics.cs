@@ -15,6 +15,8 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
+using GalVSync = Ryujinx.Graphics.GAL.VSyncMode;
+using ConfigVSync = Ryujinx.Common.Configuration.VSyncMode;
 
 namespace LibRyujinx
 {
@@ -81,11 +83,14 @@ namespace LibRyujinx
             Renderer?.Window?.SetSize(width, height);
         }
 
-        public static void SetVsyncState(VSyncMode vSyncMode)
-        {
-            var device = SwitchDevice!.EmulationContext!;
-            device.EnableDeviceVsync = enabled;
-            device.Gpu.Renderer.Window.ChangeVSyncMode(enabled ? VSyncMode.On : VSyncMode.Off);
+        public static void SetVsyncState(bool enabled)
+{
+    var device = SwitchDevice!.EmulationContext!;
+    
+    // 
+    device.Gpu.Renderer.Window.ChangeVSyncMode(
+        enabled ? GalVSync.On : GalVSync.Off
+    );
         }
 
         public static void RunLoop()
