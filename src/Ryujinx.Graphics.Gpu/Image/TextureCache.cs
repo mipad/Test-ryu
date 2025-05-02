@@ -304,7 +304,7 @@ namespace Ryujinx.Graphics.Gpu.Image
 {
     // 1. 获取新range覆盖的所有分片索引
     List<int> affectedShardIndices = new List<int>();
-    foreach (var subRange in range.GetSubRanges())
+    foreach (var subRange in range.GetPhysicalRegions()) // 或 GetRanges()
     {
         ulong start = subRange.Address;
         ulong end = start + subRange.Size;
@@ -780,7 +780,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             if (range != null)
             {
                 address = range.Value.GetSubRange(0).Address;
-                        }
+            }
             else
             {
                 address = memoryManager.Translate(info.GpuAddress);
@@ -915,7 +915,7 @@ finally
             {
                 // =============== 计算受影响的分片索引 ===============
 List<int> affectedShardIndices = new List<int>();
-foreach (var subRange in range.GetSubRanges())
+foreach (var subRange in range.GetPhysicalRegions()) // 或 GetRanges()
 {
     ulong start = subRange.Address;
     ulong end = start + subRange.Size;
@@ -1273,7 +1273,7 @@ finally
                 _cache.Add(texture);
             }
 
-            int shardIndex = GetShardIndex(texture.Info.GpuAddress);
+            
 ReaderWriterLockSlim shardLock = _shardLocks[shardIndex];
 MultiRangeList<Texture> shardTextures = _shardedTextures[shardIndex];
 
@@ -1289,7 +1289,7 @@ finally
 
             if (partiallyMapped)
             {
-                lock (_partiallyMappedTextures)
+                lock (_shardedPartiallyMappedTextures[shardIndex])
                 {
                     _partiallyMappedTextures.Add(texture);
                 }
@@ -1352,6 +1352,7 @@ finally
 
             // =============== 计算受影响的分片索引 ===============
 List<int> affectedShardIndices = new List<int>();
+int size = xCount * yCount * bpp; // 根据实际逻辑计算大小
 for (ulong addr = address; addr < address + (ulong)size; addr += ShardCount) // 根据具体逻辑调整范围
 {
     int shardIndex = GetShardIndex(addr);
@@ -1363,7 +1364,7 @@ for (ulong addr = address; addr < address + (ulong)size; addr += ShardCount) // 
 affectedShardIndices.Sort();
 
 // =============== 分阶段加锁查询重叠纹理 ===============
-int addressMatches = 0;
+addressMatches = 0;
 foreach (int shardIndex in affectedShardIndices)
 {
     _shardLocks[shardIndex].EnterReadLock();
@@ -1542,7 +1543,7 @@ finally
         _shardedPartiallyMappedTextures[shardIndex].Remove(texture);
     }
 
-    lock (_partiallyMappedTextures)
+    lock (_shardedPartiallyMappedTextures[shardIndex])
     {
         _partiallyMappedTextures.Remove(texture);
     }
@@ -1559,7 +1560,7 @@ finally
         public MultiRange UpdatePartiallyMapped(MemoryManager memoryManager, ulong address, Texture texture)
         {
             MultiRange range;
-            lock (_partiallyMappedTextures)
+            lock (_shardedPartiallyMappedTextures[shardIndex])
             {
                 range = memoryManager.GetPhysicalRegions(address, texture.Size);
                 bool partiallyMapped = false;
@@ -1638,7 +1639,7 @@ public void Dispose()
             {
                 texture.Dispose();
             }
-            _shardedTextures[i].Clear();
+            _shardedTextures[i].RemoveAll(); // 或 _shardedTextures[i] = new MultiRangeList<Texture>();
             _shardedPartiallyMappedTextures[i].Clear();
         }
         finally
@@ -1647,7 +1648,7 @@ public void Dispose()
             _shardLocks[i].Dispose(); // 释放锁资源
         }
     }
-    _cache.Dispose(); // 假设AutoDeleteCache实现了IDisposable
+    _cache.Clear(); // 假设存在 Clear 方法
 }
     }
 }
