@@ -749,12 +749,13 @@ namespace LibRyujinx
                 renderer = new ThreadedRenderer(renderer);
             }
 
-            HLEConfiguration configuration = new HLEConfiguration(virtualFileSystem: VirtualFileSystem,
+            HLEConfiguration configuration = new HLEConfiguration(
+    virtualFileSystem: VirtualFileSystem,
     libHacHorizonManager: LibHacHorizonManager,
     contentManager: ContentManager,
     accountManager: AccountManager,
     userChannelPersistence: UserChannelPersistence,
-    renderer: renderer,
+    graphicsRenderer: renderer,  // 使用实际参数名
     audioDriver: LibRyujinx.AudioDriver,
     memoryConfiguration: MemoryConfiguration.MemoryConfiguration4GiB,
     hostUiHandler: HostUiHandler,
@@ -774,7 +775,10 @@ namespace LibRyujinx
     anisotropicFiltering: 100,
     useHypervisor: useHypervisor,
     preferredGpuVendor: "",
-    multiplayerMode: Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled   );
+    multiplayerMode: Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled);
+    
+
+            
 
             EmulationContext = new Switch(configuration);
 
