@@ -86,7 +86,7 @@ namespace LibRyujinx
         public static void SetVsyncState(bool enabled)
         {
             var device = SwitchDevice!.EmulationContext!;
-            device.EnableDeviceVsync = enabled;
+           // device.EnableDeviceVsync = enabled;
             device.Gpu.Renderer.Window.ChangeVSyncMode(enabled ? GalVSync.Switch : GalVSync.Unbounded);
         }
 
