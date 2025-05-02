@@ -774,7 +774,7 @@ namespace LibRyujinx
     aspectRatio: LibRyujinx.GraphicsConfiguration.AspectRatio,
     audioVolume: 100,
     useHypervisor: useHypervisor,
-    preferredGpuVendor: "",
+    "",
     multiplayerMode: Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled);
 
 
