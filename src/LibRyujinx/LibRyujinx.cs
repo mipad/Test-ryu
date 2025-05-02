@@ -758,7 +758,7 @@ namespace LibRyujinx
     gpuRenderer: renderer,  // 使用实际参数名
     audioDeviceDriver: LibRyujinx.AudioDriver,
     memoryConfiguration: MemoryConfiguration.MemoryConfiguration4GiB,
-    hostUiHandler: HostUiHandler,
+    hostUIHandler: HostUiHandler,
     systemLanguage: systemLanguage,
     regionCode: regionCode,
     enableVsync: enableVsync,
