@@ -775,7 +775,8 @@ namespace LibRyujinx
     audioVolume: 100,
     useHypervisor: useHypervisor,
     multiplayerLanInterfaceId: "",
-    multiplayerMode: Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled);
+    multiplayerMode: Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled,
+    multiplayerDisableP2p: false);
 
 
     
