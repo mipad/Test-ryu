@@ -756,7 +756,7 @@ namespace LibRyujinx
     accountManager: AccountManager,
     userChannelPersistence: UserChannelPersistence,
     gpuRenderer: renderer,  // 使用实际参数名
-    audioDriver: LibRyujinx.AudioDriver,
+    audioDeviceDriver: LibRyujinx.AudioDriver,
     memoryConfiguration: MemoryConfiguration.MemoryConfiguration4GiB,
     hostUiHandler: HostUiHandler,
     systemLanguage: systemLanguage,
