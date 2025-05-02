@@ -755,13 +755,13 @@ namespace LibRyujinx
     contentManager: ContentManager,
     accountManager: AccountManager,
     userChannelPersistence: UserChannelPersistence,
-    gpuRenderer: renderer,  // 使用实际参数名
+    gpuRenderer: renderer,  // 
     audioDeviceDriver: LibRyujinx.AudioDriver,
     memoryConfiguration: MemoryConfiguration.MemoryConfiguration4GiB,
     hostUIHandler: HostUiHandler,
     systemLanguage: systemLanguage,
     region: regionCode,
-    enableVsync: enableVsync,
+    vSyncMode: enableVsync ? VSyncMode.On : VSyncMode.Off,
     enableDockedMode: enableDockedMode,
     enablePtc: enablePtc,
     enableInternetAccess: enableInternetAccess,
