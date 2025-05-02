@@ -761,11 +761,11 @@ namespace LibRyujinx
     hostUIHandler: HostUiHandler,
     systemLanguage: systemLanguage,
     region: regionCode,
-    vSyncMode: enableVsync ? VSyncMode.Enabled : VSyncMode.Disabled
+    vSyncMode: enableVsync,
     enableDockedMode: enableDockedMode,
     enablePtc: enablePtc,
     enableInternetAccess: enableInternetAccess,
-    integrityCheckLevel: IntegrityCheckLevel.None,
+    fsIntegrityCheckLevel: IntegrityCheckLevel.None,
     fsGlobalAccessLogMode: 0,
     expandRam: 0,
     timeZone: timeZone,
