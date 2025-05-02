@@ -1,4 +1,5 @@
-
+namespace Ryujinx.Graphics.GAL
+ {
 public enum VSyncMode
 {
     On,        
@@ -15,4 +16,5 @@ public static VSyncMode ConvertLegacyMode(LegacyVSyncMode legacyMode)
         LegacyVSyncMode.Custom    => VSyncMode.On,     // 自定义模式默认开启
         _ => throw new ArgumentOutOfRangeException()
     };
+}
 }
