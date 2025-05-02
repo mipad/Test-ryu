@@ -289,7 +289,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         private static PresentModeKHR ChooseSwapPresentMode(PresentModeKHR[] availablePresentModes, VSyncMode vSyncMode)
         {
-            if (vSyncMode == VSyncMode.Unbounded && availablePresentModes.Contains(PresentModeKHR.ImmediateKhr))
+            if (vSyncMode == VSyncMode.Off && availablePresentModes.Contains(PresentModeKHR.ImmediateKhr))
             {
                 return PresentModeKHR.ImmediateKhr;
             }
