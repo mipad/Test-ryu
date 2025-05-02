@@ -761,7 +761,7 @@ namespace LibRyujinx
     hostUIHandler: HostUiHandler,
     systemLanguage: systemLanguage,
     region: regionCode,
-    vSyncMode: enableVSync ? VSyncMode.Switch : VSyncMode.Unbounded,
+    vSyncMode: VSyncMode enableVSync ? VSyncMode.Switch : VSyncMode.Unbounded,
     enableDockedMode: enableDockedMode,
     enablePtc: enablePtc,
     enableInternetAccess: enableInternetAccess,
