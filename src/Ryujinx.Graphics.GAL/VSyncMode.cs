@@ -11,14 +11,14 @@ namespace Ryujinx.Graphics.GAL
     public static class VSyncModeHelper
     {
         // 
-        public static VSyncMode ConvertLegacyMode(string legacyMode)
+        public static VSyncMode ConvertLegacyMode(string configvalue)
         {
-            return legacyMode switch
+            return configvalue switch
             {
                 "Switch"    => VSyncMode.On,
                 "Unbounded" => VSyncMode.Off,
                 "Custom"    => VSyncMode.On,
-                _ => throw new ArgumentOutOfRangeException(nameof(legacyMode))
+                _ => VSyncMode.On 
             };
         }
     }
