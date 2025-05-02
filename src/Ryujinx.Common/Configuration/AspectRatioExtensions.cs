@@ -66,7 +66,7 @@ namespace Ryujinx.Common.Configuration
                 AspectRatio.Fixed21x9  => "21:9",
                 AspectRatio.Fixed32x9  => "32:9",
                 AspectRatio.Fixed41x18  => "41:18",    
-                _                      => "Stretched",
+                _                      => "Dynamic",
 #pragma warning restore IDE0055
             };
         }
