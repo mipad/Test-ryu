@@ -85,7 +85,7 @@ namespace LibRyujinx
         {
             var device = SwitchDevice!.EmulationContext!;
             device.EnableDeviceVsync = enabled;
-            device.Gpu.Renderer.Window.ChangeVSyncMode(enabled);
+            device.Gpu.Renderer.Window.ChangeVSyncMode(enabled ? VSyncMode.On : VSyncMode.Off);
         }
 
         public static void RunLoop()
