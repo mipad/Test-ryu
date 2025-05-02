@@ -171,13 +171,16 @@ namespace Ryujinx.Graphics.Gpu.Image
     // 按分片处理，确保线程安全
     foreach (int shardIndex in affectedShardIndices)
     {
-        lock (_shardedPartiallyMappedTextures[shardIndex])
+        int shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 先定义
+lock (_shardedPartiallyMappedTextures[shardIndex])
         {
             if (overlapCount > 0 || _shardedPartiallyMappedTextures[shardIndex].Count > 0)
             {
                 e.AddRemapAction(() =>
                 {
-                    lock (_shardedPartiallyMappedTextures[shardIndex])
+                    int shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 先定义
+int shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 先定义
+lock (_shardedPartiallyMappedTextures[shardIndex])
                     {
                         if (overlapCount > 0)
                         {
@@ -784,7 +787,7 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             ulong address;
 
-                       if (range != null)
+            if (range != null)
             {
                 address = range.Value.GetSubRange(0).Address;
             }
@@ -1297,9 +1300,12 @@ finally
 
             if (partiallyMapped)
             {
-                lock (_shardedPartiallyMappedTextures[shardIndex])
+                int shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 先定义
+int shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 先定义
+lock (_shardedPartiallyMappedTextures[shardIndex])
                 {
-                    _shardedPartiallyMappedTextures.Add(texture);
+                    int shardIndex = GetShardIndex(texture.Info.GpuAddress);
+_shardedPartiallyMappedTextures[shardIndex].Add(texture);
                 }
             }
 
@@ -1546,12 +1552,14 @@ finally
         shardLock.ExitWriteLock();
     }
 
-    lock (_shardedPartiallyMappedTextures[shardIndex])
+    int shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 先定义
+lock (_shardedPartiallyMappedTextures[shardIndex])
     {
         _shardedPartiallyMappedTextures[shardIndex].Remove(texture);
     }
 
-    lock (_shardedPartiallyMappedTextures[shardIndex])
+    int shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 先定义
+lock (_shardedPartiallyMappedTextures[shardIndex])
     {
         _shardedPartiallyMappedTextures.Remove(texture);
     }
@@ -1568,7 +1576,8 @@ finally
         public MultiRange UpdatePartiallyMapped(MemoryManager memoryManager, ulong address, Texture texture)
         {
             MultiRange range;
-            lock (_shardedPartiallyMappedTextures[shardIndex])
+            int shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 先定义
+lock (_shardedPartiallyMappedTextures[shardIndex])
             {
                 range = memoryManager.GetPhysicalRegions(address, texture.Size);
                 bool partiallyMapped = false;
@@ -1584,7 +1593,8 @@ finally
 
                 if (partiallyMapped)
                 {
-                    _shardedPartiallyMappedTextures.Add(texture);
+                    int shardIndex = GetShardIndex(texture.Info.GpuAddress);
+_shardedPartiallyMappedTextures[shardIndex].Add(texture);
                 }
                 else
                 {
@@ -1640,7 +1650,7 @@ public void Dispose()
 {
     for (int i = 0; i < ShardCount; i++)
     {
-        _shardLocks[i].EnterWriteLock(); // 使用写锁确保独占访问
+        _shardLocks[i].EnterWriteLock(); // 使用写锁
         try
         {
             foreach (Texture texture in _shardedTextures[i])
@@ -1656,7 +1666,7 @@ public void Dispose()
             _shardLocks[i].Dispose(); // 释放锁资源
         }
     }
-    _cache.Purge(); // 假设存在  方法
+    
 }
     }
 }
