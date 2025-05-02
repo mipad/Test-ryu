@@ -3,8 +3,8 @@ namespace Ryujinx.Graphics.GAL
     // 
     public enum VSyncMode
     {
-        On,
-        Off
+        Enabled,    
+        Disabled 
     }
 
     // 
