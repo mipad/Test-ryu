@@ -772,7 +772,7 @@ namespace LibRyujinx
     memoryManagerMode: isHostMapped ? MemoryManagerMode.HostMappedUnsafe : MemoryManagerMode.SoftwarePageTable,
     ignoreMissingServices: ignoreMissingServices,
     aspectRatio: LibRyujinx.GraphicsConfiguration.AspectRatio,
-    anisotropicFiltering: 100,
+    audioVolume: 100,
     useHypervisor: useHypervisor,
     preferredGpuVendor: "",
     multiplayerMode: Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled);
