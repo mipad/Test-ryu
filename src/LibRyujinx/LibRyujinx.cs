@@ -776,7 +776,10 @@ namespace LibRyujinx
     useHypervisor: useHypervisor,
     multiplayerLanInterfaceId: "",
     multiplayerMode: Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled,
-    multiplayerDisableP2p: false);
+    multiplayerDisableP2p: false,
+    multiplayerLdnPassphrase: "",
+    multiplayerLdnServer: "",
+    customVSyncInterval: 0);
 
 
     
