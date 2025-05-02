@@ -104,7 +104,11 @@ namespace Ryujinx.Graphics.Gpu.Image
 
     // =============== 1. 计算受影响的分片索引 ===============
     List<int> affectedShardIndices = new List<int>();
-    foreach (var subRange in unmapped.GetSubRanges())
+    for (int i = 0; i < unmapped.Count; i++) // 使用索引访问子范围
+{
+    var subRange = unmapped[i];
+    // 处理子范围逻辑
+}
     {
         ulong start = subRange.Address;
         ulong end = start + subRange.Size;
@@ -326,7 +330,10 @@ namespace Ryujinx.Graphics.Gpu.Image
         _shardLocks[shardIndex].EnterReadLock();
         try
         {
-            overlapCount += _shardedTextures[shardIndex].FindOverlaps(range, ref _textureOverlaps);
+            if (range.HasValue)
+{
+    overlapCount += _shardedTextures[shardIndex].FindOverlaps(range.Value, ref _textureOverlaps);
+}
         }
         finally
         {
@@ -777,7 +784,7 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             ulong address;
 
-            if (range != null)
+                       if (range != null)
             {
                 address = range.Value.GetSubRange(0).Address;
             }
@@ -817,9 +824,9 @@ namespace Ryujinx.Graphics.Gpu.Image
             int sameAddressOverlapsCount;
 
             // 根据纹理地址选择分片
-int shardIndex = GetShardIndex(info.GpuAddress);
-ReaderWriterLockSlim shardLock = _shardLocks[shardIndex];
-MultiRangeList<Texture> shardTextures = _shardedTextures[shardIndex];
+shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 直接赋值，无需声明
+shardLock = _shardLocks[shardIndex];
+shardTextures = _shardedTextures[shardIndex];
 
 shardLock.EnterReadLock();
 try
@@ -1274,8 +1281,9 @@ finally
             }
 
             
-ReaderWriterLockSlim shardLock = _shardLocks[shardIndex];
-MultiRangeList<Texture> shardTextures = _shardedTextures[shardIndex];
+shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 直接赋值，无需声明
+shardLock = _shardLocks[shardIndex];
+shardTextures = _shardedTextures[shardIndex];
 
 shardLock.EnterWriteLock();
 try
@@ -1291,7 +1299,7 @@ finally
             {
                 lock (_shardedPartiallyMappedTextures[shardIndex])
                 {
-                    _partiallyMappedTextures.Add(texture);
+                    _shardedPartiallyMappedTextures.Add(texture);
                 }
             }
 
@@ -1545,7 +1553,7 @@ finally
 
     lock (_shardedPartiallyMappedTextures[shardIndex])
     {
-        _partiallyMappedTextures.Remove(texture);
+        _shardedPartiallyMappedTextures.Remove(texture);
     }
 }
 
@@ -1576,11 +1584,11 @@ finally
 
                 if (partiallyMapped)
                 {
-                    _partiallyMappedTextures.Add(texture);
+                    _shardedPartiallyMappedTextures.Add(texture);
                 }
                 else
                 {
-                    _partiallyMappedTextures.Remove(texture);
+                    _shardedPartiallyMappedTextures.Remove(texture);
                 }
             }
 
@@ -1639,7 +1647,7 @@ public void Dispose()
             {
                 texture.Dispose();
             }
-            _shardedTextures[i].RemoveAll(); // 或 _shardedTextures[i] = new MultiRangeList<Texture>();
+            _shardedTextures[i] = new MultiRangeList<Texture>(); //重新初始化
             _shardedPartiallyMappedTextures[i].Clear();
         }
         finally
@@ -1648,7 +1656,7 @@ public void Dispose()
             _shardLocks[i].Dispose(); // 释放锁资源
         }
     }
-    _cache.Clear(); // 假设存在 Clear 方法
+    _cache.Purge(); // 假设存在  方法
 }
     }
 }
