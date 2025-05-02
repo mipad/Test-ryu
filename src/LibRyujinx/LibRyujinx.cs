@@ -767,7 +767,7 @@ namespace LibRyujinx
     enableInternetAccess: enableInternetAccess,
     fsIntegrityCheckLevel: IntegrityCheckLevel.None,
     fsGlobalAccessLogMode: 0,
-    expandRam: 0,
+    systemTimeOffset: 0,
     timeZone: timeZone,
     memoryManagerMode: isHostMapped ? MemoryManagerMode.HostMappedUnsafe : MemoryManagerMode.SoftwarePageTable,
     ignoreMissingServices: ignoreMissingServices,
