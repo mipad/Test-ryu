@@ -755,32 +755,30 @@ namespace LibRyujinx
     contentManager: ContentManager,
     accountManager: AccountManager,
     userChannelPersistence: UserChannelPersistence,
-    gpuRenderer: renderer,  // 使用正确的参数名 "gpuRenderer"
-    audioDeviceDriver: LibRyujinx.AudioDriver,
+    gpuRenderer: renderer,  // 使用实际参数名
+    audioDriver: LibRyujinx.AudioDriver,
     memoryConfiguration: MemoryConfiguration.MemoryConfiguration4GiB,
-    hostUIHandler: HostUiHandler,
+    hostUiHandler: HostUiHandler,
     systemLanguage: systemLanguage,
-    region: regionCode,
-    vSyncMode: enableVsync ? VSyncMode.On : VSyncMode.Off,  // 注意此处类型为 VSyncMode，需从 bool 转换
+    regionCode: regionCode,
+    enableVsync: enableVsync,
     enableDockedMode: enableDockedMode,
     enablePtc: enablePtc,
     enableInternetAccess: enableInternetAccess,
-    fsIntegrityCheckLevel: IntegrityCheckLevel.None,
+    integrityCheckLevel: IntegrityCheckLevel.None,
     fsGlobalAccessLogMode: 0,
-    systemTimeOffset: 0,
+    expandRam: 0,
     timeZone: timeZone,
     memoryManagerMode: isHostMapped ? MemoryManagerMode.HostMappedUnsafe : MemoryManagerMode.SoftwarePageTable,
     ignoreMissingServices: ignoreMissingServices,
     aspectRatio: LibRyujinx.GraphicsConfiguration.AspectRatio,
-    audioVolume: 100,  // 示例值，根据实际需求调整
+    anisotropicFiltering: 100,
     useHypervisor: useHypervisor,
-    multiplayerLanInterfaceId: "",
-    multiplayerMode: MultiplayerMode.Disabled,
-    multiplayerDisableP2p: false,
-    multiplayerLdnPassphrase: "",
-    multiplayerLdnServer: "",
-    customVSyncInterval: 0  // 自定义 VSync 间隔，按需调整
-);
+    preferredGpuVendor: "",
+    multiplayerMode: Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled);
+
+
+    
     
 
             
