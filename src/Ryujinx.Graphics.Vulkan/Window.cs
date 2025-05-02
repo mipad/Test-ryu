@@ -10,7 +10,7 @@ namespace Ryujinx.Graphics.Vulkan
 {
     class Window : WindowBase, IDisposable
     {
-        private const int SurfaceWidth = 1280;
+        private const int SurfaceWidth = 1640;
         private const int SurfaceHeight = 720;
 
         private readonly VulkanRenderer _gd;
