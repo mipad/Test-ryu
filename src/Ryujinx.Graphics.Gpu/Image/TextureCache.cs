@@ -206,7 +206,7 @@ lock (_shardedPartiallyMappedTextures[shardIndex])
                             texture.UpdatePoolMappings();
                         }
                     }
-                });
+                }
             }
         }
     }
