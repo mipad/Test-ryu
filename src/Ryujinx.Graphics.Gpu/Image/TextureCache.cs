@@ -311,7 +311,8 @@ lock (_shardedPartiallyMappedTextures[shardIndex])
 {
     // 1. 获取新range覆盖的所有分片索引
     List<int> affectedShardIndices = new List<int>();
-    foreach (var subRange in range.GetPhysicalRegions()) // 或 GetRanges()
+    foreach (var subRange in range)
+// 假设 MultiRange 实现了 IEnumerable<MemoryRange>，直接遍历即可 // 或 GetRanges()
     {
         ulong start = subRange.Address;
         ulong end = start + subRange.Size;
@@ -333,7 +334,7 @@ lock (_shardedPartiallyMappedTextures[shardIndex])
         _shardLocks[shardIndex].EnterReadLock();
         try
         {
-            if (range.HasValue)
+            if (range != null)
 {
     overlapCount += _shardedTextures[shardIndex].FindOverlaps(range.Value, ref _textureOverlaps);
 }
@@ -827,7 +828,9 @@ lock (_shardedPartiallyMappedTextures[shardIndex])
             int sameAddressOverlapsCount;
 
             // 根据纹理地址选择分片
-shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 直接赋值，无需声明
+shardIndex = GetShardIndex(int shardIndex = GetShardIndex(texture.Info.GpuAddress); // 声明变量
+var shardLock = _shardLocks[shardIndex];
+var shardTextures = _shardedTextures[shardIndex];); // ✅ 直接赋值，无需声明
 shardLock = _shardLocks[shardIndex];
 shardTextures = _shardedTextures[shardIndex];
 
@@ -925,7 +928,8 @@ finally
             {
                 // =============== 计算受影响的分片索引 ===============
 List<int> affectedShardIndices = new List<int>();
-foreach (var subRange in range.GetPhysicalRegions()) // 或 GetRanges()
+foreach (var subRange in range)
+
 {
     ulong start = subRange.Address;
     ulong end = start + subRange.Size;
@@ -1304,8 +1308,7 @@ finally
 int shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 先定义
 lock (_shardedPartiallyMappedTextures[shardIndex])
                 {
-                    int shardIndex = GetShardIndex(texture.Info.GpuAddress);
-_shardedPartiallyMappedTextures[shardIndex].Add(texture);
+                    _shardedPartiallyMappedTextures[shardIndex].Add(texture);
                 }
             }
 
@@ -1496,7 +1499,7 @@ finally
                     case Format.R16G16B16A16Snorm:
                         formatInfo = new FormatInfo(Format.R16G16B16A16Sint, 1, 1, 8, 4);
                         break;
-                }
+                                        }
             }
 
             int width = info.Width / info.SamplesInX;
@@ -1561,7 +1564,8 @@ lock (_shardedPartiallyMappedTextures[shardIndex])
     int shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 先定义
 lock (_shardedPartiallyMappedTextures[shardIndex])
     {
-        _shardedPartiallyMappedTextures.Remove(texture);
+        int shardIndex = GetShardIndex(texture.Info.GpuAddress);
+_shardedPartiallyMappedTextures[shardIndex].Remove(texture); // 指定分片索引
     }
 }
 
@@ -1593,7 +1597,7 @@ lock (_shardedPartiallyMappedTextures[shardIndex])
 
                 if (partiallyMapped)
                 {
-                    int shardIndex = GetShardIndex(texture.Info.GpuAddress);
+                    
 _shardedPartiallyMappedTextures[shardIndex].Add(texture);
                 }
                 else
