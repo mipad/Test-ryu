@@ -828,11 +828,9 @@ lock (_shardedPartiallyMappedTextures[shardIndex])
             int sameAddressOverlapsCount;
 
             // 根据纹理地址选择分片
-shardIndex = GetShardIndex(int shardIndex = GetShardIndex(texture.Info.GpuAddress); // 声明变量
+int shardIndex = GetShardIndex(texture.Info.GpuAddress);
 var shardLock = _shardLocks[shardIndex];
-var shardTextures = _shardedTextures[shardIndex];); // ✅ 直接赋值，无需声明
-shardLock = _shardLocks[shardIndex];
-shardTextures = _shardedTextures[shardIndex];
+var shardTextures = _shardedTextures[shardIndex];
 
 shardLock.EnterReadLock();
 try
@@ -1304,8 +1302,7 @@ finally
 
             if (partiallyMapped)
             {
-                int shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 先定义
-int shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 先定义
+                int shardIndex = GetShardIndex(texture.Info.GpuAddress); // 
 lock (_shardedPartiallyMappedTextures[shardIndex])
                 {
                     _shardedPartiallyMappedTextures[shardIndex].Add(texture);
@@ -1499,7 +1496,7 @@ finally
                     case Format.R16G16B16A16Snorm:
                         formatInfo = new FormatInfo(Format.R16G16B16A16Sint, 1, 1, 8, 4);
                         break;
-                                        }
+                }
             }
 
             int width = info.Width / info.SamplesInX;
