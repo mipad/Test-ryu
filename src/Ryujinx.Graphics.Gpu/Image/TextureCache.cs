@@ -171,15 +171,20 @@ namespace Ryujinx.Graphics.Gpu.Image
     // 按分片处理，确保线程安全
     foreach (int shardIndex in affectedShardIndices)
     {
-        int shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 先定义
-lock (_shardedPartiallyMappedTextures[shardIndex])
+        foreach (int affectedShard in affectedShardIndices)
+{
+    lock (_shardedPartiallyMappedTextures[affectedShard])
+    {
+        // 确保texture变量已正确传入或定义
+        foreach (var texture in overlaps)
         {
-            if (overlapCount > 0 || _shardedPartiallyMappedTextures[shardIndex].Count > 0)
+            if (GetShardIndex(texture.Info.GpuAddress) == affectedShard)
             {
-                e.AddRemapAction(() =>
-                {
-                    int shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 先定义
-int shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 先定义
+                _shardedPartiallyMappedTextures[affectedShard].Add(texture);
+            }
+        }
+    }
+} // ✅ 先定义
 lock (_shardedPartiallyMappedTextures[shardIndex])
                     {
                         if (overlapCount > 0)
@@ -311,8 +316,13 @@ lock (_shardedPartiallyMappedTextures[shardIndex])
 {
     // 1. 获取新range覆盖的所有分片索引
     List<int> affectedShardIndices = new List<int>();
-    foreach (var subRange in range)
-// 假设 MultiRange 实现了 IEnumerable<MemoryRange>，直接遍历即可 // 或 GetRanges()
+    // 使用GetSubRanges()方法获取子范围集合
+var subRanges = range.GetSubRanges();
+foreach (var subRange in subRanges)
+{
+    // 处理每个subRange
+}
+
     {
         ulong start = subRange.Address;
         ulong end = start + subRange.Size;
@@ -782,7 +792,7 @@ lock (_shardedPartiallyMappedTextures[shardIndex])
             MultiRange? range = null)
         {
             bool isSamplerTexture = (flags & TextureSearchFlags.ForSampler) != 0;
-            bool discard = (flags & TextureSearchFlags.DiscardData) != 0;
+
 
             TextureScaleMode scaleMode = IsUpscaleCompatible(info, (flags & TextureSearchFlags.WithUpscale) != 0);
 
