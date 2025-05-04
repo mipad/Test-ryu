@@ -8,8 +8,10 @@ namespace Ryujinx.Common.Configuration
     {
         Fixed4x3,
         Fixed16x9,
+        Fixed16x10,
+        Fixed21x9,
+        Fixed32x9,
         Fixed41x18,
-        Dynamic,
         Stretched,
     }
 
@@ -27,7 +29,10 @@ namespace Ryujinx.Common.Configuration
 #pragma warning disable IDE0055 // Disable formatting
                 AspectRatio.Fixed4x3   => 4.0f,
                 AspectRatio.Fixed16x9  => 16.0f,
-                AspectRatio.Fixed41x18  => 41.0f,    
+                AspectRatio.Fixed16x10 => 16.0f,
+                AspectRatio.Fixed21x9  => 21.0f,
+                AspectRatio.Fixed32x9  => 32.0f,
+                AspectRatio.Fixed41x18  => 41.0f,
                 _                      => 41.0f,
 #pragma warning restore IDE0055
             };
@@ -40,7 +45,10 @@ namespace Ryujinx.Common.Configuration
 #pragma warning disable IDE0055 // Disable formatting
                 AspectRatio.Fixed4x3   => 3.0f,
                 AspectRatio.Fixed16x9  => 9.0f,
-                AspectRatio.Fixed41x18  => 18.0f,    
+                AspectRatio.Fixed16x10 => 10.0f,
+                AspectRatio.Fixed21x9  => 9.0f,
+                AspectRatio.Fixed32x9  => 9.0f,
+                AspectRatio.Fixed32x9  => 18.0f,
                 _                      => 18.0f,
 #pragma warning restore IDE0055
             };
@@ -53,7 +61,10 @@ namespace Ryujinx.Common.Configuration
 #pragma warning disable IDE0055 // Disable formatting
                 AspectRatio.Fixed4x3   => "4:3",
                 AspectRatio.Fixed16x9  => "16:9",
-                AspectRatio.Fixed41x18  => "41:18",    
+                AspectRatio.Fixed16x10 => "16:10",
+                AspectRatio.Fixed21x9  => "21:9",
+                AspectRatio.Fixed32x9  => "32:9",
+                AspectRatio.Fixed41x18 => "41:18",
                 _                      => "41:18",
 #pragma warning restore IDE0055
             };
