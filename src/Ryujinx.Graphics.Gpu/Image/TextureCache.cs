@@ -8,7 +8,6 @@ using Ryujinx.Graphics.Texture;
 using Ryujinx.Memory.Range;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 
 namespace Ryujinx.Graphics.Gpu.Image
@@ -17,12 +16,7 @@ namespace Ryujinx.Graphics.Gpu.Image
     /// Texture cache.
     /// </summary>
     class TextureCache : IDisposable
-    {   
-        private int GetShardIndex(ulong gpuAddress)
-{
-    return (int)(gpuAddress % (ulong)ShardCount);
-}
-
+    {
         private readonly struct OverlapInfo
         {
             public TextureViewCompatibility Compatibility { get; }
@@ -42,12 +36,11 @@ namespace Ryujinx.Graphics.Gpu.Image
 
         private readonly GpuContext _context;
         private readonly PhysicalMemory _physicalMemory;
-        
-        private const int ShardCount = 16;
-        private readonly MultiRangeList<Texture>[] _shardedTextures;
-        private readonly HashSet<Texture>[] _shardedPartiallyMappedTextures;
 
-        private readonly ReaderWriterLockSlim[] _shardLocks;
+        private readonly MultiRangeList<Texture> _textures;
+        private readonly HashSet<Texture> _partiallyMappedTextures;
+
+        private readonly ReaderWriterLockSlim _texturesLock;
 
         private Texture[] _textureOverlaps;
         private OverlapInfo[] _overlapInfo;
@@ -60,34 +53,27 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="context">The GPU context that the texture manager belongs to</param>
         /// <param name="physicalMemory">Physical memory where the textures managed by this cache are mapped</param>
         public TextureCache(GpuContext context, PhysicalMemory physicalMemory)
-{
-    _context = context;
-    _physicalMemory = physicalMemory; // 修正拼写错误 "_physicalPhysicalMemory"
+        {
+            _context = context;
+            _physicalMemory = physicalMemory;
 
-    // 初始化分片锁和存储结构
-    _shardLocks = new ReaderWriterLockSlim[ShardCount];
-    _shardedTextures = new MultiRangeList<Texture>[ShardCount];
-    _shardedPartiallyMappedTextures = new HashSet<Texture>[ShardCount];
+            _textures = new MultiRangeList<Texture>();
+            _partiallyMappedTextures = new HashSet<Texture>();
 
-    for (int i = 0; i < ShardCount; i++)
-    {
-        _shardLocks[i] = new ReaderWriterLockSlim();
-        _shardedTextures[i] = new MultiRangeList<Texture>();
-        _shardedPartiallyMappedTextures[i] = new HashSet<Texture>();
-    }
+            _texturesLock = new ReaderWriterLockSlim();
 
-    _textureOverlaps = new Texture[OverlapsBufferInitialCapacity];
-    _overlapInfo = new OverlapInfo[OverlapsBufferInitialCapacity];
-    _cache = new AutoDeleteCache(); // 修正 "_cache = []" 为正确初始化
-}
+            _textureOverlaps = new Texture[OverlapsBufferInitialCapacity];
+            _overlapInfo = new OverlapInfo[OverlapsBufferInitialCapacity];
+
+            _cache = new AutoDeleteCache();
+        }
 
         /// <summary>
         /// Initializes the cache, setting the maximum texture capacity for the specified GPU context.
         /// </summary>
-        /// <param name="cpuMemorySize">The amount of physical CPU Memory Avaiable on the device.</param>
-        public void Initialize(ulong cpuMemorySize)
+        public void Initialize()
         {
-            _cache.Initialize(_context, cpuMemorySize);
+            _cache.Initialize(_context);
         }
 
         /// <summary>
@@ -96,124 +82,59 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="sender">Sender object</param>
         /// <param name="e">Event arguments</param>
         public void MemoryUnmappedHandler(object sender, UnmapEventArgs e)
-{
-    Texture[] overlaps = new Texture[OverlapsBufferInitialCapacity]; // 提升到方法作用域
-    int overlapCount = 0;
-
-    MultiRange unmapped = ((MemoryManager)sender).GetPhysicalRegions(e.Address, e.Size);
-
-    // =============== 1. 计算受影响的分片索引 ===============
-    List<int> affectedShardIndices = new List<int>();
-    for (int i = 0; i < unmapped.Count; i++) // 使用索引访问子范围
-{
-    var subRange = unmapped[i];
-    // 处理子范围逻辑
-}
-    {
-        ulong start = subRange.Address;
-        ulong end = start + subRange.Size;
-        for (ulong addr = start; addr < end; addr += ShardCount)
         {
-            int shardIndex = GetShardIndex(addr);
-            if (!affectedShardIndices.Contains(shardIndex))
+            Texture[] overlaps = new Texture[10];
+            int overlapCount;
+
+            MultiRange unmapped = ((MemoryManager)sender).GetPhysicalRegions(e.Address, e.Size);
+
+            _texturesLock.EnterReadLock();
+
+            try
             {
-                affectedShardIndices.Add(shardIndex);
+                overlapCount = _textures.FindOverlaps(unmapped, ref overlaps);
             }
-        }
-    }
-    affectedShardIndices.Sort();
-
-    // =============== 2. 分阶段加锁查询重叠纹理 ===============
-    foreach (int shardIndex in affectedShardIndices)
-    {
-        _shardLocks[shardIndex].EnterReadLock();
-    }
-
-    try
-    {
-        // 使用临时列表收集重叠纹理
-        List<Texture> tempOverlaps = new List<Texture>();
-        foreach (int shardIndex in affectedShardIndices)
-        {
-            int count = _shardedTextures[shardIndex].FindOverlaps(unmapped, ref overlaps);
-            for (int i = 0; i < count; i++)
+            finally
             {
-                tempOverlaps.Add(overlaps[i]);
+                _texturesLock.ExitReadLock();
             }
-        }
 
-        // 转换到固定数组
-        overlapCount = tempOverlaps.Count;
-        if (overlaps.Length < overlapCount)
-        {
-            Array.Resize(ref overlaps, overlapCount);
-        }
-        tempOverlaps.CopyTo(overlaps);
-    }
-    finally
-    {
-        foreach (int shardIndex in affectedShardIndices)
-        {
-            _shardLocks[shardIndex].ExitReadLock();
-        }
-    }
-
-    // =============== 3. 处理未映射事件 ===============
-    if (overlapCount > 0)
-    {
-        for (int i = 0; i < overlapCount; i++)
-        {
-            overlaps[i].Unmapped(unmapped);
-        }
-    }
-
-    // =============== 4. 更新部分映射纹理集合 ===============
-    // 按分片处理，确保线程安全
-    foreach (int shardIndex in affectedShardIndices)
-    {
-        foreach (int affectedShard in affectedShardIndices)
-{
-    lock (_shardedPartiallyMappedTextures[affectedShard])
-    {
-        // 确保texture变量已正确传入或定义
-        foreach (var texture in overlaps)
-        {
-            if (GetShardIndex(texture.Info.GpuAddress) == affectedShard)
+            if (overlapCount > 0)
             {
-                _shardedPartiallyMappedTextures[affectedShard].Add(texture);
+                for (int i = 0; i < overlapCount; i++)
+                {
+                    overlaps[i].Unmapped(unmapped);
+                }
             }
-        }
-    }
-} // ✅ 先定义
-lock (_shardedPartiallyMappedTextures[shardIndex])
+
+            lock (_partiallyMappedTextures)
+            {
+                if (overlapCount > 0 || _partiallyMappedTextures.Count > 0)
+                {
+                    e.AddRemapAction(() =>
                     {
-                        if (overlapCount > 0)
+                        lock (_partiallyMappedTextures)
                         {
-                            // 筛选属于当前分片的纹理
-                            for (int i = 0; i < overlapCount; i++)
+                            if (overlapCount > 0)
                             {
-                                Texture texture = overlaps[i];
-                                if (GetShardIndex(texture.Info.GpuAddress) == shardIndex)
+                                for (int i = 0; i < overlapCount; i++)
                                 {
-                                    _shardedPartiallyMappedTextures[shardIndex].Add(texture);
+                                    _partiallyMappedTextures.Add(overlaps[i]);
                                 }
                             }
-                        }
 
-                        // 更新池映射
-                        foreach (var texture in _shardedPartiallyMappedTextures[shardIndex])
-                        {
-                            texture.UpdatePoolMappings();
+                            // Any texture that has been unmapped at any point or is partially unmapped
+                            // should update their pool references after the remap completes.
+
+                            foreach (var texture in _partiallyMappedTextures)
+                            {
+                                texture.UpdatePoolMappings();
+                            }
                         }
-                    }
+                    });
                 }
             }
         }
-    }
-
-    // =============== 5. 维护重叠缓冲区大小 ===============
-    ShrinkOverlapsBufferIfNeeded();
-}
 
         /// <summary>
         /// Determines if a given texture is eligible for upscaling from its info.
@@ -313,113 +234,50 @@ lock (_shardedPartiallyMappedTextures[shardIndex])
         /// <param name="range">New physical memory range</param>
         /// <returns>True if the mapping was updated, false otherwise</returns>
         public bool UpdateMapping(Texture texture, MultiRange range)
-{
-    // 1. 获取新range覆盖的所有分片索引
-    List<int> affectedShardIndices = new List<int>();
-    // 使用GetSubRanges()方法获取子范围集合
-var subRanges = range.GetSubRanges();
-foreach (var subRange in subRanges)
-{
-    // 处理每个subRange
-}
-
-    {
-        ulong start = subRange.Address;
-        ulong end = start + subRange.Size;
-        for (ulong addr = start; addr < end; addr += ShardCount)
         {
-            int shardIndex = GetShardIndex(addr);
-            if (!affectedShardIndices.Contains(shardIndex))
+            // There cannot be an existing texture compatible with this mapping in the texture cache already.
+            int overlapCount;
+
+            _texturesLock.EnterReadLock();
+
+            try
             {
-                affectedShardIndices.Add(shardIndex);
+                overlapCount = _textures.FindOverlaps(range, ref _textureOverlaps);
             }
-        }
-    }
-    affectedShardIndices.Sort();
-
-    // 2. 检查所有受影响分片中是否存在冲突纹理
-    int overlapCount = 0;
-    foreach (int shardIndex in affectedShardIndices)
-    {
-        _shardLocks[shardIndex].EnterReadLock();
-        try
-        {
-            if (range != null)
-{
-    overlapCount += _shardedTextures[shardIndex].FindOverlaps(range.Value, ref _textureOverlaps);
-}
-        }
-        finally
-        {
-            _shardLocks[shardIndex].ExitReadLock();
-        }
-    }
-
-    // 3. 检查重叠纹理的兼容性
-    for (int i = 0; i < overlapCount; i++)
-    {
-        var other = _textureOverlaps[i];
-        if (texture != other &&
-            (texture.IsViewCompatible(other.Info, other.Range, true, other.LayerSize, _context.Capabilities, out _, out _) != TextureViewCompatibility.Incompatible ||
-            other.IsViewCompatible(texture.Info, texture.Range, true, texture.LayerSize, _context.Capabilities, out _, out _) != TextureViewCompatibility.Incompatible))
-        {
-            return false;
-        }
-    }
-
-    // 4. 确定旧分片和新分片索引
-    int oldShardIndex = GetShardIndex(texture.Info.GpuAddress);
-    int newShardIndex = GetShardIndex(range.GetSubRange(0).Address);
-
-    // 5. 原子操作：从旧分片移除，添加到新分片
-    bool requiresShardChange = oldShardIndex != newShardIndex;
-    
-    int[] orderedShards = null;
-    if (requiresShardChange)
-    {
-        // 先锁旧分片再锁新分片（避免死锁）
-        orderedShards = new[] { Math.Min(oldShardIndex, newShardIndex), Math.Max(oldShardIndex, newShardIndex) };
-        foreach (int shardIndex in orderedShards)
-        {
-            _shardLocks[shardIndex].EnterWriteLock();
-        }
-    }
-    else
-    {
-        _shardLocks[oldShardIndex].EnterWriteLock();
-    }
-
-    try
-    {
-        // 从旧分片移除
-        if (requiresShardChange)
-        {
-            _shardedTextures[oldShardIndex].Remove(texture);
-        }
-
-        // 更新纹理范围
-        texture.ReplaceRange(range);
-
-        // 添加到新分片
-        _shardedTextures[newShardIndex].Add(texture);
-    }
-    finally
-    {
-        if (requiresShardChange)
-        {
-            foreach (int shardIndex in orderedShards.Reverse()) // 逆序解锁
+            finally
             {
-                _shardLocks[shardIndex].ExitWriteLock();
+                _texturesLock.ExitReadLock();
             }
-        }
-        else
-        {
-            _shardLocks[oldShardIndex].ExitWriteLock();
-        }
-    }
 
-    return true;
-}
+            for (int i = 0; i < overlapCount; i++)
+            {
+                var other = _textureOverlaps[i];
+
+                if (texture != other &&
+                    (texture.IsViewCompatible(other.Info, other.Range, true, other.LayerSize, _context.Capabilities, out _, out _) != TextureViewCompatibility.Incompatible ||
+                    other.IsViewCompatible(texture.Info, texture.Range, true, texture.LayerSize, _context.Capabilities, out _, out _) != TextureViewCompatibility.Incompatible))
+                {
+                    return false;
+                }
+            }
+
+            _texturesLock.EnterWriteLock();
+
+            try
+            {
+                _textures.Remove(texture);
+
+                texture.ReplaceRange(range);
+
+                _textures.Add(texture);
+            }
+            finally
+            {
+                _texturesLock.ExitWriteLock();
+            }
+
+            return true;
+        }
 
         /// <summary>
         /// Tries to find an existing texture, or create a new one if not found.
@@ -792,7 +650,7 @@ foreach (var subRange in subRanges)
             MultiRange? range = null)
         {
             bool isSamplerTexture = (flags & TextureSearchFlags.ForSampler) != 0;
-
+            bool discard = (flags & TextureSearchFlags.DiscardData) != 0;
 
             TextureScaleMode scaleMode = IsUpscaleCompatible(info, (flags & TextureSearchFlags.WithUpscale) != 0);
 
@@ -837,21 +695,17 @@ foreach (var subRange in subRanges)
 
             int sameAddressOverlapsCount;
 
-            // 根据纹理地址选择分片
-int shardIndex = GetShardIndex(texture.Info.GpuAddress);
-var shardLock = _shardLocks[shardIndex];
-var shardTextures = _shardedTextures[shardIndex];
+            _texturesLock.EnterReadLock();
 
-shardLock.EnterReadLock();
-try
-{
-    // 在分片内查找重叠纹理
-    sameAddressOverlapsCount = shardTextures.FindOverlaps(address, ref _textureOverlaps);
-}
-finally
-{
-    shardLock.ExitReadLock();
-}
+            try
+            {
+                // Try to find a perfect texture match, with the same address and parameters.
+                sameAddressOverlapsCount = _textures.FindOverlaps(address, ref _textureOverlaps);
+            }
+            finally
+            {
+                _texturesLock.ExitReadLock();
+            }
 
             Texture texture = null;
 
@@ -934,44 +788,16 @@ finally
 
             if (info.Target != Target.TextureBuffer)
             {
-                // =============== 计算受影响的分片索引 ===============
-List<int> affectedShardIndices = new List<int>();
-foreach (var subRange in range)
+                _texturesLock.EnterReadLock();
 
-{
-    ulong start = subRange.Address;
-    ulong end = start + subRange.Size;
-    for (ulong addr = start; addr < end; addr += ShardCount)
-    {
-        int shardIndex = GetShardIndex(addr);
-        if (!affectedShardIndices.Contains(shardIndex))
-        {
-            affectedShardIndices.Add(shardIndex);
-        }
-    }
-}
-affectedShardIndices.Sort();
-
-// =============== 分阶段加锁查询重叠纹理 ===============
-overlapsCount = 0;
-foreach (int shardIndex in affectedShardIndices)
-{
-    _shardLocks[shardIndex].EnterReadLock();
-}
-try 
-{
-    foreach (int shardIndex in affectedShardIndices)
-    {
-        overlapsCount += _shardedTextures[shardIndex].FindOverlaps(range, ref _textureOverlaps);
-    }
-}
-finally 
-{
-    foreach (int shardIndex in affectedShardIndices)
-    {
-        _shardLocks[shardIndex].ExitReadLock();
-    }
-}
+                try
+                {
+                    overlapsCount = _textures.FindOverlaps(range.Value, ref _textureOverlaps);
+                }
+                finally
+                {
+                    _texturesLock.ExitReadLock();
+                }
             }
 
             if (_overlapInfo.Length != _textureOverlaps.Length)
@@ -1064,7 +890,7 @@ finally
                         // otherwise we only need the data that is copied from the existing texture, without loading the CPU data.
                         bool updateNewTexture = texture.Width > overlap.Width || texture.Height > overlap.Height;
 
-                        texture.InitializeGroup(true, true, []);
+                        texture.InitializeGroup(true, true, new List<TextureIncompatibleOverlap>());
                         texture.InitializeData(false, updateNewTexture);
 
                         overlap.SynchronizeMemory();
@@ -1171,7 +997,7 @@ finally
                     {
                         bool dataOverlaps = texture.DataOverlaps(overlap, compatibility);
 
-                        if (!overlap.IsView && dataOverlaps && !incompatibleOverlaps.Any(incompatible => incompatible.Group == overlap.Group))
+                        if (!overlap.IsView && dataOverlaps && !incompatibleOverlaps.Exists(incompatible => incompatible.Group == overlap.Group))
                         {
                             incompatibleOverlaps.Add(new TextureIncompatibleOverlap(overlap.Group, compatibility));
                         }
@@ -1295,27 +1121,22 @@ finally
                 _cache.Add(texture);
             }
 
-            
-shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 直接赋值，无需声明
-shardLock = _shardLocks[shardIndex];
-shardTextures = _shardedTextures[shardIndex];
+            _texturesLock.EnterWriteLock();
 
-shardLock.EnterWriteLock();
-try
-{
-    shardTextures.Add(texture);
-}
-finally
-{
-    shardLock.ExitWriteLock();
-}
+            try
+            {
+                _textures.Add(texture);
+            }
+            finally
+            {
+                _texturesLock.ExitWriteLock();
+            }
 
             if (partiallyMapped)
             {
-                int shardIndex = GetShardIndex(texture.Info.GpuAddress); // 
-lock (_shardedPartiallyMappedTextures[shardIndex])
+                lock (_partiallyMappedTextures)
                 {
-                    _shardedPartiallyMappedTextures[shardIndex].Add(texture);
+                    _partiallyMappedTextures.Add(texture);
                 }
             }
 
@@ -1374,39 +1195,16 @@ lock (_shardedPartiallyMappedTextures[shardIndex])
 
             int addressMatches;
 
-            // =============== 计算受影响的分片索引 ===============
-List<int> affectedShardIndices = new List<int>();
-int size = xCount * yCount * bpp; // 根据实际逻辑计算大小
-for (ulong addr = address; addr < address + (ulong)size; addr += ShardCount) // 根据具体逻辑调整范围
-{
-    int shardIndex = GetShardIndex(addr);
-    if (!affectedShardIndices.Contains(shardIndex))
-    {
-        affectedShardIndices.Add(shardIndex);
-    }
-}
-affectedShardIndices.Sort();
+            _texturesLock.EnterReadLock();
 
-// =============== 分阶段加锁查询重叠纹理 ===============
-addressMatches = 0;
-foreach (int shardIndex in affectedShardIndices)
-{
-    _shardLocks[shardIndex].EnterReadLock();
-}
-try
-{
-    foreach (int shardIndex in affectedShardIndices)
-    {
-        addressMatches += _shardedTextures[shardIndex].FindOverlaps(address, ref _textureOverlaps);
-    }
-}
-finally
-{
-    foreach (int shardIndex in affectedShardIndices)
-    {
-        _shardLocks[shardIndex].ExitReadLock();
-    }
-}
+            try
+            {
+                addressMatches = _textures.FindOverlaps(address, ref _textureOverlaps);
+            }
+            finally
+            {
+                _texturesLock.ExitReadLock();
+            }
 
             Texture textureMatch = null;
 
@@ -1547,34 +1345,23 @@ finally
         /// </remarks>
         /// <param name="texture">The texture to be removed</param>
         public void RemoveTextureFromCache(Texture texture)
-{
-    int shardIndex = GetShardIndex(texture.Info.GpuAddress);
-    var shardLock = _shardLocks[shardIndex];
-    var shardTextures = _shardedTextures[shardIndex];
+        {
+            _texturesLock.EnterWriteLock();
 
-    shardLock.EnterWriteLock();
-    try
-    {
-        shardTextures.Remove(texture);
-    }
-    finally
-    {
-        shardLock.ExitWriteLock();
-    }
+            try
+            {
+                _textures.Remove(texture);
+            }
+            finally
+            {
+                _texturesLock.ExitWriteLock();
+            }
 
-    int shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 先定义
-lock (_shardedPartiallyMappedTextures[shardIndex])
-    {
-        _shardedPartiallyMappedTextures[shardIndex].Remove(texture);
-    }
-
-    int shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 先定义
-lock (_shardedPartiallyMappedTextures[shardIndex])
-    {
-        int shardIndex = GetShardIndex(texture.Info.GpuAddress);
-_shardedPartiallyMappedTextures[shardIndex].Remove(texture); // 指定分片索引
-    }
-}
+            lock (_partiallyMappedTextures)
+            {
+                _partiallyMappedTextures.Remove(texture);
+            }
+        }
 
         /// <summary>
         /// Queries a texture's memory range and marks it as partially mapped or not.
@@ -1587,8 +1374,7 @@ _shardedPartiallyMappedTextures[shardIndex].Remove(texture); // 指定分片索�
         public MultiRange UpdatePartiallyMapped(MemoryManager memoryManager, ulong address, Texture texture)
         {
             MultiRange range;
-            int shardIndex = GetShardIndex(texture.Info.GpuAddress); // ✅ 先定义
-lock (_shardedPartiallyMappedTextures[shardIndex])
+            lock (_partiallyMappedTextures)
             {
                 range = memoryManager.GetPhysicalRegions(address, texture.Size);
                 bool partiallyMapped = false;
@@ -1604,12 +1390,11 @@ lock (_shardedPartiallyMappedTextures[shardIndex])
 
                 if (partiallyMapped)
                 {
-                    
-_shardedPartiallyMappedTextures[shardIndex].Add(texture);
+                    _partiallyMappedTextures.Add(texture);
                 }
                 else
                 {
-                    _shardedPartiallyMappedTextures.Remove(texture);
+                    _partiallyMappedTextures.Remove(texture);
                 }
             }
 
@@ -1657,27 +1442,21 @@ _shardedPartiallyMappedTextures[shardIndex].Add(texture);
         /// Disposes all textures and samplers in the cache.
         /// It's an error to use the texture cache after disposal.
         /// </summary>
-public void Dispose()
-{
-    for (int i = 0; i < ShardCount; i++)
-    {
-        _shardLocks[i].EnterWriteLock(); // 使用写锁
-        try
+        public void Dispose()
         {
-            foreach (Texture texture in _shardedTextures[i])
+            _texturesLock.EnterReadLock();
+
+            try
             {
-                texture.Dispose();
+                foreach (Texture texture in _textures)
+                {
+                    texture.Dispose();
+                }
             }
-            _shardedTextures[i] = new MultiRangeList<Texture>(); //重新初始化
-            _shardedPartiallyMappedTextures[i].Clear();
+            finally
+            {
+                _texturesLock.ExitReadLock();
+            }
         }
-        finally
-        {
-            _shardLocks[i].ExitWriteLock();
-            _shardLocks[i].Dispose(); // 释放锁资源
-        }
-    }
-    
-}
     }
 }
