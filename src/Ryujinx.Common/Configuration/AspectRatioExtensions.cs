@@ -7,6 +7,7 @@ namespace Ryujinx.Common.Configuration
     public enum AspectRatio
     {
         Fixed4x3,
+        Fixed16x9,
         Fixed41x18,
         Dynamic,
         Stretched,
@@ -25,6 +26,7 @@ namespace Ryujinx.Common.Configuration
             {
 #pragma warning disable IDE0055 // Disable formatting
                 AspectRatio.Fixed4x3   => 4.0f,
+                AspectRatio.Fixed16x9  => 16.0f,
                 AspectRatio.Fixed41x18  => 41.0f,    
                 _                      => 41.0f,
 #pragma warning restore IDE0055
@@ -37,6 +39,7 @@ namespace Ryujinx.Common.Configuration
             {
 #pragma warning disable IDE0055 // Disable formatting
                 AspectRatio.Fixed4x3   => 3.0f,
+                AspectRatio.Fixed16x9  => 9.0f,
                 AspectRatio.Fixed41x18  => 18.0f,    
                 _                      => 18.0f,
 #pragma warning restore IDE0055
@@ -49,6 +52,7 @@ namespace Ryujinx.Common.Configuration
             {
 #pragma warning disable IDE0055 // Disable formatting
                 AspectRatio.Fixed4x3   => "4:3",
+                AspectRatio.Fixed16x9  => "16:9",
                 AspectRatio.Fixed41x18  => "41:18",    
                 _                      => "41:18",
 #pragma warning restore IDE0055
