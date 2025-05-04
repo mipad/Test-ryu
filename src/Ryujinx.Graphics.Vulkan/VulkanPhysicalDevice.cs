@@ -19,6 +19,13 @@ namespace Ryujinx.Graphics.Vulkan
         public readonly string DeviceName;
         public readonly IReadOnlySet<string> DeviceExtensions;
 
+        // +++ 新增 DeviceQuirks 结构体 +++
+        public struct DeviceQuirks
+        {
+            public bool DisablePrimitiveBinning;
+            public bool ForceTextureCompression;
+        }
+
         public VulkanPhysicalDevice(Vk api, PhysicalDevice physicalDevice)
         {
             PhysicalDevice = physicalDevice;
@@ -54,6 +61,27 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
+        // +++ 新增设备特性检测方法 +++
+        public DeviceQuirks GetDeviceQuirks()
+        {
+            DeviceQuirks quirks = new();
+
+            // 检测高通Adreno GPU
+            if (PhysicalDeviceProperties.VendorID == 0x5143 && DeviceName.Contains("Adreno"))
+            {
+                quirks.DisablePrimitiveBinning = true;
+                quirks.ForceTextureCompression = true;
+            }
+
+            // 检测ARM Mali GPU
+            if (PhysicalDeviceProperties.VendorID == 0x13B5 && DeviceName.Contains("Mali"))
+            {
+                quirks.ForceTextureCompression = true;
+            }
+
+            return quirks;
+        }
+
         public string Id => $"0x{PhysicalDeviceProperties.VendorID:X}_0x{PhysicalDeviceProperties.DeviceID:X}";
 
         public bool IsDeviceExtensionPresent(string extension) => DeviceExtensions.Contains(extension);
@@ -63,7 +91,6 @@ namespace Ryujinx.Graphics.Vulkan
             if (!IsDeviceExtensionPresent("VK_KHR_driver_properties"))
             {
                 res = default;
-
                 return false;
             }
 
