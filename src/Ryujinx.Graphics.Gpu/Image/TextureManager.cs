@@ -13,6 +13,8 @@ namespace Ryujinx.Graphics.Gpu.Image
         private readonly GpuContext _context;
         private readonly GpuChannel _channel;
 
+         // +++ 新增设备特性字段 +++
+        private readonly VulkanPhysicalDevice.DeviceQuirks _quirks;
         private readonly TextureBindingsManager _cpBindingsManager;
         private readonly TextureBindingsManager _gpBindingsManager;
         private readonly TextureBindingsArrayCache _bindingsArrayCache;
@@ -43,6 +45,15 @@ namespace Ryujinx.Graphics.Gpu.Image
         {
             _context = context;
             _channel = channel;
+
+          // +++ 初始化设备特性 +++
+            if (context.PhysicalDevice is VulkanPhysicalDevice vulkanPhysicalDevice)
+            {
+                _quirks = vulkanPhysicalDevice.GetDeviceQuirks();
+            }
+
+            TexturePoolCache texturePoolCache = new(context);
+            SamplerPoolCache samplerPoolCache = new(context);
 
             TexturePoolCache texturePoolCache = new(context);
             SamplerPoolCache samplerPoolCache = new(context);
