@@ -182,18 +182,11 @@ namespace LibRyujinx
             };
         }
 
-                public static void UpdateInput()
+        public static void UpdateInput()
         {
             _npadManager?.Update(GraphicsConfiguration.AspectRatio.ToFloat());
 
- // 强制更新触摸状态
-       bool isTouched = _virtualTouchScreen!.IsButtonPressed(MouseButton.Button1);
-       _touchScreenManager!.UpdateTouchState(
-           _virtualTouchScreen.CurrentPosition,
-           isTouched
-       );
-       
-             if (!isTouched)
+            if(!_touchScreenManager!.Update(true, _virtualTouchScreen!.IsButtonPressed(MouseButton.Button1), GraphicsConfiguration.AspectRatio.ToFloat()))
             {
                 SwitchDevice!.EmulationContext?.Hid.Touchscreen.Update();
             }
