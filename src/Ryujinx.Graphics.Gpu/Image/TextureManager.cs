@@ -382,7 +382,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                 texture.FirstLevel,
                 texture.Samples,          // 新增 samples 参数
                 compressedFormat,         // 压缩后格式
-                texture.ScaleMode         // 缩放模式
+                //texture.ScaleMode         // 缩放模式
             );
         }
     }
