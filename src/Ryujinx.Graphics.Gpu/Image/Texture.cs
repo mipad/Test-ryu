@@ -40,9 +40,10 @@ namespace Ryujinx.Graphics.Gpu.Image
         }
 
         private GpuContext _context;
-        private PhysicalMemory _physicalMemory;
-
-        private SizeInfo _sizeInfo;
+        internal PhysicalMemory _physicalMemory;
+        
+        internal SizeInfo _sizeInfo;
+        
 
         /// <summary>
         /// Texture format.
@@ -64,7 +65,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// </summary>
         public int Height { get; private set; }
 
-        public int Samples { get; }
+        public int Samples { get; private set; }
         /// <summary>
         /// Texture information.
         /// </summary>
