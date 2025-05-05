@@ -120,7 +120,7 @@ namespace Ryujinx.Graphics.Gpu
             // 在初始化 VulkanRenderer 时保存 PhysicalDevice
             if (Renderer is VulkanRenderer vulkanRenderer)
             {
-+                PhysicalDevice = vulkanRenderer.PhysicalDevice;
+              PhysicalDevice = vulkanRenderer.PhysicalDevice;
             }
             
             Renderer = renderer;
