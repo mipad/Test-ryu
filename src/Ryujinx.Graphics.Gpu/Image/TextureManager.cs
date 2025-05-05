@@ -344,7 +344,32 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="samplerId">ID of the sampler</param>
         public (Texture, Sampler) GetGraphicsTextureAndSampler(int textureId, int samplerId)
         {
-            return _gpBindingsManager.GetTextureAndSampler(textureId, samplerId);
+            var (texture, sampler) = _gpBindingsManager.GetTextureAndSampler(textureId, samplerId);
+
+            // 强制压缩纹理格式
+            if (texture != null && _quirks.ForceTextureCompression)
+            {
+                var originalFormat = texture.Format;
+                var compressedFormat = GetCompressedFormat(originalFormat);
+                
+                if (compressedFormat != originalFormat)
+                {
+                    // 重新创建压缩后的纹理
+                    texture = new Texture(
+                        _context,
+                        texture.Width,
+                        texture.Height,
+                        texture.Depth,
+                        texture.Levels,
+                        texture.Samples,
+                        compressedFormat,
+                        texture.ScaleMode,
+                        texture.ScaleFactor
+                    );
+                }
+            }
+
+            return (texture, sampler);
         }
 
         /// <summary>
