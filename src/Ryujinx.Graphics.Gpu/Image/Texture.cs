@@ -186,8 +186,8 @@ namespace Ryujinx.Graphics.Gpu.Image
         {
             return original switch
             {
-                Format.R8G8B8A8Unorm => Format.Bc3UnormBlock,
-            Format.R8G8B8Unorm => Format.Bc1RgbUnormBlock,
+                Format.R8G8B8A8Unorm => Format.Bc3Unorm,
+            Format.R8G8B8Unorm => Format.Bc1RgbUnorm,
                 _ => original
             };
         }
@@ -245,12 +245,14 @@ namespace Ryujinx.Graphics.Gpu.Image
             TextureInfo info,
             SizeInfo sizeInfo,
             MultiRange range,
+            int samples,
             TextureScaleMode scaleMode)
         {
             ScaleFactor = 1f; // Texture is first loaded at scale 1x.
             ScaleMode = scaleMode;
 
             InitializeTexture(context, physicalMemory, info, sizeInfo, range);
+            Samples = samples;
         }
 
         /// <summary>
