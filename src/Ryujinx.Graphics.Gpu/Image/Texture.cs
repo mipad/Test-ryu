@@ -64,6 +64,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// </summary>
         public int Height { get; private set; }
 
+        public int Samples { get; }
         /// <summary>
         /// Texture information.
         /// </summary>
@@ -185,8 +186,8 @@ namespace Ryujinx.Graphics.Gpu.Image
         {
             return original switch
             {
-                Format.R8G8B8A8Unorm => Format.Bc3Unorm,
-                Format.R8G8B8Unorm => Format.Bc1RgbUnorm,
+                Format.R8G8B8A8Unorm => Format.Bc3UnormBlock,
+            Format.R8G8B8Unorm => Format.Bc1RgbUnormBlock,
                 _ => original
             };
         }
@@ -1468,6 +1469,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             Target = info.Target;
             Width = info.Width;
             Height = info.Height;
+            Samples = info.Samples;
             CanForceAnisotropy = CanTextureForceAnisotropy();
 
             _depth = info.GetDepth();
