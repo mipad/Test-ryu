@@ -45,6 +45,7 @@ namespace Ryujinx.Graphics.Gpu
         /// </summary>
         public Window Window { get; }
 
+        public VulkanPhysicalDevice PhysicalDevice { get; }
         /// <summary>
         /// Internal sequence number, used to avoid needless resource data updates
         /// in the middle of a command buffer before synchronizations.
@@ -115,6 +116,12 @@ namespace Ryujinx.Graphics.Gpu
         /// <param name="renderer">Host renderer</param>
         public GpuContext(IRenderer renderer)
         {
+            // 在初始化 VulkanRenderer 时保存 PhysicalDevice
+            if (Renderer is VulkanRenderer vulkanRenderer)
+            {
++                PhysicalDevice = vulkanRenderer.PhysicalDevice;
+            }
+            
             Renderer = renderer;
 
             GPFifo = new GPFifoDevice(this);
