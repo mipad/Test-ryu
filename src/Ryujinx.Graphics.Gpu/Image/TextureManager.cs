@@ -53,8 +53,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                 _quirks = vulkanPhysicalDevice.GetDeviceQuirks();
             }
 
-            TexturePoolCache texturePoolCache = new(context);
-            SamplerPoolCache samplerPoolCache = new(context);
+            
 
             TexturePoolCache texturePoolCache = new(context);
             SamplerPoolCache samplerPoolCache = new(context);
