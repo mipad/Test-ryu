@@ -55,9 +55,9 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             
 
-            TexturePoolCache texturePoolCache = new(context);
-            SamplerPoolCache samplerPoolCache = new(context);
-
+            _texturePoolCache = new TexturePoolCache(context);
+            _samplerPoolCache = new SamplerPoolCache(context);
+        
             _bindingsArrayCache = new TextureBindingsArrayCache(context, channel);
             _cpBindingsManager = new TextureBindingsManager(context, channel, _bindingsArrayCache, texturePoolCache, samplerPoolCache, isCompute: true);
             _gpBindingsManager = new TextureBindingsManager(context, channel, _bindingsArrayCache, texturePoolCache, samplerPoolCache, isCompute: false);
@@ -350,21 +350,22 @@ namespace Ryujinx.Graphics.Gpu.Image
             if (texture != null && _quirks.ForceTextureCompression)
             {
                 var originalFormat = texture.Format;
-                var compressedFormat = GetCompressedFormat(originalFormat);
+                var compressedFormat = Texture.GetCompressedFormat(texture.Format);
                 
                 if (compressedFormat != originalFormat)
                 {
                     // 重新创建压缩后的纹理
                     texture = new Texture(
                         _context,
-                        texture.Width,
-                        texture.Height,
-                        texture.Depth,
-                        texture.Levels,
-                        texture.Samples,
-                        compressedFormat,
-                        texture.ScaleMode,
-                        texture.ScaleFactor
+                    texture._physicalMemory,
+                    texture.Info,
+                    texture._sizeInfo,
+                    texture.Range,
+                    texture.FirstLayer,
+                    texture.FirstLevel,
+                    texture.Samples, // 传递Samples参数
+                    compressedFormat,
+                    texture.ScaleMode
                     );
                 }
             }
