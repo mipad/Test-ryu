@@ -886,8 +886,16 @@ namespace Ryujinx.Graphics.Gpu.Image
                     {
                         // Only copy compatible. If there's another choice for a FULLY compatible texture, choose that instead.
 
-                        texture = new Texture(_context, _physicalMemory, info, sizeInfo, range.Value, scaleMode);
-
+                       
+texture = new Texture(
+    _context,
+    _physicalMemory,
+    info,
+    sizeInfo,
+    range.Value,
+    samples,    // 补充 samples 参数
+    scaleMode
+);
                         // If the new texture is larger than the existing one, we need to fill the remaining space with CPU data,
                         // otherwise we only need the data that is copied from the existing texture, without loading the CPU data.
                         bool updateNewTexture = texture.Width > overlap.Width || texture.Height > overlap.Height;
@@ -935,8 +943,16 @@ namespace Ryujinx.Graphics.Gpu.Image
             // No match, create a new texture.
             if (texture == null)
             {
-                texture = new Texture(_context, _physicalMemory, info, sizeInfo, range.Value, scaleMode);
-
+            
+texture = new Texture(
+    _context,
+    _physicalMemory,
+    info,
+    sizeInfo,
+    range.Value,
+    samples,    // 补充 samples 参数
+    scaleMode
+);
                 // Step 1: Find textures that are view compatible with the new texture.
                 // Any textures that are incompatible will contain garbage data, so they should be removed where possible.
 
