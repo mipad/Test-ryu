@@ -886,7 +886,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                     {
                         // Only copy compatible. If there's another choice for a FULLY compatible texture, choose that instead.
 
-                       
+  int samples = info.Samples;                     
 texture = new Texture(
     _context,
     _physicalMemory,
@@ -943,7 +943,8 @@ texture = new Texture(
             // No match, create a new texture.
             if (texture == null)
             {
-            
+
+            int samples = info.Samples;
 texture = new Texture(
     _context,
     _physicalMemory,
