@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 
 namespace Ryujinx.Graphics.Vulkan
 {
-    readonly struct VulkanPhysicalDevice
+    public readonly struct VulkanPhysicalDevice
     {
         public readonly PhysicalDevice PhysicalDevice;
         public readonly PhysicalDeviceFeatures PhysicalDeviceFeatures;
