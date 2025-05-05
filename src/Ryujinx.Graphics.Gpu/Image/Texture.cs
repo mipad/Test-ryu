@@ -188,7 +188,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             return original switch
             {
                 Format.R8G8B8A8Unorm => Format.Bc3Unorm,
-            Format.R8G8B8Unorm => Format.Bc1Unorm,
+            Format.R8G8B8Unorm => Format.Bc1RgbaUnorm,
                 _ => original
             };
         }
