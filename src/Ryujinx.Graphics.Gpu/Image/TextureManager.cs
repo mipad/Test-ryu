@@ -381,9 +381,9 @@ namespace Ryujinx.Graphics.Gpu.Image
                 texture.FirstLayer,
                 texture.FirstLevel,
                 texture.Samples,          // 新增 samples 参数
-                compressedFormat,         // 压缩后格式
+                compressedFormat         // 压缩后格式
                 //texture.ScaleMode         // 缩放模式
-            )
+            );
         }
     }
 
