@@ -15,6 +15,7 @@ using System.Threading;
 using Format = Ryujinx.Graphics.GAL.Format;
 using PrimitiveTopology = Ryujinx.Graphics.GAL.PrimitiveTopology;
 using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
+using Ryujinx.Graphics.Vulkan
 
 namespace Ryujinx.Graphics.Vulkan
 {
