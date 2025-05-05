@@ -43,31 +43,49 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="context">GPU context that the texture manager belongs to</param>
         /// <param name="channel">GPU channel that the texture manager belongs to</param>
         public TextureManager(GpuContext context, GpuChannel channel)
-        {
-            _context = context;
-            _channel = channel;
+{
+    _context = context;
+    _channel = channel;
 
-          // +++ 初始化设备特性 +++
-            if (context.PhysicalDevice is VulkanPhysicalDevice vulkanPhysicalDevice)
-            {
-                _quirks = vulkanPhysicalDevice.GetDeviceQuirks();
-            }
+    // 初始化设备特性
+    if (context.PhysicalDevice is VulkanPhysicalDevice vulkanPhysicalDevice)
+    {
+        _quirks = vulkanPhysicalDevice.GetDeviceQuirks();
+    }
 
-            
+    // 初始化类字段（重要修复点）
+    _texturePoolCache = new TexturePoolCache(context);
+    _samplerPoolCache = new SamplerPoolCache(context);
 
-            _texturePoolCache = new TexturePoolCache(context);
-            _samplerPoolCache = new SamplerPoolCache(context);
-        
-            _bindingsArrayCache = new TextureBindingsArrayCache(context, channel);
-            _cpBindingsManager = new TextureBindingsManager(context, channel, _bindingsArrayCache, texturePoolCache, samplerPoolCache, isCompute: true);
-            _gpBindingsManager = new TextureBindingsManager(context, channel, _bindingsArrayCache, texturePoolCache, samplerPoolCache, isCompute: false);
-            _texturePoolCache = texturePoolCache;
-            _samplerPoolCache = samplerPoolCache;
+    _bindingsArrayCache = new TextureBindingsArrayCache(context, channel);
+    
+    // 使用类字段而不是未定义的局部变量（关键修改）
+    _cpBindingsManager = new TextureBindingsManager(
+        context, 
+        channel, 
+        _bindingsArrayCache, 
+        _texturePoolCache,  // 使用类字段
+        _samplerPoolCache,  // 使用类字段
+        isCompute: true
+    );
+    
+    _gpBindingsManager = new TextureBindingsManager(
+        context, 
+        channel, 
+        _bindingsArrayCache, 
+        _texturePoolCache,  // 使用类字段
+        _samplerPoolCache,  // 使用类字段
+        isCompute: false
+    );
 
-            _rtColors = new Texture[Constants.TotalRenderTargets];
-            _rtHostColors = new ITexture[Constants.TotalRenderTargets];
-            _rtColorsBound = new bool[Constants.TotalRenderTargets];
-        }
+    // 删除以下冗余赋值（错误来源）
+    // _texturePoolCache = texturePoolCache;
+    // _samplerPoolCache = samplerPoolCache;
+
+    _rtColors = new Texture[Constants.TotalRenderTargets];
+    _rtHostColors = new ITexture[Constants.TotalRenderTargets];
+    _rtColorsBound = new bool[Constants.TotalRenderTargets];
+}
 
         /// <summary>
         /// Sets the texture and image bindings for the compute pipeline.
@@ -343,35 +361,37 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="textureId">ID of the texture</param>
         /// <param name="samplerId">ID of the sampler</param>
         public (Texture, Sampler) GetGraphicsTextureAndSampler(int textureId, int samplerId)
+{
+    var (texture, sampler) = _gpBindingsManager.GetTextureAndSampler(textureId, samplerId);
+
+    if (texture != null && _quirks.ForceTextureCompression)
+    {
+        Format originalFormat = texture.Format;
+        Format compressedFormat = Texture.GetCompressedFormat(originalFormat);
+
+        if (compressedFormat != originalFormat)
         {
-            var (texture, sampler) = _gpBindingsManager.GetTextureAndSampler(textureId, samplerId);
-
-            // 强制压缩纹理格式
-            if (texture != null && _quirks.ForceTextureCompression)
-            {
-                var originalFormat = texture.Format;
-                var compressedFormat = Texture.GetCompressedFormat(texture.Format);
-                
-                if (compressedFormat != originalFormat)
-                {
-                    // 重新创建压缩后的纹理
-                    texture = new Texture(
-                        _context,
-                    texture._physicalMemory,
-                    texture.Info,
-                    texture._sizeInfo,
-                    texture.Range,
-                    texture.FirstLayer,
-                    texture.FirstLevel,
-                    texture.Samples, // 传递Samples参数
-                    compressedFormat,
-                    texture.ScaleMode
-                    );
-                }
-            }
-
-            return (texture, sampler);
+            // 正确传递所有构造函数参数（包含 samples 和 scaleMode）
+            texture = new Texture(
+                _context,
+                texture._physicalMemory,  // 需确保该字段为 internal
+                texture.Info,
+                texture._sizeInfo,        // 需确保该字段为 internal
+                texture.Range,
+                texture.FirstLayer,
+                texture.FirstLevel,
+                texture.Samples,          // 新增 samples 参数
+                compressedFormat,         // 压缩后格式
+                texture.ScaleMode         // 缩放模式
+            );
         }
+    }
+
+    return (texture, sampler);
+}
+            
+
+        
 
         /// <summary>
         /// Commits bindings on the compute pipeline.
