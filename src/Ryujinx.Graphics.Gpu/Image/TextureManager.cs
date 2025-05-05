@@ -372,17 +372,14 @@ namespace Ryujinx.Graphics.Gpu.Image
         if (compressedFormat != originalFormat)
         {
             // 正确传递所有构造函数参数（包含 samples 和 scaleMode）
-            texture = new Texture(
-                _context,
-                texture._physicalMemory,  // 需确保该字段为 internal
-                texture.Info,
-                texture._sizeInfo,        // 需确保该字段为 internal
-                texture.Range,
-                texture.FirstLayer,
-                texture.FirstLevel,
-                texture.Samples,          // 新增 samples 参数
-                compressedFormat         // 压缩后格式
-                //texture.ScaleMode         // 缩放模式
+             texture = new Texture(
+       _context,
+       texture._physicalMemory,
+       texture.Info,
+       texture._sizeInfo,
+       texture.Range,
+       texture.Samples,          // samples 参数
+       texture.ScaleMode         // 缩放模式
             );
         }
     }
