@@ -110,6 +110,9 @@ namespace Ryujinx.Graphics.Gpu.Image
         private int _layers;
         public int FirstLayer { get; private set; }
         public int FirstLevel { get; private set; }
+        // +++ 新增公共属性 +++
+        public int Depth => _depth;
+        public int Levels => Info.Levels;
 
         private bool _hasData;
         private bool _dirty = true;
@@ -177,6 +180,17 @@ namespace Ryujinx.Graphics.Gpu.Image
         private int _referenceCount;
         private List<TexturePoolOwner> _poolOwners;
 
+        // +++ 新增格式转换方法 +++
+         public static Format GetCompressedFormat(Format original)
+        {
+            return original switch
+            {
+                Format.R8G8B8A8Unorm => Format.Bc3Unorm,
+                Format.R8G8B8Unorm => Format.Bc1RgbUnorm,
+                _ => original
+            };
+        }
+
         /// <summary>
         /// Constructs a new instance of the cached GPU texture.
         /// </summary>
@@ -204,6 +218,10 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             FirstLayer = firstLayer;
             FirstLevel = firstLevel;
+
+            // 确保 _depth 和 _layers 正确初始化
+            _depth = info.GetDepth();
+            _layers = info.GetLayers();
 
             ScaleFactor = scaleFactor;
             ScaleMode = scaleMode;
@@ -777,7 +795,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                     sliceDepth,
                     levels,
                     layers,
-                    Info.FormatInfo.BlockWidth,
+                  Info.FormatInfo.BlockWidth,
                     Info.FormatInfo.BlockHeight,
                     Info.FormatInfo.BytesPerPixel,
                     Info.GobBlocksInY,
