@@ -17,7 +17,6 @@ add_compile_options(
     -Ofast
     -flto=thin
     -march=armv8.2-a+dotprod+sve
-    -march=armv8.4-a+dotpsve+sve
     -mtune=cortex-a78.cortex-a55
     -mtune=neoverse-v1
     -funroll-loops
