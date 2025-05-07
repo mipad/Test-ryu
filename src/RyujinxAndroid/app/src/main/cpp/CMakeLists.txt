@@ -13,6 +13,7 @@ project("ryujinxjni")
 
 # 编译器优化
 add_compile_options(
+    -O3
     -Ofast
     -flto=thin
     -march=armv8.2-a+dotprod+sve
