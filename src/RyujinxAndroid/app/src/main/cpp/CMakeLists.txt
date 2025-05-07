@@ -6,6 +6,9 @@ include(FetchContent)
 # Sets the minimum version of CMake required to build the native library.
 
 cmake_minimum_required(VERSION 3.22.1)
+
+# Declares and names the project.
+
 project("ryujinxjni")
 
 # 编译器优化
@@ -26,54 +29,68 @@ add_compile_options(
     -fvectorize
 )
 
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
-# 引入 adrenotools
-include(FetchContent)
 FetchContent_Declare(
     adrenotools
     GIT_REPOSITORY https://github.com/bylaws/libadrenotools.git
-    GIT_TAG        deec5f75ee1a8ccbe32c8780b1d17284fc87b0f1
+    GIT_TAG        deec5f75ee1a8ccbe32c8780b1d17284fc87b0f1 # v1.0-14-gdeec5f7
 )
+
 FetchContent_MakeAvailable(adrenotools)
 
-# 设置 FFmpeg 预编译库路径
-set(FFMPEG_LIB_DIR ${CMAKE_SOURCE_DIR}/../jniLibs/${ANDROID_ABI})
-set(FFMPEG_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
+# Creates and names a library, sets it as either STATIC
+# or SHARED, 和 provides the relative paths to its source code.
+# You can define multiple libraries, 和 CMake builds them for you.
+# Gradle automatically packages shared libraries with your APK.
 
-# 添加头文件和库路径
-include_directories(${FFMPEG_INCLUDE_DIR})
-link_directories(${FFMPEG_LIB_DIR})
+add_library( # Sets the name of the library.
+            ryujinxjni
 
-# 主目标
-add_library(
-    ryujinxjni
-    SHARED
-    vulkan_wrapper.cpp
-    ryujinx.cpp
-)
+            # Sets the library as a shared library.
+            SHARED
 
-# 链接库
-target_link_libraries(
-    ryujinxjni
-    avcodec
-    avformat
-    avutil
-    swresample
-    ${log-lib}
-    -lvulkan
-    -landroid
-    adrenotools
-)
+            # Provides a relative path to your source file(s).
+            vulkan_wrapper.cpp
+        ryujinx.cpp)
 
-# OpenSSL 配置
+# Searches for a specified prebuilt library and stores the path as a
+# variable. Because CMake includes system libraries in the search path by
+# default, you only need to specify the name of the public NDK library
+# you want to add. CMake verifies that the library exists before
+# completing its build.
+
+find_library( # Sets the name of the path variable.
+              log-lib
+
+              # Specifies the name of the NDK library that
+              # you want CMake to locate.
+              log )
+
+# Specifies libraries CMake should link to your target library. You
+# can link multiple libraries, such as libraries you define in this
+# build script, prebuilt third-party libraries, or system libraries.
+
+target_link_libraries( # Specifies the target library.
+                       ryujinxjni
+                       # Links the target library to the log library
+                       # included in the NDK.
+                       ${log-lib}
+                        -lvulkan
+                       -landroid
+                        adrenotools
+        )
+
+# Build external libraries if prebuilt files don't exist
 set(JNI_PATH ../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
 cmake_path(ABSOLUTE_PATH JNI_PATH NORMALIZE)
+
 cmake_path(APPEND JNI_PATH libcrypto.so OUTPUT_VARIABLE LIBCRYPTO_JNI_PATH)
 cmake_path(APPEND JNI_PATH libssl.so OUTPUT_VARIABLE LIBSSL_JNI_PATH)
 
 if (NOT (EXISTS ${LIBCRYPTO_JNI_PATH} AND EXISTS ${LIBSSL_JNI_PATH}))
     include(../../../../libryujinx/libs/OpenSSL.cmake)
     add_dependencies(ryujinxjni openssl)
-endif()
+endif ()
