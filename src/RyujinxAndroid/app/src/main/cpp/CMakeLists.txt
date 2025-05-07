@@ -10,11 +10,19 @@ project("ryujinxjni")
 
 # 编译器优化
 add_compile_options(
-    -O3
+    -Ofast
     -flto=thin
-    -march=armv8.2-a+dotprod
-    -mtune=cortex-a55
-    -mtune=cortex-a78
+    -march=armv8.2-a+dotprod+sve
+    -march=armv8.4-a+dotpsve+sve
+    -march=armv9-a-sve
+    -mtune=cortex-a78.cortex-a55
+    -mtune=neoverse-v1
+    -finline-small-functions
+    -funroll-loops
+    -fslp-vectorize
+    -funsafe-math-optimizations
+    -fomit-frame-pointer
+    -fno-exceptions
     -fvectorize
 )
 
