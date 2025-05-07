@@ -11,9 +11,6 @@ cmake_minimum_required(VERSION 3.22.1)
 
 project("ryujinxjni")
 
-# 强制设置编译器（可能影响可移植性！）
-set(CMAKE_C_COMPILER "/path/to/clang")
-set(CMAKE_CXX_COMPILER "/path/to/clang++")
 # 设置构建类型
 set(CMAKE_BUILD_TYPE Release)
 
