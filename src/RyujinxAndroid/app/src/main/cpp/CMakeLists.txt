@@ -36,6 +36,14 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(adrenotools)
 
+# 在 CMakeLists.txt 中添加以下内容
+FetchContent_Declare(
+    ffmpeg
+    GIT_REPOSITORY https://github.com/FFmpeg/FFmpeg.git
+    GIT_TAG        n7.1.1  # 指定 FFmpeg 版本
+)
+
+FetchContent_MakeAvailable(ffmpeg)
 # Creates and names a library, sets it as either STATIC
 # or SHARED, 和 provides the relative paths to its source code.
 # You can define multiple libraries, 和 CMake builds them for you.
@@ -76,6 +84,10 @@ target_link_libraries( # Specifies the target library.
                         -lvulkan
                        -landroid
                         adrenotools
+                        avcodec
+                        avformat
+                        avutil
+                        swresample
         )
 
 # Build external libraries if prebuilt files don't exist
