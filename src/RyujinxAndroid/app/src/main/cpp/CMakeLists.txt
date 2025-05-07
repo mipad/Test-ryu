@@ -36,6 +36,15 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(adrenotools)
 
+# 设置 FFmpeg 库路径
+set(FFMPEG_LIB_DIR ${CMAKE_SOURCE_DIR}/../jniLibs/${ANDROID_ABI})
+set(FFMPEG_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
+
+# 添加头文件路径
+include_directories(${FFMPEG_INCLUDE_DIR})
+
+# 添加库路径
+link_directories(${FFMPEG_LIB_DIR})
 # 在 CMakeLists.txt 中添加以下内容
 FetchContent_Declare(
     ffmpeg
