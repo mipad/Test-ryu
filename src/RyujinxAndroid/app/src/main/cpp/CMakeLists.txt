@@ -11,22 +11,17 @@ cmake_minimum_required(VERSION 3.22.1)
 
 project("ryujinxjni")
 
-# 编译器优化
-add_compile_options(
-    -O3
-    -Ofast
-    -flto=thin
-    -march=armv8.2-a+dotprod+sve
-    -mtune=cortex-a78.cortex-a55
-    -mtune=neoverse-v1
-    -funroll-loops
-    -fslp-vectorize
-    -funsafe-math-optimizations
-    -fomit-frame-pointer
-    -fno-exceptions
-    -fvectorize
-)
+# 强制设置编译器（可能影响可移植性！）
+set(CMAKE_C_COMPILER clang)
+set(CMAKE_CXX_COMPILER clang++)
 
+# 设置构建类型
+set(CMAKE_BUILD_TYPE Release)
+
+# 其他选项
+set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded)
+set(SKIA_USE_SYSTEM_EXPAT OFF)
+set(SKIA_ENABLE_PARAGRAPH ON)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
