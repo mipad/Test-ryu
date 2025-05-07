@@ -425,7 +425,7 @@ namespace Ryujinx.Ava.UI.ViewModels
             CurrentTime = currentDateTime.TimeOfDay;
 
             EnableVsync = config.Graphics.EnableVsync;
-            EnableFsIntegrityChecks = config.System.EnableFsIntegrityChecks;
+            EnableFsIntegrityChecks = false;
             ExpandDramSize = config.System.ExpandRam;
             IgnoreMissingServices = config.System.IgnoreMissingServices;
 
@@ -519,7 +519,7 @@ namespace Ryujinx.Ava.UI.ViewModels
 
             config.System.SystemTimeOffset.Value = Convert.ToInt64((CurrentDate.ToUnixTimeSeconds() + CurrentTime.TotalSeconds) - DateTimeOffset.Now.ToUnixTimeSeconds());
             config.Graphics.EnableVsync.Value = EnableVsync;
-            config.System.EnableFsIntegrityChecks.Value = EnableFsIntegrityChecks;
+            config.System.EnableFsIntegrityChecks.Value = false;
             config.System.ExpandRam.Value = ExpandDramSize;
             config.System.IgnoreMissingServices.Value = IgnoreMissingServices;
 
