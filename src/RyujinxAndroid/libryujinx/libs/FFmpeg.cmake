@@ -52,7 +52,7 @@ endif()
 # ------------------ 动态生成交叉编译器前缀 ------------------
 # 重要修复：必须包含API版本号
 if(NOT DEFINED CMAKE_ANDROID_API)
-    set(CMAKE_ANDROID_API 30) # 默认API级别
+    set(CMAKE_ANDROID_API 35) # 默认API级别
 endif()
 set(CROSS_PREFIX "${NDK_BIN_DIR}/${TARGET_TRIPLE}${CMAKE_ANDROID_API}-")
 
@@ -83,7 +83,7 @@ set(FFMPEG_CONFIGURE_ARGS
     --disable-network
     --enable-gpl
     --enable-openssl
-    --extra-cflags=-I${OPENSSL_INSTALL_DIR}/include -fPIC -O3 # 无引号
+    --extra-cflags=-I${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/include\;-fPIC\;-O3  # 分号分隔
     --extra-ldflags=-L${OPENSSL_INSTALL_DIR}/lib              # 无引号
     ${FFMPEG_EXTRA}
 )
