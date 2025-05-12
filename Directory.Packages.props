@@ -25,11 +25,11 @@
     <PackageVersion Include="NetCoreServer" Version="8.0.7" />
     <PackageVersion Include="NUnit" Version="3.13.3" />
     <PackageVersion Include="NUnit3TestAdapter" Version="4.1.0" />
-    <PackageVersion Include="OpenTK" Version="4.9.1" />
-    <PackageVersion Include="OpenTK.Core" Version="4.9.1" />
-    <PackageVersion Include="OpenTK.Graphics" Version="4.9.1" />
-    <PackageVersion Include="OpenTK.Audio.OpenAL" Version="4.9.1" />
-    <PackageVersion Include="OpenTK.Windowing.GraphicsLibraryFramework" Version="4.9.1" />
+    <PackageVersion Include="OpenTK" Version="4.8.2" />
+    <PackageVersion Include="OpenTK.Core" Version="4.8.2" />
+    <PackageVersion Include="OpenTK.Graphics" Version="4.8.2" />
+    <PackageVersion Include="OpenTK.Audio.OpenAL" Version="4.8.2" />
+    <PackageVersion Include="OpenTK.Windowing.GraphicsLibraryFramework" Version="4.8.2" />
     <PackageVersion Include="Ryujinx.Audio.OpenAL.Dependencies" Version="1.21.0.1" />
     <PackageVersion Include="Ryujinx.Graphics.Nvdec.Dependencies.AllArch" Version="6.1.2-build3" />
     <PackageVersion Include="Ryujinx.Graphics.Vulkan.Dependencies.MoltenVK" Version="1.2.0" />
@@ -37,14 +37,14 @@
     <PackageVersion Include="securifybv.ShellLink" Version="0.1.0" />
     <PackageVersion Include="shaderc.net" Version="0.1.0" />
     <PackageVersion Include="SharpZipLib" Version="1.4.2" />
-    <PackageVersion Include="Silk.NET.Vulkan" Version="2.21.0" />
-    <PackageVersion Include="Silk.NET.Vulkan.Extensions.EXT" Version="2.21.0" />
-    <PackageVersion Include="Silk.NET.Vulkan.Extensions.KHR" Version="2.21.0" />
-    <PackageVersion Include="SkiaSharp" Version="3.119.0" />
-    <PackageVersion Include="SkiaSharp.NativeAssets.Linux" Version="3.119.0" />
+    <PackageVersion Include="Silk.NET.Vulkan" Version="2.22.0" />
+    <PackageVersion Include="Silk.NET.Vulkan.Extensions.EXT" Version="2.22.0" />
+    <PackageVersion Include="Silk.NET.Vulkan.Extensions.KHR" Version="2.22.0" />
+    <PackageVersion Include="SkiaSharp" Version="2.88.7" />
+    <PackageVersion Include="SkiaSharp.NativeAssets.Linux" Version="2.88.7" />
     <PackageVersion Include="SPB" Version="0.0.4-build32" />
-    <PackageVersion Include="System.IO.Hashing" Version="10.0.0-preview.3.25171.5" />
-    <PackageVersion Include="System.Management" Version="10.0.0-preview.3.25171.5" />
+    <PackageVersion Include="System.IO.Hashing" Version="8.0.0" />
+    <PackageVersion Include="System.Management" Version="8.0.0" />
     <PackageVersion Include="UnicornEngine.Unicorn" Version="2.0.2-rc1-fb78016" />
     <PackageVersion Include="Rxmxnx.PInvoke.Extensions" Version="1.5.0" />
   </ItemGroup>
