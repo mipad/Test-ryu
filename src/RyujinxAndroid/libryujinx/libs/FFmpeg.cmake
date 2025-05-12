@@ -88,10 +88,6 @@ set(FFMPEG_CONFIGURE_ARGS
     ${FFMPEG_EXTRA}
 )
 
-# ------------------ 环境变量配置 ------------------
-# 确保PATH包含NDK工具链
-set(PROJECT_ENV "ANDROID_NDK_ROOT=${CMAKE_ANDROID_NDK}")
-
 
 # ------------------ ExternalProject定义 ------------------
 ExternalProject_Add(
