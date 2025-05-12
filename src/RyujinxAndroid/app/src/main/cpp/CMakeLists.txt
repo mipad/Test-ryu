@@ -1,103 +1,108 @@
-include(FetchContent)
-
-# For more information about using CMake with Android Studio, read the
-# documentation: https://d.android.com/studio/projects/add-native-code.html
-
-# Sets the minimum version of CMake required to build the native library.
-
+# CMakeLists.txt
 cmake_minimum_required(VERSION 3.22.1)
-
-# Declares and names the project.
-
 project("ryujinxjni")
 
-# 编译器优化
-add_compile_options(
-    -O3                   # 最高优化级别
-    -flto=thin      # 快速浮点运算（需数学安全验证）
-               # ThinLTO（链接时优化）
-    -march=armv8.2-a+dotprod  # 启用 ARMv8.2 指令扩展（如点积、加密指令）
-    -mtune=cortex-a55
-    -mtune=cortex-a78# 针对常见 CPU 微架构优化
-    -fvectorize           # 自动向量化
-# 减少栈帧开销
-          # 禁用 RTTI（如代码允许）
-)
-
-
+# 设置C++标准
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
+# 启用详细构建日志（调试时建议开启）
+set(CMAKE_VERBOSE_MAKEFILE ON)
+
+# 引入FetchContent模块
+include(FetchContent)
+
+# 获取adrenotools依赖
 FetchContent_Declare(
     adrenotools
     GIT_REPOSITORY https://github.com/bylaws/libadrenotools.git
     GIT_TAG        deec5f75ee1a8ccbe32c8780b1d17284fc87b0f1 # v1.0-14-gdeec5f7
 )
-
 FetchContent_MakeAvailable(adrenotools)
 
-# Creates and names a library, sets it as either STATIC
-# or SHARED, 和 provides the relative paths to its source code.
-# You can define multiple libraries, 和 CMake builds them for you.
-# Gradle automatically packages shared libraries with your APK.
-# Vulkan + Vulkan-Hpp
-add_compile_definitions(VK_USE_PLATFORM_ANDROID_KHR) # We want all the Android-specific structures to be defined
-add_compile_definitions(VULKAN_HPP_NO_SPACESHIP_OPERATOR) # libcxx doesn't implement operator<=> for std::array which breaks this
-add_compile_definitions(VULKAN_HPP_NO_STRUCT_CONSTRUCTORS) # We want to use designated initializers in Vulkan-Hpp
-add_compile_definitions(VULKAN_HPP_NO_SETTERS)
-add_compile_definitions(VULKAN_HPP_NO_SMART_HANDLE)
+# 创建主库
+add_library(
+    ryujinxjni
+    SHARED
+    vulkan_wrapper.cpp
+    ryujinx.cpp
+)
 
-add_compile_definitions(VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1) # We use the dynamic loader rather than the static one to avoid an additional level of indirection
-add_compile_definitions(VULKAN_HPP_ENABLE_DYNAMIC_LOADER_TOOL=0) # We disable the dynamic loader tool so we can supply our own getInstanceProcAddress function from a custom driver
-include_directories(SYSTEM "libraries/vkhpp")
-include_directories(SYSTEM "libraries/vkhpp/Vulkan-Headers/include") # We use base Vulkan headers from this to ensure version parity with Vulkan-Hpp
+# 查找NDK中的log库
+find_library(log-lib log)
 
+# 规范化JNI库路径
+file(TO_CMAKE_PATH "../jniLibs/${CMAKE_ANDROID_ARCH_ABI}" JNI_PATH)
+get_filename_component(JNI_PATH "${JNI_PATH}" ABSOLUTE)
 
-add_library( # Sets the name of the library.
-            ryujinxjni
-
-            # Sets the library as a shared library.
-            SHARED
-
-            # Provides a relative path to your source file(s).
-            vulkan_wrapper.cpp
-        ryujinx.cpp)
-
-# Searches for a specified prebuilt library and stores the path as a
-# variable. Because CMake includes system libraries in the search path by
-# default, you only need to specify the name of the public NDK library
-# you want to add. CMake verifies that the library exists before
-# completing its build.
-
-find_library( # Sets the name of the path variable.
-              log-lib
-
-              # Specifies the name of the NDK library that
-              # you want CMake to locate.
-              log )
-
-# Specifies libraries CMake should link to your target library. You
-# can link multiple libraries, such as libraries you define in this
-# build script, prebuilt third-party libraries, or system libraries.
-
-target_link_libraries( # Specifies the target library.
-                       ryujinxjni
-                       # Links the target library to the log library
-                       # included in the NDK.
-                       ${log-lib}
-                        -lvulkan
-                       -landroid
-                        adrenotools
-        )
-
-# Build external libraries if prebuilt files don't exist
-set(JNI_PATH ../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
-cmake_path(ABSOLUTE_PATH JNI_PATH NORMALIZE)
-
-cmake_path(APPEND JNI_PATH libcrypto.so OUTPUT_VARIABLE LIBCRYPTO_JNI_PATH)
-cmake_path(APPEND JNI_PATH libssl.so OUTPUT_VARIABLE LIBSSL_JNI_PATH)
-
-if (NOT (EXISTS ${LIBCRYPTO_JNI_PATH} AND EXISTS ${LIBSSL_JNI_PATH}))
-    include(../../../../libryujinx/libs/OpenSSL.cmake)
+# 检查OpenSSL预编译库是否存在
+set(LIBCRYPTO_JNI_PATH "${JNI_PATH}/libcrypto.so")
+set(LIBSSL_JNI_PATH "${JNI_PATH}/libssl.so")
+if (NOT (EXISTS "${LIBCRYPTO_JNI_PATH}" AND EXISTS "${LIBSSL_JNI_PATH}"))
+    message(STATUS "[OpenSSL] Prebuilt libraries not found. Building from source...")
+    # 包含OpenSSL编译脚本
+    file(RELATIVE_PATH REL_OPENSSL_PATH "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/libryujinx/libs")
+    include(${REL_OPENSSL_PATH}/OpenSSL.cmake)
     add_dependencies(ryujinxjni openssl)
+    # 添加OpenSSL库路径
+    link_directories(${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
 endif ()
+
+# 检查FFmpeg预编译库是否存在
+set(FFMPEG_LIBS
+    "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/lib/libavcodec.so"
+    "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/lib/libavformat.so"
+    "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/lib/libavutil.so"
+)
+set(FFMPEG_FOUND TRUE)
+foreach(LIB ${FFMPEG_LIBS})
+    if(NOT EXISTS "${LIB}")
+        set(FFMPEG_FOUND FALSE)
+    endif()
+endforeach()
+
+if(NOT FFMPEG_FOUND)
+    message(STATUS "[FFmpeg] Libraries not found. Building from source...")
+    # 包含FFmpeg编译脚本
+    file(RELATIVE_PATH REL_FFMPEG_PATH "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/libryujinx/libs")
+    include(${REL_FFMPEG_PATH}/FFmpeg.cmake)
+    add_dependencies(ryujinxjni ffmpeg)
+    # 添加FFmpeg库路径
+    link_directories(${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/lib)
+endif ()
+
+# 链接所有依赖库
+target_link_libraries(
+    ryujinxjni
+    ${log-lib}
+    vulkan
+    android
+    adrenotools
+    # 条件链接OpenSSL
+    $<$<BOOL:${FFMPEG_FOUND}>:${LIBCRYPTO_JNI_PATH}>
+    $<$<BOOL:${FFMPEG_FOUND}>:${LIBSSL_JNI_PATH}>
+    # FFmpeg核心库
+    avcodec
+    avformat
+    avutil
+    swresample
+    swscale
+)
+
+# 编译优化选项
+target_compile_options(ryujinxjni PRIVATE
+    -O3
+    -fexceptions
+    -frtti
+)
+
+# 包含Vulkan头文件（假设已安装Vulkan SDK）
+find_package(Vulkan REQUIRED)
+target_include_directories(ryujinxjni PRIVATE
+    ${Vulkan_INCLUDE_DIR}
+)
+
+# 包含OpenSSL和FFmpeg头文件
+target_include_directories(ryujinxjni PRIVATE
+    ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/include
+)
