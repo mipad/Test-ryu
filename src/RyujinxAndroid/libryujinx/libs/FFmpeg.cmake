@@ -2,11 +2,6 @@
 include(ExternalProject)
 include(ProcessorCount)
 
-# ------------------ 基础配置 ------------------
-# 设置NDK路径检查
-set(PROJECT_ENV "ANDROID_NDK_ROOT=${CMAKE_ANDROID_NDK}")
-
-
 # 获取逻辑CPU核心数
 ProcessorCount(NPROC)
 if(NOT NPROC)
@@ -18,11 +13,6 @@ endif()
 # 强制指定NDK 27的目录结构
 set(NDK_TOOLCHAIN_ROOT "${CMAKE_ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64")
 set(NDK_BIN_DIR "${NDK_TOOLCHAIN_ROOT}/bin")
-
-# 验证工具链是否存在
-if(NOT EXISTS "${NDK_BIN_DIR}")
-    message(FATAL_ERROR "NDK工具链路径不存在: ${NDK_BIN_DIR}")
-endif()
 
 # ------------------ 架构映射 ------------------
 # 精确匹配Android ABI
@@ -89,10 +79,8 @@ set(FFMPEG_CONFIGURE_ARGS
 
 # ------------------ 环境变量配置 ------------------
 # 确保PATH包含NDK工具链
-set(ENV_VARS
-    "ANDROID_NDK_ROOT=${CMAKE_ANDROID_NDK}"
-    "PATH=${NDK_BIN_DIR}:$ENV{PATH}"
-)
+set(PROJECT_ENV "ANDROID_NDK_ROOT=${CMAKE_ANDROID_NDK}")
+
 
 # ------------------ ExternalProject定义 ------------------
 ExternalProject_Add(
