@@ -61,18 +61,6 @@ else()
     message(FATAL_ERROR "不支持的ABI: ${CMAKE_ANDROID_ARCH_ABI}")
 endif()
 
-# ------------------ 动态生成交叉编译器前缀 ------------------
-# 重要修复：必须包含API版本号
-if(NOT DEFINED CMAKE_ANDROID_API)
-    set(CMAKE_ANDROID_API 35) # 默认API级别
-endif()
-set(CROSS_PREFIX "${NDK_BIN_DIR}/${TARGET_TRIPLE}${CMAKE_ANDROID_API}-")
-
-# 验证交叉编译器是否存在
-if(NOT EXISTS "${CROSS_PREFIX}clang")
-    message(FATAL_ERROR "交叉编译器不存在: ${CROSS_PREFIX}clang")
-endif()
-
 # ------------------ OpenSSL路径 ------------------
 set(OPENSSL_INSTALL_DIR "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 
