@@ -88,6 +88,11 @@ target_link_libraries( # Specifies the target library.
                         -lvulkan
                        -landroid
                         adrenotools
+                        avcodec
+    avformat
+    avutil
+    swresample
+    swscale
         )
 
 # Build external libraries if prebuilt files don't exist
@@ -100,4 +105,27 @@ cmake_path(APPEND JNI_PATH libssl.so OUTPUT_VARIABLE LIBSSL_JNI_PATH)
 if (NOT (EXISTS ${LIBCRYPTO_JNI_PATH} AND EXISTS ${LIBSSL_JNI_PATH}))
     include(../../../../libryujinx/libs/OpenSSL.cmake)
     add_dependencies(ryujinxjni openssl)
+endif ()
+
+# 检查FFmpeg预编译库是否存在
+set(FFMPEG_LIBS
+    "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/lib/libavcodec.so"
+    "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/lib/libavformat.so"
+    "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/lib/libavutil.so"
+)
+set(FFMPEG_FOUND TRUE)
+foreach(LIB ${FFMPEG_LIBS})
+    if(NOT EXISTS "${LIB}")
+        set(FFMPEG_FOUND FALSE)
+    endif()
+endforeach()
+
+if(NOT FFMPEG_FOUND)
+    message(STATUS "[FFmpeg] Libraries not found. Building from source...")
+    # 包含FFmpeg编译脚本
+    file(RELATIVE_PATH REL_FFMPEG_PATH "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/libryujinx/libs")
+    include(${REL_FFMPEG_PATH}/FFmpeg.cmake)
+    add_dependencies(ryujinxjni ffmpeg)
+    # 添加FFmpeg库路径
+    link_directories(${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/lib)
 endif ()
