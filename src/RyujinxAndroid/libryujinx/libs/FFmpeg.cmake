@@ -1,18 +1,41 @@
-# FFmpeg.cmake - 针对NDK 27.2+的完整修复版
 include(ExternalProject)
-include(ProcessorCount)
 
-# 获取逻辑CPU核心数
-ProcessorCount(NPROC)
-if(NOT NPROC)
-    set(NPROC 4)
-    message(STATUS "未检测到CPU核心数，默认使用线程数: ${NPROC}")
-endif()
+find_package(Perl 5 REQUIRED)
 
-# ------------------ NDK工具链路径 ------------------
-# 强制指定NDK 27的目录结构
-set(NDK_TOOLCHAIN_ROOT "${CMAKE_ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64")
-set(NDK_BIN_DIR "${NDK_TOOLCHAIN_ROOT}/bin")
+set(PROJECT_ENV "ANDROID_NDK_ROOT=${CMAKE_ANDROID_NDK}")
+
+if (CMAKE_HOST_WIN32)
+    set(ProgramFiles_x86 "$ENV{ProgramFiles\(x86\)}")
+    # https://github.com/microsoft/vswhere/wiki/Find-MSBuild
+    cmake_path(APPEND VSWHERE_BIN "${ProgramFiles_x86}" "Microsoft Visual Studio" "Installer" "vswhere.exe")
+    # FIXME: Hardcoded architecture, no way to specify the MSVC version
+    execute_process(
+            COMMAND ${VSWHERE_BIN} "-latest" "-find" "VC\\Tools\\MSVC\\*\\bin\\Hostx64\\x64\\nmake.exe"
+            OUTPUT_VARIABLE NMAKE_PATHS_OUTPUT
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            COMMAND_ERROR_IS_FATAL ANY
+    )
+    string(REPLACE "\n" ";" NMAKE_PATH_LIST "${NMAKE_PATHS_OUTPUT}")
+    list(GET NMAKE_PATH_LIST 0 NMAKE_PATH)
+    cmake_path(NATIVE_PATH NMAKE_PATH NORMALIZE MAKE_COMMAND)
+
+    set(PROJECT_CFG_PREFIX ${PERL_EXECUTABLE})
+    # Deal with semicolon-separated lists
+    set(PROJECT_PATH_LIST $ENV{Path})
+    cmake_path(CONVERT "${ANDROID_TOOLCHAIN_ROOT}\\bin" TO_NATIVE_PATH_LIST ANDROID_TOOLCHAIN_BIN NORMALIZE)
+    list(PREPEND PROJECT_PATH_LIST "${ANDROID_TOOLCHAIN_BIN}")
+    # Replace semicolons with "|"
+    list(JOIN PROJECT_PATH_LIST "|" PROJECT_PATH_STRING)
+    # Add the modified PATH string to PROJECT_ENV
+    list(APPEND PROJECT_ENV "Path=${PROJECT_PATH_STRING}")
+elseif (CMAKE_HOST_UNIX)
+    find_program(MAKE_COMMAND NAMES make REQUIRED)
+    list(APPEND PROJECT_ENV "PATH=${ANDROID_TOOLCHAIN_ROOT}/bin:$ENV{PATH}")
+else ()
+    message(WARNING "Host system (${CMAKE_HOST_SYSTEM_NAME}) not supported. Treating as unix.")
+    find_program(MAKE_COMMAND NAMES make REQUIRED)
+    list(APPEND PROJECT_ENV "PATH=${ANDROID_TOOLCHAIN_ROOT}/bin:$ENV{PATH}")
+endif ()
 
 # ------------------ 架构映射 ------------------
 # 精确匹配Android ABI
