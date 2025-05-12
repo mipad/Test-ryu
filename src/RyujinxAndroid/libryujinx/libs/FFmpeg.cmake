@@ -99,7 +99,7 @@ set(ENV_VARS
 ExternalProject_Add(
     ffmpeg
     GIT_REPOSITORY  https://git.ffmpeg.org/ffmpeg.git
-    GIT_TAG         n6.1.1  # 指定稳定版本
+    GIT_TAG         n7.1.1  # 指定稳定版本
     
     # 配置阶段（传递环境变量）
     CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env ${ENV_VARS}
