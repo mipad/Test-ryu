@@ -124,7 +124,7 @@ if(NOT FFMPEG_FOUND)
     message(STATUS "[FFmpeg] Libraries not found. Building from source...")
     # 包含FFmpeg编译脚本
     file(RELATIVE_PATH REL_FFMPEG_PATH "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/libryujinx/libs")
-    include(${REL_FFMPEG_PATH}/FFmpeg.cmake)
+    include(../../../../libryujinx/libs/FFmpeg.cmake)
     add_dependencies(ryujinxjni ffmpeg)
     # 添加FFmpeg库路径
     link_directories(${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/lib)
