@@ -4,9 +4,8 @@ include(ProcessorCount)
 
 # ------------------ 基础配置 ------------------
 # 设置NDK路径检查
-if(NOT DEFINED CMAKE_ANDROID_NDK)
-    message(FATAL_ERROR "必须通过-DCMAKE_ANDROID_NDK=指定NDK路径")
-endif()
+set(PROJECT_ENV "ANDROID_NDK_ROOT=${CMAKE_ANDROID_NDK}")
+
 
 # 获取逻辑CPU核心数
 ProcessorCount(NPROC)
