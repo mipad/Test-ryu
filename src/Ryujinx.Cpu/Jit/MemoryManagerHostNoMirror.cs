@@ -12,7 +12,7 @@ namespace Ryujinx.Cpu.Jit
     /// <summary>
     /// Represents a CPU memory manager which maps guest virtual memory directly onto a host virtual region.
     /// </summary>
-    public sealed class MemoryManagerHostNoMirror : VirtualMemoryManagerRefCountedBase, ICpuMemoryManager, IVirtualMemoryManagerTracked, IWritableBlock
+    public sealed class MemoryManagerHostNoMirror : VirtualMemoryManagerRefCountedBase, IMemoryManager, IVirtualMemoryManagerTracked, IWritableBlock
     {
         private readonly InvalidAccessHandler _invalidAccessHandler;
         private readonly bool _unsafeMode;
@@ -260,7 +260,7 @@ namespace Ryujinx.Cpu.Jit
 
         /// <inheritdoc/>
         /// <remarks>
-        /// This function also validates that the given range is both valid and mapped, and will throw if it is not.
+        /// This function also validates that the given range is both valid and mapped, 和 will throw if it is not.
         /// </remarks>
         public override void SignalMemoryTracking(ulong va, ulong size, bool write, bool precise = false, int? exemptId = null)
         {
