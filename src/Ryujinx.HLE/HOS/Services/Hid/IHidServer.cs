@@ -92,25 +92,39 @@ namespace Ryujinx.HLE.HOS.Services.Hid
         }
 
         [CommandCmif(11)]
-        // ActivateTouchScreen(nn::applet::AppletResourceUserId)
-        public ResultCode ActivateTouchScreen(ServiceCtx context)
+public ResultCode ActivateTouchScreen(ServiceCtx context)
+{
+    long appletResourceUserId = context.RequestData.ReadInt64();
+
+    // 参数校验
+    if (!IsValidAppletResourceUserId(appletResourceUserId))
+    {
+        Logger.Warning?.Print(LogClass.ServiceHid, $"Invalid AppletResourceUserId: {appletResourceUserId}");
+        return ResultCode.InvalidArgument;
+    }
+
+    // 线程安全操作
+    var touchscreen = context.Device.Hid.Touchscreen;
+    lock (touchscreen.Lock)
+    {
+        touchscreen.Active = true;
+
+        // 直接初始化共享内存条目
+        for (int entry = 0; entry < Hid.SharedMemEntryCount; entry++)
         {
-            long appletResourceUserId = context.RequestData.ReadInt64();
-
-            context.Device.Hid.Touchscreen.Active = true;
-
-            // Initialize entries to avoid issues with some games.
-
-            for (int entry = 0; entry < Hid.SharedMemEntryCount; entry++)
+            touchscreen.SharedMemory[entry] = new TouchState
             {
-                context.Device.Hid.Touchscreen.Update();
-            }
-
-            Logger.Stub?.PrintStub(LogClass.ServiceHid, new { appletResourceUserId });
-
-            return ResultCode.Success;
+                X = 0,
+                Y = 0,
+                Touch = false
+            };
         }
+    }
 
+    // 更新日志（移除存根标记）
+    Logger.Debug?.Print(LogClass.ServiceHid, $"Touchscreen activated (AppletResourceUserId: {appletResourceUserId})");
+    return ResultCode.Success;
+}
         [CommandCmif(21)]
         // ActivateMouse(nn::applet::AppletResourceUserId)
         public ResultCode ActivateMouse(ServiceCtx context)
