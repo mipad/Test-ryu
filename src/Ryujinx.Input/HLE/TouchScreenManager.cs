@@ -1,166 +1,101 @@
-// TouchScreenManager.cs
 using Ryujinx.HLE;
 using Ryujinx.HLE.HOS.Services.Hid;
-using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.Common;
 using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.TouchScreen;
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Numerics;
 
 namespace Ryujinx.Input.HLE
 {
-    /// <summary>
-    /// 触屏输入处理接口（平台无关）
-    /// </summary>
-    public interface ITouchScreenProvider
+    public class TouchScreenManager : IDisposable
     {
-        /// <summary>
-        /// 获取当前所有触控点状态
-        /// </summary>
-        IEnumerable<TouchPoint> GetTouchPoints();
-    }
+        private readonly IMouse _mouse;
+        private Switch _device;
+        private bool _wasClicking;
 
-    /// <summary>
-    /// 触屏管理器（HID服务层）
-    /// </summary>
-    public sealed class TouchScreenManager : IDisposable
-    {
-        private const int MaxTouchPoints = 10;  // Switch支持的最大触点数
-        private const uint ScreenWidth = 1920;  // Switch屏幕宽度
-        private const uint ScreenHeight = 1080; // Switch屏幕高度
-
-        private readonly Switch _device;
-        private readonly ITouchScreenProvider _touchProvider;
-        private readonly ConcurrentDictionary<int, TouchPoint> _activeTouches;
-        private readonly object _updateLock = new();
-
-        /// <summary>
-        /// 当前活动触点数
-        /// </summary>
-        public int ActiveTouchCount => _activeTouches.Count;
-
-        public TouchScreenManager(Switch device, ITouchScreenProvider touchProvider)
+        public TouchScreenManager(IMouse mouse)
         {
-            _device = device ?? throw new ArgumentNullException(nameof(device));
-            _touchProvider = touchProvider ?? throw new ArgumentNullException(nameof(touchProvider));
-            _activeTouches = new ConcurrentDictionary<int, TouchPoint>();
+            _mouse = mouse;
         }
 
-        /// <summary>
-        /// 更新触屏输入状态
-        /// </summary>
-        public void Update()
+        public void Initialize(Switch device)
         {
-            if (!_device.Hid.Touchscreen.IsEnabled)
-            {
-                ClearAllTouches();
-                return;
-            }
-
-            lock (_updateLock)
-            {
-                ProcessTouchEvents();
-                UpdateHidState();
-            }
+            _device = device;
         }
 
-        private void ProcessTouchEvents()
+        public bool Update(bool isFocused, bool isClicking = false, float aspectRatio = 0)
         {
-            foreach (var touchPoint in _touchProvider.GetTouchPoints())
+            if (!isFocused || (!_wasClicking && !isClicking))
             {
-                if (!IsValidTouchPoint(ref touchPoint))
+                // In case we lost focus, send the end touch.
+                if (_wasClicking && !isClicking)
                 {
-                    continue;
+                    MouseStateSnapshot snapshot = IMouse.GetMouseStateSnapshot(_mouse);
+                    var touchPosition = IMouse.GetScreenPosition(snapshot.Position, _mouse.ClientSize, aspectRatio);
+
+                    TouchPoint currentPoint = new()
+                    {
+                        Attribute = TouchAttribute.End,
+
+                        X = (uint)touchPosition.X,
+                        Y = (uint)touchPosition.Y,
+
+                        // Placeholder values till more data is acquired
+                        DiameterX = 10,
+                        DiameterY = 10,
+                        Angle = 90,
+                    };
+
+                    _device.Hid.Touchscreen.Update(currentPoint);
+
                 }
 
-                switch (touchPoint.Attribute)
+                _wasClicking = false;
+
+                _device.Hid.Touchscreen.Update();
+
+                return false;
+            }
+
+            if (aspectRatio > 0)
+            {
+                MouseStateSnapshot snapshot = IMouse.GetMouseStateSnapshot(_mouse);
+                var touchPosition = IMouse.GetScreenPosition(snapshot.Position, _mouse.ClientSize, aspectRatio);
+
+                TouchAttribute attribute = TouchAttribute.None;
+
+                if (!_wasClicking && isClicking)
                 {
-                    case TouchAttribute.Start:
-                    case TouchAttribute.None:
-                        _activeTouches.AddOrUpdate(
-                            touchPoint.Id,
-                            touchPoint,
-                            (id, existing) => UpdateTouchPoint(existing, touchPoint));
-                        break;
-                    case TouchAttribute.End:
-                        _activeTouches.TryRemove(touchPoint.Id, out _);
-                        break;
+                    attribute = TouchAttribute.Start;
                 }
-            }
-        }
-
-        private void UpdateHidState()
-        {
-            var touchScreen = _device.Hid.Touchscreen;
-            var entries = touchScreen.Entries;
-
-            entries[0].SampleTimestamp++;
-            entries[0].NumberOfTouches = (uint)ActiveTouchCount;
-
-            int index = 0;
-            foreach (var touch in _activeTouches.Values)
-            {
-                if (index >= MaxTouchPoints) break;
-
-                entries[0].Touches[index] = new TouchState
+                else if (_wasClicking && !isClicking)
                 {
-                    Position = new Vector2(touch.X, touch.Y),
-                    Diameter = new Vector2(touch.DiameterX, touch.DiameterY),
-                    Angle = touch.Angle,
-                    TouchId = (uint)touch.Id,
-                    Attribute = touch.Attribute
+                    attribute = TouchAttribute.End;
+                }
+
+                TouchPoint currentPoint = new()
+                {
+                    Attribute = attribute,
+
+                    X = (uint)touchPosition.X,
+                    Y = (uint)touchPosition.Y,
+
+                    // Placeholder values till more data is acquired
+                    DiameterX = 10,
+                    DiameterY = 10,
+                    Angle = 90,
                 };
 
-                index++;
+                _device.Hid.Touchscreen.Update(currentPoint);
+
+                _wasClicking = isClicking;
+
+                return true;
             }
 
-            // 填充剩余触点状态
-            for (; index < MaxTouchPoints; index++)
-            {
-                entries[0].Touches[index] = new TouchState
-                {
-                    Attribute = TouchAttribute.Invalid
-                };
-            }
-
-            touchScreen.UpdateEntries(entries);
-        }
-
-        private bool IsValidTouchPoint(ref TouchPoint point)
-        {
-            return point.X <= ScreenWidth && 
-                   point.Y <= ScreenHeight &&
-                   point.Id >= 0 &&
-                   point.DiameterX > 0 &&
-                   point.DiameterY > 0;
-        }
-
-        private TouchPoint UpdateTouchPoint(TouchPoint existing, TouchPoint updated)
-        {
-            return new TouchPoint
-            {
-                Id = existing.Id,
-                X = updated.X,
-                Y = updated.Y,
-                DiameterX = updated.DiameterX,
-                DiameterY = updated.DiameterY,
-                Angle = updated.Angle,
-                Attribute = existing.Attribute == TouchAttribute.Start ? 
-                           TouchAttribute.None : 
-                           existing.Attribute
-            };
-        }
-
-        private void ClearAllTouches()
-        {
-            _activeTouches.Clear();
-            _device.Hid.Touchscreen.Reset();
+            return false;
         }
 
         public void Dispose()
         {
-            ClearAllTouches();
             GC.SuppressFinalize(this);
         }
     }
