@@ -96,12 +96,7 @@ public ResultCode ActivateTouchScreen(ServiceCtx context)
 {
     long appletResourceUserId = context.RequestData.ReadInt64();
 
-    // 参数校验
-    if (!IsValidAppletResourceUserId(appletResourceUserId))
-    {
-        Logger.Warning?.Print(LogClass.ServiceHid, $"Invalid AppletResourceUserId: {appletResourceUserId}");
-        return ResultCode.InvalidArgument;
-    }
+    context.Device.Hid.Touchscreen.Active = true;
 
     // 线程安全操作
     var touchscreen = context.Device.Hid.Touchscreen;
@@ -116,7 +111,7 @@ public ResultCode ActivateTouchScreen(ServiceCtx context)
             {
                 X = 0,
                 Y = 0,
-                Touch = false
+                Touch = true
             };
         }
     }
