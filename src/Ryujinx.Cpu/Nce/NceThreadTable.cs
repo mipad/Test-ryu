@@ -149,6 +149,29 @@ namespace Ryujinx.Cpu.Nce
         }
 
         /// <summary>
+    /// 根据全局索引获取条目指针（新增方法）
+    /// </summary>
+    public static IntPtr GetEntryPointer(int globalIndex)
+    {
+        int segIndex = globalIndex / InitialSegmentSize;
+        int localIndex = globalIndex % InitialSegmentSize;
+        
+        if (segIndex >= _segments.Count)
+            throw new IndexOutOfRangeException();
+        
+        return _segments[segIndex].Block.GetPointer(
+            (ulong)(localIndex * Unsafe.SizeOf<ThreadEntry>()),
+            (ulong)Unsafe.SizeOf<ThreadEntry>());
+    }
+
+    /// <summary>
+    /// 临时兼容属性（可选）
+    /// </summary>
+    public static IntPtr EntriesPointer => 
+        _segments.Count > 0 ? _segments[0].Block.Pointer : IntPtr.Zero;
+    }
+    
+        /// <summary>
         /// 注销线程上下文
         /// </summary>
         /// <param name="globalIndex">全局索引</param>
