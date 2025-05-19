@@ -160,7 +160,7 @@ namespace Ryujinx.Memory
                 {
                 fd = ASharedMemory_create(memName, (nuint)size);
                 if (fd == -1) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-                if (ASharedMemory_unlink((IntPtr)pMemName) != 0) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                if (unlink((IntPtr)pMemName) != 0) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
                 }
             }
             else
