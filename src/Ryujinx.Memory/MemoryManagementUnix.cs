@@ -195,50 +195,47 @@ namespace Ryujinx.Memory
         }
 
         public unsafe static IntPtr CreateSharedMemory(ulong size, bool reserve)
+{
+    int fd;
+    Logger.Debug?.Print(LogClass.Cpu, $"Operating System: {RuntimeInformation.OSDescription}");
+
+    if (OperatingSystem.IsMacOS())
+    {
+        byte[] memName = "Ryujinx-XXXXXX"u8.ToArray();
+        fixed (byte* pMemName = memName)
         {
-            int fd;
-            Logger.Debug?.Print(LogClass.Cpu, $"Operating System: {RuntimeInformation.OSDescription}");
-
-            if (OperatingSystem.IsMacOS())
-            {
-                byte[] memName = "Ryujinx-XXXXXX"u8.ToArray();
-                fixed (byte* pMemName = memName)
-                {
-                    fd = shm_open((IntPtr)pMemName, 0x2 | 0x200 | 0x800 | 0x400, 384);
-                    if (fd == -1) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-                    if (shm_unlink((IntPtr)pMemName) != 0) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-                }
-            }
-            else if (OperatingSystem.IsAndroid())
-            {
-                byte[] memName = "Ryujinx-XXXXXX"u8.ToArray();
-                Logger.Debug?.Print(LogClass.Cpu, $"创建Android共享内存，大小:{size}");
-                fixed (byte* pMemName = memName)
-                {
-                    fd = ASharedMemory_create((IntPtr)pMemName, (nuint)size);
-                    if (fd <= 0) throw new OutOfMemoryException();
-                }
-                return (IntPtr)fd;
-            }
-            else
-            {
-                byte[] fileName = "/dev/shm/Ryujinx-XXXXXX"u8.ToArray();
-                fixed (byte* pFileName = fileName)
-                {
-                    fd = mkstemp((IntPtr)pFileName);
-                    if (fd == -1) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-                    if (unlink((IntPtr)pFileName) != 0) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-                }
-            }
-
-            if (ftruncate(fd, (IntPtr)size) != 0)
-            {
-                throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-            }
-
-            return fd;
+            fd = shm_open((IntPtr)pMemName, 0x2 | 0x200 | 0x800 | 0x400, 384);
+            if (fd == -1) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+            if (shm_unlink((IntPtr)pMemName) != 0) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
         }
+    }
+    else if (OperatingSystem.IsAndroid())
+    {
+        Logger.Debug?.Print(LogClass.Cpu, $"创建Android共享内存，大小:{size}");
+        // 直接使用字符串名称（或生成唯一名称）
+        string memName = "Ryujinx_JIT";
+        fd = ASharedMemory_create(memName, (nuint)size);
+        if (fd <= 0) throw new OutOfMemoryException();
+        return (IntPtr)fd;
+    }
+    else
+    {
+        byte[] fileName = "/dev/shm/Ryujinx-XXXXXX"u8.ToArray();
+        fixed (byte* pFileName = fileName)
+        {
+            fd = mkstemp((IntPtr)pFileName);
+            if (fd == -1) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+            if (unlink((IntPtr)pFileName) != 0) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+        }
+    }
 
+    if (ftruncate(fd, (IntPtr)size) != 0)
+    {
+        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+    }
+
+    return fd;
+}
         public static void DestroySharedMemory(IntPtr handle)
         {
             close(handle.ToInt32());
@@ -274,6 +271,4 @@ namespace Ryujinx.Memory
         }
      }
 }
-    
-
     
