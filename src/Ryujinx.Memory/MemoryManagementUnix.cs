@@ -145,40 +145,55 @@ namespace Ryujinx.Memory
             if (OperatingSystem.IsMacOS())
             {
                 byte[] memName = "Ryujinx-XXXXXX"u8.ToArray();
+
                 fixed (byte* pMemName = memName)
                 {
-                    fd = shm_open((IntPtr)pMemName, 0x2 | 0x200 | 0x800 | 0x400, 384);
-                    if (fd == -1) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-                    if (shm_unlink((IntPtr)pMemName) != 0) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                    fd = shm_open((IntPtr)pMemName, 0x2 | 0x200 | 0x800 | 0x400, 384); // O_RDWR | O_CREAT | O_EXCL | O_TRUNC, 0600
+                    if (fd == -1)
+                    {
+                        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                    }
+
+                    if (shm_unlink((IntPtr)pMemName) != 0)
+                    {
+                        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                    }
                 }
             }
-            else  if (OperatingSystem.IsAndroid())
-            
-              {
-               // 生成唯一且符合规范的共享内存名称
-                string memName = $"/Ryujinx-XXXXXX"u8.ToArray();
-                Logger.Debug?.Print(LogClass.Cpu, $"创建Android共享内存，大小:{size}");
-    
-               // 调用 Android 原生 API
-              fd = ASharedMemory_create(memName, (nuint)size);
-              if (fd <= 0)
-              {
-                string error = Marshal.GetLastPInvokeErrorMessage();
-                Logger.Error?.Print(LogClass.Cpu, $"ASharedMemory_create 失败: {error}");
-                throw new SystemException($"Android共享内存创建失败: {error}");
-               }
-               return (IntPtr)fd;
-                
-               }
-            
+            else if (Ryujinx.Common.PlatformInfo.IsBionic)
+            {
+                byte[] memName = "Ryujinx-XXXXXX"u8.ToArray();
+
+                Logger.Debug?.Print(LogClass.Cpu, $"Creating Android SharedMemory of size:{size}");
+
+                fixed (byte* pMemName = memName)
+                {
+                    fd = ASharedMemory_create((IntPtr)pMemName, (nuint)size);
+                    if (fd <= 0)
+                    {
+                        throw new OutOfMemoryException();
+                    }
+                }
+
+                // ASharedMemory_create handle ftruncate for us.
+                return (IntPtr)fd;
+            }
             else
             {
                 byte[] fileName = "/dev/shm/Ryujinx-XXXXXX"u8.ToArray();
+
                 fixed (byte* pFileName = fileName)
                 {
                     fd = mkstemp((IntPtr)pFileName);
-                    if (fd == -1) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-                    if (unlink((IntPtr)pFileName) != 0) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                    if (fd == -1)
+                    {
+                        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                    }
+
+                    if (unlink((IntPtr)pFileName) != 0)
+                    {
+                        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                    }
                 }
             }
 
