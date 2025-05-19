@@ -188,7 +188,7 @@ namespace Ryujinx.Cpu.Nce
             return asm.GetCode();
         }
 
-        private static void WriteLoadContext(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
+        private static void WriteLoadContext(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2, int threadIndex)
         {
             asm.Mov(tmp0, (ulong)NceThreadTable.GetEntryPointer(threadIndex));
             
@@ -216,7 +216,7 @@ namespace Ryujinx.Cpu.Nce
             asm.Ldur(tmp0, tmp0, -8);
         }
 
-        private static void WriteLoadContextSafe(Assembler asm, Operand lblFail, Operand tmp0, Operand tmp1, Operand tmp2, Operand tmp3)
+        private static void WriteLoadContextSafe(Assembler asm, Operand lblFail, Operand tmp0, Operand tmp1, Operand tmp2, Operand tmp3, int threadIndex)
         {
             asm.Mov(tmp0, (ulong)NceThreadTable.GetEntryPointer(threadIndex));
             asm.Ldur(tmp3, tmp0, -8);
