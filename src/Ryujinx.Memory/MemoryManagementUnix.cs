@@ -272,6 +272,6 @@ namespace Ryujinx.Memory
                 MmapFlags.MAP_FIXED | MmapFlags.MAP_PRIVATE | MmapFlags.MAP_ANONYMOUS | MmapFlags.MAP_NORESERVE, 
                 -1, 0);
         }
-    }
+    
 
     
