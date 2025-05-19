@@ -12,7 +12,7 @@ namespace Ryujinx.Cpu.Nce
         private const uint IntCalleeSavedRegsMask = 0x1ff80000; // X19 to X28
         private const uint FpCalleeSavedRegsMask = 0xff00; // D8 to D15
 
-        public static NceCpuCodePatch CreatePatch(ReadOnlySpan<byte> textSection)
+        public static NceCpuCodePatch CreatePatch(ReadOnlySpan<byte> textSection, int threadIndex)
         {
             NceCpuCodePatch codePatch = new();
 
@@ -26,7 +26,7 @@ namespace Ryujinx.Cpu.Nce
                 if ((inst & ~(0xffffu << 5)) == 0xd4000001u) // svc #0
                 {
                     uint svcId = (ushort)(inst >> 5);
-                    codePatch.AddCode(i, WriteSvcPatch(svcId));
+                    codePatch.AddCode(i, WriteSvcPatch(svcId, threadIndex));
                     Logger.Debug?.Print(LogClass.Cpu, $"Patched SVC #{svcId} at 0x{address:X}.");
                 }
                 else if ((inst & ~0x1f) == 0xd53bd060) // mrs x0, tpidrro_el0
@@ -64,7 +64,7 @@ namespace Ryujinx.Cpu.Nce
             return codePatch;
         }
 
-        private static uint[] WriteSvcPatch(uint svcId)
+        private static uint[] WriteSvcPatch(uint svcId, threadIndex)
         {
             Assembler asm = new();
 
@@ -374,7 +374,7 @@ namespace Ryujinx.Cpu.Nce
             return asm.GetCode();
         }
 
-        internal static uint[] GenerateSuspendExceptionHandler()
+        internal static uint[] GenerateSuspendExceptionHandler(int threadIndex)
         {
             Assembler asm = new();
 
@@ -426,7 +426,7 @@ namespace Ryujinx.Cpu.Nce
             return asm.GetCode();
         }
 
-        internal static uint[] GenerateWrapperExceptionHandler(IntPtr oldSignalHandlerSegfaultPtr, IntPtr signalHandlerPtr)
+        internal static uint[] GenerateWrapperExceptionHandler(IntPtr oldSignalHandlerSegfaultPtr, IntPtr signalHandlerPtr, int threadIndex)
         {
             Assembler asm = new();
 
