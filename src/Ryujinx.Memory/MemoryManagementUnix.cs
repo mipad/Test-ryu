@@ -280,12 +280,6 @@ namespace Ryujinx.Memory
         [DllImport("libc", SetLastError = true)]
         public static extern IntPtr mmap(IntPtr addr, ulong length, MmapProts prot, MmapFlags flags, int fd, long offset);
         
-        [DllImport("libc", SetLastError = true)]
-        public static extern int munmap(IntPtr addr, ulong length);
-        
-        [DllImport("libc", SetLastError = true)]
-        public static extern int mprotect(IntPtr addr, ulong len, MmapProts prot);
-        
         // Android特定API
         [DllImport("libandroid.so", EntryPoint = "ASharedMemory_create", SetLastError = true)]
         public static extern int ASharedMemory_create([MarshalAs(UnmanagedType.LPStr)] string name, nuint size);
