@@ -15,17 +15,17 @@ namespace Ryujinx.Memory
     {
         private static readonly ConcurrentDictionary<IntPtr, ulong> _allocations = new();
 
-        public static IntPtr Allocate(ulong size, bool forJit)
+        public static IntPtr Allocate(ulong size, bool forNce)
         {
-            return AllocateInternal(size, MmapProts.PROT_READ | MmapProts.PROT_WRITE, forJit, false);
+            return AllocateInternal(size, MmapProts.PROT_READ | MmapProts.PROT_WRITE, forNce, false);
         }
 
-        public static IntPtr Reserve(ulong size, bool forJit)
+        public static IntPtr Reserve(ulong size, bool forNce)
         {
-            return AllocateInternal(size, MmapProts.PROT_NONE, forJit, false);
+            return AllocateInternal(size, MmapProts.PROT_NONE, forNce, false);
         }
 
-        private static IntPtr AllocateInternal(ulong size, MmapProts prot, bool forJit, bool shared)
+        private static IntPtr AllocateInternal(ulong size, MmapProts prot, bool forNce, bool shared)
         {
             MmapFlags flags = MmapFlags.MAP_ANONYMOUS;
 
@@ -43,9 +43,9 @@ namespace Ryujinx.Memory
                 flags |= MmapFlags.MAP_NORESERVE;
             }
 
-            if (OperatingSystem.IsMacOSVersionAtLeast(10, 14) && forJit)
+            if (OperatingSystem.IsMacOSVersionAtLeast(10, 14) && forNce)
             {
-                flags |= MmapFlags.MAP_JIT_DARWIN;
+                flags |= MmapFlags.MAP_Nce_DARWIN;
 
                 if (prot == (MmapProts.PROT_READ | MmapProts.PROT_WRITE))
                 {
@@ -69,11 +69,11 @@ namespace Ryujinx.Memory
             return ptr;
         }
 
-        public static void Commit(IntPtr address, ulong size, bool forJit)
+        public static void Commit(IntPtr address, ulong size, bool forNce)
         {
             MmapProts prot = MmapProts.PROT_READ | MmapProts.PROT_WRITE;
 
-            if (OperatingSystem.IsMacOSVersionAtLeast(10, 14) && forJit)
+            if (OperatingSystem.IsMacOSVersionAtLeast(10, 14) && forNce)
             {
                 prot |= MmapProts.PROT_EXEC;
             }
@@ -85,23 +85,24 @@ namespace Ryujinx.Memory
         }
 
         public static void Decommit(IntPtr address, ulong size)
-        {
-            // Must be writable for madvise to work properly.
-            if (mprotect(address, size, MmapProts.PROT_READ | MmapProts.PROT_WRITE) != 0)
-            {
-                throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-            }
+{
+    MmapProts initialProt = OperatingSystem.IsAndroid() ? MmapProts.PROT_NONE : MmapProts.PROT_READ | MmapProts.PROT_WRITE;
 
-            if (madvise(address, size, MADV_REMOVE) != 0)
-            {
-                throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-            }
+    if (mprotect(address, size, initialProt) != 0)
+    {
+        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+    }
 
-            if (mprotect(address, size, MmapProts.PROT_NONE) != 0)
-            {
-                throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-            }
-        }
+    if (!OperatingSystem.IsAndroid() && madvise(address, size, MADV_REMOVE) != 0)
+    {
+        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+    }
+
+    if (mprotect(address, size, MmapProts.PROT_NONE) != 0)
+    {
+        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+    }
+}
 
         public static bool Reprotect(IntPtr address, ulong size, MemoryPermission permission)
         {
