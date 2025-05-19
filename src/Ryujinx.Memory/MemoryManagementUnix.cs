@@ -45,7 +45,7 @@ namespace Ryujinx.Memory
 
             if (OperatingSystem.IsMacOSVersionAtLeast(10, 14) && forNce)
             {
-                flags |= MmapFlags.MAP_Nce_DARWIN;
+                flags |= MmapFlags.MAP_jit_DARWIN;
 
                 if (prot == (MmapProts.PROT_READ | MmapProts.PROT_WRITE))
                 {
