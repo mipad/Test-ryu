@@ -156,7 +156,7 @@ namespace Ryujinx.Memory
             
               {
                // 生成唯一且符合规范的共享内存名称
-                string memName = $"/Ryujinx_JIT_{Guid.NewGuid():N}";
+                string memName = $"/Ryujinx-XXXXXX"u8.ToArray();
                 Logger.Debug?.Print(LogClass.Cpu, $"创建Android共享内存，大小:{size}");
     
                // 调用 Android 原生 API
