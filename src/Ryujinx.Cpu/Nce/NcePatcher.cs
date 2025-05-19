@@ -190,8 +190,8 @@ namespace Ryujinx.Cpu.Nce
 
         private static void WriteLoadContext(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
         {
-            asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
-
+            asm.Mov(tmp0, (ulong)NceThreadTable.GetEntryPointer(threadIndex));
+            
             if (OperatingSystem.IsMacOS())
             {
                 asm.MrsTpidrroEl0(tmp1);
@@ -218,7 +218,7 @@ namespace Ryujinx.Cpu.Nce
 
         private static void WriteLoadContextSafe(Assembler asm, Operand lblFail, Operand tmp0, Operand tmp1, Operand tmp2, Operand tmp3)
         {
-            asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
+            asm.Mov(tmp0, (ulong)NceThreadTable.GetEntryPointer(threadIndex));
             asm.Ldur(tmp3, tmp0, -8);
             asm.Add(tmp3, tmp0, tmp3, ArmShiftType.Lsl, 4);
 
