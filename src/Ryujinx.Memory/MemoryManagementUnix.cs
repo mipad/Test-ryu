@@ -145,55 +145,30 @@ namespace Ryujinx.Memory
             if (OperatingSystem.IsMacOS())
             {
                 byte[] memName = "Ryujinx-XXXXXX"u8.ToArray();
-
                 fixed (byte* pMemName = memName)
                 {
-                    fd = shm_open((IntPtr)pMemName, 0x2 | 0x200 | 0x800 | 0x400, 384); // O_RDWR | O_CREAT | O_EXCL | O_TRUNC, 0600
-                    if (fd == -1)
-                    {
-                        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-                    }
-
-                    if (shm_unlink((IntPtr)pMemName) != 0)
-                    {
-                        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-                    }
+                    fd = shm_open((IntPtr)pMemName, 0x2 | 0x200 | 0x800 | 0x400, 384);
+                    if (fd == -1) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                    if (shm_unlink((IntPtr)pMemName) != 0) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
                 }
             }
-            else if (Ryujinx.Common.PlatformInfo.IsBionic)
+            else if (OperatingSystem.IsAndroid())
             {
-                byte[] memName = "Ryujinx-XXXXXX"u8.ToArray();
-
-                Logger.Debug?.Print(LogClass.Cpu, $"Creating Android SharedMemory of size:{size}");
-
-                fixed (byte* pMemName = memName)
-                {
-                    fd = ASharedMemory_create((IntPtr)pMemName, (nuint)size);
-                    if (fd <= 0)
-                    {
-                        throw new OutOfMemoryException();
-                    }
-                }
-
-                // ASharedMemory_create handle ftruncate for us.
+                // 使用字符串直接作为共享内存名称
+                string memName = "Ryujinx_JIT";
+                Logger.Debug?.Print(LogClass.Cpu, $"创建Android共享内存，大小:{size}");
+                fd = ASharedMemory_create(memName, (nuint)size);
+                if (fd <= 0) throw new OutOfMemoryException();
                 return (IntPtr)fd;
             }
             else
             {
                 byte[] fileName = "/dev/shm/Ryujinx-XXXXXX"u8.ToArray();
-
                 fixed (byte* pFileName = fileName)
                 {
                     fd = mkstemp((IntPtr)pFileName);
-                    if (fd == -1)
-                    {
-                        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-                    }
-
-                    if (unlink((IntPtr)pFileName) != 0)
-                    {
-                        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-                    }
+                    if (fd == -1) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                    if (unlink((IntPtr)pFileName) != 0) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
                 }
             }
 
