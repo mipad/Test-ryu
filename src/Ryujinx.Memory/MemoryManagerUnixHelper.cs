@@ -7,6 +7,7 @@ namespace Ryujinx.Memory
     [SupportedOSPlatform("linux")]
     [SupportedOSPlatform("macos")]
     [SupportedOSPlatform("ios")]
+    [SupportedOSPlatform("android")]
     public static partial class MemoryManagerUnixHelper
     {
         [Flags]
@@ -90,8 +91,11 @@ namespace Ryujinx.Memory
         [LibraryImport("libc", SetLastError = true)]
         public static partial int shm_unlink(IntPtr name);
 
-        [DllImport("android")]
-        internal static extern int ASharedMemory_create(IntPtr name, nuint size);
+        [DllImport("android", EntryPoint = "ASharedMemory_create", SetLastError = true)]
+internal static extern int ASharedMemory_create(
+    [MarshalAs(UnmanagedType.LPStr)] string name, 
+    nuint size
+);
 
         private static int MmapFlagsToSystemFlags(MmapFlags flags)
         {
