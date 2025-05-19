@@ -153,19 +153,22 @@ namespace Ryujinx.Memory
                 }
             }
             else if (OperatingSystem.IsAndroid())
-            {
-                // 使用字符串直接作为共享内存名称
-                string memName = "/Ryujinx_JIT";
-                Logger.Debug?.Print(LogClass.Cpu, $"创建Android共享内存，大小:{size}");
-        
-                // 直接传递字符串名称
-                fd = ASharedMemory_create(memName, (nuint)size);
-                if (fd <= 0)
-               {
-                 string error = Marshal.GetLastPInvokeErrorMessage();
-                 throw new SystemException($"Android共享内存创建失败: {error}");
-                }
-                 return (IntPtr)fd;
+            
+{
+    // 生成唯一且符合规范的共享内存名称
+    string memName = $"/Ryujinx_JIT_{Guid.NewGuid():N}";
+    Logger.Debug?.Print(LogClass.Cpu, $"创建Android共享内存，大小:{size}");
+    
+    // 调用 Android 原生 API
+    fd = ASharedMemory_create(memName, (nuint)size);
+    if (fd <= 0)
+    {
+        string error = Marshal.GetLastPInvokeErrorMessage();
+        Logger.Error?.Print(LogClass.Cpu, $"ASharedMemory_create 失败: {error}");
+        throw new SystemException($"Android共享内存创建失败: {error}");
+    }
+    return (IntPtr)fd;
+                
             }
             
             else
