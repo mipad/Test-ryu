@@ -156,9 +156,12 @@ namespace Ryujinx.Memory
             {
                 // 使用字符串直接作为共享内存名称
                 string memName = $"/Ryujinx_{Process.GetCurrentProcess().Id}";
+                fixed (byte* pMemName = memName)
+                {
                 fd = ASharedMemory_create(memName, (nuint)size);
                 if (fd <= 0) throw new OutOfMemoryException();
                 return (IntPtr)fd;
+                }
             }
             else
             {
