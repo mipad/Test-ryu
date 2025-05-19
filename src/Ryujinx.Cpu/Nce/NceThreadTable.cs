@@ -170,7 +170,7 @@ namespace Ryujinx.Cpu.Nce
     public static IntPtr EntriesPointer => 
         _segments.Count > 0 ? _segments[0].Block.Pointer : IntPtr.Zero;
     }
-    
+}
         /// <summary>
         /// 注销线程上下文
         /// </summary>
