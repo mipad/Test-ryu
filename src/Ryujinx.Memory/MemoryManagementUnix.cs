@@ -155,7 +155,7 @@ namespace Ryujinx.Memory
             else if (OperatingSystem.IsAndroid())
             {
                 // 使用字符串直接作为共享内存名称
-                string memName = "Ryujinx-XXXXXX"u8.ToArray();
+                byte[] fileName = "Ryujinx-XXXXXX"u8.ToArray();
                 Logger.Debug?.Print(LogClass.Cpu, $"创建Android共享内存，大小:{size}");
                 fd = ASharedMemory_create(memName, (nuint)size);
                 if (fd <= 0) throw new OutOfMemoryException();
