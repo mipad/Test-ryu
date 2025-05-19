@@ -91,8 +91,12 @@ namespace Ryujinx.Memory
         [LibraryImport("libc", SetLastError = true)]
         public static partial int shm_unlink(IntPtr name);
 
-        [DllImport("android")]
-        internal static extern int ASharedMemory_create(IntPtr name, nuint size);
+        // MemoryManagerUnixHelper.cs
+[DllImport("android", EntryPoint = "ASharedMemory_create", SetLastError = true)]
+internal static extern int ASharedMemory_create(
+    [MarshalAs(UnmanagedType.LPStr)] string name,  // 名称需为 UTF-8 字符串
+    nuint size
+);
 
         private static int MmapFlagsToSystemFlags(MmapFlags flags)
         {
