@@ -125,9 +125,10 @@ namespace Ryujinx.Cpu.Nce
         private static uint[] WriteMrsCntpctEl0Patch(uint rd)
         {
             Assembler asm = new();
-
+            
             WriteManagedCall(asm, (asm, ctx, tmp, tmp2) =>
-            {
+            {   
+                int threadIndex = GetCurrentThreadIndex(); // 新增：获取当前线程索引
                 WriteInManagedLockAcquire(asm, ctx, tmp, tmp2);
 
                 asm.Mov(tmp, (ulong)NceNativeInterface.GetTickCounterAccessFunctionPointer());
