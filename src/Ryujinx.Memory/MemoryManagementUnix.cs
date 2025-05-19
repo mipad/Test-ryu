@@ -15,18 +15,24 @@ namespace Ryujinx.Memory
     {
         private static readonly ConcurrentDictionary<IntPtr, ulong> _allocations = new();
 
-        public static IntPtr Allocate(ulong size, bool forNce)
+        public static IntPtr Allocate(ulong size, bool forJit)
         {
-            return AllocateInternal(size, MmapProts.PROT_READ | MmapProts.PROT_WRITE, forNce, false);
+            return AllocateInternal(size, MmapProts.PROT_READ | MmapProts.PROT_WRITE, forJit, false);
         }
 
-        public static IntPtr Reserve(ulong size, bool forNce)
+        public static IntPtr Reserve(ulong size, bool forJit)
         {
-            return AllocateInternal(size, MmapProts.PROT_NONE, forNce, false);
+            return AllocateInternal(size, MmapProts.PROT_NONE, forJit, false);
         }
 
-        private static IntPtr AllocateInternal(ulong size, MmapProts prot, bool forNce, bool shared)
+        private static IntPtr AllocateInternal(ulong size, MmapProts prot, bool forJit, bool shared)
         {
+            // Android特殊处理
+            if (OperatingSystem.IsAndroid() && forJit)
+            {
+                return AllocateAndroidJitMemory(size);
+            }
+
             MmapFlags flags = MmapFlags.MAP_ANONYMOUS;
 
             if (shared)
@@ -43,9 +49,9 @@ namespace Ryujinx.Memory
                 flags |= MmapFlags.MAP_NORESERVE;
             }
 
-            if (OperatingSystem.IsMacOSVersionAtLeast(10, 14) && forNce)
+            if (OperatingSystem.IsMacOSVersionAtLeast(10, 14) && forJit)
             {
-                flags |= MmapFlags.MAP_jit_DARWIN;
+                flags |= MmapFlags.MAP_JIT_DARWIN;
 
                 if (prot == (MmapProts.PROT_READ | MmapProts.PROT_WRITE))
                 {
@@ -62,20 +68,62 @@ namespace Ryujinx.Memory
 
             if (!_allocations.TryAdd(ptr, size))
             {
-                // This should be impossible, kernel shouldn't return an already mapped address.
                 throw new InvalidOperationException();
             }
 
             return ptr;
         }
 
-        public static void Commit(IntPtr address, ulong size, bool forNce)
+        private static IntPtr AllocateAndroidJitMemory(ulong size)
+        {
+            int fd = ASharedMemory_create("Ryujinx_JIT", (nuint)size);
+            if (fd == -1)
+            {
+                throw new SystemException($"Android共享内存创建失败: {Marshal.GetLastPInvokeErrorMessage()}");
+            }
+
+            IntPtr ptr = Mmap(
+                IntPtr.Zero,
+                size,
+                MmapProts.PROT_READ | MmapProts.PROT_WRITE | MmapProts.PROT_EXEC,
+                MmapFlags.MAP_SHARED,
+                fd,
+                0
+            );
+
+            close(fd);
+
+            if (ptr == MAP_FAILED)
+            {
+                throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+            }
+
+            if (!_allocations.TryAdd(ptr, size))
+            {
+                munmap(ptr, size);
+                throw new InvalidOperationException();
+            }
+
+            return ptr;
+        }
+
+        public static void Commit(IntPtr address, ulong size, bool forJit)
         {
             MmapProts prot = MmapProts.PROT_READ | MmapProts.PROT_WRITE;
 
-            if (OperatingSystem.IsMacOSVersionAtLeast(10, 14) && forNce)
+            if (forJit)
             {
                 prot |= MmapProts.PROT_EXEC;
+
+                // macOS特殊处理
+                if (OperatingSystem.IsMacOSVersionAtLeast(10, 14))
+                {
+                    if (mprotect(address, size, prot) != 0)
+                    {
+                        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                    }
+                    return;
+                }
             }
 
             if (mprotect(address, size, prot) != 0)
@@ -85,24 +133,33 @@ namespace Ryujinx.Memory
         }
 
         public static void Decommit(IntPtr address, ulong size)
-{
-    MmapProts initialProt = OperatingSystem.IsAndroid() ? MmapProts.PROT_NONE : MmapProts.PROT_READ | MmapProts.PROT_WRITE;
+        {
+            if (OperatingSystem.IsAndroid())
+            {
+                // Android使用MADV_DONTNEED并跳过权限修改
+                if (madvise(address, size, MADV_DONTNEED) != 0)
+                {
+                    throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                }
+            }
+            else
+            {
+                if (mprotect(address, size, MmapProts.PROT_READ | MmapProts.PROT_WRITE) != 0)
+                {
+                    throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                }
 
-    if (mprotect(address, size, initialProt) != 0)
-    {
-        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-    }
+                if (madvise(address, size, MADV_REMOVE) != 0)
+                {
+                    throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                }
 
-    if (!OperatingSystem.IsAndroid() && madvise(address, size, MADV_REMOVE) != 0)
-    {
-        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-    }
-
-    if (mprotect(address, size, MmapProts.PROT_NONE) != 0)
-    {
-        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-    }
-}
+                if (mprotect(address, size, MmapProts.PROT_NONE) != 0)
+                {
+                    throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                }
+            }
+        }
 
         public static bool Reprotect(IntPtr address, ulong size, MemoryPermission permission)
         {
@@ -129,7 +186,6 @@ namespace Ryujinx.Memory
             {
                 return munmap(address, size) == 0;
             }
-
             return false;
         }
 
@@ -146,55 +202,32 @@ namespace Ryujinx.Memory
             if (OperatingSystem.IsMacOS())
             {
                 byte[] memName = "Ryujinx-XXXXXX"u8.ToArray();
-
                 fixed (byte* pMemName = memName)
                 {
-                    fd = shm_open((IntPtr)pMemName, 0x2 | 0x200 | 0x800 | 0x400, 384); // O_RDWR | O_CREAT | O_EXCL | O_TRUNC, 0600
-                    if (fd == -1)
-                    {
-                        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-                    }
-
-                    if (shm_unlink((IntPtr)pMemName) != 0)
-                    {
-                        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-                    }
+                    fd = shm_open((IntPtr)pMemName, 0x2 | 0x200 | 0x800 | 0x400, 384);
+                    if (fd == -1) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                    if (shm_unlink((IntPtr)pMemName) != 0) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
                 }
             }
-            else if (Ryujinx.Common.PlatformInfo.IsBionic)
+            else if (OperatingSystem.IsAndroid())
             {
                 byte[] memName = "Ryujinx-XXXXXX"u8.ToArray();
-
-                Logger.Debug?.Print(LogClass.Cpu, $"Creating Android SharedMemory of size:{size}");
-
+                Logger.Debug?.Print(LogClass.Cpu, $"创建Android共享内存，大小:{size}");
                 fixed (byte* pMemName = memName)
                 {
                     fd = ASharedMemory_create((IntPtr)pMemName, (nuint)size);
-                    if (fd <= 0)
-                    {
-                        throw new OutOfMemoryException();
-                    }
+                    if (fd <= 0) throw new OutOfMemoryException();
                 }
-
-                // ASharedMemory_create handle ftruncate for us.
                 return (IntPtr)fd;
             }
             else
             {
                 byte[] fileName = "/dev/shm/Ryujinx-XXXXXX"u8.ToArray();
-
                 fixed (byte* pFileName = fileName)
                 {
                     fd = mkstemp((IntPtr)pFileName);
-                    if (fd == -1)
-                    {
-                        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-                    }
-
-                    if (unlink((IntPtr)pFileName) != 0)
-                    {
-                        throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
-                    }
+                    if (fd == -1) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
+                    if (unlink((IntPtr)pFileName) != 0) throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
                 }
             }
 
@@ -213,7 +246,10 @@ namespace Ryujinx.Memory
 
         public static IntPtr MapSharedMemory(IntPtr handle, ulong size)
         {
-            return Mmap(IntPtr.Zero, size, MmapProts.PROT_READ | MmapProts.PROT_WRITE, MmapFlags.MAP_SHARED, handle.ToInt32(), 0);
+            return Mmap(IntPtr.Zero, size, 
+                MmapProts.PROT_READ | MmapProts.PROT_WRITE, 
+                MmapFlags.MAP_SHARED, 
+                handle.ToInt32(), 0);
         }
 
         public static void UnmapSharedMemory(IntPtr address, ulong size)
@@ -223,12 +259,55 @@ namespace Ryujinx.Memory
 
         public static void MapView(IntPtr sharedMemory, ulong srcOffset, IntPtr location, ulong size)
         {
-            Mmap(location, size, MmapProts.PROT_READ | MmapProts.PROT_WRITE, MmapFlags.MAP_FIXED | MmapFlags.MAP_SHARED, sharedMemory.ToInt32(), (long)srcOffset);
+            Mmap(location, size, 
+                MmapProts.PROT_READ | MmapProts.PROT_WRITE, 
+                MmapFlags.MAP_FIXED | MmapFlags.MAP_SHARED, 
+                sharedMemory.ToInt32(), (long)srcOffset);
         }
 
         public static void UnmapView(IntPtr location, ulong size)
         {
-            Mmap(location, size, MmapProts.PROT_NONE, MmapFlags.MAP_FIXED | MmapFlags.MAP_PRIVATE | MmapFlags.MAP_ANONYMOUS | MmapFlags.MAP_NORESERVE, -1, 0);
+            Mmap(location, size, 
+                MmapProts.PROT_NONE, 
+                MmapFlags.MAP_FIXED | MmapFlags.MAP_PRIVATE | MmapFlags.MAP_ANONYMOUS | MmapFlags.MAP_NORESERVE, 
+                -1, 0);
         }
+    }
+
+    internal static class MemoryManagerUnixHelper
+    {
+        // macOS/Linux系统调用
+        [DllImport("libc", SetLastError = true)]
+        public static extern IntPtr mmap(IntPtr addr, ulong length, MmapProts prot, MmapFlags flags, int fd, long offset);
+        
+        [DllImport("libc", SetLastError = true)]
+        public static extern int munmap(IntPtr addr, ulong length);
+        
+        [DllImport("libc", SetLastError = true)]
+        public static extern int mprotect(IntPtr addr, ulong len, MmapProts prot);
+        
+        // Android特定API
+        [DllImport("libandroid.so", EntryPoint = "ASharedMemory_create", SetLastError = true)]
+        public static extern int ASharedMemory_create([MarshalAs(UnmanagedType.LPStr)] string name, nuint size);
+    }
+
+    internal enum MmapProts
+    {
+        PROT_NONE = 0x0,
+        PROT_READ = 0x1,
+        PROT_WRITE = 0x2,
+        PROT_EXEC = 0x4
+    }
+
+    [Flags]
+    internal enum MmapFlags
+    {
+        MAP_ANONYMOUS = 0x20,
+        MAP_SHARED = 0x01,
+        MAP_PRIVATE = 0x02,
+        MAP_FIXED = 0x10,
+        MAP_NORESERVE = 0x4000,
+        MAP_JIT_DARWIN = 0x0800,  // macOS JIT标志
+        MAP_UNLOCKED = 0x20000
     }
 }
