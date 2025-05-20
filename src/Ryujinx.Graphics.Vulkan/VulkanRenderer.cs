@@ -17,7 +17,7 @@ using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
 
 namespace Ryujinx.Graphics.Vulkan
 {
-    public sealed class VulkanRenderer : IRenderer
+    unsafe public sealed class VulkanRenderer : IRenderer
     {
         private VulkanInstance _instance;
         private SurfaceKHR _surface;
