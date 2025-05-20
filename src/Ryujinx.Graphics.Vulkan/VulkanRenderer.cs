@@ -897,6 +897,32 @@ namespace Ryujinx.Graphics.Vulkan
             PrintGpuInformation();
         }
 
+private void DestroyDevice()
+{
+    if (_device.Handle != 0)
+    {
+        // 清理所有依赖设备的资源
+        CommandBufferPool.Dispose();
+        MemoryAllocator.Dispose();
+        BufferManager.Dispose();
+        _pipeline.Dispose();
+        HelperShader.Dispose();
+        _window.Dispose();
+
+        // 销毁逻辑设备
+        Api.DestroyDevice(_device, pAllocator: null);
+        _device = default;
+    }
+}
+
+private void RecreateDevice()
+{
+    // 重新初始化 Vulkan 设备
+    SetupContext(logLevel: GraphicsDebugLevel.None); // 假设 logLevel 已保存或可配置
+    LoadFeatures(_physicalDevice.QueueFamilyProperties[QueueFamilyIndex].QueueCount, QueueFamilyIndex);
+    _window = new Window(this, _surface, _physicalDevice.PhysicalDevice, _device);
+}
+
         internal bool NeedsVertexBufferAlignment(int attrScalarAlignment, out int alignment)
         {
             if (Capabilities.VertexBufferAlignment > 1)
