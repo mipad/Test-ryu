@@ -24,6 +24,7 @@ namespace Ryujinx.Graphics.Vulkan
         private VulkanPhysicalDevice _physicalDevice;
         private Device _device;
         private WindowBase _window;
+        private CommandBufferPool _computeCommandPool;
 
         private bool _initialized;
 
