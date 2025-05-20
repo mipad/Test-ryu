@@ -1,5 +1,5 @@
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
+//using Microsoft.Extensions.Logging;
+//using Microsoft.Extensions.Options;
 using Ryujinx.Horizon.Sdk.Codec.Detail;
 using Ryujinx.Horizon.Sdk.Sf.Hipc;
 using Ryujinx.Horizon.Sdk.Sm;
@@ -28,7 +28,7 @@ namespace Ryujinx.Horizon.Audio
 
         // 使用配置替代硬编码常量
         private readonly AudioIpcSettings _settings;
-        private readonly ILogger _logger;
+      //  private readonly ILogger _logger;
 
         private ManagerOptions _options;
         private SmApi _sm;
@@ -37,15 +37,11 @@ namespace Ryujinx.Horizon.Audio
         private HardwareOpusDecoderManager _decoderManager;
 
         // 构造函数注入配置和日志依赖
-        public HwopusIpcServer(
-            IOptions<AudioIpcSettings> settings,
-            ILogger<HwopusIpcServer> logger)
-        {
-            _settings = settings.Value;
-            _logger = logger;
-
-            Initialize();
-        }
+      //  public HwopusIpcServer(
+          //  IOptions<AudioIpcSettings> settings,
+            //ILogger<HwopusIpcServer> logger)
+        
+        
 
         private void Initialize()
         {
