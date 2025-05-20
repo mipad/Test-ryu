@@ -6,7 +6,6 @@ namespace Ryujinx.Memory
 {
     [SupportedOSPlatform("linux")]
     [SupportedOSPlatform("macos")]
-    [SupportedOSPlatform("ios")]
     public static partial class MemoryManagerUnixHelper
     {
         [Flags]
@@ -114,11 +113,11 @@ namespace Ryujinx.Memory
 
             if (flags.HasFlag(MmapFlags.MAP_ANONYMOUS))
             {
-                if (OperatingSystem.IsLinux() || Ryujinx.Common.PlatformInfo.IsBionic)
+                if (OperatingSystem.IsLinux() || Common.PlatformInfo.IsBionic)
                 {
                     result |= MAP_ANONYMOUS_LINUX_GENERIC;
                 }
-                else if (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS())
+                else if (OperatingSystem.IsMacOS())
                 {
                     result |= MAP_ANONYMOUS_DARWIN;
                 }
@@ -130,11 +129,11 @@ namespace Ryujinx.Memory
 
             if (flags.HasFlag(MmapFlags.MAP_NORESERVE))
             {
-                if (OperatingSystem.IsLinux() || Ryujinx.Common.PlatformInfo.IsBionic)
+                if (OperatingSystem.IsLinux() || Common.PlatformInfo.IsBionic)
                 {
                     result |= MAP_NORESERVE_LINUX_GENERIC;
                 }
-                else if (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS())
+                else if (OperatingSystem.IsMacOS())
                 {
                     result |= MAP_NORESERVE_DARWIN;
                 }
@@ -146,11 +145,11 @@ namespace Ryujinx.Memory
 
             if (flags.HasFlag(MmapFlags.MAP_UNLOCKED))
             {
-                if (OperatingSystem.IsLinux() || Ryujinx.Common.PlatformInfo.IsBionic)
+                if (OperatingSystem.IsLinux() || Common.PlatformInfo.IsBionic)
                 {
                     result |= MAP_UNLOCKED_LINUX_GENERIC;
                 }
-                else if (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS())
+                else if (OperatingSystem.IsMacOS())
                 {
                     // FIXME: Doesn't exist on Darwin
                 }
