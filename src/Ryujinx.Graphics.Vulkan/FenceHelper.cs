@@ -21,7 +21,7 @@ namespace Ryujinx.Graphics.Vulkan
         
          public static void WaitAllIndefinitely(Vk api, Device device, ReadOnlySpan<Fence> fences)
 {
-    const ulong timeout = 1_000_000_000; // 1秒（单位：纳秒）
+    const ulong timeout = 5_000_000_000; // 1秒（单位：纳秒）
     
     while (true)
     {
