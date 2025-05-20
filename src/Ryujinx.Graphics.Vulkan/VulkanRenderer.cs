@@ -128,13 +128,24 @@ namespace Ryujinx.Graphics.Vulkan
         {
             FormatCapabilities = new FormatCapabilities(Api, _physicalDevice.PhysicalDevice);
 
-            // 在LoadFeatures方法中新增计算队列初始化
-            if (_physicalDevice.ComputeFamilyIndex != queueFamilyIndex && _physicalDevice.ComputeFamilyIndex != uint.MaxValue)
-           {
-              var computeQueue = _device.GetQueue(_physicalDevice.ComputeFamilyIndex, 0);
-            // 创建专用计算命令池
-               _computeCommandPool = new CommandBufferPool(Api, _device, computeQueue, new object(), _physicalDevice.ComputeFamilyIndex);
-            }
+            // +++ 修复1：获取计算队列族索引 +++
+    uint computeFamilyIndex = FindComputeQueueFamily();
+
+    // +++ 修复2：正确的队列获取方式 +++
+    if (computeFamilyIndex != uint.MaxValue && computeFamilyIndex != queueFamilyIndex)
+    {
+        Api.GetDeviceQueue(_device, computeFamilyIndex, 0, out var computeQueue);
+        
+        // +++ 修复3：适配CommandBufferPool构造函数 +++
+        _computeCommandPool = new CommandBufferPool(
+            Api,
+            _device,
+            computeQueue,
+            new object(),
+            computeFamilyIndex,
+            isQualcommProprietary: IsQualcommProprietary,
+            concurrentFenceWaitUnsupported: false);
+    }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtConditionalRendering conditionalRenderingApi))
             {
@@ -478,6 +489,22 @@ namespace Ryujinx.Graphics.Vulkan
 
             _counters = new Counters(this, _device, _pipeline);
         }
+
+        // +++ 新增方法：查找计算队列族 +++
+private uint FindComputeQueueFamily()
+{
+    Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, out var queueFamilies);
+
+    for (uint i = 0; i < queueFamilies.Length; i++)
+    {
+        if ((queueFamilies[i].QueueFlags & QueueFlags.ComputeBit) != 0)
+        {
+            return i;
+        }
+    }
+
+    return uint.MaxValue;
+}
 
         private void SetupContext(GraphicsDebugLevel logLevel)
         {
