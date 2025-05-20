@@ -18,28 +18,27 @@ namespace Ryujinx.Graphics.Vulkan
         {
             return api.WaitForFences(device, (uint)fences.Length, fences, true, timeout) == Result.Success;
         }
-
-        public static void WaitAllIndefinitely(Vk api, Device device, ReadOnlySpan<Fence> fences)
+         public static void WaitAllIndefinitely(Vk api, Device device, ReadOnlySpan<Fence> fences)
+{
+    const ulong timeout = 1_000_000_000; // 1 second in nanoseconds
+    
+    while (true)
+    {
+        Result result = api.WaitForFences(device, fences, true, timeout);
+        
+        switch (result)
         {
-            const ulong timeout = 1_000_000_000; // 1秒
-            
-            while (true)
-            {
-                Result result = api.WaitForFences(device, fences, true, timeout);
-                
-                switch (result)
-                {
-                    case Result.Success:
-                        return;
-                    case Result.Timeout:
-                        // 若日志不可用，暂时注释或替换为其他输出
-                        // Logger.Warning?.Print(LogClass.Gpu, "Vulkan同步超时，尝试重置设备...");
-                        ResetDevice(api, device);
-                        break;
-                    default:
-                        throw new VulkanException(result);
-                }
-            }
+            case Result.Success:
+                return;
+            case Result.Timeout:
+                // Reset the fences instead of attempting to reset the device
+                api.ResetFences(device, (uint)fences.Length, fences);
+                break;
+            default:
+                throw new VulkanException(result);
         }
-     }
+    }
+ }
+}      
 }
+
