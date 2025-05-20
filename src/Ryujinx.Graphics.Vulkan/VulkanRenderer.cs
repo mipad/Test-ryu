@@ -139,11 +139,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         // 正确的构造函数调用
         _computeCommandPool = new CommandBufferPool(
-            Api,
-            _device,
-            computeQueue,
-            new object(),
-            computeFamilyIndex);
+       Api,
+       _device,
+       computeQueue,
+       new object(),
+       computeFamilyIndex,
+       IsQualcommProprietary,  // 第六个参数
+       false);
     }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtConditionalRendering conditionalRenderingApi))
