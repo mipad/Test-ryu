@@ -41,20 +41,5 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
         }
-
-        private static void ResetDevice(Vk api, Device device)
-        {
-            // 1. 清理命令缓冲区（假设存在其他清理方法）
-            // CommandBufferPool.ForceCleanup();
-
-            // 2. 销毁逻辑设备
-            api.DestroyDevice(device, pAllocator: null);
-            
-            // 3. 重新创建设备（需项目中提供逻辑，例如：）
-            // device = VulkanRenderer.RecreateDevice();
-
-            // 4. 重建资源（需项目中提供逻辑，例如：）
-            // PipelineManager.Rebuild();
-        }
-    }
+     }
 }
