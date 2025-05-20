@@ -1,6 +1,7 @@
 using Ryujinx.Common.Memory;
 using System;
 using System.Buffers.Binary;
+using Ryujinx.Graphics.Nvdec.Vp9.Types;
 
 namespace Ryujinx.Graphics.Nvdec.Vp9.Dsp
 {
@@ -231,6 +232,79 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Dsp
                 _buffer = _buffer.Slice(-1);
             }
             return _buffer;
+        }
+        private int DecodeUniform()
+        {
+            const int l = 8;
+            const int m = (1 << l) - 191;
+            int v = ReadLiteral(l - 1);
+            return v < m ? v : (v << 1) - m + ReadBit();
+        }
+
+        public int DecodeTermSubexp()
+        {
+            if (ReadBit() == 0)
+            {
+                return ReadLiteral(4);
+            }
+
+            if (ReadBit() == 0)
+            {
+                return ReadLiteral(4) + 16;
+            }
+
+            if (ReadBit() == 0)
+            {
+                return ReadLiteral(5) + 32;
+            }
+
+            return DecodeUniform() + 64;
+        }
+
+        public TxMode ReadTxMode()
+        {
+            TxMode txMode = (TxMode)ReadLiteral(2);
+            if (txMode == TxMode.Allow32x32)
+            {
+                txMode += ReadBit();
+            }
+
+            return txMode;
+        }
+
+        public int ReadCoeff(
+            ReadOnlySpan<byte> probs,
+            int n,
+            ref ulong value,
+            ref int count,
+            ref uint range)
+        {
+            int val = 0;
+            for (int i = 0; i < n; ++i)
+            {
+                val = (val << 1) | ReadBool(probs[i], ref value, ref count, ref range);
+            }
+
+            return val;
+        }
+
+        public void DiffUpdateProb(ref byte p)
+        {
+            if (Read(Entropy.DiffUpdateProb) != 0)
+            {
+                p = (byte)DSubExp.InvRemapProb(DecodeTermSubexp(), p);
+            }
+        }
+
+        public void UpdateMvProbs(Span<byte> p, int n)
+        {
+            for (int i = 0; i < n; ++i)
+            {
+                if (Read(EntropyMv.UpdateProb) != 0)
+                {
+                    p[i] = (byte)((ReadLiteral(7) << 1) | 1);
+                }
+            }
         }
     }
 }
