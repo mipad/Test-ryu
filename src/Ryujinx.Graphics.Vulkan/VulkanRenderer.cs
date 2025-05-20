@@ -910,7 +910,10 @@ private void DestroyDevice()
         _window.Dispose();
 
         // 销毁逻辑设备
-        Api.DestroyDevice(_device, pAllocator: null);
+        unsafe
+{
+    Api.DestroyDevice(_device, pAllocator: null);
+}
         _device = default;
     }
 }
