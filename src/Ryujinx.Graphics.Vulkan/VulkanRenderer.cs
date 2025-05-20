@@ -589,9 +589,14 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         internal TextureStorage CreateTextureStorage(TextureCreateInfo info)
-        {
-            return new TextureStorage(this, _device, info);
-        }
+{
+    if (info.Width == 0 || info.Height == 0 || info.Depth == 0)
+    {
+        Logger.Error?.Print(LogClass.Gpu, $"Invalid texture dimensions: {info.Width}x{info.Height}x{info.Depth}");
+        throw new ArgumentException("Invalid texture dimensions");
+    }
+    return new TextureStorage(this, _device, info);
+}
 
         public void DeleteBuffer(BufferHandle buffer)
         {
