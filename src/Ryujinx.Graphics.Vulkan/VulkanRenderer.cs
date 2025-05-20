@@ -127,6 +127,14 @@ namespace Ryujinx.Graphics.Vulkan
         {
             FormatCapabilities = new FormatCapabilities(Api, _physicalDevice.PhysicalDevice);
 
+            // 在LoadFeatures方法中新增计算队列初始化
+            if (_physicalDevice.ComputeFamilyIndex != queueFamilyIndex && _physicalDevice.ComputeFamilyIndex != uint.MaxValue)
+           {
+              var computeQueue = _device.GetQueue(_physicalDevice.ComputeFamilyIndex, 0);
+            // 创建专用计算命令池
+               _computeCommandPool = new CommandBufferPool(Api, _device, computeQueue, new object(), _physicalDevice.ComputeFamilyIndex);
+            }
+
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtConditionalRendering conditionalRenderingApi))
             {
                 ConditionalRenderingApi = conditionalRenderingApi;
