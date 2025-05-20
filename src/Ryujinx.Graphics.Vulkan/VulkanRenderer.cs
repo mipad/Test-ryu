@@ -25,7 +25,6 @@ namespace Ryujinx.Graphics.Vulkan
         private Device _device;
         private WindowBase _window;
         private CommandBufferPool _computeCommandPool;
-
         private bool _initialized;
 
         internal FormatCapabilities FormatCapabilities { get; private set; }
@@ -128,23 +127,22 @@ namespace Ryujinx.Graphics.Vulkan
         {
             FormatCapabilities = new FormatCapabilities(Api, _physicalDevice.PhysicalDevice);
 
-            // +++ 修复1：获取计算队列族索引 +++
+            // 查找计算队列族
     uint computeFamilyIndex = FindComputeQueueFamily();
 
-    // +++ 修复2：正确的队列获取方式 +++
     if (computeFamilyIndex != uint.MaxValue && computeFamilyIndex != queueFamilyIndex)
     {
-        Api.GetDeviceQueue(_device, computeFamilyIndex, 0, out var computeQueue);
-        
-        // +++ 修复3：适配CommandBufferPool构造函数 +++
+        // 正确获取队列的unsafe方式
+        Queue computeQueue;
+        Api.GetDeviceQueue(_device, computeFamilyIndex, 0, &computeQueue);
+
+        // 正确的构造函数调用
         _computeCommandPool = new CommandBufferPool(
             Api,
             _device,
             computeQueue,
             new object(),
-            computeFamilyIndex,
-            isQualcommProprietary: IsQualcommProprietary,
-            concurrentFenceWaitUnsupported: false);
+            computeFamilyIndex);
     }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtConditionalRendering conditionalRenderingApi))
