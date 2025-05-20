@@ -64,7 +64,7 @@ namespace Ryujinx.Cpu.Nce
             return codePatch;
         }
 
-        private static uint[] WriteSvcPatch(uint svcId, threadIndex)
+        private static uint[] WriteSvcPatch(uint svcId, int threadIndex)
         {
             Assembler asm = new();
 
