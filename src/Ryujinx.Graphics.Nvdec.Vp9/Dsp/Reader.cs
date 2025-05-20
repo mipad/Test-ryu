@@ -1,24 +1,24 @@
 using Ryujinx.Common.Memory;
+using Ryujinx.Graphics.Nvdec.Vp9.Types;
 using System;
 using System.Buffers.Binary;
-using Ryujinx.Graphics.Nvdec.Vp9.Types;
 
 namespace Ryujinx.Graphics.Nvdec.Vp9.Dsp
 {
     internal struct Reader
     {
-        private static readonly byte[] _norm = {
-            0, 7, 6, 6, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-            3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-            2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        };
+        private static readonly byte[] Norm =
+        [
+            0, 7, 6, 6, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2,
+            2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ];
+
         private const int BdValueSize = sizeof(ulong) * 8;
 
         // This is meant to be a large, positive constant that can still be efficiently
@@ -37,16 +37,13 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Dsp
             {
                 return true;
             }
-            else
-            {
-                _buffer = new ArrayPtr<byte>(ref buffer[0], size);
-                Value = 0;
-                Count = -8;
-                Range = 255;
-                Fill();
 
-                return ReadBit() != 0; // Marker bit
-            }
+            _buffer = new ArrayPtr<byte>(ref buffer[0], size);
+            Value = 0;
+            Count = -8;
+            Range = 255;
+            Fill();
+            return ReadBit() != 0; // Marker bit
         }
 
         private void Fill()
@@ -66,7 +63,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Dsp
                 ulong bigEndianValues = BinaryPrimitives.ReadUInt64BigEndian(buffer);
                 nv = bigEndianValues >> (BdValueSize - bits);
                 count += bits;
-                buffer = buffer[(bits >> 3)..];
+                buffer = buffer.Slice(bits >> 3);
                 value = Value | (nv << (shift & 0x7));
             }
             else
@@ -85,7 +82,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Dsp
                     {
                         count += 8;
                         value |= (ulong)buffer[0] << shift;
-                        buffer = buffer[1..];
+                        buffer = buffer.Slice(1);
                         shift -= 8;
                     }
                 }
@@ -99,7 +96,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Dsp
             Count = count;
         }
 
-        public readonly bool HasError()
+        public bool HasError()
         {
             // Check if we have reached the end of the buffer.
             //
@@ -125,7 +122,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Dsp
             ulong bigsplit;
             int count;
             uint range;
-            uint split = (Range * (uint)prob + (256 - (uint)prob)) >> 8;
+            uint split = ((Range * (uint)prob) + (256 - (uint)prob)) >> 8;
 
             if (Count < 0)
             {
@@ -147,7 +144,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Dsp
             }
 
             {
-                int shift = _norm[range];
+                int shift = Norm[range];
                 range <<= shift;
                 value <<= shift;
                 count -= shift;
@@ -189,7 +186,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Dsp
 
         public int ReadBool(int prob, ref ulong value, ref int count, ref uint range)
         {
-            uint split = (range * (uint)prob + (256 - (uint)prob)) >> 8;
+            uint split = ((range * (uint)prob) + (256 - (uint)prob)) >> 8;
             ulong bigsplit = (ulong)split << (BdValueSize - 8);
 
             if (count < 0)
@@ -203,19 +200,20 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Dsp
 
             if (value >= bigsplit)
             {
-                range -= split;
-                value -= bigsplit;
+                range = range - split;
+                value = value - bigsplit;
                 {
-                    int shift = _norm[range];
+                    int shift = Norm[range];
                     range <<= shift;
                     value <<= shift;
                     count -= shift;
                 }
                 return 1;
             }
+
             range = split;
             {
-                int shift = _norm[range];
+                int shift = Norm[range];
                 range <<= shift;
                 value <<= shift;
                 count -= shift;
@@ -231,8 +229,10 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Dsp
                 Count -= 8;
                 _buffer = _buffer.Slice(-1);
             }
+
             return _buffer;
         }
+
         private int DecodeUniform()
         {
             const int l = 8;
