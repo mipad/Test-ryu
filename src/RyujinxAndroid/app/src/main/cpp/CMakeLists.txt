@@ -24,8 +24,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
 FetchContent_Declare(
     adrenotools
-    GIT_REPOSITORY https://github.com/bylaws/libadrenotools.git
-    GIT_TAG        deec5f75ee1a8ccbe32c8780b1d17284fc87b0f1 # v1.0-14-gdeec5f7
+    GIT_REPOSITORY https://git.ryujinx.app/kenji-nx/libadrenotools.git
+   # GIT_TAG        deec5f75ee1a8ccbe32c8780b1d17284fc87b0f1 # v1.0-14-gdeec5f7
 )
 
 FetchContent_MakeAvailable(adrenotools)
