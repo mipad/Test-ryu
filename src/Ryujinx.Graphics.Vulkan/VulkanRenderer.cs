@@ -25,6 +25,7 @@ namespace Ryujinx.Graphics.Vulkan
         private Device _device;
         private WindowBase _window;
         private CommandBufferPool _computeCommandPool;
+        private bool _concurrentFenceWaitUnsupported; // 根据设备特性初始化
         private bool _initialized;
 
         internal FormatCapabilities FormatCapabilities { get; private set; }
@@ -491,8 +492,22 @@ namespace Ryujinx.Graphics.Vulkan
         // +++ 新增方法：查找计算队列族 +++
 private uint FindComputeQueueFamily()
 {
-    Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, out var queueFamilies);
-
+    // 正确代码（使用unsafe指针方式）
+unsafe 
+{
+    uint queueCount = 0;
+    // 第一次调用获取队列族数量
+    Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, &queueCount, null);
+    
+    // 分配数组空间
+    var queueFamilies = new QueueFamilyProperties[queueCount];
+    
+    // 第二次调用获取具体数据
+    fixed (QueueFamilyProperties* pQueueFamilies = queueFamilies)
+    {
+        Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, &queueCount, pQueueFamilies);
+    }
+}
     for (uint i = 0; i < queueFamilies.Length; i++)
     {
         if ((queueFamilies[i].QueueFlags & QueueFlags.ComputeBit) != 0)
