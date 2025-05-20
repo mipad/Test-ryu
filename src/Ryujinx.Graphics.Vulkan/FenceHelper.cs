@@ -48,8 +48,8 @@ namespace Ryujinx.Graphics.Vulkan
             // CommandBufferPool.ForceCleanup();
 
             // 2. 销毁逻辑设备
-            api.DestroyDevice(device, allocator: null);
-
+            api.DestroyDevice(device, pAllocator: null);
+            
             // 3. 重新创建设备（需项目中提供逻辑，例如：）
             // device = VulkanRenderer.RecreateDevice();
 
