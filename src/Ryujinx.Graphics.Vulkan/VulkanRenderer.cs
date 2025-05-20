@@ -508,13 +508,7 @@ unsafe
         Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, &queueCount, pQueueFamilies);
     }
 }
-    for (uint i = 0; i < queueFamilies.Length; i++)
-    {
-        if ((queueFamilies[i].QueueFlags & QueueFlags.ComputeBit) != 0)
-        {
-            return i;
-        }
-    }
+    
 
     return uint.MaxValue;
 }
