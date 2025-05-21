@@ -811,7 +811,7 @@ namespace Ryujinx.Graphics.Gpu.Image
     Logger.Debug?.Print(LogClass.Gpu, $"Invalid ASTC texture at 0x{Info.GpuAddress:X} ({texInfo}).");
     
     result.Dispose(); // 释放原始数据
-    return MemoryOwner<byte>.Empty; // 返回空数据，避免后续操作
+    return MemoryOwner<byte>.Allocate(0); // 返回空数据，避免后续操作
 }
 
                     if (GraphicsConfig.EnableTextureRecompression)
