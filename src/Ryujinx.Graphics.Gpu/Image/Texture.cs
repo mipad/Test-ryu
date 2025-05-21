@@ -642,49 +642,63 @@ if (newStorage == null)
         /// This will replace the entire texture with the data present in guest memory.
         /// </summary>
         public void SynchronizeFull()
+        public void SynchronizeFull()
+{
+    ReadOnlySpan<byte> data = _physicalMemory.GetSpan(Range);
+
+    // 如果主机不支持 ASTC 压缩，需要解压
+    if (Info.FormatInfo.Format.IsAstc() && !_context.Capabilities.SupportsAstcCompression)
+    {
+        if (_updateCount < ByteComparisonSwitchThreshold)
         {
-            ReadOnlySpan<byte> data = _physicalMemory.GetSpan(Range);
-
-            // If the host does not support ASTC compression, we need to do the decompression.
-            // The decompression is slow, so we want to avoid it as much as possible.
-            // This does a byte-by-byte check and skips the update if the data is equal in this case.
-            // This improves the speed on applications that overwrites ASTC data without changing anything.
-            if (Info.FormatInfo.Format.IsAstc() && !_context.Capabilities.SupportsAstcCompression)
-            {
-                if (_updateCount < ByteComparisonSwitchThreshold)
-                {
-                    _updateCount++;
-                }
-                else
-                {
-                    bool dataMatches = _currentData != null && data.SequenceEqual(_currentData);
-                    if (dataMatches)
-                    {
-                        return;
-                    }
-
-                    _currentData = data.ToArray();
-                }
-            }
-
-            MemoryOwner<byte> result = ConvertToHostCompatibleFormat(data);
-
-            if (ScaleFactor != 1f && AllowScaledSetData())
-            {
-                // If needed, create a texture to load from 1x scale.
-                ITexture texture = _setHostTexture = GetScaledHostTexture(1f, false, _setHostTexture);
-
-                texture.SetData(result);
-
-                texture.CopyTo(HostTexture, new Extents2D(0, 0, texture.Width, texture.Height), new Extents2D(0, 0, HostTexture.Width, HostTexture.Height), true);
-            }
-            else
-            {
-                HostTexture.SetData(result);
-            }
-
-            _hasData = true;
+            _updateCount++;
         }
+        else
+        {
+            bool dataMatches = _currentData != null && data.SequenceEqual(_currentData);
+            if (dataMatches)
+            {
+                return;
+            }
+
+            _currentData = data.ToArray();
+        }
+    }
+
+    // 转换数据为宿主兼容格式
+    MemoryOwner<byte> result = ConvertToHostCompatibleFormat(data);
+
+    // ---- 新增空数据检查 ----
+    if (result == null || result.Length == 0)
+    {
+        Logger.Error?.Print(LogClass.Gpu, "Failed to convert texture data. Skipping upload.");
+        result?.Dispose(); // 释放无效数据
+        return; // 直接返回，避免后续操作
+    }
+
+    // 缩放逻辑
+    if (ScaleFactor != 1f && AllowScaledSetData())
+    {
+        ITexture texture = _setHostTexture = GetScaledHostTexture(1f, false, _setHostTexture);
+        texture.SetData(result);
+
+        texture.CopyTo(
+            HostTexture,
+            new Extents2D(0, 0, texture.Width, texture.Height),
+            new Extents2D(0, 0, HostTexture.Width, HostTexture.Height),
+            true
+        );
+    }
+    else
+    {
+        HostTexture.SetData(result);
+    }
+
+    // 释放结果内存（假设 MemoryOwner<T> 实现了 IDisposable）
+    result.Dispose();
+
+    _hasData = true;
+}
 
         /// <summary>
         /// Uploads new texture data to the host GPU.
