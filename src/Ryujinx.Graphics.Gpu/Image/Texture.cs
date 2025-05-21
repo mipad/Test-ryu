@@ -642,7 +642,6 @@ if (newStorage == null)
         /// This will replace the entire texture with the data present in guest memory.
         /// </summary>
         public void SynchronizeFull()
-        public void SynchronizeFull()
 {
     ReadOnlySpan<byte> data = _physicalMemory.GetSpan(Range);
 
