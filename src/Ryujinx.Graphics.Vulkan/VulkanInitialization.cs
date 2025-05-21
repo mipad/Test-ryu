@@ -47,11 +47,13 @@ namespace Ryujinx.Graphics.Vulkan
             "VK_KHR_maintenance2",
             "VK_EXT_attachment_feedback_loop_layout",
             "VK_EXT_attachment_feedback_loop_dynamic_state"
+             "VK_KHR_timeline_semaphore", // 添加此行
         ];
 
         private static readonly string[] _requiredExtensions =
         [
-            KhrSwapchain.ExtensionName
+            KhrSwapchain.ExtensionName,
+            "VK_KHR_timeline_semaphore"
         ];
 
         internal static VulkanInstance CreateInstance(Vk api, GraphicsDebugLevel logLevel, string[] requiredExtensions)
@@ -296,6 +298,18 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 SType = StructureType.PhysicalDeviceFeatures2,
             };
+
+PhysicalDeviceTimelineSemaphoreFeaturesKHR supportedFeaturesTimelineSemaphore = new()
+{
+    SType = StructureType.PhysicalDeviceTimelineSemaphoreFeatures,
+    PNext = features2.PNext,
+    TimelineSemaphore = true // 明确启用时间线信号量
+};
+
+if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
+{
+    features2.PNext = &supportedFeaturesTimelineSemaphore;
+}
 
             PhysicalDeviceVulkan11Features supportedFeaturesVk11 = new()
             {
