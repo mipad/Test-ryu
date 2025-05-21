@@ -28,6 +28,7 @@ namespace Ryujinx.Graphics.Vulkan
         private bool _concurrentFenceWaitUnsupported; // 根据设备特性初始化
         private bool _initialized;
 
+        internal KhrTimelineSemaphore TimelineSemaphoreApi { get; private set; }
         internal FormatCapabilities FormatCapabilities { get; private set; }
         internal HardwareCapabilities Capabilities;
 
@@ -152,6 +153,12 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 ConditionalRenderingApi = conditionalRenderingApi;
             }
+
+      //
+if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaphore timelineSemaphoreApi))
+{
+    TimelineSemaphoreApi = timelineSemaphoreApi;
+}
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtExtendedDynamicState extendedDynamicStateApi))
             {
@@ -1111,3 +1118,5 @@ unsafe
         }
     }
 }
+
+                
