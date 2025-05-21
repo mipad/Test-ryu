@@ -298,15 +298,19 @@ namespace Ryujinx.Graphics.Shader.Translation
                 InstOp op = block.OpCodes[opIndex];
 
                 if (context.TranslatorContext.Options.Flags.HasFlag(TranslationFlags.DebugMode))
-                {
-                    string instName;
+        {
+            string instName = "Unknown"; // 初始化默认值
 
-                    if (op.Emitter == null)
-{
-    context.TranslatorContext.GpuAccessor.Log($"Invalid instruction at 0x{op.Address:X6} (0x{op.RawOpCode:X16}).");
-    context.MarkBlockAsInvalid(); // 新增方法标记块无效
-    return; // 跳过后续指令生成
-                    }
+            if (op.Emitter != null)
+            {
+                instName = op.Name.ToString();
+            }
+            else
+            {
+                instName = "???";
+                context.TranslatorContext.GpuAccessor.Log($"Invalid instruction at 0x{op.Address:X6} (0x{op.RawOpCode:X16}).");
+                return; // 提前返回，确保后续代码不依赖 instName
+            }
 
                     string dbgComment = $"0x{op.Address:X6}: 0x{op.RawOpCode:X16} {instName}";
 
