@@ -301,15 +301,11 @@ namespace Ryujinx.Graphics.Shader.Translation
                 {
                     string instName;
 
-                    if (op.Emitter != null)
-                    {
-                        instName = op.Name.ToString();
-                    }
-                    else
-                    {
-                        instName = "???";
-
-                        context.TranslatorContext.GpuAccessor.Log($"Invalid instruction at 0x{op.Address:X6} (0x{op.RawOpCode:X16}).");
+                    if (op.Emitter == null)
+{
+    context.TranslatorContext.GpuAccessor.Log(...);
+    context.MarkBlockAsInvalid(); // 新增方法标记块无效
+    return; // 跳过后续指令生成
                     }
 
                     string dbgComment = $"0x{op.Address:X6}: 0x{op.RawOpCode:X16} {instName}";
