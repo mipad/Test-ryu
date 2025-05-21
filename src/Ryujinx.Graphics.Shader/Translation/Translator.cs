@@ -303,7 +303,7 @@ namespace Ryujinx.Graphics.Shader.Translation
 
                     if (op.Emitter == null)
 {
-    context.TranslatorContext.GpuAccessor.Log(...);
+    context.TranslatorContext.GpuAccessor.Log($"Invalid instruction at 0x{op.Address:X6} (0x{op.RawOpCode:X16}).");
     context.MarkBlockAsInvalid(); // 新增方法标记块无效
     return; // 跳过后续指令生成
                     }
