@@ -1098,7 +1098,7 @@ private void DisposeVulkanResources()
 
 private unsafe void InitializeVulkan()
 {
-    // 重新初始化 Vulkan 实例和设备
+    // 重新创建实例、物理设备和逻辑设备
     _instance = VulkanInitialization.CreateInstance(Api, GraphicsDebugLevel.None, _getRequiredExtensions());
     _surface = _getSurface(_instance.Instance, Api);
     _physicalDevice = VulkanInitialization.FindSuitablePhysicalDevice(Api, _instance, _surface, _preferredGpuId);
@@ -1106,13 +1106,21 @@ private unsafe void InitializeVulkan()
     var queueFamilyIndex = VulkanInitialization.FindSuitableQueueFamily(Api, _physicalDevice, _surface, out uint maxQueueCount);
     _device = VulkanInitialization.CreateDevice(Api, _physicalDevice, queueFamilyIndex, maxQueueCount);
 
-    // 重新初始化队列和关键模块
+    // 重新初始化队列
     Api.GetDeviceQueue(_device, queueFamilyIndex, 0, out var queue);
     Queue = queue;
     QueueLock = new object();
 
-    LoadFeatures(maxQueueCount, queueFamilyIndex); // 重新加载设备特性
+    // 重新初始化核心模块
+    LoadFeatures(maxQueueCount, queueFamilyIndex); // 内部会重建 MemoryAllocator、CommandBufferPool 等
     _window = new Window(this, _surface, _physicalDevice.PhysicalDevice, _device);
+
+    // 重建管线和其他渲染组件
+    _pipeline = new PipelineFull(this, _device);
+    _pipeline.Initialize();
+    HelperShader = new HelperShader(this, _device);
+    Barriers = new BarrierBatch(this);
+    SyncManager = new SyncManager(this, _device);
 }
 
         public unsafe void Dispose()
