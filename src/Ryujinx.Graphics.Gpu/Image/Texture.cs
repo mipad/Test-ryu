@@ -832,8 +832,7 @@ public void SetScale(float scale)
 {
     string texInfo = $"{Info.Target} {Info.FormatInfo.Format} {Info.Width}x{Info.Height}x{Info.DepthOrLayers} levels {Info.Levels}";
     Logger.Debug?.Print(LogClass.Gpu, $"Invalid ASTC texture at 0x{Info.GpuAddress:X} ({texInfo}).");
-    
-    result.Dispose(); // 释放原始数据
+
     // 返回默认黑色像素数据
     int pixelCount = width * height * sliceDepth * layers * levels;
     MemoryOwner<byte> fallback = MemoryOwner<byte>.Rent(pixelCount * 4); // RGBA8 格式
