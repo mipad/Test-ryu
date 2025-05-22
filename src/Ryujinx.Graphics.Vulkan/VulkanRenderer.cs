@@ -1072,6 +1072,49 @@ unsafe
             (_window as Window)?.SetSurface(_surface);
         }
 
+// VulkanRenderer.cs
+
+// +++ 新增方法：设备丢失恢复 +++
+public void RecreateVulkanDevice()
+{
+    DisposeVulkanResources();
+    InitializeVulkan();
+}
+
+private void DisposeVulkanResources()
+{
+    // 销毁所有 Vulkan 资源
+    Api.DestroyDevice(_device, null);
+    Api.DestroyInstance(_instance.Instance, null);
+
+    // 释放其他关联资源
+    CommandBufferPool?.Dispose();
+    _window?.Dispose();
+    MemoryAllocator?.Dispose();
+    HostMemoryAllocator?.Dispose();
+    PipelineLayoutCache?.Dispose();
+    _counters?.Dispose();
+}
+
+private unsafe void InitializeVulkan()
+{
+    // 重新初始化 Vulkan 实例和设备
+    _instance = VulkanInitialization.CreateInstance(Api, GraphicsDebugLevel.Silent, _getRequiredExtensions());
+    _surface = _getSurface(_instance.Instance, Api);
+    _physicalDevice = VulkanInitialization.FindSuitablePhysicalDevice(Api, _instance, _surface, _preferredGpuId);
+
+    var queueFamilyIndex = VulkanInitialization.FindSuitableQueueFamily(Api, _physicalDevice, _surface, out uint maxQueueCount);
+    _device = VulkanInitialization.CreateDevice(Api, _physicalDevice, queueFamilyIndex, maxQueueCount);
+
+    // 重新初始化队列和关键模块
+    Api.GetDeviceQueue(_device, queueFamilyIndex, 0, out var queue);
+    Queue = queue;
+    QueueLock = new object();
+
+    LoadFeatures(maxQueueCount, queueFamilyIndex); // 重新加载设备特性
+    _window = new Window(this, _surface, _physicalDevice.PhysicalDevice, _device);
+}
+
         public unsafe void Dispose()
         {
             if (!_initialized)
