@@ -1099,7 +1099,7 @@ private void DisposeVulkanResources()
 private unsafe void InitializeVulkan()
 {
     // 重新初始化 Vulkan 实例和设备
-    _instance = VulkanInitialization.CreateInstance(Api, GraphicsDebugLevel.Silent, _getRequiredExtensions());
+    _instance = VulkanInitialization.CreateInstance(Api, GraphicsDebugLevel.None, _getRequiredExtensions());
     _surface = _getSurface(_instance.Instance, Api);
     _physicalDevice = VulkanInitialization.FindSuitablePhysicalDevice(Api, _instance, _surface, _preferredGpuId);
 
