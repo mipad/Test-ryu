@@ -828,7 +828,10 @@ if (newStorage == null)
     Logger.Debug?.Print(LogClass.Gpu, $"Invalid ASTC texture at 0x{Info.GpuAddress:X} ({texInfo}).");
     
     result.Dispose(); // 释放原始数据
-    return MemoryOwner<byte>.Rent(0); // 返回空数据，避免后续操作
+    int pixelCount = width * height * sliceDepth * layers * levels;
+    MemoryOwner<byte> fallback = MemoryOwner<byte>.Rent(pixelCount * 4); // RGBA8 格式
+    fallback.Memory.Span.Fill(0); // 填充为黑色
+    return fallback;
 }
 
                     if (GraphicsConfig.EnableTextureRecompression)
