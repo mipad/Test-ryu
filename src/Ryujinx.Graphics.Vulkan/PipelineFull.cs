@@ -291,11 +291,12 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void BeginQuery(BufferedQuery query, QueryPool pool, bool needsReset, bool isOcclusion, bool fromSamplePool)
 {
-    if (Gd.IsArmGPU) // 注意属性名大小写（假设属性名是 IsArmGPU）
+    // 强制在 ARM GPU 上禁用遮挡查询
+    if (Gd.IsArmGPU)
     {
         isOcclusion = false;
     }
-    
+
     if (needsReset)
     {
         EndRenderPass();
@@ -304,22 +305,12 @@ namespace Ryujinx.Graphics.Vulkan
 
         if (fromSamplePool)
         {
-            // Try reset some additional queries in advance.
             Gd.ResetFutureCounters(CommandBuffer, AutoFlush.GetRemainingQueries());
         }
     }
 
-    // 针对 Mali GPU 的兼容性修复 ---------------------------
-    // 如果当前 GPU 是 Mali，强制禁用精确查询标志（即使支持）
-    bool isPrecise = false;
-
-    if (!Gd.IsArmGPU) // 假设 Gd 有 IsMaliGPU 属性用于检测 Mali GPU
-    {
-        // 非 Mali GPU 保持原有逻辑
-        isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
-    }
-    // ---------------------------------------------------
-
+    // 非 ARM GPU 保留精确查询逻辑
+    bool isPrecise = !Gd.IsArmGPU && Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
     Gd.Api.CmdBeginQuery(CommandBuffer, pool, 0, isPrecise ? QueryControlFlags.PreciseBit : 0);
 
     _activeQueries.Add((pool, isOcclusion));
