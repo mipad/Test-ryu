@@ -98,7 +98,6 @@ namespace Ryujinx.Graphics.Gpu.Image
         >= 16 => TextureSizeCapacity16GiB,         // >=16 GiB 对应 16 GiB
         _ => DefaultTextureSizeCapacity
     };
-            };  
 
             var cacheMemory = (ulong)(context.Capabilities.MaximumGpuMemory * MemoryScaleFactor);
 
