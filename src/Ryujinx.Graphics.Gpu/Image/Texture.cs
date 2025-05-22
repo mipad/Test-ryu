@@ -679,7 +679,7 @@ if (newStorage == null)
     if (ScaleFactor != 1f && AllowScaledSetData())
     {
         ITexture texture = _setHostTexture = GetScaledHostTexture(1f, false, _setHostTexture);
-        texture.SetData(result.Memory);
+        texture.SetData(result);
 
         texture.CopyTo(
             HostTexture,
