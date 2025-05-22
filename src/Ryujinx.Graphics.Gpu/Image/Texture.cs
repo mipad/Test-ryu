@@ -665,8 +665,8 @@ if (newStorage == null)
     }
 
     // 转换数据为宿主兼容格式
-    MemoryOwner<byte> result = ConvertToHostCompatibleFormat(data);
-
+    using (MemoryOwner<byte> result = ConvertToHostCompatibleFormat(data))
+{
     // ---- 新增空数据检查 ----
     if (result == null || result.Length == 0)
     {
@@ -679,7 +679,7 @@ if (newStorage == null)
     if (ScaleFactor != 1f && AllowScaledSetData())
     {
         ITexture texture = _setHostTexture = GetScaledHostTexture(1f, false, _setHostTexture);
-        texture.SetData(result);
+        texture.SetData(result.Memory);
 
         texture.CopyTo(
             HostTexture,
@@ -696,7 +696,7 @@ if (newStorage == null)
 
     _hasData = true;
 }
-
+}
         /// <summary>
         /// Uploads new texture data to the host GPU.
         /// </summary>
