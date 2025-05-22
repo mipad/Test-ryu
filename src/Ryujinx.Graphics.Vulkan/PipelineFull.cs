@@ -291,6 +291,11 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void BeginQuery(BufferedQuery query, QueryPool pool, bool needsReset, bool isOcclusion, bool fromSamplePool)
 {
+    if (Gd.IsArmGPU) // 注意属性名大小写（假设属性名是 IsArmGPU）
+    {
+        isOcclusion = false;
+    }
+    
     if (needsReset)
     {
         EndRenderPass();
