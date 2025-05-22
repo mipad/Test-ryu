@@ -241,8 +241,16 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public void FlushCommandsImpl()
+        public void FlushCommandsImpl()       
         {
+            // 在提交前检查设备状态
+    if (Gd.Api.GetDeviceStatus(Gd.Device) == Result.ErrorDeviceLost)
+    {
+        Gd.RecreateVulkanDevice(); // 假设有重新创建设备的方法
+        Restore();
+        return;
+    }
+    
             AutoFlush.RegisterFlush(DrawCount);
             EndRenderPass();
 
