@@ -2,7 +2,6 @@ using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Vulkan.Queries;
 using Silk.NET.Vulkan;
 using System;
-using Ryujinx.Common.Logging;
 using System.Collections.Generic;
 
 namespace Ryujinx.Graphics.Vulkan
@@ -243,40 +242,47 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         public void FlushCommandsImpl()
-{
-    try
-    {
-        // 原有的命令提交逻辑（无需检查设备状态）
-        AutoFlush.RegisterFlush(DrawCount);
-        EndRenderPass();
-
-        foreach ((var queryPool, _) in _activeQueries)
         {
-            Gd.Api.CmdEndQuery(CommandBuffer, queryPool, 0);
+            AutoFlush.RegisterFlush(DrawCount);
+            EndRenderPass();
+
+            foreach ((var queryPool, _) in _activeQueries)
+            {
+                Gd.Api.CmdEndQuery(CommandBuffer, queryPool, 0);
+            }
+
+            _byteWeight = 0;
+
+            if (PreloadCbs != null)
+            {
+                PreloadCbs.Value.Dispose();
+                PreloadCbs = null;
+            }
+
+            Gd.Barriers.Flush(Cbs, false, null, null);
+            CommandBuffer = (Cbs = Gd.CommandBufferPool.ReturnAndRent(Cbs)).CommandBuffer;
+            Gd.RegisterFlush();
+
+            // Restore per-command buffer state.
+            foreach (BufferHolder buffer in _activeBufferMirrors)
+            {
+                buffer.ClearMirrors();
+            }
+
+            _activeBufferMirrors.Clear();
+
+            foreach ((var queryPool, var isOcclusion) in _activeQueries)
+            {
+                bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
+
+                Gd.Api.CmdResetQueryPool(CommandBuffer, queryPool, 0, 1);
+                Gd.Api.CmdBeginQuery(CommandBuffer, queryPool, 0, isPrecise ? QueryControlFlags.PreciseBit : 0);
+            }
+
+            Gd.ResetCounterPool();
+
+            Restore();
         }
-
-        _byteWeight = 0;
-
-        if (PreloadCbs != null)
-        {
-            PreloadCbs.Value.Dispose();
-            PreloadCbs = null;
-        }
-
-        Gd.Barriers.Flush(Cbs, false, null, null);
-        CommandBuffer = (Cbs = Gd.CommandBufferPool.ReturnAndRent(Cbs)).CommandBuffer;
-        Gd.RegisterFlush();
-
-        // 恢复管线状态
-        Restore();
-    }
-    catch (VulkanException ex) when (ex.Message.Contains("ErrorDeviceLost"))
-    {
-        Logger.Error?.PrintMsg(LogClass.Gpu, "检测到设备丢失，尝试恢复...");
-        Gd.RecreateVulkanDevice(); // 确保该方法已定义
-        Restore();
-    }
-}
 
         public void RegisterActiveMirror(BufferHolder buffer)
         {
@@ -284,26 +290,31 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         public void BeginQuery(BufferedQuery query, QueryPool pool, bool needsReset, bool isOcclusion, bool fromSamplePool)
+{
+    // 强制在 ARM GPU 上禁用遮挡查询
+    if (Gd.IsArmGPU)
+    {
+        isOcclusion = false;
+    }
+
+    if (needsReset)
+    {
+        EndRenderPass();
+
+        Gd.Api.CmdResetQueryPool(CommandBuffer, pool, 0, 1);
+
+        if (fromSamplePool)
         {
-            if (needsReset)
-            {
-                EndRenderPass();
-
-                Gd.Api.CmdResetQueryPool(CommandBuffer, pool, 0, 1);
-
-                if (fromSamplePool)
-                {
-                    // Try reset some additional queries in advance.
-
-                    Gd.ResetFutureCounters(CommandBuffer, AutoFlush.GetRemainingQueries());
-                }
-            }
-
-            bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
-            Gd.Api.CmdBeginQuery(CommandBuffer, pool, 0, isPrecise ? QueryControlFlags.PreciseBit : 0);
-
-            _activeQueries.Add((pool, isOcclusion));
+            Gd.ResetFutureCounters(CommandBuffer, AutoFlush.GetRemainingQueries());
         }
+    }
+
+    // 非 ARM GPU 保留精确查询逻辑
+    bool isPrecise = !Gd.IsArmGPU && Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
+    Gd.Api.CmdBeginQuery(CommandBuffer, pool, 0, isPrecise ? QueryControlFlags.PreciseBit : 0);
+
+    _activeQueries.Add((pool, isOcclusion));
+}
 
         public void EndQuery(QueryPool pool)
         {
