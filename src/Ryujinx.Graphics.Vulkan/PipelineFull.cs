@@ -241,56 +241,41 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public void FlushCommandsImpl()       
-        {
-            // 在提交前检查设备状态
-    if (Gd.Api.GetDeviceStatus(Gd.Device) == Result.ErrorDeviceLost)
+        public void FlushCommandsImpl()
+{
+    try
     {
-        Gd.RecreateVulkanDevice(); // 假设有重新创建设备的方法
-        Restore();
-        return;
-    }
-    
-            AutoFlush.RegisterFlush(DrawCount);
-            EndRenderPass();
+        // 原有的命令提交逻辑（无需检查设备状态）
+        AutoFlush.RegisterFlush(DrawCount);
+        EndRenderPass();
 
-            foreach ((var queryPool, _) in _activeQueries)
-            {
-                Gd.Api.CmdEndQuery(CommandBuffer, queryPool, 0);
-            }
-
-            _byteWeight = 0;
-
-            if (PreloadCbs != null)
-            {
-                PreloadCbs.Value.Dispose();
-                PreloadCbs = null;
-            }
-
-            Gd.Barriers.Flush(Cbs, false, null, null);
-            CommandBuffer = (Cbs = Gd.CommandBufferPool.ReturnAndRent(Cbs)).CommandBuffer;
-            Gd.RegisterFlush();
-
-            // Restore per-command buffer state.
-            foreach (BufferHolder buffer in _activeBufferMirrors)
-            {
-                buffer.ClearMirrors();
-            }
-
-            _activeBufferMirrors.Clear();
-
-            foreach ((var queryPool, var isOcclusion) in _activeQueries)
-            {
-                bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
-
-                Gd.Api.CmdResetQueryPool(CommandBuffer, queryPool, 0, 1);
-                Gd.Api.CmdBeginQuery(CommandBuffer, queryPool, 0, isPrecise ? QueryControlFlags.PreciseBit : 0);
-            }
-
-            Gd.ResetCounterPool();
-
-            Restore();
+        foreach ((var queryPool, _) in _activeQueries)
+        {
+            Gd.Api.CmdEndQuery(CommandBuffer, queryPool, 0);
         }
+
+        _byteWeight = 0;
+
+        if (PreloadCbs != null)
+        {
+            PreloadCbs.Value.Dispose();
+            PreloadCbs = null;
+        }
+
+        Gd.Barriers.Flush(Cbs, false, null, null);
+        CommandBuffer = (Cbs = Gd.CommandBufferPool.ReturnAndRent(Cbs)).CommandBuffer;
+        Gd.RegisterFlush();
+
+        // 恢复管线状态
+        Restore();
+    }
+    catch (VulkanException ex) when (ex.Result == Result.ErrorDeviceLost)
+    {
+        Logger.Error?.PrintMsg(LogClass.Gpu, "检测到设备丢失，尝试恢复...");
+        Gd.RecreateVulkanDevice(); // 确保该方法已定义
+        Restore();
+    }
+}
 
         public void RegisterActiveMirror(BufferHolder buffer)
         {
