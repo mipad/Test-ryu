@@ -290,31 +290,26 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         public void BeginQuery(BufferedQuery query, QueryPool pool, bool needsReset, bool isOcclusion, bool fromSamplePool)
-{
-    // 强制在 ARM GPU 上禁用遮挡查询
-    if (Gd.IsArmGPU)
-    {
-        isOcclusion = false;
-    }
-
-    if (needsReset)
-    {
-        EndRenderPass();
-
-        Gd.Api.CmdResetQueryPool(CommandBuffer, pool, 0, 1);
-
-        if (fromSamplePool)
         {
-            Gd.ResetFutureCounters(CommandBuffer, AutoFlush.GetRemainingQueries());
+            if (needsReset)
+            {
+                EndRenderPass();
+
+                Gd.Api.CmdResetQueryPool(CommandBuffer, pool, 0, 1);
+
+                if (fromSamplePool)
+                {
+                    // Try reset some additional queries in advance.
+
+                    Gd.ResetFutureCounters(CommandBuffer, AutoFlush.GetRemainingQueries());
+                }
+            }
+
+            bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
+            Gd.Api.CmdBeginQuery(CommandBuffer, pool, 0, isPrecise ? QueryControlFlags.PreciseBit : 0);
+
+            _activeQueries.Add((pool, isOcclusion));
         }
-    }
-
-    // 非 ARM GPU 保留精确查询逻辑
-    bool isPrecise = !Gd.IsArmGPU && Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
-    Gd.Api.CmdBeginQuery(CommandBuffer, pool, 0, isPrecise ? QueryControlFlags.PreciseBit : 0);
-
-    _activeQueries.Add((pool, isOcclusion));
-}
 
         public void EndQuery(QueryPool pool)
         {
