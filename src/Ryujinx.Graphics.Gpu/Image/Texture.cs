@@ -510,67 +510,61 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// When resizing storage, all texture views are recreated.
         /// </summary>
         /// <param name="scale">The new scale factor for this texture</param>
-        // ---- 修改的SetScale 方法代码 ----
-public void SetScale(float scale)
-{
-    bool unscaled = ScaleMode == TextureScaleMode.Blacklisted || (ScaleMode == TextureScaleMode.Undesired && scale == 1);
-    TextureScaleMode newScaleMode = unscaled ? ScaleMode : TextureScaleMode.Scaled;
-
-    if (_viewStorage != this)
-    {
-        _viewStorage.ScaleMode = newScaleMode;
-        _viewStorage.SetScale(scale);
-        return;
-    }
-
-    if (ScaleFactor != scale)
-    {
-        Logger.Debug?.Print(LogClass.Gpu, $"Rescaling {Info.Width}x{Info.Height} {Info.FormatInfo.Format} to ({ScaleFactor} to {scale}). ");
-
-        // ---- 新增：创建缩放纹理失败时的错误处理 ----
-        ITexture newStorage = GetScaledHostTexture(scale, true);
-        if (newStorage == null)
+        public void SetScale(float scale)
         {
-            Logger.Error?.Print(LogClass.Gpu, "Failed to create scaled texture. Fallback to original scale.");
-            ScaleFactor = 1f; // 回滚缩放
-            
-            // 确保 HostTexture 有效，若无效则重新创建
-            if (HostTexture == null)
+            bool unscaled = ScaleMode == TextureScaleMode.Blacklisted || (ScaleMode == TextureScaleMode.Undesired && scale == 1);
+            TextureScaleMode newScaleMode = unscaled ? ScaleMode : TextureScaleMode.Scaled;
+
+            if (_viewStorage != this)
             {
-                TextureCreateInfo createInfo = TextureCache.GetCreateInfo(Info, _context.Capabilities, 1f);
-                HostTexture = _context.Renderer.CreateTexture(createInfo);
+                _viewStorage.ScaleMode = newScaleMode;
+                _viewStorage.SetScale(scale);
+                return;
             }
-            return; // 提前返回，避免后续操作
-        }
 
-        Logger.Debug?.Print(LogClass.Gpu, $"  Copy performed: {HostTexture.Width}x{HostTexture.Height} to {newStorage.Width}x{newStorage.Height}");
+            if (ScaleFactor != scale)
+            {
+                Logger.Debug?.Print(LogClass.Gpu, $"Rescaling {Info.Width}x{Info.Height} {Info.FormatInfo.Format} to ({ScaleFactor} to {scale}). ");
 
-        ReplaceStorage(newStorage);
+                ScaleFactor = scale;
 
-        // 所有视图必须基于新存储重新创建
-        foreach (var view in _views)
-        {
-            Logger.Debug?.Print(LogClass.Gpu, $"  Recreating view {Info.Width}x{Info.Height} {Info.FormatInfo.Format}.");
-            view.ScaleFactor = scale;
-
-            TextureCreateInfo viewCreateInfo = TextureCache.GetCreateInfo(view.Info, _context.Capabilities, scale);
-            ITexture newView = HostTexture.CreateView(viewCreateInfo, view.FirstLayer - FirstLayer, view.FirstLevel - FirstLevel);
-
-            view.ReplaceStorage(newView);
-            view.ScaleMode = newScaleMode;
-        }
-    }
-
-    if (ScaleMode != newScaleMode)
-    {
-        ScaleMode = newScaleMode;
-
-        foreach (var view in _views)
-        {
-            view.ScaleMode = newScaleMode;
-        }
-    }
+                ITexture newStorage = GetScaledHostTexture(ScaleFactor, true);
+if (newStorage == null)
+{
+    Logger.Error?.Print(LogClass.Gpu, "Failed to create scaled texture. Fallback to original scale.");
+    ScaleFactor = 1f; // 回滚缩放
+    return;
 }
+
+                Logger.Debug?.Print(LogClass.Gpu, $"  Copy performed: {HostTexture.Width}x{HostTexture.Height} to {newStorage.Width}x{newStorage.Height}");
+
+                ReplaceStorage(newStorage);
+
+                // All views must be recreated against the new storage.
+
+                foreach (var view in _views)
+                {
+                    Logger.Debug?.Print(LogClass.Gpu, $"  Recreating view {Info.Width}x{Info.Height} {Info.FormatInfo.Format}.");
+                    view.ScaleFactor = scale;
+
+                    TextureCreateInfo viewCreateInfo = TextureCache.GetCreateInfo(view.Info, _context.Capabilities, scale);
+                    ITexture newView = HostTexture.CreateView(viewCreateInfo, view.FirstLayer - FirstLayer, view.FirstLevel - FirstLevel);
+
+                    view.ReplaceStorage(newView);
+                    view.ScaleMode = newScaleMode;
+                }
+            }
+
+            if (ScaleMode != newScaleMode)
+            {
+                ScaleMode = newScaleMode;
+
+                foreach (var view in _views)
+                {
+                    view.ScaleMode = newScaleMode;
+                }
+            }
+        }
 
         /// <summary>
         /// Checks if the memory for this texture was modified, and returns true if it was.
@@ -671,8 +665,8 @@ public void SetScale(float scale)
     }
 
     // 转换数据为宿主兼容格式
-    using (MemoryOwner<byte> result = ConvertToHostCompatibleFormat(data))
-{
+    MemoryOwner<byte> result = ConvertToHostCompatibleFormat(data);
+
     // ---- 新增空数据检查 ----
     if (result == null || result.Length == 0)
     {
@@ -702,7 +696,7 @@ public void SetScale(float scale)
 
     _hasData = true;
 }
-}
+
         /// <summary>
         /// Uploads new texture data to the host GPU.
         /// </summary>
@@ -832,28 +826,17 @@ public void SetScale(float scale)
 {
     string texInfo = $"{Info.Target} {Info.FormatInfo.Format} {Info.Width}x{Info.Height}x{Info.DepthOrLayers} levels {Info.Levels}";
     Logger.Debug?.Print(LogClass.Gpu, $"Invalid ASTC texture at 0x{Info.GpuAddress:X} ({texInfo}).");
-
-    // 返回默认黑色像素数据
-    int pixelCount = width * height * sliceDepth * layers * levels;
-    MemoryOwner<byte> fallback = MemoryOwner<byte>.Rent(pixelCount * 4); // RGBA8 格式
-    fallback.Memory.Span.Fill(0); // 填充为黑色
-    return fallback;
-    }
+    
+    result.Dispose(); // 释放原始数据
+    return MemoryOwner<byte>.Rent(0); // 返回空数据，避免后续操作
+}
 
                     if (GraphicsConfig.EnableTextureRecompression)
                     {
                         using (decoded)
                         {
-                            try
-        {
-            return BCnEncoder.EncodeBC7(decoded.Memory, width, height, sliceDepth, levels, layers);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error?.Print(LogClass.Gpu, $"BC7 encoding failed: {ex.Message}");
-            return MemoryOwner<byte>.Rent(0); // 返回空数据，上层需处理
-        }
-                    }
+                            return BCnEncoder.EncodeBC7(decoded.Memory, width, height, sliceDepth, levels, layers);
+                        }
                     }
 
                     return decoded;
