@@ -839,8 +839,16 @@ if (newStorage == null)
                     {
                         using (decoded)
                         {
-                            return BCnEncoder.EncodeBC7(decoded.Memory, width, height, sliceDepth, levels, layers);
-                        }
+                            try
+        {
+            return BCnEncoder.EncodeBC7(decoded.Memory, width, height, sliceDepth, levels, layers);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error?.Print(LogClass.Gpu, $"BC7 encoding failed: {ex.Message}");
+            return MemoryOwner<byte>.Rent(0); // 返回空数据，上层需处理
+        }
+                    }
                     }
 
                     return decoded;
