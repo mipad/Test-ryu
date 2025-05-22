@@ -89,18 +89,14 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             MaxTextureSizeCapacity = cpuMemorySizeGiB switch
             {
-              // 当 CPU 内存 <6 GiB 且 GPU 内存 <6 GiB（或 GPU 内存为 0）时，使用默认容量
-        ( <6, <6 ) when context.Capabilities.MaximumGpuMemory == 0 => DefaultTextureSizeCapacity,
-        ( <6, _ ) => TextureSizeCapacity4GiB, // 其他情况下，CPU 内存 <6 GiB 使用 4 GiB
-        
-        // CPU 内存 >=6 GiB 后的分级配置
-        ( >=6 and <8, _ ) => TextureSizeCapacity6GiB,
-        ( >=8 and <12, _ ) => TextureSizeCapacity8GiB,
-        ( >=12 and <16, _ ) => TextureSizeCapacity12GiB,
-        ( >=16, _ ) => TextureSizeCapacity16GiB,
-        
-        // 默认回退
-        _ => DefaultTextureSizeCapacity
+              < 6 when MaximumGpuMemoryGiB < 6 || context.Capabilities.MaximumGpuMemory == 0 =>
+            DefaultTextureSizeCapacity,
+        < 6 => TextureSizeCapacity4GiB,    // 当 CPU 内存 < 6 GiB 时，缓存容量设为 4 GiB
+        >= 6 and < 8 => TextureSizeCapacity6GiB,   // 新增条件：6-8 GiB 对应 6 GiB
+        >= 8 and < 12 => TextureSizeCapacity8GiB,  // 8-12 GiB 对应 8 GiB
+        >= 12 and < 16 => TextureSizeCapacity12GiB, // 12-16 GiB 对应 12 GiB
+        >= 16 => TextureSizeCapacity16GiB,
+        _ => TextureSizeCapacity18GiB
     };
 
             var cacheMemory = (ulong)(context.Capabilities.MaximumGpuMemory * MemoryScaleFactor);
