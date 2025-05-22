@@ -308,7 +308,7 @@ namespace Ryujinx.Graphics.Vulkan
     // 如果当前 GPU 是 Mali，强制禁用精确查询标志（即使支持）
     bool isPrecise = false;
 
-    if (!Gd.IsMaliGPU) // 假设 Gd 有 IsMaliGPU 属性用于检测 Mali GPU
+    if (!Gd.IsArm) // 假设 Gd 有 IsMaliGPU 属性用于检测 Mali GPU
     {
         // 非 Mali GPU 保持原有逻辑
         isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
