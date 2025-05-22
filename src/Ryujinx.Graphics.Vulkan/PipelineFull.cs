@@ -270,7 +270,7 @@ namespace Ryujinx.Graphics.Vulkan
         // 恢复管线状态
         Restore();
     }
-    catch (VulkanException ex) when (ex.Result == Result.ErrorDeviceLost)
+    catch (VulkanException ex) when (ex.Message.Contains("ErrorDeviceLost"))
     {
         Logger.Error?.PrintMsg(LogClass.Gpu, "检测到设备丢失，尝试恢复...");
         Gd.RecreateVulkanDevice(); // 确保该方法已定义
