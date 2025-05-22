@@ -78,6 +78,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public SurfaceTransformFlagsKHR CurrentTransform => _window.CurrentTransform;
 
+        public uint PhysicalDeviceVendorId { get; private set; } 
+        public bool IsArmGPU => PhysicalDeviceVendorId == 0x13B5; // ARM 的 Vulkan Vendor ID 是 0x13B5
+    
         private readonly Func<Instance, Vk, SurfaceKHR> _getSurface;
         private readonly Func<string[]> _getRequiredExtensions;
         private readonly string _preferredGpuId;
