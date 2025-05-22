@@ -693,8 +693,6 @@ if (newStorage == null)
         HostTexture.SetData(result);
     }
 
-    // 释放结果内存（假设 MemoryOwner<T> 实现了 IDisposable）
-    result.Dispose();
 
     _hasData = true;
 }
