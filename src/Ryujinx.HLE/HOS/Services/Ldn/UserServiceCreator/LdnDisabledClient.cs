@@ -54,7 +54,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator
 
         public void SetAdvertiseData(byte[] data) { }
 
-        public void SetGameVersion(byte[] versionString) { }
+        public void SetGameVersion(ReadOnlySpan<byte> versionString) { }
 
         public void SetStationAcceptPolicy(AcceptPolicy acceptPolicy) { }
 
