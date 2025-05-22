@@ -290,26 +290,35 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         public void BeginQuery(BufferedQuery query, QueryPool pool, bool needsReset, bool isOcclusion, bool fromSamplePool)
+{
+    if (needsReset)
+    {
+        EndRenderPass();
+
+        Gd.Api.CmdResetQueryPool(CommandBuffer, pool, 0, 1);
+
+        if (fromSamplePool)
         {
-            if (needsReset)
-            {
-                EndRenderPass();
-
-                Gd.Api.CmdResetQueryPool(CommandBuffer, pool, 0, 1);
-
-                if (fromSamplePool)
-                {
-                    // Try reset some additional queries in advance.
-
-                    Gd.ResetFutureCounters(CommandBuffer, AutoFlush.GetRemainingQueries());
-                }
-            }
-
-            bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
-            Gd.Api.CmdBeginQuery(CommandBuffer, pool, 0, isPrecise ? QueryControlFlags.PreciseBit : 0);
-
-            _activeQueries.Add((pool, isOcclusion));
+            // Try reset some additional queries in advance.
+            Gd.ResetFutureCounters(CommandBuffer, AutoFlush.GetRemainingQueries());
         }
+    }
+
+    // 针对 Mali GPU 的兼容性修复 ---------------------------
+    // 如果当前 GPU 是 Mali，强制禁用精确查询标志（即使支持）
+    bool isPrecise = false;
+
+    if (!Gd.IsMaliGPU) // 假设 Gd 有 IsMaliGPU 属性用于检测 Mali GPU
+    {
+        // 非 Mali GPU 保持原有逻辑
+        isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
+    }
+    // ---------------------------------------------------
+
+    Gd.Api.CmdBeginQuery(CommandBuffer, pool, 0, isPrecise ? QueryControlFlags.PreciseBit : 0);
+
+    _activeQueries.Add((pool, isOcclusion));
+}
 
         public void EndQuery(QueryPool pool)
         {
