@@ -510,61 +510,67 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// When resizing storage, all texture views are recreated.
         /// </summary>
         /// <param name="scale">The new scale factor for this texture</param>
-        public void SetScale(float scale)
-        {
-            bool unscaled = ScaleMode == TextureScaleMode.Blacklisted || (ScaleMode == TextureScaleMode.Undesired && scale == 1);
-            TextureScaleMode newScaleMode = unscaled ? ScaleMode : TextureScaleMode.Scaled;
-
-            if (_viewStorage != this)
-            {
-                _viewStorage.ScaleMode = newScaleMode;
-                _viewStorage.SetScale(scale);
-                return;
-            }
-
-            if (ScaleFactor != scale)
-            {
-                Logger.Debug?.Print(LogClass.Gpu, $"Rescaling {Info.Width}x{Info.Height} {Info.FormatInfo.Format} to ({ScaleFactor} to {scale}). ");
-
-                ScaleFactor = scale;
-
-                ITexture newStorage = GetScaledHostTexture(ScaleFactor, true);
-if (newStorage == null)
+        // ---- 修改的SetScale 方法代码 ----
+public void SetScale(float scale)
 {
-    Logger.Error?.Print(LogClass.Gpu, "Failed to create scaled texture. Fallback to original scale.");
-    ScaleFactor = 1f; // 回滚缩放
-    return;
-}
+    bool unscaled = ScaleMode == TextureScaleMode.Blacklisted || (ScaleMode == TextureScaleMode.Undesired && scale == 1);
+    TextureScaleMode newScaleMode = unscaled ? ScaleMode : TextureScaleMode.Scaled;
 
-                Logger.Debug?.Print(LogClass.Gpu, $"  Copy performed: {HostTexture.Width}x{HostTexture.Height} to {newStorage.Width}x{newStorage.Height}");
+    if (_viewStorage != this)
+    {
+        _viewStorage.ScaleMode = newScaleMode;
+        _viewStorage.SetScale(scale);
+        return;
+    }
 
-                ReplaceStorage(newStorage);
+    if (ScaleFactor != scale)
+    {
+        Logger.Debug?.Print(LogClass.Gpu, $"Rescaling {Info.Width}x{Info.Height} {Info.FormatInfo.Format} to ({ScaleFactor} to {scale}). ");
 
-                // All views must be recreated against the new storage.
-
-                foreach (var view in _views)
-                {
-                    Logger.Debug?.Print(LogClass.Gpu, $"  Recreating view {Info.Width}x{Info.Height} {Info.FormatInfo.Format}.");
-                    view.ScaleFactor = scale;
-
-                    TextureCreateInfo viewCreateInfo = TextureCache.GetCreateInfo(view.Info, _context.Capabilities, scale);
-                    ITexture newView = HostTexture.CreateView(viewCreateInfo, view.FirstLayer - FirstLayer, view.FirstLevel - FirstLevel);
-
-                    view.ReplaceStorage(newView);
-                    view.ScaleMode = newScaleMode;
-                }
-            }
-
-            if (ScaleMode != newScaleMode)
+        // ---- 新增：创建缩放纹理失败时的错误处理 ----
+        ITexture newStorage = GetScaledHostTexture(scale, true);
+        if (newStorage == null)
+        {
+            Logger.Error?.Print(LogClass.Gpu, "Failed to create scaled texture. Fallback to original scale.");
+            ScaleFactor = 1f; // 回滚缩放
+            
+            // 确保 HostTexture 有效，若无效则重新创建
+            if (HostTexture == null)
             {
-                ScaleMode = newScaleMode;
-
-                foreach (var view in _views)
-                {
-                    view.ScaleMode = newScaleMode;
-                }
+                TextureCreateInfo createInfo = TextureCache.GetCreateInfo(Info, _context.Capabilities, 1f);
+                HostTexture = _context.Renderer.CreateTexture(createInfo);
             }
+            return; // 提前返回，避免后续操作
         }
+
+        Logger.Debug?.Print(LogClass.Gpu, $"  Copy performed: {HostTexture.Width}x{HostTexture.Height} to {newStorage.Width}x{newStorage.Height}");
+
+        ReplaceStorage(newStorage);
+
+        // 所有视图必须基于新存储重新创建
+        foreach (var view in _views)
+        {
+            Logger.Debug?.Print(LogClass.Gpu, $"  Recreating view {Info.Width}x{Info.Height} {Info.FormatInfo.Format}.");
+            view.ScaleFactor = scale;
+
+            TextureCreateInfo viewCreateInfo = TextureCache.GetCreateInfo(view.Info, _context.Capabilities, scale);
+            ITexture newView = HostTexture.CreateView(viewCreateInfo, view.FirstLayer - FirstLayer, view.FirstLevel - FirstLevel);
+
+            view.ReplaceStorage(newView);
+            view.ScaleMode = newScaleMode;
+        }
+    }
+
+    if (ScaleMode != newScaleMode)
+    {
+        ScaleMode = newScaleMode;
+
+        foreach (var view in _views)
+        {
+            view.ScaleMode = newScaleMode;
+        }
+    }
+}
 
         /// <summary>
         /// Checks if the memory for this texture was modified, and returns true if it was.
