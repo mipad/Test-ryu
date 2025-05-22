@@ -95,8 +95,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         >= 6 and < 8 => TextureSizeCapacity6GiB,   // 新增条件：6-8 GiB 对应 6 GiB
         >= 8 and < 12 => TextureSizeCapacity8GiB,  // 8-12 GiB 对应 8 GiB
         >= 12 and < 16 => TextureSizeCapacity12GiB, // 12-16 GiB 对应 12 GiB
-        >= 16 => TextureSizeCapacity16GiB,
-        _ => TextureSizeCapacity18GiB
+        >= 16 => TextureSizeCapacity16GiB
     };
 
             var cacheMemory = (ulong)(context.Capabilities.MaximumGpuMemory * MemoryScaleFactor);
