@@ -297,39 +297,24 @@ namespace Ryujinx.Graphics.Shader.Translation
             {
                 InstOp op = block.OpCodes[opIndex];
 
-                // ====== 修复调试模式下的变量作用域问题 ======
                 if (context.TranslatorContext.Options.Flags.HasFlag(TranslationFlags.DebugMode))
-                {
-                    string instName = "Unknown"; // 显式初始化默认值
+        {
+            string instName = "Unknown"; // 初始化默认值
 
-                    if (op.Emitter != null)
-                    {
-                        instName = op.Name.ToString();
-                    }
-                    else
-                    {
-                        instName = "???";
-                        context.TranslatorContext.GpuAccessor.Log($"Invalid instruction at 0x{op.Address:X6} (0x{op.RawOpCode:X16}).");
-                        return; // 提前返回确保后续代码不会使用未初始化的instName
-                    }
+            if (op.Emitter != null)
+            {
+                instName = op.Name.ToString();
+            }
+            else
+            {
+                instName = "???";
+                context.TranslatorContext.GpuAccessor.Log($"Invalid instruction at 0x{op.Address:X6} (0x{op.RawOpCode:X16}).");
+                return; // 提前返回，确保后续代码不依赖 instName
+            }
 
                     string dbgComment = $"0x{op.Address:X6}: 0x{op.RawOpCode:X16} {instName}";
+
                     context.Add(new CommentNode(dbgComment));
-                }
-
-                // ====== 新增Votevtg指令处理逻辑 ======
-                if (op.Name == InstName.Votevtg)
-                {
-                    // 操作数解析：Votevtg dest, predicate
-                    Operand dest = op.GetDest();
-                    Operand predicate = op.GetSrc(0);
-
-                    // 生成SPIR-V GroupNonUniformBallot指令
-                    Operand ballotResult = context.AllocateTempRegister();
-                    context.Emit(Instruction.GroupNonUniformBallot, ballotResult, predicate);
-                    context.Emit(Instruction.ConvertU32ToU64, dest, ballotResult);
-
-                    continue; // 跳过后续通用处理
                 }
 
                 InstConditional opConditional = new(op.RawOpCode);
@@ -344,6 +329,10 @@ namespace Ryujinx.Graphics.Shader.Translation
 
                 if (Decoder.IsPopBranch(op.Name))
                 {
+                    // If the instruction is a SYNC or BRK instruction with only one
+                    // possible target address, then the instruction is basically
+                    // just a simple branch, we can generate code similar to branch
+                    // instructions, with the condition check on the branch itself.
                     noPred = block.SyncTargets.Count <= 1;
                 }
                 else if (op.Name == InstName.Bra)
