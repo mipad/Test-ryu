@@ -3109,7 +3109,7 @@ namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
 
         private static bool IsAddressNotWordAligned(ulong address)
         {
-            return (address & 3) != 0;
+            return (address & 0x3) != 0;
         }
     }
 }
