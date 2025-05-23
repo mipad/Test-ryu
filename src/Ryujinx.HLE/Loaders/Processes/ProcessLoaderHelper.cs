@@ -256,9 +256,9 @@ namespace Ryujinx.HLE.Loaders.Processes
 
             var buildIds = executables.Select(e => (e switch
             {
-                NsoExecutable nso => Convert.ToHexString(nso.BuildId.ItemsRo.ToArray()),
+                NsoExecutable nso => Convert.ToHexString(nso.BuildId),
                 NroExecutable nro => Convert.ToHexString(nro.Header.BuildId),
-                _ => "",
+                _ => string.Empty
             }).ToUpper());
 
             NceCpuCodePatch[] nsoPatch = new NceCpuCodePatch[executables.Length];
