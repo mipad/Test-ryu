@@ -557,19 +557,22 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         }
 
         private static void WakeThreads(
-            List<KThread> threads,
-            int count,
-            Action<KThread> removeCallback,
-            Func<KThread, bool> predicate)
-        {
-            var candidates = threads.Where(predicate).OrderBy(x => x.DynamicPriority);
-            var toSignal = (count > 0 ? candidates.Take(count) : candidates).ToArray();
+    List<KThread> threads,
+    int count,
+    Action<KThread> removeCallback,
+    Func<KThread, bool> predicate)
+{
+    // 使用 ToList 避免迭代时集合被修改
+    var candidates = threads.Where(predicate).OrderBy(x => x.DynamicPriority).ToList();
+    var toSignal = (count > 0 ? candidates.Take(count) : candidates).ToArray();
 
-            foreach (KThread thread in toSignal)
-            {
-                removeCallback(thread);
-                threads.Remove(thread);
-            }
+    foreach (KThread thread in toSignal)
+    {
+        if (threads.Remove(thread)) // 确保线程存在于集合中
+        {
+            removeCallback(thread);
+        }
+    }
         }
     }
 }
