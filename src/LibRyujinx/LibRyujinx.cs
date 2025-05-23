@@ -334,7 +334,7 @@ namespace LibRyujinx
             {
                 _ = Enum.TryParse(TitleLanguage.ToString(), out TitleLanguage desiredTitleLanguage);
 
-                if (controlData.Title.ItemsRo.Length > (int)desiredTitleLanguage)
+                if (controlData.Title.Length > (int)desiredTitleLanguage)
                 {
                     titleName = controlData.Title[(int)desiredTitleLanguage].NameString.ToString();
                     publisher = controlData.Title[(int)desiredTitleLanguage].PublisherString.ToString();
