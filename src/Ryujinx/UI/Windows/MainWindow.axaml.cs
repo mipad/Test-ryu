@@ -4,6 +4,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using DynamicData;
 using FluentAvalonia.UI.Controls;
 using LibHac.Tools.FsSystem;
 using Ryujinx.Ava.Common;
@@ -26,6 +27,8 @@ using Ryujinx.UI.Common.Configuration;
 using Ryujinx.UI.Common.Helper;
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reactive.Linq;
 using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Tasks;
@@ -35,7 +38,7 @@ namespace Ryujinx.Ava.UI.Windows
     public partial class MainWindow : StyleableWindow
     {
         internal static MainWindowViewModel MainWindowViewModel { get; private set; }
-
+        
         private bool _isLoading;
         private bool _applicationsLoadedOnce;
 
@@ -45,6 +48,7 @@ namespace Ryujinx.Ava.UI.Windows
         private static string _launchApplicationId;
         private static bool _startFullscreen;
         internal readonly AvaHostUIHandler UiHandler;
+        private IDisposable _appLibraryAppsSubscription;
 
         public VirtualFileSystem VirtualFileSystem { get; private set; }
         public ContentManager ContentManager { get; private set; }
@@ -63,9 +67,20 @@ namespace Ryujinx.Ava.UI.Windows
         public readonly double StatusBarHeight;
         public readonly double MenuBarHeight;
 
+        // The special window decoration from AppWindow in FluentAvalonia is only present on Windows;
+        // and as such optimizing for the fact that the menu bar and the title bar are the same is only needed on Windows.
+        // Maximized is considered superior to FullScreen on Windows in this case because you get the benefits of being in full screen,
+        // while still being able to use the standard 3 window controls in the top right to minimize, make the window smaller, or close the app.
+
+        public static readonly WindowState FullScreenWindowState =
+            OperatingSystem.IsWindows() ? WindowState.Maximized : WindowState.FullScreen;
+
         public MainWindow()
         {
-            ViewModel = new MainWindowViewModel();
+            DataContext = ViewModel = new MainWindowViewModel
+            {
+                Window = this
+            };
 
             MainWindowViewModel = ViewModel;
 
@@ -84,6 +99,9 @@ namespace Ryujinx.Ava.UI.Windows
             double barHeight = MenuBarHeight + StatusBarHeight;
             Height = ((Height - barHeight) / Program.WindowScaleFactor) + barHeight;
             Width /= Program.WindowScaleFactor;
+
+            ApplicationList.DataContext = DataContext;
+            ApplicationGrid.DataContext = DataContext;
 
             SetWindowSizePosition();
 
@@ -136,14 +154,6 @@ namespace Ryujinx.Ava.UI.Windows
             Program.DesktopScaleFactor = this.RenderScaling;
         }
 
-        private void ApplicationLibrary_ApplicationAdded(object sender, ApplicationAddedEventArgs e)
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                ViewModel.Applications.Add(e.AppData);
-            });
-        }
-
         private void ApplicationLibrary_ApplicationCountUpdated(object sender, ApplicationCountUpdatedEventArgs e)
         {
             LocaleManager.Instance.UpdateAndGetDynamicValue(LocaleKeys.StatusBarGamesLoaded, e.NumAppsLoaded, e.NumAppsFound);
@@ -163,6 +173,36 @@ namespace Ryujinx.Ava.UI.Windows
                     StatusBarView.LoadProgressBar.IsVisible = false;
                 }
             });
+        }
+
+        private void ApplicationLibrary_LdnGameDataReceived(object sender, LdnGameDataReceivedEventArgs e)
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                var ldnGameDataArray = e.LdnData;
+                ViewModel.LastLdnGameData = ldnGameDataArray;
+                foreach (var application in ViewModel.Applications)
+                {
+                    UpdateApplicationWithLdnData(application);
+                }
+                ViewModel.RefreshView();
+            });
+        }
+
+        private void UpdateApplicationWithLdnData(ApplicationData application)
+        {
+            if (application.ControlHolder.ByteSpan.Length > 0 && ViewModel.LastLdnGameData != null)
+            {
+                IEnumerable<LdnGameData> ldnGameData = ViewModel.LastLdnGameData.Where(game => application.ControlHolder.Value.LocalCommunicationId.AsSpan().Contains(Convert.ToUInt64(game.TitleId, 16)));
+
+                application.PlayerCount = ldnGameData.Sum(game => game.PlayerCount);
+                application.GameCount = ldnGameData.Count();
+            }
+            else
+            {
+                application.PlayerCount = 0;
+                application.GameCount = 0;
+            }
         }
 
         public void Application_Opened(object sender, ApplicationOpenedEventArgs args)
@@ -191,7 +231,7 @@ namespace Ryujinx.Ava.UI.Windows
             ViewModel.ShowContent = true;
             ViewModel.IsLoadingIndeterminate = false;
 
-            if (startFullscreen && ViewModel.WindowState != WindowState.FullScreen)
+            if (startFullscreen && ViewModel.WindowState != FullScreenWindowState)
             {
                 ViewModel.ToggleFullscreen();
             }
@@ -203,7 +243,7 @@ namespace Ryujinx.Ava.UI.Windows
             ViewModel.ShowLoadProgress = true;
             ViewModel.IsLoadingIndeterminate = true;
 
-            if (startFullscreen && ViewModel.WindowState != WindowState.FullScreen)
+            if (startFullscreen && ViewModel.WindowState != FullScreenWindowState)
             {
                 ViewModel.ToggleFullscreen();
             }
@@ -329,7 +369,7 @@ namespace Ryujinx.Ava.UI.Windows
 
                         if (_launchApplicationId != null)
                         {
-                            applicationData = applications.Find(application => application.IdString == _launchApplicationId);
+                            applicationData = applications.FirstOrDefault(application => application.IdString == _launchApplicationId);
 
                             if (applicationData != null)
                             {
@@ -361,7 +401,7 @@ namespace Ryujinx.Ava.UI.Windows
                 await Dispatcher.UIThread.InvokeAsync(async () => await UserErrorDialog.ShowUserErrorDialog(UserError.NoKeys));
             }
 
-            if (ConfigurationState.Instance.CheckUpdatesOnStart.Value && Updater.CanUpdate(false))
+            if (ConfigurationState.Instance.CheckUpdatesOnStart.Value && !CommandLineState.HideAvailableUpdates && Updater.CanUpdate(false))
             {
                 await Updater.BeginParse(this, false).ContinueWith(task =>
                 {
@@ -472,7 +512,25 @@ namespace Ryujinx.Ava.UI.Windows
                 this);
 
             ApplicationLibrary.ApplicationCountUpdated += ApplicationLibrary_ApplicationCountUpdated;
-            ApplicationLibrary.ApplicationAdded += ApplicationLibrary_ApplicationAdded;
+            _appLibraryAppsSubscription?.Dispose();
+            _appLibraryAppsSubscription = ApplicationLibrary.Applications
+                    .Connect()
+                    .ObserveOn(SynchronizationContext.Current)
+                    .Bind(ViewModel.Applications)
+                    .OnItemAdded(UpdateApplicationWithLdnData)
+                    .Subscribe();
+            ApplicationLibrary.LdnGameDataReceived += ApplicationLibrary_LdnGameDataReceived;
+
+            ConfigurationState.Instance.Multiplayer.Mode.Event += (sender, evt) =>
+            {
+                _ = Task.Run(ViewModel.ApplicationLibrary.RefreshLdn);
+            };
+
+            ConfigurationState.Instance.Multiplayer.LdnServer.Event += (sender, evt) =>
+            {
+                _ = Task.Run(ViewModel.ApplicationLibrary.RefreshLdn);
+            };
+            _ = Task.Run(ViewModel.ApplicationLibrary.RefreshLdn);
 
             ViewModel.RefreshFirmwareStatus();
 
@@ -575,6 +633,7 @@ namespace Ryujinx.Ava.UI.Windows
 
             ApplicationLibrary.CancelLoading();
             InputManager.Dispose();
+            _appLibraryAppsSubscription?.Dispose();
             Program.Exit();
 
             base.OnClosing(e);
@@ -596,7 +655,6 @@ namespace Ryujinx.Ava.UI.Windows
         public void LoadApplications()
         {
             _applicationsLoadedOnce = true;
-            ViewModel.Applications.Clear();
 
             StatusBarView.LoadProgressBar.IsVisible = true;
             ViewModel.StatusBarProgressMaximum = 0;
@@ -638,7 +696,17 @@ namespace Ryujinx.Ava.UI.Windows
             Thread applicationLibraryThread = new(() =>
             {
                 ApplicationLibrary.DesiredLanguage = ConfigurationState.Instance.System.Language;
+
                 ApplicationLibrary.LoadApplications(ConfigurationState.Instance.UI.GameDirs);
+
+                var autoloadDirs = ConfigurationState.Instance.UI.AutoloadDirs.Value;
+                if (autoloadDirs.Count > 0)
+                {
+                    var updatesLoaded = ApplicationLibrary.AutoLoadTitleUpdates(autoloadDirs, out int updatesRemoved);
+                    var dlcLoaded = ApplicationLibrary.AutoLoadDownloadableContents(autoloadDirs, out int dlcRemoved);
+
+                    ShowNewContentAddedDialog(dlcLoaded, dlcRemoved, updatesLoaded, updatesRemoved);
+                }
 
                 _isLoading = false;
             })
@@ -647,6 +715,28 @@ namespace Ryujinx.Ava.UI.Windows
                 IsBackground = true,
             };
             applicationLibraryThread.Start();
+        }
+
+        private void ShowNewContentAddedDialog(int numDlcAdded, int numDlcRemoved, int numUpdatesAdded, int numUpdatesRemoved)
+        {
+            string[] messages =
+            [
+                numDlcRemoved > 0 ? string.Format(LocaleManager.Instance[LocaleKeys.AutoloadDlcRemovedMessage], numDlcRemoved): null,
+                numDlcAdded > 0 ? string.Format(LocaleManager.Instance[LocaleKeys.AutoloadDlcAddedMessage], numDlcAdded): null,
+                numUpdatesRemoved > 0 ? string.Format(LocaleManager.Instance[LocaleKeys.AutoloadUpdateRemovedMessage], numUpdatesRemoved): null,
+                numUpdatesAdded > 0 ? string.Format(LocaleManager.Instance[LocaleKeys.AutoloadUpdateAddedMessage], numUpdatesAdded) : null
+            ];
+
+            string msg = String.Join("\r\n", messages);
+
+            if (String.IsNullOrWhiteSpace(msg))
+                return;
+
+            Dispatcher.UIThread.InvokeAsync(async () =>
+            {
+                await ContentDialogHelper.ShowTextDialog(LocaleManager.Instance[LocaleKeys.DialogConfirmationTitle],
+                    msg, "", "", "", LocaleManager.Instance[LocaleKeys.InputDialogOk], (int)Symbol.Checkmark);
+            });
         }
     }
 }
