@@ -248,7 +248,6 @@ namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
         }
 
         [Svc(0x21)]
-        [Svc(0x21)]
 public Result SendSyncRequest(int handle)
 {
     KProcess currentProcess = KernelStatic.GetCurrentProcess();
