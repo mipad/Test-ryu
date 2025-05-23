@@ -261,7 +261,7 @@ public Result SendSyncRequest(int handle)
     // 临时提升 IPC 线程优先级
     KThread currentThread = KernelStatic.GetCurrentThread();
     int originalPriority = currentThread.DynamicPriority;
-    currentThread.SetPriority(ThreadPriority.High);
+    currentThread.SetPriority(ThreadPriority.AboveNormal);
 
     Result result = session.SendSyncRequest();
 
