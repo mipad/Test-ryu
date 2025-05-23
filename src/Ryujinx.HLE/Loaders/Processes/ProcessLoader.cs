@@ -195,7 +195,13 @@ namespace Ryujinx.HLE.Loaders.Processes
 
                     if (string.IsNullOrWhiteSpace(programName))
                     {
-                        programName = Array.Find(nacpData.Value.Title.ItemsRo.ToArray(), x => x.Name[0] != 0).NameString.ToString();
+                        foreach (ApplicationControlProperty.ApplicationTitle nacpTitles in nacpData.Value.Title)
+                        {
+                            if (nacpTitles.Name[0] != 0)
+                                continue;
+
+                            programName = nacpTitles.NameString.ToString();
+                        }
                     }
 
                     if (nacpData.Value.PresenceGroupId != 0)
@@ -298,7 +304,13 @@ namespace Ryujinx.HLE.Loaders.Processes
 
                     if (string.IsNullOrWhiteSpace(programName))
                     {
-                        programName = Array.Find(nacpData.Value.Title.ItemsRo.ToArray(), x => x.Name[0] != 0).NameString.ToString();
+                        foreach (ApplicationControlProperty.ApplicationTitle nacpTitles in nacpData.Value.Title)
+                        {
+                            if (nacpTitles.Name[0] != 0)
+                                continue;
+
+                            programName = nacpTitles.NameString.ToString();
+                        }
                     }
 
                     if (nacpData.Value.PresenceGroupId != 0)
