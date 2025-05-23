@@ -347,7 +347,7 @@ namespace LibRyujinx
 
                 if (string.IsNullOrWhiteSpace(titleName))
                 {
-                    foreach (ref readonly var controlTitle in controlData.Title.ItemsRo)
+                    foreach (ref readonly var controlTitle in controlData.Title)
                     {
                         if (!controlTitle.NameString.IsEmpty())
                         {
@@ -360,7 +360,7 @@ namespace LibRyujinx
 
                 if (string.IsNullOrWhiteSpace(publisher))
                 {
-                    foreach (ref readonly var controlTitle in controlData.Title.ItemsRo)
+                    foreach (ref readonly var controlTitle in controlData.Title)
                     {
                         if (!controlTitle.PublisherString.IsEmpty())
                         {
