@@ -248,19 +248,29 @@ namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
         }
 
         [Svc(0x21)]
-        public Result SendSyncRequest(int handle)
-        {
-            KProcess currentProcess = KernelStatic.GetCurrentProcess();
+        [Svc(0x21)]
+public Result SendSyncRequest(int handle)
+{
+    KProcess currentProcess = KernelStatic.GetCurrentProcess();
+    KClientSession session = currentProcess.HandleTable.GetObject<KClientSession>(handle);
 
-            KClientSession session = currentProcess.HandleTable.GetObject<KClientSession>(handle);
+    if (session == null)
+    {
+        return KernelResult.InvalidHandle;
+    }
 
-            if (session == null)
-            {
-                return KernelResult.InvalidHandle;
-            }
+    // 临时提升 IPC 线程优先级
+    KThread currentThread = KernelStatic.GetCurrentThread();
+    int originalPriority = currentThread.DynamicPriority;
+    currentThread.SetPriority(ThreadPriority.High);
 
-            return session.SendSyncRequest();
-        }
+    Result result = session.SendSyncRequest();
+
+    // 恢复原始优先级
+    currentThread.SetPriority(originalPriority);
+
+    return result;
+}
 
         [Svc(0x22)]
         public Result SendSyncRequestWithUserBuffer(
