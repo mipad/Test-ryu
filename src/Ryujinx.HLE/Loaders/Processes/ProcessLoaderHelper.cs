@@ -181,7 +181,7 @@ namespace Ryujinx.HLE.Loaders.Processes
 
             KProcess process = new(context);
 
-            var processContextFactory = new ArmProcessContextFactory(
+            ArmProcessContextFactory processContextFactory = new(
                 context.Device.System.TickSource,
                 context.Device.Gpu,
                 string.Empty,
