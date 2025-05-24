@@ -51,6 +51,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableShaderCache: MutableState<Boolean>,
         enableTextureRecompression: MutableState<Boolean>,
         resScale: MutableState<Float>,
+        enableAspectRatioStretch: MutableState<Boolean>,
         useVirtualController: MutableState<Boolean>,
         isGrid: MutableState<Boolean>,
         useSwitchLayout: MutableState<Boolean>,
@@ -65,8 +66,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableGuestLogs: MutableState<Boolean>,
         enableAccessLogs: MutableState<Boolean>,
         enableTraceLogs: MutableState<Boolean>,
-        enableGraphicsLogs: MutableState<Boolean>,
-        enableAspectRatioStretch: MutableState<Boolean>
+        enableGraphicsLogs: MutableState<Boolean>
     ) {
 
         isHostMapped.value = sharedPref.getBoolean("isHostMapped", true)
