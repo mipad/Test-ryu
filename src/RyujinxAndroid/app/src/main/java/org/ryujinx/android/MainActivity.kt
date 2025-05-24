@@ -144,6 +144,11 @@ class MainActivity : BaseActivity() {
                 height: Int
             ) {
                 mainViewModel?.updateScreenSize(width, height)
+                // 新增：获取当前 Vulkan commandBuffer 并调用 Native 方法
+        val commandBuffer = mainViewModel?.getCurrentCommandBuffer() // 假设 ViewModel 提供此方法
+        commandBuffer?.let {
+            setAspectRatioStretch(it, true, width, height) // enable=true 表示启用拉伸
+        }
             }
 
             override fun surfaceCreated(holder: SurfaceHolder) {}
