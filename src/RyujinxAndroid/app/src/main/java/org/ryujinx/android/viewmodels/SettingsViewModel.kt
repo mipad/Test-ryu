@@ -79,7 +79,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableTextureRecompression.value =
             sharedPref.getBoolean("enableTextureRecompression", false)
         resScale.value = sharedPref.getFloat("resScale", 1f)
-        enableAspectRatioStretch = sharedPref.getBoolean("Stretch to Full Screen", false)
+        enableAspectRatioStretch = sharedPref.getBoolean("enableAspectRatioStretch", false)
         useVirtualController.value = sharedPref.getBoolean("useVirtualController", true)
         isGrid.value = sharedPref.getBoolean("isGrid", true)
         useSwitchLayout.value = sharedPref.getBoolean("useSwitchLayout", true)
