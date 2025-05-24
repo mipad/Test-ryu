@@ -157,6 +157,15 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.apply()
         activity.storageHelper!!.onFolderSelected = previousFolderCallback
 
+        // 获取屏幕尺寸并调用 Native 方法
+        val screenWidth = (activity as MainActivity).mainViewModel?.screenWidth ?: 0
+        val screenHeight = (activity as MainActivity).mainViewModel?.screenHeight ?: 0
+        RyujinxNative.setAspectRatioStretch(
+            enableAspectRatioStretch.value,
+            screenWidth,
+            screenHeight
+        )
+        
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Debug.ordinal, enableDebugLogs.value)
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Info.ordinal, enableInfoLogs.value)
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Stub.ordinal, enableStubLogs.value)
