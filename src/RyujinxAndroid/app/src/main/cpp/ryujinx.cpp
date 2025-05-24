@@ -248,3 +248,44 @@ Java_org_ryujinx_android_NativeHelpers_setIsInitialOrientationFlipped(JNIEnv *en
                                                                       jboolean is_flipped) {
     isInitialOrientationFlipped = is_flipped;
 }
+
+// 
+extern "C" JNIEXPORT void JNICALL
+Java_org_ryujinx_RyujinxNative_setAspectRatioStretch(
+    JNIEnv* env,
+    jobject thiz,
+    jboolean enable,
+    jint width,
+    jint height
+) {
+    // 确保 commandBuffer 已正确初始化
+    if (commandBuffer == VK_NULL_HANDLE) return;
+
+    VkViewport viewport{};
+    if (enable) {
+        // 拉伸到全屏
+        viewport = {
+            .x = 0.0f,
+            .y = 0.0f,
+            .width = static_cast<float>(width),
+            .height = static_cast<float>(height),
+            .minDepth = 0.0f,
+            .maxDepth = 1.0f
+        };
+    } else {
+        // 计算保持比例的视口（例如 16:9）
+        float aspectRatio = 16.0f / 9.0f;
+        if (width > height * aspectRatio) {
+            int viewportWidth = static_cast<int>(height * aspectRatio);
+            viewport.x = (width - viewportWidth) / 2.0f;
+            viewport.width = static_cast<float>(viewportWidth);
+        } else {
+            int viewportHeight = static_cast<int>(width / aspectRatio);
+            viewport.y = (height - viewportHeight) / 2.0f;
+            viewport.height = static_cast<float>(viewportHeight);
+        }
+    }
+
+    // 更新视口
+    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+}
