@@ -151,6 +151,7 @@ class SettingViews {
                     enableShaderCache,
                     enableTextureRecompression,
                     resScale,
+                    Stretch to Full Screen,
                     useVirtualController,
                     isGrid,
                     useSwitchLayout,
@@ -187,6 +188,7 @@ class SettingViews {
                                     enableShaderCache,
                                     enableTextureRecompression,
                                     resScale,
+                                    Stretch to Full Screen,
                                     useVirtualController,
                                     isGrid,
                                     useSwitchLayout,
@@ -704,6 +706,25 @@ class SettingViews {
                                 onValueChange = { it ->
                                     resScale.value = it
                                 })
+                            }
+                                Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Stretch to Full Screen",
+                modifier = Modifier.align(Alignment.CenterVertically)
+            )
+            Switch(
+                checked = enableAspectRatioStretch.value,
+                onCheckedChange = { 
+                    enableAspectRatioStretch.value = it 
+                    // 通知渲染层立即更新（若需要）
+                })
+                                }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
