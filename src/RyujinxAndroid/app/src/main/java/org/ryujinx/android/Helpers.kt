@@ -20,6 +20,7 @@ import net.lingala.zip4j.io.inputstream.ZipInputStream
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import androidx.core.net.toUri
 
 class Helpers {
     companion object {
@@ -39,7 +40,7 @@ class Helpers {
                 } else if (isDownloadsDocument(uri)) {
                     val id = DocumentsContract.getDocumentId(uri)
                     val contentUri = ContentUris.withAppendedId(
-                        Uri.parse("content://downloads/public_downloads"),
+                        "content://downloads/public_downloads".toUri(),
                         java.lang.Long.valueOf(id)
                     )
                     return getDataColumn(context, contentUri, null, null)
