@@ -51,6 +51,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableShaderCache: MutableState<Boolean>,
         enableTextureRecompression: MutableState<Boolean>,
         resScale: MutableState<Float>,
+        Stretch to Full Screen: MutableState<Boolean>,
         useVirtualController: MutableState<Boolean>,
         isGrid: MutableState<Boolean>,
         useSwitchLayout: MutableState<Boolean>,
@@ -78,6 +79,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableTextureRecompression.value =
             sharedPref.getBoolean("enableTextureRecompression", false)
         resScale.value = sharedPref.getFloat("resScale", 1f)
+        Stretch to Full Screen.value = sharedPref.getBoolean("Stretch to Full Screen", true)
         useVirtualController.value = sharedPref.getBoolean("useVirtualController", true)
         isGrid.value = sharedPref.getBoolean("isGrid", true)
         useSwitchLayout.value = sharedPref.getBoolean("useSwitchLayout", true)
@@ -106,6 +108,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableShaderCache: MutableState<Boolean>,
         enableTextureRecompression: MutableState<Boolean>,
         resScale: MutableState<Float>,
+        Stretch to Full Screen: MutableState<Boolean>,
         useVirtualController: MutableState<Boolean>,
         isGrid: MutableState<Boolean>,
         useSwitchLayout: MutableState<Boolean>,
@@ -133,6 +136,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.putBoolean("enableShaderCache", enableShaderCache.value)
         editor.putBoolean("enableTextureRecompression", enableTextureRecompression.value)
         editor.putFloat("resScale", resScale.value)
+        editor.putBoolean("Stretch to Full Screen", Stretch to Full Screen.value)
         editor.putBoolean("useVirtualController", useVirtualController.value)
         editor.putBoolean("isGrid", isGrid.value)
         editor.putBoolean("useSwitchLayout", useSwitchLayout.value)
