@@ -721,11 +721,15 @@ class SettingViews {
                                       modifier = Modifier.align(Alignment.CenterVertically)
                                    )
                             Switch(
-                                      checked = enableAspectRatioStretch.value,
-                                      onCheckedChange = { 
-                                      enableAspectRatioStretch.value = it 
-                                      RyujinxNative.setAspectRatioStretch(it) // 添加 JNI 调用
-                            })
+    checked = enableAspectRatioStretch.value,
+    onCheckedChange = { isChecked ->
+        enableAspectRatioStretch.value = isChecked
+        // 获取当前屏幕尺寸（假设通过 SurfaceHolder 动态更新）
+        val screenWidth = surfaceView.holder.surfaceFrame.width()
+        val screenHeight = surfaceView.holder.surfaceFrame.height()
+        RyujinxNative.setAspectRatioStretch(isChecked, screenWidth, screenHeight)
+    }
+)
                             }
                             Row(
                                 modifier = Modifier
