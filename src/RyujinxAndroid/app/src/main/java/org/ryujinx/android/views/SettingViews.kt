@@ -724,6 +724,7 @@ class SettingViews {
                                       checked = enableAspectRatioStretch.value,
                                       onCheckedChange = { 
                                       enableAspectRatioStretch.value = it 
+                                      RyujinxNative.setAspectRatioStretch(it) // 添加 JNI 调用
                             })
                             }
                             Row(
