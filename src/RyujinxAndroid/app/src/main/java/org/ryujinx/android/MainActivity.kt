@@ -134,6 +134,22 @@ class MainActivity : BaseActivity() {
 
         mainViewModel!!.refreshFirmwareVersion()
 
+        // 监听 SurfaceView 尺寸变化
+        val surfaceView = findViewById<SurfaceView>(R.id.surface_view)
+        surfaceView.holder.addCallback(object : SurfaceHolder.Callback {
+            override fun surfaceChanged(
+                holder: SurfaceHolder,
+                format: Int,
+                width: Int,
+                height: Int
+            ) {
+                mainViewModel?.updateScreenSize(width, height)
+            }
+
+            override fun surfaceCreated(holder: SurfaceHolder) {}
+            override fun surfaceDestroyed(holder: SurfaceHolder) {}
+        })
+        
         mainViewModel?.apply {
             setContent {
                 RyujinxAndroidTheme {
