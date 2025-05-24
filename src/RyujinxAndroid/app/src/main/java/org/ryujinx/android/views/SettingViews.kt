@@ -115,7 +115,6 @@ class SettingViews {
             val resScale = remember {
                 mutableStateOf(1f)
             }
-            // 在 Main Composable 的状态变量部分添加
             val enableAspectRatioStretch = remember {
                 mutableStateOf(false) 
             }
@@ -710,7 +709,6 @@ class SettingViews {
                                 onValueChange = { it ->
                                     resScale.value = it
                                 })
-                            }
                                 Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -728,7 +726,6 @@ class SettingViews {
                     enableAspectRatioStretch.value = it 
                     // 通知渲染层立即更新（若需要）
                 })
-                                }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
