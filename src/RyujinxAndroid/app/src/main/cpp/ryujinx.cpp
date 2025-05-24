@@ -20,6 +20,7 @@
 #include "pthread.h"
 #include <chrono>
 #include <csignal>
+#include <vulkan/vulkan.h>
 
 
 std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
@@ -254,6 +255,7 @@ extern "C" JNIEXPORT void JNICALL
 Java_org_ryujinx_RyujinxNative_setAspectRatioStretch(
     JNIEnv* env,
     jobject thiz,
+    jlong commandBufferHandle,  // 新增参数
     jboolean enable,
     jint width,
     jint height
