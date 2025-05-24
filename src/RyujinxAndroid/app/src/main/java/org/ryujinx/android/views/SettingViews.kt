@@ -115,6 +115,10 @@ class SettingViews {
             val resScale = remember {
                 mutableStateOf(1f)
             }
+            // 在 Main Composable 的状态变量部分添加
+            val enableAspectRatioStretch = remember {
+                mutableStateOf(false) 
+            }
             val useVirtualController = remember {
                 mutableStateOf(true)
             }
