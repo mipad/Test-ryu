@@ -397,7 +397,7 @@ class GameViews {
                 }
             }
 
-            mainViewModel.setStatStates(fifo, gameFps, gameTime, usedMem, totalMem, frequencies)
+            mainViewModel.setStatStates(fifo, gameFps, gameTime, usedMem, totalMem)
         }
     }
 }
