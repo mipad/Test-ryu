@@ -796,7 +796,7 @@ namespace Ryujinx.Audio.Renderer.Server
                 parameter.SplitterCount > 0 &&
                 parameter.SplitterDestinationCount > 0)
             {
-                size = WorkBufferAllocator.GetTargetSize<BiquadFilterState>(size, parameter.SplitterDestinationCount * SplitterContext.BqfStatesPerDestination, 0x10);
+                (size, (uint)(parameter.SplitterDestinationCount * SplitterContext.BqfStatesPerDestination * 1.5), 0x10);
             }
 
             // DSP Voice
