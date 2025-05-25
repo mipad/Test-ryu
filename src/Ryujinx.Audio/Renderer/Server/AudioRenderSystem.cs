@@ -763,8 +763,17 @@ namespace Ryujinx.Audio.Renderer.Server
             ulong size = 0;
 
             // Mix Bufferssize = WorkBufferAllocator.GetTargetSize<float>(
-            size,(ulong)(parameter.SampleCount * (Constants.VoiceChannelCountMax + parameter.MixBufferCount) * 3 / 2  ), 0x10);
+            ulong mixBufferSize = (ulong)(
+             parameter.SampleCount * 
+             (Constants.VoiceChannelCountMax + parameter.MixBufferCount) * 
+              3 / 2  // 相当于乘以1.5
+             );
 
+             size = WorkBufferAllocator.GetTargetSize<float>(
+              size,
+               mixBufferSize,
+               0x10  // 16字节对齐
+             );
             // Upsampler workbuffer
             size = WorkBufferAllocator.GetTargetSize<float>(size, Constants.TargetSampleCount * (Constants.VoiceChannelCountMax + parameter.MixBufferCount) * (parameter.SinkCount + parameter.SubMixBufferCount), 0x10);
 
