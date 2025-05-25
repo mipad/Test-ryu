@@ -757,7 +757,8 @@ namespace Ryujinx.Audio.Renderer.Server
 
             uint mixesCount = parameter.SubMixBufferCount + 1;
 
-            uint memoryPoolCount = parameter.EffectCount + parameter.VoiceCount * Constants.VoiceWaveBufferCount;
+            // Effect 增加 20% (1.2 = 6/5)，Voice 增加 50% (1.5 = 3/2)
+            uint memoryPoolCount = (uint)((parameter.EffectCount * 6 / 5) + (parameter.VoiceCount * Constants.VoiceWaveBufferCount * 3 / 2));
 
             ulong size = 0;
 
