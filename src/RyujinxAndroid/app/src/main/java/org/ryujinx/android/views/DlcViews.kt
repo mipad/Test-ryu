@@ -1,6 +1,7 @@
 package org.ryujinx.android.views
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,6 +12,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -23,6 +26,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.derivedStateOf
@@ -41,127 +45,102 @@ import org.ryujinx.android.viewmodels.DlcViewModel
 class DlcViews {
     companion object {
         @Composable
-        fun Main(titleId: String, name: String, openDialog: MutableState<Boolean>, canClose: MutableState<Boolean>) {
-            val viewModel = DlcViewModel(titleId)
+        fun Main(
+            titleId: String,
+            name: String,
+            openDialog: MutableState<Boolean>,
+            canClose: MutableState<Boolean> = mutableStateOf(false)
+        ) {
+            val viewModel = remember { DlcViewModel(titleId) }
             val dlcItems = remember { SnapshotStateList<DlcItem>() }
+            val refresh = remember { mutableStateOf(false) }
+
+            // Load DLC items when viewModel or refresh changes
+            if (dlcItems.isEmpty() || refresh.value) {
+                dlcItems.clear()
+                dlcItems.addAll(viewModel.getDlc())
+                refresh.value = false
+            }
 
             Column(modifier = Modifier.padding(16.dp)) {
-                Row(modifier = Modifier.align(Alignment.Start)) {
-                    IconButton(
-                        modifier = Modifier.padding(4.dp),
-                        onClick = {
-                            viewModel.add()
-                        },
+                // Header with game name
+                Row(
+                    modifier = Modifier
+                        .padding(8.dp)
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "DLC for $name",
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.align(Alignment.CenterVertically)
+                    )
+                }
+
+                // DLC List Container
+                Surface(
+                    modifier = Modifier.padding(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(400.dp)
                     ) {
-                        Icon(
-                            Icons.Filled.Add,
-                            contentDescription = "Add"
-                        )
-                    }
-                    IconButton(
-                        modifier = Modifier.padding(4.dp),
-                        onClick = {
-                            canClose.value = true
-                            viewModel.save(openDialog)
-                        },
-                    ) {
-                        Icon(
-                            Icons.Filled.Edit,
-                            contentDescription = "Save"
-                        )
+                        items(dlcItems) { dlcItem ->
+                            Row(
+                                modifier = Modifier
+                                    .padding(8.dp)
+                                    .fillMaxWidth()
+                            ) {
+                                Checkbox(
+                                    checked = dlcItem.isEnabled.value,
+                                    onCheckedChange = { dlcItem.isEnabled.value = it }
+                                )
+                                Text(
+                                    text = dlcItem.name,
+                                    modifier = Modifier
+                                        .align(Alignment.CenterVertically)
+                                        .weight(1f)
+                                )
+                                IconButton(
+                                    onClick = {
+                                        viewModel.remove(dlcItem)
+                                        refresh.value = true
+                                    }
+                                ) {
+                                    Icon(Icons.Filled.Delete, "Remove")
+                                }
+                            }
+                        }
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                Column {
-                    Text(text = "DLC for ${name}", textAlign = TextAlign.Center)
-                    Box(
-                        modifier = Modifier
-                            .padding(8.dp)
-                            .height(150.dp)
+
+                // Action Buttons
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = {
+                            viewModel.add()
+                            refresh.value = true
+                        }
                     ) {
-                        val scrollState = rememberScrollState()
-
-                        val needsScrollbar by remember {
-                            derivedStateOf {
-                                scrollState.maxValue > 0
-                            }
+                        Text("Add")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    TextButton(
+                        onClick = {
+                            viewModel.save(dlcItems)
+                            openDialog.value = false
+                            canClose.value = true
                         }
-
-                        viewModel.setDlcItems(dlcItems, canClose)
-
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .fillMaxHeight()
-                                .padding(end = if (needsScrollbar) 16.dp else 0.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            shape = MaterialTheme.shapes.medium
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .verticalScroll(scrollState)
-                                    .padding(8.dp)
-                            ) {
-                                dlcItems.forEach { dlcItem ->
-                                    Row(
-                                        modifier = Modifier
-                                            .padding(vertical = 4.dp)
-                                            .fillMaxWidth()
-                                    ) {
-                                        Checkbox(
-                                            checked = dlcItem.isEnabled.value,
-                                            onCheckedChange = { dlcItem.isEnabled.value = it }
-                                        )
-                                        Text(
-                                            text = dlcItem.name,
-                                            modifier = Modifier
-                                                .align(Alignment.CenterVertically)
-                                                .weight(1f)
-                                        )
-                                        IconButton(
-                                            onClick = {
-                                                viewModel.remove(dlcItem)
-                                            }
-                                        ) {
-                                            Icon(
-                                                Icons.Filled.Delete,
-                                                contentDescription = "remove"
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
-                            }
-                        }
-
-                        if (needsScrollbar) {
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.CenterEnd)
-                                    .width(6.dp)
-                                    .fillMaxHeight()
-                                    .background(Color.LightGray.copy(alpha = 0.3f))
-                            ) {
-                                val thumbRatio = 150.dp.value / (150.dp.value + scrollState.maxValue)
-                                val thumbSize = (150.dp.value * thumbRatio).coerceAtLeast(40f)
-                                val scrollRatio = scrollState.value.toFloat() / scrollState.maxValue.toFloat()
-                                val maxOffset = 150.dp.value - (thumbSize * 0.7f)
-                                val thumbOffset = maxOffset * scrollRatio
-
-                                Box(
-                                    modifier = Modifier
-                                        .width(6.dp)
-                                        .height((thumbSize * 0.7f).dp)
-                                        .offset(y = thumbOffset.dp)
-                                        .background(
-                                            color = MaterialTheme.colorScheme.tertiary,
-                                            shape = MaterialTheme.shapes.small
-                                        )
-                                )
-                            }
-                        }
+                    ) {
+                        Text("Save")
                     }
                 }
             }
