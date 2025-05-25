@@ -813,6 +813,7 @@ size += (ulong)BitUtils.AlignUp(scaledSize, BaseAlignment);
             size = WorkBufferAllocator.GetTargetSize<VoiceUpdateState>(size, parameter.VoiceCount, VoiceUpdateState.Align);
 
             // Performance
+            ulong maxPerformanceBufferSize = size / 10;
             if (parameter.PerformanceMetricFramesCount > 0)
             {
                 ulong performanceMetricsPerFramesSize = PerformanceManager.GetRequiredBufferSizeForPerformanceMetricsPerFrame(ref parameter, ref behaviourContext) * (parameter.PerformanceMetricFramesCount + 1) + 0xC;
