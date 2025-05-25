@@ -783,7 +783,7 @@ namespace Ryujinx.Audio.Renderer.Server
 
             if (behaviourContext.IsSplitterSupported())
             {
-                size += (ulong)BitUtils.AlignUp(NodeStates.GetWorkBufferSize((int)mixesCount) + EdgeMatrix.GetWorkBufferSize((int)mixesCount), 0x10);
+                size += (ulong)BitUtils.AlignUp(NodeStates.GetWorkBufferSize((int)mixesCount) + EdgeMatrix.GetWorkBufferSize((int)mixesCount), 0x10* 1.2);
             }
 
             // Memory Pool
@@ -796,7 +796,7 @@ namespace Ryujinx.Audio.Renderer.Server
                 parameter.SplitterCount > 0 &&
                 parameter.SplitterDestinationCount > 0)
             {
-                (size, (uint)(parameter.SplitterDestinationCount * SplitterContext.BqfStatesPerDestination * 1.5), 0x10);
+                size = WorkBufferAllocator.GetTargetSize<BiquadFilterState>(size, parameter.SplitterDestinationCount * SplitterContext.BqfStatesPerDestination, 0x10* 1.5);
             }
 
             // DSP Voice
