@@ -35,8 +35,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import org.kenjinx.android.MainActivity
-import org.kenjinx.android.viewmodels.VulkanDriverViewModel
+import org.ryujinx.android.MainActivity
+import org.ryujinx.android.viewmodels.VulkanDriverViewModel
 
 class VulkanDriverViews {
     companion object {
