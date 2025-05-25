@@ -126,7 +126,7 @@ class DlcViews {
                 ) {
                     TextButton(
                         onClick = {
-                            viewModel.add()
+                            viewModel.add(refresh)
                             refresh.value = true
                         }
                     ) {
