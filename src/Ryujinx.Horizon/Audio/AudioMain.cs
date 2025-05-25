@@ -10,6 +10,7 @@ namespace Ryujinx.Horizon.Audio
         private static AudioUserIpcServer _ipcServer;
         private static volatile bool _isInitialized = false;
         private static volatile bool _isShutdownRequested = false;
+        private static bool _initializationFailed = false;
 
         public static void Main(ServiceTable serviceTable)
         {
@@ -28,12 +29,8 @@ namespace Ryujinx.Horizon.Audio
                 {
                     _ipcServer = new AudioUserIpcServer();
                     
-                    if (!_ipcServer.Initialize())
-                    {
-                        Logger.Error?.Print(LogClass.ServiceAudio, "Audio IPC server initialization failed!");
-                        serviceTable.SignalFailure();
-                        return;
-                    }
+                    _ipcServer.Initialize(); // 不再检查返回值
+                    _initializationFailed = false;
 
                     _isInitialized = true;
                     serviceTable.SignalServiceReady();
@@ -41,14 +38,15 @@ namespace Ryujinx.Horizon.Audio
                 }
                 catch (Exception ex)
                 {
+                    _initializationFailed = true;
                     Logger.Error?.Print(LogClass.ServiceAudio, $"Audio service initialization crashed: {ex}");
-                    serviceTable.SignalFailure();
+                    // 移除 SignalFailure 调用
                     return;
                 }
             }
 
             // Main service loop
-            while (!_isShutdownRequested)
+            while (!_isShutdownRequested && !_initializationFailed)
             {
                 try
                 {
@@ -63,7 +61,7 @@ namespace Ryujinx.Horizon.Audio
                 {
                     Logger.Error?.Print(LogClass.ServiceAudio, $"Audio service error: {ex}");
 
-                    if (!RecoverService())
+                    if (!TryRecoverService())
                     {
                         Logger.Error?.Print(LogClass.ServiceAudio, "Audio service recovery failed");
                         break;
@@ -74,7 +72,7 @@ namespace Ryujinx.Horizon.Audio
             SafeShutdown();
         }
 
-        private static bool RecoverService()
+        private static bool TryRecoverService()
         {
             try
             {
@@ -85,19 +83,24 @@ namespace Ryujinx.Horizon.Audio
                     _ipcServer?.Shutdown();
 
                     _ipcServer = new AudioUserIpcServer();
-                    if (!_ipcServer.Initialize())
+                    try
                     {
-                        Logger.Error?.Print(LogClass.ServiceAudio, "Recovery initialization failed");
+                        _ipcServer.Initialize();
+                        _initializationFailed = false;
+                        Logger.Info?.Print(LogClass.ServiceAudio, "Audio service recovered");
+                        return true;
+                    }
+                    catch
+                    {
+                        _initializationFailed = true;
                         return false;
                     }
-
-                    Logger.Info?.Print(LogClass.ServiceAudio, "Audio service recovered");
-                    return true;
                 }
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.ServiceAudio, $"Recovery crashed: {ex}");
+                _initializationFailed = true;
                 return false;
             }
         }
