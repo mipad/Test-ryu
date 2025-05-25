@@ -783,7 +783,7 @@ namespace Ryujinx.Audio.Renderer.Server
 
             if (behaviourContext.IsSplitterSupported())
             {
-                size += (ulong)BitUtils.AlignUp(NodeStates.GetWorkBufferSize((int)mixesCount) + EdgeMatrix.GetWorkBufferSize((int)mixesCount), 0x10* 1.2);
+                size += (ulong)BitUtils.AlignUp(NodeStates.GetWorkBufferSize((int)mixesCount) + EdgeMatrix.GetWorkBufferSize((int)mixesCount), 0x10 * 1.2);
             }
 
             // Memory Pool
