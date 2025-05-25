@@ -783,7 +783,17 @@ namespace Ryujinx.Audio.Renderer.Server
 
             if (behaviourContext.IsSplitterSupported())
             {
-                size += (ulong)BitUtils.AlignUp(NodeStates.GetWorkBufferSize((int)mixesCount) + EdgeMatrix.GetWorkBufferSize((int)mixesCount), 0x10 * 1.2);
+                // 
+const int BaseAlignment = 0x10; // 16-byte alignment
+const int ScalingFactorNumerator = 12; // 1.2 = 12/10
+const int ScalingFactorDenominator = 10;
+
+// 计算扩容后的大小（使用整数运算）
+int rawSize = NodeStates.GetWorkBufferSize((int)mixesCount) + EdgeMatrix.GetWorkBufferSize((int)mixesCount);
+int scaledSize = rawSize * ScalingFactorNumerator / ScalingFactorDenominator;
+
+// 对齐处理
+size += (ulong)BitUtils.AlignUp(scaledSize, BaseAlignment);
             }
 
             // Memory Pool
