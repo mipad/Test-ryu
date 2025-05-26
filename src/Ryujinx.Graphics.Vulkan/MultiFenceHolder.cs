@@ -23,12 +23,12 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         public void AddBufferUse(int cbIndex, int offset, int size, bool write)
-{
-    _bufferUsageBitmap.Add(cbIndex, offset, size, false); // 示例修正
-    if (write)
-    {
-        _bufferUsageBitmap.Add(cbIndex, offset, size, true);
-    }
+        {
+            _bufferUsageBitmap.Add(cbIndex, offset, size, false); // 读操作
+            if (write)
+            {
+                _bufferUsageBitmap.Add(cbIndex, offset, size, true); // 写操作
+            }
         }
 
         public void RemoveBufferUses(int cbIndex)
@@ -163,7 +163,7 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 var fence = _fences[i];
 
-                if (fence != null && _bufferUsageBitmap.OverlapsWith(i, offset, size))
+                if (fence != null && _bufferUsageBitmap.OverlapsWith(i, offset, size)) // 调用正确重载
                 {
                     storage[count++] = fence;
                 }
