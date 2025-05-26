@@ -31,12 +31,17 @@ namespace Ryujinx.SDL2.Common
         private uint _refereceCount;
         private Thread _worker;
 
+        private const uint SDL_JOYBATTERYUPDATED = 1543;
+        
         public event Action<int, int> OnJoyStickConnected;
         public event Action<int> OnJoystickDisconnected;
+        
+        public event Action<int, SDL_JoystickPowerLevel> OnJoyBatteryUpdated;
+
 
         private ConcurrentDictionary<uint, Action<SDL_Event>> _registeredWindowHandlers;
 
-        private readonly object _lock = new();
+        private readonly Lock _lock = new();
 
         private SDL2Driver() { }
 
@@ -143,7 +148,11 @@ namespace Ryujinx.SDL2.Common
 
                 OnJoystickDisconnected?.Invoke(evnt.cbutton.which);
             }
-            else if (evnt.type == SDL_EventType.SDL_WINDOWEVENT || evnt.type == SDL_EventType.SDL_MOUSEBUTTONDOWN || evnt.type == SDL_EventType.SDL_MOUSEBUTTONUP)
+            else if ((uint)evnt.type == SDL_JOYBATTERYUPDATED)
+            {
+                OnJoyBatteryUpdated?.Invoke(evnt.cbutton.which, (SDL_JoystickPowerLevel)evnt.user.code);
+            }
+            else if (evnt.type is SDL_EventType.SDL_WINDOWEVENT or SDL_EventType.SDL_MOUSEBUTTONDOWN or SDL_EventType.SDL_MOUSEBUTTONUP)
             {
                 if (_registeredWindowHandlers.TryGetValue(evnt.window.windowID, out Action<SDL_Event> handler))
                 {
