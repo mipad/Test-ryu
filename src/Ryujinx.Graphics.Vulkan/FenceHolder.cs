@@ -1,7 +1,7 @@
 using Silk.NET.Vulkan;
 using System;
 using System.Threading;
-using System.Diagnostics; // 新增命名空间用于Stopwatch
+using System.Diagnostics;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -38,7 +38,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public bool TryGet(out Fence fence)
         {
-            // 新增_disposed检查
             if (_disposed)
             {
                 fence = default;
@@ -50,7 +49,6 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 lastValue = _referenceCount;
 
-                // 新增_disposed检查
                 if (lastValue == 0 || _disposed)
                 {
                     fence = default;
@@ -61,10 +59,8 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (_concurrentWaitUnsupported)
             {
-                // 修改为带超时的锁获取
-                if (!TryAcquireLock(1000)) // 超时1秒
+                if (!TryAcquireLock(1000))
                 {
-                    // 回滚引用计数
                     Interlocked.Decrement(ref _referenceCount);
                     fence = default;
                     return false;
@@ -103,7 +99,6 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        // 修改后的锁方法，带超时机制
         private bool TryAcquireLock(int timeoutMs = 1000)
         {
             Stopwatch sw = Stopwatch.StartNew();
@@ -134,7 +129,12 @@ namespace Ryujinx.Graphics.Vulkan
 
                 try
                 {
-                    FenceHelper.WaitAllIndefinitely(_api, _device, stackalloc Fence[] { _fence });
+                    bool signaled = FenceHelper.AllSignaled(_api, _device, stackalloc Fence[] { _fence }, 500_000_000);
+                    if (!signaled)
+                    {
+                        _api.DeviceWaitIdle(_device);
+                        ResetFence();
+                    }
                 }
                 finally
                 {
@@ -143,8 +143,18 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                FenceHelper.WaitAllIndefinitely(_api, _device, stackalloc Fence[] { _fence });
+                bool signaled = FenceHelper.AllSignaled(_api, _device, stackalloc Fence[] { _fence }, 500_000_000);
+                if (!signaled)
+                {
+                    _api.DeviceWaitIdle(_device);
+                    ResetFence();
+                }
             }
+        }
+
+        private void ResetFence()
+        {
+            _api.ResetFences(_device, 1, ref _fence);
         }
 
         public bool IsSignaled()
@@ -175,7 +185,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (!_disposed)
             {
-                _disposed = true; // 先标记为已释放
+                _disposed = true;
                 Put();
             }
         }
