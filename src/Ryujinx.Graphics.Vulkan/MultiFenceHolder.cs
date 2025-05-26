@@ -23,12 +23,12 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         public void AddBufferUse(int cbIndex, int offset, int size, bool write)
-        {
-            _bufferUsageBitmap.Add(cbIndex, offset, size, false);
-            if (write)
-            {
-                _bufferUsageBitmap.Add(cbIndex, offset, size, true);
-            }
+{
+    _bufferUsageBitmap.Add(cbIndex, offset, size, false); // 正确传递 bool
+    if (write)
+    {
+        _bufferUsageBitmap.Add(cbIndex, offset, size, true); // 正确传递 bool
+    }
         }
 
         public void RemoveBufferUses(int cbIndex)
