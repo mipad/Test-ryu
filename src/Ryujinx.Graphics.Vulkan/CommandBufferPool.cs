@@ -11,8 +11,8 @@ namespace Ryujinx.Graphics.Vulkan
     {
         public const int MaxCommandBuffers = 32;
 
-        private readonly int _totalCommandBuffers;
-        private readonly int _totalCommandBuffersMask;
+        private  int _totalCommandBuffers;
+        private  int _totalCommandBuffersMask;
 
         private readonly Vk _api;
         private readonly Device _device;
