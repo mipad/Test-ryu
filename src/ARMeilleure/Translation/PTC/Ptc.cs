@@ -531,6 +531,7 @@ namespace ARMeilleure.Translation.PTC
         {
             if (AreCarriersEmpty())
             {
+                ResetCarriersIfNeeded();
                 return;
             }
 
