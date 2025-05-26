@@ -11,6 +11,7 @@ using Ryujinx.Common.Logging;
 using Ryujinx.Common.Memory;
 using System;
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
