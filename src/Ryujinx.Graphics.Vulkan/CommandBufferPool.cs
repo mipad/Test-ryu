@@ -233,38 +233,79 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         public CommandBufferScoped Rent()
+{
+    // 记录尝试次数，避免无限递归
+    const int MaxAttempts = 2;
+    int attempts = 0;
+
+    while (true)
+    {
+        lock (_commandBuffers)
         {
-            lock (_commandBuffers)
+            int cursor = FreeConsumed(_inUseCount + _queuedCount == _totalCommandBuffers);
+
+            // 遍历所有缓冲区，尝试找到未使用的
+            for (int i = 0; i < _totalCommandBuffers; i++)
             {
-                int cursor = FreeConsumed(_inUseCount + _queuedCount == _totalCommandBuffers);
+                int index = (cursor + i) % _totalCommandBuffers;
+                ref var entry = ref _commandBuffers[index];
 
-                for (int i = 0; i < _totalCommandBuffers; i++)
+                if (!entry.InUse && !entry.InConsumption)
                 {
-                    ref var entry = ref _commandBuffers[cursor];
+                    entry.InUse = true;
+                    _inUseCount++;
 
-                    if (!entry.InUse && !entry.InConsumption)
+                    var commandBufferBeginInfo = new CommandBufferBeginInfo
                     {
-                        entry.InUse = true;
+                        SType = StructureType.CommandBufferBeginInfo,
+                    };
 
-                        _inUseCount++;
+                    _api.BeginCommandBuffer(entry.CommandBuffer, in commandBufferBeginInfo).ThrowOnError();
 
-                        var commandBufferBeginInfo = new CommandBufferBeginInfo
-                        {
-                            SType = StructureType.CommandBufferBeginInfo,
-                        };
-
-                        _api.BeginCommandBuffer(entry.CommandBuffer, in commandBufferBeginInfo).ThrowOnError();
-
-                        return new CommandBufferScoped(this, entry.CommandBuffer, cursor);
-                    }
-
-                    cursor = (cursor + 1) & _totalCommandBuffersMask;
+                    return new CommandBufferScoped(this, entry.CommandBuffer, index);
                 }
             }
 
-            throw new InvalidOperationException($"Out of command buffers (In use: {_inUseCount}, queued: {_queuedCount}, total: {_totalCommandBuffers})");
+            // 若未找到可用缓冲区且未超过最大尝试次数，则扩容池
+            if (attempts < MaxAttempts)
+            {
+                ExpandPool();
+                attempts++;
+            }
+            else
+            {
+                throw new InvalidOperationException(
+                    $"Out of command buffers (In use: {_inUseCount}, queued: {_queuedCount}, total: {_totalCommandBuffers})"
+                );
+            }
+        }
+    }
+}
+
+// 扩容池方法
+private void ExpandPool()
+{
+    lock (_commandBuffers)
+    {
+        int newSize = _totalCommandBuffers * 2;
+
+        // 扩容缓冲区数组和锁数组
+        Array.Resize(ref _commandBuffers, newSize);
+        Array.Resize(ref _bufferLocks, newSize);
+        Array.Resize(ref _queuedIndexes, newSize);
+
+        // 初始化新增的缓冲区
+        for (int i = _totalCommandBuffers; i < newSize; i++)
+        {
+            _bufferLocks[i] = new object();
+            _commandBuffers[i].Initialize(_api, _device, _pool);
+            WaitAndDecrementRef(i); // 确保新缓冲区初始状态可用
         }
 
+        _totalCommandBuffers = newSize;
+        _totalCommandBuffersMask = newSize - 1;
+    }
+}
         public void Return(CommandBufferScoped cbs)
         {
             Return(cbs, null, null, null);
