@@ -90,7 +90,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             // 动态初始化缓冲区数量
             MaxCommandBuffers = isLight ? 4 : 32; 
-            _totalCommandBuffers = isLight ? 4 : InitialMaxCommandBuffers;
+            _totalCommandBuffers = MaxCommandBuffers;
             _totalCommandBuffersMask = _totalCommandBuffers - 1;
 
             _commandBuffers = new ReservedCommandBuffer[_totalCommandBuffers];
