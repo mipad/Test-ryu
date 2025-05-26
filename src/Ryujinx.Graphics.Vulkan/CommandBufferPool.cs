@@ -9,7 +9,7 @@ namespace Ryujinx.Graphics.Vulkan
 {
     class CommandBufferPool : IDisposable
     {
-        public const int InitialMaxCommandBuffers = 32; // 初始容量提升至32
+        public static int MaxCommandBuffers { get; private set; } = 32; // 初始容量提升至32
 
         private int _totalCommandBuffers;
         private int _totalCommandBuffersMask;
@@ -89,6 +89,7 @@ namespace Ryujinx.Graphics.Vulkan
             api.CreateCommandPool(device, in commandPoolCreateInfo, null, out _pool).ThrowOnError();
 
             // 动态初始化缓冲区数量
+            MaxCommandBuffers = isLight ? 4 : 32; 
             _totalCommandBuffers = isLight ? 4 : InitialMaxCommandBuffers;
             _totalCommandBuffersMask = _totalCommandBuffers - 1;
 
