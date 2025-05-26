@@ -11,9 +11,11 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly int _intsPerCb;
         private readonly int _bitsPerCb;
 
+        // 新增缺失的 _tracking 字段
+        private readonly bool[,] _tracking;
+
         public BufferUsageBitmap(int size, int granularity)
-        {  // 初始化逻辑中需使用 CommandBufferPool.MaxCommandBuffers
-            // 正确引用 CommandBufferPool 的静态属性 MaxCommandBuffers
+        {  
             int maxCommandBuffers = CommandBufferPool.MaxCommandBuffers;
             _tracking = new bool[maxCommandBuffers, (size + granularity - 1) / granularity];
 
@@ -51,39 +53,27 @@ namespace Ryujinx.Graphics.Vulkan
             _bitmap.SetRange(start, end);
         }
 
-           public bool OverlapsWith(int offset, int size, bool write)
-{
-    // 检查所有命令缓冲区
-    for (int i = 0; i < CommandBufferPool.MaxCommandBuffers; i++)
-    {
-        if (OverlapsWith(i, offset, size, write)) // 调用重载方法
-        {
-            return true;
-        }
-    }
-    return false;
-}
-
-public bool OverlapsWith(int cbIndex, int offset, int size, bool write)
-{
-    // 检查指定命令缓冲区（cbIndex）的范围
-    int cbBase = cbIndex * _bitsPerCb + (write ? _writeBitOffset : 0);
-    int start = cbBase + offset / _granularity;
-    int end = cbBase + (offset + size - 1) / _granularity;
-
-    return _bitmap.IsSet(start, end);
-}
+        // 保留唯一正确的 OverlapsWith 方法（删除重复定义）
         public bool OverlapsWith(int offset, int size, bool write)
         {
             for (int i = 0; i < CommandBufferPool.MaxCommandBuffers; i++)
             {
-                if (OverlapsWith(i, offset, size, write))
+                if (OverlapsWith(i, offset, size, write)) // 调用重载方法
                 {
                     return true;
                 }
             }
-
             return false;
+        }
+
+        // 重载方法：检查指定命令缓冲区的范围
+        public bool OverlapsWith(int cbIndex, int offset, int size, bool write)
+        {
+            int cbBase = cbIndex * _bitsPerCb + (write ? _writeBitOffset : 0);
+            int start = cbBase + offset / _granularity;
+            int end = cbBase + (offset + size - 1) / _granularity;
+
+            return _bitmap.IsSet(start, end);
         }
 
         public void Clear(int cbIndex)
