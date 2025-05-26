@@ -23,7 +23,7 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly Thread _owner;
 
         // 细粒度锁数组，每个命令缓冲区独立锁
-        private readonly object[] _bufferLocks;
+        private object[] _bufferLocks;
 
         public bool OwnedByCurrentThread => _owner == Thread.CurrentThread;
 
