@@ -24,10 +24,10 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void AddBufferUse(int cbIndex, int offset, int size, bool write)
 {
-    _bufferUsageBitmap.Add(cbIndex, offset, size, false); // 正确传递 bool
+    _bufferUsageBitmap.Add(cbIndex, offset, size, false); // 示例修正
     if (write)
     {
-        _bufferUsageBitmap.Add(cbIndex, offset, size, true); // 正确传递 bool
+        _bufferUsageBitmap.Add(cbIndex, offset, size, true);
     }
         }
 
