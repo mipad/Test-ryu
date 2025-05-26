@@ -29,8 +29,8 @@ namespace ARMeilleure.Translation.PTC
         private const string OuterHeaderMagicString = "PTCohd\0\0";
         private const string InnerHeaderMagicString = "PTCihd\0\0";
 
-        private const uint InternalVersion = 6950; //! To be incremented manually for each change to the ARMeilleure project.
-
+        private const uint InternalVersion = 7008; //! To be incremented manually for each change to the ARMeilleure project.
+        
         private const string ActualDir = "0";
         private const string BackupDir = "1";
 
@@ -822,8 +822,8 @@ namespace ARMeilleure.Translation.PTC
 
                     Debug.Assert(Profiler.IsAddressInStaticCodeRange(address));
 
-                    TranslatedFunction func = translator.Translate(address, item.funcProfile.Mode, item.funcProfile.HighCq);
-
+                    TranslatedFunction func = translator.Translate(address, executionMode, highCq, pptcTranslation: true);
+                    
                     bool isAddressUnique = translator.Functions.TryAdd(address, func.GuestSize, func);
 
                     Debug.Assert(isAddressUnique, $"The address 0x{address:X16} is not unique.");
