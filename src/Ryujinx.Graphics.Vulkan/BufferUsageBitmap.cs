@@ -53,6 +53,14 @@ namespace Ryujinx.Graphics.Vulkan
             _bitmap.SetRange(start, end);
         }
 
+        
+public bool OverlapsWith(int cbIndex, int offset, int size)
+{
+    // 同时检查读和写操作
+    bool readOverlap = OverlapsWith(cbIndex, offset, size, false);
+    bool writeOverlap = OverlapsWith(cbIndex, offset, size, true);
+    return readOverlap || writeOverlap;
+}
         // 保留唯一正确的 OverlapsWith 方法（删除重复定义）
         public bool OverlapsWith(int offset, int size, bool write)
         {
