@@ -12,7 +12,9 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly int _bitsPerCb;
 
         public BufferUsageBitmap(int size, int granularity)
-        {
+        {  // 初始化逻辑中需使用 CommandBufferPool.MaxCommandBuffers
+            _tracking = new bool[CommandBufferPool.MaxCommandBuffers, size / granularity + 1];
+            
             _size = size;
             _granularity = granularity;
 
