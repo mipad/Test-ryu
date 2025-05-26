@@ -54,9 +54,9 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        private readonly ReservedCommandBuffer[] _commandBuffers;
+        private  ReservedCommandBuffer[] _commandBuffers;
 
-        private readonly int[] _queuedIndexes;
+        private  int[] _queuedIndexes;
         private int _queuedIndexesPtr;
         private int _queuedCount;
         private int _inUseCount;
