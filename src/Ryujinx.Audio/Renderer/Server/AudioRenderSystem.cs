@@ -810,4 +810,109 @@ size += (ulong)BitUtils.AlignUp(scaledSize, BaseAlignment);
             size = WorkBufferAllocator.GetTargetSize<MemoryPoolState>(size, memoryPoolCount, MemoryPoolState.Alignment);
 
             // Splitter
-            size = SplitterContext.GetWorkBufferSize(size, ref behaviourContext, ref param
+            size = SplitterContext.GetWorkBufferSize(size, ref behaviourContext, ref parameter);
+
+            if (behaviourContext.IsBiquadFilterParameterForSplitterEnabled() &&
+                parameter.SplitterCount > 0 &&
+                parameter.SplitterDestinationCount > 0)
+            {
+                size = WorkBufferAllocator.GetTargetSize<BiquadFilterState>(size, parameter.SplitterDestinationCount * SplitterContext.BqfStatesPerDestination, 0x10);
+            }
+
+            // DSP Voice
+            size = WorkBufferAllocator.GetTargetSize<VoiceUpdateState>(size, parameter.VoiceCount, VoiceUpdateState.Align);
+
+            // Performance
+            ulong maxPerformanceBufferSize = size / 10;
+            if (parameter.PerformanceMetricFramesCount > 0)
+            {
+                ulong performanceMetricsPerFramesSize = PerformanceManager.GetRequiredBufferSizeForPerformanceMetricsPerFrame(ref parameter, ref behaviourContext) * (parameter.PerformanceMetricFramesCount + 1) + 0xC;
+
+                size += BitUtils.AlignUp<ulong>(performanceMetricsPerFramesSize, Constants.PerformanceMetricsPerFramesSizeAlignment);
+            }
+
+            return BitUtils.AlignUp<ulong>(size, Constants.WorkBufferAlignment);
+        }
+
+        public ResultCode QuerySystemEvent(out IWritableEvent systemEvent)
+        {
+            systemEvent = default;
+
+            if (_executionMode == AudioRendererExecutionMode.Manual)
+            {
+                return ResultCode.UnsupportedOperation;
+            }
+
+            systemEvent = _systemEvent;
+
+            return ResultCode.Success;
+        }
+
+        public void Dispose()
+        {
+            GC.SuppressFinalize(this);
+
+            if (Interlocked.CompareExchange(ref _disposeState, 1, 0) == 0)
+            {
+                Dispose(true);
+            }
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                if (_isActive)
+                {
+                    Stop();
+                }
+
+                PoolMapper mapper = new(_processHandle, false);
+                mapper.Unmap(ref _dspMemoryPoolState);
+
+                PoolMapper.ClearUsageState(_memoryPools);
+
+                for (int i = 0; i < _memoryPoolCount; i++)
+                {
+                    ref MemoryPoolState memoryPool = ref _memoryPools.Span[i];
+
+                    if (memoryPool.IsMapped())
+                    {
+                        mapper.Unmap(ref memoryPool);
+                    }
+                }
+
+                _manager.Unregister(this);
+                _workBufferMemoryPin.Dispose();
+
+                if (MemoryManager is IRefCounted rc)
+                {
+                    rc.DecrementReferenceCount();
+
+                    MemoryManager = null;
+                }
+            }
+        }
+
+        public void SetVoiceDropParameter(float voiceDropParameter)
+        {
+            _voiceDropParameter = Math.Clamp(voiceDropParameter, 0.0f, 2.0f);
+        }
+
+        public float GetVoiceDropParameter()
+        {
+            return _voiceDropParameter;
+        }
+
+        public ResultCode ExecuteAudioRendererRendering()
+        {
+            if (_executionMode == AudioRendererExecutionMode.Manual && _renderingDevice == AudioRendererRenderingDevice.Cpu)
+            {
+                // NOTE: Here Nintendo aborts with this error code, we don't want that.
+                return ResultCode.InvalidExecutionContextOperation;
+            }
+
+            return ResultCode.UnsupportedOperation;
+        }
+    }
+}
