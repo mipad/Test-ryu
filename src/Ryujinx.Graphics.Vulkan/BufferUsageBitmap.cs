@@ -13,20 +13,22 @@ namespace Ryujinx.Graphics.Vulkan
 
         public BufferUsageBitmap(int size, int granularity)
         {  // 初始化逻辑中需使用 CommandBufferPool.MaxCommandBuffers
-            _tracking = new bool[CommandBufferPool.MaxCommandBuffers, size / granularity + 1];
-            
+            // 正确引用 CommandBufferPool 的静态属性 MaxCommandBuffers
+            int maxCommandBuffers = CommandBufferPool.MaxCommandBuffers;
+            _tracking = new bool[maxCommandBuffers, (size + granularity - 1) / granularity];
+
             _size = size;
             _granularity = granularity;
 
-            // There are two sets of bits - one for read tracking, and the other for write.
-            int bits = (size + (granularity - 1)) / granularity;
+            // 计算位图参数
+            int bits = (size + granularity - 1) / granularity;
             _writeBitOffset = bits;
-            _bits = bits << 1;
+            _bits = bits * 2; // 读和写各占一半
 
-            _intsPerCb = (_bits + (BitMap.IntSize - 1)) / BitMap.IntSize;
-            _bitsPerCb = _intsPerCb * BitMap.IntSize;
+            _intsPerCb = (_bits + 31) / 32; // 假设 BitMap.IntSize 是 32
+            _bitsPerCb = _intsPerCb * 32;
 
-            _bitmap = new BitMap(_bitsPerCb * CommandBufferPool.MaxCommandBuffers);
+            _bitmap = new BitMap(maxCommandBuffers * _bitsPerCb);
         }
 
         public void Add(int cbIndex, int offset, int size, bool write)
@@ -49,12 +51,18 @@ namespace Ryujinx.Graphics.Vulkan
             _bitmap.SetRange(start, end);
         }
 
-        public bool OverlapsWith(int cbIndex, int offset, int size, bool write = false)
+           public bool OverlapsWith(int offset, int size, bool write)
         {
-            if (size == 0)
+            // 正确引用 CommandBufferPool 的静态属性
+            for (int i = 0; i < CommandBufferPool.MaxCommandBuffers; i++)
             {
-                return false;
+                if (OverlapsWith(i, offset, size, write))
+                {
+                    return true;
+                }
             }
+            return false;
+           }                    
 
             int cbBase = cbIndex * _bitsPerCb + (write ? _writeBitOffset : 0);
             int start = cbBase + offset / _granularity;
