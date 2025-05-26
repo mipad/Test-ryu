@@ -35,13 +35,12 @@ namespace Ryujinx.SDL2.Common
         
         public event Action<int, int> OnJoyStickConnected;
         public event Action<int> OnJoystickDisconnected;
-        
-        public event Action<int, SDL_JoystickPowerLevel> OnJoyBatteryUpdated;
 
+        public event Action<int, SDL_JoystickPowerLevel> OnJoyBatteryUpdated;
 
         private ConcurrentDictionary<uint, Action<SDL_Event>> _registeredWindowHandlers;
 
-        private readonly object _lock = new();
+        private readonly Lock _lock = new();
 
         private SDL2Driver() { }
 
@@ -58,7 +57,7 @@ namespace Ryujinx.SDL2.Common
                     return;
                 }
 
-                SDL_SetHint(SDL_HINT_APP_NAME, "Ryujinx");
+                SDL_SetHint(SDL_HINT_APP_NAME, "Kenjinx");
                 SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS4_RUMBLE, "1");
                 SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS5_RUMBLE, "1");
                 SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
@@ -152,7 +151,7 @@ namespace Ryujinx.SDL2.Common
             {
                 OnJoyBatteryUpdated?.Invoke(evnt.cbutton.which, (SDL_JoystickPowerLevel)evnt.user.code);
             }
-            else if (evnt.type is SDL_EventType.SDL_WINDOWEVENT or SDL_EventType.SDL_MOUSEBUTTONDOWN or SDL_EventType.SDL_MOUSEBUTTONUP)
+            else if (evnt.type == SDL_EventType.SDL_WINDOWEVENT || evnt.type == SDL_EventType.SDL_MOUSEBUTTONDOWN || evnt.type == SDL_EventType.SDL_MOUSEBUTTONUP)
             {
                 if (_registeredWindowHandlers.TryGetValue(evnt.window.windowID, out Action<SDL_Event> handler))
                 {
