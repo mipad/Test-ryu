@@ -22,6 +22,8 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly CommandPool _pool;
         private readonly Thread _owner;
 
+        private object[] _bufferLocks;
+        
         public bool OwnedByCurrentThread => _owner == Thread.CurrentThread;
 
         private struct ReservedCommandBuffer
