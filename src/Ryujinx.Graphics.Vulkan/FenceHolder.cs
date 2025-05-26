@@ -1,6 +1,7 @@
 using Silk.NET.Vulkan;
 using System;
 using System.Threading;
+using System.Diagnostics; // 新增命名空间用于Stopwatch
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -37,12 +38,20 @@ namespace Ryujinx.Graphics.Vulkan
 
         public bool TryGet(out Fence fence)
         {
+            // 新增_disposed检查
+            if (_disposed)
+            {
+                fence = default;
+                return false;
+            }
+
             int lastValue;
             do
             {
                 lastValue = _referenceCount;
 
-                if (lastValue == 0)
+                // 新增_disposed检查
+                if (lastValue == 0 || _disposed)
                 {
                     fence = default;
                     return false;
@@ -52,7 +61,14 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (_concurrentWaitUnsupported)
             {
-                AcquireLock();
+                // 修改为带超时的锁获取
+                if (!TryAcquireLock(1000)) // 超时1秒
+                {
+                    // 回滚引用计数
+                    Interlocked.Decrement(ref _referenceCount);
+                    fence = default;
+                    return false;
+                }
             }
 
             fence = _fence;
@@ -79,22 +95,27 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (Interlocked.Decrement(ref _referenceCount) == 0)
             {
-                _api.DestroyFence(_device, _fence, Span<AllocationCallbacks>.Empty);
-                _fence = default;
+                if (!_disposed)
+                {
+                    _api.DestroyFence(_device, _fence, Span<AllocationCallbacks>.Empty);
+                    _fence = default;
+                }
             }
         }
 
-        private void AcquireLock()
+        // 修改后的锁方法，带超时机制
+        private bool TryAcquireLock(int timeoutMs = 1000)
         {
-            while (!TryAcquireLock())
+            Stopwatch sw = Stopwatch.StartNew();
+            while (Interlocked.Exchange(ref _lock, 1) != 0)
             {
+                if (sw.ElapsedMilliseconds > timeoutMs)
+                {
+                    return false;
+                }
                 Thread.SpinWait(32);
             }
-        }
-
-        private bool TryAcquireLock()
-        {
-            return Interlocked.Exchange(ref _lock, 1) == 0;
+            return true;
         }
 
         private void ReleaseLock()
@@ -106,7 +127,10 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (_concurrentWaitUnsupported)
             {
-                AcquireLock();
+                if (!TryAcquireLock(1000))
+                {
+                    throw new TimeoutException("Failed to acquire fence lock");
+                }
 
                 try
                 {
@@ -127,7 +151,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (_concurrentWaitUnsupported)
             {
-                if (!TryAcquireLock())
+                if (!TryAcquireLock(1000))
                 {
                     return false;
                 }
@@ -151,8 +175,8 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (!_disposed)
             {
+                _disposed = true; // 先标记为已释放
                 Put();
-                _disposed = true;
             }
         }
     }
