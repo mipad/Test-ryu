@@ -38,7 +38,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         public bool IsBufferRangeInUse(int cbIndex, int offset, int size)
         {
-            return _bufferUsageBitmap.OverlapsWith(cbIndex, offset, size, write);
+            return _bufferUsageBitmap.OverlapsWith(cbIndex, offset, size);
         }
 
         public bool IsBufferRangeInUse(int offset, int size, bool write)
