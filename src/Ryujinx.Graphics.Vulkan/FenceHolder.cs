@@ -152,7 +152,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        private void ResetFence()
+        public void ResetFence()
         {
             _api.ResetFences(_device, 1, ref _fence);
         }
