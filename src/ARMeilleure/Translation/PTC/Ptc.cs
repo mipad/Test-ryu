@@ -3,6 +3,7 @@ using ARMeilleure.CodeGen.Linking;
 using ARMeilleure.CodeGen.Unwinding;
 using ARMeilleure.Common;
 using ARMeilleure.Memory;
+using ARMeilleure.State;
 using Ryujinx.Common;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
@@ -822,7 +823,7 @@ namespace ARMeilleure.Translation.PTC
 
                     Debug.Assert(Profiler.IsAddressInStaticCodeRange(address));
 
-                    TranslatedFunction func = translator.Translate(address, item.funcProfile.Mode, item.funcProfile.HighCq, pptcTranslation: true)
+                    TranslatedFunction func = translator.Translate(address, executionMode, highCq, pptcTranslation: true);
                     
                     bool isAddressUnique = translator.Functions.TryAdd(address, func.GuestSize, func);
 
