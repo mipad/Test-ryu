@@ -89,17 +89,19 @@ namespace Ryujinx.Input.SDL2
         private void HandleJoyStickDisconnected(int joystickInstanceId)
         {
             bool joyConPairDisconnected = false;
-            
-            if (!_gamepadsInstanceIdsMapping.Remove(joystickInstanceId, out string id))
-                return;
 
-            lock (_lock)
+            if (_gamepadsInstanceIdsMapping.TryGetValue(joystickInstanceId, out string id))
             {
-                _gamepadsIds.Remove(id);
-                if (!SDL2JoyConPair.IsCombinable(_gamepadsIds))
+                _gamepadsInstanceIdsMapping.Remove(joystickInstanceId);
+
+                lock (_lock)
                 {
-                    _gamepadsIds.Remove(SDL2JoyConPair.Id);
-                    joyConPairDisconnected = true;
+                    _gamepadsIds.Remove(id);
+                    if (!SDL2JoyConPair.IsCombinable(_gamepadsIds))
+                    {
+                        _gamepadsIds.Remove(SDL2JoyConPair.Id);
+                        joyConPairDisconnected = true;
+                    }
                 }
             }
 
@@ -208,9 +210,9 @@ namespace Ryujinx.Input.SDL2
                 return null;
             }
 
-            nint gamepadHandle = SDL_GameControllerOpen(joystickIndex);
+            IntPtr gamepadHandle = SDL_GameControllerOpen(joystickIndex);
 
-            if (gamepadHandle == nint.Zero)
+            if (gamepadHandle == IntPtr.Zero)
             {
                 return null;
             }
@@ -221,17 +223,6 @@ namespace Ryujinx.Input.SDL2
             }
 
             return new SDL2Gamepad(gamepadHandle, id);
-        }
-
-        public IEnumerable<IGamepad> GetGamepads()
-        {
-            lock (_gamepadsIds)
-            {
-                foreach (string gamepadId in _gamepadsIds)
-                {
-                    yield return GetGamepad(gamepadId);
-                }
-            }
         }
     }
 }
