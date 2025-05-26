@@ -31,12 +31,8 @@ namespace Ryujinx.SDL2.Common
         private uint _refereceCount;
         private Thread _worker;
 
-        private const uint SDL_JOYBATTERYUPDATED = 1543;
-        
         public event Action<int, int> OnJoyStickConnected;
         public event Action<int> OnJoystickDisconnected;
-
-        public event Action<int, SDL_JoystickPowerLevel> OnJoyBatteryUpdated;
 
         private ConcurrentDictionary<uint, Action<SDL_Event>> _registeredWindowHandlers;
 
@@ -57,7 +53,7 @@ namespace Ryujinx.SDL2.Common
                     return;
                 }
 
-                SDL_SetHint(SDL_HINT_APP_NAME, "Kenjinx");
+                SDL_SetHint(SDL_HINT_APP_NAME, "Ryujinx");
                 SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS4_RUMBLE, "1");
                 SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS5_RUMBLE, "1");
                 SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
@@ -146,10 +142,6 @@ namespace Ryujinx.SDL2.Common
                 Logger.Debug?.Print(LogClass.Application, $"Removed joystick instance id {evnt.cbutton.which}");
 
                 OnJoystickDisconnected?.Invoke(evnt.cbutton.which);
-            }
-            else if ((uint)evnt.type == SDL_JOYBATTERYUPDATED)
-            {
-                OnJoyBatteryUpdated?.Invoke(evnt.cbutton.which, (SDL_JoystickPowerLevel)evnt.user.code);
             }
             else if (evnt.type == SDL_EventType.SDL_WINDOWEVENT || evnt.type == SDL_EventType.SDL_MOUSEBUTTONDOWN || evnt.type == SDL_EventType.SDL_MOUSEBUTTONUP)
             {
