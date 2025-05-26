@@ -75,17 +75,22 @@ namespace Ryujinx.Graphics.Vulkan
             _gd = gd;
             _device = device;
 
-            _dsCache = new List<Auto<DescriptorSetCollection>>[CommandBufferPool.MaxCommandBuffers][];
+            // 1. 声明为交错数组（数组的数组），每个外层元素是一个列表的数组
+_dsCache = new List<Auto<DescriptorSetCollection>>[CommandBufferPool.MaxCommandBuffers][];
 
-            for (int i = 0; i < CommandBufferPool.MaxCommandBuffers; i++)
-            {
-                _dsCache[i] = new List<Auto<DescriptorSetCollection>>[setsCount];
+// 2. 初始化每个外层元素的内层数组
+for (int i = 0; i < CommandBufferPool.MaxCommandBuffers; i++)
+{
+    // 假设内层数组长度为某个固定值（例如 10），需根据实际需求调整
+    int innerSize = 10; 
+    _dsCache[i] = new List<Auto<DescriptorSetCollection>>[innerSize];
 
-                for (int j = 0; j < _dsCache[i].Length; j++)
-                {
-                    _dsCache[i][j] = new List<Auto<DescriptorSetCollection>>();
-                }
-            }
+    // 3. 初始化内层数组的每个元素为新的列表
+    for (int j = 0; j < innerSize; j++)
+    {
+        _dsCache[i][j] = new List<Auto<DescriptorSetCollection>>();
+    }
+}
 
             _dsCacheCursor = new int[setsCount];
             _manualDsCache = new List<ManualDescriptorSetEntry>[setsCount];
