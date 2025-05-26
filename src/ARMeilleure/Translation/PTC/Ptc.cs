@@ -824,7 +824,7 @@ namespace ARMeilleure.Translation.PTC
 
                     Debug.Assert(Profiler.IsAddressInStaticCodeRange(address));
 
-                    TranslatedFunction func = translator.Translate(address, executionMode, highCq, pptcTranslation: true);
+                    TranslatedFunction func = translator.Translate(address, item.funcProfile.Mode, item.funcProfile.HighCq, pptcTranslation: true);
                     
                     bool isAddressUnique = translator.Functions.TryAdd(address, func.GuestSize, func);
 
