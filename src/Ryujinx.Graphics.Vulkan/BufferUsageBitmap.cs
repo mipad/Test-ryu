@@ -52,26 +52,27 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
            public bool OverlapsWith(int offset, int size, bool write)
-        {  
-          {
-            // 正确引用 CommandBufferPool 的静态属性
-            for (int i = 0; i < CommandBufferPool.MaxCommandBuffers; i++)
-            {
-                if (OverlapsWith(i, offset, size, write))
-                {
-                    return true;
-                }
-            }
-            return false;
-           }                    
-
-            int cbBase = cbIndex * _bitsPerCb + (write ? _writeBitOffset : 0);
-            int start = cbBase + offset / _granularity;
-            int end = cbBase + (offset + size - 1) / _granularity;
-
-            return _bitmap.IsSet(start, end);
+{
+    // 检查所有命令缓冲区
+    for (int i = 0; i < CommandBufferPool.MaxCommandBuffers; i++)
+    {
+        if (OverlapsWith(i, offset, size, write)) // 调用重载方法
+        {
+            return true;
         }
     }
+    return false;
+}
+
+public bool OverlapsWith(int cbIndex, int offset, int size, bool write)
+{
+    // 检查指定命令缓冲区（cbIndex）的范围
+    int cbBase = cbIndex * _bitsPerCb + (write ? _writeBitOffset : 0);
+    int start = cbBase + offset / _granularity;
+    int end = cbBase + (offset + size - 1) / _granularity;
+
+    return _bitmap.IsSet(start, end);
+}
         public bool OverlapsWith(int offset, int size, bool write)
         {
             for (int i = 0; i < CommandBufferPool.MaxCommandBuffers; i++)
