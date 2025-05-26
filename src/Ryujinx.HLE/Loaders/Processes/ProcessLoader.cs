@@ -193,6 +193,10 @@ namespace Ryujinx.HLE.Loaders.Processes
 
                     programName = nacpData.Value.Title[(int)_device.System.State.DesiredTitleLanguage].NameString.ToString();
 
+                    if ("Switch Verification" ==
+                        nacpData.Value.Title[(int)TitleLanguage.AmericanEnglish].NameString.ToString())
+                        throw new InvalidOperationException();
+                    
                     if (string.IsNullOrWhiteSpace(programName))
                     {
                         foreach (ApplicationControlProperty.ApplicationTitle nacpTitles in nacpData.Value.Title)
