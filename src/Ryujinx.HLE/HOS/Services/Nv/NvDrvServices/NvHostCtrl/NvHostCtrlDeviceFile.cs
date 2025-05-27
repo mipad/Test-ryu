@@ -423,7 +423,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
             EventHandle = device.System.HandleManager.GenerateHandle(new EventWaitHolder(this));
         }
 
-        public bool Wait(GpuContext gpu, NvFence fence, int timeout)
+        public bool Wait(GraphicsDevice gpu, NvFence fence, int timeout)
         {
             State = NvHostEventState.Waiting;
             _stateTimer.Restart();
@@ -438,7 +438,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
             return !expired;
         }
 
-        public void Cancel(GpuContext gpu)
+        public void Cancel(GraphicsDevice gpu)
         {
             State = NvHostEventState.Cancelled;
             SignalEvent.Set();
