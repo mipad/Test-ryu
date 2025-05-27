@@ -1,306 +1,278 @@
-using ARMeilleure.Decoders;
 using ARMeilleure.IntermediateRepresentation;
-using ARMeilleure.State;
-using ARMeilleure.Translation;
+using ARMeilleure.Memory;
 using System;
-using System.Reflection;
+using System.Runtime.CompilerServices;
 
-using static ARMeilleure.Instructions.InstEmitHelper;
-using static ARMeilleure.IntermediateRepresentation.Operand.Factory;
-
-namespace ARMeilleure.Instructions
+namespace ARMeilleure.State
 {
-    static partial class InstEmit
+    class NativeContext : IDisposable
     {
-        private const int DczSizeLog2 = 4; // Log2 size in words
-        public const int DczSizeInBytes = 4 << DczSizeLog2;
-
-        public static void Isb(ArmEmitterContext context)
+        private unsafe struct NativeCtxStorage
         {
-            // Execute as no-op.
+            public fixed ulong X[RegisterConsts.IntRegsCount];
+            public fixed ulong V[RegisterConsts.VecRegsCount * 2];
+            public fixed uint Flags[RegisterConsts.FlagsCount];
+            public fixed uint FpFlags[RegisterConsts.FpFlagsCount];
+            public long TpidrEl0;
+            public long TpidrroEl0;
+            public int Counter;
+            public ulong DispatchAddress;
+            public ulong ExclusiveAddress;
+            public ulong ExclusiveValueLow;
+            public ulong ExclusiveValueHigh;
+            public int Running;
+            public long Tpidr2El0;
         }
 
-        public static void Mrs(ArmEmitterContext context)
+        private static NativeCtxStorage _dummyStorage = new();
+
+        private readonly IJitMemoryBlock _block;
+
+        public IntPtr BasePtr => _block.Pointer;
+
+        public NativeContext(IJitMemoryAllocator allocator)
         {
-            OpCodeSystem op = (OpCodeSystem)context.CurrOp;
+            _block = allocator.Allocate((ulong)Unsafe.SizeOf<NativeCtxStorage>());
 
-            MethodInfo info;
+            GetStorage().ExclusiveAddress = ulong.MaxValue;
+        }
 
-            switch (GetPackedId(op))
+        public ulong GetPc()
+        {
+            // TODO: More precise tracking of PC value.
+            return GetStorage().DispatchAddress;
+        }
+
+        public unsafe ulong GetX(int index)
+        {
+            if ((uint)index >= RegisterConsts.IntRegsCount)
             {
-                case 0b11_011_0000_0000_001:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.GetCtrEl0));
-                    break;
-                case 0b11_011_0000_0000_111:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.GetDczidEl0));
-                    break;
-                case 0b11_011_0100_0010_000:
-                    EmitGetNzcv(context);
-                    return;
-                case 0b11_011_0100_0100_000:
-                    EmitGetFpcr(context);
-                    return;
-                case 0b11_011_0100_0100_001:
-                    EmitGetFpsr(context);
-                    return;
-                case 0b11_011_1101_0000_010:
-                    EmitGetTpidrEl0(context);
-                    return;
-                case 0b11_011_1101_0000_011:
-                    EmitGetTpidrroEl0(context);
-                    return;
-                case 0b11_011_1101_0000_101:
-                    EmitGetTpidr2El0(context);
-                    return;
-                case 0b11_011_1110_0000_000:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.GetCntfrqEl0));
-                    break;
-                case 0b11_011_1110_0000_001:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.GetCntpctEl0));
-                    break;
-                case 0b11_011_1110_0000_010:
-                    info = typeof(NativeInterface).GetMethod(nameof(NativeInterface.GetCntvctEl0));
-                    break;
-
-                default:
-                    throw new NotImplementedException($"Unknown MRS 0x{op.RawOpCode:X8} at 0x{op.Address:X16}.");
+                throw new ArgumentOutOfRangeException(nameof(index));
             }
 
-            SetIntOrZR(context, op.Rt, context.Call(info));
+            return GetStorage().X[index];
         }
 
-        public static void Msr(ArmEmitterContext context)
+        public unsafe void SetX(int index, ulong value)
         {
-            OpCodeSystem op = (OpCodeSystem)context.CurrOp;
-
-            switch (GetPackedId(op))
+            if ((uint)index >= RegisterConsts.IntRegsCount)
             {
-                case 0b11_011_0100_0010_000:
-                    EmitSetNzcv(context);
-                    return;
-                case 0b11_011_0100_0100_000:
-                    EmitSetFpcr(context);
-                    return;
-                case 0b11_011_0100_0100_001:
-                    EmitSetFpsr(context);
-                    return;
-                case 0b11_011_1101_0000_010:
-                    EmitSetTpidrEl0(context);
-                    return;
-                case 0b11_011_1101_0000_101:
-                    EmitSetTpidr2El0(context);
-                    return;
-
-                default:
-                    throw new NotImplementedException($"Unknown MSR 0x{op.RawOpCode:X8} at 0x{op.Address:X16}.");
+                throw new ArgumentOutOfRangeException(nameof(index));
             }
+
+            GetStorage().X[index] = value;
         }
 
-        public static void Nop(ArmEmitterContext context)
+        public unsafe V128 GetV(int index)
         {
-            // Do nothing.
-        }
-
-        public static void Sys(ArmEmitterContext context)
-        {
-            // This instruction is used to do some operations on the CPU like cache invalidation,
-            // address translation and the like.
-            // We treat it as no-op here since we don't have any cache being emulated anyway.
-            OpCodeSystem op = (OpCodeSystem)context.CurrOp;
-
-            switch (GetPackedId(op))
+            if ((uint)index >= RegisterConsts.VecRegsCount)
             {
-                case 0b11_011_0111_0100_001:
-                    {
-                        // DC ZVA
-                        Operand t = GetIntOrZR(context, op.Rt);
+                throw new ArgumentOutOfRangeException(nameof(index));
+            }
 
-                        for (long offset = 0; offset < DczSizeInBytes; offset += 8)
-                        {
-                            Operand address = context.Add(t, Const(offset));
+            return new V128(GetStorage().V[index * 2 + 0], GetStorage().V[index * 2 + 1]);
+        }
 
-                            InstEmitMemoryHelper.EmitStore(context, address, RegisterConsts.ZeroIndex, 3);
-                        }
+        public unsafe void SetV(int index, V128 value)
+        {
+            if ((uint)index >= RegisterConsts.VecRegsCount)
+            {
+                throw new ArgumentOutOfRangeException(nameof(index));
+            }
 
-                        break;
-                    }
+            GetStorage().V[index * 2 + 0] = value.Extract<ulong>(0);
+            GetStorage().V[index * 2 + 1] = value.Extract<ulong>(1);
+        }
 
-                // No-op
-                case 0b11_011_0111_1110_001: // DC CIVAC
-                    break;
+        public unsafe bool GetPstateFlag(PState flag)
+        {
+            if ((uint)flag >= RegisterConsts.FlagsCount)
+            {
+                throw new ArgumentException($"Invalid flag \"{flag}\" specified.");
+            }
 
-                case 0b11_011_0111_0101_001: // IC IVAU
-                    Operand target = Register(op.Rt, RegisterType.Integer, OperandType.I64);
-                    context.Call(typeof(NativeInterface).GetMethod(nameof(NativeInterface.InvalidateCacheLine)), target);
-                    break;
+            return GetStorage().Flags[(int)flag] != 0;
+        }
+
+        public unsafe void SetPstateFlag(PState flag, bool value)
+        {
+            if ((uint)flag >= RegisterConsts.FlagsCount)
+            {
+                throw new ArgumentException($"Invalid flag \"{flag}\" specified.");
+            }
+
+            GetStorage().Flags[(int)flag] = value ? 1u : 0u;
+        }
+
+        public unsafe uint GetPstate()
+        {
+            uint value = 0;
+            for (int flag = 0; flag < RegisterConsts.FlagsCount; flag++)
+            {
+                value |= GetStorage().Flags[flag] != 0 ? 1u << flag : 0u;
+            }
+            return value;
+        }
+
+        public unsafe void SetPstate(uint value)
+        {
+            for (int flag = 0; flag < RegisterConsts.FlagsCount; flag++)
+            {
+                uint bit = 1u << flag;
+                GetStorage().Flags[flag] = (value & bit) == bit ? 1u : 0u;
             }
         }
 
-        private static int GetPackedId(OpCodeSystem op)
+        public unsafe bool GetFPStateFlag(FPState flag)
         {
-            int id;
+            if ((uint)flag >= RegisterConsts.FpFlagsCount)
+            {
+                throw new ArgumentException($"Invalid flag \"{flag}\" specified.");
+            }
 
-            id = op.Op2 << 0;
-            id |= op.CRm << 3;
-            id |= op.CRn << 7;
-            id |= op.Op1 << 11;
-            id |= op.Op0 << 14;
-
-            return id;
+            return GetStorage().FpFlags[(int)flag] != 0;
         }
 
-        private static void EmitGetNzcv(ArmEmitterContext context)
+        public unsafe void SetFPStateFlag(FPState flag, bool value)
         {
-            OpCodeSystem op = (OpCodeSystem)context.CurrOp;
+            if ((uint)flag >= RegisterConsts.FpFlagsCount)
+            {
+                throw new ArgumentException($"Invalid flag \"{flag}\" specified.");
+            }
 
-            Operand nzcv = context.ShiftLeft(GetFlag(PState.VFlag), Const((int)PState.VFlag));
-            nzcv = context.BitwiseOr(nzcv, context.ShiftLeft(GetFlag(PState.CFlag), Const((int)PState.CFlag)));
-            nzcv = context.BitwiseOr(nzcv, context.ShiftLeft(GetFlag(PState.ZFlag), Const((int)PState.ZFlag)));
-            nzcv = context.BitwiseOr(nzcv, context.ShiftLeft(GetFlag(PState.NFlag), Const((int)PState.NFlag)));
-
-            SetIntOrZR(context, op.Rt, nzcv);
+            GetStorage().FpFlags[(int)flag] = value ? 1u : 0u;
         }
 
-        private static void EmitGetFpcr(ArmEmitterContext context)
+        public unsafe uint GetFPState(uint mask = uint.MaxValue)
         {
-            OpCodeSystem op = (OpCodeSystem)context.CurrOp;
-
-            Operand fpcr = Const(0);
-
+            uint value = 0;
             for (int flag = 0; flag < RegisterConsts.FpFlagsCount; flag++)
             {
-                if (FPCR.Mask.HasFlag((FPCR)(1u << flag)))
+                uint bit = 1u << flag;
+
+                if ((mask & bit) == bit)
                 {
-                    fpcr = context.BitwiseOr(fpcr, context.ShiftLeft(GetFpFlag((FPState)flag), Const(flag)));
+                    value |= GetStorage().FpFlags[flag] != 0 ? bit : 0u;
                 }
             }
-
-            SetIntOrZR(context, op.Rt, fpcr);
+            return value;
         }
 
-        private static void EmitGetFpsr(ArmEmitterContext context)
+        public unsafe void SetFPState(uint value, uint mask = uint.MaxValue)
         {
-            OpCodeSystem op = (OpCodeSystem)context.CurrOp;
-
-            context.SyncQcFlag();
-
-            Operand fpsr = Const(0);
-
             for (int flag = 0; flag < RegisterConsts.FpFlagsCount; flag++)
             {
-                if (FPSR.Mask.HasFlag((FPSR)(1u << flag)))
+                uint bit = 1u << flag;
+
+                if ((mask & bit) == bit)
                 {
-                    fpsr = context.BitwiseOr(fpsr, context.ShiftLeft(GetFpFlag((FPState)flag), Const(flag)));
+                    GetStorage().FpFlags[flag] = (value & bit) == bit ? 1u : 0u;
                 }
             }
-
-            SetIntOrZR(context, op.Rt, fpsr);
         }
 
-        private static void EmitGetTpidrEl0(ArmEmitterContext context)
+        public long GetTpidrEl0() => GetStorage().TpidrEl0;
+        public void SetTpidrEl0(long value) => GetStorage().TpidrEl0 = value;
+
+        public long GetTpidrroEl0() => GetStorage().TpidrroEl0;
+        public void SetTpidrroEl0(long value) => GetStorage().TpidrroEl0 = value;
+
+        public long GetTpidr2El0() => GetStorage().Tpidr2El0;
+        public void SetTpidr2El0(long value) => GetStorage().Tpidr2El0 = value;
+
+        public int GetCounter() => GetStorage().Counter;
+        public void SetCounter(int value) => GetStorage().Counter = value;
+
+        public bool GetRunning() => GetStorage().Running != 0;
+        public void SetRunning(bool value) => GetStorage().Running = value ? 1 : 0;
+
+        public unsafe static int GetRegisterOffset(Register reg)
         {
-            OpCodeSystem op = (OpCodeSystem)context.CurrOp;
-
-            Operand nativeContext = context.LoadArgument(OperandType.I64, 0);
-
-            Operand result = context.Load(OperandType.I64, context.Add(nativeContext, Const((ulong)NativeContext.GetTpidrEl0Offset())));
-
-            SetIntOrZR(context, op.Rt, result);
-        }
-
-        private static void EmitGetTpidrroEl0(ArmEmitterContext context)
-        {
-            OpCodeSystem op = (OpCodeSystem)context.CurrOp;
-
-            Operand nativeContext = context.LoadArgument(OperandType.I64, 0);
-
-            Operand result = context.Load(OperandType.I64, context.Add(nativeContext, Const((ulong)NativeContext.GetTpidrroEl0Offset())));
-
-            SetIntOrZR(context, op.Rt, result);
-        }
-
-        private static void EmitGetTpidr2El0(ArmEmitterContext context)
-        {
-            OpCodeSystem op = (OpCodeSystem)context.CurrOp;
-
-            Operand nativeContext = context.LoadArgument(OperandType.I64, 0);
-
-            Operand result = context.Load(OperandType.I64, context.Add(nativeContext, Const((ulong)NativeContext.GetTpidr2El0Offset())));
-
-            SetIntOrZR(context, op.Rt, result);
-        }
-
-        private static void EmitSetNzcv(ArmEmitterContext context)
-        {
-            OpCodeSystem op = (OpCodeSystem)context.CurrOp;
-
-            Operand nzcv = GetIntOrZR(context, op.Rt);
-            nzcv = context.ConvertI64ToI32(nzcv);
-
-            SetFlag(context, PState.VFlag, context.BitwiseAnd(context.ShiftRightUI(nzcv, Const((int)PState.VFlag)), Const(1)));
-            SetFlag(context, PState.CFlag, context.BitwiseAnd(context.ShiftRightUI(nzcv, Const((int)PState.CFlag)), Const(1)));
-            SetFlag(context, PState.ZFlag, context.BitwiseAnd(context.ShiftRightUI(nzcv, Const((int)PState.ZFlag)), Const(1)));
-            SetFlag(context, PState.NFlag, context.BitwiseAnd(context.ShiftRightUI(nzcv, Const((int)PState.NFlag)), Const(1)));
-        }
-
-        private static void EmitSetFpcr(ArmEmitterContext context)
-        {
-            OpCodeSystem op = (OpCodeSystem)context.CurrOp;
-
-            Operand fpcr = GetIntOrZR(context, op.Rt);
-            fpcr = context.ConvertI64ToI32(fpcr);
-
-            for (int flag = 0; flag < RegisterConsts.FpFlagsCount; flag++)
+            if (reg.Type == RegisterType.Integer)
             {
-                if (FPCR.Mask.HasFlag((FPCR)(1u << flag)))
+                if ((uint)reg.Index >= RegisterConsts.IntRegsCount)
                 {
-                    SetFpFlag(context, (FPState)flag, context.BitwiseAnd(context.ShiftRightUI(fpcr, Const(flag)), Const(1)));
+                    throw new ArgumentException("Invalid register.");
                 }
+
+                return StorageOffset(ref _dummyStorage, ref _dummyStorage.X[reg.Index]);
             }
-
-            context.UpdateArmFpMode();
-        }
-
-        private static void EmitSetFpsr(ArmEmitterContext context)
-        {
-            OpCodeSystem op = (OpCodeSystem)context.CurrOp;
-
-            context.ClearQcFlagIfModified();
-
-            Operand fpsr = GetIntOrZR(context, op.Rt);
-            fpsr = context.ConvertI64ToI32(fpsr);
-
-            for (int flag = 0; flag < RegisterConsts.FpFlagsCount; flag++)
+            else if (reg.Type == RegisterType.Vector)
             {
-                if (FPSR.Mask.HasFlag((FPSR)(1u << flag)))
+                if ((uint)reg.Index >= RegisterConsts.VecRegsCount)
                 {
-                    SetFpFlag(context, (FPState)flag, context.BitwiseAnd(context.ShiftRightUI(fpsr, Const(flag)), Const(1)));
+                    throw new ArgumentException("Invalid register.");
                 }
+
+                return StorageOffset(ref _dummyStorage, ref _dummyStorage.V[reg.Index * 2]);
             }
+            else if (reg.Type == RegisterType.Flag)
+            {
+                if ((uint)reg.Index >= RegisterConsts.FlagsCount)
+                {
+                    throw new ArgumentException("Invalid register.");
+                }
 
-            context.UpdateArmFpMode();
+                return StorageOffset(ref _dummyStorage, ref _dummyStorage.Flags[reg.Index]);
+            }
+            else /* if (reg.Type == RegisterType.FpFlag) */
+            {
+                if ((uint)reg.Index >= RegisterConsts.FpFlagsCount)
+                {
+                    throw new ArgumentException("Invalid register.");
+                }
+
+                return StorageOffset(ref _dummyStorage, ref _dummyStorage.FpFlags[reg.Index]);
+            }
         }
 
-        private static void EmitSetTpidrEl0(ArmEmitterContext context)
+        public static int GetTpidrEl0Offset()
         {
-            OpCodeSystem op = (OpCodeSystem)context.CurrOp;
-
-            Operand value = GetIntOrZR(context, op.Rt);
-
-            Operand nativeContext = context.LoadArgument(OperandType.I64, 0);
-
-            context.Store(context.Add(nativeContext, Const((ulong)NativeContext.GetTpidrEl0Offset())), value);
+            return StorageOffset(ref _dummyStorage, ref _dummyStorage.TpidrEl0);
         }
 
-        private static void EmitSetTpidr2El0(ArmEmitterContext context)
+        public static int GetTpidrroEl0Offset()
         {
-            OpCodeSystem op = (OpCodeSystem)context.CurrOp;
-
-            Operand value = GetIntOrZR(context, op.Rt);
-
-            Operand nativeContext = context.LoadArgument(OperandType.I64, 0);
-
-            context.Store(context.Add(nativeContext, Const((ulong)NativeContext.GetTpidr2El0Offset())), value);
+            return StorageOffset(ref _dummyStorage, ref _dummyStorage.TpidrroEl0);
         }
+
+        public static int GetTpidr2El0Offset()
+        {
+            return StorageOffset(ref _dummyStorage, ref _dummyStorage.Tpidr2El0);
+        }
+
+        public static int GetCounterOffset()
+        {
+            return StorageOffset(ref _dummyStorage, ref _dummyStorage.Counter);
+        }
+
+        public static int GetDispatchAddressOffset()
+        {
+            return StorageOffset(ref _dummyStorage, ref _dummyStorage.DispatchAddress);
+        }
+
+        public static int GetExclusiveAddressOffset()
+        {
+            return StorageOffset(ref _dummyStorage, ref _dummyStorage.ExclusiveAddress);
+        }
+
+        public static int GetExclusiveValueOffset()
+        {
+            return StorageOffset(ref _dummyStorage, ref _dummyStorage.ExclusiveValueLow);
+        }
+
+        public static int GetRunningOffset()
+        {
+            return StorageOffset(ref _dummyStorage, ref _dummyStorage.Running);
+        }
+
+        private static int StorageOffset<T>(ref NativeCtxStorage storage, ref T target)
+        {
+            return (int)Unsafe.ByteOffset(ref Unsafe.As<NativeCtxStorage, T>(ref storage), ref target);
+        }
+
+        private unsafe ref NativeCtxStorage GetStorage() => ref Unsafe.AsRef<NativeCtxStorage>((void*)_block.Pointer);
+
+        public void Dispose() => _block.Dispose();
     }
 }
