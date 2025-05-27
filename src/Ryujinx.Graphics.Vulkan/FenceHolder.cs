@@ -1,6 +1,7 @@
 using Silk.NET.Vulkan;
 using System;
 using System.Threading;
+using System.Diagnostics;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -37,12 +38,18 @@ namespace Ryujinx.Graphics.Vulkan
 
         public bool TryGet(out Fence fence)
         {
+            if (_disposed)
+            {
+                fence = default;
+                return false;
+            }
+
             int lastValue;
             do
             {
                 lastValue = _referenceCount;
 
-                if (lastValue == 0)
+                if (lastValue == 0 || _disposed)
                 {
                     fence = default;
                     return false;
@@ -52,7 +59,12 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (_concurrentWaitUnsupported)
             {
-                AcquireLock();
+                if (!TryAcquireLock(1000))
+                {
+                    Interlocked.Decrement(ref _referenceCount);
+                    fence = default;
+                    return false;
+                }
             }
 
             fence = _fence;
@@ -79,22 +91,26 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (Interlocked.Decrement(ref _referenceCount) == 0)
             {
-                _api.DestroyFence(_device, _fence, Span<AllocationCallbacks>.Empty);
-                _fence = default;
+                if (!_disposed)
+                {
+                    _api.DestroyFence(_device, _fence, Span<AllocationCallbacks>.Empty);
+                    _fence = default;
+                }
             }
         }
 
-        private void AcquireLock()
+        private bool TryAcquireLock(int timeoutMs = 1000)
         {
-            while (!TryAcquireLock())
+            Stopwatch sw = Stopwatch.StartNew();
+            while (Interlocked.Exchange(ref _lock, 1) != 0)
             {
+                if (sw.ElapsedMilliseconds > timeoutMs)
+                {
+                    return false;
+                }
                 Thread.SpinWait(32);
             }
-        }
-
-        private bool TryAcquireLock()
-        {
-            return Interlocked.Exchange(ref _lock, 1) == 0;
+            return true;
         }
 
         private void ReleaseLock()
@@ -106,11 +122,19 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (_concurrentWaitUnsupported)
             {
-                AcquireLock();
+                if (!TryAcquireLock(1000))
+                {
+                    throw new TimeoutException("Failed to acquire fence lock");
+                }
 
                 try
                 {
-                    FenceHelper.WaitAllIndefinitely(_api, _device, stackalloc Fence[] { _fence });
+                    bool signaled = FenceHelper.AllSignaled(_api, _device, stackalloc Fence[] { _fence }, 500_000_000);
+                    if (!signaled)
+                    {
+                        _api.DeviceWaitIdle(_device);
+                        ResetFence();
+                    }
                 }
                 finally
                 {
@@ -119,15 +143,25 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                FenceHelper.WaitAllIndefinitely(_api, _device, stackalloc Fence[] { _fence });
+                bool signaled = FenceHelper.AllSignaled(_api, _device, stackalloc Fence[] { _fence }, 500_000_000);
+                if (!signaled)
+                {
+                    _api.DeviceWaitIdle(_device);
+                    ResetFence();
+                }
             }
+        }
+
+        public void ResetFence()
+        {
+            _api.ResetFences(_device, 1, ref _fence);
         }
 
         public bool IsSignaled()
         {
             if (_concurrentWaitUnsupported)
             {
-                if (!TryAcquireLock())
+                if (!TryAcquireLock(1000))
                 {
                     return false;
                 }
@@ -151,8 +185,8 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (!_disposed)
             {
-                Put();
                 _disposed = true;
+                Put();
             }
         }
     }
