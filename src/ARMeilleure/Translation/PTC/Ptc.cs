@@ -3,14 +3,12 @@ using ARMeilleure.CodeGen.Linking;
 using ARMeilleure.CodeGen.Unwinding;
 using ARMeilleure.Common;
 using ARMeilleure.Memory;
-using ARMeilleure.State;
 using Ryujinx.Common;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
 using Ryujinx.Common.Memory;
 using System;
 using System.Buffers.Binary;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -31,8 +29,8 @@ namespace ARMeilleure.Translation.PTC
         private const string OuterHeaderMagicString = "PTCohd\0\0";
         private const string InnerHeaderMagicString = "PTCihd\0\0";
 
-        private const uint InternalVersion = 7008; //! To be incremented manually for each change to the ARMeilleure project.
-        
+        private const uint InternalVersion = 6950; //! To be incremented manually for each change to the ARMeilleure project.
+
         private const string ActualDir = "0";
         private const string BackupDir = "1";
 
@@ -824,8 +822,8 @@ namespace ARMeilleure.Translation.PTC
 
                     Debug.Assert(Profiler.IsAddressInStaticCodeRange(address));
 
-                    TranslatedFunction func = translator.Translate(address, item.funcProfile.Mode, item.funcProfile.HighCq, pptcTranslation: true);
-                    
+                    TranslatedFunction func = translator.Translate(address, item.funcProfile.Mode, item.funcProfile.HighCq);
+
                     bool isAddressUnique = translator.Functions.TryAdd(address, func.GuestSize, func);
 
                     Debug.Assert(isAddressUnique, $"The address 0x{address:X16} is not unique.");
@@ -834,7 +832,7 @@ namespace ARMeilleure.Translation.PTC
 
                     translator.RegisterFunction(address, func);
 
-                    if (State != PtcState.Enabled)
+            if (State != PtcState.Enabled)
                     {
                         break;
                     }
