@@ -81,7 +81,10 @@ namespace Ryujinx.Audio.Renderer.Dsp
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static short GetCoefficientAtIndex(ReadOnlySpan<short> coefficients, int index)
         {
-            if ((uint)index > (uint)coefficients.Length)
+            if ((uint)index < (uint)coefficients.Length)
+            {
+                return coefficients[index];
+            }
             {
                 Logger.Error?.Print(LogClass.AudioRenderer, $"Out of bound read for coefficient at index {index}");
 
