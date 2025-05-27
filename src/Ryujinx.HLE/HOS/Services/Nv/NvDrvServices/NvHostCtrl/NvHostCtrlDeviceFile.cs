@@ -107,14 +107,14 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         private async Task HandleSyncptWaitAsync(byte[] argumentData)
         {
             SyncptWaitArguments waitArgs = SyncptWaitArguments.FromSpan(argumentData);
-            NvInternalResult res = SyncptWait(ref waitArgs);
-            if (res == NvInternalResult.Success)
-            {
-                using (var writer = new BinaryWriter(new MemoryStream(arguments.ToArray())))
-                {
-                    waitArgs.Write(writer);
-                }
-            }
+            
+            var tempFence = waitArgs.Fence;
+            ModifyFence(ref tempFence);
+            waitArgs.Fence = tempFence;
+            using (var writer = new BinaryWriter(new MemoryStream(arguments.ToArray())))
+          {
+            waitArgs.Write(writer);
+          }
         }
 
         private int QueryEvent(uint eventId)
