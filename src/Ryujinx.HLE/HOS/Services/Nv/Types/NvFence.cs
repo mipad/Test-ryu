@@ -37,5 +37,23 @@ namespace Ryujinx.HLE.HOS.Services.Nv.Types
 
             return false;
         }
+        
+
+        public static NvFence Read(BinaryReader reader)
+        {
+            return new NvFence
+            {
+                Id = reader.ReadUInt32(),
+                Value = reader.ReadUInt32()
+            };
+        }
+
+        public void Write(BinaryWriter writer)
+        {
+            writer.Write(Id);
+            writer.Write(Value);
+        }
+    }
+}
     }
 }
