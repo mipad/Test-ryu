@@ -127,7 +127,7 @@ namespace Ryujinx.Cpu.Nce
         }
 
         /// <inheritdoc/>
-        public IDiskCacheLoadState LoadDiskCache(string titleIdText, string displayVersion, bool enabled, string cacheSelector)
+        public IDiskCacheLoadState LoadDiskCache(string titleIdText, string displayVersion, bool enabled)
         {
             return new DummyDiskCacheLoadState();
         }
