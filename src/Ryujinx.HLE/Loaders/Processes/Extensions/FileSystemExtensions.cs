@@ -122,6 +122,7 @@ namespace Ryujinx.HLE.Loaders.Processes.Extensions
                 metaLoader,
                 nacpData,
                 enablePtc,
+                modLoadResult.Hash,
                 true,
                 programName,
                 metaLoader.GetProgramId(),
