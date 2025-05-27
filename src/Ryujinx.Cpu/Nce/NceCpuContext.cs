@@ -65,7 +65,7 @@ namespace Ryujinx.Cpu.Nce
 
         private readonly ITickSource _tickSource;
         private readonly ICpuMemoryManager _memoryManager;
-
+        
         static NceCpuContext()
         {
             CodeWriter codeWriter = new();
