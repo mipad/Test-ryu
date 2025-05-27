@@ -438,18 +438,6 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
             return !expired;
         }
 
-        public void Cancel(GpuContext gpu)
-        {
-            State = NvHostEventState.Cancelled;
-            SignalEvent.Set();
-        }
-
-        public void CloseEvent(ServiceCtx context)
-        {
-            context.Device.System.HandleManager.CloseHandle(EventHandle);
-            SignalEvent.Dispose();
-        }
-
         public void CheckStateTimeout()
         {
             if (_stateTimer.ElapsedMilliseconds > 1000 && 
