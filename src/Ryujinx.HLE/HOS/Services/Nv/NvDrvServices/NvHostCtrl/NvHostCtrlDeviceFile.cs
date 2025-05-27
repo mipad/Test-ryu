@@ -61,7 +61,8 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
                         result = CallIoctlMethod<uint>(SyncptIncr, arguments);
                         break;
                     case 0x16:
-                        Task.Run(() => HandleSyncptWaitAsync(arguments));
+                        byte[] argCopy = arguments.ToArray();
+                        Task.Run(() => HandleSyncptWaitAsync(argCopy));
                         result = NvInternalResult.TryAgain;
                         break;
                     case 0x19:
@@ -102,9 +103,9 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
             return result;
         }
 
-        private async Task HandleSyncptWaitAsync(Span<byte> arguments)
+        private async Task HandleSyncptWaitAsync(byte[] argumentData)
         {
-            SyncptWaitArguments waitArgs = SyncptWaitArguments.FromSpan(arguments);
+            SyncptWaitArguments waitArgs = SyncptWaitArguments.FromSpan(argumentData);
             NvInternalResult res = SyncptWait(ref waitArgs);
             if (res == NvInternalResult.Success)
             {
