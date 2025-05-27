@@ -111,7 +111,6 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
     
     if (res == NvInternalResult.Success)
     {
-        /
         using (var writer = new BinaryWriter(new MemoryStream(argumentData)))
         {
             waitArgs.Write(writer);
