@@ -448,14 +448,4 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
             }
         }
     }
-
-    internal enum NvHostEventState
-    {
-        Available,
-        Waiting,
-        Signaled,
-        Cancelling,
-        Cancelled,
-        Signaling
-    }
 }
