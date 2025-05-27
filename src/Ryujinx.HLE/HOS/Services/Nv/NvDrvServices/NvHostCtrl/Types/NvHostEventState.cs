@@ -1,6 +1,6 @@
 namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
 {
-    enum NvHostEventState
+    public enum NvHostEventState
     {
         Available = 0,
         Waiting = 1,
