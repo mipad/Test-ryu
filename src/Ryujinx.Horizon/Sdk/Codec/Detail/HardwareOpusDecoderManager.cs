@@ -53,8 +53,12 @@ namespace Ryujinx.Horizon.Sdk.Codec.Detail
 
             int opusDecoderSize = GetOpusDecoderSize(parameter.ChannelsCount);
 
-            int sampleRateRatio = parameter.SampleRate != 0 ? 48000 / parameter.SampleRate : 0;
-            int frameSize = BitUtils.AlignUp(sampleRateRatio != 0 ? parameter.ChannelsCount * 1920 / sampleRateRatio : 0, 64);
+            // Modified: 使用浮点运算并向上取整，调整对齐基数为128
+            int sampleRateRatio = parameter.SampleRate != 0 ? (int)Math.Ceiling(48000.0 / parameter.SampleRate) : 0;
+            int frameSize = BitUtils.AlignUp(
+                sampleRateRatio != 0 ? (int)Math.Ceiling((double)parameter.ChannelsCount * 1920 / sampleRateRatio) : 0, 
+                128
+            ) + 128; // 追加128字节余量
             size = opusDecoderSize + 1536 + frameSize;
 
             return Result.Success;
@@ -125,9 +129,15 @@ namespace Ryujinx.Horizon.Sdk.Codec.Detail
 
             int opusDecoderSize = GetOpusMultistreamDecoderSize(parameter.NumberOfStreams, parameter.NumberOfStereoStreams);
 
-            int streamSize = BitUtils.AlignUp(parameter.NumberOfStreams * 1500, 64);
-            int sampleRateRatio = parameter.SampleRate != 0 ? 48000 / parameter.SampleRate : 0;
-            int frameSize = BitUtils.AlignUp(sampleRateRatio != 0 ? parameter.ChannelsCount * 1920 / sampleRateRatio : 0, 64);
+            // Modified: 调整流缓冲区乘数至2000
+            int streamSize = BitUtils.AlignUp(parameter.NumberOfStreams * 2000, 64);
+            
+            // Modified: 使用浮点运算并向上取整，调整对齐基数为128
+            int sampleRateRatio = parameter.SampleRate != 0 ? (int)Math.Ceiling(48000.0 / parameter.SampleRate) : 0;
+            int frameSize = BitUtils.AlignUp(
+                sampleRateRatio != 0 ? (int)Math.Ceiling((double)parameter.ChannelsCount * 1920 / sampleRateRatio) : 0, 
+                128
+            ) + 128; // 追加128字节余量
             size = opusDecoderSize + streamSize + frameSize;
 
             return Result.Success;
@@ -246,9 +256,13 @@ namespace Ryujinx.Horizon.Sdk.Codec.Detail
 
             int opusDecoderSize = fromDsp ? GetDspOpusDecoderSize(parameter.ChannelsCount) : GetOpusDecoderSize(parameter.ChannelsCount);
 
+            // Modified: 使用浮点运算并向上取整，调整对齐基数为128
             int frameSizeMono48KHz = parameter.Flags.HasFlag(OpusDecoderFlags.LargeFrameSize) ? 5760 : 1920;
-            int sampleRateRatio = parameter.SampleRate != 0 ? 48000 / parameter.SampleRate : 0;
-            int frameSize = BitUtils.AlignUp(sampleRateRatio != 0 ? parameter.ChannelsCount * frameSizeMono48KHz / sampleRateRatio : 0, 64);
+            int sampleRateRatio = parameter.SampleRate != 0 ? (int)Math.Ceiling(48000.0 / parameter.SampleRate) : 0;
+            int frameSize = BitUtils.AlignUp(
+                sampleRateRatio != 0 ? (int)Math.Ceiling((double)parameter.ChannelsCount * frameSizeMono48KHz / sampleRateRatio) : 0, 
+                128
+            ) + 128; // 追加128字节余量
             size = opusDecoderSize + 1536 + frameSize;
 
             return Result.Success;
@@ -277,10 +291,16 @@ namespace Ryujinx.Horizon.Sdk.Codec.Detail
                 ? GetDspOpusMultistreamDecoderSize(parameter.NumberOfStreams, parameter.NumberOfStereoStreams)
                 : GetOpusMultistreamDecoderSize(parameter.NumberOfStreams, parameter.NumberOfStereoStreams);
 
+            // Modified: 调整流缓冲区乘数至2000
+            int streamSize = BitUtils.AlignUp(parameter.NumberOfStreams * 2000, 64);
+
+            // Modified: 使用浮点运算并向上取整，调整对齐基数为128
             int frameSizeMono48KHz = parameter.Flags.HasFlag(OpusDecoderFlags.LargeFrameSize) ? 5760 : 1920;
-            int streamSize = BitUtils.AlignUp(parameter.NumberOfStreams * 1500, 64);
-            int sampleRateRatio = parameter.SampleRate != 0 ? 48000 / parameter.SampleRate : 0;
-            int frameSize = BitUtils.AlignUp(sampleRateRatio != 0 ? parameter.ChannelsCount * frameSizeMono48KHz / sampleRateRatio : 0, 64);
+            int sampleRateRatio = parameter.SampleRate != 0 ? (int)Math.Ceiling(48000.0 / parameter.SampleRate) : 0;
+            int frameSize = BitUtils.AlignUp(
+                sampleRateRatio != 0 ? (int)Math.Ceiling((double)parameter.ChannelsCount * frameSizeMono48KHz / sampleRateRatio) : 0, 
+                128
+            ) + 128; // 追加128字节余量
             size = opusDecoderSize + streamSize + frameSize;
 
             return Result.Success;
