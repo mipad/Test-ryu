@@ -15,9 +15,7 @@ namespace Ryujinx.Cpu.LightningJit
         {
             _tickSource = tickSource;
 
-            _functionTable = AddressTable<ulong>.CreateForArm(for64Bit, memory.Type);
-
-            _translator = new Translator(memory, _functionTable);
+            _translator = new Translator(memory, for64Bit);
 
             memory.UnmapEvent += UnmapHandler;
         }
