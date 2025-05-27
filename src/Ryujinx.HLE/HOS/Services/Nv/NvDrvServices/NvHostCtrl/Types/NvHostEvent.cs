@@ -12,12 +12,12 @@ using System.Threading;
 
 namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl.Types
 {
-    class NvHostEvent
+    internal class NvHostEvent
     {
-        public NvFence Fence;
-        public NvHostEventState State;
-        public KEvent Event;
-        public int EventHandle;
+        public NvFence Fence { get; private set; }
+        public NvHostEventState State { get; private set; }
+        public KEvent Event { get; }
+        public int EventHandle { get; private set; }
 
         public ManualResetEventSlim SignalEvent { get; } = new ManualResetEventSlim(false);
         private readonly Stopwatch _stateTimer = new Stopwatch();
@@ -31,7 +31,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl.Types
         private NvFence _previousFailingFence;
         private uint _failingCount;
 
-        public readonly object Lock = new();
+        public readonly object Lock { get; } = new();
 
         private const uint FailingCountMax = 2;
 
@@ -48,6 +48,14 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl.Types
 
             _eventId = eventId;
             _syncpointManager = syncpointManager;
+
+            // 句柄生成逻辑
+            if (KernelStatic.GetCurrentProcess().HandleTable.GenerateHandle(Event.ReadableEvent, out int eventHandle) != Result.Success)
+            {
+                throw new InvalidOperationException("Out of handles!");
+            }
+            EventHandle = eventHandle;
+
             ResetFailingState();
         }
 
