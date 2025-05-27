@@ -36,27 +36,21 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl.Types
         private const uint FailingCountMax = 2;
 
         public NvHostEvent(NvHostSyncpt syncpointManager, uint eventId, Horizon system)
-        {
-            Fence.Id = 0;
-            State = NvHostEventState.Available;
-            Event = new KEvent(system.KernelContext);
+{
+    Fence = new NvFence { Id = 0, Value = 0 };  // 整体初始化
+    State = NvHostEventState.Available;
+    Event = new KEvent(system.KernelContext);
 
-            if (KernelStatic.GetCurrentProcess().HandleTable.GenerateHandle(Event.ReadableEvent, out EventHandle) != Result.Success)
-            {
-                throw new InvalidOperationException("Out of handles!");
-            }
+    // 句柄生成逻辑（修复重复生成问题）
+    if (KernelStatic.GetCurrentProcess().HandleTable.GenerateHandle(Event.ReadableEvent, out int eventHandle) != Result.Success)
+    {
+        throw new InvalidOperationException("Out of handles!");
+    }
+    EventHandle = eventHandle;
 
-            _eventId = eventId;
-            _syncpointManager = syncpointManager;
-
-            // 句柄生成逻辑
-            if (KernelStatic.GetCurrentProcess().HandleTable.GenerateHandle(Event.ReadableEvent, out int eventHandle) != Result.Success)
-            {
-                throw new InvalidOperationException("Out of handles!");
-            }
-            EventHandle = eventHandle;
-
-            ResetFailingState();
+    _eventId = eventId;
+    _syncpointManager = syncpointManager;
+    ResetFailingState();
         }
 
         private void ResetFailingState()
