@@ -6,9 +6,11 @@ using Ryujinx.HLE.HOS.Kernel.Threading;
 using Ryujinx.HLE.HOS.Services.Nv.Types;
 using Ryujinx.Horizon.Common;
 using System;
+using System.Diagnostics;
+using System.IO;
 using System.Threading;
 
-namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
+namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl.Types
 {
     class NvHostEvent
     {
@@ -17,8 +19,11 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         public KEvent Event;
         public int EventHandle;
 
+        public ManualResetEventSlim SignalEvent { get; } = new ManualResetEventSlim(false);
+        private readonly Stopwatch _stateTimer = new Stopwatch();
+
         private readonly uint _eventId;
-#pragma warning disable IDE0052 // Remove unread private member
+#pragma warning disable IDE0052
         private readonly NvHostSyncpt _syncpointManager;
 #pragma warning restore IDE0052
         private SyncpointWaiterHandle _waiterInformation;
@@ -28,18 +33,12 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
 
         public readonly object Lock = new();
 
-        /// <summary>
-        /// Max failing count until waiting on CPU.
-        /// FIXME: This seems enough for most of the cases, reduce if needed.
-        /// </summary>
         private const uint FailingCountMax = 2;
 
         public NvHostEvent(NvHostSyncpt syncpointManager, uint eventId, Horizon system)
         {
             Fence.Id = 0;
-
             State = NvHostEventState.Available;
-
             Event = new KEvent(system.KernelContext);
 
             if (KernelStatic.GetCurrentProcess().HandleTable.GenerateHandle(Event.ReadableEvent, out EventHandle) != Result.Success)
@@ -48,9 +47,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
             }
 
             _eventId = eventId;
-
             _syncpointManager = syncpointManager;
-
             ResetFailingState();
         }
 
@@ -66,7 +63,6 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
             lock (Lock)
             {
                 NvHostEventState oldState = State;
-
                 State = NvHostEventState.Signaling;
 
                 if (oldState == NvHostEventState.Waiting)
@@ -82,15 +78,12 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         {
             lock (Lock)
             {
-                // If the signal does not match our current waiter,
-                // then it is from a past fence and we should just ignore it.
                 if (waiterInformation != null && waiterInformation != _waiterInformation)
                 {
                     return;
                 }
 
                 ResetFailingState();
-
                 Signal();
             }
         }
@@ -100,7 +93,6 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
             lock (Lock)
             {
                 NvHostEventState oldState = State;
-
                 State = NvHostEventState.Cancelling;
 
                 if (oldState == NvHostEventState.Waiting && _waiterInformation != null)
@@ -115,46 +107,43 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
                     else
                     {
                         _failingCount = 1;
-
                         _previousFailingFence = Fence;
                     }
                 }
 
                 State = NvHostEventState.Cancelled;
-
                 Event.WritableEvent.Clear();
             }
         }
 
-        public bool Wait(GpuContext gpuContext, NvFence fence)
+        public bool Wait(GpuContext gpuContext, NvFence fence, int timeout)
         {
             lock (Lock)
             {
-                // NOTE: nvservices code should always wait on the GPU side.
-                //       If we do this, we may get an abort or undefined behaviour when the GPU processing thread is blocked for a long period (for example, during shader compilation).
-                //       The reason for this is that the NVN code will try to wait until giving up.
-                //       This is done by trying to wait and signal multiple times until aborting after you are past the timeout.
-                //       As such, if it fails too many time, we enforce a wait on the CPU side indefinitely.
-                //       This allows to keep GPU and CPU in sync when we are slow.
                 if (_failingCount == FailingCountMax)
                 {
                     Logger.Warning?.Print(LogClass.ServiceNv, "GPU processing thread is too slow, waiting on CPU...");
-
                     Fence.Wait(gpuContext, Timeout.InfiniteTimeSpan);
-
                     ResetFailingState();
-
                     return false;
                 }
                 else
                 {
                     Fence = fence;
                     State = NvHostEventState.Waiting;
-
                     _waiterInformation = gpuContext.Synchronization.RegisterCallbackOnSyncpoint(Fence.Id, Fence.Value, GpuSignaled);
-
-                    return true;
+                    return SignalEvent.Wait(timeout);
                 }
+            }
+        }
+
+        public void CheckStateTimeout()
+        {
+            if (_stateTimer.ElapsedMilliseconds > 1000 &&
+                (State == NvHostEventState.Waiting || State == NvHostEventState.Signaling))
+            {
+                Logger.Warning?.Print(LogClass.ServiceNv, "Event state timeout detected");
+                SignalEvent.Set();
             }
         }
 
