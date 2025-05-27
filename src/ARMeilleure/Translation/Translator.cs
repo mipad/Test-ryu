@@ -240,7 +240,7 @@ namespace ARMeilleure.Translation
             }
         }
 
-        internal TranslatedFunction Translate(ulong address, ExecutionMode mode, bool highCq, bool singleStep = false)
+        internal TranslatedFunction Translate(ulong address, ExecutionMode mode, bool highCq, bool singleStep = false, bool pptcTranslation = false)
         {
             var context = new ArmEmitterContext(
                 Memory,
@@ -267,7 +267,7 @@ namespace ARMeilleure.Translation
                 context.Branch(context.GetLabel(address));
             }
 
-            ControlFlowGraph cfg = EmitAndGetCFG(context, blocks, out Range funcRange, out Counter<uint> counter);
+            ControlFlowGraph cfg = EmitAndGetCFG(context, blocks, out Range funcRange, out Counter<uint> counter, pptcTranslation);
 
             ulong funcSize = funcRange.End - funcRange.Start;
 
@@ -342,7 +342,9 @@ namespace ARMeilleure.Translation
             ArmEmitterContext context,
             Block[] blocks,
             out Range range,
-            out Counter<uint> counter)
+            out Counter<uint> counter,
+            bool pptcTranslation)
+
         {
             counter = null;
 
@@ -427,6 +429,14 @@ namespace ARMeilleure.Translation
                         if (opCode.Instruction.Emitter != null)
                         {
                             opCode.Instruction.Emitter(context);
+                            // if we're pre-compiling PPTC functions, 和 we hit an Undefined instruction as the first
+                            // instruction in the block, mark the function as blacklisted
+                            // this way, we don't pre-compile Exlaunch hooks, which allows ExeFS mods to run with PPTC 
+                            if (pptcTranslation && opCode.Instruction.Name == InstName.Und && blkIndex == 0)
+                            {
+                                range = new Range(rangeStart, rangeEnd);
+                                return null;
+                            }
                         }
                         else
                         {
