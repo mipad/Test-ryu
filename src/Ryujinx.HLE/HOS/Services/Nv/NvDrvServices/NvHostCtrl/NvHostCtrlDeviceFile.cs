@@ -408,23 +408,5 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
             }
         }
     }
-    internal class NvHostEvent
-    {
-        public NvFence Fence { get; }
-        public int EventHandle { get; }
-        public NvHostEventState State { get; set; }
-        public ManualResetEventSlim SignalEvent { get; } = new ManualResetEventSlim(false);
-        private readonly Stopwatch _stateTimer = new Stopwatch();
-
-        public void CheckStateTimeout()
-        {
-            if (_stateTimer.ElapsedMilliseconds > 1000 && 
-                (State == NvHostEventState.Waiting || State == NvHostEventState.Signaling))
-            {
-                Logger.Warning?.Print(LogClass.ServiceNv, "Event state timeout detected");
-                SignalEvent.Set();
-            }
-        }
-    }      
 }
 
