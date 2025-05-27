@@ -860,9 +860,10 @@ namespace Ryujinx.HLE.HOS.Services.Sockets.Bsd
                 {
                     result = !socket.Blocking ? 0x800 : 0;
                 }
-                else if (cmd == 0x4 && arg == 0x800)
+                // F_SETFL
+                else if (cmd == 0x4)
                 {
-                    socket.Blocking = false;
+                    socket.Blocking = (arg & 0x800) != 0;
                     result = 0;
                 }
                 else
