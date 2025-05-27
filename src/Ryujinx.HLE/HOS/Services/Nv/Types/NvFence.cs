@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 namespace Ryujinx.HLE.HOS.Services.Nv.Types
 {
     [StructLayout(LayoutKind.Sequential, Size = 0x8)]
-    internal struct NvFence
+    public struct NvFence
     {
         public const uint InvalidSyncPointId = uint.MaxValue;
 
