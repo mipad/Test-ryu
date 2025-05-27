@@ -55,5 +55,3 @@ namespace Ryujinx.HLE.HOS.Services.Nv.Types
         }
     }
 }
-    }
-}
