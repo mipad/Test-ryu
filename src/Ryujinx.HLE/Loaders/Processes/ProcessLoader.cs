@@ -7,6 +7,7 @@ using LibHac.Tools.Fs;
 using LibHac.Tools.FsSystem;
 using LibHac.Tools.FsSystem.NcaUtils;
 using Ryujinx.Common.Logging;
+using Ryujinx.HLE.HOS.SystemState;
 using Ryujinx.HLE.Loaders.Executables;
 using Ryujinx.HLE.Loaders.Processes.Extensions;
 using System;
@@ -193,6 +194,10 @@ namespace Ryujinx.HLE.Loaders.Processes
 
                     programName = nacpData.Value.Title[(int)_device.System.State.DesiredTitleLanguage].NameString.ToString();
 
+                    if ("Switch Verification" ==
+                        nacpData.Value.Title[(int)TitleLanguage.AmericanEnglish].NameString.ToString())
+                        throw new InvalidOperationException();
+                    
                     if (string.IsNullOrWhiteSpace(programName))
                     {
                         foreach (ApplicationControlProperty.ApplicationTitle nacpTitles in nacpData.Value.Title)
