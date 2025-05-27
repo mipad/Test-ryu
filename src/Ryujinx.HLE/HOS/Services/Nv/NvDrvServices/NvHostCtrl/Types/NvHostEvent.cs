@@ -15,7 +15,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl.Types
     internal class NvHostEvent
     {
         public NvFence Fence { get; private set; }
-        public NvHostEventState State { get; internal set; }
+        public NvHostEventState State { get; private set; }
         public KEvent Event { get; }
         public int EventHandle { get; private set; }
 
