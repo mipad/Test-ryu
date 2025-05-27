@@ -2,9 +2,9 @@ name: Android CI  Fix
 
 on:
   push:
-    branches: [ "audio" ]
+    branches: [ "nw" ]
   pull_request:
-    branches: [ "audio" ]
+    branches: [ "nw" ]
 
 jobs:
   build:
@@ -25,7 +25,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: audio
+        ref: nw
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
