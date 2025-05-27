@@ -4,6 +4,7 @@ using Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl.Types;
 using Ryujinx.HLE.HOS.Services.Nv.Types;
 using Ryujinx.HLE.HOS.Services.Settings;
 using Ryujinx.Memory;
+using System.IO;
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
