@@ -31,7 +31,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl.Types
         private NvFence _previousFailingFence;
         private uint _failingCount;
 
-        public readonly object Lock { get; } = new();
+        public  object Lock { get; } = new();
 
         private const uint FailingCountMax = 2;
 
