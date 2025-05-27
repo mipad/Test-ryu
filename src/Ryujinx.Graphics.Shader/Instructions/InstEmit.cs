@@ -331,7 +331,7 @@ namespace Ryujinx.Graphics.Shader.Instructions
         {
             context.GetOp<InstVotevtg>();
 
-            context.TranslatorContext.GpuAccessor.Log("Shader instruction Votevtg is not implemented.");
+            //context.TranslatorContext.GpuAccessor.Log("Shader instruction Votevtg is not implemented.");
         }
 
         public static void Vset(EmitterContext context)
