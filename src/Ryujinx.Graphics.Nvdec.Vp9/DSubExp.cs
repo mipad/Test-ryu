@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Prob = System.Byte;
 
 namespace Ryujinx.Graphics.Nvdec.Vp9
 {
