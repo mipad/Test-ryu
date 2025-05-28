@@ -233,10 +233,9 @@ namespace Ryujinx.Graphics.Vulkan
             Return(cbs);
             return Rent();
         }
-
-        public CommandBufferScoped Rent()
+            
+public CommandBufferScoped Rent()
 {
-    // 记录尝试次数，避免无限递归
     const int MaxAttempts = 2;
     int attempts = 0;
 
@@ -244,7 +243,8 @@ namespace Ryujinx.Graphics.Vulkan
     {
         lock (_commandBuffers)
         {
-            int cursor = FreeConsumed(_inUseCount + _queuedCount == _totalCommandBuffers);
+            // 扩容后重置扫描起点为0
+            int cursor = (attempts > 0) ? 0 : FreeConsumed(_inUseCount + _queuedCount == _totalCommandBuffers);
 
             // 遍历所有缓冲区，尝试找到未使用的
             for (int i = 0; i < _totalCommandBuffers; i++)
@@ -273,6 +273,8 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 ExpandPool();
                 attempts++;
+                // 扩容后继续循环，重新扫描所有缓冲区（包括新增的）
+                continue;
             }
             else
             {
@@ -287,27 +289,26 @@ namespace Ryujinx.Graphics.Vulkan
 // 扩容池方法
 private void ExpandPool()
 {
-    lock (_commandBuffers)
+    int newSize = Math.Min(_totalCommandBuffers * 2, 256);
+    
+    // 扩容数组
+    Array.Resize(ref _commandBuffers, newSize);
+    Array.Resize(ref _bufferLocks, newSize);
+    Array.Resize(ref _queuedIndexes, newSize);
+
+    // 初始化新增缓冲区
+    for (int i = _totalCommandBuffers; i < newSize; i++)
     {
-        int newSize = _totalCommandBuffers * 2;
-
-        // 扩容缓冲区数组和锁数组
-        Array.Resize(ref _commandBuffers, newSize);
-        Array.Resize(ref _bufferLocks, newSize);
-        Array.Resize(ref _queuedIndexes, newSize);
-
-        // 初始化新增的缓冲区
-        for (int i = _totalCommandBuffers; i < newSize; i++)
-        {
-            _bufferLocks[i] = new object();
-            _commandBuffers[i].Initialize(_api, _device, _pool);
-            WaitAndDecrementRef(i); // 确保新缓冲区初始状态可用
-        }
-
-        _totalCommandBuffers = newSize;
-        _totalCommandBuffersMask = newSize - 1;
+        _bufferLocks[i] = new object();
+        _commandBuffers[i].Initialize(_api, _device, _pool);
+        _commandBuffers[i].Fence = new FenceHolder(_api, _device, _concurrentFenceWaitUnsupported);
+        _commandBuffers[i].InUse = false;
     }
+
+    _totalCommandBuffers = newSize;
+    _totalCommandBuffersMask = newSize - 1;
 }
+
         public void Return(CommandBufferScoped cbs)
         {
             Return(cbs, null, null, null);
