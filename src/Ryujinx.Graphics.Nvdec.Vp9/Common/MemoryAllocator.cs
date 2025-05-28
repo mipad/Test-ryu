@@ -58,7 +58,11 @@ namespace Ryujinx.Graphics.Nvdec.Vp9.Common
                 }
             }
 
-            return new ArrayPtr<T>(ptr, length);
+            ArrayPtr<T> allocation = new ArrayPtr<T>(ptr, length);
+
+            allocation.AsSpan().Fill(default);
+
+            return allocation;
         }
 
         public unsafe void Free<T>(ArrayPtr<T> arr) where T : unmanaged
