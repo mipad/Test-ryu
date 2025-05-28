@@ -123,7 +123,7 @@ namespace Ryujinx.Cpu.Signal
                 SigAction sig = new SigAction
                 {
                     sa_handler = action,
-                    sa_flags = SA_SIGINFO | SA_ONSTACK,
+                    sa_flags = SA_SIGINFO,
                 };
 
                 sigemptyset(ref sig.sa_mask);
