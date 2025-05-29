@@ -74,7 +74,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="cpuMemorySize">The amount of physical CPU Memory Avaiable on the device.</param>
         public void Initialize(ulong cpuMemorySize)
         {
-            _cache.Initialize(_context, cpuMemorySize);
+            _cache.Initialize(_context);
         }
 
         /// <summary>
