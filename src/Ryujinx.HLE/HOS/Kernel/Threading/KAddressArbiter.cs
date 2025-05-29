@@ -471,6 +471,12 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
         public Result SignalAndModifyIfEqual(ulong address, int value, int count)
         {
+           long now = Stopwatch.GetTimestamp();
+       if (_lastSignalTime.TryGetValue(address, out long last) && 
+           (now - last) < Stopwatch.Frequency / 1000)
+    
+       _lastSignalTime[address] = now;
+                     
             _context.CriticalSection.Enter();
 
             // 准确计算等待线程数量
