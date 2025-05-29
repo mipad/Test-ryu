@@ -470,76 +470,78 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         }
 
         public Result SignalAndModifyIfEqual(ulong address, int value, int count)
+{
+    _context.CriticalSection.Enter();
+
+    int addend;
+    int waitingCount = _arbiterThreads.Count(thread => thread.MutexAddress == address);
+
+    if (waitingCount > 0)
+    {
+        if (count <= 0)
         {
-            _context.CriticalSection.Enter();
-
-            int addend;
-
-            // The value is decremented if the number of threads waiting is less
-            // or equal to the Count of threads to be signaled, or Count is zero
-            // or negative. It is incremented if there are no threads waiting.
-            int waitingCount = 0;
-
-            foreach (KThread thread in _arbiterThreads.Where(x => x.MutexAddress == address))
-            {
-                if (++waitingCount >= count)
-                {
-                    break;
-                }
-            }
-
-            if (waitingCount > 0)
-            {
-                if (count <= 0)
-                {
-                    addend = -2;
-                }
-                else if (waitingCount < count)
-                {
-                    addend = -1;
-                }
-                else
-                {
-                    addend = 0;
-                }
-            }
-            else
-            {
-                addend = 1;
-            }
-
-            KProcess currentProcess = KernelStatic.GetCurrentProcess();
-
-            if (!currentProcess.CpuMemory.IsMapped(address))
-            {
-                _context.CriticalSection.Leave();
-
-                return KernelResult.InvalidMemState;
-            }
-
-            ref int valueRef = ref currentProcess.CpuMemory.GetRef<int>(address);
-
-            int currentValue;
-
-            do
-            {
-                currentValue = valueRef;
-
-                if (currentValue != value)
-                {
-                    _context.CriticalSection.Leave();
-
-                    return KernelResult.InvalidState;
-                }
-            }
-            while (Interlocked.CompareExchange(ref valueRef, currentValue + addend, currentValue) != currentValue);
-
-            WakeArbiterThreads(address, count);
-
-            _context.CriticalSection.Leave();
-
-            return Result.Success;
+            // 唤醒所有等待线程
+            addend = -2;
         }
+        else if (waitingCount < count)
+        {
+            // 唤醒部分等待线程
+            addend = -1;
+        }
+        else
+        {
+            // 唤醒指定数量的等待线程
+            addend = 0;
+        }
+    }
+    else
+    {
+        // 没有等待线程
+        addend = 1;
+    }
+
+    KProcess currentProcess = KernelStatic.GetCurrentProcess();
+
+    if (!currentProcess.CpuMemory.IsMapped(address))
+    {
+        _context.CriticalSection.Leave();
+        return KernelResult.InvalidMemState;
+    }
+
+    ref int valueRef = ref currentProcess.CpuMemory.GetRef<int>(address);
+
+    int currentValue;
+    bool exchangeSuccessful = false;
+
+    do
+    {
+        currentValue = valueRef;
+
+        if (currentValue != value)
+        {
+            _context.CriticalSection.Leave();
+            return KernelResult.InvalidState;
+        }
+        
+        int newValue = currentValue + addend;
+        int originalValue = Interlocked.CompareExchange(ref valueRef, newValue, currentValue);
+        
+        if (originalValue == currentValue)
+        {
+            exchangeSuccessful = true;
+        }
+        else
+        {
+            currentValue = originalValue;
+        }
+    }
+    while (!exchangeSuccessful);
+
+    WakeArbiterThreads(address, count);
+
+    _context.CriticalSection.Leave();
+    return Result.Success;
+}
 
         private void WakeArbiterThreads(ulong address, int count)
         {
