@@ -21,8 +21,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         {
             _context = context;
 
-            _condVarThreads = new List<KThread>();
-            _arbiterThreads = new List<KThread>();
+            _condVarThreads = [];
+            _arbiterThreads = [];
         }
 
         public Result ArbitrateLock(int ownerHandle, ulong mutexAddress, int requesterHandle)
@@ -200,7 +200,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
             WakeThreads(_condVarThreads, count, TryAcquireMutex, x => x.CondVarAddress == address);
 
-            if (!_condVarThreads.Exists(x => x.CondVarAddress == address))
+            if (!_condVarThreads.Any(x => x.CondVarAddress == address))
             {
                 KernelTransfer.KernelToUser(address, 0);
             }
@@ -557,22 +557,19 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         }
 
         private static void WakeThreads(
-    List<KThread> threads,
-    int count,
-    Action<KThread> removeCallback,
-    Func<KThread, bool> predicate)
-{
-    // 使用 ToList 避免迭代时集合被修改
-    var candidates = threads.Where(predicate).OrderBy(x => x.DynamicPriority).ToList();
-    var toSignal = (count > 0 ? candidates.Take(count) : candidates).ToArray();
-
-    foreach (KThread thread in toSignal)
-    {
-        if (threads.Remove(thread)) // 确保线程存在于集合中
+            List<KThread> threads,
+            int count,
+            Action<KThread> removeCallback,
+            Func<KThread, bool> predicate)
         {
-            removeCallback(thread);
-        }
-    }
+            IOrderedEnumerable<KThread> candidates = threads.Where(predicate).OrderBy(x => x.DynamicPriority);
+            KThread[] toSignal = (count > 0 ? candidates.Take(count) : candidates).ToArray();
+
+            foreach (KThread thread in toSignal)
+            {
+                removeCallback(thread);
+                threads.Remove(thread);
+            }
         }
     }
 }
