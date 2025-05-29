@@ -470,40 +470,43 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         }
 
         public Result SignalAndModifyIfEqual(ulong address, int value, int count)
-        {          
+        {
             _context.CriticalSection.Enter();
 
-            // 准确计算等待线程数量
-            int waitingCount = _arbiterThreads.Count(x => 
-            x.MutexAddress == address && 
-            !x.TerminationRequested &&
-            x.SchedFlags != ThreadSchedState.TerminationPending
-            );
-    
-           // 计算实际唤醒数量（考虑count为负数的特殊情况）
-            int actualCount = count < 0 ? waitingCount : Math.Min(waitingCount, Math.Abs(count));
-            
             int addend;
 
             // The value is decremented if the number of threads waiting is less
             // or equal to the Count of threads to be signaled, or Count is zero
             // or negative. It is incremented if there are no threads waiting.
-            if (waitingCount == 0)
-           {
-             addend = 1;  // 无等待线程：+1
-           }
-            else if (count <= 0)
-           {
-             addend = -2; // count≤0：-2
-           }
-             else if (actualCount < count)
-           {
-             addend = -1; // 等待线程少于count：-1
-           }
+            int waitingCount = 0;
+
+            foreach (KThread thread in _arbiterThreads.Where(x => x.MutexAddress == address))
+            {
+                if (++waitingCount >= count)
+                {
+                    break;
+                }
+            }
+
+            if (waitingCount > 0)
+            {
+                if (count <= 0)
+                {
+                    addend = -2;
+                }
+                else if (waitingCount < count)
+                {
+                    addend = -1;
+                }
+                else
+                {
+                    addend = 0;
+                }
+            }
             else
-           {
-             addend = 0;  // 等待线程足够：0
-           }
+            {
+                addend = 1;
+            }
 
             KProcess currentProcess = KernelStatic.GetCurrentProcess();
 
@@ -526,10 +529,6 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
                 {
                     _context.CriticalSection.Leave();
 
-                    if (waitingCount > 0)
-                    {
-                        WakeArbiterThreads(address, count);
-                    } 
                     return KernelResult.InvalidState;
                 }
             }
@@ -543,118 +542,34 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         }
 
         private void WakeArbiterThreads(ulong address, int count)
-{
-    // 超大计数限流
-    if (count > 1000 || count < 0)
-    {
-        count = 1000;
-    }
-    
-    // 安全收集要唤醒的线程
-    List<KThread> threadsToWake = new();
-    lock (_arbiterThreads)
-    {
-        int wakeCount = 0;
-        for (int i = _arbiterThreads.Count - 1; i >= 0; i--)
         {
-            KThread thread = _arbiterThreads[i];
-            
-            // 验证线程状态
-            if (thread.MutexAddress != address || 
-                thread.TerminationRequested || 
-                thread.SchedFlags == ThreadSchedState.TerminationPending)
+            static void RemoveArbiterThread(KThread thread)
             {
-                continue;
+                thread.SignaledObj = null;
+                thread.ObjSyncResult = Result.Success;
+
+                thread.ReleaseAndResume();
+
+                thread.WaitingInArbitration = false;
             }
-            
-            // 验证等待值是否匹配
-            if (thread.WaitingValue != 0) // 确保有等待值记录
-            {
-                try
-                {
-                    // 使用标准的 UserToKernel 方法
-                    if (!KernelTransfer.UserToKernel(out int currentValue, address) ||
-                        currentValue != thread.WaitingValue)
-                    {
-                        thread.ObjSyncResult = KernelResult.InvalidState;
-                        thread.WaitingInArbitration = false;
-                        _arbiterThreads.RemoveAt(i);
-                        continue;
-                    }
-                }
-                catch // 捕获可能的异常
-                {
-                    thread.ObjSyncResult = KernelResult.InvalidMemState;
-                    thread.WaitingInArbitration = false;
-                    _arbiterThreads.RemoveAt(i);
-                    continue;
-                }
-            }
-            
-            threadsToWake.Add(thread);
-            _arbiterThreads.RemoveAt(i);
-            
-            if (++wakeCount >= count && count > 0)
-            {
-                break;
-            }
-        }
-    }
-    
-    // 唤醒线程并记录状态
-    int successCount = 0;
-    int invalidStateCount = 0;
-    
-    foreach (KThread thread in threadsToWake)
-    {
-        // 双重验证线程状态
-        if (thread.MutexAddress != address || thread.TerminationRequested)
-        {
-            thread.ObjSyncResult = KernelResult.InvalidState;
-            invalidStateCount++;
-            continue;
-        }
-        
-        thread.SignaledObj = null;
-        thread.ObjSyncResult = Result.Success;
-        thread.WaitingInArbitration = false;
-        
-        try
-        {
-            thread.ReleaseAndResume();
-            successCount++;
-        }
-        catch (Exception ex)
-        {
-            thread.ObjSyncResult = KernelResult.InvalidState;
-        }
-    }
-    
-    // 更新条件变量状态
-    if (successCount > 0)
-    {
-        // 更新条件变量标志
-        KernelTransfer.KernelToUser(address, 0);
-    }
+
+            WakeThreads(_arbiterThreads, count, RemoveArbiterThread, x => x.MutexAddress == address);
         }
 
         private static void WakeThreads(
-    List<KThread> threads,
-    int count,
-    Action<KThread> removeCallback,
-    Func<KThread, bool> predicate)
-{
-    // 使用 ToList 避免迭代时集合被修改
-    var candidates = threads.Where(predicate).OrderBy(x => x.DynamicPriority).ToList();
-    var toSignal = (count > 0 ? candidates.Take(count) : candidates).ToArray();
-
-    foreach (KThread thread in toSignal)
-    {
-        if (threads.Remove(thread)) // 确保线程存在于集合中
+            List<KThread> threads,
+            int count,
+            Action<KThread> removeCallback,
+            Func<KThread, bool> predicate)
         {
-            removeCallback(thread);
-        }
-    }
+            var candidates = threads.Where(predicate).OrderBy(x => x.DynamicPriority);
+            var toSignal = (count > 0 ? candidates.Take(count) : candidates).ToArray();
+
+            foreach (KThread thread in toSignal)
+            {
+                removeCallback(thread);
+                threads.Remove(thread);
+            }
         }
     }
 }
