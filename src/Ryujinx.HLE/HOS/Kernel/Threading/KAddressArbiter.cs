@@ -274,46 +274,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
             }
         }
 
-        public Result WaitForAddressIfEqual(ulong address, int value, long timeout)
-        {
-            KThread currentThread = KernelStatic.GetCurrentThread();
-
-            _context.CriticalSection.Enter();
-
-            if (currentThread.TerminationRequested)
-            {
-                _context.CriticalSection.Leave();
-
-                return KernelResult.ThreadTerminating;
-            }
-
-            currentThread.SignaledObj = null;
-            currentThread.ObjSyncResult = KernelResult.TimedOut;
-
-            if (!KernelTransfer.UserToKernel(out int currentValue, address))
-            {
-                _context.CriticalSection.Leave();
-
-                return KernelResult.InvalidMemState;
-            }
-
-            if (currentValue == value)
-            {
-                if (timeout == 0)
-                {
-                    _context.CriticalSection.Leave();
-
-                    return KernelResult.TimedOut;
-                }
-
-                currentThread.MutexAddress = address;
-                currentThread.WaitingInArbitration = true;
-
-                _arbiterThreads.Add(currentThread);
-
-                currentThread.Reschedule(ThreadSchedState.Paused);
-
-                if (timeout > 0)
+        
                     
 public Result WaitForAddressIfEqual(ulong address, int value, long timeout)
 {
@@ -412,7 +373,7 @@ public Result WaitForAddressIfEqual(ulong address, int value, long timeout)
              _context.CriticalSection.Leave();
            }
     }
-}
+
 
                 // 添加辅助方法
 private bool IsHighFrequencyWait(ulong address)
