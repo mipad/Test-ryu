@@ -543,18 +543,88 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         }
 
         private void WakeArbiterThreads(ulong address, int count)
+{
+    // 超大计数限流
+    if (count > 1000 || count < 0)
+    {
+        count = 1000;
+    }
+    
+    // 安全收集要唤醒的线程
+    List<KThread> threadsToWake = new();
+    lock (_arbiterThreads)
+    {
+        int wakeCount = 0;
+        for (int i = _arbiterThreads.Count - 1; i >= 0; i--)
         {
-            static void RemoveArbiterThread(KThread thread)
+            KThread thread = _arbiterThreads[i];
+            
+            // 验证线程状态
+            if (thread.MutexAddress != address || 
+                thread.TerminationRequested || 
+                thread.SchedFlags == ThreadSchedState.TerminationPending)
             {
-                thread.SignaledObj = null;
-                thread.ObjSyncResult = Result.Success;
-
-                thread.ReleaseAndResume();
-
-                thread.WaitingInArbitration = false;
+                continue;
             }
-
-            WakeThreads(_arbiterThreads, count, RemoveArbiterThread, x => x.MutexAddress == address);
+            
+            // 验证等待值是否匹配
+            if (thread.WaitingValue != 0) // 确保有等待值记录
+            {
+                if (!KernelTransfer.UserToKernelSafe(out int currentValue, address) ||
+                    currentValue != thread.WaitingValue)
+                {
+                    thread.ObjSyncResult = KernelResult.InvalidState;
+                    thread.WaitingInArbitration = false;
+                    _arbiterThreads.RemoveAt(i);
+                    continue;
+                }
+            }
+            
+            threadsToWake.Add(thread);
+            _arbiterThreads.RemoveAt(i);
+            
+            if (++wakeCount >= count && count > 0)
+            {
+                break;
+            }
+        }
+    }
+    
+    // 唤醒线程并记录状态
+    int successCount = 0;
+    int invalidStateCount = 0;
+    
+    foreach (KThread thread in threadsToWake)
+    {
+        // 双重验证线程状态
+        if (thread.MutexAddress != address || thread.TerminationRequested)
+        {
+            thread.ObjSyncResult = KernelResult.InvalidState;
+            invalidStateCount++;
+            continue;
+        }
+        
+        thread.SignaledObj = null;
+        thread.ObjSyncResult = Result.Success;
+        thread.WaitingInArbitration = false;
+        
+        try
+        {
+            thread.ReleaseAndResume();
+            successCount++;
+        }
+        catch (Exception ex)
+        {
+            thread.ObjSyncResult = KernelResult.InvalidState;
+        }
+    }
+    
+    // 更新条件变量状态
+    if (successCount > 0)
+    {
+        // 更新条件变量标志
+        KernelTransfer.KernelToUser(address, 0);
+    }
         }
 
         private static void WakeThreads(
