@@ -373,23 +373,6 @@ public Result WaitForAddressIfEqual(ulong address, int value, long timeout)
              _context.CriticalSection.Leave();
            }
     }
-
-
-                // 添加辅助方法
-private bool IsHighFrequencyWait(ulong address)
-{
-    const long MinWaitInterval = Stopwatch.Frequency / 1000; // 1ms
-    long now = Stopwatch.GetTimestamp();
-    
-    if (_lastWaitTime.TryGetValue(address, out long last) && 
-        (now - last) < MinWaitInterval)
-    {
-        return true;
-    }
-    
-    _lastWaitTime[address] = now;
-    return false;
-}
                 
         public Result WaitForAddressIfLessThan(ulong address, int value, bool shouldDecrement, long timeout)
         {
