@@ -570,10 +570,21 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
             // 验证等待值是否匹配
             if (thread.WaitingValue != 0) // 确保有等待值记录
             {
-                if (!KernelTransfer.UserToKernelSafe(out int currentValue, address) ||
-                    currentValue != thread.WaitingValue)
+                try
                 {
-                    thread.ObjSyncResult = KernelResult.InvalidState;
+                    // 使用标准的 UserToKernel 方法
+                    if (!KernelTransfer.UserToKernel(out int currentValue, address) ||
+                        currentValue != thread.WaitingValue)
+                    {
+                        thread.ObjSyncResult = KernelResult.InvalidState;
+                        thread.WaitingInArbitration = false;
+                        _arbiterThreads.RemoveAt(i);
+                        continue;
+                    }
+                }
+                catch // 捕获可能的异常
+                {
+                    thread.ObjSyncResult = KernelResult.InvalidMemState;
                     thread.WaitingInArbitration = false;
                     _arbiterThreads.RemoveAt(i);
                     continue;
