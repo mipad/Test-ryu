@@ -405,13 +405,14 @@ public Result WaitForAddressIfEqual(ulong address, int value, long timeout)
             return currentThread.ObjSyncResult;
         }
         
-        return KernelResult.InvalidState;
+            return KernelResult.InvalidState;
+     }
+            finally
+           {
+             _context.CriticalSection.Leave();
+           }
     }
-    finally
-    {
-        _context.CriticalSection.Leave();
-    }
-                }
+}
 
                 // 添加辅助方法
 private bool IsHighFrequencyWait(ulong address)
