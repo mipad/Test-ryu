@@ -770,6 +770,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         private void SetData(ReadOnlySpan<byte> data, int layer, int level, int layers, int levels, bool singleSlice, Rectangle<int>? region = null)
         {
+           // +++ 新增保护代码 +++
+           if (Storage == null)
+           {
+           // 交换链纹理不需要数据写入
+              return;
+            }
+    
             int bufferDataLength = GetBufferDataLength(data.Length);
 
             using var bufferHolder = _gd.BufferManager.Create(_gd, bufferDataLength);
