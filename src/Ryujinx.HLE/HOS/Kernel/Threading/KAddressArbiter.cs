@@ -292,12 +292,6 @@ public Result WaitForAddressIfEqual(ulong address, int value, long timeout)
         currentThread.SignaledObj = null;
         currentThread.ObjSyncResult = KernelResult.TimedOut;
 
-        // 使用更可靠的内存读取方法
-        if (!KernelTransfer.UserToKernelSafe(out int currentValue, address))
-        {
-            return KernelResult.InvalidMemState;
-        }
-
         // 添加状态检查 - 确保线程没有已经在等待
         if (currentThread.WaitingInArbitration)
         {
@@ -308,11 +302,6 @@ public Result WaitForAddressIfEqual(ulong address, int value, long timeout)
         {
             // 添加高频等待检查
             if (IsHighFrequencyWait(address))
-            {
-                return KernelResult.TimedOut;
-            }
-
-            if (timeout == 0)
             {
                 return KernelResult.TimedOut;
             }
@@ -365,8 +354,6 @@ public Result WaitForAddressIfEqual(ulong address, int value, long timeout)
             
             return currentThread.ObjSyncResult;
         }
-        
-            return KernelResult.InvalidState;
      }
             finally
            {
