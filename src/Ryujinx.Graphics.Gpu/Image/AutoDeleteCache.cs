@@ -1,4 +1,3 @@
-using Ryujinx.Common.Logging;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -48,19 +47,11 @@ namespace Ryujinx.Graphics.Gpu.Image
     {
         private const int MinCountForDeletion = 32;
         private const int MaxCapacity = 2048;
-        private const ulong MiB = 1024 * 1024;
-        private const ulong GiB = 1024 * 1024 * 1024;
-        private ulong MaxTextureSizeCapacity = 4 * GiB;
-        private const ulong MinTextureSizeCapacity = 512 * MiB;
-        private const ulong DefaultTextureSizeCapacity = 1 * GiB;
-        private const ulong TextureSizeCapacity4GiB = 2 * GiB;
-        private const ulong TextureSizeCapacity6GiB = 4 * GiB;
-        private const ulong TextureSizeCapacity8GiB = 6 * GiB;
-        private const ulong TextureSizeCapacity10GiB = 10 * GiB;
-        private const ulong TextureSizeCapacity12GiB = 12 * GiB;
-
+        private const ulong MinTextureSizeCapacity = 512 * 1024 * 1024;
+        private const ulong MaxTextureSizeCapacity = 4UL * 1024 * 1024 * 1024;
+        private const ulong DefaultTextureSizeCapacity = 1UL * 1024 * 1024 * 1024;
         private const float MemoryScaleFactor = 0.50f;
-        private ulong _maxCacheMemoryUsage = DefaultTextureSizeCapacity;
+        private ulong _maxCacheMemoryUsage = 0;
 
         private readonly LinkedList<Texture> _textures;
         private ulong _totalSize;
@@ -75,32 +66,18 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// </summary>
         /// <remarks>
         /// If the backend GPU has 0 memory capacity, the cache size defaults to `DefaultTextureSizeCapacity`.
-        /// 
-        /// Reads the current Device total CPU Memory, to determine the maximum amount of VRAM available. Capped to 50% of Current GPU Memory.
         /// </remarks>
         /// <param name="context">The GPU context that the cache belongs to</param>
-        /// <param name="cpuMemorySize">The amount of physical CPU Memory available on the device.</param>
-        public void Initialize(GpuContext context, ulong cpuMemorySize)
+        public void Initialize(GpuContext context)
         {
-            var cpuMemorySizeGiB = cpuMemorySize / GiB;
-            var MaximumGpuMemoryGiB = context.Capabilities.MaximumGpuMemory / GiB;
-
-            MaxTextureSizeCapacity = cpuMemorySizeGiB switch
-            {
-                < 6 when MaximumGpuMemoryGiB < 6 || context.Capabilities.MaximumGpuMemory == 0 =>
-                    DefaultTextureSizeCapacity,
-                < 6 => TextureSizeCapacity4GiB,
-                6 => TextureSizeCapacity6GiB,
-                8 => TextureSizeCapacity8GiB,
-                10 => TextureSizeCapacity10GiB,
-                _ => TextureSizeCapacity12GiB
-            };
-
             var cacheMemory = (ulong)(context.Capabilities.MaximumGpuMemory * MemoryScaleFactor);
 
             _maxCacheMemoryUsage = Math.Clamp(cacheMemory, MinTextureSizeCapacity, MaxTextureSizeCapacity);
 
-            Logger.Info?.Print(LogClass.Gpu, $"AutoDelete Cache Allocated VRAM : {_maxCacheMemoryUsage / GiB} GiB");
+            if (context.Capabilities.MaximumGpuMemory == 0)
+            {
+                _maxCacheMemoryUsage = DefaultTextureSizeCapacity;
+            }
         }
 
         /// <summary>
@@ -108,10 +85,10 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// </summary>
         public AutoDeleteCache()
         {
-            _textures = [];
+            _textures = new LinkedList<Texture>();
 
-            _shortCacheBuilder = [];
-            _shortCache = [];
+            _shortCacheBuilder = new HashSet<ShortTextureCacheEntry>();
+            _shortCache = new HashSet<ShortTextureCacheEntry>();
 
             _shortCacheLookup = new Dictionary<TextureDescriptor, ShortTextureCacheEntry>();
         }
