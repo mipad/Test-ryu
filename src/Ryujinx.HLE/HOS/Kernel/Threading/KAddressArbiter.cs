@@ -532,6 +532,10 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
                 {
                     _context.CriticalSection.Leave();
 
+                    if (waitingCount > 0)
+                    {
+                        WakeArbiterThreads(address, count);
+                    } 
                     return KernelResult.InvalidState;
                 }
             }
