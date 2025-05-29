@@ -473,37 +473,47 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 {
     _context.CriticalSection.Enter();
 
+    // 准确计算等待线程数量
+    int waitingCount = _arbiterThreads.Count(x => 
+        x.MutexAddress == address && 
+        !x.TerminationRequested &&
+        x.SchedFlags != ThreadSchedState.TerminationPending
+    );
+    
+    // 计算实际唤醒数量（考虑count为负数的特殊情况）
+    int actualCount = count < 0 ? waitingCount : Math.Min(waitingCount, Math.Abs(count));
+    
+    // 根据规范计算addend值
     int addend;
-    int waitingCount = _arbiterThreads.Count(thread => thread.MutexAddress == address);
-
-    if (waitingCount > 0)
+    if (waitingCount == 0)
     {
-        if (count <= 0)
-        {
-            // 唤醒所有等待线程
-            addend = -2;
-        }
-        else if (waitingCount < count)
-        {
-            // 唤醒部分等待线程
-            addend = -1;
-        }
-        else
-        {
-            // 唤醒指定数量的等待线程
-            addend = 0;
-        }
+        addend = 1;  // 无等待线程：+1
+    }
+    else if (count <= 0)
+    {
+        addend = -2; // count≤0：-2
+    }
+    else if (actualCount < count)
+    {
+        addend = -1; // 等待线程少于count：-1
     }
     else
     {
-        // 没有等待线程
-        addend = 1;
+        addend = 0;  // 等待线程足够：0
     }
+
+    // 添加详细的调试日志
+    _context.Syslog?.DebugLog(
+        $"[SignalAndModifyIfEqual] addr=0x{address:X16}, val={value}, count={count}, " +
+        $"waiting={waitingCount}, actual={actualCount}, addend={addend}"
+    );
 
     KProcess currentProcess = KernelStatic.GetCurrentProcess();
 
+    // 验证内存映射状态
     if (!currentProcess.CpuMemory.IsMapped(address))
     {
+        _context.Syslog?.WarningLog($"[SignalAndModifyIfEqual] Invalid memory address: 0x{address:X16}");
         _context.CriticalSection.Leave();
         return KernelResult.InvalidMemState;
     }
@@ -511,35 +521,62 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
     ref int valueRef = ref currentProcess.CpuMemory.GetRef<int>(address);
 
     int currentValue;
-    bool exchangeSuccessful = false;
+    bool exchangeSuccess = false;
+    int retryCount = 0;
+    const int maxRetries = 5;
 
+    // 带重试机制的原子操作
     do
     {
         currentValue = valueRef;
-
+        
+        // 验证当前值是否符合预期
         if (currentValue != value)
         {
+            _context.Syslog?.DebugLog(
+                $"[SignalAndModifyIfEqual] Value mismatch: expected={value}, actual={currentValue}"
+            );
+            
+            // 检查是否有等待线程但值已改变
+            if (waitingCount > 0)
+            {
+                _context.Syslog?.WarningLog(
+                    $"[SignalAndModifyIfEqual] Waking threads despite value change"
+                );
+                WakeArbiterThreads(address, count);
+            }
+            
             _context.CriticalSection.Leave();
             return KernelResult.InvalidState;
         }
         
-        int newValue = currentValue + addend;
-        int originalValue = Interlocked.CompareExchange(ref valueRef, newValue, currentValue);
+        // 尝试原子交换
+        int original = Interlocked.CompareExchange(ref valueRef, currentValue + addend, currentValue);
+        exchangeSuccess = original == currentValue;
         
-        if (originalValue == currentValue)
+        if (!exchangeSuccess)
         {
-            exchangeSuccessful = true;
-        }
-        else
-        {
-            currentValue = originalValue;
+            retryCount++;
+            Thread.Yield(); // 在重试间让步，避免忙等待
         }
     }
-    while (!exchangeSuccessful);
+    while (!exchangeSuccess && retryCount < maxRetries);
 
+    // 处理原子操作失败
+    if (!exchangeSuccess)
+    {
+        _context.Syslog?.ErrorLog(
+            $"[SignalAndModifyIfEqual] Atomic operation failed after {maxRetries} retries"
+        );
+        _context.CriticalSection.Leave();
+        return KernelResult.Busy;
+    }
+
+    // 唤醒符合条件的线程
     WakeArbiterThreads(address, count);
 
     _context.CriticalSection.Leave();
+
     return Result.Success;
 }
 
