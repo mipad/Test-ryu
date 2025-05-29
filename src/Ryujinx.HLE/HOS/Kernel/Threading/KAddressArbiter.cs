@@ -470,24 +470,18 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         }
 
         public Result SignalAndModifyIfEqual(ulong address, int value, int count)
-        {
-           long now = Stopwatch.GetTimestamp();
-       if (_lastSignalTime.TryGetValue(address, out long last) && 
-           (now - last) < Stopwatch.Frequency / 1000)
-    
-       _lastSignalTime[address] = now;
-                     
+        {          
             _context.CriticalSection.Enter();
 
             // 准确计算等待线程数量
-    int waitingCount = _arbiterThreads.Count(x => 
-        x.MutexAddress == address && 
-        !x.TerminationRequested &&
-        x.SchedFlags != ThreadSchedState.TerminationPending
-    );
+            int waitingCount = _arbiterThreads.Count(x => 
+            x.MutexAddress == address && 
+            !x.TerminationRequested &&
+            x.SchedFlags != ThreadSchedState.TerminationPending
+            );
     
-    // 计算实际唤醒数量（考虑count为负数的特殊情况）
-    int actualCount = count < 0 ? waitingCount : Math.Min(waitingCount, Math.Abs(count));
+           // 计算实际唤醒数量（考虑count为负数的特殊情况）
+            int actualCount = count < 0 ? waitingCount : Math.Min(waitingCount, Math.Abs(count));
             
             int addend;
 
@@ -495,21 +489,21 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
             // or equal to the Count of threads to be signaled, or Count is zero
             // or negative. It is incremented if there are no threads waiting.
             if (waitingCount == 0)
-    {
-        addend = 1;  // 无等待线程：+1
-    }
-    else if (count <= 0)
-    {
-        addend = -2; // count≤0：-2
-    }
-    else if (actualCount < count)
-    {
-        addend = -1; // 等待线程少于count：-1
-    }
-    else
-    {
-        addend = 0;  // 等待线程足够：0
-    }
+           {
+             addend = 1;  // 无等待线程：+1
+           }
+            else if (count <= 0)
+           {
+             addend = -2; // count≤0：-2
+           }
+             else if (actualCount < count)
+           {
+             addend = -1; // 等待线程少于count：-1
+           }
+            else
+           {
+             addend = 0;  // 等待线程足够：0
+           }
 
             KProcess currentProcess = KernelStatic.GetCurrentProcess();
 
