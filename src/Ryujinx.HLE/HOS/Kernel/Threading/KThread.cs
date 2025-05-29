@@ -28,6 +28,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
         public KThreadContext ThreadContext { get; private set; }
 
+        public int WaitingValue { get; set; }
         public int DynamicPriority { get; set; }
         public ulong AffinityMask { get; set; }
 
