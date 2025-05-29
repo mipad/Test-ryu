@@ -314,35 +314,104 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
                 currentThread.Reschedule(ThreadSchedState.Paused);
 
                 if (timeout > 0)
-                {
-                    _context.TimeManager.ScheduleFutureInvocation(currentThread, timeout);
-                }
+                    
+public Result WaitForAddressIfEqual(ulong address, int value, long timeout)
+{
+    KThread currentThread = KernelStatic.GetCurrentThread();
 
-                _context.CriticalSection.Leave();
+    _context.CriticalSection.Enter();
 
+    try
+    {
+        if (currentThread.TerminationRequested)
+        {
+            return KernelResult.ThreadTerminating;
+        }
+
+        currentThread.SignaledObj = null;
+        currentThread.ObjSyncResult = KernelResult.TimedOut;
+
+        // 使用更可靠的内存读取方法
+        if (!KernelTransfer.UserToKernelSafe(out int currentValue, address))
+        {
+            return KernelResult.InvalidMemState;
+        }
+
+        // 添加状态检查 - 确保线程没有已经在等待
+        if (currentThread.WaitingInArbitration)
+        {
+            return KernelResult.InvalidState;
+        }
+
+        if (currentValue == value)
+        {
+            // 添加高频等待检查
+            if (IsHighFrequencyWait(address))
+            {
+                return KernelResult.TimedOut;
+            }
+
+            if (timeout == 0)
+            {
+                return KernelResult.TimedOut;
+            }
+
+            currentThread.MutexAddress = address;
+            currentThread.WaitingInArbitration = true;
+
+            // 添加等待前的值记录
+            currentThread.WaitingValue = value;
+
+            _arbiterThreads.Add(currentThread);
+
+            currentThread.Reschedule(ThreadSchedState.Paused);
+
+            if (timeout > 0)
+            {
+                _context.TimeManager.ScheduleFutureInvocation(currentThread, timeout);
+            }
+
+            // 临时释放锁并等待
+            _context.CriticalSection.Leave();
+            try
+            {
                 if (timeout > 0)
                 {
                     _context.TimeManager.UnscheduleFutureInvocation(currentThread);
                 }
-
+            }
+            finally
+            {
                 _context.CriticalSection.Enter();
-
-                if (currentThread.WaitingInArbitration)
-                {
-                    _arbiterThreads.Remove(currentThread);
-
-                    currentThread.WaitingInArbitration = false;
-                }
-
-                _context.CriticalSection.Leave();
-
-                return currentThread.ObjSyncResult;
             }
 
-            _context.CriticalSection.Leave();
+            // 等待结束后验证状态
+            if (currentThread.WaitingInArbitration)
+            {
+                _arbiterThreads.Remove(currentThread);
+                currentThread.WaitingInArbitration = false;
+            }
 
-            return KernelResult.InvalidState;
+            // 唤醒后重新验证条件
+            if (currentThread.ObjSyncResult == Result.Success)
+            {
+                if (!KernelTransfer.UserToKernelSafe(out int newValue, address) || 
+                    newValue != value)
+                {
+                    currentThread.ObjSyncResult = KernelResult.InvalidState;
+                }
+            }
+            
+            return currentThread.ObjSyncResult;
         }
+        
+        return KernelResult.InvalidState;
+    }
+    finally
+    {
+        _context.CriticalSection.Leave();
+    }
+                }
 
         public Result WaitForAddressIfLessThan(ulong address, int value, bool shouldDecrement, long timeout)
         {
