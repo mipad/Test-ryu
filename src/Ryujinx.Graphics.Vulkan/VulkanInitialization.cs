@@ -4,7 +4,6 @@ using Ryujinx.Graphics.GAL;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.EXT;
 using Silk.NET.Vulkan.Extensions.KHR;
-using Silk.NET.Vulkan.Extensions.ARM;
 using System;
 using System.Collections.Generic;
 using System.Linq;
