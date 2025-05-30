@@ -47,8 +47,9 @@ namespace Ryujinx.Graphics.Vulkan
             "VK_KHR_maintenance2",
             "VK_EXT_attachment_feedback_loop_layout",
             "VK_EXT_attachment_feedback_loop_dynamic_state",
-             "VK_KHR_timeline_semaphore", //添加时间线信号量功能
-             "VK_KHR_multiview" // 添加
+            "VK_KHR_timeline_semaphore", //添加时间线信号量功能
+            "VK_EXT_texture_compression_astc",//
+            "VK_KHR_multiview" // 添加
         ];
 
         private static readonly string[] _requiredExtensions =
@@ -300,6 +301,19 @@ namespace Ryujinx.Graphics.Vulkan
                 SType = StructureType.PhysicalDeviceFeatures2,
             };
 
+            // 添加 ASTC 特性检测 
+PhysicalDeviceTextureCompressionAstcHdrFeaturesEXT supportedFeaturesAstcHdr = new()
+{
+    SType = StructureType.PhysicalDeviceTextureCompressionAstcHdrFeaturesExt,
+    PNext = features2.PNext
+};
+
+if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_texture_compression_astc"))
+{
+    features2.PNext = &supportedFeaturesAstcHdr;
+}
+// 添加结束 
+            
 // 添加多视图特性检测 
 PhysicalDeviceMultiviewFeatures supportedFeaturesMultiview = new()
 {
@@ -451,6 +465,22 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
 
             void* pExtendedFeatures = null;
 
+            // 添加 ASTC 特性启用 
+PhysicalDeviceTextureCompressionAstcHdrFeaturesEXT featuresAstcHdr;
+
+if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_texture_compression_astc"))
+{
+    featuresAstcHdr = new PhysicalDeviceTextureCompressionAstcHdrFeaturesEXT
+    {
+        SType = StructureType.PhysicalDeviceTextureCompressionAstcHdrFeaturesExt,
+        PNext = pExtendedFeatures,
+        TextureCompressionAstcHdr = supportedFeaturesAstcHdr.TextureCompressionAstcHdr
+    };
+    
+    pExtendedFeatures = &featuresAstcHdr;
+}
+// 添加结束 
+            
 // 添加多视图特性启用 
 PhysicalDeviceMultiviewFeatures featuresMultiview;
 
