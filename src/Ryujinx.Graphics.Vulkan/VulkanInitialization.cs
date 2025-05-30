@@ -47,8 +47,7 @@ namespace Ryujinx.Graphics.Vulkan
             "VK_KHR_maintenance2",
             "VK_EXT_attachment_feedback_loop_layout",
             "VK_EXT_attachment_feedback_loop_dynamic_state",
-            "VK_KHR_timeline_semaphore",// 添加时间线信号量功能
-            "VK_ARM_rasterization_order_attachment_access" // 新增ARM 光栅化顺序附件访问扩展
+            "VK_KHR_timeline_semaphore"// 添加时间线信号量功能
         ];
 
         private static readonly string[] _requiredExtensions =
@@ -300,19 +299,6 @@ namespace Ryujinx.Graphics.Vulkan
                 SType = StructureType.PhysicalDeviceFeatures2,
             };
 
-//  新增 ARM 光栅化顺序附件访问特性检测
-PhysicalDeviceRasterizationOrderAttachmentAccessFeaturesARM supportedFeaturesRasterOrderAccess = new()
-{
-    SType = StructureType.PhysicalDeviceRasterizationOrderAttachmentAccessFeaturesArm,
-    PNext = features2.PNext,
-};
-
-if (physicalDevice.IsDeviceExtensionPresent("VK_ARM_rasterization_order_attachment_access"))
-{
-    features2.PNext = &supportedFeaturesRasterOrderAccess;
-}
-//  新增结束
-
 PhysicalDeviceTimelineSemaphoreFeaturesKHR supportedFeaturesTimelineSemaphore = new()
 {
     SType = StructureType.PhysicalDeviceTimelineSemaphoreFeatures,
@@ -451,23 +437,6 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
 
             void* pExtendedFeatures = null;
 
-// 新增 ARM 光栅化顺序附件访问特性启用
-PhysicalDeviceRasterizationOrderAttachmentAccessFeaturesARM featuresRasterOrderAccess;
-
-if (physicalDevice.IsDeviceExtensionPresent("VK_ARM_rasterization_order_attachment_access"))
-{
-    featuresRasterOrderAccess = new PhysicalDeviceRasterizationOrderAttachmentAccessFeaturesARM
-    {
-        SType = StructureType.PhysicalDeviceRasterizationOrderAttachmentAccessFeaturesArm,
-        PNext = pExtendedFeatures,
-        RasterizationOrderColorAttachmentAccess = true,
-        RasterizationOrderDepthAttachmentAccess = true,
-        RasterizationOrderStencilAttachmentAccess = true
-    };
-    
-    pExtendedFeatures = &featuresRasterOrderAccess;
-}
-// 新增结束
             PhysicalDeviceTransformFeedbackFeaturesEXT featuresTransformFeedback;
 
             if (physicalDevice.IsDeviceExtensionPresent(ExtTransformFeedback.ExtensionName))
