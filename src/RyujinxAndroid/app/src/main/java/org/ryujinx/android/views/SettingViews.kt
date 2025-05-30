@@ -699,8 +699,8 @@ class SettingViews {
                                 Text(text = resScale.value.toString() + "x")
                             }
                             Slider(value = resScale.value,
-                                valueRange = 0.25f..4f,
-                                steps = 14,
+                                valueRange = 0.5f..4f,
+                                steps = 6,
                                 onValueChange = { it ->
                                     resScale.value = it
                                 })
