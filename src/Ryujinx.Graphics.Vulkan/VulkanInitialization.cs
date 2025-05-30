@@ -47,15 +47,14 @@ namespace Ryujinx.Graphics.Vulkan
             "VK_KHR_maintenance2",
             "VK_EXT_attachment_feedback_loop_layout",
             "VK_EXT_attachment_feedback_loop_dynamic_state",
-             "VK_KHR_timeline_semaphore",// 添加时间线信号量功能
-    "VK_ARM_rasterization_order_attachment_access" // 新增ARM 光栅化顺序附件访问扩展
+            "VK_KHR_timeline_semaphore",// 添加时间线信号量功能
+            "VK_ARM_rasterization_order_attachment_access" // 新增ARM 光栅化顺序附件访问扩展
         ];
 
         private static readonly string[] _requiredExtensions =
         [
             KhrSwapchain.ExtensionName,
-            "VK_KHR_timeline_semaphore",
-            "VK_ARM_rasterization_order_attachment_access"
+            "VK_KHR_timeline_semaphore"
         ];
 
         internal static VulkanInstance CreateInstance(Vk api, GraphicsDebugLevel logLevel, string[] requiredExtensions)
