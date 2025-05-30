@@ -700,7 +700,7 @@ class SettingViews {
                             }
                             Slider(value = resScale.value,
                                 valueRange = 0.25f..4f,
-                                steps = 16,
+                                steps = 15,
                                 onValueChange = { it ->
                                     resScale.value = it
                                 })
