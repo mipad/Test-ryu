@@ -47,7 +47,8 @@ namespace Ryujinx.Graphics.Vulkan
             "VK_KHR_maintenance2",
             "VK_EXT_attachment_feedback_loop_layout",
             "VK_EXT_attachment_feedback_loop_dynamic_state",
-            "VK_KHR_timeline_semaphore"// 添加时间线信号量功能
+             "VK_KHR_timeline_semaphore", //添加时间线信号量功能
+             "VK_KHR_multiview" // 添加
         ];
 
         private static readonly string[] _requiredExtensions =
@@ -299,6 +300,19 @@ namespace Ryujinx.Graphics.Vulkan
                 SType = StructureType.PhysicalDeviceFeatures2,
             };
 
+// 添加多视图特性检测 
+PhysicalDeviceMultiviewFeatures supportedFeaturesMultiview = new()
+{
+    SType = StructureType.PhysicalDeviceMultiviewFeatures,
+    PNext = features2.PNext,
+};
+
+if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
+{
+    features2.PNext = &supportedFeaturesMultiview;
+}
+// 添加结束 
+
 PhysicalDeviceTimelineSemaphoreFeaturesKHR supportedFeaturesTimelineSemaphore = new()
 {
     SType = StructureType.PhysicalDeviceTimelineSemaphoreFeatures,
@@ -437,6 +451,23 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
 
             void* pExtendedFeatures = null;
 
+// 添加多视图特性启用 
+PhysicalDeviceMultiviewFeatures featuresMultiview;
+
+if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
+{
+    featuresMultiview = new PhysicalDeviceMultiviewFeatures
+    {
+        SType = StructureType.PhysicalDeviceMultiviewFeatures,
+        PNext = pExtendedFeatures,
+        Multiview = supportedFeaturesMultiview.Multiview,
+        MultiviewGeometryShader = supportedFeaturesMultiview.MultiviewGeometryShader,
+        MultiviewTessellationShader = supportedFeaturesMultiview.MultiviewTessellationShader
+    };
+    
+    pExtendedFeatures = &featuresMultiview;
+}
+// 添加结束 
             PhysicalDeviceTransformFeedbackFeaturesEXT featuresTransformFeedback;
 
             if (physicalDevice.IsDeviceExtensionPresent(ExtTransformFeedback.ExtensionName))
