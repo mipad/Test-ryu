@@ -248,28 +248,19 @@ namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
         }
 
         [Svc(0x21)]
-public Result SendSyncRequest(int handle)
-{
-    KProcess currentProcess = KernelStatic.GetCurrentProcess();
-    KClientSession session = currentProcess.HandleTable.GetObject<KClientSession>(handle);
+        public Result SendSyncRequest(int handle)
+        {
+            KProcess currentProcess = KernelStatic.GetCurrentProcess();
 
-    if (session == null)
-    {
-        return KernelResult.InvalidHandle;
-    }
+            KClientSession session = currentProcess.HandleTable.GetObject<KClientSession>(handle);
 
-    // 临时提升 IPC 线程优先级
-    KThread currentThread = KernelStatic.GetCurrentThread();
-    int originalPriority = currentThread.DynamicPriority;
-    currentThread.SetPriority((int)ThreadPriority.AboveNormal);
+            if (session == null)
+            {
+                return KernelResult.InvalidHandle;
+            }
 
-    Result result = session.SendSyncRequest();
-
-    // 恢复原始优先级
-    currentThread.SetPriority(originalPriority);
-
-    return result;
-}
+            return session.SendSyncRequest();
+        }
 
         [Svc(0x22)]
         public Result SendSyncRequestWithUserBuffer(
@@ -1610,7 +1601,7 @@ public Result SendSyncRequest(int handle)
                 return KernelResult.InvalidMemRange;
             }
 
-            KPageList pageList = new();
+                        KPageList pageList = new();
 
             Result result = srcProcess.MemoryManager.GetPagesIfStateEquals(
                 src,
@@ -3118,7 +3109,7 @@ public Result SendSyncRequest(int handle)
 
         private static bool IsAddressNotWordAligned(ulong address)
         {
-            return (address & 0x3) != 0;
+            return (address & 3) != 0;
         }
     }
 }
