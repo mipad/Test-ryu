@@ -538,7 +538,7 @@ namespace Ryujinx.Graphics.Gpu.Shader
         /// <returns>Compute shader</returns>
         private ShaderAsCompute CreateHostVertexAsComputeProgram(ShaderProgram program, TranslatorContext context, bool tfEnabled)
         {
-            / Mali GPU：生成优化版计算着色器
+            // Mali GPU：生成优化版计算着色器
     if (IsMaliGpu())
     {
         program = context.GenerateMaliOptimizedCompute(tfEnabled);
