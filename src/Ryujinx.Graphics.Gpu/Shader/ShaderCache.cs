@@ -170,7 +170,7 @@ namespace Ryujinx.Graphics.Gpu.Shader
                     _context,
                     _graphicsShaderCache,
                     _computeShaderCache,
-                    _diskCacheHostStorage = new DiskCacheHostStorage(cachePath), // 传入修改后的路径
+                    new DiskCacheHostStorage(cachePath), // 传入修改后的路径
                     ShaderCacheStateUpdate,
                     cancellationToken);
 
