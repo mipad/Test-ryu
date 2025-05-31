@@ -854,35 +854,11 @@ namespace Ryujinx.Graphics.Gpu.Shader
         /// Disposes the shader cache, deleting all the cached shaders.
         /// It's an error to use the shader cache after disposal.
         /// </summary>
+        
+        
         private bool IsMaliGpu()
 {
-    try
-    {
-        // 方法 1: 通过渲染器名称检测
-        string rendererName = _context.Renderer.GetType().Name.ToLowerInvariant();
-        if (rendererName.Contains("mali"))
-        {
-            return true;
-        }
-        
-        // 方法 2: 通过 Vulkan 供应商 ID 检测
-        if (_context.Capabilities.Api == TargetApi.Vulkan)
-        {
-            // ARM 的 Vulkan 供应商 ID
-            const uint armVendorId = 0x13B5;
-            if (_context.Capabilities.VendorId == armVendorId)
-            {
-                return true;
-            }
-        }
-        
-        // 方法 3: 通过配置覆盖
-        return GraphicsConfig.EnableMaliOptimizations;
-    }
-    catch
-    {
-        return false;
-    }
+    return false;
 }
 
         public void Dispose()
