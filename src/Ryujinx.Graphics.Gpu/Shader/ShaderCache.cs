@@ -156,11 +156,20 @@ namespace Ryujinx.Graphics.Gpu.Shader
         {
             if (_diskCacheHostStorage.CacheEnabled)
             {
+               string cachePath = _diskCacheHostStorage.CachePath;
+        
+        // Mali GPU 使用专用缓存
+        if (IsMaliGpu())
+        {
+            cachePath += "_mali";
+            Logger.Info?.Print(LogClass.Gpu, $"Using Mali-optimized shader cache: {cachePath}");
+        }
+        
                 ParallelDiskCacheLoader loader = new(
                     _context,
                     _graphicsShaderCache,
                     _computeShaderCache,
-                    _diskCacheHostStorage,
+                     new DiskCacheHostStorage(cachePath), // 传入修改后的路径
                     ShaderCacheStateUpdate,
                     cancellationToken);
 
@@ -529,6 +538,12 @@ namespace Ryujinx.Graphics.Gpu.Shader
         /// <returns>Compute shader</returns>
         private ShaderAsCompute CreateHostVertexAsComputeProgram(ShaderProgram program, TranslatorContext context, bool tfEnabled)
         {
+            / Mali GPU：生成优化版计算着色器
+    if (IsMaliGpu())
+    {
+        program = context.GenerateMaliOptimizedCompute(tfEnabled);
+    }
+    
             ShaderSource source = new(program.Code, program.BinaryCode, ShaderStage.Compute, program.Language);
             ShaderInfo info = ShaderInfoBuilder.BuildForVertexAsCompute(_context, program.Info, tfEnabled);
 
@@ -833,13 +848,42 @@ namespace Ryujinx.Graphics.Gpu.Shader
                 ? TargetLanguage.Spirv
                 : TargetLanguage.Glsl;
 
-            return new TranslationOptions(lang, api, flags);
+            // ARM Mali 优化
+    if (IsMaliGpu())
+    {
+        // 启用低精度优化
+        flags |= TranslationFlags.LowPrecision;
+        
+        // 禁用调试模式
+        flags &= ~TranslationFlags.DebugMode;
+        
+        // 跳过几何着色器直通（如果不支持）
+        if (!_context.Capabilities.SupportsGeometryShaderPassthrough)
+        {
+            flags |= TranslationFlags.SkipGeometryPassthrough;
         }
+        
+        // 简化控制流
+        flags |= TranslationFlags.SimplifyControlFlow;
+    }
+
+    return new TranslationOptions(lang, api, flags);
+}
 
         /// <summary>
         /// Disposes the shader cache, deleting all the cached shaders.
         /// It's an error to use the shader cache after disposal.
         /// </summary>
+        private bool IsMaliGpu()
+{
+    // 获取当前渲染器信息
+    string renderer = _context.Capabilities.RendererName ?? "";
+    
+    // 检测 ARM 厂商且渲染器名称包含 "Mali"
+    return _context.Capabilities.Vendor == Vendor.ARM && 
+           renderer.Contains("Mali", StringComparison.OrdinalIgnoreCase);
+}
+
         public void Dispose()
         {
             foreach (CachedShaderProgram program in _graphicsShaderCache.GetPrograms())
