@@ -156,8 +156,8 @@ namespace Ryujinx.Graphics.Gpu.Shader
         {
             if (_diskCacheHostStorage.CacheEnabled)
             {
-               string cachePath = _diskCacheHostStorage.CachePath;
-        
+               string cachePath = GetDiskCachePath();
+               
         // Mali GPU 使用专用缓存
         if (IsMaliGpu())
         {
@@ -846,7 +846,7 @@ namespace Ryujinx.Graphics.Gpu.Shader
             // ARM Mali 优化
     if (IsMaliGpu())
             {
-                flags |= TranslationFlags.FastMath;
+                flags &= ~TranslationFlags.DebugMode;
             }
 
     return new TranslationOptions(lang, api, flags);
@@ -860,9 +860,10 @@ namespace Ryujinx.Graphics.Gpu.Shader
         {
             try
             {
-                // 使用更兼容的方式检测Mali GPU
-                string renderer = _context.Renderer.GetType().Name.ToLowerInvariant();
-                return renderer.Contains("mali");
+                // 使用GAL渲染器名称检测Mali GPU
+                IRenderer renderer = _context.Renderer;
+                string rendererName = renderer.GetHardwareInfo().GpuName ?? "";
+                return rendererName.Contains("Mali", StringComparison.OrdinalIgnoreCase);
             }
             catch
             {
