@@ -160,10 +160,10 @@ namespace Ryujinx.Graphics.Gpu.Shader
                string cachePath = GetDiskCachePath();
                
         // Mali GPU 使用专用缓存
-        if (IsArmDevice())
+        if (IsTBDR())
         {
-            cachePath += "_arm";
-            Logger.Info?.Print(LogClass.Gpu, $"Using ARM-optimized shader cache: {cachePath}");
+            cachePath += "_tbdr";
+            Logger.Info?.Print(LogClass.Gpu, $"Using TBDR-optimized shader cache: {cachePath}");
         }
         
                 ParallelDiskCacheLoader loader = new(
@@ -853,22 +853,27 @@ namespace Ryujinx.Graphics.Gpu.Shader
         /// </summary>
         
         
-        private bool IsArmDevice()
-{
-    try
+        private bool IsTBDR()
     {
-        // 检测 ARM CPU 架构
-        var arch = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture;
-        
-        // 支持 ARM 架构：ARM、ARM64
-        return arch == System.Runtime.InteropServices.Architecture.Arm ||
-               arch == System.Runtime.InteropServices.Architecture.Arm64;
+        try
+        {
+            // 优先使用显式能力标志
+            if (_context.Capabilities.SupportsTileBasedRendering)
+            {
+                return true;
+            }
+            
+            // 后备方案：通过供应商检测
+            var vendor = _context.Capabilities.Vendor;
+            return vendor == Vendor.ARM || 
+                   vendor == Vendor.Qualcomm ||
+                   vendor == Vendor.Imagination;
+        }
+        catch
+        {
+            return false;
+        }
     }
-    catch
-    {
-        return false;
-    }
-}
 
         public void Dispose()
         {
