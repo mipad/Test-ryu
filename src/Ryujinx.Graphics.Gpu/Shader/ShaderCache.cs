@@ -23,7 +23,6 @@ namespace Ryujinx.Graphics.Gpu.Shader
         /// <summary>
         /// Default flags used on the shader translation process.
         /// </summary>
-        private readonly bool _isMaliGpu;
         
         public const TranslationFlags DefaultFlags = TranslationFlags.DebugMode;
 
@@ -93,8 +92,6 @@ namespace Ryujinx.Graphics.Gpu.Shader
         public ShaderCache(GpuContext context)
         {
             _context = context;
-
-            _isMaliGpu = IsMaliGpu();
             
             _dumper = new ShaderDumper();
 
@@ -165,8 +162,8 @@ namespace Ryujinx.Graphics.Gpu.Shader
         // Mali GPU 使用专用缓存
         if (IsMaliGpu())
         {
-            cachePath += "_mali";
-            Logger.Info?.Print(LogClass.Gpu, $"Using Mali-optimized shader cache: {cachePath}");
+            cachePath += "_arm";
+            Logger.Info?.Print(LogClass.Gpu, $"Using ARM-optimized shader cache: {cachePath}");
         }
         
                 ParallelDiskCacheLoader loader = new(
@@ -856,9 +853,21 @@ namespace Ryujinx.Graphics.Gpu.Shader
         /// </summary>
         
         
-        private bool IsMaliGpu()
+        private bool IsArmDevice()
 {
-    return false;
+    try
+    {
+        // 检测 ARM CPU 架构
+        var arch = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture;
+        
+        // 支持 ARM 架构：ARM、ARM64
+        return arch == System.Runtime.InteropServices.Architecture.Arm ||
+               arch == System.Runtime.InteropServices.Architecture.Arm64;
+    }
+    catch
+    {
+        return false;
+    }
 }
 
         public void Dispose()
