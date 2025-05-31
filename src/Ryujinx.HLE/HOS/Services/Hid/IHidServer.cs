@@ -106,8 +106,8 @@ namespace Ryujinx.HLE.HOS.Services.Hid
                 context.Device.Hid.Touchscreen.Update();
             }
 
-            Logger.Debug?.Print(LogClass.ServiceHid, $"Touchscreen activated (AppletResourceUserId: {appletResourceUserId})");
-   
+            Logger.Stub?.PrintStub(LogClass.ServiceHid, new { appletResourceUserId });
+
             return ResultCode.Success;
         }
 
@@ -683,18 +683,6 @@ namespace Ryujinx.HLE.HOS.Services.Hid
             return ResultCode.Success;
         }
 
-        [CommandCmif(92)]
-        // SetGestureOutputRanges(pid, ushort Unknown0)
-        public ResultCode SetGestureOutputRanges(ServiceCtx context)
-        {
-            ulong pid = context.Request.HandleDesc.PId;
-            ushort unknown0 = context.RequestData.ReadUInt16();
-
-            Logger.Stub?.PrintStub(LogClass.ServiceHid, new { pid, unknown0 });
-
-            return ResultCode.Success;
-        }
-        
         [CommandCmif(100)]
         // SetSupportedNpadStyleSet(pid, nn::applet::AppletResourceUserId, nn::hid::NpadStyleTag)
         public ResultCode SetSupportedNpadStyleSet(ServiceCtx context)
@@ -743,7 +731,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid
 
             for (int i = 0; i < supportedPlayerIds.Length; ++i)
             {
-                if (HidUtils.IsValidNpadIdType(supportedPlayerIds[i]))
+          if (HidUtils.IsValidNpadIdType(supportedPlayerIds[i]))
                 {
                     context.Device.Hid.Npads.SetSupportedPlayer(HidUtils.GetIndexFromNpadIdType(supportedPlayerIds[i]));
                 }
