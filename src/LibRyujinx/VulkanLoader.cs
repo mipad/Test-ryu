@@ -1,4 +1,4 @@
-﻿using Ryujinx.Common.Logging;
+using Ryujinx.Common.Logging;
 using Silk.NET.Core.Contexts;
 using Silk.NET.Vulkan;
 using System;
@@ -18,8 +18,8 @@ namespace LibRyujinx
         private delegate IntPtr GetDeviceProcAddress(IntPtr device, IntPtr name);
 
         private IntPtr _loadedLibrary = IntPtr.Zero;
-        private GetInstanceProcAddress? _getInstanceProcAddr;
-        private GetDeviceProcAddress? _getDeviceProcAddr;
+        private GetInstanceProcAddress _getInstanceProcAddr;
+        private GetDeviceProcAddress _getDeviceProcAddr;
 
         public void Dispose()
         {
@@ -50,11 +50,6 @@ namespace LibRyujinx
             if (_loadedLibrary == IntPtr.Zero)
             {
                 return Vk.GetApi();
-            }
-            // 添加 null 检查
-            if (_getInstanceProcAddr == null || _getDeviceProcAddr == null)
-            {
-                throw new InvalidOperationException("Vulkan function delegates are not initialized.");
             }
             var ctx = new MultiNativeContext(new INativeContext[1]);
             var ret = new Vk(ctx);
