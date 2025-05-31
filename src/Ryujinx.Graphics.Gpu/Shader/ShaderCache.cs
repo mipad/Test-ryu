@@ -23,6 +23,8 @@ namespace Ryujinx.Graphics.Gpu.Shader
         /// <summary>
         /// Default flags used on the shader translation process.
         /// </summary>
+        private readonly bool _isMaliGpu;
+        
         public const TranslationFlags DefaultFlags = TranslationFlags.DebugMode;
 
         private readonly struct TranslatedShader
@@ -92,6 +94,8 @@ namespace Ryujinx.Graphics.Gpu.Shader
         {
             _context = context;
 
+            _isMaliGpu = IsMaliGpu();
+            
             _dumper = new ShaderDumper();
 
             _cpPrograms = new Dictionary<ulong, CachedShaderProgram>();
@@ -842,12 +846,6 @@ namespace Ryujinx.Graphics.Gpu.Shader
             TargetLanguage lang = GraphicsConfig.EnableSpirvCompilationOnVulkan && api == TargetApi.Vulkan
                 ? TargetLanguage.Spirv
                 : TargetLanguage.Glsl;
-
-            // ARM Mali 优化
-    if (IsMaliGpu())
-            {
-                flags &= ~TranslationFlags.DebugMode;
-            }
 
     return new TranslationOptions(lang, api, flags);
 }
