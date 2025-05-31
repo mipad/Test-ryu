@@ -11,24 +11,25 @@ using Silk.NET.Vulkan.Extensions.KHR;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Format = Ryujinx.Graphics.GAL.Format;
 using PrimitiveTopology = Ryujinx.Graphics.GAL.PrimitiveTopology;
 using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
 
 namespace Ryujinx.Graphics.Vulkan
 {
-    unsafe public sealed class VulkanRenderer : IRenderer
+    public sealed class VulkanRenderer : IRenderer
     {
         private VulkanInstance _instance;
         private SurfaceKHR _surface;
         private VulkanPhysicalDevice _physicalDevice;
         private Device _device;
         private WindowBase _window;
-        private CommandBufferPool _computeCommandPool;
-        private bool _concurrentFenceWaitUnsupported; // 根据设备特性初始化
+
         private bool _initialized;
 
-        internal KhrTimelineSemaphore TimelineSemaphoreApi { get; private set; }
+        public uint ProgramCount { get; set; } = 0;
+
         internal FormatCapabilities FormatCapabilities { get; private set; }
         internal HardwareCapabilities Capabilities;
 
@@ -45,8 +46,8 @@ namespace Ryujinx.Graphics.Vulkan
         internal uint QueueFamilyIndex { get; private set; }
         internal Queue Queue { get; private set; }
         internal Queue BackgroundQueue { get; private set; }
-        internal object BackgroundQueueLock { get; private set; }
-        internal object QueueLock { get; private set; }
+        internal Lock BackgroundQueueLock { get; private set; }
+        internal Lock QueueLock { get; private set; }
 
         internal MemoryAllocator MemoryAllocator { get; private set; }
         internal HostMemoryAllocator HostMemoryAllocator { get; private set; }
@@ -78,23 +79,19 @@ namespace Ryujinx.Graphics.Vulkan
 
         public SurfaceTransformFlagsKHR CurrentTransform => _window.CurrentTransform;
 
-        public uint PhysicalDeviceVendorId { get; private set; } 
-        public bool IsArmGPU => PhysicalDeviceVendorId == 0x13B5; // ARM 的 Vulkan Vendor ID 是 0x13B5
-
-        public Device Device => _device;
-        
         private readonly Func<Instance, Vk, SurfaceKHR> _getSurface;
         private readonly Func<string[]> _getRequiredExtensions;
         private readonly string _preferredGpuId;
 
         private int[] _pdReservedBindings;
-        private readonly static int[] _pdReservedBindingsNvn = { 3, 18, 21, 36, 30 };
-        private readonly static int[] _pdReservedBindingsOgl = { 17, 18, 34, 35, 36 };
+        private readonly static int[] _pdReservedBindingsNvn = [3, 18, 21, 36, 30];
+        private readonly static int[] _pdReservedBindingsOgl = [17, 18, 34, 35, 36];
 
         internal Vendor Vendor { get; private set; }
         internal bool IsAmdWindows { get; private set; }
         internal bool IsIntelWindows { get; private set; }
         internal bool IsAmdGcn { get; private set; }
+        internal bool IsAmdRdna3 { get; private set; }
         internal bool IsNvidiaPreTuring { get; private set; }
         internal bool IsIntelArc { get; private set; }
         internal bool IsQualcommProprietary { get; private set; }
@@ -117,15 +114,15 @@ namespace Ryujinx.Graphics.Vulkan
             _getRequiredExtensions = requiredExtensionsFunc;
             _preferredGpuId = preferredGpuId;
             Api = api;
-            Shaders = new HashSet<ShaderCollection>();
-            Textures = new HashSet<ITexture>();
-            Samplers = new HashSet<SamplerHolder>();
+            Shaders = [];
+            Textures = [];
+            Samplers = [];
 
-            if (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS())
+            if (OperatingSystem.IsMacOS())
             {
                 MVKInitialization.Initialize();
 
-                // Any device running on Darwin is using MoltenVK, even Intel and AMD vendors.
+                // Any device running on MacOS is using MoltenVK, even Intel and AMD vendors.
                 IsMoltenVk = true;
             }
         }
@@ -134,36 +131,10 @@ namespace Ryujinx.Graphics.Vulkan
         {
             FormatCapabilities = new FormatCapabilities(Api, _physicalDevice.PhysicalDevice);
 
-            // 查找计算队列族
-    uint computeFamilyIndex = FindComputeQueueFamily();
-
-    if (computeFamilyIndex != uint.MaxValue && computeFamilyIndex != queueFamilyIndex)
-    {
-        // 正确获取队列的unsafe方式
-        Queue computeQueue;
-        Api.GetDeviceQueue(_device, computeFamilyIndex, 0, &computeQueue);
-
-        // 正确的构造函数调用
-        _computeCommandPool = new CommandBufferPool(
-       Api,
-       _device,
-       computeQueue,
-       new object(),
-       computeFamilyIndex,
-       IsQualcommProprietary,  // 第六个参数
-       false);
-    }
-
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtConditionalRendering conditionalRenderingApi))
             {
                 ConditionalRenderingApi = conditionalRenderingApi;
             }
-
-      //
-if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaphore timelineSemaphoreApi))
-{
-    TimelineSemaphoreApi = timelineSemaphoreApi;
-}
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtExtendedDynamicState extendedDynamicStateApi))
             {
@@ -194,7 +165,7 @@ if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaph
             {
                 Api.GetDeviceQueue(_device, queueFamilyIndex, 1, out var backgroundQueue);
                 BackgroundQueue = backgroundQueue;
-                BackgroundQueueLock = new object();
+                BackgroundQueueLock = new();
             }
 
             PhysicalDeviceProperties2 properties2 = new()
@@ -405,6 +376,10 @@ if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaph
 
             IsAmdGcn = !IsMoltenVk && Vendor == Vendor.Amd && VendorUtils.AmdGcnRegex().IsMatch(GpuRenderer);
 
+            IsAmdRdna3 = Vendor == Vendor.Amd && (VendorUtils.AmdRdna3Regex().IsMatch(GpuRenderer)
+                                                  // ROG Ally (X) Device IDs
+                                                  || properties.DeviceID is 0x15BF or 0x15C8);
+
             if (Vendor == Vendor.Nvidia)
             {
                 var match = VendorUtils.NvidiaConsumerClassRegex().Match(GpuRenderer);
@@ -503,30 +478,6 @@ if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaph
             _counters = new Counters(this, _device, _pipeline);
         }
 
-        // +++ 新增方法：查找计算队列族 +++
-private uint FindComputeQueueFamily()
-{
-    // 正确代码（使用unsafe指针方式）
-unsafe 
-{
-    uint queueCount = 0;
-    // 第一次调用获取队列族数量
-    Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, &queueCount, null);
-    
-    // 分配数组空间
-    var queueFamilies = new QueueFamilyProperties[queueCount];
-    
-    // 第二次调用获取具体数据
-    fixed (QueueFamilyProperties* pQueueFamilies = queueFamilies)
-    {
-        Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, &queueCount, pQueueFamilies);
-    }
-}
-    
-
-    return uint.MaxValue;
-}
-
         private void SetupContext(GraphicsDebugLevel logLevel)
         {
             _instance = VulkanInitialization.CreateInstance(Api, logLevel, _getRequiredExtensions());
@@ -551,7 +502,7 @@ unsafe
 
             Api.GetDeviceQueue(_device, queueFamilyIndex, 0, out var queue);
             Queue = queue;
-            QueueLock = new object();
+            QueueLock = new();
 
             LoadFeatures(maxQueueCount, queueFamilyIndex);
 
@@ -574,7 +525,7 @@ unsafe
                 }
                 else
                 {
-                    _pdReservedBindings = Array.Empty<int>();
+                    _pdReservedBindings = [];
                 }
             }
 
@@ -603,6 +554,8 @@ unsafe
 
         public IProgram CreateProgram(ShaderSource[] sources, ShaderInfo info)
         {
+            ProgramCount++;
+            
             bool isCompute = sources.Length == 1 && sources[0].Stage == ShaderStage.Compute;
 
             if (info.State.HasValue || isCompute)
@@ -646,14 +599,9 @@ unsafe
         }
 
         internal TextureStorage CreateTextureStorage(TextureCreateInfo info)
-{
-    if (info.Width == 0 || info.Height == 0 || info.Depth == 0)
-    {
-        Logger.Error?.Print(LogClass.Gpu, $"Invalid texture dimensions: {info.Width}x{info.Height}x{info.Depth}");
-        throw new ArgumentException("Invalid texture dimensions");
-    }
-    return new TextureStorage(this, _device, info);
-}
+        {
+            return new TextureStorage(this, _device, info);
+        }
 
         public void DeleteBuffer(BufferHandle buffer)
         {
@@ -820,7 +768,6 @@ unsafe
                 supportsQuads: false,
                 supportsSeparateSampler: true,
                 supportsShaderBallot: false,
-                supportsShaderBallotDivergence: Vendor != Vendor.Qualcomm,
                 supportsShaderBarrierDivergence: Vendor != Vendor.Intel,
                 supportsShaderFloat64: Capabilities.SupportsShaderFloat64,
                 supportsTextureGatherOffsets: features2.Features.ShaderImageGatherExtended && !IsMoltenVk,
@@ -888,7 +835,7 @@ unsafe
             {
                 Logger.Error?.PrintMsg(LogClass.Gpu, $"Error querying Vulkan devices: {ex.Message}");
 
-                return Array.Empty<DeviceInfo>();
+                return [];
             }
         }
 
@@ -901,7 +848,7 @@ unsafe
             catch (Exception)
             {
                 // If we got an exception here, Vulkan is most likely not supported.
-                return Array.Empty<DeviceInfo>();
+                return [];
             }
         }
 
@@ -1072,57 +1019,6 @@ unsafe
             (_window as Window)?.SetSurface(_surface);
         }
 
-// VulkanRenderer.cs
-
-// +++ 新增方法：设备丢失恢复 +++
-public void RecreateVulkanDevice()
-{
-    DisposeVulkanResources();
-    InitializeVulkan();
-}
-
-private void DisposeVulkanResources()
-{
-    // 销毁所有 Vulkan 资源
-    Api.DestroyDevice(_device, null);
-    Api.DestroyInstance(_instance.Instance, null);
-
-    // 释放其他关联资源
-    CommandBufferPool?.Dispose();
-    _window?.Dispose();
-    MemoryAllocator?.Dispose();
-    HostMemoryAllocator?.Dispose();
-    PipelineLayoutCache?.Dispose();
-    _counters?.Dispose();
-}
-
-private unsafe void InitializeVulkan()
-{
-    // 重新创建实例、物理设备和逻辑设备
-    _instance = VulkanInitialization.CreateInstance(Api, GraphicsDebugLevel.None, _getRequiredExtensions());
-    _surface = _getSurface(_instance.Instance, Api);
-    _physicalDevice = VulkanInitialization.FindSuitablePhysicalDevice(Api, _instance, _surface, _preferredGpuId);
-
-    var queueFamilyIndex = VulkanInitialization.FindSuitableQueueFamily(Api, _physicalDevice, _surface, out uint maxQueueCount);
-    _device = VulkanInitialization.CreateDevice(Api, _physicalDevice, queueFamilyIndex, maxQueueCount);
-
-    // 重新初始化队列
-    Api.GetDeviceQueue(_device, queueFamilyIndex, 0, out var queue);
-    Queue = queue;
-    QueueLock = new object();
-
-    // 重新初始化核心模块
-    LoadFeatures(maxQueueCount, queueFamilyIndex); // 内部会重建 MemoryAllocator、CommandBufferPool 等
-    _window = new Window(this, _surface, _physicalDevice.PhysicalDevice, _device);
-
-    // 重建管线和其他渲染组件
-    _pipeline = new PipelineFull(this, _device);
-    _pipeline.Initialize();
-    HelperShader = new HelperShader(this, _device);
-    Barriers = new BarrierBatch(this);
-    SyncManager = new SyncManager(this, _device);
-}
-
         public unsafe void Dispose()
         {
             if (!_initialized)
@@ -1174,5 +1070,3 @@ private unsafe void InitializeVulkan()
         }
     }
 }
-
-                
