@@ -792,7 +792,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <summary>
         /// Adds a virtual buffer dependency, indicating that a virtual buffer depends on data from this buffer.
         /// </summary>
-        /// <param name="virtualBuffer">Dependant virtual buffer</param>
+                /// <param name="virtualBuffer">Dependant virtual buffer</param>
         public void AddVirtualDependency(MultiRangeBuffer virtualBuffer)
         {
             _virtualDependenciesLock.EnterWriteLock();
