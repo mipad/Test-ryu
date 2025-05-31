@@ -11,7 +11,6 @@ using Silk.NET.Vulkan.Extensions.KHR;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Threading;
 using Format = Ryujinx.Graphics.GAL.Format;
 using PrimitiveTopology = Ryujinx.Graphics.GAL.PrimitiveTopology;
 using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
@@ -27,8 +26,6 @@ namespace Ryujinx.Graphics.Vulkan
         private WindowBase _window;
 
         private bool _initialized;
-
-        public uint ProgramCount { get; set; } = 0;
 
         internal FormatCapabilities FormatCapabilities { get; private set; }
         internal HardwareCapabilities Capabilities;
@@ -84,14 +81,13 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly string _preferredGpuId;
 
         private int[] _pdReservedBindings;
-        private readonly static int[] _pdReservedBindingsNvn = [3, 18, 21, 36, 30];
-        private readonly static int[] _pdReservedBindingsOgl = [17, 18, 34, 35, 36];
+        private readonly static int[] _pdReservedBindingsNvn = { 3, 18, 21, 36, 30 };
+        private readonly static int[] _pdReservedBindingsOgl = { 17, 18, 34, 35, 36 };
 
         internal Vendor Vendor { get; private set; }
         internal bool IsAmdWindows { get; private set; }
         internal bool IsIntelWindows { get; private set; }
         internal bool IsAmdGcn { get; private set; }
-        internal bool IsAmdRdna3 { get; private set; }
         internal bool IsNvidiaPreTuring { get; private set; }
         internal bool IsIntelArc { get; private set; }
         internal bool IsQualcommProprietary { get; private set; }
@@ -114,15 +110,15 @@ namespace Ryujinx.Graphics.Vulkan
             _getRequiredExtensions = requiredExtensionsFunc;
             _preferredGpuId = preferredGpuId;
             Api = api;
-            Shaders = [];
-            Textures = [];
-            Samplers = [];
+            Shaders = new HashSet<ShaderCollection>();
+            Textures = new HashSet<ITexture>();
+            Samplers = new HashSet<SamplerHolder>();
 
-            if (OperatingSystem.IsMacOS())
+            if (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS())
             {
                 MVKInitialization.Initialize();
 
-                // Any device running on MacOS is using MoltenVK, even Intel and AMD vendors.
+                // Any device running on Darwin is using MoltenVK, even Intel and AMD vendors.
                 IsMoltenVk = true;
             }
         }
@@ -165,7 +161,7 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 Api.GetDeviceQueue(_device, queueFamilyIndex, 1, out var backgroundQueue);
                 BackgroundQueue = backgroundQueue;
-                BackgroundQueueLock = new();
+                BackgroundQueueLock = new object();
             }
 
             PhysicalDeviceProperties2 properties2 = new()
@@ -376,10 +372,6 @@ namespace Ryujinx.Graphics.Vulkan
 
             IsAmdGcn = !IsMoltenVk && Vendor == Vendor.Amd && VendorUtils.AmdGcnRegex().IsMatch(GpuRenderer);
 
-            IsAmdRdna3 = Vendor == Vendor.Amd && (VendorUtils.AmdRdna3Regex().IsMatch(GpuRenderer)
-                                                  // ROG Ally (X) Device IDs
-                                                  || properties.DeviceID is 0x15BF or 0x15C8);
-
             if (Vendor == Vendor.Nvidia)
             {
                 var match = VendorUtils.NvidiaConsumerClassRegex().Match(GpuRenderer);
@@ -502,7 +494,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             Api.GetDeviceQueue(_device, queueFamilyIndex, 0, out var queue);
             Queue = queue;
-            QueueLock = new();
+            QueueLock = new object();
 
             LoadFeatures(maxQueueCount, queueFamilyIndex);
 
@@ -525,7 +517,7 @@ namespace Ryujinx.Graphics.Vulkan
                 }
                 else
                 {
-                    _pdReservedBindings = [];
+                    _pdReservedBindings = Array.Empty<int>();
                 }
             }
 
@@ -554,8 +546,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public IProgram CreateProgram(ShaderSource[] sources, ShaderInfo info)
         {
-            ProgramCount++;
-            
             bool isCompute = sources.Length == 1 && sources[0].Stage == ShaderStage.Compute;
 
             if (info.State.HasValue || isCompute)
@@ -768,6 +758,7 @@ namespace Ryujinx.Graphics.Vulkan
                 supportsQuads: false,
                 supportsSeparateSampler: true,
                 supportsShaderBallot: false,
+                supportsShaderBallotDivergence: Vendor != Vendor.Qualcomm,
                 supportsShaderBarrierDivergence: Vendor != Vendor.Intel,
                 supportsShaderFloat64: Capabilities.SupportsShaderFloat64,
                 supportsTextureGatherOffsets: features2.Features.ShaderImageGatherExtended && !IsMoltenVk,
@@ -835,7 +826,7 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 Logger.Error?.PrintMsg(LogClass.Gpu, $"Error querying Vulkan devices: {ex.Message}");
 
-                return [];
+                return Array.Empty<DeviceInfo>();
             }
         }
 
@@ -848,7 +839,7 @@ namespace Ryujinx.Graphics.Vulkan
             catch (Exception)
             {
                 // If we got an exception here, Vulkan is most likely not supported.
-                return [];
+                return Array.Empty<DeviceInfo>();
             }
         }
 
