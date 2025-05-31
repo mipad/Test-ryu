@@ -160,7 +160,7 @@ namespace Ryujinx.Graphics.Gpu.Shader
                string cachePath = GetDiskCachePath();
                
         // Mali GPU 使用专用缓存
-        if (IsMaliGpu())
+        if (IsArmDevice())
         {
             cachePath += "_arm";
             Logger.Info?.Print(LogClass.Gpu, $"Using ARM-optimized shader cache: {cachePath}");
