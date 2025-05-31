@@ -538,11 +538,6 @@ namespace Ryujinx.Graphics.Gpu.Shader
         /// <returns>Compute shader</returns>
         private ShaderAsCompute CreateHostVertexAsComputeProgram(ShaderProgram program, TranslatorContext context, bool tfEnabled)
         {
-            // Mali GPU：生成优化版计算着色器
-    if (IsMaliGpu())
-    {
-        program = context.GenerateMaliOptimizedCompute(tfEnabled);
-    }
     
             ShaderSource source = new(program.Code, program.BinaryCode, ShaderStage.Compute, program.Language);
             ShaderInfo info = ShaderInfoBuilder.BuildForVertexAsCompute(_context, program.Info, tfEnabled);
@@ -681,7 +676,7 @@ namespace Ryujinx.Graphics.Gpu.Shader
         /// <param name="memoryManager">Memory manager used to access the GPU memory where the shader is located</param>
         /// <param name="shader">Cached shader to compare with</param>
         /// <param name="gpuVa">GPU virtual address of the binary shader code</param>
-        /// <returns>True if the code is different, false otherwise</returns>
+         /// <returns>True if the code is different, false otherwise</returns>
         private static bool IsShaderEqual(MemoryManager memoryManager, CachedShaderStage shader, ulong gpuVa)
         {
             if (shader == null)
@@ -850,22 +845,9 @@ namespace Ryujinx.Graphics.Gpu.Shader
 
             // ARM Mali 优化
     if (IsMaliGpu())
-    {
-        // 启用低精度优化
-        flags |= TranslationFlags.LowPrecision;
-        
-        // 禁用调试模式
-        flags &= ~TranslationFlags.DebugMode;
-        
-        // 跳过几何着色器直通（如果不支持）
-        if (!_context.Capabilities.SupportsGeometryShaderPassthrough)
-        {
-            flags |= TranslationFlags.SkipGeometryPassthrough;
-        }
-        
-        // 简化控制流
-        flags |= TranslationFlags.SimplifyControlFlow;
-    }
+            {
+                flags |= TranslationFlags.FastMath;
+            }
 
     return new TranslationOptions(lang, api, flags);
 }
@@ -875,14 +857,18 @@ namespace Ryujinx.Graphics.Gpu.Shader
         /// It's an error to use the shader cache after disposal.
         /// </summary>
         private bool IsMaliGpu()
-{
-    // 获取当前渲染器信息
-    string renderer = _context.Capabilities.RendererName ?? "";
-    
-    // 检测 ARM 厂商且渲染器名称包含 "Mali"
-    return _context.Capabilities.Vendor == Vendor.ARM && 
-           renderer.Contains("Mali", StringComparison.OrdinalIgnoreCase);
-}
+        {
+            try
+            {
+                // 使用更兼容的方式检测Mali GPU
+                string renderer = _context.Renderer.GetType().Name.ToLowerInvariant();
+                return renderer.Contains("mali");
+            }
+            catch
+            {
+                return false;
+            }
+        }
 
         public void Dispose()
         {
