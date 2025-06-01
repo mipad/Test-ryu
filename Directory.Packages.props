@@ -30,7 +30,7 @@
     <PackageVersion Include="OpenTK.Graphics" Version="4.9.4" />
     <PackageVersion Include="OpenTK.Audio.OpenAL" Version="4.9.4" />
     <PackageVersion Include="OpenTK.Windowing.GraphicsLibraryFramework" Version="4.9.4" />
-    <PackageVersion Include="Ryujinx.Audio.OpenAL.Dependencies" Version="1.21.0.1" />
+    <PackageVersion Include="Ryujinx.Audio.OpenAL" Version="1.24.3" />
     <PackageVersion Include="Ryujinx.Graphics.Nvdec.Dependencies.AllArch" Version="6.1.2-build3" />
     <PackageVersion Include="Ryujinx.Graphics.Vulkan.Dependencies.MoltenVK" Version="1.2.0" />
     <PackageVersion Include="Ryujinx.SDL2-CS-Redux" Version="2.32.6" />
