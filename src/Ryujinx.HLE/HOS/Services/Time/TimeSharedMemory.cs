@@ -6,7 +6,6 @@ using Ryujinx.HLE.HOS.Services.Time.Types;
 using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Runtime.InteropServices;
 
 namespace Ryujinx.HLE.HOS.Services.Time
 {
@@ -15,7 +14,7 @@ namespace Ryujinx.HLE.HOS.Services.Time
         private Switch _device;
         private KSharedMemory _sharedMemory;
         private SharedMemoryStorage _timeSharedMemoryStorage;
-#pragma warning disable IDE0052
+#pragma warning disable IDE0052 // Remove unread private member
         private int _timeSharedMemorySize;
 #pragma warning restore IDE0052
 
@@ -31,6 +30,8 @@ namespace Ryujinx.HLE.HOS.Services.Time
             _sharedMemory = sharedMemory;
             _timeSharedMemoryStorage = timeSharedMemoryStorage;
             _timeSharedMemorySize = timeSharedMemorySize;
+
+            // Clean the shared memory
             timeSharedMemoryStorage.ZeroFill();
         }
 
@@ -46,12 +47,14 @@ namespace Ryujinx.HLE.HOS.Services.Time
 
         public void SetAutomaticCorrectionEnabled(bool isAutomaticCorrectionEnabled)
         {
+            // We convert the bool to byte here as a bool in C# takes 4 bytes...
             WriteObjectToSharedMemory(AutomaticCorrectionEnabledOffset, 0, Convert.ToByte(isAutomaticCorrectionEnabled));
         }
 
         public void SetSteadyClockRawTimePoint(ITickSource tickSource, TimeSpanType currentTimePoint)
         {
             SteadyClockContext context = ReadObjectFromSharedMemory<SteadyClockContext>(SteadyClockContextOffset, 4);
+
             UpdateSteadyClock(tickSource, context.ClockSourceId, currentTimePoint);
         }
 
@@ -96,16 +99,8 @@ namespace Ryujinx.HLE.HOS.Services.Time
             WriteObjectToSharedMemory(NetworkSystemClockContextOffset, 4, context);
         }
 
-        private unsafe T ReadObjectFromSharedMemory<T>(ulong offset, ulong padding) where T : unmanaged
+        private T ReadObjectFromSharedMemory<T>(ulong offset, ulong padding) where T : unmanaged
         {
-            if (!OperatingSystem.IsAndroid() && 
-                !OperatingSystem.IsWindows() && 
-                !OperatingSystem.IsLinux() && 
-                !OperatingSystem.IsMacOS())
-            {
-                throw new PlatformNotSupportedException("Memory operations are only supported on Android, Windows, Linux, and macOS.");
-            }
-
             T result;
             uint index;
             uint possiblyNewIndex;
@@ -113,15 +108,14 @@ namespace Ryujinx.HLE.HOS.Services.Time
             do
             {
                 index = _timeSharedMemoryStorage.GetRef<uint>(offset);
-                ulong objectOffset = offset + 4 + padding + (ulong)((index & 1) * Unsafe.SizeOf<T>());
-                
-                // 修正：直接调用 MemoryBlock 的 GetPointer，并传入 size 参数
-                byte* ptr = (byte*)_device.Memory.GetPointer(objectOffset, (ulong)Unsafe.SizeOf<T>()).ToPointer();
-                result = Unsafe.Read<T>(ptr);
 
-                // 修正：补全 GetPointer 的 size 参数
-                byte* indexPtr = (byte*)_device.Memory.GetPointer(offset, (ulong)Unsafe.SizeOf<uint>()).ToPointer();
-                possiblyNewIndex = Unsafe.Read<uint>(indexPtr);
+                ulong objectOffset = offset + 4 + padding + (ulong)((index & 1) * Unsafe.SizeOf<T>());
+
+                result = _timeSharedMemoryStorage.GetRef<T>(objectOffset);
+
+                Thread.MemoryBarrier();
+
+                possiblyNewIndex = _device.Memory.Read<uint>(offset);
             } while (index != possiblyNewIndex);
 
             return result;
@@ -129,26 +123,15 @@ namespace Ryujinx.HLE.HOS.Services.Time
 
         private void WriteObjectToSharedMemory<T>(ulong offset, ulong padding, T value) where T : unmanaged
         {
-            uint newIndex = AtomicIncrement(ref _timeSharedMemoryStorage.GetRef<uint>(offset));
+            uint newIndex = _timeSharedMemoryStorage.GetRef<uint>(offset) + 1;
+
             ulong objectOffset = offset + 4 + padding + (ulong)((newIndex & 1) * Unsafe.SizeOf<T>());
 
-            unsafe
-            {
-                // 修正：直接调用 MemoryBlock 的 GetPointer，并传入 size 参数
-                byte* ptr = (byte*)_device.Memory.GetPointer(objectOffset, (ulong)Unsafe.SizeOf<T>()).ToPointer();
-                Unsafe.Write(ptr, value);
-            }
-        }
+            _timeSharedMemoryStorage.GetRef<T>(objectOffset) = value;
 
-        private uint AtomicIncrement(ref uint location)
-        {
-            uint original, newValue;
-            do
-            {
-                original = Volatile.Read(ref location);
-                newValue = original + 1;
-            } while (Interlocked.CompareExchange(ref location, newValue, original) != original);
-            return newValue;
+            Thread.MemoryBarrier();
+
+            _timeSharedMemoryStorage.GetRef<uint>(offset) = newIndex;
         }
     }
 }
