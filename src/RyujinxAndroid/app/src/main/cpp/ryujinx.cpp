@@ -15,7 +15,9 @@
 //         System.loadLibrary("ryuijnx")
 //      }
 //    }
-
+#include <android/native_window.h>
+#include <android/native_window_jni.h>
+#include <adrenotools/driver.h> // 用于adrenotools函数
 #include "ryuijnx.h"
 #include "pthread.h"
 #include <chrono>
@@ -203,24 +205,6 @@ void debug_break(int code) {
         int r = 0;
 }
 
-extern "C"
-// 添加设置画面比例的函数
-JNIEXPORT void JNICALL
-    Java_org_ryujinx_RyujinxNative_graphicsSetAspectRatio(
-        JNIEnv *env,
-        jobject instance,
-        jint aspectRatio) {
-        
-        // 确保传入的值在有效范围内
-        if (aspectRatio < 0 || aspectRatio > 2) {
-            // 使用默认值 0 (16:9)
-            config.Graphics.AspectRatio.Value = AspectRatio::Fixed16x9;
-        } else {
-            // 将整数值转换为枚举类型
-            config.Graphics.AspectRatio.Value = static_cast<AspectRatio>(aspectRatio);
-        }
-    }
-    
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setTurboMode(JNIEnv *env, jobject thiz, jboolean enable) {
