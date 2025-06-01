@@ -15,14 +15,14 @@
 //         System.loadLibrary("ryuijnx")
 //      }
 //    }
-#include <android/native_window.h>
-#include <android/native_window_jni.h>
-#include <adrenotools/driver.h> // 用于adrenotools函数
+
 #include "ryuijnx.h"
 #include "pthread.h"
 #include <chrono>
 #include <csignal>
 
+// ===== 添加全局配置对象定义 =====
+Config config; // 定义全局配置对象
 
 std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
 
@@ -249,4 +249,30 @@ JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setIsInitialOrientationFlipped(JNIEnv *env, jobject thiz,
                                                                       jboolean is_flipped) {
     isInitialOrientationFlipped = is_flipped;
+}
+
+// ===== 添加画面比例设置函数 =====
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_RyujinxNative_graphicsSetAspectRatio(
+    JNIEnv *env,
+    jobject instance,
+    jint aspectRatio) {
+    
+    // 添加调试日志
+    __android_log_print(ANDROID_LOG_INFO, "Ryujinx", 
+                       "Setting aspect ratio: %d", aspectRatio);
+    
+    // 值范围验证
+    if (aspectRatio < 0 || aspectRatio > 2) {
+        // 使用默认值 0 (16:9)
+        config.Graphics.AspectRatio = AspectRatio::Fixed16x9;
+        __android_log_print(ANDROID_LOG_WARN, "Ryujinx", 
+                           "Invalid aspect ratio, using default (16:9)");
+    } else {
+        // 将整数值转换为枚举类型
+        config.Graphics.AspectRatio = static_cast<AspectRatio>(aspectRatio);
+        __android_log_print(ANDROID_LOG_INFO, "Ryujinx", 
+                           "Aspect ratio set to: %d", aspectRatio);
+    }
 }
