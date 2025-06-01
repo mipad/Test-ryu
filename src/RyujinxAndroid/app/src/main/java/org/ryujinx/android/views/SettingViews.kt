@@ -194,6 +194,7 @@ class SettingViews {
                                     enableShaderCache,
                                     enableTextureRecompression,
                                     resScale,
+                                    aspectRatio,
                                     useVirtualController,
                                     isGrid,
                                     useSwitchLayout,
