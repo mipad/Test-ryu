@@ -37,6 +37,7 @@ interface RyujinxNativeJna : Library {
         driver: Long
     ): Boolean
 
+    fun graphicsSetAspectRatio(aspectRatio: Int)
     fun javaInitialize(appPath: String, env: JNIEnv): Boolean
     fun deviceLaunchMiiEditor(): Boolean
     fun deviceGetGameFrameRate(): Double
