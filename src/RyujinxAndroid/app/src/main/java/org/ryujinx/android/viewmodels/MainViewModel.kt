@@ -354,14 +354,14 @@ class MainViewModel(val activity: MainActivity) {
         gameTime: MutableState<Double>,
         usedMem: MutableState<Int>,
         totalMem: MutableState<Int>,
-        frequencies: MutableList<Double>
+        //frequencies: MutableList<Double>
     ) {
         fifoState = fifo
         gameFpsState = gameFps
         gameTimeState = gameTime
         usedMemState = usedMem
         totalMemState = totalMem
-        frequenciesState = frequencies
+        //frequenciesState = frequencies
     }
 
     fun updateStats(
