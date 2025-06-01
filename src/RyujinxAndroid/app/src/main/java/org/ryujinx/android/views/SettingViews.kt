@@ -739,6 +739,7 @@ class SettingViews {
                     )
                 }
             }
+            }
         
                             Row(
                                 modifier = Modifier
