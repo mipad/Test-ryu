@@ -1,5 +1,8 @@
 package org.ryujinx.android.views
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.Color
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -686,24 +689,59 @@ class SettingViews {
                                 })
                             }
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Resolution Scale",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
-                                Text(text = resScale.value.toString() + "x")
-                            }
-                            Slider(value = resScale.value,
-                                valueRange = 0.5f..4f,
-                                steps = 6,
-                                onValueChange = { it ->
-                                    resScale.value = it
-                                })
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Resolution Scale",
+                modifier = Modifier.align(Alignment.CenterVertically)
+            )
+            Text(text = "%.2fx".format(resScale.value))
+        }
+        
+        // 预设按钮组 (替换滑块)
+        val resolutionPresets = listOf(0.3f, 0.35f, 0.4f, 0.5f, 0.75f, 1f, 1.5f, 2f, 3f, 4f)
+        
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            resolutionPresets.forEach { preset ->
+                val isSelected = resScale.value == preset
+                
+                TextButton(
+                    onClick = {
+                        resScale.value = preset
+                    },
+                    modifier = Modifier
+                        .height(36.dp)
+                        .border(
+                            width = 1.dp,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary 
+                                   else MaterialTheme.colorScheme.outline,
+                            shape = MaterialTheme.shapes.small
+                        ),
+                    colors = ButtonDefaults.textButtonColors(
+                        containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer 
+                                       else Color.Transparent,
+                        contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer 
+                                     else MaterialTheme.colorScheme.onSurface
+                    )
+                ) {
+                    Text(
+                        text = "%.2fx".format(preset),
+                        fontSize = 12.sp
+                    )
+                }
+            }
+            }
+        
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1027,7 +1065,7 @@ class SettingViews {
                                     enableInfoLogs.value = !enableInfoLogs.value
                                 })
                             }
-                            Row(
+                           Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(8.dp),
