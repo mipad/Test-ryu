@@ -118,6 +118,9 @@ class SettingViews {
             val resScale = remember {
                 mutableStateOf(1f)
             }
+            val aspectRatio = remember {
+                mutableStateOf(0)
+            }
             val useVirtualController = remember {
                 mutableStateOf(true)
             }
@@ -154,6 +157,7 @@ class SettingViews {
                     enableShaderCache,
                     enableTextureRecompression,
                     resScale,
+                    aspectRatio,
                     useVirtualController,
                     isGrid,
                     useSwitchLayout,
@@ -741,7 +745,44 @@ class SettingViews {
                 }
             }
             }
-        
+        //  添加画面比例设置UI
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Aspect Ratio",
+                                    modifier = Modifier.align(Alignment.CenterVertically)
+                                )
+                                // 单选框组
+                                Row {
+                                    // 0: 16:9, 1: 4:3, 2: Stretch
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        RadioButton(
+                                            selected = aspectRatio.value == 0,
+                                            onClick = { aspectRatio.value = 0 }
+                                        )
+                                        Text("16:9", modifier = Modifier.padding(end = 8.dp))
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        RadioButton(
+                                            selected = aspectRatio.value == 1,
+                                            onClick = { aspectRatio.value = 1 }
+                                        )
+                                        Text("4:3", modifier = Modifier.padding(end = 8.dp))
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        RadioButton(
+                                            selected = aspectRatio.value == 2,
+                                            onClick = { aspectRatio.value = 2 }
+                                        )
+                                        Text("Stretch", modifier = Modifier.padding(end = 8.dp))
+                                    }
+                                }
+                            }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1179,6 +1220,7 @@ class SettingViews {
                         enableShaderCache,
                         enableTextureRecompression,
                         resScale,
+                        aspectRatio,
                         useVirtualController,
                         isGrid,
                         useSwitchLayout,
