@@ -46,4 +46,43 @@ JavaVM *_vm = nullptr;
 jobject _mainActivity = nullptr;
 jclass _mainActivityClass = nullptr;
 
+// ===== 添加画面比例设置支持 =====
+#include <android/log.h>  // 确保已包含日志头文件
+
+// 画面比例枚举定义
+enum class AspectRatio {
+    Fixed16x9 = 0,  // 16:9
+    Fixed4x3 = 1,    // 4:3
+    Stretched = 2    // 拉伸模式
+};
+
+// 图形配置结构
+struct GraphicsConfig {
+    AspectRatio AspectRatio;
+    // 可以添加其他图形设置项
+};
+
+// 全局配置结构
+struct Config {
+    GraphicsConfig Graphics;
+};
+
+// 声明全局配置对象
+extern Config config;
+
+// 声明 JNI 函数
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+JNIEXPORT void JNICALL
+Java_org_ryujinx_RyujinxNative_graphicsSetAspectRatio(
+    JNIEnv *env,
+    jobject instance,
+    jint aspectRatio);
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif //RYUJINXNATIVE_RYUIJNX_H
