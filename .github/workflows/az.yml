@@ -2,9 +2,9 @@ name: Android CI  Fix
 
 on:
   push:
-    branches: [ "nw3" ]
+    branches: [ "aspectRatio" ]
   pull_request:
-    branches: [ "nw3" ]
+    branches: [ "aspectRatio" ]
 
 jobs:
   build:
@@ -25,7 +25,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: nw3
+        ref: aspectRatio
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
