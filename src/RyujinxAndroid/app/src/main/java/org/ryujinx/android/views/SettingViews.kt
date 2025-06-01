@@ -1,5 +1,8 @@
 package org.ryujinx.android.views
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.Color
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -715,8 +718,6 @@ class SettingViews {
                 TextButton(
                     onClick = {
                         resScale.value = preset
-                        // 这里添加实际应用分辨率变化的逻辑
-                        applyResolutionScale(preset)
                     },
                     modifier = Modifier
                         .height(36.dp)
