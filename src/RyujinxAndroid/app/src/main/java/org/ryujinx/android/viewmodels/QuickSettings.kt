@@ -15,6 +15,7 @@ class QuickSettings(val activity: Activity) {
     var enableShaderCache: Boolean
     var enableTextureRecompression: Boolean
     var resScale: Float
+    var aspectRatio: Int
     var isGrid: Boolean
     var useSwitchLayout: Boolean
     var enableMotion: Boolean
@@ -45,6 +46,7 @@ class QuickSettings(val activity: Activity) {
         enableShaderCache = sharedPref.getBoolean("enableShaderCache", true)
         enableTextureRecompression = sharedPref.getBoolean("enableTextureRecompression", false)
         resScale = sharedPref.getFloat("resScale", 1f)
+        aspectRatio = sharedPref.getInt("aspectRatio", 0) // 默认值设为0 (16:9)
         useVirtualController = sharedPref.getBoolean("useVirtualController", true)
         isGrid = sharedPref.getBoolean("isGrid", true)
         useSwitchLayout = sharedPref.getBoolean("useSwitchLayout", true)
@@ -75,6 +77,7 @@ class QuickSettings(val activity: Activity) {
         editor.putBoolean("enableShaderCache", enableShaderCache)
         editor.putBoolean("enableTextureRecompression", enableTextureRecompression)
         editor.putFloat("resScale", resScale)
+        editor.putInt("aspectRatio", aspectRatio)
         editor.putBoolean("useVirtualController", useVirtualController)
         editor.putBoolean("isGrid", isGrid)
         editor.putBoolean("useSwitchLayout", useSwitchLayout)
