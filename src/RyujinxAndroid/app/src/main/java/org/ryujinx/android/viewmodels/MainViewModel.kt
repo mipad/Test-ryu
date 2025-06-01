@@ -37,7 +37,7 @@ class MainViewModel(val activity: MainActivity) {
     private var fifoState: MutableState<Double>? = null
     private var usedMemState: MutableState<Int>? = null
     private var totalMemState: MutableState<Int>? = null
-    private var frequenciesState: MutableList<Double>? = null
+    //private var frequenciesState: MutableList<Double>? = null
     private var progress: MutableState<String>? = null
     private var progressValue: MutableState<Float>? = null
     private var showLoading: MutableState<Boolean>? = null
