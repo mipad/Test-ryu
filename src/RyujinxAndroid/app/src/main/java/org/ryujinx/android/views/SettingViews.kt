@@ -686,24 +686,60 @@ class SettingViews {
                                 })
                             }
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Resolution Scale",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
-                                Text(text = resScale.value.toString() + "x")
-                            }
-                            Slider(value = resScale.value,
-                                valueRange = 0.25f..4f,
-                                steps = 14,
-                                onValueChange = { it ->
-                                    resScale.value = it
-                                })
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Resolution Scale",
+                modifier = Modifier.align(Alignment.CenterVertically)
+            )
+            Text(text = "%.2fx".format(resScale.value))
+        }
+        
+        // 预设按钮组 (替换滑块)
+        val resolutionPresets = listOf(0.25f, 0.5f, 0.75f, 1f, 1.5f, 2f, 4f)
+        
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            resolutionPresets.forEach { preset ->
+                val isSelected = resScale.value == preset
+                
+                TextButton(
+                    onClick = {
+                        resScale.value = preset
+                        // 这里添加实际应用分辨率变化的逻辑
+                        applyResolutionScale(preset)
+                    },
+                    modifier = Modifier
+                        .height(36.dp)
+                        .border(
+                            width = 1.dp,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary 
+                                   else MaterialTheme.colorScheme.outline,
+                            shape = MaterialTheme.shapes.small
+                        ),
+                    colors = ButtonDefaults.textButtonColors(
+                        containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer 
+                                       else Color.Transparent,
+                        contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer 
+                                     else MaterialTheme.colorScheme.onSurface
+                    )
+                ) {
+                    Text(
+                        text = "%.2fx".format(preset),
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
