@@ -230,7 +230,7 @@ namespace LibRyujinx
         public bool EnableShaderCache = true;
         public bool EnableTextureRecompression = false;
         public BackendThreading BackendThreading = BackendThreading.Auto;
-        public AspectRatio AspectRatio = AspectRatio.Fixed16x9;
+        public AspectRatio AspectRatio = AspectRatio.Stretched;
 
         public GraphicsConfiguration()
         {
