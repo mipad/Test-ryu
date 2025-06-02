@@ -29,6 +29,9 @@ namespace LibRyujinx
         // 添加模式标志
         private static bool _isHandheldMode = false;
 
+        // 添加Handheld专用设备ID
+        private const int HandheldDeviceId = 8;
+
         public static void InitializeInput(int width, int height, bool handheldMode = false)
         {
             if(SwitchDevice!.InputManager != null)
@@ -37,8 +40,11 @@ namespace LibRyujinx
             }
 
             _isHandheldMode = handheldMode;
-            _gamepadDriver = new VirtualGamepadDriver(4);
-            _configs = new InputConfig[4];
+            
+            // 创建10个设备槽位（8个玩家+Handheld+Unknown）
+            _gamepadDriver = new VirtualGamepadDriver(10);
+            _configs = new InputConfig[10];
+            
             _virtualTouchScreen = new VirtualTouchScreen();
             _touchScreenDriver = new VirtualTouchScreenDriver(_virtualTouchScreen);
             _inputManager = new InputManager(null, _gamepadDriver);
@@ -53,6 +59,12 @@ namespace LibRyujinx
             _npadManager.Initialize(SwitchDevice.EmulationContext, new List<InputConfig>(), false, false);
 
             _virtualTouchScreen.ClientSize = new Size(width, height);
+            
+            // 如果是Handheld模式，自动连接Handheld设备
+            if (_isHandheldMode)
+            {
+                ConnectHandheld();
+            }
         }
 
         public static void SetClientSize(int width, int height)
@@ -70,30 +82,14 @@ namespace LibRyujinx
             _virtualTouchScreen?.ReleaseTouch();
         }
 
-        // 修改：添加左右Joy-Con区分
-        public static void SetButtonPressed(GamepadButtonInputId button, int id, bool isLeft = false)
+        public static void SetButtonPressed(GamepadButtonInputId button, int id)
         {
-            if (_isHandheldMode && id == 0) // Handheld模式只处理id=0的设备
-            {
-                _gamepadDriver?.SetButtonPressed(button, id, isLeft);
-            }
-            else
-            {
-                _gamepadDriver?.SetButtonPressed(button, id);
-            }
+            _gamepadDriver?.SetButtonPressed(button, id);
         }
 
-        // 修改：添加左右Joy-Con区分
-        public static void SetButtonReleased(GamepadButtonInputId button, int id, bool isLeft = false)
+        public static void SetButtonReleased(GamepadButtonInputId button, int id)
         {
-            if (_isHandheldMode && id == 0)
-            {
-                _gamepadDriver?.SetButtonReleased(button, id, isLeft);
-            }
-            else
-            {
-                _gamepadDriver?.SetButtonReleased(button, id);
-            }
+            _gamepadDriver?.SetButtonReleased(button, id);
         }
 
         public static void SetAccelerometerData(Vector3 accel, int id)
@@ -106,28 +102,25 @@ namespace LibRyujinx
             _gamepadDriver?.SetGryoData(gyro, id);
         }
 
-        // 修改：添加左右Joy-Con区分
-        public static void SetStickAxis(StickInputId stick, Vector2 axes, int deviceId, bool isLeft = false)
+        public static void SetStickAxis(StickInputId stick, Vector2 axes, int deviceId)
         {
-            if (_isHandheldMode && deviceId == 0)
-            {
-                _gamepadDriver?.SetStickAxis(stick, axes, deviceId, isLeft);
-            }
-            else
-            {
-                _gamepadDriver?.SetStickAxis(stick, axes, deviceId);
-            }
+            _gamepadDriver?.SetStickAxis(stick, axes, deviceId);
         }
 
         public static int ConnectGamepad(int index)
         {
+            if (index == HandheldDeviceId && !_isHandheldMode)
+            {
+                throw new InvalidOperationException("Cannot connect handheld device in non-handheld mode");
+            }
+            
             var gamepad = _gamepadDriver?.GetGamepad(index);
             if (gamepad != null)
             {
                 InputConfig config;
                 
-                // 修改：根据模式创建不同的配置
-                if (_isHandheldMode && index == 0)
+                // 根据设备类型创建配置
+                if (index == HandheldDeviceId)
                 {
                     config = CreateHandheldInputConfig();
                 }
@@ -145,6 +138,17 @@ namespace LibRyujinx
             _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
 
             return int.TryParse(gamepad?.Id, out var idInt) ? idInt : -1;
+        }
+        
+        // 专门连接Handheld设备的方法
+        public static int ConnectHandheld()
+        {
+            if (!_isHandheldMode)
+            {
+                throw new InvalidOperationException("Cannot connect handheld device in non-handheld mode");
+            }
+            
+            return ConnectGamepad(HandheldDeviceId);
         }
 
         private static InputConfig CreateDefaultInputConfig()
@@ -220,10 +224,9 @@ namespace LibRyujinx
             };
         }
 
-        // 修复：使用StandardControllerInputConfig并设置ControllerType为Handheld
         private static InputConfig CreateHandheldInputConfig()
         {
-            return new StandardControllerInputConfig
+            return new HandheldControllerInputConfig
             {
                 Version = InputConfig.CurrentVersion,
                 Backend = InputBackendType.GamepadSDL2,
@@ -243,7 +246,6 @@ namespace LibRyujinx
                     ButtonMinus = ConfigGamepadInputId.Minus,
                     ButtonL = ConfigGamepadInputId.LeftShoulder,
                     ButtonZl = ConfigGamepadInputId.LeftTrigger,
-                    // 修复：使用正确的按钮ID
                     ButtonSl = ConfigGamepadInputId.LeftSl,
                     ButtonSr = ConfigGamepadInputId.LeftSr,
                 },
@@ -266,7 +268,6 @@ namespace LibRyujinx
                     ButtonPlus = ConfigGamepadInputId.Plus,
                     ButtonR = ConfigGamepadInputId.RightShoulder,
                     ButtonZr = ConfigGamepadInputId.RightTrigger,
-                    // 修复：使用正确的按钮ID
                     ButtonSl = ConfigGamepadInputId.RightSl,
                     ButtonSr = ConfigGamepadInputId.RightSr,
                 },
@@ -470,7 +471,6 @@ namespace LibRyujinx
         {
             if (disposing)
             {
-                // Simulate a full disconnect when disposing
                 var ids = GamepadsIds;
                 foreach (string id in ids)
                 {
@@ -496,41 +496,28 @@ namespace LibRyujinx
             return _gamePads[index];
         }
 
-        public void SetStickAxis(StickInputId stick, Vector2 axes, int deviceId, bool isLeft = false)
+        public void SetStickAxis(StickInputId stick, Vector2 axes, int deviceId)
         {
             if(_gamePads.TryGetValue(deviceId, out var gamePad))
             {
-                // 修改：支持Handheld模式下的摇杆设置
-                gamePad.SetStickAxis(stick, axes, isLeft);
-            }
-        }
-
-        public void SetButtonPressed(GamepadButtonInputId button, int deviceId, bool isLeft = false)
-        {
-            if (_gamePads.TryGetValue(deviceId, out var gamePad))
-            {
-                // 修改：支持Handheld模式下的按钮设置
-                gamePad.SetButtonPressed(button, isLeft);
+                gamePad.StickInputs[(int)stick] = axes;
             }
         }
 
         public void SetButtonPressed(GamepadButtonInputId button, int deviceId)
         {
-            SetButtonPressed(button, deviceId, false);
-        }
-
-        public void SetButtonReleased(GamepadButtonInputId button, int deviceId, bool isLeft = false)
-        {
             if (_gamePads.TryGetValue(deviceId, out var gamePad))
             {
-                // 修改：支持Handheld模式下的按钮释放
-                gamePad.SetButtonReleased(button, isLeft);
+                gamePad.ButtonInputs[(int)button] = true;
             }
         }
 
         public void SetButtonReleased(GamepadButtonInputId button, int deviceId)
         {
-            SetButtonReleased(button, deviceId, false);
+            if (_gamePads.TryGetValue(deviceId, out var gamePad))
+            {
+                gamePad.ButtonInputs[(int)button] = false;
+            }
         }
 
         public void SetAccelerometerData(Vector3 accel, int deviceId)
@@ -554,20 +541,12 @@ namespace LibRyujinx
     {
         private readonly VirtualGamepadDriver _driver;
 
-        // 修改：添加左右按钮和摇杆状态分离
         private bool[] _buttonInputs;
-        private bool[] _leftButtonInputs;
-        private bool[] _rightButtonInputs;
-        
         private Vector2[] _stickInputs;
-        private Vector2 _leftStick;
-        private Vector2 _rightStick;
 
         public VirtualGamepad(VirtualGamepadDriver driver, int id)
         {
             _buttonInputs = new bool[(int)GamepadButtonInputId.Count];
-            _leftButtonInputs = new bool[(int)GamepadButtonInputId.Count];
-            _rightButtonInputs = new bool[(int)GamepadButtonInputId.Count];
             _stickInputs = new Vector2[(int)StickInputId.Count];
             _driver = driver;
             Id = id.ToString();
@@ -588,73 +567,13 @@ namespace LibRyujinx
         public Vector3 Accelerometer { get; internal set; }
         public Vector3 Gyro { get; internal set; }
 
-        // 新增：设置左右摇杆
-        public void SetStickAxis(StickInputId stick, Vector2 axes, bool isLeft = false)
-        {
-            if (isLeft)
-            {
-                _leftStick = axes;
-            }
-            else
-            {
-                _rightStick = axes;
-            }
-            
-            // 同时更新通用存储
-            _stickInputs[(int)stick] = axes;
-        }
-
-        // 新增：设置左右按钮
-        public void SetButtonPressed(GamepadButtonInputId button, bool isLeft = false)
-        {
-            if (isLeft)
-            {
-                _leftButtonInputs[(int)button] = true;
-            }
-            else
-            {
-                _rightButtonInputs[(int)button] = true;
-            }
-            
-            // 同时更新通用存储
-            _buttonInputs[(int)button] = true;
-        }
-
-        // 新增：释放左右按钮
-        public void SetButtonReleased(GamepadButtonInputId button, bool isLeft = false)
-        {
-            if (isLeft)
-            {
-                _leftButtonInputs[(int)button] = false;
-            }
-            else
-            {
-                _rightButtonInputs[(int)button] = false;
-            }
-            
-            // 同时更新通用存储
-            _buttonInputs[(int)button] = false;
-        }
-
         public bool IsPressed(GamepadButtonInputId inputId)
         {
-            // 修改：支持左右按钮检测
-            return _leftButtonInputs[(int)inputId] || _rightButtonInputs[(int)inputId] || _buttonInputs[(int)inputId];
+            return _buttonInputs[(int)inputId];
         }
 
         public (float, float) GetStick(StickInputId inputId)
         {
-            // 修改：优先使用分离的摇杆数据
-            if (inputId == StickInputId.Left && _leftStick != Vector2.Zero)
-            {
-                return (_leftStick.X, _leftStick.Y);
-            }
-            
-            if (inputId == StickInputId.Right && _rightStick != Vector2.Zero)
-            {
-                return (_rightStick.X, _rightStick.Y);
-            }
-            
             var v = _stickInputs[(int)inputId];
             return (v.X, v.Y);
         }
@@ -694,7 +613,6 @@ namespace LibRyujinx
 
             foreach (var button in Enum.GetValues<GamepadButtonInputId>())
             {
-                // Do not touch state of button already pressed
                 if (button != GamepadButtonInputId.Count && !result.IsPressed(button))
                 {
                     result.SetPressed(button, IsPressed(button));
