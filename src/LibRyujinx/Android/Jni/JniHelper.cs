@@ -11,7 +11,7 @@ namespace LibRyujinx.Jni
 {
     internal static class JniHelper
     {
-        public const Int32 JniVersion = 0x00010008; //JNI_VERSION_1_8;
+        public const Int32 JniVersion = 0x00010006; //JNI_VERSION_1_6;
 
         public static JEnvRef? Attach(JavaVMRef javaVm, IReadOnlyFixedMemory<Byte> threadName, out Boolean newAttach)
         {
