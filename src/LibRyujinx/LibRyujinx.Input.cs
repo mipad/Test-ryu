@@ -25,26 +25,16 @@ namespace LibRyujinx
         private static InputManager? _inputManager;
         private static NpadManager? _npadManager;
         private static InputConfig[] _configs;
-        
-        // 添加模式标志
-        private static bool _isHandheldMode = false;
 
-        // 添加Handheld专用设备ID
-        private const int HandheldDeviceId = 8;
-
-        public static void InitializeInput(int width, int height, bool handheldMode = false)
+        public static void InitializeInput(int width, int height)
         {
             if(SwitchDevice!.InputManager != null)
             {
                 throw new InvalidOperationException("Input is already initialized");
             }
 
-            _isHandheldMode = handheldMode;
-            
-            // 创建10个设备槽位（8个玩家+Handheld+Unknown）
-            _gamepadDriver = new VirtualGamepadDriver(10);
-            _configs = new InputConfig[10];
-            
+            _gamepadDriver = new VirtualGamepadDriver(4);
+            _configs = new InputConfig[4];
             _virtualTouchScreen = new VirtualTouchScreen();
             _touchScreenDriver = new VirtualTouchScreenDriver(_virtualTouchScreen);
             _inputManager = new InputManager(null, _gamepadDriver);
@@ -59,12 +49,6 @@ namespace LibRyujinx
             _npadManager.Initialize(SwitchDevice.EmulationContext, new List<InputConfig>(), false, false);
 
             _virtualTouchScreen.ClientSize = new Size(width, height);
-            
-            // 如果是Handheld模式，自动连接Handheld设备
-            if (_isHandheldMode)
-            {
-                ConnectHandheld();
-            }
         }
 
         public static void SetClientSize(int width, int height)
@@ -109,25 +93,10 @@ namespace LibRyujinx
 
         public static int ConnectGamepad(int index)
         {
-            if (index == HandheldDeviceId && !_isHandheldMode)
-            {
-                throw new InvalidOperationException("Cannot connect handheld device in non-handheld mode");
-            }
-            
             var gamepad = _gamepadDriver?.GetGamepad(index);
             if (gamepad != null)
             {
-                InputConfig config;
-                
-                // 根据设备类型创建配置
-                if (index == HandheldDeviceId)
-                {
-                    config = CreateHandheldInputConfig();
-                }
-                else
-                {
-                    config = CreateDefaultInputConfig();
-                }
+                var config = CreateDefaultInputConfig();
 
                 config.Id = gamepad.Id;
                 config.PlayerIndex = (PlayerIndex)index;
@@ -138,17 +107,6 @@ namespace LibRyujinx
             _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
 
             return int.TryParse(gamepad?.Id, out var idInt) ? idInt : -1;
-        }
-        
-        // 专门连接Handheld设备的方法
-        public static int ConnectHandheld()
-        {
-            if (!_isHandheldMode)
-            {
-                throw new InvalidOperationException("Cannot connect handheld device in non-handheld mode");
-            }
-            
-            return ConnectGamepad(HandheldDeviceId);
         }
 
         private static InputConfig CreateDefaultInputConfig()
@@ -197,79 +155,6 @@ namespace LibRyujinx
                     ButtonZr = ConfigGamepadInputId.RightTrigger,
                     ButtonSl = ConfigGamepadInputId.Unbound,
                     ButtonSr = ConfigGamepadInputId.Unbound,
-                },
-
-                RightJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
-                {
-                    Joystick = ConfigStickInputId.Right,
-                    StickButton = ConfigGamepadInputId.RightStick,
-                    InvertStickX = false,
-                    InvertStickY = false,
-                    Rotate90CW = false,
-                },
-
-                Motion = new StandardMotionConfigController
-                {
-                    MotionBackend = MotionInputBackendType.GamepadDriver,
-                    EnableMotion = true,
-                    Sensitivity = 100,
-                    GyroDeadzone = 1,
-                },
-                Rumble = new RumbleConfigController
-                {
-                    StrongRumble = 1f,
-                    WeakRumble = 1f,
-                    EnableRumble = false
-                }
-            };
-        }
-
-        private static InputConfig CreateHandheldInputConfig()
-        {
-            return new HandheldControllerInputConfig
-            {
-                Version = InputConfig.CurrentVersion,
-                Backend = InputBackendType.GamepadSDL2,
-                Id = null,
-                ControllerType = ControllerType.Handheld,
-                DeadzoneLeft = 0.1f,
-                DeadzoneRight = 0.1f,
-                RangeLeft = 1.0f,
-                RangeRight = 1.0f,
-                TriggerThreshold = 0.5f,
-                LeftJoycon = new LeftJoyconCommonConfig<ConfigGamepadInputId>
-                {
-                    DpadUp = ConfigGamepadInputId.DpadUp,
-                    DpadDown = ConfigGamepadInputId.DpadDown,
-                    DpadLeft = ConfigGamepadInputId.DpadLeft,
-                    DpadRight = ConfigGamepadInputId.DpadRight,
-                    ButtonMinus = ConfigGamepadInputId.Minus,
-                    ButtonL = ConfigGamepadInputId.LeftShoulder,
-                    ButtonZl = ConfigGamepadInputId.LeftTrigger,
-                    ButtonSl = ConfigGamepadInputId.LeftSl,
-                    ButtonSr = ConfigGamepadInputId.LeftSr,
-                },
-
-                LeftJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
-                {
-                    Joystick = ConfigStickInputId.Left,
-                    StickButton = ConfigGamepadInputId.LeftStick,
-                    InvertStickX = false,
-                    InvertStickY = false,
-                    Rotate90CW = false,
-                },
-
-                RightJoycon = new RightJoyconCommonConfig<ConfigGamepadInputId>
-                {
-                    ButtonA = ConfigGamepadInputId.A,
-                    ButtonB = ConfigGamepadInputId.B,
-                    ButtonX = ConfigGamepadInputId.X,
-                    ButtonY = ConfigGamepadInputId.Y,
-                    ButtonPlus = ConfigGamepadInputId.Plus,
-                    ButtonR = ConfigGamepadInputId.RightShoulder,
-                    ButtonZr = ConfigGamepadInputId.RightTrigger,
-                    ButtonSl = ConfigGamepadInputId.RightSl,
-                    ButtonSr = ConfigGamepadInputId.RightSr,
                 },
 
                 RightJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
@@ -471,6 +356,7 @@ namespace LibRyujinx
         {
             if (disposing)
             {
+                // Simulate a full disconnect when disposing
                 var ids = GamepadsIds;
                 foreach (string id in ids)
                 {
@@ -542,6 +428,7 @@ namespace LibRyujinx
         private readonly VirtualGamepadDriver _driver;
 
         private bool[] _buttonInputs;
+
         private Vector2[] _stickInputs;
 
         public VirtualGamepad(VirtualGamepadDriver driver, int id)
@@ -575,6 +462,7 @@ namespace LibRyujinx
         public (float, float) GetStick(StickInputId inputId)
         {
             var v = _stickInputs[(int)inputId];
+
             return (v.X, v.Y);
         }
 
@@ -594,17 +482,17 @@ namespace LibRyujinx
 
         public void SetTriggerThreshold(float triggerThreshold)
         {
-            // 空实现
+            //throw new System.NotImplementedException();
         }
 
         public void SetConfiguration(InputConfig configuration)
         {
-            // 空实现
+            //throw new System.NotImplementedException();
         }
 
         public void Rumble(float lowFrequency, float highFrequency, uint durationMs)
         {
-            // 空实现
+            //throw new System.NotImplementedException();
         }
 
         public GamepadStateSnapshot GetMappedStateSnapshot()
@@ -613,6 +501,7 @@ namespace LibRyujinx
 
             foreach (var button in Enum.GetValues<GamepadButtonInputId>())
             {
+                // Do not touch state of button already pressed
                 if (button != GamepadButtonInputId.Count && !result.IsPressed(button))
                 {
                     result.SetPressed(button, IsPressed(button));
