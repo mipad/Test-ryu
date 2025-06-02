@@ -96,7 +96,7 @@ namespace LibRyujinx
             var gamepad = _gamepadDriver?.GetGamepad(index);
             if (gamepad != null)
             {
-                var config = CreateDefaultInputConfig(index);
+                var config = CreateDefaultInputConfig();
 
                 config.Id = gamepad.Id;
                 config.PlayerIndex = (PlayerIndex)index;
@@ -109,16 +109,14 @@ namespace LibRyujinx
             return int.TryParse(gamepad?.Id, out var idInt) ? idInt : -1;
         }
 
-        private static InputConfig CreateDefaultInputConfig(int index)
+        private static InputConfig CreateDefaultInputConfig()
         {
             return new StandardControllerInputConfig
             {
                 Version = InputConfig.CurrentVersion,
                 Backend = InputBackendType.GamepadSDL2,
                 Id = null,
-                ControllerType = (index == 0) 
-            ? ControllerType.Handheld 
-            : ControllerType.ProController, // 其他手柄用 Pro
+                ControllerType = ControllerType.Handheld,
                 DeadzoneLeft = 0.1f,
                 DeadzoneRight = 0.1f,
                 RangeLeft = 1.0f,
