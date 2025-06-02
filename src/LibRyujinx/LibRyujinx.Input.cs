@@ -220,10 +220,10 @@ namespace LibRyujinx
             };
         }
 
-        // 新增：创建Handheld模式配置
+        // 修复：使用StandardControllerInputConfig并设置ControllerType为Handheld
         private static InputConfig CreateHandheldInputConfig()
         {
-            return new HandheldControllerInputConfig
+            return new StandardControllerInputConfig
             {
                 Version = InputConfig.CurrentVersion,
                 Backend = InputBackendType.GamepadSDL2,
@@ -243,9 +243,9 @@ namespace LibRyujinx
                     ButtonMinus = ConfigGamepadInputId.Minus,
                     ButtonL = ConfigGamepadInputId.LeftShoulder,
                     ButtonZl = ConfigGamepadInputId.LeftTrigger,
-                    // 修复：使用正确的ButtonSl/ButtonSr枚举值
-                    ButtonSl = ConfigGamepadInputId.ButtonSl,
-                    ButtonSr = ConfigGamepadInputId.ButtonSr,
+                    // 修复：使用正确的按钮ID
+                    ButtonSl = ConfigGamepadInputId.LeftSl,
+                    ButtonSr = ConfigGamepadInputId.LeftSr,
                 },
 
                 LeftJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
@@ -266,9 +266,9 @@ namespace LibRyujinx
                     ButtonPlus = ConfigGamepadInputId.Plus,
                     ButtonR = ConfigGamepadInputId.RightShoulder,
                     ButtonZr = ConfigGamepadInputId.RightTrigger,
-                    // 修复：使用正确的ButtonSl/ButtonSr枚举值
-                    ButtonSl = ConfigGamepadInputId.ButtonSl,
-                    ButtonSr = ConfigGamepadInputId.ButtonSr,
+                    // 修复：使用正确的按钮ID
+                    ButtonSl = ConfigGamepadInputId.RightSl,
+                    ButtonSr = ConfigGamepadInputId.RightSr,
                 },
 
                 RightJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
