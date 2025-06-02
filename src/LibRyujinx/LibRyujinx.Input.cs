@@ -96,7 +96,7 @@ namespace LibRyujinx
             var gamepad = _gamepadDriver?.GetGamepad(index);
             if (gamepad != null)
             {
-                var config = CreateDefaultInputConfig();
+                var config = CreateDefaultInputConfig(index);
 
                 config.Id = gamepad.Id;
                 config.PlayerIndex = (PlayerIndex)index;
@@ -109,7 +109,7 @@ namespace LibRyujinx
             return int.TryParse(gamepad?.Id, out var idInt) ? idInt : -1;
         }
 
-        private static InputConfig CreateDefaultInputConfig()
+        private static InputConfig CreateDefaultInputConfig(int index)
         {
             return new StandardControllerInputConfig
             {
