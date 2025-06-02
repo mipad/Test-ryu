@@ -220,15 +220,15 @@ namespace LibRyujinx
             };
         }
 
-        // 新增：创建Handheld模式配置
+        // 修正：使用StandardControllerInputConfig代替HandheldControllerInputConfig
         private static InputConfig CreateHandheldInputConfig()
         {
-            return new HandheldControllerInputConfig
+            return new StandardControllerInputConfig
             {
                 Version = InputConfig.CurrentVersion,
                 Backend = InputBackendType.GamepadSDL2,
                 Id = null,
-                ControllerType = ControllerType.Handheld,
+                ControllerType = ControllerType.Handheld, // 关键修改
                 DeadzoneLeft = 0.1f,
                 DeadzoneRight = 0.1f,
                 RangeLeft = 1.0f,
@@ -243,8 +243,9 @@ namespace LibRyujinx
                     ButtonMinus = ConfigGamepadInputId.Minus,
                     ButtonL = ConfigGamepadInputId.LeftShoulder,
                     ButtonZl = ConfigGamepadInputId.LeftTrigger,
-                    ButtonSl = ConfigGamepadInputId.LeftSl,
-                    ButtonSr = ConfigGamepadInputId.LeftSr,
+                    // 修正：使用现有枚举值
+                    ButtonSl = ConfigGamepadInputId.LeftSL,
+                    ButtonSr = ConfigGamepadInputId.LeftSR,
                 },
 
                 LeftJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
@@ -265,8 +266,9 @@ namespace LibRyujinx
                     ButtonPlus = ConfigGamepadInputId.Plus,
                     ButtonR = ConfigGamepadInputId.RightShoulder,
                     ButtonZr = ConfigGamepadInputId.RightTrigger,
-                    ButtonSl = ConfigGamepadInputId.RightSl,
-                    ButtonSr = ConfigGamepadInputId.RightSr,
+                    // 修正：使用现有枚举值
+                    ButtonSl = ConfigGamepadInputId.RightSL,
+                    ButtonSr = ConfigGamepadInputId.RightSR,
                 },
 
                 RightJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
