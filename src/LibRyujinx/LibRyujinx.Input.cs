@@ -116,7 +116,9 @@ namespace LibRyujinx
                 Version = InputConfig.CurrentVersion,
                 Backend = InputBackendType.GamepadSDL2,
                 Id = null,
-                ControllerType = ControllerType.ProController,
+                ControllerType = (index == 0) 
+            ? ControllerType.Handheld 
+            : ControllerType.ProController, // 其他手柄用 Pro
                 DeadzoneLeft = 0.1f,
                 DeadzoneRight = 0.1f,
                 RangeLeft = 1.0f,
