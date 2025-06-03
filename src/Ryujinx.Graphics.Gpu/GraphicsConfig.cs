@@ -9,6 +9,8 @@ namespace Ryujinx.Graphics.Gpu
         /// <summary>
         /// Resolution scale.
         /// </summary>
+        public static AspectRatio AspectRatio = AspectRatio.Fixed16x9;
+        
         public static float ResScale = 1f;
 
         /// <summary>
