@@ -703,7 +703,7 @@ class SettingViews {
         }
         
         // 预设按钮组 (替换滑块)
-        val resolutionPresets = listOf(0.3f, 0.35f, 0.4f, 0.5f, 0.6f, 0.75f, 0.8f, 0.85f, 0.9f, 0.95f, 1f, 1.5f, 2f, 3f, 4f)
+        val resolutionPresets = listOf(0.3f, 0.35f, 0.4f, 0.45f, 0.5f, 0.55f, 0.6f, 0.65f, 0.7f, 0.75f, 0.8f, 0.85f, 0.9f, 0.95f, 1f, 1.5f, 2f, 3f, 4f)
         
         Row(
             modifier = Modifier
