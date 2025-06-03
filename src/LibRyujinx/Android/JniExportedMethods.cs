@@ -243,6 +243,7 @@ namespace LibRyujinx
             return InitializeGraphics(new GraphicsConfiguration()
             {
                 ResScale = resScale,
+                aspectRatio = AspectRatio;
                 MaxAnisotropy = maxAnisotropy,
                 FastGpuTime = fastGpuTime,
                 Fast2DCopy = fast2DCopy,
