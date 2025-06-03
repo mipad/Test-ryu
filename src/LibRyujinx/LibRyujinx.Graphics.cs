@@ -37,6 +37,7 @@ namespace LibRyujinx
 
         public static bool InitializeGraphics(GraphicsConfiguration graphicsConfiguration)
         {
+            GraphicsConfig.AspectRatio = graphicsConfiguration.AspectRatio; //加入画面比例
             GraphicsConfig.ResScale = graphicsConfiguration.ResScale;
             GraphicsConfig.MaxAnisotropy = graphicsConfiguration.MaxAnisotropy;
             GraphicsConfig.FastGpuTime = graphicsConfiguration.FastGpuTime;
