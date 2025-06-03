@@ -78,15 +78,6 @@ namespace Ryujinx.Graphics.Gpu
         /// </summary>
         public static AspectRatio AspectRatio = AspectRatio.Fixed16x9;
     }
-
-    /// <summary>
-    /// 添加画面比例枚举定义
-    /// </summary>
-    public enum AspectRatio
-    {
-        Fixed16x9 = 0,
-        Fixed4x3 = 1,
-        Stretched = 2
-    }
+    
 #pragma warning restore CA2211
 }
