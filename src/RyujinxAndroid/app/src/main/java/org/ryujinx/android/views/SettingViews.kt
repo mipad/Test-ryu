@@ -760,7 +760,7 @@ class SettingViews {
                                 )
                                 // 单选框组
                                 Row {
-                                    // 0: 16:9, 1: 4:3, 2: Stretch
+                                    // 0: Fixed16x9 (16:9), 1: Fixed4x3 (4:3), 5: Stretched (拉伸)
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         RadioButton(
                                             selected = aspectRatio.value == 0,
@@ -777,8 +777,8 @@ class SettingViews {
                                     }
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         RadioButton(
-                                            selected = aspectRatio.value == 2,
-                                            onClick = { aspectRatio.value = 2 }
+                                            selected = aspectRatio.value == 5,
+                                            onClick = { aspectRatio.value = 5 }
                                         )
                                         Text("Stretch", modifier = Modifier.padding(end = 8.dp))
                                     }
@@ -1063,7 +1063,7 @@ class SettingViews {
                     ExpandableView(onCardArrowClick = { }, title = "Log") {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             Row(
-                                modifier = Modifier
+                                                                modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1359,3 +1359,4 @@ class SettingViews {
         }
     }
 }
+                             
