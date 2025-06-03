@@ -9,8 +9,6 @@ namespace Ryujinx.Graphics.Gpu
         /// <summary>
         /// Resolution scale.
         /// </summary>
-        public static AspectRatio AspectRatio = AspectRatio.Fixed16x9;
-        
         public static float ResScale = 1f;
 
         /// <summary>
@@ -74,6 +72,21 @@ namespace Ryujinx.Graphics.Gpu
         /// Enables or disables color space passthrough, if available.
         /// </summary>
         public static bool EnableColorSpacePassthrough = false;
+        
+        /// <summary>
+        /// 添加画面比例设置属性
+        /// </summary>
+        public static AspectRatio AspectRatio = AspectRatio.Fixed16x9;
+    }
+
+    /// <summary>
+    /// 添加画面比例枚举定义
+    /// </summary>
+    public enum AspectRatio
+    {
+        Fixed16x9 = 0,
+        Fixed4x3 = 1,
+        Stretched = 2
     }
 #pragma warning restore CA2211
 }
