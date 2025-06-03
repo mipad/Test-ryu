@@ -229,7 +229,7 @@ namespace LibRyujinx
 
         [UnmanagedCallersOnly(EntryPoint = "graphicsInitialize")]
         public static bool JnaGraphicsInitialize(float resScale,
-                float aspectRatio,                                
+                AspectRatio AspectRatio,                                
                 float maxAnisotropy,
                 bool fastGpuTime,
                 bool fast2DCopy,
