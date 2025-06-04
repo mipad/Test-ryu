@@ -77,7 +77,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
                         result = CallIoctlMethod<InitializeExArguments>(InitializeEx, arguments);
                         break;
                     case 0x14:
-                        result = CallIoctlMethod<RemapArguments>(Remap, arguments);
+                        result = RemapIoctl(arguments);
                         break;
                 }
             }
