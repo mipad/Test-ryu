@@ -50,7 +50,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         private const int MaxCapacity = 2048;
         private const ulong MiB = 1024 * 1024;
         private const ulong GiB = 1024 * 1024 * 1024;
-        private ulong MaxTextureSizeCapacity = 4 * GiB;
+        private ulong MaxTextureSizeCapacity = 5 * GiB;
         private const ulong MinTextureSizeCapacity = 512 * MiB;
         private const ulong DefaultTextureSizeCapacity = 1 * GiB;
         private const ulong TextureSizeCapacity4GiB = 2 * GiB;
