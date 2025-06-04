@@ -553,7 +553,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                             level,
                             x,
                             width,
-                            (InternalFormat)format.PixelFormat,
+                            format.PixelFormat,
                             mipSize,
                             data);
                     }
@@ -564,7 +564,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                             level,
                             x,
                             width,
-                            (InternalFormat)format.PixelFormat,
+                            format.PixelFormat,
                             format.PixelType,
                             data);
                     }
@@ -580,7 +580,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                             layer,
                             width,
                             1,
-                            (InternalFormat)format.PixelFormat,
+                            format.PixelFormat,
                             mipSize,
                             data);
                     }
@@ -593,7 +593,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                             layer,
                             width,
                             1,
-                            (InternalFormat)format.PixelFormat,
+                            format.PixelFormat,
                             format.PixelType,
                             data);
                     }
@@ -609,7 +609,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                             y,
                             width,
                             height,
-                            (InternalFormat)format.PixelFormat,
+                            format.PixelFormat,
                             mipSize,
                             data);
                     }
@@ -622,7 +622,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                             y,
                             width,
                             height,
-                            (InternalFormat)format.PixelFormat,
+                            format.PixelFormat,
                             format.PixelType,
                             data);
                     }
@@ -642,7 +642,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                             width,
                             height,
                             1,
-                            (InternalFormat)format.PixelFormat,
+                            format.PixelFormat,
                             mipSize,
                             data);
                     }
@@ -657,7 +657,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                             width,
                             height,
                             1,
-                            (InternalFormat)format.PixelFormat,
+                            format.PixelFormat,
                             format.PixelType,
                             data);
                     }
@@ -673,7 +673,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                             y,
                             width,
                             height,
-                            (InternalFormat)format.PixelFormat,
+                            format.PixelFormat,
                             mipSize,
                             data);
                     }
@@ -686,7 +686,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                             y,
                             width,
                             height,
-                            (InternalFormat)format.PixelFormat,
+                            format.PixelFormat,
                             format.PixelType,
                             data);
                     }
@@ -741,7 +741,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                                 level,
                                 0,
                                 width,
-                                (InternalFormat)format.PixelFormat,
+                                format.PixelFormat,
                                 mipSize,
                                 data);
                         }
@@ -752,7 +752,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                                 level,
                                 0,
                                 width,
-                                (InternalFormat)format.PixelFormat,
+                                format.PixelFormat,
                                 format.PixelType,
                                 data);
                         }
@@ -769,7 +769,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                                 0,
                                 width,
                                 height,
-                                (InternalFormat)format.PixelFormat,
+                                format.PixelFormat,
                                 mipSize,
                                 data);
                         }
@@ -782,7 +782,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                                 0,
                                 width,
                                 height,
-                                (InternalFormat)format.PixelFormat,
+                                format.PixelFormat,
                                 format.PixelType,
                                 data);
                         }
@@ -802,7 +802,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                                 width,
                                 height,
                                 depth,
-                                (InternalFormat)format.PixelFormat,
+                                format.PixelFormat,
                                 mipSize,
                                 data);
                         }
@@ -817,10 +817,10 @@ namespace Ryujinx.Graphics.OpenGL.Image
                                 width,
                                 height,
                                 depth,
-                                (InternalFormat)format.PixelFormat,
+                                format.PixelFormat,
                                 format.PixelType,
                                 data);
-                }
+                        }
                         break;
 
                     case Target.Cubemap:
@@ -828,7 +828,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
 
                         for (int face = 0; face < 6; face++, faceOffset += mipSize / 6)
                         {
-                            if (format.IsCompressed)
+                         if (format.IsCompressed)
                             {
                                 GL.CompressedTexSubImage2D(
                                     TextureTarget.TextureCubeMapPositiveX + face,
@@ -837,7 +837,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                                     0,
                                     width,
                                     height,
-                                    (InternalFormat)format.PixelFormat,
+                                    format.PixelFormat,
                                     mipSize / 6,
                                     data + faceOffset);
                             }
@@ -850,7 +850,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                                     0,
                                     width,
                                     height,
-                                    (InternalFormat)format.PixelFormat,
+                                    format.PixelFormat,
                                     format.PixelType,
                                     data + faceOffset);
                             }
