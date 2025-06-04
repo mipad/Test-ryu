@@ -374,9 +374,10 @@ private NvInternalResult RemapIoctl(Span<byte> arguments)
     return Remap(remapArgs);
 }
 
-        private NvInternalResult Remap(Span<RemapArguments> arguments)
+        
+    private NvInternalResult Remap(Span<RemapArguments> arguments)
 {
-    lock (_asContext) // 添加线程安全锁
+    lock (_asContext)
     {
         MemoryManager gmm = _asContext.Gmm;
 
@@ -389,17 +390,8 @@ private NvInternalResult RemapIoctl(Span<byte> arguments)
 
             if (nvmapHandle == 0)
             {
-                // 确保取消映射的区域是已映射的
-                if (_asContext.IsRegionMapped(gpuVa, size))
-                {
-                    gmm.Unmap(gpuVa, size);
-                    _asContext.RemoveMap(gpuVa, size);
-                }
-                else
-                {
-                    Logger.Warning?.Print(LogClass.ServiceNv, 
-                        $"Trying to unmap non-mapped region: VA=0x{gpuVa:x16}, Size=0x{size:x16}");
-                }
+                // 直接取消映射，不检查上下文
+                gmm.Unmap(gpuVa, size);
             }
             else
             {
@@ -415,7 +407,6 @@ private NvInternalResult RemapIoctl(Span<byte> arguments)
                     return NvInternalResult.InvalidInput;
                 }
 
-                // 验证物理地址范围有效性
                 ulong physicalAddress = mapOffs + map.Address;
                 ulong mapEnd = map.Address + map.Size;
                 
@@ -427,25 +418,8 @@ private NvInternalResult RemapIoctl(Span<byte> arguments)
                     return NvInternalResult.InvalidInput;
                 }
 
-                // 检查GPU VA是否已被占用
-                if (_asContext.IsRegionMapped(gpuVa, size))
-                {
-                    Logger.Warning?.Print(LogClass.ServiceNv,
-                        $"GPU VA region 0x{gpuVa:x16}-0x{gpuVa + size:x16} already mapped!");
-                    return NvInternalResult.InvalidInput;
-                }
-
-                try
-                {
-                    gmm.Map(physicalAddress, gpuVa, size, kind);
-                    _asContext.AddMap(gpuVa, size, physicalAddress, false);
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error?.Print(LogClass.ServiceNv, 
-                        $"Mapping failed: VA=0x{gpuVa:x16} PA=0x{physicalAddress:x16} Size=0x{size:x16}: {ex.Message}");
-                    return NvInternalResult.InvalidInput;
-                }
+                // 直接映射，覆盖该VA区域之前的映射（如果有）
+                gmm.Map(physicalAddress, gpuVa, size, kind);
             }
         }
     }
