@@ -24,12 +24,13 @@ namespace Ryujinx.HLE.HOS.Kernel.Common
         {
             return arrange switch
             {
-                MemoryArrange.MemoryArrange4GiB or
+                MemoryArrange.MemoryArrange4GiB => 3455 * MiB,
                 MemoryArrange.MemoryArrange4GiBSystemDev or
                 MemoryArrange.MemoryArrange6GiBAppletDev => 3285 * MiB,
                 MemoryArrange.MemoryArrange4GiBAppletDev => 2048 * MiB,
-                MemoryArrange.MemoryArrange6GiB => 4916 * MiB,
-                MemoryArrange.MemoryArrange8GiB => 6964 * MiB,
+                MemoryArrange.MemoryArrange6GiB => 5445 * MiB,
+                MemoryArrange.MemoryArrange8GiB => 7493 * MiB,
+                MemoryArrange.MemoryArrange12GiB => 11139 * MiB,
                 _ => throw new ArgumentException($"Invalid memory arrange \"{arrange}\"."),
             };
         }
