@@ -546,7 +546,7 @@ namespace ARMeilleure.Translation.PTC
             using (BinaryReader relocsReader = new(_relocsStream, EncodingCache.UTF8NoBOM, true))
             using (BinaryReader unwindInfosReader = new(_unwindInfosStream, EncodingCache.UTF8NoBOM, true))
             {
-                for (int index = 0; index < GetEntriesCount(); index++)
+                for (int index = 0; index < _infosStream.Length / Unsafe.SizeOf<InfoEntry>(); index++)
                 {
                     InfoEntry infoEntry = DeserializeStructure<InfoEntry>(_infosStream);
 
