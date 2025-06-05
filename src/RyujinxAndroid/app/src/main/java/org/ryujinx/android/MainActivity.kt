@@ -9,8 +9,6 @@ import android.view.MotionEvent
 import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
@@ -112,9 +110,6 @@ class MainActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // 在onCreate开头添加全屏设置
-        setFullScreen(true)
 
         motionSensorManager = MotionSensorManager(this)
         Thread.setDefaultUncaughtExceptionHandler(crashHandler)
@@ -142,11 +137,9 @@ class MainActivity : BaseActivity() {
         mainViewModel?.apply {
             setContent {
                 RyujinxAndroidTheme {
+                    // A surface container using the 'background' color from the theme
                     Surface(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .statusBarsPadding()  // 添加状态栏内边距
-                            .navigationBarsPadding(),  // 添加导航栏内边距
+                        modifier = Modifier.fillMaxSize(),
                         color = MaterialTheme.colorScheme.background
                     ) {
                         MainView.Main(mainViewModel = this)
@@ -167,23 +160,20 @@ class MainActivity : BaseActivity() {
     }
 
     fun setFullScreen(fullscreen: Boolean) {
-        // 保留自动旋转功能
-        requestedOrientation = if (fullscreen) {
-            // 使用USER_SENSOR保持自动旋转功能
-            ActivityInfo.SCREEN_ORIENTATION_USER_SENSOR
-        } else {
-            ActivityInfo.SCREEN_ORIENTATION_FULL_USER
-        }
+        requestedOrientation =
+            if (fullscreen) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_FULL_USER
 
         val insets = WindowCompat.getInsetsController(window, window.decorView)
 
         insets.apply {
             if (fullscreen) {
-                hide(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
-                systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                insets.hide(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
+                insets.systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             } else {
-                show(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
-                systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
+                insets.show(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
+                insets.systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
             }
         }
     }
@@ -216,11 +206,9 @@ class MainActivity : BaseActivity() {
     override fun onResume() {
         super.onResume()
         isActive = true
-        
-        // 在onResume中保持全屏状态
-        setFullScreen(true)
 
         if (isGameRunning) {
+            setFullScreen(true)
             if (QuickSettings(this).enableMotion)
                 motionSensorManager.register()
         }
