@@ -801,27 +801,30 @@ namespace Ryujinx.Graphics.Vulkan
     // 合并屏障 - 单次设置所有内存访问
     var barriers = new BufferMemoryBarrier[2];
     
-    // 源缓冲区屏障
-    barriers[0] = new BufferMemoryBarrier(
-        sourceAccessMask: BufferHolder.DefaultAccessFlags,
-        destinationAccessMask: supportsUint8 
-            ? AccessFlags.ShaderReadBit 
-            : AccessFlags.TransferReadBit,
-        buffer: srcBuffer,
-        offset: (ulong)srcOffset,
-        size: (ulong)size
-    );
+    // 修正参数命名：sourceAccessMask -> SrcAccessMask, destinationAccessMask -> DstAccessMask
+    barriers[0] = new BufferMemoryBarrier()
+    {
+        SType = StructureType.BufferMemoryBarrier,
+        SrcAccessMask = BufferHolder.DefaultAccessFlags,
+        DstAccessMask = supportsUint8 ? AccessFlags.ShaderReadBit : AccessFlags.TransferReadBit,
+        Buffer = srcBuffer,
+        Offset = (ulong)srcOffset,
+        Size = (ulong)size,
+        SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+        DstQueueFamilyIndex = Vk.QueueFamilyIgnored
+    };
     
-    // 目标缓冲区屏障
-    barriers[1] = new BufferMemoryBarrier(
-        sourceAccessMask: BufferHolder.DefaultAccessFlags,
-        destinationAccessMask: supportsUint8 
-            ? AccessFlags.ShaderWriteBit 
-            : AccessFlags.TransferWriteBit,
-        buffer: dstBuffer,
-        offset: 0,
-        size: (ulong)newSize
-    );
+    barriers[1] = new BufferMemoryBarrier()
+    {
+        SType = StructureType.BufferMemoryBarrier,
+        SrcAccessMask = BufferHolder.DefaultAccessFlags,
+        DstAccessMask = supportsUint8 ? AccessFlags.ShaderWriteBit : AccessFlags.TransferWriteBit,
+        Buffer = dstBuffer,
+        Offset = 0,
+        Size = (ulong)newSize,
+        SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+        DstQueueFamilyIndex = Vk.QueueFamilyIgnored
+    };
 
     PipelineStageFlags srcStage = PipelineStageFlags.AllCommandsBit;
     PipelineStageFlags dstStage = supportsUint8 
@@ -918,15 +921,19 @@ namespace Ryujinx.Graphics.Vulkan
 
     // 合并回写屏障
     var postBarriers = new BufferMemoryBarrier[1];
-    postBarriers[0] = new BufferMemoryBarrier(
-        sourceAccessMask: supportsUint8 
+    postBarriers[0] = new BufferMemoryBarrier()
+    {
+        SType = StructureType.BufferMemoryBarrier,
+        SrcAccessMask = supportsUint8 
             ? AccessFlags.ShaderWriteBit 
             : AccessFlags.TransferWriteBit,
-        destinationAccessMask: BufferHolder.DefaultAccessFlags,
-        buffer: dstBuffer,
-        offset: 0,
-        size: (ulong)newSize
-    );
+        DstAccessMask = BufferHolder.DefaultAccessFlags,
+        Buffer = dstBuffer,
+        Offset = 0,
+        Size = (ulong)newSize,
+        SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+        DstQueueFamilyIndex = Vk.QueueFamilyIgnored
+    };
 
     fixed (BufferMemoryBarrier* pPostBarriers = postBarriers)
     {
@@ -1780,3 +1787,4 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 }
+ 
