@@ -53,8 +53,7 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = '21'
-        freeCompilerArgs += ["-Xopt-in=kotlin.RequiresOptIn", "-Xallow-jvm-ir-dependencies"]
+        jvmTarget = '17'
     }
     buildFeatures {
         compose true
