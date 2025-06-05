@@ -896,16 +896,16 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe void ConvertIndexBuffer(VulkanRenderer gd,
             CommandBufferScoped cbs,
-            BufferHolder src,
-            BufferHolder dst,
+            BufferHolder srcIndexBuffer,
+            BufferHolder dstIndexBuffer,
             IndexBufferPattern pattern,
             int indexSize,
             int srcOffset,
             int indexCount)
         {
             // TODO: Support conversion with primitive restart enabled.
-            // TODO: Convert with a compute shader?
-
+            
+            int primitiveCount = pattern.GetPrimitiveCount(indexCount);
             int convertedCount = pattern.GetConvertedCount(indexCount);
             int outputIndexSize = 4;
 
