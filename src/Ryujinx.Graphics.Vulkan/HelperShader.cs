@@ -845,17 +845,20 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                gd.Api.CmdFillBuffer(cbs.CommandBuffer, dstBuffer, 0, Vk.WholeSize, 0);
+                
+gd.Api.CmdFillBuffer(cbs.CommandBuffer, dstBuffer, (ulong)0, Vk.WholeSize, 0u);
 
-                int vectorElems = elems / 4;
-                var bufferCopy = new BufferCopy[vectorElems];
-                for (int i = 0; i < vectorElems; i++) {
-                bufferCopy[i] = new BufferCopy(
-                    srcOffset + i * stride * 4, 
-                    i * newStride * 4,
-                   (ulong)stride * 4
-                 );
-             }
+int vectorElems = elems / 4;
+var bufferCopy = new BufferCopy[vectorElems];
+for (int i = 0; i < vectorElems; i++) 
+{
+    
+    bufferCopy[i] = new BufferCopy(
+        (ulong)(srcOffset + i * stride * 4),  // int -> ulong
+        (ulong)(i * newStride * 4),           // int -> ulong
+        (ulong)stride * 4                    // 保持 ulong
+    );
+}
 
                 fixed (BufferCopy* pBufferCopy = bufferCopy)
                 {
