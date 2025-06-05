@@ -845,6 +845,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
+                gd.Api.CmdFillBuffer(cbs.CommandBuffer, dstBuffer, 0, Vk.WholeSize, 0);
                 
                 BufferCopy[] bufferCopy = new BufferCopy[elems];
 
@@ -859,7 +860,7 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
 
-            BufferHolder.InsertBufferBarrier(
+                BufferHolder.InsertBufferBarrier(
                 gd,
                 cbs.CommandBuffer,
                 dstBuffer,
