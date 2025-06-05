@@ -36,9 +36,16 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            postprocessing {
+                removeUnusedCode false
+                removeUnusedResources false
+                obfuscate false
+                optimizeCode true
+                proguardFiles 'proguard-rules.pro'
+            }
             signingConfig signingConfigs.debug
+            debuggable false
+            jniDebuggable false
         }
     }
     compileOptions {
@@ -46,7 +53,8 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = '17'
+        jvmTarget = '21'
+        freeCompilerArgs += ["-Xopt-in=kotlin.RequiresOptIn", "-Xallow-jvm-ir-dependencies"]
     }
     buildFeatures {
         compose true
