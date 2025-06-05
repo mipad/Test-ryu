@@ -27,7 +27,7 @@ namespace Ryujinx.Graphics.Vulkan
     class HelperShader : IDisposable
     {
         private const int UniformBufferAlignment = 256;
-        private const int ConvertElementsPerWorkgroup = 32 * 100; // Work group size of 32 times 100 elements.
+        private const int ConvertElementsPerWorkgroup = 128 * 100; // Work group size of 32 times 100 elements.
         private const string ShaderBinariesPath = "Ryujinx.Graphics.Vulkan/Shaders/SpirvBinaries";
 
         private readonly PipelineHelperShader _pipeline;
@@ -847,12 +847,15 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 gd.Api.CmdFillBuffer(cbs.CommandBuffer, dstBuffer, 0, Vk.WholeSize, 0);
 
-                BufferCopy[] bufferCopy = new BufferCopy[elems];
-
-                for (ulong i = 0; i < (ulong)elems; i++)
-                {
-                    bufferCopy[i] = new BufferCopy((ulong)srcOffset + i * (ulong)stride, i * (ulong)newStride, (ulong)stride);
-                }
+                int vectorElems = elems / 4;
+                var bufferCopy = new BufferCopy[vectorElems];
+                for (int i = 0; i < vectorElems; i++) {
+                bufferCopy[i] = new BufferCopy(
+                    srcOffset + i * stride * 4, 
+                    i * newStride * 4,
+                   (ulong)stride * 4
+                 );
+             }
 
                 fixed (BufferCopy* pBufferCopy = bufferCopy)
                 {
