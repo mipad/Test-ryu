@@ -365,20 +365,22 @@ namespace Ryujinx.Graphics.Vulkan
 
             Span<float> region = stackalloc float[RegionBufferSize / sizeof(float)];
 
-            region[0] = (float)srcRegion.X1 / src.Width;
-            region[1] = (float)srcRegion.X2 / src.Width;
-            region[2] = (float)srcRegion.Y1 / src.Height;
-            region[3] = (float)srcRegion.Y2 / src.Height;
+// 无分支优化开始
+float srcX1 = (float)srcRegion.X1 / src.Width;
+float srcX2 = (float)srcRegion.X2 / src.Width;
+float srcY1 = (float)srcRegion.Y1 / src.Height;
+float srcY2 = (float)srcRegion.Y2 / src.Height;
 
-            if (dstRegion.X1 > dstRegion.X2)
-            {
-                (region[0], region[1]) = (region[1], region[0]);
-            }
+// 计算翻转标志 (Mali 架构友好)
+int flipX = (dstRegion.X1 > dstRegion.X2) ? 1 : 0;
+int flipY = (dstRegion.Y1 > dstRegion.Y2) ? 1 : 0;
 
-            if (dstRegion.Y1 > dstRegion.Y2)
-            {
-                (region[2], region[3]) = (region[3], region[2]);
-            }
+// 无分支选择 (避免移动端GPU分支预测惩罚)
+region[0] = (1 - flipX) * srcX1 + flipX * srcX2;
+region[1] = flipX * srcX1 + (1 - flipX) * srcX2;
+region[2] = (1 - flipY) * srcY1 + flipY * srcY2;
+region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
+// 无分支优化结束
 
             using ScopedTemporaryBuffer buffer = gd.BufferManager.ReserveOrCreate(gd, cbs, RegionBufferSize);
 
