@@ -110,7 +110,10 @@ class MainActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
+        
+        // 设置全屏，隐藏状态栏和导航栏
+        setFullScreen(true)
+    
         motionSensorManager = MotionSensorManager(this)
         Thread.setDefaultUncaughtExceptionHandler(crashHandler)
 
@@ -160,23 +163,22 @@ class MainActivity : BaseActivity() {
     }
 
     fun setFullScreen(fullscreen: Boolean) {
-        requestedOrientation =
-            if (fullscreen) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+    requestedOrientation =
+        if (fullscreen) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE 
+        else ActivityInfo.SCREEN_ORIENTATION_FULL_USER
 
-        val insets = WindowCompat.getInsetsController(window, window.decorView)
+    val insets = WindowCompat.getInsetsController(window, window.decorView)
 
-        insets.apply {
-            if (fullscreen) {
-                insets.hide(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
-                insets.systemBarsBehavior =
-                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            } else {
-                insets.show(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
-                insets.systemBarsBehavior =
-                    WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
-            }
+    insets.apply {
+        if (fullscreen) {
+            hide(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        } else {
+            show(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
         }
     }
+}
 
     @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
