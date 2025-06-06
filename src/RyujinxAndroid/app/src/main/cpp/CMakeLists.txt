@@ -102,13 +102,58 @@ target_link_libraries( # Specifies the target library.
                        ryujinxjni
                        # Links the target library to the log library
                        # included in the NDK.
-                       ${log-lib}
-                        -lvulkan
-                       -landroid
-                        adrenotools
-                        -flto=thin
-                        -Wl,-z,now
-        )
+cmake_minimum_required(VERSION 3.22.1)
+project("ryujinxjni")
+
+# 强制 Release 模式
+set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# CPU 架构优化
+if(ANDROID_ABI STREQUAL "arm64-v8a")
+    # Cortex-A78 优化 + ARMv8.2 扩展
+    add_compile_options(
+        -mcpu=cortex-a78 
+        -march=armv8.2-a+crypto+dotprod+fp16
+    )
+    
+    # 启用 NEON 自动向量化
+    set(ANDROID_ARM_NEON TRUE)
+endif()
+
+# 编译优化
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -fomit-frame-pointer")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -fomit-frame-pointer")
+
+# LTO 优化配置
+add_compile_options(-flto=thin)
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -flto=thin -s -Wl,-z,now")
+
+# Android 专用 LLD 链接器
+if(ANDROID)
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fuse-ld=lld")
+endif()
+
+# 依赖管理
+FetchContent_Declare(adrenotools
+    GIT_REPOSITORY https://git.ryujinx.app/kenji-nx/libadrenotools.git
+)
+FetchContent_MakeAvailable(adrenotools)
+
+# 主库目标
+add_library(ryujinxjni SHARED
+    vulkan_wrapper.cpp
+    ryujinx.cpp
+)
+
+# 链接配置
+target_link_libraries(ryujinxjni
+    ${log-lib}
+    vulkan
+    android
+    adrenotools
+)
 
 # Build external libraries if prebuilt files don't exist
 set(JNI_PATH ../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
