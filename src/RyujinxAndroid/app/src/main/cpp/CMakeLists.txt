@@ -14,30 +14,25 @@ project("ryujinxjni")
 # 设置构建类型
 set(CMAKE_BUILD_TYPE Release)
 
-# ================ LTO 支持检查与配置 ================
-check_ipo_supported(
-    RESULT LTO_SUPPORTED
-    OUTPUT_VARIABLE LTO_OUTPUT
-    LANGUAGES C CXX
-)
+替代 check_ipo_supported 的兼容方案
+function(check_lto_support)
+    # 尝试编译一个简单的 LTO 测试程序
+    file(WRITE ${CMAKE_BINARY_DIR}/lto_test.c "int main() { return 0; }")
+    try_compile(LTO_SUPPORTED ${CMAKE_BINARY_DIR} ${CMAKE_BINARY_DIR}/lto_test.c
+        COMPILE_DEFINITIONS "-flto"
+        OUTPUT_VARIABLE LTO_OUTPUT
+    )
+    
+    if(LTO_SUPPORTED)
+        message(STATUS "LTO supported by compiler")
+        set(LTO_ENABLED TRUE PARENT_SCOPE)
+    else()
+        message(STATUS "LTO not supported: ${LTO_OUTPUT}")
+        set(LTO_ENABLED FALSE PARENT_SCOPE)
+    endif()
+endfunction()
 
-if(LTO_SUPPORTED)
-    message(STATUS "LTO supported: ${LTO_OUTPUT}")
-    
-    # 使用更安全的 ThinLTO
-    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_THIN_LTO TRUE)
-    message(STATUS "Enabling ThinLTO optimization")
-    
-    # 增加内存限制（针对大项目）
-    set(ENV{LDFLAGS} "$ENV{LDFLAGS} -Wl,-plugin-opt,-jobs=4")
-else()
-    message(WARNING "LTO not supported: ${LTO_OUTPUT}")
-    message(STATUS "Using alternative optimizations")
-    
-    # 替代优化方案
-    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
-    add_compile_options(-fno-lto)
-endif()
+check_lto_support()
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -fomit-frame-pointer -fno-stack-protector")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -fomit-frame-pointer -fno-stack-protector")
