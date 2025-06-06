@@ -1,78 +1,72 @@
 include(FetchContent)
-
-# For more information about using CMake with Android Studio, read the
-# documentation: https://d.android.com/studio/projects/add-native-code.html
-
-# Sets the minimum version of CMake required to build the native library.
-
 cmake_minimum_required(VERSION 3.22.1)
-
-# Declares and names the project.
-
 project("ryujinxjni")
 
-# 设置构建类型
+# ================= 关键性能优化设置 =================
+# 强制 Release 构建类型
 set(CMAKE_BUILD_TYPE Release)
 
-# 其他选项
+# 设置编译器优化级别 (-O3)
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -march=armv8.2-a+lse+fp16+dotprod")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=armv8.2-a+lse+fp16+dotprod")
+
+# 启用 LTO (链接时优化)
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+
+# 启用 NEON 指令集
+set(ANDROID_ARM_NEON TRUE)
+
+# 使用 Clang 的 Polly 优化 (需要 NDK r21+)
+# add_compile_options(-mllvm -polly -mllvm -polly-vectorizer=stripmine)
+
+# 其他优化选项
+add_compile_options(-ffunction-sections -fdata-sections)
+add_link_options(-Wl,--gc-sections)
+
+# ================= 原有配置 =================
 set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded)
 set(SKIA_USE_SYSTEM_EXPAT OFF)
 set(SKIA_ENABLE_PARAGRAPH ON)
-
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
 FetchContent_Declare(
     adrenotools
     GIT_REPOSITORY https://git.ryujinx.app/kenji-nx/libadrenotools.git
-   # GIT_TAG        deec5f75ee1a8ccbe32c8780b1d17284fc87b0f1 # v1.0-14-gdeec5f7
 )
 
 FetchContent_MakeAvailable(adrenotools)
 
-# Creates and names a library, sets it as either STATIC
-# or SHARED, 和 provides the relative paths to its source code.
-# You can define multiple libraries, 和 CMake builds them for you.
-# Gradle automatically packages shared libraries with your APK.
-
-add_library( # Sets the name of the library.
-            ryujinxjni
-
-            # Sets the library as a shared library.
-            SHARED
-
-            # Provides a relative path to your source file(s).
+add_library(ryujinxjni SHARED
             vulkan_wrapper.cpp
-        ryujinx.cpp)
+            ryujinx.cpp)
 
-# Searches for a specified prebuilt library and stores the path as a
-# variable. Because CMake includes system libraries in the search path by
-# default, you only need to specify the name of the public NDK library
-# you want to add. CMake verifies that the library exists before
-# completing its build.
+find_library(log-lib log)
 
-find_library( # Sets the name of the path variable.
-              log-lib
+# ================= 链接优化 =================
+target_link_libraries(ryujinxjni
+    ${log-lib}
+    vulkan
+    android
+    adrenotools
+    # 添加 LTO 链接选项
+    -flto=thin
+    # 针对大内存模型优化
+    -Wl,-z,now
+)
 
-              # Specifies the name of the NDK library that
-              # you want CMake to locate.
-              log )
+# ================= 其他优化 =================
+# 设置 Android 特定优化
+if(ANDROID)
+    # 针对64位ARM优化
+    add_compile_definitions(ANDROID_ARM64)
+    add_compile_options(-mcpu=cortex-a75)  # 根据目标设备调整
+    
+    # 减少调试信息 (Release 构建)
+    add_compile_options(-g0)
+endif()
 
-# Specifies libraries CMake should link to your target library. You
-# can link multiple libraries, such as libraries you define in this
-# build script, prebuilt third-party libraries, or system libraries.
-
-target_link_libraries( # Specifies the target library.
-                       ryujinxjni
-                       # Links the target library to the log library
-                       # included in the NDK.
-                       ${log-lib}
-                        -lvulkan
-                       -landroid
-                        adrenotools
-        )
-
-# Build external libraries if prebuilt files don't exist
+# ================= 原有 OpenSSL 部分 =================
 set(JNI_PATH ../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
 cmake_path(ABSOLUTE_PATH JNI_PATH NORMALIZE)
 
@@ -82,4 +76,4 @@ cmake_path(APPEND JNI_PATH libssl.so OUTPUT_VARIABLE LIBSSL_JNI_PATH)
 if (NOT (EXISTS ${LIBCRYPTO_JNI_PATH} AND EXISTS ${LIBSSL_JNI_PATH}))
     include(../../../../libryujinx/libs/OpenSSL.cmake)
     add_dependencies(ryujinxjni openssl)
-endif ()
+endif()
