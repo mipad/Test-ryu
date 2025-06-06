@@ -9,7 +9,6 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
-using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Gpu.Engine.Dma
 {
@@ -223,7 +222,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                          $"dst=0x{dstGpuVa:X16}{(invalidDst ? " (INVALID)" : "")}, " +
                          $"size=0x{size:X}";
         
-        _context.Capabilities.Logger?.Warning?.Print(LogClass.Gpu, errorMsg);
         return;
     }
     // ====== 结束新增代码 ======
