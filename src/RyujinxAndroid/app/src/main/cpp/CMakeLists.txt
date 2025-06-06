@@ -14,9 +14,6 @@ project("ryujinxjni")
 # 设置构建类型
 set(CMAKE_BUILD_TYPE Release)
 
-# 启用 LTO (链接时优化)
-set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
-
 # 启用 NEON 指令集
 set(ANDROID_ARM_NEON TRUE)
 
