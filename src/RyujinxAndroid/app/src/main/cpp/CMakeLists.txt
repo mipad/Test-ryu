@@ -6,10 +6,6 @@ project("ryujinxjni")
 # 强制 Release 构建类型
 set(CMAKE_BUILD_TYPE Release)
 
-# 设置编译器优化级别 (-O3)
-set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -march=armv8.2-a")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=armv8.2-a")
-
 # 启用 LTO (链接时优化)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
 
