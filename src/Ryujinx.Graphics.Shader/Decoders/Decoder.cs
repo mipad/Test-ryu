@@ -1,6 +1,6 @@
 using Ryujinx.Graphics.Shader.Translation;
 using System;
-using Ryujinx.Memory;
+using Ryujinx.Memory.Exceptions;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
