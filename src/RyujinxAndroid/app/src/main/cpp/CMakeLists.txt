@@ -23,7 +23,6 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -s")
 # 启用 NEON 指令集
 set(ANDROID_ARM_NEON TRUE)
 
-================ LTO 配置 (如果支持) ================
 if(LTO_ENABLED)
     # 启用 LTO 优化
     add_compile_options(-flto)
