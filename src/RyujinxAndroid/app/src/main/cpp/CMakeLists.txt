@@ -14,10 +14,8 @@ project("ryujinxjni")
 # 设置构建类型
 set(CMAKE_BUILD_TYPE Release)
 
-# 使用精简版 LTO（ThinLTO）
-   set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
-   add_compile_options(-flto=thin)
-   target_link_libraries(ryujinxjni -flto=thin)
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -fomit-frame-pointer -fno-stack-protector")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -fomit-frame-pointer -fno-stack-protector")
    
 # 启用 NEON 指令集
 set(ANDROID_ARM_NEON TRUE)
