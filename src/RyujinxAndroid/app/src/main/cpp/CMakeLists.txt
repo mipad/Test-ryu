@@ -16,7 +16,7 @@ set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
 # 启用 NEON 指令集
 set(ANDROID_ARM_NEON TRUE)
 
-# 使用 Clang 的 Polly 优化 (需要 NDK r21+)
+# 使用 Clang 的 Polly 优化 
 # add_compile_options(-mllvm -polly -mllvm -polly-vectorizer=stripmine)
 
 # 其他优化选项
@@ -60,7 +60,7 @@ target_link_libraries(ryujinxjni
 if(ANDROID)
     # 针对64位ARM优化
     add_compile_definitions(ANDROID_ARM64)
-    add_compile_options(-mcpu=cortex-a75)  # 根据目标设备调整
+    add_compile_options(-mcpu=cortex-a78)  # 根据目标设备调整
     
     # 减少调试信息 (Release 构建)
     add_compile_options(-g0)
