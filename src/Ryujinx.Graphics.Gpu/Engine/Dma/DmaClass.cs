@@ -209,6 +209,24 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
             ulong srcGpuVa = ((ulong)_state.State.OffsetInUpperUpper << 32) | _state.State.OffsetInLower;
             ulong dstGpuVa = ((ulong)_state.State.OffsetOutUpperUpper << 32) | _state.State.OffsetOutLower;
 
+            // ====== 新增地址验证逻辑 ======
+    const ulong InvalidAddress = 0xFFFFFFFFFFFFFFFF;
+    bool invalidSrc = srcGpuVa == InvalidAddress || !memoryManager.Physical.IsMapped(srcGpuVa, 1);
+    bool invalidDst = dstGpuVa == InvalidAddress || !memoryManager.Physical.IsMapped(dstGpuVa, 1);
+    
+    if (invalidSrc || invalidDst)
+    {
+        string errorMsg = $"Skipping invalid DMA copy: " +
+                         $"src=0x{srcGpuVa:X16}{(invalidSrc ? " (INVALID)" : "")}, " +
+                         $"dst=0x{dstGpuVa:X16}{(invalidDst ? " (INVALID)" : "")}, " +
+                         $"size=0x{size:X}";
+        
+        Logger.Warning?.Print(LogClass.Gpu, errorMsg);
+        _context.AdvanceSequence(); // 确保命令被正确处理
+        return;
+    }
+    // ====== 结束新增代码 ======
+    
             int xCount = (int)_state.State.LineLengthIn;
             int yCount = (int)_state.State.LineCount;
 
