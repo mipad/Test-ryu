@@ -1,6 +1,5 @@
 using Ryujinx.Graphics.Shader.Translation;
 using System;
-using Ryujinx.Memory.Exceptions;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -278,23 +277,23 @@ namespace Ryujinx.Graphics.Shader.Decoders
                 }
 
                 if (bufferOffset >= buffer.Length)
-                {
-                                        // 检查计算后的地址是否有效
-            ulong fullAddress = startAddress + address;
-            if (fullAddress < startAddress) // 检测溢出
-            {
-                break;
-            }
+{
+    // 检查计算后的地址是否有效
+    ulong fullAddress = startAddress + address;
+    if (fullAddress < startAddress) // 检测溢出
+    {
+        break;
+    }
 
-            try
-            {
-                buffer = gpuAccessor.GetCode(fullAddress, 8);
-            }
-            catch (InvalidMemoryRegionException)
-            {
-                break; // 捕获异常并安全退出
-            }
-            bufferOffset = 0;
+    try
+    {
+        buffer = gpuAccessor.GetCode(fullAddress, 8);
+    }
+    catch (Exception)
+    {
+        break; // 捕获异常并安全退出
+    }
+    bufferOffset = 0;
                 }
 
                 ulong opCode = buffer[bufferOffset++];
