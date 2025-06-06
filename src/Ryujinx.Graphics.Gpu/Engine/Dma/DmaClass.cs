@@ -223,7 +223,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                          $"dst=0x{dstGpuVa:X16}{(invalidDst ? " (INVALID)" : "")}, " +
                          $"size=0x{size:X}";
         
-        _context.Logger?.Warning?.Print(LogClass.Gpu, errorMsg);
+        _context.Capabilities.Logger?.Warning?.Print(LogClass.Gpu, errorMsg);
         return;
     }
     // ====== 结束新增代码 ======
