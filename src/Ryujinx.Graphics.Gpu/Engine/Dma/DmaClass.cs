@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Gpu.Engine.Dma
 {
@@ -211,8 +212,9 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
 
             // ====== 新增地址验证逻辑 ======
     const ulong InvalidAddress = 0xFFFFFFFFFFFFFFFF;
-    bool invalidSrc = srcGpuVa == InvalidAddress || !memoryManager.Physical.IsMapped(srcGpuVa, 1);
-    bool invalidDst = dstGpuVa == InvalidAddress || !memoryManager.Physical.IsMapped(dstGpuVa, 1);
+    
+    bool invalidSrc = srcGpuVa == InvalidAddress || !memoryManager.Physical.IsMapped(srcGpuVa);
+    bool invalidDst = dstGpuVa == InvalidAddress || !memoryManager.Physical.IsMapped(dstGpuVa);
     
     if (invalidSrc || invalidDst)
     {
@@ -221,8 +223,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
                          $"dst=0x{dstGpuVa:X16}{(invalidDst ? " (INVALID)" : "")}, " +
                          $"size=0x{size:X}";
         
-        Logger.Warning?.Print(LogClass.Gpu, errorMsg);
-        _context.AdvanceSequence(); // 确保命令被正确处理
+        _context.Logger?.Warning?.Print(LogClass.Gpu, errorMsg);
         return;
     }
     // ====== 结束新增代码 ======
