@@ -76,6 +76,7 @@ target_link_libraries( # Specifies the target library.
                         -lvulkan
                        -landroid
                         adrenotools
+                         -flto=thin
         )
 
 # Build external libraries if prebuilt files don't exist
