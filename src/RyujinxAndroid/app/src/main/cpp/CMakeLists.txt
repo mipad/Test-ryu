@@ -14,7 +14,6 @@ project("ryujinxjni")
 # 设置构建类型
 set(CMAKE_BUILD_TYPE Release)
 
-替代 check_ipo_supported 的兼容方案
 function(check_lto_support)
     # 尝试编译一个简单的 LTO 测试程序
     file(WRITE ${CMAKE_BINARY_DIR}/lto_test.c "int main() { return 0; }")
