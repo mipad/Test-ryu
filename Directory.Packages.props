@@ -15,7 +15,7 @@
     <PackageVersion Include="DiscordRichPresence" Version="1.2.1.24" />
     <PackageVersion Include="DynamicData" Version="9.0.4" />
     <PackageVersion Include="FluentAvaloniaUI" Version="2.4.0-preview1" />
-    <PackageVersion Include="Ryujinx.LibHac" Version="0.20.0-alpha.107" />
+    <PackageVersion Include="Ryujinx.LibHac" Version="0.20.0-alpha.110" />
     <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.12.0" />
     <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.9.0" />
