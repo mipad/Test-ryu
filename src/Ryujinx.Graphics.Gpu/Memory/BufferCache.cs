@@ -909,7 +909,14 @@ namespace Ryujinx.Graphics.Gpu.Memory
             {
                 MemoryRange subRange = range.GetSubRange(i);
 
-                Buffer subBuffer = _buffers.FindFirstOverlap(subRange.Address, subRange.Size);
+                // 添加详细的空引用检查
+        Buffer subBuffer = _buffers.FindFirstOverlap(subRange.Address, subRange.Size);
+        if (subBuffer == null)
+        {
+            throw new InvalidOperationException(
+                $"No buffer found for sub-range address 0x{subRange.Address:X8}, size 0x{subRange.Size:X8}. " +
+                $"This usually indicates a missing buffer creation for the range.");
+        }
 
                 subBuffer.SynchronizeMemory(subRange.Address, subRange.Size);
 
