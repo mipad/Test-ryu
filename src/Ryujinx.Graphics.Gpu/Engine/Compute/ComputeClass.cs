@@ -159,7 +159,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Compute
                 sbDescAddress += (ulong)sb.SbCbOffset * 4;
 
      // 验证缓冲区地址有效性
-   if (sbDescAddress == 0xFFFFFFFFFFFFFFFF)Add commentMore actions
+   if (sbDescAddress == 0xFFFFFFFFFFFFFFFF)
         {
             continue;
         }
