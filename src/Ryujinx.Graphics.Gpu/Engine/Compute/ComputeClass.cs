@@ -161,8 +161,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Compute
      // ==== 添加地址有效性检查 ====
         if (sbDescAddress == 0xFFFFFFFFFFFFFFFF)
         {
-            Logger.Warning?.Print(LogClass.Gpu, 
-                $"Invalid storage buffer descriptor address in slot {index}: 0x{sbDescAddress:X16}");
             continue;
         }
         
