@@ -158,11 +158,12 @@ namespace Ryujinx.Graphics.Gpu.Engine.Compute
                 ulong sbDescAddress = _channel.BufferManager.GetComputeUniformBufferAddress(sb.SbCbSlot);
                 sbDescAddress += (ulong)sb.SbCbOffset * 4;
 
-     // ==== 添加地址有效性检查 ====
-        if (sbDescAddress == 0xFFFFFFFFFFFFFFFF)
-        {
-            continue;
-        }
+     // 验证缓冲区地址有效性
+   if (bufferAddress == 0xFFFFFFFFFFFFFFFF)
+   {
+       return; // 跳过无效命令
+   }
+        
         
                 SbDescriptor sbDescriptor = _channel.MemoryManager.Physical.Read<SbDescriptor>(sbDescAddress);
 
