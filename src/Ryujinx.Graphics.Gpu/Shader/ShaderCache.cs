@@ -12,7 +12,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
-using Ryujinx.Memory;
+using Ryujinx.Memory.Exceptions;
 
 namespace Ryujinx.Graphics.Gpu.Shader
 {
@@ -670,13 +670,14 @@ namespace Ryujinx.Graphics.Gpu.Shader
         /// <returns>True if the code is different, false otherwise</returns>
         private static bool IsShaderEqual(MemoryManager memoryManager, CachedShaderStage shader, ulong gpuVa)
 {
-    if (shader == null)
+    // 添加无效地址检查
+    if (shader == null || gpuVa == ulong.MaxValue || gpuVa == 0)
     {
-        return true;
+        return false;
     }
 
     // 添加地址有效性检查
-    if (gpuVa == ulong.MaxValue)
+        if (gpuVa == ulong.MaxValue)
     {
         return false;
     }
@@ -791,7 +792,7 @@ namespace Ryujinx.Graphics.Gpu.Shader
             var memoryManager = channel.MemoryManager;
             
             // 添加地址有效性检查
-    if (context.Address == ulong.MaxValue)
+    if (context.Address == ulong.MaxValue || context.Address == 0)
     {
         return new TranslatedShader(null, null);
     }
@@ -821,21 +822,21 @@ namespace Ryujinx.Graphics.Gpu.Shader
         // 修改 ReadArray 方法，添加地址有效性检查
 private static byte[] ReadArray(MemoryManager memoryManager, ulong address, int size)
 {
-    // 添加地址有效性检查
-    if (address == MemoryManager.PteUnmapped || 
-        address == ulong.MaxValue || 
-        size == 0)
+    // 增强地址有效性检查
+    if (address == ulong.MaxValue || 
+        address == MemoryManager.PteUnmapped || 
+        size <= 0 || 
+        size > 1024 * 1024) // 添加合理的大小限制
     {
         return Array.Empty<byte>();
     }
-
+    
     try
     {
         return memoryManager.Physical.GetSpan(address, size).ToArray();
     }
-    catch (InvalidMemoryRegionException)
+    catch (InvalidMemoryRegionException ex)
     {
-        // 捕获无效内存访问异常
         return Array.Empty<byte>();
     }
 }
