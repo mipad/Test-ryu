@@ -828,7 +828,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
 
                         for (int face = 0; face < 6; face++, faceOffset += mipSize / 6)
                         {
-                         if (format.IsCompressed)
+                        if (format.IsCompressed)
                             {
                                 GL.CompressedTexSubImage2D(
                                     TextureTarget.TextureCubeMapPositiveX + face,
