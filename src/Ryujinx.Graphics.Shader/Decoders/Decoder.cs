@@ -257,12 +257,6 @@ namespace Ryujinx.Graphics.Shader.Decoders
 
             do
             {
-                                // 添加地址溢出检查
-        if (address > ulong.MaxValue - 7 || startAddress > ulong.MaxValue - address)
-        {
-            break; // 直接跳出循环，避免无效内存访问
-        }
-                
                 if (address + 7 >= limitAddress)
                 {
                     break;
@@ -277,23 +271,9 @@ namespace Ryujinx.Graphics.Shader.Decoders
                 }
 
                 if (bufferOffset >= buffer.Length)
-{
-    // 检查计算后的地址是否有效
-    ulong fullAddress = startAddress + address;
-    if (fullAddress < startAddress) // 检测溢出
-    {
-        break;
-    }
-
-    try
-    {
-        buffer = gpuAccessor.GetCode(fullAddress, 8);
-    }
-    catch (Exception)
-    {
-        break; // 捕获异常并安全退出
-    }
-    bufferOffset = 0;
+                {
+                    buffer = gpuAccessor.GetCode(startAddress + address, 8);
+                    bufferOffset = 0;
                 }
 
                 ulong opCode = buffer[bufferOffset++];
