@@ -12,7 +12,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
-using Ryujinx.Memory.Exceptions;
+using Ryujinx.Memory;
 
 namespace Ryujinx.Graphics.Gpu.Shader
 {
