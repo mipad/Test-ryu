@@ -67,7 +67,6 @@ namespace Ryujinx.Graphics.Gpu.Memory
             _multiRangeBuffers = new MultiRangeList<MultiRangeBuffer>();
 
             _bufferOverlaps = new Buffer[OverlapsBufferInitialCapacity];
-             _dummyBuffer = new Buffer(context, 0, 1); // 创建1字节的虚拟缓冲区
              _dummyBuffer = new Buffer(
                  context,
                  physicalMemory,
