@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using Ryujinx.Common.Logging; // 添加日志命名空间引用
 
 namespace Ryujinx.Graphics.Gpu.Memory
 {
@@ -34,7 +35,8 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
         private readonly GpuContext _context;
         private readonly PhysicalMemory _physicalMemory;
-
+        private Buffer _dummyBuffer; // 添加字段声明
+        
         /// <remarks>
         /// Only modified from the GPU thread. Must lock for add/remove.
         /// Must lock for any access from other threads.
@@ -66,6 +68,14 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
             _bufferOverlaps = new Buffer[OverlapsBufferInitialCapacity];
              _dummyBuffer = new Buffer(context, 0, 1); // 创建1字节的虚拟缓冲区
+             _dummyBuffer = new Buffer(
+                 context,
+                 physicalMemory,
+                 0,         // address
+                 1,         // size
+                 BufferStage.None, // stage
+                 false      // sparseCompatible
+             );
             _dirtyCache = new Dictionary<ulong, BufferCacheEntry>();
 
             // There are a lot more entries on the modified cache, so it is separate from the one for ForceDirty.
@@ -974,11 +984,13 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
          // 添加的空引用检查 
         if (buffer == null)
-        {
-            throw new InvalidOperationException(
-                $"No buffer found for address 0x{address:X8}, size 0x{size:X8}. " +
-                $"This usually indicates a missing buffer creation for the range.");
-        }
+                {
+                    // 使用正确的日志调用
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"No buffer found for address 0x{address:X8}, size 0x{size:X8}. " +
+                        $"Using dummy buffer.");
+                    return _dummyBuffer;
+                }
         
                 buffer.CopyFromDependantVirtualBuffers();
                 buffer.SynchronizeMemory(address, size);
@@ -992,12 +1004,14 @@ namespace Ryujinx.Graphics.Gpu.Memory
             {
                 buffer = _buffers.FindFirstOverlap(address, 1);
         //添加的空引用检查
-        if (buffer == null)
-        {
-            throw new InvalidOperationException(
-                $"No buffer found for address 0x{address:X8} (size=1). " +
-                $"This usually indicates a missing buffer creation for the range.");
-        }
+        iif (buffer == null)
+                {
+                    // 使用正确的日志调用
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"No buffer found for address 0x{address:X8} (size=1). " +
+                        $"Using dummy buffer.");
+                    return _dummyBuffer;
+                }
             }
 
             return buffer;
