@@ -541,10 +541,19 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// </summary>
         /// <param name="va">Address to validate</param>
         /// <returns>True if the address is valid, false otherwise</returns>
-        private static bool ValidateAddress(ulong va)
-        {
-            return va < (1UL << AddressSpaceBits);
-        }
+        private bool ValidateAddress(ulong va, int size = 0)
+{
+    // 检查特殊无效地址
+    if (va == 0 || va == ulong.MaxValue) return false;
+    
+    // 检查地址空间范围
+    if (va >= (1UL << AddressSpaceBits)) return false;
+    
+    // 检查地址对齐
+    if (size > 0 && (va & (size - 1)) != 0) return false;
+    
+    return true;
+}
 
         /// <summary>
         /// Checks if a given page is mapped.
