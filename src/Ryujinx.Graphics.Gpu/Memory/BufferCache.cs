@@ -71,7 +71,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                  context,
                  physicalMemory,
                  0,         // address
-                 1,         // size
+                 0x1000,         // size
                  BufferStage.None, // stage
                  false      // sparseCompatible
              );
@@ -918,6 +918,14 @@ namespace Ryujinx.Graphics.Gpu.Memory
             {
                 MemoryRange subRange = range.GetSubRange(i);
 
+                // 处理无效地址
+         if (subRange.Address == MemoryManager.PteUnmapped)
+         {
+             Logger.Warning?.Print(LogClass.Gpu, 
+                 $"Skipping invalid sub-range address 0x{subRange.Address:X8}, size 0x{subRange.Size:X8}");
+             continue;
+         }
+         
                 // 添加详细的空引用检查
         Buffer subBuffer = _buffers.FindFirstOverlap(subRange.Address, subRange.Size);
         if (subBuffer == null)
