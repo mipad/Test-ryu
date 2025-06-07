@@ -214,7 +214,14 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 size = Math.Min(data.Length, (int)PageSize - (int)(va & PageMask));
 
-                Physical.GetSpan(pa, size, tracked).CopyTo(data[..size]);
+                if (pa == PteUnmapped)
+                {
+                    data.Slice(0, size).Fill(0);
+                }
+                else
+                {
+                    Physical.GetSpan(pa, size, tracked).CopyTo(data[..size]);
+                }
 
                 offset += size;
             }
@@ -225,7 +232,14 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 size = Math.Min(data.Length - offset, (int)PageSize);
 
-                Physical.GetSpan(pa, size, tracked).CopyTo(data.Slice(offset, size));
+                if (pa == PteUnmapped)
+                {
+                    data.Slice(offset, size).Fill(0);
+                }
+                else
+                {
+                    Physical.GetSpan(pa, size, tracked).CopyTo(data.Slice(offset, size));
+                }
             }
         }
 
@@ -541,19 +555,10 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// </summary>
         /// <param name="va">Address to validate</param>
         /// <returns>True if the address is valid, false otherwise</returns>
-        private bool ValidateAddress(ulong va, int size = 0)
-{
-    // 检查特殊无效地址
-    if (va == 0 || va == ulong.MaxValue) return false;
-    
-    // 检查地址空间范围
-    if (va >= (1UL << AddressSpaceBits)) return false;
-    
-    // 检查地址对齐（修复类型转换）
-    if (size > 0 && (va & (ulong)(size - 1)) != 0) return false;
-    
-    return true;
-}
+        private static bool ValidateAddress(ulong va)
+        {
+            return va < (1UL << AddressSpaceBits);
+        }
 
         /// <summary>
         /// Checks if a given page is mapped.
