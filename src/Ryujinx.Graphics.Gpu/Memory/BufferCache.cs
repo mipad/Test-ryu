@@ -65,7 +65,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             _multiRangeBuffers = new MultiRangeList<MultiRangeBuffer>();
 
             _bufferOverlaps = new Buffer[OverlapsBufferInitialCapacity];
-
+             _dummyBuffer = new Buffer(context, 0, 1); // 创建1字节的虚拟缓冲区
             _dirtyCache = new Dictionary<ulong, BufferCacheEntry>();
 
             // There are a lot more entries on the modified cache, so it is separate from the one for ForceDirty.
@@ -699,7 +699,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             if ((address & (SparseBufferAlignmentSize - 1)) != 0 || (size & (SparseBufferAlignmentSize - 1)) != 0)
             {
-                return;
+         return;
             }
 
             MultiRangeBuffer[] overlaps = new MultiRangeBuffer[10];
@@ -959,14 +959,24 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="write">Whether the buffer will be written to by this use</param>
         /// <returns>The buffer where the range is fully contained</returns>
         private Buffer GetBuffer(ulong address, ulong size, BufferStage stage, bool write = false)
-        {
+        {   
+            // 添加无效地址检查 
+    if (address == 0xFFFFFFFFFFFFFFFF)
+    {
+        Logger.Warning?.Print(LogClass.Gpu, 
+            $"Attempted to access invalid buffer address 0x{address:X16}, size 0x{size:X8}. " +
+            "Returning dummy buffer.");
+        
+        return _dummyBuffer; // 返回虚拟缓冲区避免崩溃
+    }
+    
             Buffer buffer;
 
             if (size != 0)
             {
                 buffer = _buffers.FindFirstOverlap(address, size);
 
-                // ==== 添加的空引用检查 ====
+         // 添加的空引用检查 
         if (buffer == null)
         {
             throw new InvalidOperationException(
@@ -985,7 +995,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             else
             {
                 buffer = _buffers.FindFirstOverlap(address, 1);
-                //添加的空引用检查
+        //添加的空引用检查
         if (buffer == null)
         {
             throw new InvalidOperationException(
