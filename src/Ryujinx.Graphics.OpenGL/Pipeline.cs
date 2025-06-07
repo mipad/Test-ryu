@@ -925,7 +925,7 @@ namespace Ryujinx.Graphics.OpenGL
                 return;
             }
 
-            GL.CullFace(face.Convert());
+            GL.CullFace((TriangleFace)face.Convert());
 
             GL.Enable(EnableCap.CullFace);
         }
@@ -945,7 +945,7 @@ namespace Ryujinx.Graphics.OpenGL
             if (texture == null)
             {
                 GL.BindImageTexture(binding, 0, 0, true, 0, TextureAccess.ReadWrite, SizedInternalFormat.Rgba8);
-    return;
+                return;
             }
 
             TextureBase texBase = (TextureBase)texture;
@@ -960,7 +960,7 @@ namespace Ryujinx.Graphics.OpenGL
 
         public void SetImageArray(ShaderStage stage, int binding, IImageArray array)
         {
-            (array as ImageArray).Bind(binding);
+            (array as ImageArray)?.Bind(binding);
         }
 
         public void SetImageArraySeparate(ShaderStage stage, int setIndex, IImageArray array)
@@ -1085,12 +1085,13 @@ namespace Ryujinx.Graphics.OpenGL
         {
             if (frontMode == backMode)
             {
-                GL.PolygonMode(MaterialFace.FrontAndBack, frontMode.Convert());
+                GL.PolygonMode(TriangleFace.FrontAndBack, frontMode.Convert());
             }
             else
             {
-                GL.PolygonMode(MaterialFace.Front, frontMode.Convert());
-                GL.PolygonMode(MaterialFace.Back, backMode.Convert());
+                GL.PolygonMode(TriangleFace.Front, frontMode.Convert());
+                GL.PolygonMode(TriangleFace.Back, backMode.Convert());
+                
             }
         }
 
@@ -1314,7 +1315,7 @@ namespace Ryujinx.Graphics.OpenGL
 
         public void SetTextureArray(ShaderStage stage, int binding, ITextureArray array)
         {
-            (array as TextureArray).Bind(binding);
+            (array as TextureArray)?.Bind(binding);
         }
 
         public void SetTextureArraySeparate(ShaderStage stage, int setIndex, ITextureArray array)
