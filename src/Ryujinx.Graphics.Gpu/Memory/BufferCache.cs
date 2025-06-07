@@ -959,6 +959,14 @@ namespace Ryujinx.Graphics.Gpu.Memory
             {
                 buffer = _buffers.FindFirstOverlap(address, size);
 
+                // ==== 添加的空引用检查 ====
+        if (buffer == null)
+        {
+            throw new InvalidOperationException(
+                $"No buffer found for address 0x{address:X8}, size 0x{size:X8}. " +
+                $"This usually indicates a missing buffer creation for the range.");
+        }
+        
                 buffer.CopyFromDependantVirtualBuffers();
                 buffer.SynchronizeMemory(address, size);
 
@@ -970,6 +978,13 @@ namespace Ryujinx.Graphics.Gpu.Memory
             else
             {
                 buffer = _buffers.FindFirstOverlap(address, 1);
+                //添加的空引用检查
+        if (buffer == null)
+        {
+            throw new InvalidOperationException(
+                $"No buffer found for address 0x{address:X8} (size=1). " +
+                $"This usually indicates a missing buffer creation for the range.");
+        }
             }
 
             return buffer;
