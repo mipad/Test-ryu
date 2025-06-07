@@ -1003,7 +1003,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             {
                 buffer = _buffers.FindFirstOverlap(address, 1);
         //添加的空引用检查
-        iif (buffer == null)
+        if (buffer == null)
                 {
                     // 使用正确的日志调用
                     Logger.Warning?.Print(LogClass.Gpu, 
