@@ -12,6 +12,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+using Ryujinx.Memory.Exceptions;
 
 namespace Ryujinx.Graphics.Gpu.Shader
 {
@@ -668,16 +669,28 @@ namespace Ryujinx.Graphics.Gpu.Shader
         /// <param name="gpuVa">GPU virtual address of the binary shader code</param>
         /// <returns>True if the code is different, false otherwise</returns>
         private static bool IsShaderEqual(MemoryManager memoryManager, CachedShaderStage shader, ulong gpuVa)
-        {
-            if (shader == null)
-            {
-                return true;
-            }
+{
+    if (shader == null)
+    {
+        return true;
+    }
 
-            ReadOnlySpan<byte> memoryCode = memoryManager.GetSpanMapped(gpuVa, shader.Code.Length);
+    // 添加地址有效性检查
+    if (gpuVa == ulong.MaxValue)
+    {
+        return false;
+    }
 
-            return memoryCode.SequenceEqual(shader.Code);
-        }
+    try
+    {
+        ReadOnlySpan<byte> memoryCode = memoryManager.GetSpanMapped(gpuVa, shader.Code.Length);
+        return memoryCode.SequenceEqual(shader.Code);
+    }
+    catch (InvalidMemoryRegionException)
+    {
+        return false;
+    }
+}
 
         /// <summary>
         /// Decode the binary Maxwell shader code to a translator context.
@@ -729,6 +742,12 @@ namespace Ryujinx.Graphics.Gpu.Shader
             byte[] codeB,
             bool asCompute)
         {
+            // 添加地址有效性检查
+    if (vertexA.Address == ulong.MaxValue || currentStage.Address == ulong.MaxValue)
+    {
+        return new TranslatedShaderVertexPair(null, null, null);
+    }
+    
             ulong cb1DataAddress = channel.BufferManager.GetGraphicsUniformBufferAddress(0, 1);
 
             var memoryManager = channel.MemoryManager;
@@ -770,7 +789,13 @@ namespace Ryujinx.Graphics.Gpu.Shader
         private static TranslatedShader TranslateShader(ShaderDumper dumper, GpuChannel channel, TranslatorContext context, byte[] code, bool asCompute)
         {
             var memoryManager = channel.MemoryManager;
-
+            
+            // 添加地址有效性检查
+    if (context.Address == ulong.MaxValue)
+    {
+        return new TranslatedShader(null, null);
+    }
+    
             ulong cb1DataAddress = context.Stage == ShaderStage.Compute
                 ? channel.BufferManager.GetComputeUniformBufferAddress(1)
                 : channel.BufferManager.GetGraphicsUniformBufferAddress(StageToStageIndex(context.Stage), 1);
@@ -793,15 +818,27 @@ namespace Ryujinx.Graphics.Gpu.Shader
         /// <param name="address">Physical address of the region to read</param>
         /// <param name="size">Size in bytes of the data</param>
         /// <returns>An array with the data at the specified memory location</returns>
-        private static byte[] ReadArray(MemoryManager memoryManager, ulong address, int size)
-        {
-            if (address == MemoryManager.PteUnmapped || size == 0)
-            {
-                return Array.Empty<byte>();
-            }
+        // 修改 ReadArray 方法，添加地址有效性检查
+private static byte[] ReadArray(MemoryManager memoryManager, ulong address, int size)
+{
+    // 添加地址有效性检查
+    if (address == MemoryManager.PteUnmapped || 
+        address == ulong.MaxValue || 
+        size == 0)
+    {
+        return Array.Empty<byte>();
+    }
 
-            return memoryManager.Physical.GetSpan(address, size).ToArray();
-        }
+    try
+    {
+        return memoryManager.Physical.GetSpan(address, size).ToArray();
+    }
+    catch (InvalidMemoryRegionException)
+    {
+        // 捕获无效内存访问异常
+        return Array.Empty<byte>();
+    }
+}
 
         /// <summary>
         /// Gets the index of a stage from a <see cref="ShaderStage"/>.
