@@ -963,10 +963,6 @@ namespace Ryujinx.Graphics.Gpu.Memory
             // 添加无效地址检查 
     if (address == 0xFFFFFFFFFFFFFFFF)
     {
-        Logger.Warning?.Print(LogClass.Gpu, 
-            $"Attempted to access invalid buffer address 0x{address:X16}, size 0x{size:X8}. " +
-            "Returning dummy buffer.");
-        
         return _dummyBuffer; // 返回虚拟缓冲区避免崩溃
     }
     
