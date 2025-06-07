@@ -549,8 +549,8 @@ namespace Ryujinx.Graphics.Gpu.Memory
     // 检查地址空间范围
     if (va >= (1UL << AddressSpaceBits)) return false;
     
-    // 检查地址对齐
-    if (size > 0 && (va & (size - 1)) != 0) return false;
+    // 检查地址对齐（修复类型转换）
+    if (size > 0 && (va & (ulong)(size - 1)) != 0) return false;
     
     return true;
 }
