@@ -25,7 +25,8 @@ namespace LibRyujinx.Android
 
         public IDynamicTextInputHandler CreateDynamicTextInputHandler()
         {
-            throw new NotImplementedException();
+            // 返回一个空实现防止NotImplementedException
+            return new NullDynamicTextInputHandler();
         }
 
         public bool DisplayErrorAppletDialog(string title, string message, string[] buttonsText)
@@ -109,6 +110,25 @@ namespace LibRyujinx.Android
         public void Dispose()
         {
             _isDisposed = true;
+        }
+
+        // 空实现类防止NotImplementedException
+        private class NullDynamicTextInputHandler : IDynamicTextInputHandler
+        {
+            public void SetInput(string text, int cursorBegin, int cursorEnd)
+            {
+                // 空实现
+            }
+
+            public void SetKeyState(SoftwareKeyboardKey key, bool pressed)
+            {
+                // 空实现
+            }
+
+            public void Dispose()
+            {
+                // 空实现
+            }
         }
     }
 }
