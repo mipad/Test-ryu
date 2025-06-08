@@ -1,6 +1,5 @@
-using Ryujinx.Cpu; //
 using Ryujinx.Graphics.Nvdec.FFmpeg.H264;
-using Ryujinx.Graphics.Nvdec.Image;
+using Ryujinx.Graphics.Nvdec.Image; // 包含 DeviceMemoryManager
 using Ryujinx.Graphics.Nvdec.Types.H264;
 using Ryujinx.Graphics.Video;
 using System;
@@ -13,8 +12,8 @@ namespace Ryujinx.Graphics.Nvdec
         private const int MbSizeInPixels = 16;
         private const long TimeoutThresholdMs = 100; // 100ms超时阈值
 
-        // 修改参数类型为 MemoryManager
-        private static void FillWithZeros(MemoryManager memoryManager, ulong offset, uint size)
+        // 使用 DeviceMemoryManager 类型
+        private static void FillWithZeros(DeviceMemoryManager memoryManager, ulong offset, uint size)
         {
             const int BufferSize = 0x1000; // 4KB 缓冲区
             byte[] zeroBuffer = new byte[BufferSize]; // 自动初始化为0
@@ -75,18 +74,18 @@ namespace Ryujinx.Graphics.Nvdec
                     SurfaceWriter.Write(
                         rm.MemoryManager,
                         outputSurface,
-                        lumaOffset + pictureInfo.LumaFrameOffset,
-                        chromaOffset + pictureInfo.ChromaFrameOffset);
+                        lumaOffset + (ulong)pictureInfo.LumaFrameOffset,
+                        chromaOffset + (ulong)pictureInfo.ChromaFrameOffset);
                 }
                 else
                 {
                     SurfaceWriter.WriteInterlaced(
                         rm.MemoryManager,
                         outputSurface,
-                        lumaOffset + pictureInfo.LumaTopFieldOffset,
-                        chromaOffset + pictureInfo.ChromaTopFieldOffset,
-                        lumaOffset + pictureInfo.LumaBottomFieldOffset,
-                        chromaOffset + pictureInfo.ChromaBottomFieldOffset);
+                        lumaOffset + (ulong)pictureInfo.LumaTopFieldOffset,
+                        chromaOffset + (ulong)pictureInfo.ChromaTopFieldOffset,
+                        lumaOffset + (ulong)pictureInfo.LumaBottomFieldOffset,
+                        chromaOffset + (ulong)pictureInfo.ChromaBottomFieldOffset);
                 }
             }
             else
