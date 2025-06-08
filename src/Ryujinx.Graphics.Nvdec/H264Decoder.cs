@@ -1,5 +1,5 @@
 using Ryujinx.Graphics.Nvdec.FFmpeg.H264;
-using Ryujinx.Graphics.Nvdec.Image; // 包含 DeviceMemoryManager
+using Ryujinx.Graphics.Nvdec.Image;
 using Ryujinx.Graphics.Nvdec.Types.H264;
 using Ryujinx.Graphics.Video;
 using System;
@@ -12,19 +12,19 @@ namespace Ryujinx.Graphics.Nvdec
         private const int MbSizeInPixels = 16;
         private const long TimeoutThresholdMs = 100; // 100ms超时阈值
 
-        // 使用 DeviceMemoryManager 类型
-        private static void FillWithZeros(DeviceMemoryManager memoryManager, ulong offset, uint size)
+        // 使用 ResourceManager 直接访问内存
+        private static void FillWithZeros(ResourceManager rm, ulong offset, uint size)
         {
-            const int BufferSize = 0x1000; // 4KB 缓冲区
-            byte[] zeroBuffer = new byte[BufferSize]; // 自动初始化为0
+            const int MaxChunkSize = 0x1000; // 4KB 块大小
+            byte[] zeroBuffer = new byte[MaxChunkSize]; // 自动初始化为0
             
             uint remaining = size;
             while (remaining > 0)
             {
-                uint chunkSize = Math.Min(remaining, (uint)BufferSize);
-                memoryManager.Write(offset, zeroBuffer.AsSpan(0, (int)chunkSize));
-                offset += chunkSize;
-                remaining -= chunkSize;
+                int chunkSize = (int)Math.Min(remaining, MaxChunkSize);
+                rm.MemoryManager.Write(offset, zeroBuffer.AsSpan(0, chunkSize));
+                offset += (ulong)chunkSize;
+                remaining -= (uint)chunkSize;
             }
         }
 
@@ -91,8 +91,8 @@ namespace Ryujinx.Graphics.Nvdec
             else
             {
                 // 超时后安全处理
-                FillWithZeros(rm.MemoryManager, lumaOffset, lumaSize);
-                FillWithZeros(rm.MemoryManager, chromaOffset, chromaSize);
+                FillWithZeros(rm, lumaOffset, lumaSize);
+                FillWithZeros(rm, chromaOffset, chromaSize);
             }
             
             rm.Cache.Put(outputSurface);
