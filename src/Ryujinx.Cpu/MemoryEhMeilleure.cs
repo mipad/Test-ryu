@@ -80,13 +80,21 @@ namespace Ryujinx.Cpu
             ulong endAddressAligned = BitUtils.AlignUp(address + size, pageSize);
             ulong sizeAligned = endAddressAligned - addressAligned;
 
-            if (_tracking.VirtualMemoryEvent(addressAligned, sizeAligned, write))
-            {
-                return _baseAddress + address;
-            }
-
-            return 0;
+            //捕获异常并返回0
+    try
+    {
+        if (_tracking.VirtualMemoryEvent(addressAligned, sizeAligned, write))
+        {
+            return _baseAddress + address;
         }
+    }
+    catch (InvalidMemoryRegionException)
+    {
+        // 捕获非法内存访问异常，返回0触发CPU核心处理
+    }
+    
+    return 0;
+}
 
         public void Dispose()
         {
