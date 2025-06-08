@@ -26,6 +26,10 @@ namespace Ryujinx.Graphics.Vulkan
 
     class Auto<T> : IAutoPrivate, IDisposable where T : IDisposable
     {
+        // 增加销毁状态标志
+        private bool _isDisposed;
+        // 增加线程安全锁
+        private readonly object _refCountLock = new object();
         private int _referenceCount;
         private T _value;
 
@@ -81,6 +85,12 @@ namespace Ryujinx.Graphics.Vulkan
 
         public T Get(CommandBufferScoped cbs)
         {
+            if (_isDisposed || _destroyed)
+            {
+                Debug.WriteLine($"Warning: Accessing destroyed {typeof(T).Name}");
+                return default;
+            }
+            
             if (!_destroyed)
             {
                 AddCommandBufferDependencies(cbs);
@@ -144,10 +154,18 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void IncrementReferenceCount()
         {
-            if (Interlocked.Increment(ref _referenceCount) == 1)
+            lock (_refCountLock)
             {
-                Interlocked.Decrement(ref _referenceCount);
-                throw new InvalidOperationException("Attempted to increment the reference count of an object that was already destroyed.");
+                if (_isDisposed)
+                {
+                    throw new ObjectDisposedException($"Attempted to increment reference count of disposed {typeof(T).Name}");
+                }
+                
+                if (Interlocked.Increment(ref _referenceCount) == 1)
+                {
+                    Interlocked.Decrement(ref _referenceCount);
+                    throw new InvalidOperationException("Reference count inconsistency");
+                }
             }
         }
 
@@ -159,32 +177,65 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void DecrementReferenceCount()
         {
-            if (Interlocked.Decrement(ref _referenceCount) == 0)
+            lock (_refCountLock)
             {
-                _value.Dispose();
-                _value = default;
-                _destroyed = true;
-
-                // Value is no longer in use by the GPU, dispose all other
-                // resources that it references.
-                if (_referencedObjs != null)
+                int newCount = Interlocked.Decrement(ref _referenceCount);
+                if (newCount < 0)
                 {
-                    for (int i = 0; i < _referencedObjs.Length; i++)
+                    throw new InvalidOperationException("Reference count negative");
+                }
+                
+                if (newCount == 0)
+                {
+                    try
                     {
-                        _referencedObjs[i].DecrementReferenceCount();
+                        _value?.Dispose();
+                        _value = default;
+                        _destroyed = true;
+                        
+                        // 清除所有引用
+                        if (_referencedObjs != null)
+                        {
+                            foreach (var obj in _referencedObjs)
+                            {
+                                obj.DecrementReferenceCount();
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        _isDisposed = true;
                     }
                 }
             }
-
-            Debug.Assert(_referenceCount >= 0);
         }
+
+// 增加安全获取方法
+        public bool TryGet(CommandBufferScoped cbs, out T value)
+        {
+            lock (_refCountLock)
+            {
+                if (!_isDisposed && !_destroyed)
+                {
+                    value = Get(cbs);
+                    return true;
+                }
+                
+                value = default;
+                return false;
+            }
+        }
+    }
+}
 
         public void Dispose()
         {
-            if (!_disposed)
+            lock (_refCountLock)
             {
-                DecrementReferenceCount();
-                _disposed = true;
+                if (!_isDisposed)
+                {
+                    DecrementReferenceCount();
+                }
             }
         }
     }
