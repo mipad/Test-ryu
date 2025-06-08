@@ -71,8 +71,8 @@ namespace Ryujinx.Graphics.Nvdec
             else
             {
                 // 超时后安全处理
-                rm.MemoryManager.DeviceFill(lumaOffset, (uint)(width * height), 0x00);
-                rm.MemoryManager.DeviceFill(chromaOffset, (uint)(width * height / 2), 0x80);
+                rm.MemoryManager.Fill(lumaOffset, (uint)(width * height), 0x00);
+                rm.MemoryManager.Fill(chromaOffset, (uint)(width * height / 2), 0x80);
             }
 
             rm.Cache.Put(outputSurface);
