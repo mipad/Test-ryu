@@ -75,7 +75,7 @@ namespace Ryujinx.Graphics.Nvdec
             FillWithZeros(chromaOffset, chromaSize);
             }
 
-            rm.Cache.Put(outputSurface);
+            
             // 添加的填充零方法
         private void FillWithZeros(ulong offset, uint size)
         {
@@ -91,6 +91,7 @@ namespace Ryujinx.Graphics.Nvdec
                 remaining -= chunkSize;
             }
         }
+            rm.Cache.Put(outputSurface);
         }
     }
 }
