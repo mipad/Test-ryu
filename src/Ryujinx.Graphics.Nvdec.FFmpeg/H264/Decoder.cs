@@ -49,14 +49,26 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
                 
                 if (result != 0)
                 {
-                    throw new Exception($"Decode failed with error code {result}");
+                    // 添加详细错误处理
+                    string errorMsg = FFmpegUtils.GetErrorDescription(result);
+                    
+                    // 特定错误处理：重置解码器并跳过帧
+                    if (errorMsg.Contains("illegal short term buffer") || 
+                        errorMsg.Contains("reference picture missing"))
+                    {
+                        ResetDecoder();
+                        _frameSkipCounter = 3;
+                        return false;
+                    }
+                    
+                    throw new Exception($"Decode failed with error code {result}: {errorMsg}");
                 }
                 
                 return true;
             }
-            catch (Exception ex) when (ex.Message.Contains("illegal short term buffer") || 
-                                       ex.Message.Contains("reference picture missing"))
+            catch (Exception ex)
             {
+                // 通用错误处理
                 ResetDecoder();
                 _frameSkipCounter = 3;
                 return false;
