@@ -3,12 +3,14 @@ using Ryujinx.Graphics.Nvdec.Image;
 using Ryujinx.Graphics.Nvdec.Types.H264;
 using Ryujinx.Graphics.Video;
 using System;
+using System.Diagnostics;
 
 namespace Ryujinx.Graphics.Nvdec
 {
     static class H264Decoder
     {
         private const int MbSizeInPixels = 16;
+        private const long TimeoutThresholdMs = 100; // 100ms超时阈值
 
         public static void Decode(NvdecDecoderContext context, ResourceManager rm, ref NvdecRegisters state)
         {
@@ -29,7 +31,23 @@ namespace Ryujinx.Graphics.Nvdec
 
             ISurface outputSurface = rm.Cache.Get(decoder, 0, 0, width, height);
 
-            if (decoder.Decode(ref info, outputSurface, bitstream))
+            // 添加超时处理
+            bool decodeSuccess = false;
+            var stopwatch = Stopwatch.StartNew();
+            
+            while (!decodeSuccess && stopwatch.ElapsedMilliseconds < TimeoutThresholdMs)
+            {
+                try
+                {
+                    decodeSuccess = decoder.Decode(ref info, outputSurface, bitstream);
+                }
+                catch
+                {
+                    // 忽略解码过程中的异常，继续尝试
+                }
+            }
+
+            if (decodeSuccess)
             {
                 if (outputSurface.Field == FrameField.Progressive)
                 {
@@ -49,6 +67,12 @@ namespace Ryujinx.Graphics.Nvdec
                         lumaOffset + pictureInfo.LumaBottomFieldOffset,
                         chromaOffset + pictureInfo.ChromaBottomFieldOffset);
                 }
+            }
+            else
+            {
+                // 超时后安全处理
+                rm.MemoryManager.DeviceFill(lumaOffset, (uint)(width * height), 0x00);
+                rm.MemoryManager.DeviceFill(chromaOffset, (uint)(width * height / 2), 0x80);
             }
 
             rm.Cache.Put(outputSurface);
