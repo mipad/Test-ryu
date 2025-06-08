@@ -112,19 +112,42 @@ namespace LibRyujinx.Android
             _isDisposed = true;
         }
 
-        // 空实现类防止NotImplementedException
+        // 空实现类
         private class NullDynamicTextInputHandler : IDynamicTextInputHandler
         {
-            public void SetInput(string text, int cursorBegin, int cursorEnd)
+            // 实现接口要求的属性
+            public bool TextProcessingEnabled { get; set; } = false;
+            
+            // 实现接口要求的事件（空实现）
+            public event Action<string> TextChangedEvent
+            {
+                add { }
+                remove { }
+            }
+            
+            public event Action<object> KeyPressedEvent
+            {
+                add { }
+                remove { }
+            }
+            
+            public event Action<object> KeyReleasedEvent
+            {
+                add { }
+                remove { }
+            }
+
+            // 实现两个SetText重载
+            public void SetText(string text, int cursorBegin)
             {
                 // 空实现
             }
 
-            public void SetKeyState(SoftwareKeyboardKey key, bool pressed)
+            public void SetText(string text, int cursorBegin, int cursorEnd)
             {
                 // 空实现
             }
-
+            
             public void Dispose()
             {
                 // 空实现
