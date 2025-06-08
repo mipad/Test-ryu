@@ -107,7 +107,15 @@ namespace Ryujinx.HLE.HOS.Applets
                         _npads.NpadButtonDownEvent += HandleNpadButtonDownEvent;
                         _npads.NpadButtonUpEvent += HandleNpadButtonUpEvent;
 
+                        try
+                    {
                         _keyboardRenderer = new SoftwareKeyboardRenderer(_device.UIHandler.HostUITheme);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error?.Print(LogClass.ServiceAm, $"Failed to initialize keyboard renderer: {ex.Message}");
+                        _keyboardRenderer = null; // 安全降级
+                    }
                     }
 
                     return ResultCode.Success;
