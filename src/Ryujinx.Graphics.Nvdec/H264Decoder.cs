@@ -1,3 +1,4 @@
+using Ryujinx.Cpu; //
 using Ryujinx.Graphics.Nvdec.FFmpeg.H264;
 using Ryujinx.Graphics.Nvdec.Image;
 using Ryujinx.Graphics.Nvdec.Types.H264;
@@ -12,8 +13,8 @@ namespace Ryujinx.Graphics.Nvdec
         private const int MbSizeInPixels = 16;
         private const long TimeoutThresholdMs = 100; // 100ms超时阈值
 
-        // 添加的填充零方法（静态方法）
-        private static void FillWithZeros(DeviceMemoryManager memoryManager, ulong offset, uint size)
+        // 修改参数类型为 MemoryManager
+        private static void FillWithZeros(MemoryManager memoryManager, ulong offset, uint size)
         {
             const int BufferSize = 0x1000; // 4KB 缓冲区
             byte[] zeroBuffer = new byte[BufferSize]; // 自动初始化为0
