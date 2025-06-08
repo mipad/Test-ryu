@@ -504,8 +504,8 @@ namespace Ryujinx.HLE.HOS.Applets
 
             _dynamicTextInputHandler.TextProcessingEnabled = true;
 
-            _keyboardRenderer.UpdateCommandState(null, null, true);
-            _keyboardRenderer.UpdateTextState(null, null, null, null, true);
+            _keyboardRenderer?.UpdateCommandState(null, null, true);
+            _keyboardRenderer?.UpdateTextState(null, null, null, null, true);
         }
 
         private void DeactivateFrontend()
@@ -517,6 +517,9 @@ namespace Ryujinx.HLE.HOS.Applets
 
             _dynamicTextInputHandler.TextProcessingEnabled = false;
             _dynamicTextInputHandler.SetText(_textValue, _cursorBegin);
+            
+            _keyboardRenderer?.UpdateCommandState(null, null, false);
+            _keyboardRenderer?.UpdateTextState(null, null, null, null, false);
         }
 
         private void DestroyFrontend()
@@ -557,8 +560,8 @@ namespace Ryujinx.HLE.HOS.Applets
 
                         _dynamicTextInputHandler.TextProcessingEnabled = typingEnabled;
 
-                        _keyboardRenderer.UpdateTextState(null, null, null, null, typingEnabled);
-                        _keyboardRenderer.UpdateCommandState(null, null, controllerEnabled);
+                        _keyboardRenderer?.UpdateTextState(null, null, null, null, typingEnabled);
+                        _keyboardRenderer?.UpdateCommandState(null, null, controllerEnabled);
                     }
                 }
             }
@@ -585,7 +588,7 @@ namespace Ryujinx.HLE.HOS.Applets
 
                 _textValue = text;
                 _cursorBegin = cursorBegin;
-                _keyboardRenderer.UpdateTextState(text, cursorBegin, cursorEnd, overwriteMode, null);
+                _keyboardRenderer?.UpdateTextState(text, cursorBegin, cursorEnd, overwriteMode, null);
 
                 PushUpdatedState(text, cursorBegin, KeyboardResult.NotSet);
             }
@@ -603,10 +606,10 @@ namespace Ryujinx.HLE.HOS.Applets
                 switch (button)
                 {
                     case NpadButton.A:
-                        _keyboardRenderer.UpdateCommandState(_canAcceptController, null, null);
+                        _keyboardRenderer?.UpdateCommandState(_canAcceptController, null, null);
                         break;
                     case NpadButton.B:
-                        _keyboardRenderer.UpdateCommandState(null, _canAcceptController, null);
+                        _keyboardRenderer?.UpdateCommandState(null, _canAcceptController, null);
                         break;
                 }
             }
@@ -616,30 +619,33 @@ namespace Ryujinx.HLE.HOS.Applets
         {
             lock (_lock)
             {
+                // 修复：添加键盘活动状态检查
+                if (!IsKeyboardActive())
+                {
+                    return;
+                }
+
                 KeyboardResult result = KeyboardResult.NotSet;
 
                 switch (button)
                 {
                     case NpadButton.A:
                         result = KeyboardResult.Accept;
-                        _keyboardRenderer.UpdateCommandState(false, null, null);
+                        _keyboardRenderer?.UpdateCommandState(false, null, null);
                         break;
                     case NpadButton.B:
                         result = KeyboardResult.Cancel;
-                        _keyboardRenderer.UpdateCommandState(null, false, null);
+                        _keyboardRenderer?.UpdateCommandState(null, false, null);
                         break;
                 }
 
-                if (IsKeyboardActive())
+                if (!_canAcceptController)
                 {
-                    if (!_canAcceptController)
-                    {
-                        _canAcceptController = true;
-                    }
-                    else if (InputModeControllerEnabled())
-                    {
-                        PushUpdatedState(_textValue, _cursorBegin, result);
-                    }
+                    _canAcceptController = true;
+                }
+                else if (InputModeControllerEnabled())
+                {
+                    PushUpdatedState(_textValue, _cursorBegin, result);
                 }
             }
         }
@@ -655,13 +661,15 @@ namespace Ryujinx.HLE.HOS.Applets
             if (!IsKeyboardActive())
             {
                 // Keyboard is not active.
-
                 return;
             }
 
             if (accept == false && cancel == false)
             {
                 Logger.Debug?.Print(LogClass.ServiceAm, $"Updating keyboard text to {text} and cursor position to {cursorBegin}");
+
+                // 修复：添加空引用检查
+                _keyboardRenderer?.UpdateTextState(text, cursorBegin, cursorBegin, null, null);
 
                 PushChangedString(text, (uint)cursorBegin, _backgroundState);
             }
