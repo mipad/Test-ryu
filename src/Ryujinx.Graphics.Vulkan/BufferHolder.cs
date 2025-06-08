@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using VkBuffer = Silk.NET.Vulkan.Buffer;
 using VkFormat = Silk.NET.Vulkan.Format;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -239,6 +240,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetBuffer()
         {
+            // 添加空值防护
+    var buffer = _buffer.GetUnsafe();
+    if (buffer == null || buffer.Value.Handle == 0)
+    {
+        Logger.Error?.Print(LogClass.Gpu, $"Attempted to use invalid buffer");
+        return new Auto<DisposableBuffer>(null); // 返回安全的空对象
+    }
             return _buffer;
         }
 
@@ -506,7 +514,15 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         public unsafe void SetData(int offset, ReadOnlySpan<byte> data, CommandBufferScoped? cbs = null, Action endRenderPass = null, bool allowCbsWait = true)
-        {
+        { 
+            // 添加缓冲区有效性检查
+    var buffer = _buffer.GetUnsafe();
+    if (buffer == null || buffer.Value.Handle == 0)
+    {
+        Logger.Error?.Print(LogClass.Gpu, $"Attempted to set data on invalid buffer");
+        return;
+    }
+    
             int dataSize = Math.Min(data.Length, Size - offset);
             if (dataSize == 0)
             {
@@ -712,20 +728,20 @@ namespace Ryujinx.Graphics.Vulkan
             // 空值检查
     if (src == null || dst == null)
     {
-        gd.Logger?.Warning?.Print(LogClass.Gpu, "Copy skipped: null buffer reference");
+        Logger.Warning?.Print(LogClass.Gpu, "Copy skipped: null buffer reference");
         return;
     }
 
-    // 无效缓冲区检查
-    var srcUnsafe = src.GetUnsafe();
-    var dstUnsafe = dst.GetUnsafe();
+    var srcBuffer = src.GetUnsafe();
+    var dstBuffer = dst.GetUnsafe();
     
-    if (srcUnsafe == null || srcUnsafe.Value.Handle == 0 ||
-        dstUnsafe == null || dstUnsafe.Value.Handle == 0)
+    // 无效缓冲区句柄检查
+    if (srcBuffer == null || srcBuffer.Value.Handle == 0 ||
+        dstBuffer == null || dstBuffer.Value.Handle == 0)
     {
-        gd.Logger?.Warning?.Print(LogClass.Gpu, 
+        Logger.Warning?.Print(LogClass.Gpu, 
             $"Copy skipped: invalid buffer handle " +
-            $"(Src: {srcUnsafe?.Value.Handle ?? 0}, Dst: {dstUnsafe?.Value.Handle ?? 0})");
+            $"(Src: {srcBuffer?.Value.Handle ?? 0}, Dst: {dstBuffer?.Value.Handle ?? 0})");
         return;
     }
     
@@ -854,7 +870,7 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 int alignedStride = (stride + (alignment - 1)) & -alignment;
 
-                holder = _gd.BufferManager.Create(_gd, (size / stride) * alignedStride, baseType: BufferAllocationType.DeviceLocal);
+               holder = _gd.BufferManager.Create(_gd, (size / stride) * alignedStride, baseType: BufferAllocationType.DeviceLocal);
 
                 _gd.PipelineInternal.EndRenderPass();
                 _gd.HelperShader.ChangeStride(_gd, cbs, this, holder, offset, size, stride, alignedStride);
@@ -916,6 +932,12 @@ namespace Ryujinx.Graphics.Vulkan
         {
             _cachedConvertedBuffers.Remove(offset, size, key);
         }
+        
+        private bool IsBufferValid()
+{
+    var buffer = _buffer.GetUnsafe();
+    return buffer != null && buffer.Value.Handle != 0;
+}
 
         public void Dispose()
         {
