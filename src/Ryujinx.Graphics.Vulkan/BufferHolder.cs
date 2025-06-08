@@ -721,18 +721,30 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         public static unsafe void Copy(
-            VulkanRenderer gd,
-            CommandBufferScoped cbs,
-            Auto<DisposableBuffer> src,
-            Auto<DisposableBuffer> dst,
-            int srcOffset,
-            int dstOffset,
-            int size,
-            bool registerSrcUsage = true)
-        {   
-            // 
-            ulong srcHandle = src?.Get()?.Handle ?? 0;
-    ulong dstHandle = dst?.Get()?.Handle ?? 0;
+    VulkanRenderer gd,
+    CommandBufferScoped cbs,
+    Auto<DisposableBuffer> src,
+    Auto<DisposableBuffer> dst,
+    int srcOffset,
+    int dstOffset,
+    int size,
+    bool registerSrcUsage = true)
+{   
+    // 获取底层缓冲区引用
+    var srcBufferRef = src?.GetUnsafe();
+    var dstBufferRef = dst?.GetUnsafe();
+
+    // 检查引用是否存在
+    if (srcBufferRef == null || dstBufferRef == null)
+    {
+        Logger.Warning?.Print(LogClass.Gpu, 
+            $"Copy skipped: invalid buffer reference (Src: {srcBufferRef == null}, Dst: {dstBufferRef == null})");
+        return;
+    }
+
+    // 检查缓冲区句柄有效性
+    ulong srcHandle = srcBufferRef.Value.Value.Handle;
+    ulong dstHandle = dstBufferRef.Value.Value.Handle;
 
     if (srcHandle == 0 || dstHandle == 0)
     {
@@ -742,59 +754,51 @@ namespace Ryujinx.Graphics.Vulkan
         return;
     }
 
-            // 修复：直接获取VkBuffer而不是尝试访问Value属性
-            var srcBufferRef = src.GetUnsafe();
-            var dstBufferRef = dst.GetUnsafe();
-            
-            if (srcBufferRef.Value.Handle == 0 || dstBufferRef.Value.Handle == 0)
-            {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Copy skipped: invalid buffer handle " +
-                    $"(Src: {srcBufferRef.Value.Handle}, Dst: {dstBufferRef.Value.Handle})");
-                return;
-            }
+    // 获取安全访问的缓冲区对象
+    VkBuffer srcBuffer = registerSrcUsage ? 
+        src.Get(cbs, srcOffset, size).Value : 
+        srcBufferRef.Value.Value;
+    
+    VkBuffer dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
 
-            VkBuffer srcBuffer = registerSrcUsage ? 
-                src.Get(cbs, srcOffset, size).Value : 
-                srcBufferRef.Value;
-            
-            VkBuffer dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
+    // 再次验证句柄有效性
+    if (srcBuffer.Handle == 0 || dstBuffer.Handle == 0)
+    {
+        Logger.Warning?.Print(LogClass.Gpu, 
+            $"Copy skipped: invalid buffer handle after retrieval " +
+            $"(Src: {srcBuffer.Handle}, Dst: {dstBuffer.Handle})");
+        return;
+    }
 
-            // 修复：再次验证句柄有效性
-            if (srcBuffer.Handle == 0 || dstBuffer.Handle == 0)
-            {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Copy skipped: invalid buffer handle after retrieval " +
-                    $"(Src: {srcBuffer.Handle}, Dst: {dstBuffer.Handle})");
-                return;
-            }
+    // 插入内存屏障
+    InsertBufferBarrier(
+        gd,
+        cbs.CommandBuffer,
+        dstBuffer,
+        DefaultAccessFlags,
+        AccessFlags.TransferWriteBit,
+        PipelineStageFlags.AllCommandsBit,
+        PipelineStageFlags.TransferBit,
+        dstOffset,
+        size);
 
-            InsertBufferBarrier(
-                gd,
-                cbs.CommandBuffer,
-                dstBuffer,
-                DefaultAccessFlags,
-                AccessFlags.TransferWriteBit,
-                PipelineStageFlags.AllCommandsBit,
-                PipelineStageFlags.TransferBit,
-                dstOffset,
-                size);
+    // 执行缓冲区复制
+    var region = new BufferCopy((ulong)srcOffset, (ulong)dstOffset, (ulong)size);
 
-            var region = new BufferCopy((ulong)srcOffset, (ulong)dstOffset, (ulong)size);
+    gd.Api.CmdCopyBuffer(cbs.CommandBuffer, srcBuffer, dstBuffer, 1, &region);
 
-            gd.Api.CmdCopyBuffer(cbs.CommandBuffer, srcBuffer, dstBuffer, 1, &region);
-
-            InsertBufferBarrier(
-                gd,
-                cbs.CommandBuffer,
-                dstBuffer,
-                AccessFlags.TransferWriteBit,
-                DefaultAccessFlags,
-                PipelineStageFlags.TransferBit,
-                PipelineStageFlags.AllCommandsBit,
-                dstOffset,
-                size);
-        }
+    // 插入内存屏障
+    InsertBufferBarrier(
+        gd,
+        cbs.CommandBuffer,
+        dstBuffer,
+        AccessFlags.TransferWriteBit,
+        DefaultAccessFlags,
+        PipelineStageFlags.TransferBit,
+        PipelineStageFlags.AllCommandsBit,
+        dstOffset,
+        size);
+}
 
         public static unsafe void InsertBufferBarrier(
             VulkanRenderer gd,
@@ -870,7 +874,7 @@ namespace Ryujinx.Graphics.Vulkan
               _gd.PipelineInternal.EndRenderPass();
                 _gd.HelperShader.ConvertI8ToI16(_gd, cbs, this, holder, offset, size);
 
-            key.SetBuffer(holder.GetBuffer());
+                key.SetBuffer(holder.GetBuffer());
 
                 _cachedConvertedBuffers.Add(offset, size, key, holder);
             }
@@ -982,3 +986,50 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 }
+        public void WaitForFences(int offset, int size)
+        {
+            _waitable.WaitForFences(_gd.Api, _device, offset, size);
+        }
+
+        private bool BoundToRange(int offset, ref int size)
+        {
+            if (offset >= Size)
+            {
+                return false;
+            }
+
+            size = Math.Min(Size - offset, size);
+
+            return true;
+        }
+
+        public Auto<DisposableBuffer> GetBufferI8ToI16(CommandBufferScoped cbs, int offset, int size)
+        {
+            if (!BoundToRange(offset, ref size))
+            {
+                return null;
+            }
+
+            var key = new I8ToI16CacheKey(_gd);
+
+            if (!_cachedConvertedBuffers.TryGetValue(offset, size, key, out var holder))
+            {
+                holder = _gd.BufferManager.Create(_gd, (size * 2 + 3) & ~3, baseType: BufferAllocationType.DeviceLocal);
+
+              _gd.PipelineInternal.EndRenderPass();
+                _gd.HelperShader.ConvertI8ToI16(_gd, cbs, this, holder, offset, size);
+
+                key.SetBuffer(holder.GetBuffer());
+
+                _cachedConvertedBuffers.Add(offset, size, key, holder);
+            }
+
+            return holder.GetBuffer();
+        }
+
+        public Auto<DisposableBuffer> GetAlignedVertexBuffer(CommandBufferScoped cbs, int offset, int size, int stride, int alignment)
+        {
+            if (!BoundToRange(offset, ref size))
+            {
+                return null;
+         
