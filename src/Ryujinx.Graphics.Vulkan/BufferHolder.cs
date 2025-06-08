@@ -514,19 +514,12 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe void SetData(int offset, ReadOnlySpan<byte> data, CommandBufferScoped? cbs = null, Action endRenderPass = null, bool allowCbsWait = true)
         { 
-            // 使用Handle属性检查有效性
-    var bufferRef = _buffer.GetUnsafe();
-    if (bufferRef.Value.Handle == 0)
+// 深度有效性检查
+    if (!IsBufferValid())
     {
         Logger.Error?.Print(LogClass.Gpu, $"Attempted to set data on invalid buffer");
         return;
     }
-    
-            int dataSize = Math.Min(data.Length, Size - offset);
-            if (dataSize == 0)
-            {
-                return;
-            }
 
             bool allowMirror = _useMirrors && allowCbsWait && cbs != null && _activeType <= BufferAllocationType.HostMapped;
 
@@ -636,6 +629,20 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
         }
+        
+        // 添加辅助方法
+private bool IsBufferValid()
+{
+    try 
+    {
+        var buffer = _buffer.GetUnsafe();
+        return buffer != null && buffer.Value.Handle != 0;
+    }
+    catch (ObjectDisposedException)
+    {
+        return false;
+    }
+}
 
         public unsafe void SetDataUnchecked(int offset, ReadOnlySpan<byte> data)
         {
@@ -873,7 +880,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             return holder.GetBuffer();
-        }
+       }
 
         public Auto<DisposableBuffer> GetBufferTopologyConversion(CommandBufferScoped cbs, int offset, int size, IndexBufferPattern pattern, int indexSize)
         {
@@ -953,4 +960,4 @@ namespace Ryujinx.Graphics.Vulkan
             _flushLock.ExitWriteLock();
         }
     }
-}
+} 
