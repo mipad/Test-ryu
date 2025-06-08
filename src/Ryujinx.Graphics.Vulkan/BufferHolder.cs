@@ -953,10 +953,11 @@ namespace Ryujinx.Graphics.Vulkan
         }
         
         private bool IsBufferValid()
-        {
-            var buffer = _buffer.GetUnsafe();
-            return buffer != null && buffer.Value.Handle != 0;
-        }
+   {
+       var buffer = _buffer.GetUnsafe();
+       // 直接检查Handle属性是否为0
+       return buffer.Handle != 0;
+   }
 
         public void Dispose()
         {
