@@ -12,6 +12,22 @@ namespace Ryujinx.Graphics.Nvdec
         private const int MbSizeInPixels = 16;
         private const long TimeoutThresholdMs = 100; // 100ms超时阈值
 
+        // 添加的填充零方法（静态方法）
+        private static void FillWithZeros(DeviceMemoryManager memoryManager, ulong offset, uint size)
+        {
+            const int BufferSize = 0x1000; // 4KB 缓冲区
+            byte[] zeroBuffer = new byte[BufferSize]; // 自动初始化为0
+            
+            uint remaining = size;
+            while (remaining > 0)
+            {
+                uint chunkSize = Math.Min(remaining, (uint)BufferSize);
+                memoryManager.Write(offset, zeroBuffer.AsSpan(0, (int)chunkSize));
+                offset += chunkSize;
+                remaining -= chunkSize;
+            }
+        }
+
         public static void Decode(NvdecDecoderContext context, ResourceManager rm, ref NvdecRegisters state)
         {
             PictureInfo pictureInfo = rm.MemoryManager.DeviceRead<PictureInfo>(state.SetDrvPicSetupOffset);
@@ -24,8 +40,12 @@ namespace Ryujinx.Graphics.Nvdec
 
             int surfaceIndex = (int)pictureInfo.OutputSurfaceIndex;
 
-            uint lumaOffset = state.SetPictureLumaOffset[surfaceIndex];
-            uint chromaOffset = state.SetPictureChromaOffset[surfaceIndex];
+            ulong lumaOffset = state.SetPictureLumaOffset[surfaceIndex];
+            ulong chromaOffset = state.SetPictureChromaOffset[surfaceIndex];
+            
+            // 计算亮度和色度平面大小
+            uint lumaSize = (uint)(width * height);
+            uint chromaSize = (uint)(width * height / 2);
 
             Decoder decoder = context.GetH264Decoder();
 
@@ -71,26 +91,10 @@ namespace Ryujinx.Graphics.Nvdec
             else
             {
                 // 超时后安全处理
-                FillWithZeros(lumaOffset, lumaSize);
-            FillWithZeros(chromaOffset, chromaSize);
+                FillWithZeros(rm.MemoryManager, lumaOffset, lumaSize);
+                FillWithZeros(rm.MemoryManager, chromaOffset, chromaSize);
             }
-
             
-            // 添加的填充零方法
-        private void FillWithZeros(ulong offset, uint size)
-        {
-            const int BufferSize = 0x1000; // 4KB 缓冲区
-            byte[] zeroBuffer = new byte[BufferSize]; // 自动初始化为0
-            
-            uint remaining = size;
-            while (remaining > 0)
-            {
-                uint chunkSize = Math.Min(remaining, (uint)BufferSize);
-                _memoryManager.Write(offset, zeroBuffer.AsSpan(0, (int)chunkSize));
-                offset += chunkSize;
-                remaining -= chunkSize;
-            }
-        }
             rm.Cache.Put(outputSurface);
         }
     }
