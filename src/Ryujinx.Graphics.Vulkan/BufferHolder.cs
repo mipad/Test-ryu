@@ -240,13 +240,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetBuffer()
         {
-            /// 使用句柄检查代替空值检查
+            // ：使用Handle属性检查有效性
     var buffer = _buffer.GetUnsafe();
     if (buffer.Value.Handle == 0)
     {
         Logger.Error?.Print(LogClass.Gpu, $"Attempted to use invalid buffer");
     }
-            return _buffer;
+    return _buffer;
         }
 
         public Auto<DisposableBuffer> GetBuffer(CommandBuffer commandBuffer, bool isWrite = false, bool isSSBO = false)
@@ -514,7 +514,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe void SetData(int offset, ReadOnlySpan<byte> data, CommandBufferScoped? cbs = null, Action endRenderPass = null, bool allowCbsWait = true)
         { 
-            // ：使用句柄检查代替空值检查
+            // 使用Handle属性检查有效性
     var bufferRef = _buffer.GetUnsafe();
     if (bufferRef.Value.Handle == 0)
     {
@@ -724,14 +724,14 @@ namespace Ryujinx.Graphics.Vulkan
             int size,
             bool registerSrcUsage = true)
         {   
-            // 获取底层VkBuffer
-    var srcBuffer = registerSrcUsage ? 
-        src.Get(cbs, srcOffset, size).Value.Value : 
-        src.GetUnsafe().Value.Value;
+            // 修复：直接获取VkBuffer而不是尝试访问Value属性
+    VkBuffer srcBuffer = registerSrcUsage ? 
+        src.Get(cbs, srcOffset, size).Value : 
+        src.GetUnsafe().Value;
     
-    var dstBuffer = dst.Get(cbs, dstOffset, size, true).Value.Value;
+    VkBuffer dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
 
-    // 修复：直接使用句柄检查
+    // 修复：直接检查句柄的有效性
     if (srcBuffer.Handle == 0 || dstBuffer.Handle == 0)
     {
         Logger.Warning?.Print(LogClass.Gpu, 
@@ -873,9 +873,9 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             return holder.GetBuffer();
-        }
+       }
 
-            public Auto<DisposableBuffer> GetBufferTopologyConversion(CommandBufferScoped cbs, int offset, int size, IndexBufferPattern pattern, int indexSize)
+        public Auto<DisposableBuffer> GetBufferTopologyConversion(CommandBufferScoped cbs, int offset, int size, IndexBufferPattern pattern, int indexSize)
         {
             if (!BoundToRange(offset, ref size))
             {
