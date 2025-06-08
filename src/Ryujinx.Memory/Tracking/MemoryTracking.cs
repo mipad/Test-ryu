@@ -346,7 +346,7 @@ namespace Ryujinx.Memory.Tracking
 
                 // We can't continue - it's impossible to remove protection from the page.
                 // Even if the access handler wants us to continue, we wouldn't be able to.
-                throw new InvalidMemoryRegionException();
+                return false; //返回false而非抛出异常
             }
 
             return true;
