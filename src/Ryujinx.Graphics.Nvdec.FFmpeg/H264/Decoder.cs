@@ -2,9 +2,29 @@ using Ryujinx.Graphics.Nvdec.FFmpeg.Native;
 using Ryujinx.Graphics.Video;
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices; // 添加必要的命名空间
+using System.Text; // 添加必要的命名空间
 
 namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
 {
+    // 添加FFmpegUtils类的实现
+    internal static class FFmpegUtils
+    {
+        [DllImport("avutil", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int av_strerror(int errnum, byte[] errbuf, int errbuf_size);
+
+        public static string GetErrorDescription(int error)
+        {
+            byte[] buffer = new byte[64];
+            if (av_strerror(error, buffer, buffer.Length) == 0)
+            {
+                int length = Array.IndexOf(buffer, (byte)0);
+                return Encoding.ASCII.GetString(buffer, 0, length);
+            }
+            return $"Unknown error ({error})";
+        }
+    }
+
     public sealed class Decoder : IH264Decoder
     {
         public bool IsHardwareAccelerated => false;
@@ -49,7 +69,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
                 
                 if (result != 0)
                 {
-                    // 添加详细错误处理
+                    // 使用我们实现的FFmpegUtils获取错误描述
                     string errorMsg = FFmpegUtils.GetErrorDescription(result);
                     
                     // 特定错误处理：重置解码器并跳过帧
@@ -93,7 +113,7 @@ namespace Ryujinx.Graphics.Nvdec.FFmpeg.H264
 
         public void Dispose()
         {
-            ResetDecoder();
+            _context?.Dispose();
         }
     }
 }
