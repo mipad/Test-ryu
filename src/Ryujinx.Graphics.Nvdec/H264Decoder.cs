@@ -12,7 +12,6 @@ namespace Ryujinx.Graphics.Nvdec
         private const int MbSizeInPixels = 16;
         private const long TimeoutThresholdMs = 100; // 100ms超时阈值
 
-        // 使用 ResourceManager 直接访问内存
         private static void FillWithZeros(ResourceManager rm, ulong offset, uint size)
         {
             const int MaxChunkSize = 0x1000; // 4KB 块大小
@@ -74,18 +73,18 @@ namespace Ryujinx.Graphics.Nvdec
                     SurfaceWriter.Write(
                         rm.MemoryManager,
                         outputSurface,
-                        lumaOffset + (ulong)pictureInfo.LumaFrameOffset,
-                        chromaOffset + (ulong)pictureInfo.ChromaFrameOffset);
+                        (uint)(lumaOffset + (ulong)pictureInfo.LumaFrameOffset),
+                        (uint)(chromaOffset + (ulong)pictureInfo.ChromaFrameOffset));
                 }
                 else
                 {
                     SurfaceWriter.WriteInterlaced(
                         rm.MemoryManager,
                         outputSurface,
-                        lumaOffset + (ulong)pictureInfo.LumaTopFieldOffset,
-                        chromaOffset + (ulong)pictureInfo.ChromaTopFieldOffset,
-                        lumaOffset + (ulong)pictureInfo.LumaBottomFieldOffset,
-                        chromaOffset + (ulong)pictureInfo.ChromaBottomFieldOffset);
+                        (uint)(lumaOffset + (ulong)pictureInfo.LumaTopFieldOffset),
+                        (uint)(chromaOffset + (ulong)pictureInfo.ChromaTopFieldOffset),
+                        (uint)(lumaOffset + (ulong)pictureInfo.LumaBottomFieldOffset),
+                        (uint)(chromaOffset + (ulong)pictureInfo.ChromaBottomFieldOffset));
                 }
             }
             else
