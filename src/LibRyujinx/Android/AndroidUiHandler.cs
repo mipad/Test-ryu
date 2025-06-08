@@ -22,7 +22,8 @@ namespace LibRyujinx.Android
         private string? _input;
         private ManualResetEvent _resetEvent = new ManualResetEvent(false);
 
-        public IHostUITheme HostUITheme => throw new NotImplementedException();
+        // 修复：实现默认主题
+        public IHostUITheme HostUITheme => new DefaultAndroidTheme();
 
         public IDynamicTextInputHandler CreateDynamicTextInputHandler()
         {
@@ -115,12 +116,19 @@ namespace LibRyujinx.Android
 
         internal void SetResponse(bool isOkPressed, string input)
         {
-            if (_isDisposed)
-                return;
-                
-            _isOkPressed = isOkPressed;
-            _input = input;
-            _resetEvent.Set();
+            try
+            {
+                if (_isDisposed)
+                    return;
+                    
+                _isOkPressed = isOkPressed;
+                _input = input;
+                _resetEvent.Set();
+            }
+            catch (ObjectDisposedException)
+            {
+                // 安全处理已释放的资源
+            }
         }
 
         public void Dispose()
@@ -169,6 +177,19 @@ namespace LibRyujinx.Android
             {
                 // 空实现
             }
+        }
+        
+        // 新增：默认主题实现
+        private class DefaultAndroidTheme : IHostUITheme
+        {
+            public string FontFamily => "Roboto, sans-serif"; // Android 默认字体
+            
+            // 浅色模式默认颜色
+            public ThemeColor DefaultBackgroundColor => new ThemeColor(255, 255, 255, 255); // 白色
+            public ThemeColor DefaultForegroundColor => new ThemeColor(0, 0, 0, 255);       // 黑色
+            public ThemeColor DefaultBorderColor => new ThemeColor(200, 200, 200, 255);     // 浅灰色
+            public ThemeColor SelectionBackgroundColor => new ThemeColor(173, 216, 230, 255); // 浅蓝色
+            public ThemeColor SelectionForegroundColor => new ThemeColor(0, 0, 0, 255);     // 黑色
         }
     }
 }
