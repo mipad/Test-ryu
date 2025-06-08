@@ -708,7 +708,27 @@ namespace Ryujinx.Graphics.Vulkan
             int dstOffset,
             int size,
             bool registerSrcUsage = true)
-        {
+        {   
+            // 空值检查
+    if (src == null || dst == null)
+    {
+        gd.Logger?.Warning?.Print(LogClass.Gpu, "Copy skipped: null buffer reference");
+        return;
+    }
+
+    // 无效缓冲区检查
+    var srcUnsafe = src.GetUnsafe();
+    var dstUnsafe = dst.GetUnsafe();
+    
+    if (srcUnsafe == null || srcUnsafe.Value.Handle == 0 ||
+        dstUnsafe == null || dstUnsafe.Value.Handle == 0)
+    {
+        gd.Logger?.Warning?.Print(LogClass.Gpu, 
+            $"Copy skipped: invalid buffer handle " +
+            $"(Src: {srcUnsafe?.Value.Handle ?? 0}, Dst: {dstUnsafe?.Value.Handle ?? 0})");
+        return;
+    }
+    
             var srcBuffer = registerSrcUsage ? src.Get(cbs, srcOffset, size).Value : src.GetUnsafe().Value;
             var dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
 
