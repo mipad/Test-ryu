@@ -71,11 +71,26 @@ namespace Ryujinx.Graphics.Nvdec
             else
             {
                 // 超时后安全处理
-                rm.MemoryManager.Fill(lumaOffset, (uint)(width * height), 0x00);
-                rm.MemoryManager.Fill(chromaOffset, (uint)(width * height / 2), 0x80);
+                FillWithZeros(lumaOffset, lumaSize);
+            FillWithZeros(chromaOffset, chromaSize);
             }
 
             rm.Cache.Put(outputSurface);
+            // 添加的填充零方法
+        private void FillWithZeros(ulong offset, uint size)
+        {
+            const int BufferSize = 0x1000; // 4KB 缓冲区
+            byte[] zeroBuffer = new byte[BufferSize]; // 自动初始化为0
+            
+            uint remaining = size;
+            while (remaining > 0)
+            {
+                uint chunkSize = Math.Min(remaining, (uint)BufferSize);
+                _memoryManager.Write(offset, zeroBuffer.AsSpan(0, (int)chunkSize));
+                offset += chunkSize;
+                remaining -= chunkSize;
+            }
+        }
         }
     }
 }
