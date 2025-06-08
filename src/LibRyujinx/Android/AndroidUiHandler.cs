@@ -112,26 +112,26 @@ namespace LibRyujinx.Android
             _isDisposed = true;
         }
 
-        // 空实现类
+        // 修正后的空实现类
         private class NullDynamicTextInputHandler : IDynamicTextInputHandler
         {
             // 实现接口要求的属性
             public bool TextProcessingEnabled { get; set; } = false;
             
-            // 实现接口要求的事件（空实现）
-            public event Action<string> TextChangedEvent
+            // 使用接口要求的精确委托类型声明事件
+            public event DynamicTextChangedHandler TextChangedEvent
             {
                 add { }
                 remove { }
             }
             
-            public event Action<object> KeyPressedEvent
+            public event KeyPressedHandler KeyPressedEvent
             {
                 add { }
                 remove { }
             }
             
-            public event Action<object> KeyReleasedEvent
+            public event KeyReleasedHandler KeyReleasedEvent
             {
                 add { }
                 remove { }
@@ -147,7 +147,7 @@ namespace LibRyujinx.Android
             {
                 // 空实现
             }
-            
+
             public void Dispose()
             {
                 // 空实现
