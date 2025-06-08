@@ -1,6 +1,5 @@
 using Ryujinx.HLE.UI;
 using Ryujinx.Memory;
-using SkiaSharp;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -14,6 +13,9 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
     /// </summary>
     internal class SoftwareKeyboardRendererBase
     {
+        // 添加 Android 平台检测标志
+        private static bool IsAndroid => RuntimeInformation.IsOSPlatform(OSPlatform.Android);
+        
         public const int TextBoxBlinkThreshold = 8;
 
         const string MessageText = "Please use the keyboard to input text";
@@ -61,6 +63,9 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
         public SoftwareKeyboardRendererBase(IHostUITheme uiTheme)
         {
+            // Android 平台直接跳过初始化
+            if (IsAndroid) return;
+            
             int ryujinxLogoSize = 32;
 
             string ryujinxIconPath = "Ryujinx.HLE.HOS.Applets.SoftwareKeyboard.Resources.Logo_Ryujinx.png";
@@ -119,6 +124,9 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
         private void CreateFonts(string uiThemeFontFamily)
         {
+            // Android 平台直接跳过
+            if (IsAndroid) return;
+            
             // Try a list of fonts in case any of them is not available in the system.
 
             string[] availableFonts = {
@@ -167,6 +175,10 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
         private static SKBitmap LoadResource(Assembly assembly, string resourcePath, int newWidth, int newHeight)
         {
+            // Android 平台直接返回空
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Android)) 
+                return null;
+
             Stream resourceStream = assembly.GetManifestResourceStream(resourcePath);
 
             return LoadResource(resourceStream, newWidth, newHeight);
@@ -174,6 +186,10 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
         private static SKBitmap LoadResource(Stream resourceStream, int newWidth, int newHeight)
         {
+            // Android 平台直接返回空
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Android)) 
+                return null;
+
             Debug.Assert(resourceStream != null);
 
             var bitmap = SKBitmap.Decode(resourceStream);
@@ -193,10 +209,9 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
         private void DrawImmutableElements()
         {
-            if (_surface == null)
-            {
-                return;
-            }
+            // Android 平台直接跳过
+            if (IsAndroid || _surface == null) return;
+            
             var canvas = _surface.Canvas;
 
             canvas.Clear(SKColors.Transparent);
@@ -213,11 +228,9 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
         public void DrawMutableElements(SoftwareKeyboardUIState state)
         {
-            if (_surface == null)
-            {
-                return;
-            }
-
+            // Android 平台直接跳过
+            if (IsAndroid || _surface == null) return;
+            
             using var paint = new SKPaint(_messageFont)
             {
                 Color = _textNormalColor,
@@ -259,11 +272,9 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
         public void CreateSurface(RenderingSurfaceInfo surfaceInfo)
         {
-            if (_surfaceInfo != null)
-            {
-                return;
-            }
-
+            // Android 平台直接跳过
+            if (IsAndroid || _surfaceInfo != null) return;
+            
             _surfaceInfo = surfaceInfo;
 
             Debug.Assert(_surfaceInfo.ColorFormat == Services.SurfaceFlinger.ColorFormat.A8B8G8R8);
@@ -286,6 +297,9 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
         private void ComputeConstants()
         {
+            // Android 平台直接跳过
+            if (IsAndroid) return;
+            
             int totalWidth = (int)_surfaceInfo.Width;
             int totalHeight = (int)_surfaceInfo.Height;
 
@@ -335,6 +349,9 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
         private void DrawTextBox(SKCanvas canvas, SoftwareKeyboardUIState state)
         {
+            // Android 平台直接跳过
+            if (IsAndroid) return;
+            
             using var textPaint = new SKPaint(_labelsTextFont)
             {
                 IsAntialias = true,
@@ -484,6 +501,9 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
         private void DrawPadButton(SKCanvas canvas, SKPoint point, SKBitmap icon, string label, bool pressed, bool enabled)
         {
+            // Android 平台直接跳过
+            if (IsAndroid) return;
+            
             // Use relative positions so we can center the entire drawing later.
 
             float iconX = 0;
@@ -544,6 +564,9 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
         private void DrawControllerToggle(SKCanvas canvas, SKPoint point)
         {
+            // Android 平台直接跳过
+            if (IsAndroid) return;
+            
             using var paint = new SKPaint(_labelsTextFont)
             {
                 IsAntialias = true,
@@ -582,6 +605,9 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
         public unsafe void CopyImageToBuffer()
         {
+            // Android 平台直接跳过
+            if (IsAndroid) return;
+            
             lock (_bufferLock)
             {
                 if (_surface == null)
@@ -609,6 +635,9 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
         public bool WriteBufferToMemory(IVirtualMemoryManager destination, ulong position)
         {
+            // Android 平台直接返回 false
+            if (IsAndroid) return false;
+            
             lock (_bufferLock)
             {
                 if (_bufferData == null)
