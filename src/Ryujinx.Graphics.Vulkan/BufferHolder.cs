@@ -240,8 +240,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetBuffer()
         {
-            //
-            if (_bufferHandle == 0)
+            // ：使用Handle属性检查有效性
+    var buffer = _buffer.GetUnsafe();
+    if (buffer.Value.Handle == 0)
     {
         Logger.Error?.Print(LogClass.Gpu, $"Attempted to use invalid buffer");
     }
@@ -513,12 +514,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe void SetData(int offset, ReadOnlySpan<byte> data, CommandBufferScoped? cbs = null, Action endRenderPass = null, bool allowCbsWait = true)
         { 
-            // 
-            if (_bufferHandle == 0)
+            // 使用Handle属性检查有效性
+    var bufferRef = _buffer.GetUnsafe();
+    if (bufferRef.Value.Handle == 0)
     {
         Logger.Error?.Print(LogClass.Gpu, $"Attempted to set data on invalid buffer");
         return;
-            }
+    }
     
             int dataSize = Math.Min(data.Length, Size - offset);
             if (dataSize == 0)
@@ -622,15 +624,7 @@ namespace Ryujinx.Graphics.Vulkan
                         var srcBuffer = srcHolder.GetBuffer();
                         var dstBuffer = this.GetBuffer(cbs.Value.CommandBuffer, true);
 
-                        // 在复制前检查缓冲区有效性
-                        if (IsBufferValid() && srcHolder.IsBufferValid())
-                        {
-                            Copy(_gd, cbs.Value, srcBuffer, dstBuffer, 0, offset, dataSize);
-                        }
-                        else
-                        {
-                            Logger.Warning?.Print(LogClass.Gpu, "SetData: Skipping copy due to invalid buffer");
-                        }
+                        Copy(_gd, cbs.Value, srcBuffer, dstBuffer, 0, offset, dataSize);
 
                         srcHolder.Dispose();
                     }
@@ -721,84 +715,57 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         public static unsafe void Copy(
-    VulkanRenderer gd,
-    CommandBufferScoped cbs,
-    Auto<DisposableBuffer> src,
-    Auto<DisposableBuffer> dst,
-    int srcOffset,
-    int dstOffset,
-    int size,
-    bool registerSrcUsage = true)
-{   
-    // 获取底层缓冲区引用
-    var srcBufferRef = src?.GetUnsafe();
-    var dstBufferRef = dst?.GetUnsafe();
-
-    // 检查引用是否存在
-    if (srcBufferRef == null || dstBufferRef == null)
-    {
-        Logger.Warning?.Print(LogClass.Gpu, 
-            $"Copy skipped: invalid buffer reference (Src: {srcBufferRef == null}, Dst: {dstBufferRef == null})");
-        return;
-    }
-
-    // 检查缓冲区句柄有效性
-    ulong srcHandle = srcBufferRef.Value.Value.Handle;
-    ulong dstHandle = dstBufferRef.Value.Value.Handle;
-
-    if (srcHandle == 0 || dstHandle == 0)
-    {
-        Logger.Warning?.Print(LogClass.Gpu, 
-            $"Copy skipped: invalid buffer handle " +
-            $"(Src: {srcHandle}, Dst: {dstHandle})");
-        return;
-    }
-
-    // 获取安全访问的缓冲区对象
+            VulkanRenderer gd,
+            CommandBufferScoped cbs,
+            Auto<DisposableBuffer> src,
+            Auto<DisposableBuffer> dst,
+            int srcOffset,
+            int dstOffset,
+            int size,
+            bool registerSrcUsage = true)
+        {   
+            // 修复：直接获取VkBuffer而不是尝试访问Value属性
     VkBuffer srcBuffer = registerSrcUsage ? 
         src.Get(cbs, srcOffset, size).Value : 
-        srcBufferRef.Value.Value;
+        src.GetUnsafe().Value;
     
     VkBuffer dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
 
-    // 再次验证句柄有效性
+    // 修复：直接检查句柄的有效性
     if (srcBuffer.Handle == 0 || dstBuffer.Handle == 0)
     {
         Logger.Warning?.Print(LogClass.Gpu, 
-            $"Copy skipped: invalid buffer handle after retrieval " +
+            $"Copy skipped: invalid buffer handle " +
             $"(Src: {srcBuffer.Handle}, Dst: {dstBuffer.Handle})");
         return;
     }
 
-    // 插入内存屏障
-    InsertBufferBarrier(
-        gd,
-        cbs.CommandBuffer,
-        dstBuffer,
-        DefaultAccessFlags,
-        AccessFlags.TransferWriteBit,
-        PipelineStageFlags.AllCommandsBit,
-        PipelineStageFlags.TransferBit,
-        dstOffset,
-        size);
+            InsertBufferBarrier(
+                gd,
+                cbs.CommandBuffer,
+                dstBuffer,
+                DefaultAccessFlags,
+                AccessFlags.TransferWriteBit,
+                PipelineStageFlags.AllCommandsBit,
+                PipelineStageFlags.TransferBit,
+                dstOffset,
+                size);
 
-    // 执行缓冲区复制
-    var region = new BufferCopy((ulong)srcOffset, (ulong)dstOffset, (ulong)size);
+            var region = new BufferCopy((ulong)srcOffset, (ulong)dstOffset, (ulong)size);
 
-    gd.Api.CmdCopyBuffer(cbs.CommandBuffer, srcBuffer, dstBuffer, 1, &region);
+            gd.Api.CmdCopyBuffer(cbs.CommandBuffer, srcBuffer, dstBuffer, 1, &region);
 
-    // 插入内存屏障
-    InsertBufferBarrier(
-        gd,
-        cbs.CommandBuffer,
-        dstBuffer,
-        AccessFlags.TransferWriteBit,
-        DefaultAccessFlags,
-        PipelineStageFlags.TransferBit,
-        PipelineStageFlags.AllCommandsBit,
-        dstOffset,
-        size);
-}
+            InsertBufferBarrier(
+                gd,
+                cbs.CommandBuffer,
+                dstBuffer,
+                AccessFlags.TransferWriteBit,
+                DefaultAccessFlags,
+                PipelineStageFlags.TransferBit,
+                PipelineStageFlags.AllCommandsBit,
+                dstOffset,
+                size);
+        }
 
         public static unsafe void InsertBufferBarrier(
             VulkanRenderer gd,
@@ -871,7 +838,7 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 holder = _gd.BufferManager.Create(_gd, (size * 2 + 3) & ~3, baseType: BufferAllocationType.DeviceLocal);
 
-              _gd.PipelineInternal.EndRenderPass();
+                _gd.PipelineInternal.EndRenderPass();
                 _gd.HelperShader.ConvertI8ToI16(_gd, cbs, this, holder, offset, size);
 
                 key.SetBuffer(holder.GetBuffer());
@@ -906,7 +873,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             return holder.GetBuffer();
-       }
+        }
 
         public Auto<DisposableBuffer> GetBufferTopologyConversion(CommandBufferScoped cbs, int offset, int size, IndexBufferPattern pattern, int indexSize)
         {
@@ -960,7 +927,8 @@ namespace Ryujinx.Graphics.Vulkan
         
         private bool IsBufferValid()
 {
-    return _bufferHandle != 0;
+    var buffer = _buffer.GetUnsafe();
+    return buffer.Value.Handle != 0; //检查句柄而非空值
 }
 
         public void Dispose()
@@ -986,50 +954,3 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 }
-        public void WaitForFences(int offset, int size)
-        {
-            _waitable.WaitForFences(_gd.Api, _device, offset, size);
-        }
-
-        private bool BoundToRange(int offset, ref int size)
-        {
-            if (offset >= Size)
-            {
-                return false;
-            }
-
-            size = Math.Min(Size - offset, size);
-
-            return true;
-        }
-
-        public Auto<DisposableBuffer> GetBufferI8ToI16(CommandBufferScoped cbs, int offset, int size)
-        {
-            if (!BoundToRange(offset, ref size))
-            {
-                return null;
-            }
-
-            var key = new I8ToI16CacheKey(_gd);
-
-            if (!_cachedConvertedBuffers.TryGetValue(offset, size, key, out var holder))
-            {
-                holder = _gd.BufferManager.Create(_gd, (size * 2 + 3) & ~3, baseType: BufferAllocationType.DeviceLocal);
-
-              _gd.PipelineInternal.EndRenderPass();
-                _gd.HelperShader.ConvertI8ToI16(_gd, cbs, this, holder, offset, size);
-
-                key.SetBuffer(holder.GetBuffer());
-
-                _cachedConvertedBuffers.Add(offset, size, key, holder);
-            }
-
-            return holder.GetBuffer();
-        }
-
-        public Auto<DisposableBuffer> GetAlignedVertexBuffer(CommandBufferScoped cbs, int offset, int size, int stride, int alignment)
-        {
-            if (!BoundToRange(offset, ref size))
-            {
-                return null;
-         
