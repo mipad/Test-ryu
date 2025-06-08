@@ -2,9 +2,9 @@ name: Android CI  Fix
 
 on:
   push:
-    branches: [ "nw11-a" ]
+    branches: [ "nw11-d" ]
   pull_request:
-    branches: [ "nw11-a" ]
+    branches: [ "nw11-d" ]
 
 jobs:
   build:
@@ -25,7 +25,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: nw11-a
+        ref: nw11-d
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
