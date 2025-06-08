@@ -21,7 +21,20 @@ namespace LibRyujinx.Android
         private string? _input;
         private ManualResetEvent _resetEvent = new ManualResetEvent(false);
 
-        public IHostUITheme HostUITheme => throw new NotImplementedException();
+        // 实现默认主题
+        private class DefaultHostUITheme : IHostUITheme
+        {
+            public string FontFamily => "sans-serif";
+
+            public ThemeColor DefaultBackgroundColor => new ThemeColor();
+            public ThemeColor DefaultForegroundColor => new ThemeColor();
+            public ThemeColor DefaultBorderColor => new ThemeColor();
+            public ThemeColor SelectionBackgroundColor => new ThemeColor();
+            public ThemeColor SelectionForegroundColor => new ThemeColor();
+        }
+
+        // 返回默认主题实例
+        public IHostUITheme HostUITheme => new DefaultHostUITheme();
 
         public IDynamicTextInputHandler CreateDynamicTextInputHandler()
         {
