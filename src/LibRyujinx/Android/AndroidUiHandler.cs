@@ -8,6 +8,7 @@ using Ryujinx.HLE.UI;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,20 +22,7 @@ namespace LibRyujinx.Android
         private string? _input;
         private ManualResetEvent _resetEvent = new ManualResetEvent(false);
 
-        // 实现默认主题
-        private class DefaultHostUITheme : IHostUITheme
-        {
-            public string FontFamily => "sans-serif";
-
-            public ThemeColor DefaultBackgroundColor => new ThemeColor();
-            public ThemeColor DefaultForegroundColor => new ThemeColor();
-            public ThemeColor DefaultBorderColor => new ThemeColor();
-            public ThemeColor SelectionBackgroundColor => new ThemeColor();
-            public ThemeColor SelectionForegroundColor => new ThemeColor();
-        }
-
-        // 返回默认主题实例
-        public IHostUITheme HostUITheme => new DefaultHostUITheme();
+        public IHostUITheme HostUITheme => throw new NotImplementedException();
 
         public IDynamicTextInputHandler CreateDynamicTextInputHandler()
         {
@@ -44,9 +32,12 @@ namespace LibRyujinx.Android
 
         public bool DisplayErrorAppletDialog(string title, string message, string[] buttonsText)
         {
+            // 默认使用第一个按钮作为确认按钮
+            string buttonText = buttonsText?.Length > 0 ? buttonsText[0] : "OK";
+            
             Interop.UpdateUiHandler(title ?? "",
                 message ?? "",
-                "",
+                buttonText,
                 1,
                 0,
                 0,
@@ -54,13 +45,17 @@ namespace LibRyujinx.Android
                 "",
                 "");
 
+            _resetEvent.WaitOne();
+
             return _isOkPressed;
         }
 
         public bool DisplayInputDialog(SoftwareKeyboardUIArgs args, out string userText)
         {
             _input = null;
+            _isOkPressed = false;
             _resetEvent.Reset();
+            
             Interop.UpdateUiHandler("Software Keyboard",
                 args.HeaderText ?? "",
                 args.GuideText ?? "",
@@ -80,9 +75,12 @@ namespace LibRyujinx.Android
 
         public bool DisplayMessageDialog(string title, string message)
         {
+            _isOkPressed = false;
+            _resetEvent.Reset();
+            
             Interop.UpdateUiHandler(title ?? "",
                 message ?? "",
-                "",
+                "OK",
                 1,
                 0,
                 0,
@@ -90,12 +88,16 @@ namespace LibRyujinx.Android
                 "",
                 "");
 
+            _resetEvent.WaitOne();
+
             return _isOkPressed;
         }
 
         public bool DisplayMessageDialog(ControllerAppletUIArgs args)
         {
-            string playerCount = args.PlayerCountMin == args.PlayerCountMax ? $"exactly {args.PlayerCountMin}" : $"{args.PlayerCountMin}-{args.PlayerCountMax}";
+            string playerCount = args.PlayerCountMin == args.PlayerCountMax ? 
+                $"exactly {args.PlayerCountMin}" : 
+                $"{args.PlayerCountMin}-{args.PlayerCountMax}";
 
             string message = $"Application requests **{playerCount}** player(s) with:\n\n"
                            + $"**TYPES:** {args.SupportedStyles}\n\n"
@@ -108,13 +110,14 @@ namespace LibRyujinx.Android
 
         public void ExecuteProgram(Switch device, ProgramSpecifyKind kind, ulong value)
         {
-           // throw new NotImplementedException();
+            // 空实现
         }
 
         internal void SetResponse(bool isOkPressed, string input)
         {
             if (_isDisposed)
                 return;
+                
             _isOkPressed = isOkPressed;
             _input = input;
             _resetEvent.Set();
@@ -123,6 +126,7 @@ namespace LibRyujinx.Android
         public void Dispose()
         {
             _isDisposed = true;
+            _resetEvent.Set(); // 确保所有等待线程被释放
         }
 
         // 修正后的空实现类
