@@ -968,10 +968,6 @@ namespace Ryujinx.Graphics.Gpu.Memory
          // 添加的空引用检查 
         if (buffer == null)
                 {
-                    // 使用正确的日志调用
-                    Logger.Warning?.Print(LogClass.Gpu, 
-                        $"No buffer found for address 0x{address:X8}, size 0x{size:X8}. " +
-                        $"Using dummy buffer.");
                     return _dummyBuffer;
                 }
         
@@ -989,10 +985,6 @@ namespace Ryujinx.Graphics.Gpu.Memory
         //添加的空引用检查
         if (buffer == null)
                 {
-                    // 使用正确的日志调用
-                    Logger.Warning?.Print(LogClass.Gpu, 
-                        $"No buffer found for address 0x{address:X8} (size=1). " +
-                        $"Using dummy buffer.");
                     return _dummyBuffer;
                 }
             }
