@@ -514,13 +514,19 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe void SetData(int offset, ReadOnlySpan<byte> data, CommandBufferScoped? cbs = null, Action endRenderPass = null, bool allowCbsWait = true)
         { 
-// 深度有效性检查
+// 计算实际可写入的数据大小
+    int dataSize = Math.Min(data.Length, Size - offset);
+    if (dataSize == 0)
+    {
+        return;
+    }
+
+    // 深度有效性检查
     if (!IsBufferValid())
     {
         Logger.Error?.Print(LogClass.Gpu, $"Attempted to set data on invalid buffer");
         return;
     }
-
             bool allowMirror = _useMirrors && allowCbsWait && cbs != null && _activeType <= BufferAllocationType.HostMapped;
 
             if (_map != IntPtr.Zero)
@@ -731,14 +737,13 @@ private bool IsBufferValid()
             int size,
             bool registerSrcUsage = true)
         {   
-            // 修复：直接获取VkBuffer而不是尝试访问Value属性
+// 直接检查句柄有效性而不是比较null
     VkBuffer srcBuffer = registerSrcUsage ? 
         src.Get(cbs, srcOffset, size).Value : 
         src.GetUnsafe().Value;
     
     VkBuffer dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
 
-    // 修复：直接检查句柄的有效性
     if (srcBuffer.Handle == 0 || dstBuffer.Handle == 0)
     {
         Logger.Warning?.Print(LogClass.Gpu, 
