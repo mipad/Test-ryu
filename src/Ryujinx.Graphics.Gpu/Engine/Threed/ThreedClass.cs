@@ -8,7 +8,6 @@ using Ryujinx.Graphics.Gpu.Engine.Types;
 using Ryujinx.Graphics.Gpu.Synchronization;
 using Ryujinx.Memory.Range;
 using System;
-using System.Linq;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
@@ -32,21 +31,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         private readonly StateUpdater _stateUpdater;
 
         private SetMmeShadowRamControlMode ShadowMode => _state.State.SetMmeShadowRamControlMode;
-
-// 在ThreedClass类中添加新字段
-private struct PendingDraw
-{
-    public PrimitiveTopology Topology;
-    public int Count;
-    public int InstanceCount;
-    public int FirstIndex;
-    public int FirstVertex;
-    public int FirstInstance;
-    public bool Indexed;
-}
-
-private List<PendingDraw> _pendingDraws = new List<PendingDraw>(32);
-private const int MinBatchCount = 100; // 最小批处理顶点数
 
         /// <summary>
         /// Creates a new instance of the 3D engine class.
@@ -148,12 +132,12 @@ private const int MinBatchCount = 100; // 最小批处理顶点数
         /// <summary>
         /// Updates current host state for all registers modified since the last call to this method.
         /// </summary>
-public void UpdateState()
-{
-    _fifoClass.CreatePendingSyncs();
-    _cbUpdater.FlushUboDirty();
-    _stateUpdater.Update();
-}
+        public void UpdateState()
+        {
+            _fifoClass.CreatePendingSyncs();
+            _cbUpdater.FlushUboDirty();
+            _stateUpdater.Update();
+        }
 
         /// <summary>
         /// Updates current host state for all registers modified since the last call to this method.
@@ -762,7 +746,7 @@ public void UpdateState()
         /// Binds a uniform buffer for the tessellation evaluation shader stage.
         /// </summary>
         /// <param name="argument">Method call argument</param>
-        private void ConstantBufferBindTessEvaluation(int argument)
+  private void ConstantBufferBindTessEvaluation(int argument)
         {
             _cbUpdater.BindTessEvaluation(argument);
         }
@@ -805,62 +789,16 @@ public void UpdateState()
         /// <param name="firstInstance">First instance</param>
         /// <param name="indexed">True if the draw is indexed, false otherwise</param>
         public void Draw(
-    PrimitiveTopology topology,
-    int count,
-    int instanceCount,
-    int firstIndex,
-    int firstVertex,
-    int firstInstance,
-    bool indexed)
-{
-    // 小规模绘制进入批处理队列
-    if (count < MinBatchCount && !indexed)
-    {
-        _pendingDraws.Add(new PendingDraw
+            PrimitiveTopology topology,
+            int count,
+            int instanceCount,
+            int firstIndex,
+            int firstVertex,
+            int firstInstance,
+            bool indexed)
         {
-            Topology = topology,
-            Count = count,
-            InstanceCount = instanceCount,
-            FirstIndex = firstIndex,
-            FirstVertex = firstVertex,
-            FirstInstance = firstInstance,
-            Indexed = indexed
-        });
-        
-        // 达到批处理阈值时执行批量绘制
-        if (_pendingDraws.Sum(d => d.Count) >= MinBatchCount)
-        {
-            PerformBatchedDraw();
+            _drawManager.Draw(this, topology, count, instanceCount, firstIndex, firstVertex, firstInstance, indexed);
         }
-        return;
-    }
-    
-    // 直接执行大规模绘制
-    _drawManager.Draw(this, topology, count, instanceCount, firstIndex, firstVertex, firstInstance, indexed);
-}
-
-// 添加批处理方法
-private void PerformBatchedDraw()
-{
-    if (_pendingDraws.Count == 0) return;
-    
-    // 合并顶点数据 (实际项目需实现顶点数据合并)
-    var firstDraw = _pendingDraws[0];
-    int totalCount = _pendingDraws.Sum(d => d.Count);
-    
-    // 执行批量绘制
-    _drawManager.Draw(
-        this,
-        firstDraw.Topology,
-        totalCount,
-        firstDraw.InstanceCount,
-        firstDraw.FirstIndex,
-        firstDraw.FirstVertex,
-        firstDraw.FirstInstance,
-        firstDraw.Indexed);
-    
-    _pendingDraws.Clear();
-}
 
         /// <summary>
         /// Performs a indirect draw, with parameters from a GPU buffer.
@@ -909,4 +847,4 @@ private void PerformBatchedDraw()
             GC.SuppressFinalize(this);
         }
     }
-} 
+}
