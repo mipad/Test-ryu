@@ -952,45 +952,44 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="write">Whether the buffer will be written to by this use</param>
         /// <returns>The buffer where the range is fully contained</returns>
         private Buffer GetBuffer(ulong address, ulong size, BufferStage stage, bool write = false)
-        {   
-            // 添加无效地址检查 
+{
+    // 添加无效地址检查
     if (address == 0xFFFFFFFFFFFFFFFF)
     {
-        return buffer; // 返回
+        return null; // 返回 null 或者抛出异常，因为此时 buffer 还未声明
     }
-    
-            Buffer buffer;
 
-            if (size != 0)
-            {
-                buffer = _buffers.FindFirstOverlap(address, size);
+    Buffer buffer = null; // 初始化 buffer 为 null
 
-         // 添加的空引用检查 
+    if (size != 0)
+    {
+        buffer = _buffers.FindFirstOverlap(address, size);
+        // 添加的空引用检查
         if (buffer == null)
-                {
-                    return buffer;
-                }
-        
-                buffer.CopyFromDependantVirtualBuffers();
-                buffer.SynchronizeMemory(address, size);
-
-                if (write)
-                {
-                    buffer.SignalModified(address, size, stage);
-                }
-            }
-            else
-            {
-                buffer = _buffers.FindFirstOverlap(address, 1);
-        //添加的空引用检查
-        if (buffer == null)
-                {
-                    return buffer;
-                }
-            }
-
-            return buffer;
+        {
+            return null; // 返回 null 或者抛出异常
         }
+
+        buffer.CopyFromDependantVirtualBuffers();
+        buffer.SynchronizeMemory(address, size);
+
+        if (write)
+        {
+            buffer.SignalModified(address, size, stage);
+        }
+    }
+    else
+    {
+        buffer = _buffers.FindFirstOverlap(address, 1);
+        // 添加的空引用检查
+        if (buffer == null)
+        {
+            return null; // 返回 null 或者抛出异常
+        }
+    }
+
+    return buffer;
+}
 
         /// <summary>
         /// Performs guest to host memory synchronization of a given memory range.
