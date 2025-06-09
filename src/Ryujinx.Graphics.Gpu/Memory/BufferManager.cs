@@ -276,6 +276,12 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="flags">Buffer usage flags</param>
         public void SetGraphicsStorageBuffer(int stage, int index, ulong gpuVa, ulong size, BufferUsageFlags flags)
         {
+            // 新增检查：检测无效地址
+    if (gpuVa == 0xFFFFFFFFFFFFFFFF || gpuVa == 0)
+    {
+        _gpStorageBuffers[stage].SetBounds(index, new MultiRange(MemoryManager.PteUnmapped, 0UL), flags);
+        return;
+        
             size += gpuVa & ((ulong)_context.Capabilities.StorageBufferOffsetAlignment - 1);
 
             BuffersPerStage buffers = _gpStorageBuffers[stage];
