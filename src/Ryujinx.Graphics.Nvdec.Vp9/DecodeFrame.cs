@@ -1004,6 +1004,12 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             BlockSize bsize,
             int n4x4L2)
         {
+            // 添加更严格的边界检查
+    if (miRow >= cm.MiRows || miCol >= cm.MiCols)
+    {
+        return;
+    }
+    
             int n8x8L2 = n4x4L2 - 1;
             int num8x8Wh = 1 << n8x8L2;
             int hbs = num8x8Wh >> 1;
@@ -1022,17 +1028,26 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             subsize = Luts.SubsizeLookup[(int)partition][(int)bsize];
             if (hbs == 0)
             {
+            // 在解码前添加安全验证
+        if (miRow < cm.MiRows && miCol < cm.MiCols)
+        {
+
                 // Calculate bmode block dimensions (log 2)
                 xd.BmodeBlocksWl = (byte)(1 >> ((partition & PartitionType.PartitionVert) != 0 ? 1 : 0));
                 xd.BmodeBlocksHl = (byte)(1 >> ((partition & PartitionType.PartitionHorz) != 0 ? 1 : 0));
                 DecodeBlock(ref twd, ref cm, miRow, miCol, subsize, 1, 1);
+            }
             }
             else
             {
                 switch (partition)
                 {
                     case PartitionType.PartitionNone:
+                    // 添加安全验证
+                if (miRow < cm.MiRows && miCol < cm.MiCols)
+                {
                         DecodeBlock(ref twd, ref cm, miRow, miCol, subsize, n4x4L2, n4x4L2);
+                        }
                         break;
                     case PartitionType.PartitionHorz:
                         DecodeBlock(ref twd, ref cm, miRow, miCol, subsize, n4x4L2, n8x8L2);
@@ -1075,6 +1090,12 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             ref InternalErrorInfo errorInfo,
             ref Reader r)
         {
+        // 添加数据有效性检查
+    if (data.IsNull || readSize <= 0)
+    {
+        errorInfo.InternalError(CodecErr.CodecCorruptFrame, "Invalid tile data");
+        return;
+    }
             // Validate the calculated partition length. If the buffer described by the
             // partition can't be fully read then throw an error.
             if (!ReadIsValid(data, readSize))
@@ -1144,6 +1165,12 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             int tileRows,
             ref Array4<Array64<TileBuffer>> tileBuffers)
         {
+        // 添加输入验证
+    if (tileRows > 4 || tileCols > 64)
+    {
+        cm.Error.InternalError(CodecErr.CodecCorruptFrame, "Invalid tile configuration");
+        return;
+        
             int r, c;
 
             for (r = 0; r < tileRows; ++r)
@@ -1236,6 +1263,14 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
 
             do
             {
+                // 添加边界检查，防止索引越界
+        if (n < 0 || n >= tileBuffers.Length)
+        {
+            tileData.ErrorInfo.InternalError(CodecErr.CodecCorruptFrame, "Invalid tile buffer index");
+            tileData.Xd.Corrupted = true;
+            break;
+        }
+        
                 ref TileBuffer buf = ref tileBuffers[n];
 
                 Debug.Assert(cm.Log2TileRows == 0);
@@ -1284,6 +1319,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
 
             for (n = 0; n < numWorkers; ++n)
             {
+            
                 ref TileWorkerData tileData = ref cm.TileWorkerData[n + totalTiles];
 
                 tileData.Xd = cm.Mb;
@@ -1340,12 +1376,21 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
 
             Parallel.For(0, numWorkers, n =>
             {
+            try
+        {
                 ref TileWorkerData tileData = ref cmPtr.Value.TileWorkerData[n + totalTiles];
 
                 if (!DecodeTileCol(ref tileData, ref cmPtr.Value, ref tileBuffers))
                 {
                     cmPtr.Value.Mb.Corrupted = true;
                 }
+                }
+        catch (Exception ex)
+        {
+            // 捕获并记录并行任务中的异常
+            cmPtr.Value.Error.InternalError(CodecErr.CodecError, $"Tile decoding failed: {ex.Message}");
+            cmPtr.Value.Mb.Corrupted = true;
+        }
             });
 
             for (; n > 0; --n)
@@ -1384,4 +1429,4 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
             }
         }
     }
-}
+    }
