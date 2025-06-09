@@ -956,7 +956,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             // 添加无效地址检查 
     if (address == 0xFFFFFFFFFFFFFFFF)
     {
-        return _dummyBuffer; // 返回虚拟缓冲区避免崩溃
+        return buffer; // 返回
     }
     
             Buffer buffer;
@@ -968,7 +968,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
          // 添加的空引用检查 
         if (buffer == null)
                 {
-                    return _dummyBuffer;
+                    return buffer;
                 }
         
                 buffer.CopyFromDependantVirtualBuffers();
@@ -985,7 +985,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         //添加的空引用检查
         if (buffer == null)
                 {
-                    return _dummyBuffer;
+                    return buffer;
                 }
             }
 
