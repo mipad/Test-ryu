@@ -1170,7 +1170,7 @@ namespace Ryujinx.Graphics.Nvdec.Vp9
     {
         cm.Error.InternalError(CodecErr.CodecCorruptFrame, "Invalid tile configuration");
         return;
-        
+        }
             int r, c;
 
             for (r = 0; r < tileRows; ++r)
