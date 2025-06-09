@@ -22,7 +22,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// </summary>
         public const int OverlapsBufferMaxCapacity = 10000;
 
-        private const ulong BufferAlignmentSize = 0x1000;
+        private const ulong BufferAlignmentSize = 0x10000;
         private const ulong BufferAlignmentMask = BufferAlignmentSize - 1;
 
         /// <summary>
@@ -34,7 +34,8 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
         private readonly GpuContext _context;
         private readonly PhysicalMemory _physicalMemory;
-
+        private Buffer _dummyBuffer; // 添加字段声明
+        
         /// <remarks>
         /// Only modified from the GPU thread. Must lock for add/remove.
         /// Must lock for any access from other threads.
@@ -65,7 +66,14 @@ namespace Ryujinx.Graphics.Gpu.Memory
             _multiRangeBuffers = new MultiRangeList<MultiRangeBuffer>();
 
             _bufferOverlaps = new Buffer[OverlapsBufferInitialCapacity];
-
+             _dummyBuffer = new Buffer(
+                 context,
+                 physicalMemory,
+                 0,         // address
+                 0x10000,         // size
+                 BufferStage.None, // stage
+                 false      // sparseCompatible
+             );
             _dirtyCache = new Dictionary<ulong, BufferCacheEntry>();
 
             // There are a lot more entries on the modified cache, so it is separate from the one for ForceDirty.
@@ -699,7 +707,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             if ((address & (SparseBufferAlignmentSize - 1)) != 0 || (size & (SparseBufferAlignmentSize - 1)) != 0)
             {
-                return;
+         return;
             }
 
             MultiRangeBuffer[] overlaps = new MultiRangeBuffer[10];
@@ -909,7 +917,20 @@ namespace Ryujinx.Graphics.Gpu.Memory
             {
                 MemoryRange subRange = range.GetSubRange(i);
 
-                Buffer subBuffer = _buffers.FindFirstOverlap(subRange.Address, subRange.Size);
+                // 处理无效地址
+         if (subRange.Address == MemoryManager.PteUnmapped)
+         {
+             continue;
+         }
+         
+                // 添加详细的空引用检查
+        Buffer subBuffer = _buffers.FindFirstOverlap(subRange.Address, subRange.Size);
+        if (subBuffer == null)
+        {
+            throw new InvalidOperationException(
+                $"No buffer found for sub-range address 0x{subRange.Address:X8}, size 0x{subRange.Size:X8}. " +
+                $"This usually indicates a missing buffer creation for the range.");
+        }
 
                 subBuffer.SynchronizeMemory(subRange.Address, subRange.Size);
 
@@ -952,37 +973,45 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="write">Whether the buffer will be written to by this use</param>
         /// <returns>The buffer where the range is fully contained</returns>
         private Buffer GetBuffer(ulong address, ulong size, BufferStage stage, bool write = false)
-{
-    Buffer buffer;
-
-    if (size != 0)
+        {   
+            // 添加无效地址检查 
+    if (address == 0xFFFFFFFFFFFFFFFF)
     {
-        buffer = _buffers.FindFirstOverlap(address, size);
+        return _dummyBuffer; // 返回虚拟缓冲区避免崩溃
+    }
+    
+            Buffer buffer;
 
-        // 添加null检查
-        if (buffer != null)
-        {
-            buffer.CopyFromDependantVirtualBuffers();
-            buffer.SynchronizeMemory(address, size);
-
-            if (write)
+            if (size != 0)
             {
-                buffer.SignalModified(address, size, stage);
-            }
-        }
-        else
-        {
-            // 处理未找到缓冲区的情况（可选）
-            // 例如：创建新缓冲区或记录警告
-        }
-    }
-    else
-    {
-        buffer = _buffers.FindFirstOverlap(address, 1);
-    }
+                buffer = _buffers.FindFirstOverlap(address, size);
 
-    return buffer; // 可能返回null
-}
+         // 添加的空引用检查 
+        if (buffer == null)
+                {
+                    return _dummyBuffer;
+                }
+        
+                buffer.CopyFromDependantVirtualBuffers();
+                buffer.SynchronizeMemory(address, size);
+
+                if (write)
+                {
+                    buffer.SignalModified(address, size, stage);
+                }
+            }
+            else
+            {
+                buffer = _buffers.FindFirstOverlap(address, 1);
+        //添加的空引用检查
+        if (buffer == null)
+                {
+                    return _dummyBuffer;
+                }
+            }
+
+            return buffer;
+        }
 
         /// <summary>
         /// Performs guest to host memory synchronization of a given memory range.
