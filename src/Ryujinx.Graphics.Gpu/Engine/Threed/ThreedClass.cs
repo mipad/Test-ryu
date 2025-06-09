@@ -150,12 +150,6 @@ private const int MinBatchCount = 100; // 最小批处理顶点数
         /// </summary>
 public void UpdateState()
 {
-    // 仅在状态实际变化时更新
-    if (!_stateUpdater.HasPendingUpdates)
-    {
-        return;
-    }
-    
     _fifoClass.CreatePendingSyncs();
     _cbUpdater.FlushUboDirty();
     _stateUpdater.Update();
