@@ -951,43 +951,23 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="stage">Buffer stage that triggered the access</param>
         /// <param name="write">Whether the buffer will be written to by this use</param>
         /// <returns>The buffer where the range is fully contained</returns>
-        private Buffer GetBuffer(ulong address, ulong size, BufferStage stage, bool write = false)
+        public Buffer GetBuffer(MultiRange range, BufferStage stage, bool forWrite)
 {
-    // 添加无效地址检查
-    if (address == 0xFFFFFFFFFFFFFFFF)
+    // 添加空引用检查
+    if (range.IsEmpty)
     {
-        return null; // 返回 null 或者抛出异常，因为此时 buffer 还未声明
+        return null; // 或返回一个空缓冲区对象
     }
 
-    Buffer buffer = null; // 初始化 buffer 为 null
-
-    if (size != 0)
+    Buffer buffer = FindOrCreateBuffer(range, ...);
+    
+    // 额外安全校验
+    if (buffer == null)
     {
-        buffer = _buffers.FindFirstOverlap(address, size);
-        // 添加的空引用检查
-        if (buffer == null)
-        {
-            return null; // 返回 null 或者抛出异常
-        }
-
-        buffer.CopyFromDependantVirtualBuffers();
-        buffer.SynchronizeMemory(address, size);
-
-        if (write)
-        {
-            buffer.SignalModified(address, size, stage);
-        }
+        Logger.Warning?.Print(LogClass.Gpu, $"Invalid buffer range: {range}");
+        return null;
     }
-    else
-    {
-        buffer = _buffers.FindFirstOverlap(address, 1);
-        // 添加的空引用检查
-        if (buffer == null)
-        {
-            return null; // 返回 null 或者抛出异常
-        }
-    }
-
+    
     return buffer;
 }
 
