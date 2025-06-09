@@ -959,8 +959,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         return null; // 或返回一个空缓冲区对象
     }
 
-    Buffer buffer = FindOrCreateBuffer(range, ...);
-    
+    Buffer buffer = FindOrCreateBuffer(subRange.Address, subRange.Size);
     // 额外安全校验
     if (buffer == null)
     {
