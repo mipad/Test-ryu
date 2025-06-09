@@ -281,6 +281,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
     {
         _gpStorageBuffers[stage].SetBounds(index, new MultiRange(MemoryManager.PteUnmapped, 0UL), flags);
         return;
+        }
         
             size += gpuVa & ((ulong)_context.Capabilities.StorageBufferOffsetAlignment - 1);
 
