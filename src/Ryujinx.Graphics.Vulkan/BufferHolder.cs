@@ -641,8 +641,9 @@ private bool IsBufferValid()
 {
     try 
     {
-        var buffer = _buffer.GetUnsafe();
-        return buffer != null && buffer.Value.Handle != 0;
+        ref DisposableBuffer buffer = ref _buffer.GetUnsafe();
+        // 直接检查句柄是否为0（无效值）
+        return buffer.Handle != 0;
     }
     catch (ObjectDisposedException)
     {
