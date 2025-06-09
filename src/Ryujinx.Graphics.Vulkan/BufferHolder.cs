@@ -931,12 +931,6 @@ private bool IsBufferValid()
         {
             _cachedConvertedBuffers.Remove(offset, size, key);
         }
-        
-        private bool IsBufferValid()
-{
-    var buffer = _buffer.GetUnsafe();
-    return buffer.Value.Handle != 0; //检查句柄而非空值
-}
 
         public void Dispose()
         {
