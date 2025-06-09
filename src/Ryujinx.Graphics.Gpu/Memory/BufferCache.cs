@@ -952,13 +952,29 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="write">Whether the buffer will be written to by this use</param>
         /// <returns>The buffer where the range is fully contained</returns>
         private Buffer GetBuffer(ulong address, ulong size, BufferStage stage, bool write = false)
-        {
+        {   
+            // 添加无效地址检查 
+    if (address == 0xFFFFFFFFFFFFFFFF)
+    {
+        return _dummyBuffer; // 返回虚拟缓冲区避免崩溃
+    }
+    
             Buffer buffer;
 
             if (size != 0)
             {
                 buffer = _buffers.FindFirstOverlap(address, size);
 
+         // 添加的空引用检查 
+        if (buffer == null)
+                {
+                    // 使用正确的日志调用
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"No buffer found for address 0x{address:X8}, size 0x{size:X8}. " +
+                        $"Using dummy buffer.");
+                    return _dummyBuffer;
+                }
+        
                 buffer.CopyFromDependantVirtualBuffers();
                 buffer.SynchronizeMemory(address, size);
 
@@ -970,6 +986,15 @@ namespace Ryujinx.Graphics.Gpu.Memory
             else
             {
                 buffer = _buffers.FindFirstOverlap(address, 1);
+        //添加的空引用检查
+        if (buffer == null)
+                {
+                    // 使用正确的日志调用
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"No buffer found for address 0x{address:X8} (size=1). " +
+                        $"Using dummy buffer.");
+                    return _dummyBuffer;
+                }
             }
 
             return buffer;
