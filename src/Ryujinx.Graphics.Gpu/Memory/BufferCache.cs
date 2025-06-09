@@ -951,7 +951,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="stage">Buffer stage that triggered the access</param>
         /// <param name="write">Whether the buffer will be written to by this use</param>
         /// <returns>The buffer where the range is fully contained</returns>
-        public Buffer GetBuffer(MultiRange range, BufferStage stage, bool forWrite)
+        public Buffer GetBuffer(MultiRange range, BufferStage stage, bool write = false)
 {
     // 添加空引用检查
     if (range.IsEmpty)
