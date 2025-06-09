@@ -19,8 +19,6 @@ namespace Ryujinx.HLE.HOS.Services.Nv
         // 配置参数
         private const ulong MinBlockSize = 0x10000; // 64KB 最小块大小
         private const ulong SmallAllocThreshold = 0x4000; // 16KB 小对象阈值
-        private const int CompactionThreshold = 100; // 每100次分配尝试压缩
-        private const float FragmentationWarningThreshold = 0.7f; // 碎片率警告阈值
         
         // 原有数据结构
         private readonly TreeDictionary<ulong, ulong> _tree = new();
@@ -423,17 +421,6 @@ namespace Ryujinx.HLE.HOS.Services.Nv
                 {
                     freeAddressStartPosition = 0;
                     _allocationCount++;
-                    
-                    // 定期检查碎片率
-                    if (_allocationCount % CompactionThreshold == 0)
-                    {
-                        float frag = CalculateFragmentation();
-                        if (frag > FragmentationWarningThreshold)
-                        {
-                            Logger.Warning?.Print(LogClass.ServiceNv, 
-                                $"High fragmentation detected: {frag:P}. Suggest compaction");
-                        }
-                    }
                     
                     ulong address = AllocateBuddy(size, alignment);
                     if (address != PteUnmapped)
