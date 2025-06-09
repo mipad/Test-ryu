@@ -19,6 +19,8 @@ namespace Ryujinx.HLE.HOS.Services.Nv
         // 配置参数
         private const ulong MinBlockSize = 0x10000; // 64KB 最小块大小
         private const ulong SmallAllocThreshold = 0x4000; // 16KB 小对象阈值
+        private const int CompactionThreshold = 100; // 每100次分配尝试压缩
+        private const float FragmentationWarningThreshold = 0.7f; // 碎片率警告阈值
         
         // 原有数据结构
         private readonly TreeDictionary<ulong, ulong> _tree = new();
@@ -82,6 +84,9 @@ namespace Ryujinx.HLE.HOS.Services.Nv
                 {
                     _fragments[block.Start] = alignedStart - block.Start;
                 }
+
+                // 在原有分配器中标记这块内存已分配
+                AllocateRangeLocked(block.Start, block.Size);
                 
                 return alignedStart;
             }
@@ -149,6 +154,9 @@ namespace Ryujinx.HLE.HOS.Services.Nv
         {
             if (_allocatedBlocks.TryGetValue(address, out var block))
             {
+                // 先在原有分配器中标记这块内存为空闲
+                DeallocateRangeLocked(block.Start, block.Size);
+                
                 block.Free = true;
                 _allocatedBlocks.Remove(address);
                 
@@ -274,50 +282,55 @@ namespace Ryujinx.HLE.HOS.Services.Nv
         
         #endregion
         
-        #region 公共接口（保持不变）
+        #region 公共接口
         
         public void AllocateRange(ulong va, ulong size, ulong referenceAddress = InvalidAddress)
         {
             lock (_tree)
             {
-                Logger.Debug?.Print(LogClass.ServiceNv, 
-                    $"Allocating range from 0x{va:X} to 0x{(va + size):X}.");
+                AllocateRangeLocked(va, size, referenceAddress);
+            }
+        }
+        
+        private void AllocateRangeLocked(ulong va, ulong size, ulong referenceAddress = InvalidAddress)
+        {
+            Logger.Debug?.Print(LogClass.ServiceNv, 
+                $"Allocating range from 0x{va:X} to 0x{(va + size):X}.");
+            
+            if (referenceAddress != InvalidAddress)
+            {
+                ulong endAddress = va + size;
+                ulong referenceEndAddress = _tree.Get(referenceAddress);
                 
-                if (referenceAddress != InvalidAddress)
+                if (va >= referenceAddress)
                 {
-                    ulong endAddress = va + size;
-                    ulong referenceEndAddress = _tree.Get(referenceAddress);
-                    
-                    if (va >= referenceAddress)
+                    if (va > referenceAddress)
                     {
-                        if (va > referenceAddress)
-                        {
-                            ulong leftEndAddress = va;
-                            _tree.Add(referenceAddress, leftEndAddress);
-                            Logger.Debug?.Print(LogClass.ServiceNv, 
-                                $"Created smaller address range from 0x{referenceAddress:X} to 0x{leftEndAddress:X}.");
-                        }
-                        else
-                        {
-                            _tree.Remove(referenceAddress);
-                        }
+                        ulong leftEndAddress = va;
+                        _tree.Add(referenceAddress, leftEndAddress);
+                        Logger.Debug?.Print(LogClass.ServiceNv, 
+                            $"Created smaller address range from 0x{referenceAddress:X} to 0x{leftEndAddress:X}.");
+                    }
+                    else
+                    {
+                        _tree.Remove(referenceAddress);
+                    }
 
-                        ulong rightSize = referenceEndAddress - endAddress;
-                        if (rightSize > 0)
-                        {
-                            Logger.Debug?.Print(LogClass.ServiceNv, 
-                                $"Created smaller address range from 0x{endAddress:X} to 0x{referenceEndAddress:X}.");
-                            _tree.Add(endAddress, referenceEndAddress);
+                    ulong rightSize = referenceEndAddress - endAddress;
+                    if (rightSize > 0)
+                    {
+                        Logger.Debug?.Print(LogClass.ServiceNv, 
+                            $"Created smaller address range from 0x{endAddress:X} to 0x{referenceEndAddress:X}.");
+                        _tree.Add(endAddress, referenceEndAddress);
 
-                            var node = _list.AddAfter(_dictionary[referenceAddress], endAddress);
-                            _dictionary[endAddress] = node;
-                        }
+                        var node = _list.AddAfter(_dictionary[referenceAddress], endAddress);
+                        _dictionary[endAddress] = node;
+                    }
 
-                        if (va == referenceAddress)
-                        {
-                            _list.Remove(_dictionary[referenceAddress]);
-                            _dictionary.Remove(referenceAddress);
-                        }
+                    if (va == referenceAddress)
+                    {
+                        _list.Remove(_dictionary[referenceAddress]);
+                        _dictionary.Remove(referenceAddress);
                     }
                 }
             }
@@ -325,231 +338,243 @@ namespace Ryujinx.HLE.HOS.Services.Nv
         
         public void DeallocateRange(ulong va, ulong size)
         {
-            // 优先尝试伙伴系统释放
-            if (size <= SmallAllocThreshold)
-            {
-                DeallocateBuddy(va);
-                _deallocationCount++;
-                return;
-            }
-            
             lock (_tree)
             {
-                _deallocationCount++;
-                Logger.Debug?.Print(LogClass.ServiceNv, 
-                    $"Deallocating address range from 0x{va:X} to 0x{(va + size):X}.");
-
-                ulong freeAddressStartPosition = _tree.Floor(va);
-                if (freeAddressStartPosition != InvalidAddress)
+                // 优先尝试伙伴系统释放
+                if (size <= SmallAllocThreshold)
                 {
-                    LinkedListNode<ulong> node = _dictionary[freeAddressStartPosition];
-                    ulong targetPrevAddress = node.Previous != null ? node.Previous.Value : InvalidAddress;
-                    ulong targetNextAddress = node.Next != null ? node.Next.Value : InvalidAddress;
-                    ulong expandedStart = va;
-                    ulong expandedEnd = va + size;
-
-                    while (targetPrevAddress != InvalidAddress)
-                    {
-                        ulong prevAddress = targetPrevAddress;
-                        ulong prevEndAddress = _tree.Get(targetPrevAddress);
-                        if (prevEndAddress >= expandedStart)
-                        {
-                            expandedStart = targetPrevAddress;
-                            LinkedListNode<ulong> prevPtr = _dictionary[prevAddress];
-                            if (prevPtr.Previous != null)
-                            {
-                                targetPrevAddress = prevPtr.Previous.Value;
-                            }
-                            else
-                            {
-                                targetPrevAddress = InvalidAddress;
-                            }
-                            node = node.Previous;
-                            _tree.Remove(prevAddress);
-                            _list.Remove(_dictionary[prevAddress]);
-                            _dictionary.Remove(prevAddress);
-                        }
-                        else
-                        {
-                            break;
-                        }
-                    }
-
-                    while (targetNextAddress != InvalidAddress)
-                    {
-                        ulong nextAddress = targetNextAddress;
-                        ulong nextEndAddress = _tree.Get(targetNextAddress);
-                        if (nextAddress <= expandedEnd)
-                        {
-                            expandedEnd = Math.Max(expandedEnd, nextEndAddress);
-                            LinkedListNode<ulong> nextPtr = _dictionary[nextAddress];
-                            if (nextPtr.Next != null)
-                            {
-                                targetNextAddress = nextPtr.Next.Value;
-                            }
-                            else
-                            {
-                                targetNextAddress = InvalidAddress;
-                            }
-                            _tree.Remove(nextAddress);
-                            _list.Remove(_dictionary[nextAddress]);
-                            _dictionary.Remove(nextAddress);
-                        }
-                        else
-                        {
-                            break;
-                        }
-                    }
-
-                    Logger.Debug?.Print(LogClass.ServiceNv, 
-                        $"Deallocation resulted in new free range from 0x{expandedStart:X} to 0x{expandedEnd:X}.");
-
-                    _tree.Add(expandedStart, expandedEnd);
-                    LinkedListNode<ulong> nodePtr = _list.AddAfter(node, expandedStart);
-                    _dictionary[expandedStart] = nodePtr;
+                    DeallocateBuddy(va);
+                    _deallocationCount++;
+                    return;
                 }
+                
+                _deallocationCount++;
+                DeallocateRangeLocked(va, size);
+            }
+        }
+        
+        private void DeallocateRangeLocked(ulong va, ulong size)
+        {
+            Logger.Debug?.Print(LogClass.ServiceNv, 
+                $"Deallocating address range from 0x{va:X} to 0x{(va + size):X}.");
+
+            ulong freeAddressStartPosition = _tree.Floor(va);
+            if (freeAddressStartPosition != InvalidAddress)
+            {
+                LinkedListNode<ulong> node = _dictionary[freeAddressStartPosition];
+                ulong targetPrevAddress = node.Previous != null ? node.Previous.Value : InvalidAddress;
+                ulong targetNextAddress = node.Next != null ? node.Next.Value : InvalidAddress;
+                ulong expandedStart = va;
+                ulong expandedEnd = va + size;
+
+                while (targetPrevAddress != InvalidAddress)
+                {
+                    ulong prevAddress = targetPrevAddress;
+                    ulong prevEndAddress = _tree.Get(targetPrevAddress);
+                    if (prevEndAddress >= expandedStart)
+                    {
+                        expandedStart = targetPrevAddress;
+                        LinkedListNode<ulong> prevPtr = _dictionary[prevAddress];
+                        if (prevPtr.Previous != null)
+                        {
+                            targetPrevAddress = prevPtr.Previous.Value;
+                        }
+                        else
+                        {
+                            targetPrevAddress = InvalidAddress;
+                        }
+                        node = node.Previous;
+                        _tree.Remove(prevAddress);
+                        _list.Remove(_dictionary[prevAddress]);
+                        _dictionary.Remove(prevAddress);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                while (targetNextAddress != InvalidAddress)
+                {
+                    ulong nextAddress = targetNextAddress;
+                    ulong nextEndAddress = _tree.Get(targetNextAddress);
+                    if (nextAddress <= expandedEnd)
+                    {
+                        expandedEnd = Math.Max(expandedEnd, nextEndAddress);
+                        LinkedListNode<ulong> nextPtr = _dictionary[nextAddress];
+                        if (nextPtr.Next != null)
+                        {
+                            targetNextAddress = nextPtr.Next.Value;
+                        }
+                        else
+                        {
+                            targetNextAddress = InvalidAddress;
+                        }
+                        _tree.Remove(nextAddress);
+                        _list.Remove(_dictionary[nextAddress]);
+                        _dictionary.Remove(nextAddress);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                Logger.Debug?.Print(LogClass.ServiceNv, 
+                    $"Deallocation resulted in new free range from 0x{expandedStart:X} to 0x{expandedEnd:X}.");
+
+                _tree.Add(expandedStart, expandedEnd);
+                LinkedListNode<ulong> nodePtr = _list.AddAfter(node, expandedStart);
+                _dictionary[expandedStart] = nodePtr;
             }
         }
         
         public ulong GetFreeAddress(ulong size, out ulong freeAddressStartPosition, 
                                    ulong alignment = 1, ulong start = DefaultStart)
         {
-            // 小对象分配使用伙伴系统
-            if (size <= SmallAllocThreshold)
+            lock (_tree)
             {
-                lock (_tree)
+                freeAddressStartPosition = 0;
+                _allocationCount++;
+                
+                // 定期检查碎片率
+                if (_allocationCount % CompactionThreshold == 0)
                 {
-                    freeAddressStartPosition = 0;
-                    _allocationCount++;
-                    
+                    float frag = CalculateFragmentation();
+                    if (frag > FragmentationWarningThreshold)
+                    {
+                        Logger.Warning?.Print(LogClass.ServiceNv, 
+                            $"High fragmentation detected: {frag:P}. Suggest compaction");
+                    }
+                }
+                
+                // 小对象分配使用伙伴系统
+                if (size <= SmallAllocThreshold)
+                {
                     ulong address = AllocateBuddy(size, alignment);
                     if (address != PteUnmapped)
                     {
                         return address;
                     }
                 }
+                
+                // 大对象使用原有分配器
+                return OriginalGetFreeAddress(size, out freeAddressStartPosition, alignment, start);
             }
-            
-            // 大对象使用原有分配器
-            return OriginalGetFreeAddress(size, out freeAddressStartPosition, alignment, start);
         }
         
         private ulong OriginalGetFreeAddress(ulong size, out ulong freeAddressStartPosition, 
                                             ulong alignment, ulong start)
         {
-            lock (_tree)
+            Logger.Debug?.Print(LogClass.ServiceNv, 
+                $"Searching for a free address @ 0x{start:X} of size 0x{size:X}.");
+            ulong address = start;
+
+            if (alignment == 0)
             {
-                _allocationCount++;
-                Logger.Debug?.Print(LogClass.ServiceNv, 
-                    $"Searching for a free address @ 0x{start:X} of size 0x{size:X}.");
-                ulong address = start;
+                alignment = 1;
+            }
 
-                if (alignment == 0)
+            alignment = (alignment + PageMask) & ~PageMask;
+            if (address < AddressSpaceSize)
+            {
+                bool reachedEndOfAddresses = false;
+                ulong targetAddress;
+                if (start == DefaultStart)
                 {
-                    alignment = 1;
+                    // 优化：优先使用低地址空间
+                    targetAddress = _tree.Ceiling(PageSize);
+                    Logger.Debug?.Print(LogClass.ServiceNv, 
+                        $"Using FIRST-FIT from 0x{targetAddress:X}");
                 }
-
-                alignment = (alignment + PageMask) & ~PageMask;
-                if (address < AddressSpaceSize)
+                else
                 {
-                    bool reachedEndOfAddresses = false;
-                    ulong targetAddress;
-                    if (start == DefaultStart)
+                    targetAddress = _tree.Floor(address);
+                    Logger.Debug?.Print(LogClass.ServiceNv, 
+                        $"Target address set to floor of 0x{address:X}; resulted in 0x{targetAddress:X}.");
+                    if (targetAddress == InvalidAddress)
                     {
-                        // 优化：优先使用低地址空间
-                        targetAddress = _tree.Ceiling(PageSize);
+                        targetAddress = _tree.Ceiling(address);
                         Logger.Debug?.Print(LogClass.ServiceNv, 
-                            $"Using FIRST-FIT from 0x{targetAddress:X}");
+                            $"Target address was invalid, set to ceiling of 0x{address:X}; resulted in 0x{targetAddress:X}");
                     }
-                    else
+                }
+                while (address < AddressSpaceSize)
+                {
+                    if (targetAddress != InvalidAddress)
                     {
-                        targetAddress = _tree.Floor(address);
-                        Logger.Debug?.Print(LogClass.ServiceNv, 
-                            $"Target address set to floor of 0x{address:X}; resulted in 0x{targetAddress:X}.");
-                        if (targetAddress == InvalidAddress)
+                        if (address >= targetAddress)
                         {
-                            targetAddress = _tree.Ceiling(address);
-                            Logger.Debug?.Print(LogClass.ServiceNv, 
-                                $"Target address was invalid, set to ceiling of 0x{address:X}; resulted in 0x{targetAddress:X}");
-                        }
-                    }
-                    while (address < AddressSpaceSize)
-                    {
-                        if (targetAddress != InvalidAddress)
-                        {
-                            if (address >= targetAddress)
+                            if (address + size <= _tree.Get(targetAddress))
                             {
-                                if (address + size <= _tree.Get(targetAddress))
-                                {
-                                    Logger.Debug?.Print(LogClass.ServiceNv, 
-                                        $"Found a suitable free address range from 0x{targetAddress:X} to 0x{_tree.Get(targetAddress):X} for 0x{address:X}.");
-                                    freeAddressStartPosition = targetAddress;
-                                    return address;
-                                }
-                                else
-                                {
-                                    Logger.Debug?.Print(LogClass.ServiceNv, 
-                                        "Address requirements exceeded the available space in the target range.");
-                                    LinkedListNode<ulong> nextPtr = _dictionary[targetAddress];
-                                    if (nextPtr.Next != null)
-                                    {
-                                        targetAddress = nextPtr.Next.Value;
-                                        Logger.Debug?.Print(LogClass.ServiceNv, 
-                                            $"Moved search to successor range starting at 0x{targetAddress:X}.");
-                                    }
-                                    else
-                                    {
-                                        if (reachedEndOfAddresses)
-                                        {
-                                            Logger.Debug?.Print(LogClass.ServiceNv, 
-                                                "Exiting loop, a full pass has already been completed w/ no suitable free address range.");
-                                            break;
-                                        }
-                                        else
-                                        {
-                                            reachedEndOfAddresses = true;
-                                            address = start;
-                                            targetAddress = _tree.Floor(address);
-                                            Logger.Debug?.Print(LogClass.ServiceNv, 
-                                                $"Reached the end of the available free ranges, restarting loop @ 0x{targetAddress:X} for 0x{address:X}.");
-                                        }
-                                    }
-                                }
+                                Logger.Debug?.Print(LogClass.ServiceNv, 
+                                    $"Found a suitable free address range from 0x{targetAddress:X} to 0x{_tree.Get(targetAddress):X} for 0x{address:X}.");
+                                freeAddressStartPosition = targetAddress;
+                                return address;
                             }
                             else
                             {
-                                address += PageSize * (targetAddress / PageSize - (address / PageSize));
-
-                                ulong remainder = address % alignment;
-
-                                if (remainder != 0)
-                                {
-                                    address = (address - remainder) + alignment;
-                                }
-
                                 Logger.Debug?.Print(LogClass.ServiceNv, 
-                                    $"Reset and aligned address to {address:X}.");
-
-                                if (address + size > AddressSpaceSize && !reachedEndOfAddresses)
+                                    "Address requirements exceeded the available space in the target range.");
+                                LinkedListNode<ulong> nextPtr = _dictionary[targetAddress];
+                                if (nextPtr.Next != null)
                                 {
-                                    reachedEndOfAddresses = true;
-                                    address = start;
-                                    targetAddress = _tree.Floor(address);
+                                    targetAddress = nextPtr.Next.Value;
                                     Logger.Debug?.Print(LogClass.ServiceNv, 
-                                        $"Address requirements exceeded the capacity of available address space, restarting loop @ 0x{targetAddress:X} for 0x{address:X}.");
+                                        $"Moved search to successor range starting at 0x{targetAddress:X}.");
+                                }
+                                else
+                                {
+                                    if (reachedEndOfAddresses)
+                                    {
+                                        Logger.Debug?.Print(LogClass.ServiceNv, 
+                                            "Exiting loop, a full pass has already been completed w/ no suitable free address range.");
+                                        break;
+                                    }
+                                    else
+                                    {
+                                        reachedEndOfAddresses = true;
+                                        address = start;
+                                        targetAddress = _tree.Floor(address);
+                                        Logger.Debug?.Print(LogClass.ServiceNv, 
+                                            $"Reached the end of the available free ranges, restarting loop @ 0x{targetAddress:X} for 0x{address:X}.");
+                                    }
                                 }
                             }
                         }
                         else
                         {
-                            break;
+                            address += PageSize * (targetAddress / PageSize - (address / PageSize));
+
+                            ulong remainder = address % alignment;
+
+                            if (remainder != 0)
+                            {
+                                address = (address - remainder) + alignment;
+                            }
+
+                            Logger.Debug?.Print(LogClass.ServiceNv, 
+                                $"Reset and aligned address to {address:X}.");
+
+                            if (address + size > AddressSpaceSize && !reachedEndOfAddresses)
+                            {
+                                reachedEndOfAddresses = true;
+                                address = start;
+                                targetAddress = _tree.Floor(address);
+                                Logger.Debug?.Print(LogClass.ServiceNv, 
+                                    $"Address requirements exceeded the capacity of available address space, restarting loop @ 0x{targetAddress:X} for 0x{address:X}.");
+                            }
                         }
                     }
+                    else
+                    {
+                        break;
+                    }
                 }
-                Logger.Debug?.Print(LogClass.ServiceNv, 
-                    $"No suitable address range found; returning: 0x{InvalidAddress:X}.");
-                freeAddressStartPosition = InvalidAddress;
             }
+            Logger.Debug?.Print(LogClass.ServiceNv, 
+                $"No suitable address range found; returning: 0x{InvalidAddress:X}.");
+            freeAddressStartPosition = InvalidAddress;
 
             return PteUnmapped;
         }
