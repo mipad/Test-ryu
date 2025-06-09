@@ -641,15 +641,17 @@ private bool IsBufferValid()
 {
     try 
     {
-        ref DisposableBuffer buffer = ref _buffer.GetUnsafe();
+        // 正确获取DisposableBuffer实例
+        DisposableBuffer buffer = _buffer.GetUnsafe().Value;
         // 通过Value属性访问底层VkBuffer的Handle
-        return buffer.Value.Handle != 0;
+        return buffer.Handle != 0;
     }
     catch (ObjectDisposedException)
     {
         return false;
     }
 }
+
         public unsafe void SetDataUnchecked(int offset, ReadOnlySpan<byte> data)
         {
             int dataSize = Math.Min(data.Length, Size - offset);
