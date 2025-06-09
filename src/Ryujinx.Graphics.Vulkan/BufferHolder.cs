@@ -641,10 +641,8 @@ private bool IsBufferValid()
 {
     try 
     {
-        // 正确获取DisposableBuffer实例
-        DisposableBuffer buffer = _buffer.GetUnsafe().Value;
-        // 通过Value属性访问底层VkBuffer的Handle
-        return buffer.Handle != 0;
+        // 直接获取VkBuffer句柄
+        return _bufferHandle != 0;
     }
     catch (ObjectDisposedException)
     {
