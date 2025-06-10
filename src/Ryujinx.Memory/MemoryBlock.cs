@@ -14,6 +14,21 @@ namespace Ryujinx.Memory
     [SupportedOSPlatform("android")]
     public sealed class MemoryBlock : IWritableBlock, IDisposable
     {
+        // 增加内存分配标志位处理
+    [Flags]
+    public enum MemoryAllocationFlags
+    {
+        None = 0,
+        Reserve = 1 << 0,
+        Mirrorable = 1 << 1,
+        NoMap = 1 << 2,
+        ViewCompatible = 1 << 3,
+        Jit = 1 << 4,
+    }
+
+    // 增加大页面支持
+    private const ulong LargePageSize = 1 << 21; // 2MB
+    
         private readonly bool _usesSharedMemory;
         private readonly bool _isMirror;
         private readonly bool _viewCompatible;
@@ -410,6 +425,24 @@ namespace Ryujinx.Memory
             }
         }
 
+// 增加大页面分配支持
+    private static bool TryAllocateLargePages(ulong size, out IntPtr ptr)
+    {
+        ptr = IntPtr.Zero;
+        if (size % LargePageSize != 0)
+            return false;
+        
+        try
+        {
+            ptr = MemoryManagement.AllocateLargePage(size);
+            return ptr != IntPtr.Zero;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+    
         /// <summary>
         /// Checks if the specified memory allocation flags are supported on the current platform.
         /// </summary>
