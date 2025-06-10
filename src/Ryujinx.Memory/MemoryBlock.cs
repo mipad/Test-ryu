@@ -15,20 +15,20 @@ namespace Ryujinx.Memory
     public sealed class MemoryBlock : IWritableBlock, IDisposable
     {
         // 增加内存分配标志位处理
-    [Flags]
-    public enum MemoryAllocationFlags
-    {
-        None = 0,
-        Reserve = 1 << 0,
-        Mirrorable = 1 << 1,
-        NoMap = 1 << 2,
-        ViewCompatible = 1 << 3,
-        Jit = 1 << 4,
-    }
+        [Flags]
+        public enum MemoryAllocationFlags
+        {
+            None = 0,
+            Reserve = 1 << 0,
+            Mirrorable = 1 << 1,
+            NoMap = 1 << 2,
+            ViewCompatible = 1 << 3,
+            Jit = 1 << 4,
+        }
 
-    // 增加大页面支持
-    private const ulong LargePageSize = 1 << 21; // 2MB
-    
+        // 增加大页面支持
+        private const ulong LargePageSize = 1 << 21; // 2MB
+        
         private readonly bool _usesSharedMemory;
         private readonly bool _isMirror;
         private readonly bool _viewCompatible;
@@ -41,7 +41,7 @@ namespace Ryujinx.Memory
         /// </summary>
         public IntPtr Pointer => _pointer;
 
-        /// <summary>
+        ///极
         /// Size of the memory block.
         /// </summary>
         public ulong Size { get; }
@@ -50,30 +50,30 @@ namespace Ryujinx.Memory
         /// Creates a new instance of the memory block class.
         /// </summary>
         public MemoryBlock(ulong size, MemoryAllocationFlags flags = MemoryAllocationFlags.None)
-{
-    if (flags.HasFlag(MemoryAllocationFlags.Mirrorable))
-    {
-        if (OperatingSystem.IsAndroid())
         {
-            // Android 使用 ASharedMemory_create
-            _sharedMemory = MemoryManagementUnix.CreateSharedMemory(size, flags.HasFlag(MemoryAllocationFlags.Reserve));
-        }
-        else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
-        {
-            // Linux/macOS 使用其他实现
-            _sharedMemory = MemoryManagement.CreateSharedMemory(size, flags.HasFlag(MemoryAllocationFlags.Reserve));
-        }
-        else
-        {
-            throw new PlatformNotSupportedException("Shared memory is not supported on this platform.");
-        }
+            if (flags.HasFlag(MemoryAllocationFlags.Mirrorable))
+            {
+                if (OperatingSystem.IsAndroid())
+                {
+                    // Android 使用 ASharedMemory_create
+                    _sharedMemory = MemoryManagementUnix.CreateSharedMemory(size, flags.HasFlag(MemoryAllocationFlags.Reserve));
+                }
+                else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+                {
+                    // Linux/macOS 使用其他实现
+                    _sharedMemory = MemoryManagement.CreateSharedMemory(size, flags.HasFlag(MemoryAllocationFlags.Reserve));
+                }
+                else
+                {
+                    throw new PlatformNotSupportedException("Shared memory is not supported on this platform.");
+                }
 
-        if (!flags.HasFlag(MemoryAllocationFlags.NoMap))
-        {
-            _pointer = MemoryManagement.MapSharedMemory(_sharedMemory, size);
-        }
-        _usesSharedMemory = true;
-    }
+                if (!flags.HasFlag(MemoryAllocationFlags.NoMap))
+                {
+                    _pointer = MemoryManagement.MapSharedMemory(_sharedMemory, size);
+                }
+                _usesSharedMemory = true;
+            }
             else if (flags.HasFlag(MemoryAllocationFlags.Reserve))
             {
                 _viewCompatible = flags.HasFlag(MemoryAllocationFlags.ViewCompatible);
@@ -187,7 +187,7 @@ namespace Ryujinx.Memory
         /// <param name="offset">Starting offset of the range being read</param>
         /// <param name="data">Span where the bytes being read will be copied to</param>
         /// <exception cref="ObjectDisposedException">Throw when the memory block has already been disposed</exception>
-        /// <exception cref="InvalidMemoryRegionException">Throw when the memory region specified for the data is out of range</exception>
+        /// <exception cref="InvalidMemoryRegion极ception">Throw when the memory region specified for the data is out of range</exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Read(ulong offset, Span<byte> data)
         {
@@ -425,23 +425,21 @@ namespace Ryujinx.Memory
             }
         }
 
-// 增加大页面分配支持
-    private static bool TryAllocateLargePages(ulong size, out IntPtr ptr)
-    {
-        ptr = IntPtr.Zero;
-        if (size % LargePageSize != 0)
-            return false;
-        
-        try
+        // 修改：移除对AllocateLargePage的调用
+        private static bool TryAllocateLargePages(ulong size, out IntPtr ptr)
         {
-            ptr = MemoryManagement.AllocateLargePage(size);
-            return ptr != IntPtr.Zero;
+            ptr = IntPtr.Zero;
+            try
+            {
+                // 使用现有的Allocate方法作为回退
+                ptr = MemoryManagement.Allocate(size, forJit: true);
+                return ptr != IntPtr.Zero;
+            }
+            catch
+            {
+                return false;
+            }
         }
-        catch
-        {
-            return false;
-        }
-    }
     
         /// <summary>
         /// Checks if the specified memory allocation flags are supported on the current platform.
