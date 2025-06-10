@@ -375,7 +375,7 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
             bool cursorVisible = false;
 
-            if (state.CursorBegin != state.CursorEnd)
+            if (state.CursorBegin != state.CursorEnd && state.CursorEnd <= state.InputText.Length)
             {
                 Debug.Assert(state.InputText.Length > 0);
 
