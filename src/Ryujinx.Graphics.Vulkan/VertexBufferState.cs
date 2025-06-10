@@ -1,6 +1,4 @@
-using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
-using Silk.NET.Vulkan;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -52,50 +50,20 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void BindVertexBuffer(VulkanRenderer gd, CommandBufferScoped cbs, uint binding, ref PipelineState state, VertexBufferUpdater updater)
         {
-            // =================== 安全修复开始 ===================
-            // 处理步长(Stride)为零的情况
-            int safeStride = _stride;
-            if (safeStride == 0)
-            {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Vertex buffer binding {binding} has invalid stride 0. Using fallback stride=33");
-                safeStride = 33; // 防止除零崩溃
-            }
-
-            // 处理缓冲区大小为0的情况
-            if (_size == 0)
-            {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Vertex buffer binding {binding} has size 0. Binding null buffer");
-                
-                // 使用有效的空缓冲区结构而不是 null
-                updater.BindVertexBuffer(cbs, binding, new Buffer(), 0, 0, 0);
-                return;
-            }
-            // =================== 安全修复结束 ===================
-
             var autoBuffer = _buffer;
 
             if (_handle != BufferHandle.Null)
             {
                 // May need to restride the vertex buffer.
 
-                // =================== 安全修复开始 ===================
-                // 使用安全步长进行计算
-                if (gd.NeedsVertexBufferAlignment(AttributeScalarAlignment, out int alignment) && (safeStride % alignment) != 0)
-                // =================== 安全修复结束 ===================
+                if (gd.NeedsVertexBufferAlignment(AttributeScalarAlignment, out int alignment) && (_stride % alignment) != 0)
                 {
-                    autoBuffer = gd.BufferManager.GetAlignedVertexBuffer(cbs, _handle, _offset, _size, safeStride, alignment);
+                    autoBuffer = gd.BufferManager.GetAlignedVertexBuffer(cbs, _handle, _offset, _size, _stride, alignment);
 
                     if (autoBuffer != null)
                     {
-                        int stride = (safeStride + (alignment - 1)) & -alignment;
-                        
-                        // =================== 安全修复开始 ===================
-                        // 确保除法安全（safeStride已保证不为0）
-                        int vertexCount = _size / safeStride;
-                        int newSize = vertexCount * stride;
-                        // =================== 安全修复结束 ===================
+                        int stride = (_stride + (alignment - 1)) & -alignment;
+                        int newSize = (_size / _stride) * stride;
 
                         var buffer = autoBuffer.Get(cbs, 0, newSize).Value;
 
@@ -112,9 +80,7 @@ namespace Ryujinx.Graphics.Vulkan
                 autoBuffer = gd.BufferManager.GetBuffer(cbs.CommandBuffer, _handle, false, out int size);
 
                 // The original stride must be reapplied in case it was rewritten.
-                // =================== 安全修复开始 ===================
-                state.Internal.VertexBindingDescriptions[DescriptorIndex].Stride = (uint)safeStride;
-                // =================== 安全修复结束 ===================
+                state.Internal.VertexBindingDescriptions[DescriptorIndex].Stride = (uint)_stride;
 
                 if (_offset >= size)
                 {
@@ -128,20 +94,7 @@ namespace Ryujinx.Graphics.Vulkan
                 bool mirrorable = _size <= VertexBufferMaxMirrorable;
                 var buffer = mirrorable ? autoBuffer.GetMirrorable(cbs, ref offset, _size, out _).Value : autoBuffer.Get(cbs, offset, _size).Value;
 
-                // =================== 安全修复开始 ===================
-                updater.BindVertexBuffer(cbs, binding, buffer, (ulong)offset, (ulong)_size, (ulong)safeStride);
-                // =================== 安全修复结束 ===================
-            }
-            else
-            {
-                // =================== 安全修复开始 ===================
-                // 处理缓冲区获取失败的情况
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Vertex buffer binding {binding} failed to get buffer. Binding null buffer");
-                
-                // 使用有效的空缓冲区结构而不是 null
-                updater.BindVertexBuffer(cbs, binding, new Buffer(), 0, 0, 0);
-                // =================== 安全修复结束 ===================
+                updater.BindVertexBuffer(cbs, binding, buffer, (ulong)offset, (ulong)_size, (ulong)_stride);
             }
         }
 
