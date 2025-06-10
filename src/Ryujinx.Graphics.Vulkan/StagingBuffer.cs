@@ -48,6 +48,7 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         private readonly Queue<PendingCopy> _pendingCopies;
+        private readonly object _lock = new object(); // 添加同步锁
 
         public StagingBuffer(VulkanRenderer gd, BufferManager bufferManager)
         {
@@ -60,48 +61,51 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void PushData(CommandBufferPool cbp, CommandBufferScoped? cbs, Action endRenderPass, BufferHolder dst, int dstOffset, ReadOnlySpan<byte> data)
         {
-            bool isRender = cbs != null;
-            CommandBufferScoped scoped = cbs ?? cbp.Rent();
-
-            // Must push all data to the buffer. If it can't fit, split it up.
-
-            endRenderPass?.Invoke();
-
-            while (data.Length > 0)
+            lock (_lock) // 加锁确保线程安全
             {
-                if (_freeSize < data.Length)
-                {
-                    FreeCompleted();
-                }
+                bool isRender = cbs != null;
+                CommandBufferScoped scoped = cbs ?? cbp.Rent();
 
-                while (_freeSize == 0)
+                // Must push all data to the buffer. If it can't fit, split it up.
+
+                endRenderPass?.Invoke();
+
+                while (data.Length > 0)
                 {
-                    if (!WaitFreeCompleted(cbp))
+                    if (_freeSize < data.Length)
                     {
-                        if (isRender)
+                        FreeCompleted();
+                    }
+
+                    while (_freeSize == 0)
+                    {
+                        if (!WaitFreeCompleted(cbp))
                         {
-                            _gd.FlushAllCommands();
-                            scoped = cbp.Rent();
-                            isRender = false;
-                        }
-                        else
-                        {
-                            scoped = cbp.ReturnAndRent(scoped);
+                            if (isRender)
+                            {
+                                _gd.FlushAllCommands();
+                                scoped = cbp.Rent();
+                                isRender = false;
+                            }
+                            else
+                            {
+                                scoped = cbp.ReturnAndRent(scoped);
+                            }
                         }
                     }
+
+                    int chunkSize = Math.Min(_freeSize, data.Length);
+
+                    PushDataImpl(scoped, dst, dstOffset, data[..chunkSize]);
+
+                    dstOffset += chunkSize;
+                    data = data[chunkSize..];
                 }
 
-                int chunkSize = Math.Min(_freeSize, data.Length);
-
-                PushDataImpl(scoped, dst, dstOffset, data[..chunkSize]);
-
-                dstOffset += chunkSize;
-                data = data[chunkSize..];
-            }
-
-            if (!isRender)
-            {
-                scoped.Dispose();
+                if (!isRender)
+                {
+                    scoped.Dispose();
+                }
             }
         }
 
@@ -136,26 +140,29 @@ namespace Ryujinx.Graphics.Vulkan
 
         public bool TryPushData(CommandBufferScoped cbs, Action endRenderPass, BufferHolder dst, int dstOffset, ReadOnlySpan<byte> data)
         {
-            if (data.Length > BufferSize)
+            lock (_lock) // 加锁确保线程安全
             {
-                return false;
-            }
-
-            if (_freeSize < data.Length)
-            {
-                FreeCompleted();
-
-                if (_freeSize < data.Length)
+                if (data.Length > BufferSize)
                 {
                     return false;
                 }
+
+                if (_freeSize < data.Length)
+                {
+                    FreeCompleted();
+
+                    if (_freeSize < data.Length)
+                    {
+                        return false;
+                    }
+                }
+
+                endRenderPass?.Invoke();
+
+                PushDataImpl(cbs, dst, dstOffset, data);
+
+                return true;
             }
-
-            endRenderPass?.Invoke();
-
-            PushDataImpl(cbs, dst, dstOffset, data);
-
-            return true;
         }
 
         private StagingBufferReserved ReserveDataImpl(CommandBufferScoped cbs, int size, int alignment)
@@ -207,25 +214,28 @@ namespace Ryujinx.Graphics.Vulkan
         /// <returns>The reserved range of the staging buffer</returns>
         public unsafe StagingBufferReserved? TryReserveData(CommandBufferScoped cbs, int size, int alignment)
         {
-            if (size > BufferSize)
+            lock (_lock) // 加锁确保线程安全
             {
-                return null;
-            }
+                if (size > BufferSize)
+                {
+                    return null;
+                }
 
-            // Temporary reserved data cannot be fragmented.
-
-            if (GetContiguousFreeSize(alignment) < size)
-            {
-                FreeCompleted();
+                // Temporary reserved data cannot be fragmented.
 
                 if (GetContiguousFreeSize(alignment) < size)
                 {
-                    Logger.Debug?.PrintMsg(LogClass.Gpu, $"Staging buffer out of space to reserve data of size {size}.");
-                    return null;
-                }
-            }
+                    FreeCompleted();
 
-            return ReserveDataImpl(cbs, size, alignment);
+                    if (GetContiguousFreeSize(alignment) < size)
+                    {
+                        Logger.Debug?.PrintMsg(LogClass.Gpu, $"Staging buffer out of space to reserve data of size {size}.");
+                        return null;
+                    }
+                }
+
+                return ReserveDataImpl(cbs, size, alignment);
+            }
         }
 
         /// <summary>
@@ -265,14 +275,17 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void FreeCompleted()
         {
-            FenceHolder signalledFence = null;
-            while (_pendingCopies.TryPeek(out var pc) && (pc.Fence == signalledFence || pc.Fence.IsSignaled()))
+            lock (_lock) // 加锁确保线程安全
             {
-                signalledFence = pc.Fence; // Already checked - don't need to do it again.
-                var dequeued = _pendingCopies.Dequeue();
-                Debug.Assert(dequeued.Fence == pc.Fence);
-                _freeSize += pc.Size;
-                pc.Fence.Put();
+                FenceHolder signalledFence = null;
+                while (_pendingCopies.TryPeek(out var pc) && (pc.Fence == signalledFence || pc.Fence.IsSignaled()))
+                {
+                    signalledFence = pc.Fence; // Already checked - don't need to do it again.
+                    var dequeued = _pendingCopies.Dequeue();
+                    Debug.Assert(dequeued.Fence == pc.Fence);
+                    _freeSize += pc.Size;
+                    pc.Fence.Put();
+                }
             }
         }
 
