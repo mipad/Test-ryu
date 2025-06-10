@@ -2,6 +2,7 @@ using Silk.NET.Vulkan;
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using Ryujinx.Graphics.Vulkan;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -15,12 +16,18 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly List<MemoryAllocatorBlockList> _blockLists;
         private readonly int _blockAlignment;
         private readonly ReaderWriterLockSlim _lock;
+        private readonly VulkanRenderer _renderer; // 新增：用于访问资源缓存
 
-        public MemoryAllocator(Vk api, VulkanPhysicalDevice physicalDevice, Device device)
+        public MemoryAllocator(
+            Vk api, 
+            VulkanPhysicalDevice physicalDevice, 
+            Device device,
+            VulkanRenderer renderer) // 修改：添加renderer参数
         {
             _api = api;
             _physicalDevice = physicalDevice;
             _device = device;
+            _renderer = renderer; // 存储renderer引用
             _blockLists = new List<MemoryAllocatorBlockList>();
             _blockAlignment = (int)Math.Min(int.MaxValue, MaxDeviceMemoryUsageEstimate / _physicalDevice.PhysicalDeviceProperties.Limits.MaxMemoryAllocationCount);
             _lock = new(LockRecursionPolicy.NoRecursion);
@@ -43,8 +50,42 @@ namespace Ryujinx.Graphics.Vulkan
 
         private MemoryAllocation Allocate(int memoryTypeIndex, ulong size, ulong alignment, bool map, bool isBuffer)
         {
-            _lock.EnterReadLock();
+            MemoryAllocation allocation = default;
+            bool cleanedUp = false;
+            
+            // 第一次尝试分配
+            if (!TryAllocate(memoryTypeIndex, size, alignment, map, isBuffer, ref allocation))
+            {
+                // 分配失败时尝试清理资源
+                if (_renderer != null && _renderer.AutoDeleteCache != null)
+                {
+                    _renderer.AutoDeleteCache.ForceCleanup();
+                    cleanedUp = true;
+                    
+                    // 清理后再次尝试分配
+                    TryAllocate(memoryTypeIndex, size, alignment, map, isBuffer, ref allocation);
+                }
+            }
 
+            // 记录分配失败日志（包括清理状态）
+            if (!allocation.IsValid)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Memory allocation failed! Size: {size} bytes, TypeIndex: {memoryTypeIndex}, CleanupAttempted: {cleanedUp}");
+            }
+
+            return allocation;
+        }
+
+        private bool TryAllocate(
+            int memoryTypeIndex, 
+            ulong size, 
+            ulong alignment, 
+            bool map, 
+            bool isBuffer, 
+            ref MemoryAllocation allocation)
+        {
+            _lock.EnterReadLock();
             try
             {
                 for (int i = 0; i < _blockLists.Count; i++)
@@ -52,7 +93,11 @@ namespace Ryujinx.Graphics.Vulkan
                     var bl = _blockLists[i];
                     if (bl.MemoryTypeIndex == memoryTypeIndex && bl.ForBuffer == isBuffer)
                     {
-                        return bl.Allocate(size, alignment, map);
+                        allocation = bl.Allocate(size, alignment, map);
+                        if (allocation.IsValid)
+                        {
+                            return true;
+                        }
                     }
                 }
             }
@@ -62,13 +107,28 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             _lock.EnterWriteLock();
-
             try
             {
+                // 再次检查读锁区域（可能其他线程已创建）
+                for (int i = 0; i < _blockLists.Count; i++)
+                {
+                    var bl = _blockLists[i];
+                    if (bl.MemoryTypeIndex == memoryTypeIndex && bl.ForBuffer == isBuffer)
+                    {
+                        allocation = bl.Allocate(size, alignment, map);
+                        if (allocation.IsValid)
+                        {
+                            return true;
+                        }
+                    }
+                }
+
+                // 创建新内存块
                 var newBl = new MemoryAllocatorBlockList(_api, _device, memoryTypeIndex, _blockAlignment, isBuffer);
                 _blockLists.Add(newBl);
 
-                return newBl.Allocate(size, alignment, map);
+                allocation = newBl.Allocate(size, alignment, map);
+                return allocation.IsValid;
             }
             finally
             {
