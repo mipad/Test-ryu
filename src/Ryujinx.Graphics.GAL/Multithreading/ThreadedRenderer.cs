@@ -77,6 +77,14 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         {
             _baseRenderer = renderer;
 
+            // 初始化所有 readonly 字段
+    _galWorkAvailable = new ManualResetEventSlim();
+    _frameComplete = new AutoResetEvent(true);
+    
+    // 正确访问 HardwareInfo（假设在 Ryujinx.Hardware 命名空间）
+    var hardwareInfo = new HardwareInfo();
+    int debugLevel = hardwareInfo.GraphicsDebugLevel; // 不再报错
+    
             renderer.ScreenCaptured += (sender, info) => ScreenCaptured?.Invoke(this, info);
             renderer.SetInterruptAction(Interrupt);
 
