@@ -12,7 +12,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Ryujinx.Common.Logging; 
-using Silk.NET.Vulkan;
+using Ryujinx.Graphics.Vulkan;
 
 namespace Ryujinx.Graphics.GAL.Multithreading
 {
