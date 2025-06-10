@@ -1,5 +1,6 @@
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
+using Silk.NET.Vulkan;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -65,8 +66,10 @@ namespace Ryujinx.Graphics.Vulkan
             if (_size == 0)
             {
                 Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Vertex buffer binding {binding} has size 0. Skipping bind");
-                updater.BindVertexBuffer(cbs, binding, null, 0, 0, 0);
+                    $"Vertex buffer binding {binding} has size 0. Binding null buffer");
+                
+                // 使用有效的空缓冲区结构而不是 null
+                updater.BindVertexBuffer(cbs, binding, new Buffer(), 0, 0, 0);
                 return;
             }
             // =================== 安全修复结束 ===================
@@ -135,7 +138,9 @@ namespace Ryujinx.Graphics.Vulkan
                 // 处理缓冲区获取失败的情况
                 Logger.Warning?.Print(LogClass.Gpu, 
                     $"Vertex buffer binding {binding} failed to get buffer. Binding null buffer");
-                updater.BindVertexBuffer(cbs, binding, null, 0, 0, 0);
+                
+                // 使用有效的空缓冲区结构而不是 null
+                updater.BindVertexBuffer(cbs, binding, new Buffer(), 0, 0, 0);
                 // =================== 安全修复结束 ===================
             }
         }
