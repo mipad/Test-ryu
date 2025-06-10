@@ -58,8 +58,8 @@ namespace Ryujinx.Graphics.Vulkan
             if (safeStride == 0)
             {
                 Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Vertex buffer binding {binding} has invalid stride 0. Using fallback stride=1");
-                safeStride = 1; // 防止除零崩溃
+                    $"Vertex buffer binding {binding} has invalid stride 0. Using fallback stride=33");
+                safeStride = 33; // 防止除零崩溃
             }
 
             // 处理缓冲区大小为0的情况
