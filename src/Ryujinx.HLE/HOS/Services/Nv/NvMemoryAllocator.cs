@@ -108,9 +108,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv
                     ulong expandedStart = va;
                     ulong expandedEnd = va + size;
 
-                    // 修复关键缺陷：保存原始节点的下一个节点
-                    LinkedListNode<ulong> nextNode = node.Next;
-
+                    // 向前合并相邻的空闲块
                     while (targetPrevAddress != InvalidAddress)
                     {
                         ulong prevAddress = targetPrevAddress;
@@ -138,6 +136,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv
                         }
                     }
 
+                    // 向后合并相邻的空闲块
                     while (targetNextAddress != InvalidAddress)
                     {
                         ulong nextAddress = targetNextAddress;
@@ -166,38 +165,71 @@ namespace Ryujinx.HLE.HOS.Services.Nv
 
                     Logger.Debug?.Print(LogClass.ServiceNv, $"Deallocation resulted in new free range from 0x{expandedStart:X} to 0x{expandedEnd:X}.");
 
-                    // 修复关键缺陷：正确处理原始节点移除
-                    bool isOriginalNode = false;
-                    if (_dictionary.TryGetValue(freeAddressStartPosition, out LinkedListNode<ulong> originalNode))
-                    {
-                        isOriginalNode = (node == originalNode);
-                        _tree.Remove(freeAddressStartPosition);
-                        _list.Remove(originalNode);
-                        _dictionary.Remove(freeAddressStartPosition);
-                    }
+                    _tree.Add(expandedStart, expandedEnd);
+                    LinkedListNode<ulong> nodePtr = _list.AddAfter(node, expandedStart);
+                    _dictionary[expandedStart] = nodePtr;
+                }
+                else
+                {
+                    // 如果没有找到相邻块，创建新的空闲块
+                    _tree.Add(va, va + size);
+                    LinkedListNode<ulong> newNode = _list.AddLast(va);
+                    _dictionary[va] = newNode;
+                    Logger.Debug?.Print(LogClass.ServiceNv, $"Created new free range from 0x{va:X} to 0x{(va + size):X}.");
+                }
+            }
+        }
 
-                    LinkedListNode<ulong> newNode;
-                    if (!isOriginalNode)
+        /// <summary>
+        /// 压缩内存碎片，合并所有相邻的空闲块
+        /// </summary>
+        public void CompactMemory()
+        {
+            lock (_tree)
+            {
+                Logger.Debug?.Print(LogClass.ServiceNv, "Starting memory compaction...");
+
+                if (_list.Count <= 1)
+                {
+                    Logger.Debug?.Print(LogClass.ServiceNv, "No compaction needed - less than 2 blocks.");
+                    return;
+                }
+
+                LinkedListNode<ulong> current = _list.First;
+                LinkedListNode<ulong> next = current.Next;
+
+                while (next != null)
+                {
+                    ulong currentStart = current.Value;
+                    ulong currentEnd = _tree.Get(currentStart);
+                    ulong nextStart = next.Value;
+
+                    // 检查当前块和下一个块是否相邻
+                    if (currentEnd == nextStart)
                     {
-                        // 当前节点有效，在它后面插入新节点
-                        newNode = _list.AddAfter(node, expandedStart);
+                        // 合并两个块
+                        ulong nextEnd = _tree.Get(nextStart);
+                        _tree[currentStart] = nextEnd;
+                        _tree.Remove(nextStart);
+
+                        // 从链表和字典中移除下一个块
+                        LinkedListNode<ulong> toRemove = next;
+                        next = next.Next;
+                        _list.Remove(toRemove);
+                        _dictionary.Remove(toRemove.Value);
+
+                        Logger.Debug?.Print(LogClass.ServiceNv, 
+                            $"Merged blocks: [0x{currentStart:X}-0x{currentEnd:X}] + [0x{nextStart:X}-0x{nextEnd:X}] = " +
+                            $"[0x{currentStart:X}-0x{nextEnd:X}]");
                     }
                     else
                     {
-                        // 原始节点已被移除，在保存的下一个节点前插入
-                        if (nextNode != null)
-                        {
-                            newNode = _list.AddBefore(nextNode, expandedStart);
-                        }
-                        else
-                        {
-                            newNode = _list.AddLast(expandedStart);
-                        }
+                        current = next;
+                        next = current.Next;
                     }
-
-                    _tree.Add(expandedStart, expandedEnd);
-                    _dictionary[expandedStart] = newNode;
                 }
+
+                Logger.Debug?.Print(LogClass.ServiceNv, "Memory compaction completed.");
             }
         }
 
@@ -309,11 +341,12 @@ namespace Ryujinx.HLE.HOS.Services.Nv
                         }
                     }
                 }
-                Logger.Debug?.Print(LogClass.ServiceNv, $"No suitable address range found; returning: 0x{InvalidAddress:X}.");
-                freeAddressStartPosition = InvalidAddress;
+                
+                // 尝试压缩内存后再次分配
+                CompactMemory();
+                Logger.Debug?.Print(LogClass.ServiceNv, "Retrying allocation after compaction...");
+                return GetFreeAddress(size, out freeAddressStartPosition, alignment, start);
             }
-
-            return PteUnmapped;
         }
 
         /// <summary>
@@ -335,6 +368,72 @@ namespace Ryujinx.HLE.HOS.Services.Nv
                 }
             }
             return true;
+        }
+        #endregion
+        
+        #region 辅助方法
+        /// <summary>
+        /// 计算内存碎片率
+        /// </summary>
+        public float CalculateFragmentation()
+        {
+            lock (_tree)
+            {
+                if (_tree.Count == 0) return 0f;
+                
+                ulong totalFree = 0;
+                ulong maxBlockSize = 0;
+                
+                foreach (var block in _tree)
+                {
+                    ulong blockSize = block.Value - block.Key;
+                    totalFree += blockSize;
+                    if (blockSize > maxBlockSize) maxBlockSize = blockSize;
+                }
+                
+                if (totalFree == 0) return 1f;
+                return 1f - (maxBlockSize / (float)totalFree);
+            }
+        }
+        
+        /// <summary>
+        /// 转储内存状态信息
+        /// </summary>
+        public void DumpMemoryState()
+        {
+            lock (_tree)
+            {
+                Logger.Debug?.Print(LogClass.ServiceNv, "=== Memory Allocator State Dump ===");
+                Logger.Debug?.Print(LogClass.ServiceNv, $"Total free blocks: {_tree.Count}");
+                
+                foreach (var range in _tree)
+                {
+                    Logger.Debug?.Print(LogClass.ServiceNv, 
+                        $"  Free: 0x{range.Key:X}-0x{range.Value:X} " +
+                        $"(Size: 0x{range.Value - range.Key:X})");
+                }
+                
+                float fragRate = CalculateFragmentation();
+                Logger.Debug?.Print(LogClass.ServiceNv, 
+                    $"Fragmentation: {fragRate:P}, Largest Block: 0x{GetLargestFreeBlockSize():X}");
+            }
+        }
+        
+        /// <summary>
+        /// 获取最大空闲块大小
+        /// </summary>
+        public ulong GetLargestFreeBlockSize()
+        {
+            lock (_tree)
+            {
+                ulong maxSize = 0;
+                foreach (var block in _tree)
+                {
+                    ulong size = block.Value - block.Key;
+                    if (size > maxSize) maxSize = size;
+                }
+                return maxSize;
+            }
         }
         #endregion
     }
