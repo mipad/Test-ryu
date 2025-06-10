@@ -12,6 +12,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Ryujinx.Common.Logging; 
+using Ryujinx.Graphics.Vulkan;
 
 namespace Ryujinx.Graphics.GAL.Multithreading
 {
