@@ -12,7 +12,7 @@ namespace Ryujinx.Graphics.Vulkan
         private uint _count;
 
         // 修复 1: 将数组大小从 16 扩展到 32
-        private const int MaxVertexBuffers = 32;
+        private const int MaxVertexBuffers = 33;
         private readonly NativeArray<VkBuffer> _buffers;
         private readonly NativeArray<ulong> _offsets;
         private readonly NativeArray<ulong> _sizes;
