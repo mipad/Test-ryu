@@ -28,7 +28,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         private const int QueueCount = 10000;
 
         private readonly int _elementSize;
-        private readonly IRenderer _baseRenderer;
+        private IRenderer _baseRenderer;
         private Thread _gpuThread;
         private Thread _backendThread;
         private bool _running;
@@ -59,6 +59,8 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         private Action _interruptAction;
         private readonly object _interruptLock = new();
 
+        private GraphicsDebugLevel _debugLevel;
+
         public event EventHandler<ScreenCaptureImageInfo> ScreenCaptured;
 
         internal BufferMap Buffers { get; }
@@ -77,14 +79,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         {
             _baseRenderer = renderer;
 
-            // 初始化所有 readonly 字段
-    _galWorkAvailable = new ManualResetEventSlim();
-    _frameComplete = new AutoResetEvent(true);
-    
-    // 正确访问 HardwareInfo（假设在 Ryujinx.Hardware 命名空间）
-    var hardwareInfo = new HardwareInfo();
-    int debugLevel = hardwareInfo.GraphicsDebugLevel; // 不再报错
-    
             renderer.ScreenCaptured += (sender, info) => ScreenCaptured?.Invoke(this, info);
             renderer.SetInterruptAction(Interrupt);
 
@@ -155,15 +149,15 @@ namespace Ryujinx.Graphics.GAL.Multithreading
                     }
                     catch (Exception ex)
                     {
-                        // 通用设备丢失检测
+                        // Generic device loss detection
                         if (IsDeviceLostException(ex))
                         {
-                            Logger.Error?.Print(LogClass.Gpu, $"图形设备丢失: {ex}");
+                            Logger.Error?.Print(LogClass.Gpu, $"Graphics device lost: {ex}");
                             HandleDeviceLost();
                         }
                         else
                         {
-                            Logger.Error?.Print(LogClass.Gpu, $"渲染命令执行错误: {ex}");
+                            Logger.Error?.Print(LogClass.Gpu, $"Render command execution error: {ex}");
                         }
                     }
 
@@ -179,7 +173,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             }
         }
 
-        // 通用设备丢失检测
+        // Generic device loss detection
         private bool IsDeviceLostException(Exception ex)
         {
             return ex.Message.Contains("ErrorDeviceLost") || 
@@ -187,41 +181,46 @@ namespace Ryujinx.Graphics.GAL.Multithreading
                    ex.Message.Contains("device_lost");
         }
 
-        // 通用设备丢失处理
+        // Generic device loss handling
         private void HandleDeviceLost()
         {
             try
             {
-                Logger.Info?.Print(LogClass.Gpu, "尝试恢复图形设备...");
+                Logger.Info?.Print(LogClass.Gpu, "Attempting to recover graphics device...");
                 
-                // 1. 销毁当前渲染器
+                // 1. Destroy current renderer
                 _baseRenderer.Dispose();
                 
-                // 2. 创建新渲染器实例
+                // 2. Create new renderer instance
                 var newRenderer = CreateNewRenderer();
                 if (newRenderer != null)
                 {
-                    // 3. 重新初始化
-                    newRenderer.Initialize(_baseRenderer.GetHardwareInfo().GraphicsDebugLevel);
+                    // 3. Reinitialize with stored debug level
+                    newRenderer.Initialize(_debugLevel);
                     
-                    // 4. 更新引用
+                    // 4. Update references
                     _baseRenderer = newRenderer;
-                    Logger.Info?.Print(LogClass.Gpu, "图形设备恢复成功");
+                    
+                    // Rebind events and interrupt handler
+                    newRenderer.ScreenCaptured += (sender, info) => ScreenCaptured?.Invoke(this, info);
+                    newRenderer.SetInterruptAction(Interrupt);
+                    
+                    Logger.Info?.Print(LogClass.Gpu, "Graphics device recovered successfully");
                 }
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Gpu, $"设备恢复失败: {ex}");
+                Logger.Error?.Print(LogClass.Gpu, $"Device recovery failed: {ex}");
             }
         }
 
-        // 创建新渲染器实例 (需要根据实际架构实现)
+        // Create new renderer instance (needs actual implementation)
         private IRenderer CreateNewRenderer()
         {
-            // 这里需要根据实际使用的渲染后端创建新实例
-            // 例如: return new OpenGLRenderer() 或 new VulkanRenderer()
-            // 由于项目结构限制，这里仅返回null作为示例
-            Logger.Warning?.Print(LogClass.Gpu, "创建新渲染器需要具体实现");
+            // This needs to be implemented based on actual backend used
+            // Example: return new OpenGLRenderer() or new VulkanRenderer()
+            // Due to project structure limitations, returning null as example
+            Logger.Warning?.Print(LogClass.Gpu, "CreateNewRenderer requires concrete implementation");
             return null;
         }
 
@@ -475,6 +474,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         /// <param name="logLevel">Log level to use</param>
         public void Initialize(GraphicsDebugLevel logLevel)
         {
+            _debugLevel = logLevel;
             _baseRenderer.Initialize(logLevel);
         }
 
