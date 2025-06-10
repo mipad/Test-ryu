@@ -139,9 +139,25 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
                     Span<byte> command = new(_commandQueue, commandPtr * _elementSize, _elementSize);
 
-                    // Run the command.
-
-                    CommandHelper.RunCommand(command, this, _baseRenderer);
+                    try
+                    {
+                        // Run the command.
+                        CommandHelper.RunCommand(command, this, _baseRenderer);
+                    }
+                    catch (Exception ex)
+                    {
+                        // 新增：捕获设备丢失异常并重置Vulkan设备
+                        if (ex is Ryujinx.Graphics.Vulkan.VulkanException vulkanEx && 
+                            vulkanEx.Message.Contains("ErrorDeviceLost"))
+                        {
+                            Logger.Error?.Print(LogClass.Gpu, $"Vulkan设备丢失: {vulkanEx}");
+                            ResetVulkanDevice();
+                        }
+                        else
+                        {
+                            Logger.Error?.Print(LogClass.Gpu, $"渲染命令执行错误: {ex}");
+                        }
+                    }
 
                     if (Interlocked.CompareExchange(ref _invokePtr, -1, commandPtr) == commandPtr)
                     {
@@ -152,6 +168,37 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
                     Interlocked.Decrement(ref _commandCount);
                 }
+            }
+        }
+
+        // 新增：重置Vulkan设备的方法
+        private void ResetVulkanDevice()
+        {
+            if (_baseRenderer is Ryujinx.Graphics.Vulkan.VulkanRenderer vulkanRenderer)
+            {
+                try
+                {
+                    Logger.Info?.Print(LogClass.Gpu, "开始重置Vulkan设备...");
+                    
+                    // 1. 销毁所有Vulkan资源
+                    vulkanRenderer.DisposeGpuResources();
+                    
+                    // 2. 重新初始化Vulkan
+                    vulkanRenderer.Initialize();
+                    
+                    // 3. 重建GPU资源
+                    vulkanRenderer.RebuildResources();
+                    
+                    Logger.Info?.Print(LogClass.Gpu, "Vulkan设备重置成功");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, $"重置Vulkan设备失败: {ex}");
+                }
+            }
+            else
+            {
+                Logger.Warning?.Print(LogClass.Gpu, "当前渲染器不是VulkanRenderer，无法重置设备");
             }
         }
 
