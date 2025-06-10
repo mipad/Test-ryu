@@ -82,6 +82,8 @@ namespace Ryujinx.Graphics.Vulkan
         public bool IsArmGPU => PhysicalDeviceVendorId == 0x13B5; // ARM 的 Vulkan Vendor ID 是 0x13B5
 
         public Device Device => _device;
+
+        public AutoDeleteCache AutoDeleteCache { get; } = new AutoDeleteCache();
         
         private readonly Func<Instance, Vk, SurfaceKHR> _getSurface;
         private readonly Func<string[]> _getRequiredExtensions;
@@ -479,7 +481,7 @@ if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaph
 
             IsSharedMemory = MemoryAllocator.IsDeviceMemoryShared(_physicalDevice);
 
-            MemoryAllocator = new MemoryAllocator(Api, _physicalDevice, _device);
+            MemoryAllocator = new MemoryAllocator(Api, _physicalDevice, _device, this);
 
             Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtExternalMemoryHost hostMemoryApi);
             HostMemoryAllocator = new HostMemoryAllocator(MemoryAllocator, Api, hostMemoryApi, _device);
