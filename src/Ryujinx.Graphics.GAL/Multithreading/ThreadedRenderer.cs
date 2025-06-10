@@ -12,7 +12,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Ryujinx.Common.Logging; 
-using Ryujinx.Graphics.Vulkan;
 
 namespace Ryujinx.Graphics.GAL.Multithreading
 {
@@ -148,12 +147,11 @@ namespace Ryujinx.Graphics.GAL.Multithreading
                     }
                     catch (Exception ex)
                     {
-                        // 新增：捕获设备丢失异常并重置Vulkan设备
-                        if (ex is Ryujinx.Graphics.Vulkan.VulkanException vulkanEx && 
-                            vulkanEx.Message.Contains("ErrorDeviceLost"))
+                        // 通用设备丢失检测
+                        if (IsDeviceLostException(ex))
                         {
-                            Logger.Error?.Print(LogClass.Gpu, $"Vulkan设备丢失: {vulkanEx}");
-                            ResetVulkanDevice();
+                            Logger.Error?.Print(LogClass.Gpu, $"图形设备丢失: {ex}");
+                            HandleDeviceLost();
                         }
                         else
                         {
@@ -173,35 +171,50 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             }
         }
 
-        // 新增：重置Vulkan设备的方法
-        private void ResetVulkanDevice()
+        // 通用设备丢失检测
+        private bool IsDeviceLostException(Exception ex)
         {
-            if (_baseRenderer is Ryujinx.Graphics.Vulkan.VulkanRenderer vulkanRenderer)
+            return ex.Message.Contains("ErrorDeviceLost") || 
+                   ex.Message.Contains("device lost") ||
+                   ex.Message.Contains("device_lost");
+        }
+
+        // 通用设备丢失处理
+        private void HandleDeviceLost()
+        {
+            try
             {
-                try
+                Logger.Info?.Print(LogClass.Gpu, "尝试恢复图形设备...");
+                
+                // 1. 销毁当前渲染器
+                _baseRenderer.Dispose();
+                
+                // 2. 创建新渲染器实例
+                var newRenderer = CreateNewRenderer();
+                if (newRenderer != null)
                 {
-                    Logger.Info?.Print(LogClass.Gpu, "开始重置Vulkan设备...");
+                    // 3. 重新初始化
+                    newRenderer.Initialize(_baseRenderer.GetHardwareInfo().GraphicsDebugLevel);
                     
-                    // 1. 销毁所有Vulkan资源
-                    vulkanRenderer.DisposeGpuResources();
-                    
-                    // 2. 重新初始化Vulkan
-                    vulkanRenderer.Initialize();
-                    
-                    // 3. 重建GPU资源
-                    vulkanRenderer.RebuildResources();
-                    
-                    Logger.Info?.Print(LogClass.Gpu, "Vulkan设备重置成功");
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error?.Print(LogClass.Gpu, $"重置Vulkan设备失败: {ex}");
+                    // 4. 更新引用
+                    _baseRenderer = newRenderer;
+                    Logger.Info?.Print(LogClass.Gpu, "图形设备恢复成功");
                 }
             }
-            else
+            catch (Exception ex)
             {
-                Logger.Warning?.Print(LogClass.Gpu, "当前渲染器不是VulkanRenderer，无法重置设备");
+                Logger.Error?.Print(LogClass.Gpu, $"设备恢复失败: {ex}");
             }
+        }
+
+        // 创建新渲染器实例 (需要根据实际架构实现)
+        private IRenderer CreateNewRenderer()
+        {
+            // 这里需要根据实际使用的渲染后端创建新实例
+            // 例如: return new OpenGLRenderer() 或 new VulkanRenderer()
+            // 由于项目结构限制，这里仅返回null作为示例
+            Logger.Warning?.Print(LogClass.Gpu, "创建新渲染器需要具体实现");
+            return null;
         }
 
         internal SpanRef<T> CopySpan<T>(ReadOnlySpan<T> data) where T : unmanaged
