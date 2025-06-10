@@ -1,4 +1,5 @@
 using System;
+using Ryujinx.Common.Logging;
 using VkBuffer = Silk.NET.Vulkan.Buffer;
 
 namespace Ryujinx.Graphics.Vulkan
@@ -10,6 +11,8 @@ namespace Ryujinx.Graphics.Vulkan
         private uint _baseBinding;
         private uint _count;
 
+        // 修复 1: 将数组大小从 16 扩展到 32
+        private const int MaxVertexBuffers = 32;
         private readonly NativeArray<VkBuffer> _buffers;
         private readonly NativeArray<ulong> _offsets;
         private readonly NativeArray<ulong> _sizes;
@@ -19,14 +22,23 @@ namespace Ryujinx.Graphics.Vulkan
         {
             _gd = gd;
 
-            _buffers = new NativeArray<VkBuffer>(Constants.MaxVertexBuffers);
-            _offsets = new NativeArray<ulong>(Constants.MaxVertexBuffers);
-            _sizes = new NativeArray<ulong>(Constants.MaxVertexBuffers);
-            _strides = new NativeArray<ulong>(Constants.MaxVertexBuffers);
+            // 修复 2: 使用新的常量 MaxVertexBuffers 替代 Constants.MaxVertexBuffers
+            _buffers = new NativeArray<VkBuffer>(MaxVertexBuffers);
+            _offsets = new NativeArray<ulong>(MaxVertexBuffers);
+            _sizes = new NativeArray<ulong>(MaxVertexBuffers);
+            _strides = new NativeArray<ulong>(MaxVertexBuffers);
         }
 
         public void BindVertexBuffer(CommandBufferScoped cbs, uint binding, VkBuffer buffer, ulong offset, ulong size, ulong stride)
         {
+            // 修复 3: 添加安全边界检查
+            if (_count >= MaxVertexBuffers)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Too many vertex buffer bindings ({_count + 1}), forcing commit at binding {binding}");
+                Commit(cbs);
+            }
+            
             if (_count == 0)
             {
                 _baseBinding = binding;
@@ -39,12 +51,21 @@ namespace Ryujinx.Graphics.Vulkan
 
             int index = (int)_count;
 
-            _buffers[index] = buffer;
-            _offsets[index] = offset;
-            _sizes[index] = size;
-            _strides[index] = stride;
+            // 修复 4: 添加数组边界保护
+            if (index < MaxVertexBuffers)
+            {
+                _buffers[index] = buffer;
+                _offsets[index] = offset;
+                _sizes[index] = size;
+                _strides[index] = stride;
 
-            _count++;
+                _count++;
+            }
+            else
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Vertex binding index {index} exceeds maximum ({MaxVertexBuffers})");
+            }
         }
 
         public unsafe void Commit(CommandBufferScoped cbs)
