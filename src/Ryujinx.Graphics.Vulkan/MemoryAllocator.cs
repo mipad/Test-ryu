@@ -56,17 +56,20 @@ namespace Ryujinx.Graphics.Vulkan
             
             // 第一次尝试分配
             if (!TryAllocate(memoryTypeIndex, size, alignment, map, isBuffer, ref allocation))
-            {
-                // 分配失败时尝试清理资源
-                if (_renderer != null && _renderer.AutoDeleteCache != null)
-                {
-                    _renderer.AutoDeleteCache.ForceCleanup();
-                    cleanedUp = true;
-                    
-                    // 清理后再次尝试分配
-                    TryAllocate(memoryTypeIndex, size, alignment, map, isBuffer, ref allocation);
-                }
-            }
+{
+    // 分配失败时尝试清理资源
+    if (_renderer?.AutoDeleteCache != null) // 使用空条件操作符更安全
+    {
+        _renderer.AutoDeleteCache.ForceCleanup();
+        cleanedUp = true;
+        
+        // 清理后重试分配
+        if (TryAllocate(memoryTypeIndex, size, alignment, map, isBuffer, ref allocation))
+        {
+            return true;
+        }
+    }
+}
 
             // 记录分配失败日志（包括清理状态）
             if (!allocation.IsValid)
