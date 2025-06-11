@@ -13,9 +13,6 @@ namespace Ryujinx.Graphics.Vulkan
         public IntPtr HostPointer { get; }
         public ulong Offset { get; }
         public ulong Size { get; }
-        
-        // 新增：检查分配是否有效的属性
-        public bool IsValid => Memory.Handle != 0;
 
         public MemoryAllocation(
             MemoryAllocatorBlockList owner,
@@ -55,7 +52,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                _owner?.Free(_block, Offset, Size);
+                _owner.Free(_block, Offset, Size);
             }
         }
     }
