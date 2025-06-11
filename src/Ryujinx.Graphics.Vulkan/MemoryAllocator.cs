@@ -52,24 +52,7 @@ namespace Ryujinx.Graphics.Vulkan
         private MemoryAllocation Allocate(int memoryTypeIndex, ulong size, ulong alignment, bool map, bool isBuffer)
         {
             MemoryAllocation allocation = default;
-            bool cleanedUp = false;
-            
-            // 第一次尝试分配
-            if (!TryAllocate(memoryTypeIndex, size, alignment, map, isBuffer, ref allocation))
-{
-    // 分配失败时尝试清理资源
-    if (_renderer?.AutoDeleteCache != null) // 使用空条件操作符更安全
-    {
-        _AutoDeleteCache.ForceCleanup();
-        cleanedUp = true;
-        
-        // 清理后重试分配
-        if (TryAllocate(memoryTypeIndex, size, alignment, map, isBuffer, ref allocation))
-        {
-            return true;
-        }
-    }
-}
+            bool cleanedUp = true;
 
             // 记录分配失败日志（包括清理状态）
             if (!allocation.IsValid)
