@@ -1184,7 +1184,7 @@ private unsafe bool IsDeviceLost()
         Api.GetDeviceQueue(_device, QueueFamilyIndex, 0, &queue);
         return false;
     }
-    catch (Exception ex) when (ex is VkException vkEx && vkEx.Result == Result.ErrorDeviceLost)
+    catch (Exception ex) when (ex is VkException { Result: Result.ErrorDeviceLost })
     {
         return true;
     }
