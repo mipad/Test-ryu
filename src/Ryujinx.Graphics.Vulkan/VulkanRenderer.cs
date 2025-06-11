@@ -28,6 +28,7 @@ namespace Ryujinx.Graphics.Vulkan
         private CommandBufferPool _computeCommandPool;
         private bool _concurrentFenceWaitUnsupported; // 根据设备特性初始化
         private bool _initialized;
+        private CancellationTokenSource _monitorCts; // 控制后台任务
 
         internal KhrTimelineSemaphore TimelineSemaphoreApi { get; private set; }
         internal FormatCapabilities FormatCapabilities { get; private set; }
@@ -1129,20 +1130,39 @@ private unsafe void InitializeVulkan()
 // 添加周期性健康检查
 private void MonitorGpuHealth()
 {
-    Task.Run(async () =>
+    // 创建新的取消令牌
+    _monitorCts = new CancellationTokenSource();
+    var token = _monitorCts.Token;
+
+    // 使用Task.Run启动后台监控
+    Task.Run(() =>
     {
-        while (!_disposed)
+        try
         {
-            await Task.Delay(3000); // 每3秒检查一次
-            if (_device.IsDeviceLost()) // 扩展API检测设备状态
+            while (!token.IsCancellationRequested)
             {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    "Proactive device lost detected");
-                HandleDeviceLost();
-                break;
+                // 每3秒检查一次设备状态
+                Thread.Sleep(3000);
+                
+                if (token.IsCancellationRequested) 
+                    break;
+                
+                // 添加设备丢失检测方法
+                if (IsDeviceLost())
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        "Proactive device lost detected");
+                    HandleDeviceLostInternal();
+                    break;
+                }
             }
         }
-    });
+        catch (Exception ex)
+        {
+            Logger.Error?.Print(LogClass.Gpu, 
+                $"GPU health monitor failed: {ex}");
+        }
+    }, token);
 }
 
         public unsafe void Dispose()
@@ -1161,6 +1181,8 @@ private void MonitorGpuHealth()
             BufferManager.Dispose();
             PipelineLayoutCache.Dispose();
             Barriers.Dispose();
+            _monitorCts?.Cancel();
+            _monitorCts?.Dispose();
 
             MemoryAllocator.Dispose();
 
