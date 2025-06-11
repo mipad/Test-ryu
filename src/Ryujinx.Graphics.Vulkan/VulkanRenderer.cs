@@ -8,6 +8,7 @@ using Ryujinx.Graphics.Vulkan.Queries;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.EXT;
 using Silk.NET.Vulkan.Extensions.KHR;
+using Ryujinx.Graphics.Gpu.Image;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -72,7 +73,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         internal BarrierBatch Barriers { get; private set; }
 
-public AutoDeleteCacheManager AutoDeleteCache { get; } = new();
+        public AutoDeleteCache AutoDeleteCache { get; }
 
         public IPipeline Pipeline => _pipeline;
 
@@ -114,7 +115,9 @@ public AutoDeleteCacheManager AutoDeleteCache { get; } = new();
         public event EventHandler<ScreenCaptureImageInfo> ScreenCaptured;
 
         public VulkanRenderer(Vk api, Func<Instance, Vk, SurfaceKHR> surfaceFunc, Func<string[]> requiredExtensionsFunc, string preferredGpuId)
-        {
+        {  
+        // 初始化 AutoDeleteCache
+            AutoDeleteCache = new AutoDeleteCache();
             _getSurface = surfaceFunc;
             _getRequiredExtensions = requiredExtensionsFunc;
             _preferredGpuId = preferredGpuId;
