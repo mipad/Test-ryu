@@ -1,5 +1,4 @@
 using Ryujinx.Common.Memory;
-using Ryujinx.Graphics.Gpu.Image;
 using Ryujinx.Memory;
 using Ryujinx.Memory.Range;
 using System;
@@ -214,14 +213,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 size = Math.Min(data.Length, (int)PageSize - (int)(va & PageMask));
 
-                if (pa == PteUnmapped)
-                {
-                    data.Slice(0, size).Fill(0);
-                }
-                else
-                {
-                    Physical.GetSpan(pa, size, tracked).CopyTo(data[..size]);
-                }
+                Physical.GetSpan(pa, size, tracked).CopyTo(data[..size]);
 
                 offset += size;
             }
@@ -232,14 +224,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 size = Math.Min(data.Length - offset, (int)PageSize);
 
-                if (pa == PteUnmapped)
-                {
-                    data.Slice(offset, size).Fill(0);
-                }
-                else
-                {
-                    Physical.GetSpan(pa, size, tracked).CopyTo(data.Slice(offset, size));
-                }
+                Physical.GetSpan(pa, size, tracked).CopyTo(data.Slice(offset, size));
             }
         }
 
@@ -472,7 +457,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
             int pages = (int)((endVaRounded - va) / PageSize);
 
-            var regions = new List<MemoryRange>();
+            List<MemoryRange> regions = [];
 
             for (int page = 0; page < pages - 1; page++)
             {
@@ -705,11 +690,8 @@ namespace Ryujinx.Graphics.Gpu.Memory
             if (_pageTable[l0] == null)
             {
                 _pageTable[l0] = new ulong[PtLvl1Size];
-
-                for (ulong index = 0; index < PtLvl1Size; index++)
-                {
-                    _pageTable[l0][index] = PteUnmapped;
-                }
+                
+                Array.Fill(_pageTable[l0], PteUnmapped);
             }
 
             _pageTable[l0][l1] = pte;
