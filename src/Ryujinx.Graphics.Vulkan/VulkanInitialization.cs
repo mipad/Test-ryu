@@ -16,7 +16,7 @@ namespace Ryujinx.Graphics.Vulkan
         private const uint InvalidIndex = uint.MaxValue;
         private static readonly uint _minimalVulkanVersion = Vk.Version11.Value;
         private static readonly uint _minimalInstanceVulkanVersion = Vk.Version12.Value;
-        private static readonly uint _maximumVulkanVersion = Vk.Version14.Value;
+        private static readonly uint _maximumVulkanVersion = Vk.Version12.Value;
         private const string AppName = "Ryujinx.Graphics.Vulkan";
         private const int QueuesCount = 2;
 
@@ -47,8 +47,10 @@ namespace Ryujinx.Graphics.Vulkan
             "VK_KHR_maintenance2",
             "VK_EXT_attachment_feedback_loop_layout",
             "VK_EXT_attachment_feedback_loop_dynamic_state",
-             "VK_KHR_timeline_semaphore", //添加时间线信号量功能
-             "VK_KHR_multiview" // 添加
+            "VK_KHR_timeline_semaphore", //添加时间线信号量功能
+            "VK_KHR_multiview", // 添加
+            "VK_KHR_spirv_1_4", // 添加SPIR-V 1.4支持
+            "VK_EXT_texture_compression_astc_hdr" // 添加ASTC HDR纹理压缩支持
         ];
 
         private static readonly string[] _requiredExtensions =
