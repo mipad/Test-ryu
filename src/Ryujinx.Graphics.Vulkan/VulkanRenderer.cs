@@ -82,8 +82,6 @@ namespace Ryujinx.Graphics.Vulkan
         public bool IsArmGPU => PhysicalDeviceVendorId == 0x13B5; // ARM 的 Vulkan Vendor ID 是 0x13B5
 
         public Device Device => _device;
-
-        public AutoDeleteCache AutoDeleteCache { get; } = new AutoDeleteCache();
         
         private readonly Func<Instance, Vk, SurfaceKHR> _getSurface;
         private readonly Func<string[]> _getRequiredExtensions;
