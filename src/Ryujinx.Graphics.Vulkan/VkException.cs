@@ -1,15 +1,18 @@
 using System;
-using Ryujinx.Graphics.Vulkan;
+using Silk.NET.Vulkan; 
 
 namespace Ryujinx.Graphics.Vulkan
 {
     public class VkException : Exception
     {
-        public VkException(Result result) : base($"Vulkan error: {result}")
+        public VkException(Result result) 
+            : base($"Vulkan API error: {result}")
         {
-            Result = result;
         }
 
-        public Result Result { get; }
+        public VkException(Result result, string message) 
+            : base($"Vulkan error ({result}): {message}")
+        {
+        }
     }
 }
