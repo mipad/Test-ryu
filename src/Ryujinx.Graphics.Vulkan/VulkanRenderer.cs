@@ -117,8 +117,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public VulkanRenderer(Vk api, Func<Instance, Vk, SurfaceKHR> surfaceFunc, Func<string[]> requiredExtensionsFunc, string preferredGpuId)
         {  
-        // 初始化 AutoDeleteCache
-            AutoDeleteCache = new AutoDeleteCache();
+            // 初始化 AutoDeleteCache
+             AutoDeleteCache = new AutoDeleteCache();
+             AutoDeleteCache.Initialize(gpuContext); // 需要传入 GpuContext
             _getSurface = surfaceFunc;
             _getRequiredExtensions = requiredExtensionsFunc;
             _preferredGpuId = preferredGpuId;
