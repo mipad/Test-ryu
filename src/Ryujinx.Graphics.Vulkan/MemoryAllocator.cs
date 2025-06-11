@@ -2,6 +2,7 @@ using Silk.NET.Vulkan;
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -108,6 +109,31 @@ namespace Ryujinx.Graphics.Vulkan
 
             return true;
         }
+
+        public void ReleaseEmergencyMemory()
+{
+    try
+    {
+        // 强制垃圾回收
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true);
+        GC.WaitForPendingFinalizers();
+        
+        // 释放所有可回收资源
+        foreach (var allocation in _allocations.ToArray())
+        {
+            if (allocation.IsUnmapped)
+            {
+                Free(allocation);
+            }
+        }
+        
+        Logger.Info?.Print(LogClass.Gpu, "Released emergency memory");
+    }
+    catch (Exception ex)
+    {
+        Logger.Warning?.Print(LogClass.Gpu, $"Emergency release failed: {ex.Message}");
+    }
+}
 
         public void Dispose()
         {
