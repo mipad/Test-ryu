@@ -331,6 +331,37 @@ namespace Ryujinx.Graphics.Gpu.Image
             _shortCacheBuilder = toRemove;
         }
 
+public void ForceCleanup()
+{
+    // 清理主缓存
+    while (_textures.Count > 0)
+    {
+        RemoveLeastUsedTexture();
+    }
+
+    // 清理短时缓存
+    ProcessShortCache();
+    
+    // 确保短时缓存也被清空
+    foreach (var entry in _shortCache)
+    {
+        entry.Texture.DecrementReferenceCount();
+        entry.Texture.ShortCacheEntry = null;
+    }
+    
+    foreach (var entry in _shortCacheBuilder)
+    {
+        entry.Texture.DecrementReferenceCount();
+        entry.Texture.ShortCacheEntry = null;
+    }
+    
+    _shortCache.Clear();
+    _shortCacheBuilder.Clear();
+    _shortCacheLookup.Clear();
+    
+    _totalSize = 0;
+}
+
         public IEnumerator<Texture> GetEnumerator()
         {
             return _textures.GetEnumerator();
