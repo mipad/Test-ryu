@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Ryujinx.Graphics.Vulkan;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Vulkan
 {
