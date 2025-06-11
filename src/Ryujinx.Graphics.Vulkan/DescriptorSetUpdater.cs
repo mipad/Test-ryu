@@ -1,4 +1,5 @@
 using Ryujinx.Common.Memory;
+using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Shader;
 using Silk.NET.Vulkan;
@@ -427,7 +428,15 @@ namespace Ryujinx.Graphics.Vulkan
                 var assignment = buffers[i];
                 var buffer = assignment.Range;
                 int index = assignment.Binding;
-
+                
+                // 新增安全校验 
+        if (index < 0 || index >= Constants.MaxStorageBufferBindings)
+        {
+            Logger.Warning?.Print(LogClass.Gpu,
+                $"Storage buffer binding index out of range! Index: {index}, Max: {Constants.MaxStorageBufferBindings}");
+            continue;
+        }
+        // 校验结束
                 Auto<DisposableBuffer> vkBuffer = buffer.Handle == BufferHandle.Null
                     ? null
                     : _gd.BufferManager.GetBuffer(commandBuffer, buffer.Handle, buffer.Write, isSSBO: true);
@@ -636,7 +645,16 @@ namespace Ryujinx.Graphics.Vulkan
                 var assignment = buffers[i];
                 var buffer = assignment.Range;
                 int index = assignment.Binding;
-
+                // 新增安全校验 
+        if (index < 0 || index >= Constants.MaxUniformBufferBindings)
+        {
+            // 记录错误日志（可选）
+            Logger.Warning?.Print(LogClass.Gpu, 
+                $"Uniform buffer binding index out of range! Index: {index}, Max: {Constants.MaxUniformBufferBindings}");
+            continue;
+        }
+        //  校验结束 
+        
                 Auto<DisposableBuffer> vkBuffer = buffer.Handle == BufferHandle.Null
                     ? null
                     : _gd.BufferManager.GetBuffer(commandBuffer, buffer.Handle, false);
