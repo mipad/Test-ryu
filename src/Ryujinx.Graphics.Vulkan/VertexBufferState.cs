@@ -49,7 +49,14 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         public void BindVertexBuffer(VulkanRenderer gd, CommandBufferScoped cbs, uint binding, ref PipelineState state, VertexBufferUpdater updater)
-        {
+        { 
+            //  新增步长安全校验 
+    if (_stride == 0)
+    {
+        return; // 跳过非法绑定
+    }
+    // 校验结束 
+    
             var autoBuffer = _buffer;
 
             if (_handle != BufferHandle.Null)
