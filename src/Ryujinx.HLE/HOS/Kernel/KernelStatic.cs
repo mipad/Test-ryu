@@ -50,10 +50,16 @@ namespace Ryujinx.HLE.HOS.Kernel
             _currentThread = thread;
         }
 
-        internal static KThread GetCurrentThread()
+        public static KThread GetCurrentThread()
         {
             return _currentThread;
         }
+        
+        // 添加获取进程ID的方法（如果KThread中Pid字段未设置）
+public static int GetCurrentProcessId()
+{
+    return GetCurrentThread().Owner.Pid;
+}
 
         internal static KProcess GetCurrentProcess()
         {
