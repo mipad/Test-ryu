@@ -480,7 +480,7 @@ if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaph
 
             IsSharedMemory = MemoryAllocator.IsDeviceMemoryShared(_physicalDevice);
 
-            MemoryAllocator = new MemoryAllocator(Api, _physicalDevice, _device, this);
+            MemoryAllocator = new MemoryAllocator(Api, _physicalDevice, _device);
 
             Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtExternalMemoryHost hostMemoryApi);
             HostMemoryAllocator = new HostMemoryAllocator(MemoryAllocator, Api, hostMemoryApi, _device);
