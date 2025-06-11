@@ -8,13 +8,14 @@ using Ryujinx.Graphics.Vulkan.Queries;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.EXT;
 using Silk.NET.Vulkan.Extensions.KHR;
-using Ryujinx.Graphics.Gpu.Image;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Format = Ryujinx.Graphics.GAL.Format;
 using PrimitiveTopology = Ryujinx.Graphics.GAL.PrimitiveTopology;
 using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
+using Ryujinx.Graphics.Gpu;
+using Ryujinx.Graphics.Gpu.Image;
 
 namespace Ryujinx.Graphics.Vulkan
 {
