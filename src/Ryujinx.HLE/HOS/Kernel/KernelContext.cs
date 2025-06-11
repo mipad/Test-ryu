@@ -48,7 +48,16 @@ namespace Ryujinx.HLE.HOS.Kernel
         public ConcurrentDictionary<string, KAutoObject> AutoObjectNames { get; }
 
         public bool ThreadReselectionRequested { get; set; }
-
+        
+        // 添加内存管理器访问方法
+    public KMemoryManager MemoryManager { get; } // 应该已存在
+    
+    // 添加获取当前线程的方法
+    public KThread GetCurrentThread()
+    {
+        return KernelStatic.GetCurrentThread();
+    }
+    
         private ulong _kipId;
         private ulong _processId;
         private ulong _threadUid;
