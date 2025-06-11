@@ -50,7 +50,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
         public ulong MutexAddress { get; set; }
         public int MutexLockCount { get; set; }
-        public int Pid => Owner?.Pid ?? 0; // 添加获取进程ID的属性
+        public int Pid => Owner != null ? (int)Owner.Pid : 0; // 添加获取进程ID的属性
         public int KernelWaitersCount { get; private set; }
 
         public KProcess Owner { get; private set; }
