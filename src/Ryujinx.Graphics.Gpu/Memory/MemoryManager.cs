@@ -213,7 +213,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 size = Math.Min(data.Length, (int)PageSize - (int)(va & PageMask));
 
-                if (pa == PteUnmapped)Add commentMore actions
+                if (pa == PteUnmapped)
                 {
                     data.Slice(0, size).Fill(0);
                 }
@@ -231,7 +231,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 size = Math.Min(data.Length - offset, (int)PageSize);
 
-                if (pa == PteUnmapped)Add commentMore actions
+                if (pa == PteUnmapped)
                 {
                     data.Slice(offset, size).Fill(0);
                 }
