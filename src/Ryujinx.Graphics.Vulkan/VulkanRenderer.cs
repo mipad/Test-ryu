@@ -72,6 +72,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         internal BarrierBatch Barriers { get; private set; }
 
+public AutoDeleteCacheManager AutoDeleteCache { get; } = new();
+
         public IPipeline Pipeline => _pipeline;
 
         public IWindow Window => _window;
