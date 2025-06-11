@@ -372,26 +372,26 @@ namespace Ryujinx.Graphics.Vulkan
             }
             while (allocation.Memory.Handle == 0 && (--type != fallbackType));
             
-            // +++ 新增：内存分配失败处理 +++
-    if (allocation.Memory.Handle == 0UL)
-    {
-        Logger.Error?.Print(LogClass.Gpu, $"Memory allocation failed for {size} byte buffer");
-        
-        // 尝试紧急内存释放
-        gd.MemoryAllocator.ReleaseEmergencyMemory();
-        
-        // 重试基本内存分配
-        try
-        {
-            allocation = gd.MemoryAllocator.AllocateDeviceMemory(requirements, DefaultBufferMemoryFlags, false);
-        }
-        catch (VulkanException ex)
-        {
-            Logger.Error?.Print(LogClass.Gpu, $"Emergency allocation failed: {ex.Message}");
-            gd.Api.DestroyBuffer(_device, buffer, null);
-            return default;
-        }
-    }
+            // 内存分配失败处理
+            if (allocation.Memory.Handle == 0UL)
+            {
+                Logger.Error?.Print(LogClass.Gpu, $"Memory allocation failed for {size} byte buffer");
+                
+                // 尝试紧急内存释放
+                gd.MemoryAllocator.ReleaseEmergencyMemory();
+                
+                // 重试基本内存分配
+                try
+                {
+                    allocation = gd.MemoryAllocator.AllocateDeviceMemory(requirements, DefaultBufferMemoryFlags, false);
+                }
+                catch (VulkanException ex)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, $"Emergency allocation failed: {ex.Message}");
+                    gd.Api.DestroyBuffer(_device, buffer, null);
+                    return default;
+                }
+            }
     
             if (allocation.Memory.Handle == 0UL)
             {
@@ -411,22 +411,21 @@ namespace Ryujinx.Graphics.Vulkan
             bool sparseCompatible = false,
             BufferAllocationType baseType = BufferAllocationType.HostMapped)
         {   
+            // 缓冲区大小校验
+            if (size <= 0)
             {
-    // +++ 新增：缓冲区大小校验 +++
-    if (size <= 0)
-    {
-        Logger.Error?.Print(LogClass.Gpu, $"Invalid buffer size: {size}");
-        return null;
-    }
+                Logger.Error?.Print(LogClass.Gpu, $"Invalid buffer size: {size}");
+                return null;
+            }
 
-    // +++ 新增：限制最大分配大小 +++
-    const int MaxSafeSize = 512 * 1024 * 1024; // 512MB
-    if (size > MaxSafeSize)
-    {
-        Logger.Warning?.Print(LogClass.Gpu, $"Attempted to allocate oversized buffer: 0x{size:X}");
-        size = MaxSafeSize;
-    }
-    
+            // 限制最大分配大小
+            const int MaxSafeSize = 512 * 1024 * 1024; // 512MB
+            if (size > MaxSafeSize)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, $"Attempted to allocate oversized buffer: 0x{size:X}");
+                size = MaxSafeSize;
+            }
+            
             BufferAllocationType type = baseType;
 
             if (baseType == BufferAllocationType.Auto)
