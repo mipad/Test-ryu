@@ -6,6 +6,7 @@ using Ryujinx.Graphics.Shader.Translation;
 using Ryujinx.Graphics.Vulkan.MoltenVK;
 using Ryujinx.Graphics.Vulkan.Queries;
 using Silk.NET.Vulkan;
+using Ryujinx.Graphics.Exceptions;
 using Silk.NET.Vulkan.Extensions.EXT;
 using Silk.NET.Vulkan.Extensions.KHR;
 using System;
