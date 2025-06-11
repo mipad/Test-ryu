@@ -1131,6 +1131,9 @@ private unsafe void InitializeVulkan()
 // 添加周期性健康检查
 private void MonitorGpuHealth()
 {
+    // 确保取消之前的监控（如果存在）
+    _monitorCts?.Cancel();
+    _monitorCts?.Dispose();
     // 创建新的取消令牌
     _monitorCts = new CancellationTokenSource();
     var token = _monitorCts.Token;
@@ -1166,6 +1169,29 @@ private void MonitorGpuHealth()
     }, token);
 }
 
+// 添加设备状态检测方法
+private bool IsDeviceLost()
+{
+    try
+    {
+        // 使用简单的API调用来检测设备状态
+        Vk api = _api;
+        Device device = _device;
+        
+        if (api == null || device == null || device.Handle == 0)
+            return true;
+        
+        // 尝试获取设备属性（无害操作）
+        PhysicalDeviceProperties properties;
+        api.GetPhysicalDeviceProperties(_physicalDevice, out properties);
+        return false;
+    }
+    catch
+    {
+        return true;
+    }
+}
+
         public unsafe void Dispose()
         {
             if (!_initialized)
@@ -1182,8 +1208,10 @@ private void MonitorGpuHealth()
             BufferManager.Dispose();
             PipelineLayoutCache.Dispose();
             Barriers.Dispose();
+            
             _monitorCts?.Cancel();
             _monitorCts?.Dispose();
+            _monitorCts = null;
 
             MemoryAllocator.Dispose();
 
