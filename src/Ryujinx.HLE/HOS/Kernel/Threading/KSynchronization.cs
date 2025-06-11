@@ -17,7 +17,6 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
             _context = context;
         }
 
-        // 新增进程宽键同步方法
         public Result WaitProcessWideKeyAtomic(ulong mutexAddress, ulong condVarAddress, int timeout)
         {
             KThread currentThread = KernelStatic.GetCurrentThread();
@@ -34,8 +33,9 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
             lock (_processWideLock)
             {
-                // 2. 检查条件变量状态
-                int condVarValue = _context.MemoryManager.Read<int>(condVarAddress);
+                // 2. 检查条件变量状态 - 使用进程内存管理器
+                var processMemory = currentThread.Owner.CpuMemory;
+                int condVarValue = processMemory.Read<int>(condVarAddress);
                 if (condVarValue != 0)
                 {
                     return Result.Success;
@@ -61,14 +61,15 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
             }
         }
 
-        // 新增进程宽键信号方法
         public Result SignalProcessWideKey(ulong condVarAddress, int count)
         {
             lock (_processWideLock)
             {
-                // 1. 更新条件变量计数器
-                int currentValue = _context.MemoryManager.Read<int>(condVarAddress);
-                _context.MemoryManager.Write(condVarAddress, currentValue + 1);
+                // 1. 更新条件变量计数器 - 使用进程内存管理器
+                var currentThread = KernelStatic.GetCurrentThread();
+                var processMemory = currentThread.Owner.CpuMemory;
+                int currentValue = processMemory.Read<int>(condVarAddress);
+                processMemory.Write(condVarAddress, currentValue + 1);
                 
                 // 2. 根据计数值唤醒线程
                 if (count > 0)
@@ -86,40 +87,40 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
             return Result.Success;
         }
 
-        // 新增互斥锁仲裁方法
         private Result ArbitrateLock(KThread thread, ulong mutexAddress)
-{
-    _context.CriticalSection.Enter();
-    
-    try
-    {
-        int mutexValue = _context.MemoryManager.Read<int>(mutexAddress);
-        
-        if (mutexValue == 0)
         {
-            // 获取锁成功
-            _context.MemoryManager.Write(mutexAddress, thread.ThreadHandleForUserMutex);
-            thread.MutexLockCount = 1;
-            thread.MutexAddress = mutexAddress;
-            return Result.Success;
+            _context.CriticalSection.Enter();
+            
+            try
+            {
+                // 使用进程内存管理器访问内存
+                var processMemory = thread.Owner.CpuMemory;
+                int mutexValue = processMemory.Read<int>(mutexAddress);
+                
+                if (mutexValue == 0)
+                {
+                    // 获取锁成功
+                    processMemory.Write(mutexAddress, thread.ThreadHandleForUserMutex);
+                    thread.MutexLockCount = 1;
+                    thread.MutexAddress = mutexAddress;
+                    return Result.Success;
+                }
+                
+                // 检查递归锁（当前线程是否已持有锁）
+                if (mutexValue == thread.ThreadHandleForUserMutex)
+                {
+                    thread.MutexLockCount++;
+                    return Result.Success;
+                }
+                
+                return KernelResult.InvalidState;
+            }
+            finally
+            {
+                _context.CriticalSection.Leave();
+            }
         }
-        
-        // 检查递归锁（当前线程是否已持有锁）
-        if (mutexValue == thread.ThreadHandleForUserMutex)
-        {
-            thread.MutexLockCount++;
-            return Result.Success;
-        }
-        
-        return KernelResult.InvalidState;
-    }
-    finally
-    {
-        _context.CriticalSection.Leave();
-    }
-}
 
-        // 修改现有WaitFor方法
         public Result WaitFor(Span<KSynchronizationObject> syncObjs, long timeout, out int handleIndex)
         {
             handleIndex = 0;
@@ -210,7 +211,6 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
             }
         }
 
-        // 修改现有SignalObject方法
         public void SignalObject(KSynchronizationObject syncObj)
         {
             _context.CriticalSection.Enter();
