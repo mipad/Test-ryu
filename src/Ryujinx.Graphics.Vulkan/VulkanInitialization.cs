@@ -16,7 +16,7 @@ namespace Ryujinx.Graphics.Vulkan
         private const uint InvalidIndex = uint.MaxValue;
         private static readonly uint _minimalVulkanVersion = Vk.Version11.Value;
         private static readonly uint _minimalInstanceVulkanVersion = Vk.Version12.Value;
-        private static readonly uint _maximumVulkanVersion = Vk.Version12.Value;
+        private static readonly uint _maximumVulkanVersion = Vk.Version14.Value;
         private const string AppName = "Ryujinx.Graphics.Vulkan";
         private const int QueuesCount = 2;
 
