@@ -1156,7 +1156,7 @@ private void MonitorGpuHealth()
                 {
                     Logger.Warning?.Print(LogClass.Gpu, 
                         "Proactive device lost detected");
-                    HandleDeviceLostInternal();
+                    InterruptAction?.Invoke(() => RecreateVulkanDevice());
                     break;
                 }
             }
@@ -1170,24 +1170,27 @@ private void MonitorGpuHealth()
 }
 
 // 添加设备状态检测方法
-private bool IsDeviceLost()
+private unsafe bool IsDeviceLost()
 {
+    if (Api == null || _device.Handle == 0)
+    {
+        return true;
+    }
+
     try
     {
-        // 使用简单的API调用来检测设备状态
-        Vk api = _api;
-        Device device = _device;
-        
-        if (api == null || device == null || device.Handle == 0)
-            return true;
-        
-        // 尝试获取设备属性（无害操作）
-        PhysicalDeviceProperties properties;
-        api.GetPhysicalDeviceProperties(_physicalDevice, out properties);
+        // 尝试获取设备队列（轻量级操作）来检测设备状态
+        Queue queue;
+        Api.GetDeviceQueue(_device, QueueFamilyIndex, 0, &queue);
         return false;
+    }
+    catch (Exception ex) when (ex is VkException vkEx && vkEx.Result == Result.ErrorDeviceLost)
+    {
+        return true;
     }
     catch
     {
+        // 其他异常也认为设备丢失
         return true;
     }
 }
@@ -1247,5 +1250,3 @@ private bool IsDeviceLost()
         }
     }
 }
-
-                
