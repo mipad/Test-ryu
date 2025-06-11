@@ -49,6 +49,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         public bool IsSchedulable => _customThreadStart == null && !_forcedUnschedulable;
 
         public ulong MutexAddress { get; set; }
+        public int MutexLockCount { get; set; }
+        public int Pid => Owner?.Pid ?? 0; // 添加获取进程ID的属性
         public int KernelWaitersCount { get; private set; }
 
         public KProcess Owner { get; private set; }
@@ -152,7 +154,11 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
             BasePriority = priority;
             CurrentCore = cpuCore;
             IsPinned = false;
-
+            // 添加新字段的初始化
+    CondVarAddress = 0;
+    MutexAddress = 0;
+    MutexLockCount = 0;
+            
             _entrypoint = entrypoint;
             _customThreadStart = customThreadStart;
 
@@ -439,6 +445,11 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
             bool decRef = Interlocked.Exchange(ref _hasExited, 1) == 0;
 
+// 重置进程宽键状态
+    CondVarAddress = 0;
+    MutexAddress = 0;
+    MutexLockCount = 0;
+    
             Signal();
 
             KernelContext.CriticalSection.Leave();
@@ -1310,6 +1321,10 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
             KernelContext.CriticalSection.Enter();
 
+           // 重置进程宽键状态
+    CondVarAddress = 0;
+    MutexAddress = 0;
+    MutexLockCount = 0;
             // Wake up all threads that may be waiting for a mutex being held by this thread.
             foreach (KThread thread in _mutexWaiters)
             {
@@ -1319,11 +1334,40 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
                 thread.ReleaseAndResume();
             }
-
+            
+            _mutexWaiters.Clear();
+            
             KernelContext.CriticalSection.Leave();
 
             Owner?.DecrementThreadCountAndTerminateIfZero();
         }
+        
+        // 添加递归锁支持方法
+public void AcquireRecursiveMutex(ulong mutexAddress)
+{
+    if (MutexAddress == mutexAddress)
+    {
+        MutexLockCount++;
+    }
+    else
+    {
+        MutexAddress = mutexAddress;
+        MutexLockCount = 1;
+    }
+}
+
+public void ReleaseRecursiveMutex()
+{
+    if (MutexLockCount > 1)
+    {
+        MutexLockCount--;
+    }
+    else
+    {
+        MutexLockCount = 0;
+        MutexAddress = 0;
+    }
+}
 
         public void Pin()
         {
