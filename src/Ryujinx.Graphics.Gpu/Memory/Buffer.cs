@@ -110,7 +110,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             ulong size,
             BufferStage stage,
             bool sparseCompatible,
-            IEnumerable<Buffer> baseBuffers = null)
+            ReadOnlySpan<RangeItem<Buffer>> baseBuffers)
         {
             _context = context;
             _physicalMemory = physicalMemory;
@@ -126,21 +126,22 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
             _useGranular = size > GranularBufferThreshold;
 
-            IEnumerable<IRegionHandle> baseHandles = null;
+            List<IRegionHandle> baseHandles = null;
 
-            if (baseBuffers != null)
+            if (!baseBuffers.IsEmpty)
             {
-                baseHandles = baseBuffers.SelectMany(buffer =>
+                baseHandles = new List<IRegionHandle>();
+                foreach (RangeItem<Buffer> buffer in baseBuffers)
                 {
-                    if (buffer._useGranular)
+                    if (buffer.Value._useGranular)
                     {
-                        return buffer._memoryTrackingGranular.GetHandles();
+                        baseHandles.AddRange((buffer.Value._memoryTrackingGranular.GetHandles()));
                     }
                     else
                     {
-                        return Enumerable.Repeat(buffer._memoryTracking, 1);
+                        baseHandles.Add(buffer.Value._memoryTracking);
                     }
-                });
+                }
             }
 
             if (_useGranular)
@@ -705,7 +706,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             BufferHandle handle = Handle;
 
-            return (ulong address, ulong size, ulong _) =>
+            return (address, size, _) =>
             {
                 FlushImpl(handle, address, size);
             };
@@ -735,7 +736,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             _context.Renderer.BackgroundContextAction(() =>
             {
-                var ranges = _modifiedRanges;
+                BufferModifiedRangeList ranges = _modifiedRanges;
 
                 if (ranges != null)
                 {
@@ -799,7 +800,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
             try
             {
-                (_virtualDependencies ??= new()).Add(virtualBuffer);
+                (_virtualDependencies ??= []).Add(virtualBuffer);
             }
             finally
             {
@@ -850,7 +851,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             if (_virtualDependencies != null)
             {
-                foreach (var virtualBuffer in _virtualDependencies)
+                foreach (MultiRangeBuffer virtualBuffer in _virtualDependencies)
                 {
                     CopyToDependantVirtualBuffer(virtualBuffer, address, size);
                 }
@@ -875,7 +876,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void CopyFromDependantVirtualBuffersImpl()
         {
-            foreach (var virtualBuffer in _virtualDependencies.OrderBy(x => x.ModificationSequenceNumber))
+            foreach (MultiRangeBuffer virtualBuffer in _virtualDependencies.OrderBy(x => x.ModificationSequenceNumber))
             {
                 virtualBuffer.ConsumeModifiedRegion(this, (mAddress, mSize) =>
                 {
@@ -914,7 +915,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 {
                     byte[] storage = dataSpan.ToArray();
 
-                    foreach (var virtualBuffer in _virtualDependencies.OrderBy(x => x.ModificationSequenceNumber))
+                    foreach (MultiRangeBuffer virtualBuffer in _virtualDependencies.OrderBy(x => x.ModificationSequenceNumber))
                     {
                         virtualBuffer.ConsumeModifiedRegion(address, size, (mAddress, mSize) =>
                         {
@@ -1034,4 +1035,4 @@ namespace Ryujinx.Graphics.Gpu.Memory
             DecrementReferenceCount();
         }
     }
-}
+} 
