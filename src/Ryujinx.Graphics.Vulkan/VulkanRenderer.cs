@@ -121,6 +121,7 @@ namespace Ryujinx.Graphics.Vulkan
             Shaders = new HashSet<ShaderCollection>();
             Textures = new HashSet<ITexture>();
             Samplers = new HashSet<SamplerHolder>();
+            MonitorGpuHealth();
 
             if (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS())
             {
@@ -1122,6 +1123,25 @@ private unsafe void InitializeVulkan()
     HelperShader = new HelperShader(this, _device);
     Barriers = new BarrierBatch(this);
     SyncManager = new SyncManager(this, _device);
+}
+
+// 添加周期性健康检查
+private void MonitorGpuHealth()
+{
+    Task.Run(async () =>
+    {
+        while (!_disposed)
+        {
+            await Task.Delay(3000); // 每3秒检查一次
+            if (_device.IsDeviceLost()) // 扩展API检测设备状态
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    "Proactive device lost detected");
+                HandleDeviceLost();
+                break;
+            }
+        }
+    });
 }
 
         public unsafe void Dispose()
