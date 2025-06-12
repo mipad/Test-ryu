@@ -1,4 +1,5 @@
-﻿using ARMeilleure.Memory;
+using ARMeilleure.Memory;
+using Ryujinx.Common.Logging;
 using Ryujinx.Memory;
 using Ryujinx.Memory.Range;
 using Ryujinx.Memory.Tracking;
@@ -266,9 +267,24 @@ namespace Ryujinx.Cpu.Nce
         /// <inheritdoc/>
         public void TrackingReprotect(ulong va, ulong size, MemoryPermission protection, bool guest)
         {
+            // 修复：添加空地址检查
+            if (va == 0)
+            {
+                Logger.Warning?.Print(LogClass.Cpu, $"跳过无效地址0x{va:X}的内存保护操作");
+                return;
+            }
+
             if (guest)
             {
-                _addressSpace.Reprotect(AddressToOffset(va), size, protection, false);
+                try
+                {
+                    ulong offset = AddressToOffset(va);
+                    _addressSpace.Reprotect(offset, size, protection, false);
+                }
+                catch (ArgumentException ex)
+                {
+                    Logger.Warning?.Print(LogClass.Cpu, $"内存保护操作失败: va=0x{va:X}, size=0x{size:X}, error={ex.Message}");
+                }
             }
             else
             {
