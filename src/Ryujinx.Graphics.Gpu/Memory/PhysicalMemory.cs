@@ -1,3 +1,4 @@
+using Ryujinx.Common.Logging; 
 using Ryujinx.Common.Memory;
 using Ryujinx.Cpu;
 using Ryujinx.Graphics.Device;
@@ -449,21 +450,15 @@ namespace Ryujinx.Graphics.Gpu.Memory
             return _cpuMemory.IsMapped(address);
         }
 
-        // 添加内存释放方法
+        // 添加内存释放方法（使用事件通知外部释放资源）
         public void ReleaseResources()
         {
             try
             {
                 Logger.Info?.Print(LogClass.Gpu, "Releasing GPU resources due to memory pressure");
                 
-                // 释放缓冲区池
-                BufferCache.PurgePool();
-                
-                // 释放待删除纹理
-                TextureCache.FlushPendingDeletions();
-                
-                // 清理着色器缓存
-                ShaderCache.Purge();
+                // 通过事件通知外部释放资源
+                OnDeviceLost?.Invoke();
             }
             catch (Exception ex)
             {
