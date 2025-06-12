@@ -7,7 +7,6 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using VkBuffer = Silk.NET.Vulkan.Buffer;
 using VkFormat = Silk.NET.Vulkan.Format;
-using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -821,7 +820,7 @@ namespace Ryujinx.Graphics.Vulkan
             // 安全防护：跳过无效缓冲区复制
             if (src == null || dst == null)
             {
-                Logger.Warning?.Print(LogClass.Gpu, "Copy skipped: source or destination buffer is null");
+                
                 return;
             }
 
@@ -835,16 +834,14 @@ namespace Ryujinx.Graphics.Vulkan
             // 检查缓冲区有效性
             if (srcBuffer.Handle == 0 || dstBuffer.Handle == 0)
             {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Copy skipped: invalid buffer handle " +
-                    $"(Src: {srcBuffer.Handle}, Dst: {dstBuffer.Handle})");
+             
                 return;
             }
 
             // 检查复制范围有效性
             if (size <= 0)
             {
-                Logger.Warning?.Print(LogClass.Gpu, $"Copy skipped: invalid size {size}");
+                
                 return;
             }
 
@@ -889,7 +886,7 @@ namespace Ryujinx.Graphics.Vulkan
             // 跳过无效缓冲区
             if (buffer.Handle == 0)
             {
-                Logger.Warning?.Print(LogClass.Gpu, "Skipped buffer barrier for invalid buffer");
+               
                 return;
             }
             
@@ -1088,3 +1085,4 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 }
+           
