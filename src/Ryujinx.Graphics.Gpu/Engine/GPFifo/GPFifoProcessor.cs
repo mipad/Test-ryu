@@ -8,7 +8,6 @@ using Ryujinx.Graphics.Gpu.Image;
 using Ryujinx.Graphics.Gpu.Memory;
 using System;
 using System.Runtime.CompilerServices;
-using System.Threading; // 保留 Thread 命名空间用于 Thread.Yield
 
 namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
 {
@@ -268,24 +267,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
 
                     if (isLastCall)
                     {
-                        // 添加同步点等待优化逻辑
-                        int retryCount = 0;
-                        const int MaxRetries = 5;
-                        
-                        // 等待宏指令调用完成
-                        while (!_fifoClass.IsMmeCallComplete(macroIndex)) 
-                        {
-                            if (retryCount >= MaxRetries)
-                            {
-                                // 强制通过同步点避免死锁
-                                _fifoClass.ForceCompleteMmeCall(macroIndex);
-                                break;
-                            }
-                            
-                            Thread.Yield();
-                            retryCount++;
-                        }
-
+                        // 直接调用宏指令而不需要等待状态
                         _fifoClass.CallMme(macroIndex, state);
                         _3dClass.PerformDeferredDraws();
                     }
