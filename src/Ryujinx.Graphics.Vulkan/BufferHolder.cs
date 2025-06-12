@@ -652,9 +652,10 @@ namespace Ryujinx.Graphics.Vulkan
                 _pendingDataRanges.Remove(offset, dataSize);
             }
 
+            // 修复语法错误：移除了多余括号
             if (cbs != null &&
                 _gd.PipelineInternal.RenderPassActive &&
-                !(_buffer.HasCommandBufferDependency(cbs.Value) &&
+                !_buffer.HasCommandBufferDependency(cbs.Value) &&
                 _waitable.IsBufferRangeInUse(cbs.Value.CommandBufferIndex, offset, dataSize))
             {
                 // If the buffer hasn't been used on the command buffer yet, try to preload the data.
@@ -1064,7 +1065,7 @@ namespace Ryujinx.Graphics.Vulkan
         public void Dispose()
         {
             // 添加空引用检查
-            if (_gd != null)
+            if (_gd != null && _buffer != null)
             {
                 _gd.PipelineInternal?.FlushCommandsIfWeightExceeding(_buffer, (ulong)Size);
             }
@@ -1088,4 +1089,4 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 }
-              
+     
