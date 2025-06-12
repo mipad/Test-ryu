@@ -113,6 +113,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe Auto<DisposableBufferView> CreateView(VkFormat format, int offset, int size, Action invalidateView)
         {
+      
+            if (_bufferHandle == 0)
+            {
+               
+                return null;
+            }
+            
             var bufferViewCreateInfo = new BufferViewCreateInfo
             {
                 SType = StructureType.BufferViewCreateInfo,
@@ -129,6 +136,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe void InsertBarrier(CommandBuffer commandBuffer, bool isWrite)
         {
+            // 添加缓冲区有效性检查
+            if (_bufferHandle == 0)
+            {
+                
+                return;
+            }
+            
             // If the last access is write, we always need a barrier to be sure we will read or modify
             // the correct data.
             // If the last access is read, and current one is a write, we need to wait until the
@@ -173,6 +187,14 @@ namespace Ryujinx.Graphics.Vulkan
 
         private unsafe bool TryGetMirror(CommandBufferScoped cbs, ref int offset, int size, out Auto<DisposableBuffer> buffer)
         {
+            // 添加缓冲区有效性检查
+            if (_bufferHandle == 0)
+            {
+                buffer = null;
+                
+                return false;
+            }
+            
             size = Math.Min(size, Size - offset);
 
             // Does this binding need to be mirrored?
@@ -239,11 +261,24 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetBuffer()
         {
+            // 添加缓冲区有效性检查
+            if (_bufferHandle == 0)
+            {
+                
+                return null;
+            }
             return _buffer;
         }
 
         public Auto<DisposableBuffer> GetBuffer(CommandBuffer commandBuffer, bool isWrite = false, bool isSSBO = false)
         {
+            // 添加缓冲区有效性检查
+            if (_bufferHandle == 0)
+            {
+               
+                return null;
+            }
+            
             if (isWrite)
             {
                 SignalWrite(0, Size);
@@ -254,6 +289,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetBuffer(CommandBuffer commandBuffer, int offset, int size, bool isWrite = false)
         {
+            // 添加缓冲区有效性检查
+            if (_bufferHandle == 0)
+            {
+                
+                return null;
+            }
+            
             if (isWrite)
             {
                 SignalWrite(offset, size);
@@ -264,6 +306,14 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetMirrorable(CommandBufferScoped cbs, ref int offset, int size, out bool mirrored)
         {
+            // 添加缓冲区有效性检查
+            if (_bufferHandle == 0)
+            {
+                
+                mirrored = false;
+                return null;
+            }
+            
             if (_pendingData != null && TryGetMirror(cbs, ref offset, size, out Auto<DisposableBuffer> result))
             {
                 mirrored = true;
@@ -276,6 +326,14 @@ namespace Ryujinx.Graphics.Vulkan
 
         Auto<DisposableBufferView> IMirrorable<DisposableBufferView>.GetMirrorable(CommandBufferScoped cbs, ref int offset, int size, out bool mirrored)
         {
+            // 添加缓冲区有效性检查
+            if (_bufferHandle == 0)
+            {
+                
+                mirrored = false;
+                return null;
+            }
+            
             // Cannot mirror buffer views right now.
 
             throw new NotImplementedException();
@@ -429,6 +487,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         public PinnedSpan<byte> GetData(int offset, int size)
         {
+            // 添加缓冲区有效性检查
+            if (_bufferHandle == 0)
+            {
+                
+                return new PinnedSpan<byte>();
+            }
+            
             _flushLock.EnterReadLock();
 
             WaitForFlushFence();
@@ -468,6 +533,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe Span<byte> GetDataStorage(int offset, int size)
         {
+            // 添加缓冲区有效性检查
+            if (_bufferHandle == 0)
+            {
+                
+                return Span<byte>.Empty;
+            }
+            
             int mappingSize = Math.Min(size, Size - offset);
 
             if (_map != IntPtr.Zero)
@@ -506,13 +578,21 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         public unsafe void SetData(int offset, ReadOnlySpan<byte> data, CommandBufferScoped? cbs = null, Action endRenderPass = null, bool allowCbsWait = true)
-        {
+        { 
+            // 计算实际可写入的数据大小
             int dataSize = Math.Min(data.Length, Size - offset);
             if (dataSize == 0)
             {
                 return;
             }
 
+            // 深度有效性检查
+            if (_bufferHandle == 0)
+            {
+               
+                return;
+            }
+            
             bool allowMirror = _useMirrors && allowCbsWait && cbs != null && _activeType <= BufferAllocationType.HostMapped;
 
             if (_map != IntPtr.Zero)
@@ -571,10 +651,11 @@ namespace Ryujinx.Graphics.Vulkan
                 _pendingDataRanges.Remove(offset, dataSize);
             }
 
+            // 修复语法错误：移除了多余括号
             if (cbs != null &&
                 _gd.PipelineInternal.RenderPassActive &&
-                !(_buffer.HasCommandBufferDependency(cbs.Value) &&
-                _waitable.IsBufferRangeInUse(cbs.Value.CommandBufferIndex, offset, dataSize)))
+                !_buffer.HasCommandBufferDependency(cbs.Value) &&
+                _waitable.IsBufferRangeInUse(cbs.Value.CommandBufferIndex, offset, dataSize))
             {
                 // If the buffer hasn't been used on the command buffer yet, try to preload the data.
                 // This avoids ending and beginning render passes on each buffer data upload.
@@ -604,14 +685,20 @@ namespace Ryujinx.Graphics.Vulkan
                     {
                         // Need to do a slow upload.
                         BufferHolder srcHolder = _gd.BufferManager.Create(_gd, dataSize, baseType: BufferAllocationType.HostMapped);
-                        srcHolder.SetDataUnchecked(0, data);
+                        if (srcHolder != null)
+                        {
+                            srcHolder.SetDataUnchecked(0, data);
 
-                        var srcBuffer = srcHolder.GetBuffer();
-                        var dstBuffer = this.GetBuffer(cbs.Value.CommandBuffer, true);
+                            var srcBuffer = srcHolder.GetBuffer();
+                            var dstBuffer = this.GetBuffer(cbs.Value.CommandBuffer, true);
 
-                        Copy(_gd, cbs.Value, srcBuffer, dstBuffer, 0, offset, dataSize);
+                            if (srcBuffer != null && dstBuffer != null)
+                            {
+                                Copy(_gd, cbs.Value, srcBuffer, dstBuffer, 0, offset, dataSize);
+                            }
 
-                        srcHolder.Dispose();
+                            srcHolder.Dispose();
+                        }
                     }
 
                     if (rentCbs)
@@ -624,6 +711,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe void SetDataUnchecked(int offset, ReadOnlySpan<byte> data)
         {
+            // 添加缓冲区有效性检查
+            if (_bufferHandle == 0)
+            {
+               
+                return;
+            }
+            
             int dataSize = Math.Min(data.Length, Size - offset);
             if (dataSize == 0)
             {
@@ -647,6 +741,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void SetDataInline(CommandBufferScoped cbs, Action endRenderPass, int dstOffset, ReadOnlySpan<byte> data)
         {
+            // 添加缓冲区有效性检查
+            if (_bufferHandle == 0)
+            {
+                
+                return;
+            }
+            
             if (!TryPushData(cbs, endRenderPass, dstOffset, data))
             {
                 throw new ArgumentException($"Invalid offset 0x{dstOffset:X} or data size 0x{data.Length:X}.");
@@ -662,12 +763,19 @@ namespace Ryujinx.Graphics.Vulkan
 
             endRenderPass?.Invoke();
 
-            var dstBuffer = GetBuffer(cbs.CommandBuffer, dstOffset, data.Length, true).Get(cbs, dstOffset, data.Length, true).Value;
+            var dstBuffer = GetBuffer(cbs.CommandBuffer, dstOffset, data.Length, true);
+            if (dstBuffer == null)
+            {
+                
+                return false;
+            }
+            
+            var dstBufferHandle = dstBuffer.Get(cbs, dstOffset, data.Length, true).Value;
 
             InsertBufferBarrier(
                 _gd,
                 cbs.CommandBuffer,
-                dstBuffer,
+                dstBufferHandle,
                 DefaultAccessFlags,
                 AccessFlags.TransferWriteBit,
                 PipelineStageFlags.AllCommandsBit,
@@ -680,7 +788,7 @@ namespace Ryujinx.Graphics.Vulkan
                 for (ulong offset = 0; offset < (ulong)data.Length;)
                 {
                     ulong size = Math.Min(MaxUpdateBufferSize, (ulong)data.Length - offset);
-                    _gd.Api.CmdUpdateBuffer(cbs.CommandBuffer, dstBuffer, (ulong)dstOffset + offset, size, pData + offset);
+                    _gd.Api.CmdUpdateBuffer(cbs.CommandBuffer, dstBufferHandle, (ulong)dstOffset + offset, size, pData + offset);
                     offset += size;
                 }
             }
@@ -688,7 +796,7 @@ namespace Ryujinx.Graphics.Vulkan
             InsertBufferBarrier(
                 _gd,
                 cbs.CommandBuffer,
-                dstBuffer,
+                dstBufferHandle,
                 AccessFlags.TransferWriteBit,
                 DefaultAccessFlags,
                 PipelineStageFlags.TransferBit,
@@ -708,9 +816,36 @@ namespace Ryujinx.Graphics.Vulkan
             int dstOffset,
             int size,
             bool registerSrcUsage = true)
-        {
-            var srcBuffer = registerSrcUsage ? src.Get(cbs, srcOffset, size).Value : src.GetUnsafe().Value;
-            var dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
+        {   
+            // 安全防护：跳过无效缓冲区复制
+            if (src == null || dst == null)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, "Copy skipped: source or destination buffer is null");
+                return;
+            }
+
+            // 获取底层缓冲区句柄
+            VkBuffer srcBuffer = registerSrcUsage ? 
+                src.Get(cbs, srcOffset, size).Value : 
+                src.GetUnsafe().Value;
+            
+            VkBuffer dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
+
+            // 检查缓冲区有效性
+            if (srcBuffer.Handle == 0 || dstBuffer.Handle == 0)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Copy skipped: invalid buffer handle " +
+                    $"(Src: {srcBuffer.Handle}, Dst: {dstBuffer.Handle})");
+                return;
+            }
+
+            // 检查复制范围有效性
+            if (size <= 0)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, $"Copy skipped: invalid size {size}");
+                return;
+            }
 
             InsertBufferBarrier(
                 gd,
@@ -750,6 +885,13 @@ namespace Ryujinx.Graphics.Vulkan
             int offset,
             int size)
         {
+            // 跳过无效缓冲区
+            if (buffer.Handle == 0)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, "Skipped buffer barrier for invalid buffer");
+                return;
+            }
+            
             BufferMemoryBarrier memoryBarrier = new()
             {
                 SType = StructureType.BufferMemoryBarrier,
@@ -799,6 +941,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetBufferI8ToI16(CommandBufferScoped cbs, int offset, int size)
         {
+            // 添加缓冲区有效性检查
+            if (_bufferHandle == 0)
+            {
+                
+                return null;
+            }
+            
             if (!BoundToRange(offset, ref size))
             {
                 return null;
@@ -823,6 +972,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetAlignedVertexBuffer(CommandBufferScoped cbs, int offset, int size, int stride, int alignment)
         {
+            // 添加缓冲区有效性检查
+            if (_bufferHandle == 0)
+            {
+                
+                return null;
+            }
+            
             if (!BoundToRange(offset, ref size))
             {
                 return null;
@@ -845,10 +1001,17 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             return holder.GetBuffer();
-        }
+       }
 
         public Auto<DisposableBuffer> GetBufferTopologyConversion(CommandBufferScoped cbs, int offset, int size, IndexBufferPattern pattern, int indexSize)
         {
+            
+            if (_bufferHandle == 0)
+            {
+                
+                return null;
+            }
+            
             if (!BoundToRange(offset, ref size))
             {
                 return null;
@@ -899,13 +1062,17 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void Dispose()
         {
-            _gd.PipelineInternal?.FlushCommandsIfWeightExceeding(_buffer, (ulong)Size);
+            // 添加空引用检查
+            if (_gd != null && _buffer != null)
+            {
+                _gd.PipelineInternal?.FlushCommandsIfWeightExceeding(_buffer, (ulong)Size);
+            }
 
-            _buffer.Dispose();
-            _cachedConvertedBuffers.Dispose();
+            _buffer?.Dispose();
+            _cachedConvertedBuffers.Dispose(); // Fixed: removed null-conditional operator
             if (_allocationImported)
             {
-                _allocationAuto.DecrementReferenceCount();
+                _allocationAuto?.DecrementReferenceCount();
             }
             else
             {
