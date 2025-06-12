@@ -2,12 +2,14 @@ using Silk.NET.Vulkan;
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Vulkan
 {
     class MemoryAllocator : IDisposable
     {
         private const ulong MaxDeviceMemoryUsageEstimate = 16UL * 1024 * 1024 * 1024;
+        private const ulong LargeAllocationThreshold = 256 * 1024 * 1024; // 256MB
 
         private readonly Vk _api;
         private readonly VulkanPhysicalDevice _physicalDevice;
@@ -15,6 +17,9 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly List<MemoryAllocatorBlockList> _blockLists;
         private readonly int _blockAlignment;
         private readonly ReaderWriterLockSlim _lock;
+        
+        // 添加内存压力回调
+        public event Action<ulong, ulong> OnMemoryPressure;
 
         public MemoryAllocator(Vk api, VulkanPhysicalDevice physicalDevice, Device device)
         {
@@ -38,7 +43,46 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             bool map = flags.HasFlag(MemoryPropertyFlags.HostVisibleBit);
-            return Allocate(memoryTypeIndex, requirements.Size, requirements.Alignment, map, isBuffer);
+            
+            // 大内存分配警告
+            if (requirements.Size > LargeAllocationThreshold)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Allocating large buffer: {FormatSize(requirements.Size)} " +
+                    $"(Type: {memoryTypeIndex}, Flags: {flags})");
+            }
+
+            return AllocateWithRetry(memoryTypeIndex, requirements.Size, requirements.Alignment, map, isBuffer);
+        }
+
+        private MemoryAllocation AllocateWithRetry(int memoryTypeIndex, ulong size, ulong alignment, bool map, bool isBuffer)
+        {
+            const int MaxRetries = 3;
+            int attempt = 0;
+
+            while (attempt++ < MaxRetries)
+            {
+                var allocation = Allocate(memoryTypeIndex, size, alignment, map, isBuffer);
+                
+                // 使用Handle检查分配是否有效
+                if (allocation.Memory.Handle != 0)
+                {
+                    return allocation;
+                }
+
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Memory allocation failed for {FormatSize(size)} (attempt {attempt}/{MaxRetries})");
+                
+                // 触发内存清理回调
+                OnMemoryPressure?.Invoke(size, (ulong)attempt);
+                
+                // 等待资源释放
+                Thread.Sleep(50 * attempt);
+            }
+
+            Logger.Error?.Print(LogClass.Gpu, 
+                $"Memory allocation failed after {MaxRetries} attempts: {FormatSize(size)}");
+            return default;
         }
 
         private MemoryAllocation Allocate(int memoryTypeIndex, ulong size, ulong alignment, bool map, bool isBuffer)
@@ -107,6 +151,22 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             return true;
+        }
+
+        // 辅助方法：格式化内存大小
+        private static string FormatSize(ulong size)
+        {
+            string[] units = { "B", "KB", "MB", "GB" };
+            double value = size;
+            int unitIndex = 0;
+
+            while (value >= 1024 && unitIndex < units.Length - 1)
+            {
+                value /= 1024;
+                unitIndex++;
+            }
+
+            return $"{value:0.##} {units[unitIndex]}";
         }
 
         public void Dispose()
