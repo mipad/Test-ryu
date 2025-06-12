@@ -40,6 +40,9 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// </summary>
         public TextureCache TextureCache { get; }
 
+        // 添加设备丢失回调
+        public event Action OnDeviceLost;
+
         /// <summary>
         /// Creates a new instance of the physical memory.
         /// </summary>
@@ -444,6 +447,42 @@ namespace Ryujinx.Graphics.Gpu.Memory
         public bool IsMapped(ulong address)
         {
             return _cpuMemory.IsMapped(address);
+        }
+
+        // 添加内存释放方法
+        public void ReleaseResources()
+        {
+            try
+            {
+                Logger.Info?.Print(LogClass.Gpu, "Releasing GPU resources due to memory pressure");
+                
+                // 释放缓冲区池
+                BufferCache.PurgePool();
+                
+                // 释放待删除纹理
+                TextureCache.FlushPendingDeletions();
+                
+                // 清理着色器缓存
+                ShaderCache.Purge();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, $"Resource release failed: {ex.Message}");
+            }
+        }
+
+        // 添加设备丢失处理
+        public void SignalDeviceLost()
+        {
+            try
+            {
+                Logger.Warning?.Print(LogClass.Gpu, "GPU device lost signal received");
+                OnDeviceLost?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, $"Device lost handling failed: {ex.Message}");
+            }
         }
 
         /// <summary>
