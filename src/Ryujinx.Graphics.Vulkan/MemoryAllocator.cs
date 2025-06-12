@@ -9,7 +9,6 @@ namespace Ryujinx.Graphics.Vulkan
     class MemoryAllocator : IDisposable
     {
         private const ulong MaxDeviceMemoryUsageEstimate = 16UL * 1024 * 1024 * 1024;
-        private const ulong LowMemoryThreshold = 512 * 1024 * 1024; // 512MB
         private const ulong LargeAllocationThreshold = 256 * 1024 * 1024; // 256MB
 
         private readonly Vk _api;
@@ -37,9 +36,6 @@ namespace Ryujinx.Graphics.Vulkan
             MemoryPropertyFlags flags = 0,
             bool isBuffer = false)
         {
-            // 检查内存压力
-            CheckMemoryPressure();
-            
             int memoryTypeIndex = FindSuitableMemoryTypeIndex(requirements.MemoryTypeBits, flags);
             if (memoryTypeIndex < 0)
             {
@@ -67,7 +63,9 @@ namespace Ryujinx.Graphics.Vulkan
             while (attempt++ < MaxRetries)
             {
                 var allocation = Allocate(memoryTypeIndex, size, alignment, map, isBuffer);
-                if (!allocation.IsInvalid)
+                
+                // 使用Handle检查分配是否有效
+                if (allocation.Memory.Handle != 0)
                 {
                     return allocation;
                 }
@@ -153,32 +151,6 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             return true;
-        }
-
-        // 添加内存压力检查
-        private void CheckMemoryPressure()
-        {
-            try
-            {
-                var memInfo = _api.GetDeviceMemoryCommitment(_device, out var commitment);
-                if (memInfo == Result.Success)
-                {
-                    ulong availableMem = _physicalDevice.GetMemoryHeapSize(0) - commitment;
-                    
-                    if (availableMem < LowMemoryThreshold)
-                    {
-                        Logger.Warning?.Print(LogClass.Gpu, 
-                            $"Low VRAM: {FormatSize(availableMem)} available, " +
-                            $"{FormatSize(_physicalDevice.GetMemoryHeapSize(0))} total");
-                        
-                        OnMemoryPressure?.Invoke(availableMem, LowMemoryThreshold);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Debug?.Print(LogClass.Gpu, $"Memory check failed: {ex.Message}");
-            }
         }
 
         // 辅助方法：格式化内存大小
