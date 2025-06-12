@@ -547,7 +547,8 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         {
             try
             {
-                if (!information.Item.Fence.Wait(_device.Gpu, GpuTimeoutMs))
+                // 修复：将毫秒数转换为TimeSpan
+                if (!information.Item.Fence.Wait(_device.Gpu, TimeSpan.FromMilliseconds(GpuTimeoutMs)))
                 {
                     Logger.Warning?.Print(LogClass.Gpu, 
                         $"Fence wait timed out after {GpuTimeoutMs}ms. Continuing without sync.");
