@@ -374,6 +374,13 @@ namespace Ryujinx.Cpu.Jit
         /// <inheritdoc/>
         public void TrackingReprotect(ulong va, ulong size, MemoryPermission protection, bool guest)
         {
+            // 添加地址有效性检查
+            if (va == 0 || !ValidateAddress(va))
+            {
+                Logger.Warning?.Print(LogClass.Cpu, $"Skipping invalid memory protection operation at address 0x{va:X}");
+                return;
+            }
+
             AssertValidAddressAndSize(va, size);
 
             if (guest)
