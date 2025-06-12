@@ -819,8 +819,7 @@ namespace Ryujinx.Graphics.Vulkan
             bool registerSrcUsage = true)
         {   
             // 安全防护：跳过无效缓冲区复制
-            if (src == null || dst == null || 
-                src.GetUnsafe() == null || dst.GetUnsafe() == null)
+            if (src == null || dst == null)
             {
                 Logger.Warning?.Print(LogClass.Gpu, "Copy skipped: source or destination buffer is null");
                 return;
@@ -1071,7 +1070,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             _buffer?.Dispose();
-            _cachedConvertedBuffers?.Dispose();
+            _cachedConvertedBuffers.Dispose(); // Fixed: removed null-conditional operator
             if (_allocationImported)
             {
                 _allocationAuto?.DecrementReferenceCount();
@@ -1089,4 +1088,3 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 }
-     
