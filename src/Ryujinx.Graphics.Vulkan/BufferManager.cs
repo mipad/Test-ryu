@@ -377,9 +377,6 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 Logger.Error?.Print(LogClass.Gpu, $"Memory allocation failed for {size} byte buffer");
                 
-                // 尝试紧急内存释放
-                gd.MemoryAllocator.ReleaseEmergencyMemory();
-                
                 // 重试基本内存分配
                 try
                 {
