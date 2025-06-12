@@ -273,7 +273,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
                         const int MaxRetries = 5;
                         
                         // 等待宏指令调用完成
-                        while (!_fifoClass.IsMmeCallComplete(macroIndex) 
+                        while (!_fifoClass.IsMmeCallComplete(macroIndex)) 
                         {
                             if (retryCount >= MaxRetries)
                             {
