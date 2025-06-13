@@ -129,25 +129,10 @@ namespace Ryujinx.Graphics.Vulkan
             uint maxImageCount = capabilities.MaxImageCount;
             uint imageCount = minImageCount + 1;
             
-            // 移动设备专用优化
-            if (Ryujinx.Common.PlatformInfo.IsMobile)
+            // 移除移动设备专用优化逻辑
+            if (maxImageCount > 0 && imageCount > maxImageCount)
             {
-                // 优先使用三缓冲
-                if (minImageCount <= 3 && (maxImageCount == 0 || 3 <= maxImageCount))
-                {
-                    imageCount = 3;
-                }
-                else if (maxImageCount > 0)
-                {
-                    imageCount = Math.Min(3, maxImageCount);
-                }
-            }
-            else
-            {
-                if (maxImageCount > 0 && imageCount > maxImageCount)
-                {
-                    imageCount = maxImageCount;
-                }
+                imageCount = maxImageCount;
             }
 
             var surfaceFormat = ChooseSwapSurfaceFormat(surfaceFormats, _colorSpacePassthroughEnabled);
@@ -162,12 +147,8 @@ namespace Ryujinx.Graphics.Vulkan
 
             CurrentTransform = capabilities.CurrentTransform;
 
-            // 移动设备降低图像使用标志
-            ImageUsageFlags usageFlags = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit;
-            if (!Ryujinx.Common.PlatformInfo.IsMobile)
-            {
-                usageFlags |= ImageUsageFlags.StorageBit;
-            }
+            // 移除移动设备优化，统一使用桌面设备标志
+            ImageUsageFlags usageFlags = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit | ImageUsageFlags.StorageBit;
 
             var swapchainCreateInfo = new SwapchainCreateInfoKHR
             {
@@ -180,9 +161,8 @@ namespace Ryujinx.Graphics.Vulkan
                 ImageUsage = usageFlags,
                 ImageSharingMode = SharingMode.Exclusive,
                 ImageArrayLayers = 1,
-                PreTransform = Ryujinx.Common.PlatformInfo.IsMobile ? 
-                    SurfaceTransformFlagsKHR.IdentityBitKhr : 
-                    capabilities.CurrentTransform,
+                // 移除移动设备特殊处理
+                PreTransform = capabilities.CurrentTransform,
                 CompositeAlpha = ChooseCompositeAlpha(capabilities.SupportedCompositeAlpha),
                 PresentMode = ChooseSwapPresentMode(presentModes, _vsyncEnabled),
                 Clipped = true,
@@ -331,30 +311,14 @@ namespace Ryujinx.Graphics.Vulkan
 
         private static PresentModeKHR ChooseSwapPresentMode(PresentModeKHR[] availablePresentModes, bool vsyncEnabled)
         {
-            // 移动设备优化策略
-            if (Ryujinx.Common.PlatformInfo.IsMobile)
+            // 移除移动设备优化逻辑，统一使用桌面设备策略
+            if (!vsyncEnabled && availablePresentModes.Contains(PresentModeKHR.ImmediateKhr))
             {
-                // 优先使用Mailbox模式（无撕裂的三缓冲）
-                if (availablePresentModes.Contains(PresentModeKHR.MailboxKhr))
-                {
-                    return PresentModeKHR.MailboxKhr;
-                }
-                // 次选Immediate模式（无VSync）
-                else if (!vsyncEnabled && availablePresentModes.Contains(PresentModeKHR.ImmediateKhr))
-                {
-                    return PresentModeKHR.ImmediateKhr;
-                }
+                return PresentModeKHR.ImmediateKhr;
             }
-            else
+            else if (availablePresentModes.Contains(PresentModeKHR.MailboxKhr))
             {
-                if (!vsyncEnabled && availablePresentModes.Contains(PresentModeKHR.ImmediateKhr))
-                {
-                    return PresentModeKHR.ImmediateKhr;
-                }
-                else if (availablePresentModes.Contains(PresentModeKHR.MailboxKhr))
-                {
-                    return PresentModeKHR.MailboxKhr;
-                }
+                return PresentModeKHR.MailboxKhr;
             }
             
             return PresentModeKHR.FifoKhr;
