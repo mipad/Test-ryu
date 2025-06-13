@@ -8,14 +8,18 @@ using Ryujinx.Graphics.Gpu.Synchronization;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
 using System.Threading;
-using System.Diagnostics; // 添加缺失的命名空间
 
 namespace Ryujinx.Graphics.Gpu
 {
     public sealed class GpuContext : IDisposable
     {
-        // 新增移动设备优化常量
+        // 移动设备优化常量
         private const int MobileCommandBatchSize = 50;
         private const int MaxCommandBufferSize = 100;
         private const int SlowFrameThreshold = 33; // 30FPS
@@ -46,10 +50,14 @@ namespace Ryujinx.Graphics.Gpu
         private readonly ulong _firstTimestamp;
         private readonly ManualResetEvent _gpuReadyEvent;
         
-        // 新增性能监控字段
+        // 性能监控字段
         private long _lastFrameTime;
         private int _consecutiveSlowFrames;
         private int _commandBatchSize = MobileCommandBatchSize;
+        
+        // ARM 优化字段
+        private int _timeAccelerationFactorShift = 8;  // log2(256)
+        private int _slowFrameCount;
 
         public GpuContext(IRenderer renderer)
         {
@@ -115,10 +123,33 @@ namespace Ryujinx.Graphics.Gpu
 
         private static ulong ConvertNanosecondsToTicks(ulong nanoseconds)
         {
+            // 尝试使用 ARM NEON 优化
+            if (RuntimeInformation.ProcessArchitecture == Architecture.Arm64 &&
+                ArmBase.Arm64.IsSupported)
+            {
+                return ConvertNanosecondsToTicksNeon(nanoseconds);
+            }
+            
+            // 回退到标量计算
             ulong divided = nanoseconds / NsToTicksFractionDenominator;
             ulong rounded = divided * NsToTicksFractionDenominator;
             ulong errorBias = (nanoseconds - rounded) * NsToTicksFractionNumerator / NsToTicksFractionDenominator;
             return divided * NsToTicksFractionNumerator + errorBias;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe ulong ConvertNanosecondsToTicksNeon(ulong nanoseconds)
+        {
+            // 使用 ARM NEON 指令优化计算
+            Vector128<ulong> nsVec = Vector128.Create(nanoseconds);
+            Vector128<ulong> denomVec = Vector128.Create((ulong)NsToTicksFractionDenominator);
+            Vector128<ulong> numVec = Vector128.Create((ulong)NsToTicksFractionNumerator);
+            
+            // vdivq_u64 替代标量除法
+            Vector128<ulong> divided = AdvSimd.Divide(nsVec, denomVec);
+            Vector128<ulong> result = AdvSimd.Multiply(divided, numVec);
+            
+            return result.GetElement(0);
         }
 
         internal long GetModifiedSequence()
@@ -128,14 +159,66 @@ namespace Ryujinx.Graphics.Gpu
 
         internal ulong GetTimestamp()
         {
-            ulong ticks = ConvertNanosecondsToTicks((ulong)PerformanceCounter.ElapsedNanoseconds) - _firstTimestamp;
+            ulong nanoseconds = GetHighPrecisionNanoseconds();
+            ulong ticks = ConvertNanosecondsToTicks(nanoseconds) - _firstTimestamp;
 
             if (GraphicsConfig.FastGpuTime)
             {
-                ticks /= 256;
+                // ARM 优化：使用位移代替除法
+                AdjustTimeAcceleration();
+                ticks >>= _timeAccelerationFactorShift;
             }
 
             return ticks;
+        }
+
+        private ulong GetHighPrecisionNanoseconds()
+        {
+            // 移动设备使用更高精度的计时器
+            if (IsMobileDevice)
+            {
+                long timestamp = Stopwatch.GetTimestamp();
+                return (ulong)(timestamp * (1_000_000_000.0 / Stopwatch.Frequency));
+            }
+            
+            return (ulong)PerformanceCounter.ElapsedNanoseconds;
+        }
+
+        private bool IsMobileDevice
+        {
+            get
+            {
+                // 检测移动设备
+                string osDescription = RuntimeInformation.OSDescription;
+                return osDescription.Contains("Android") || osDescription.Contains("iOS");
+            }
+        }
+
+        private void AdjustTimeAcceleration()
+        {
+            // 目标帧时间 (60FPS ≈ 16.67ms)
+            long targetFrameTime = (long)(Stopwatch.Frequency / 60.0);
+            
+            if (_lastFrameTime > targetFrameTime * 1.5) // 帧率下降
+            {
+                _slowFrameCount++;
+                
+                // 连续3帧性能不足时，增加时间加速
+                if (_slowFrameCount > 3 && _timeAccelerationFactorShift < 10) // 最大1024 (2^10)
+                {
+                    _timeAccelerationFactorShift++;
+                }
+            }
+            else if (_slowFrameCount > 0) // 性能恢复
+            {
+                _slowFrameCount--;
+                
+                // 连续5帧正常时，减少时间加速
+                if (_slowFrameCount == 0 && _timeAccelerationFactorShift > 6) // 最小64 (2^6)
+                {
+                    _timeAccelerationFactorShift--;
+                }
+            }
         }
 
         private void ShaderCacheStateUpdate(ShaderCacheState state, int current, int total)
@@ -165,7 +248,7 @@ namespace Ryujinx.Graphics.Gpu
             _gpuThread = Thread.CurrentThread;
             Capabilities = Renderer.GetCapabilities();
             
-            // 移除移动设备检测代码
+            // 移动设备初始优化
             _commandBatchSize = MobileCommandBatchSize;
         }
 
@@ -206,7 +289,7 @@ namespace Ryujinx.Graphics.Gpu
             }
         }
 
-        // 新增：动态命令批处理大小调整
+        // 动态命令批处理大小调整
         internal int GetCommandBatchSize()
         {
             // 性能下降时减少批处理大小
@@ -223,7 +306,7 @@ namespace Ryujinx.Graphics.Gpu
             return _commandBatchSize;
         }
 
-        // 新增：帧时间监控
+        // 帧时间监控
         internal void ReportFrameTime(long frameTime)
         {
             _lastFrameTime = frameTime;
@@ -239,13 +322,6 @@ namespace Ryujinx.Graphics.Gpu
             {
                 _consecutiveSlowFrames = Math.Max(0, _consecutiveSlowFrames - 1);
             }
-            
-            // 移除不支持的FlushCommands调用
-            // 严重性能下降时强制刷新命令
-            // if (_consecutiveSlowFrames > 10)
-            // {
-            //     _consecutiveSlowFrames = 0; // 重置计数器
-            // }
         }
 
         internal void CreateHostSyncIfNeeded(HostSyncFlags flags)
