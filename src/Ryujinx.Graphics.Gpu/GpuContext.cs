@@ -9,6 +9,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
+using System.Diagnostics; // 添加缺失的命名空间
 
 namespace Ryujinx.Graphics.Gpu
 {
@@ -164,12 +165,8 @@ namespace Ryujinx.Graphics.Gpu
             _gpuThread = Thread.CurrentThread;
             Capabilities = Renderer.GetCapabilities();
             
-            // 移动设备初始优化
-            if (Ryujinx.Common.PlatformInfo.IsMobile)
-            {
-                // 降低命令批处理大小
-                _commandBatchSize = MobileCommandBatchSize;
-            }
+            // 移除移动设备检测代码
+            _commandBatchSize = MobileCommandBatchSize;
         }
 
         public bool IsGpuThread()
@@ -243,12 +240,12 @@ namespace Ryujinx.Graphics.Gpu
                 _consecutiveSlowFrames = Math.Max(0, _consecutiveSlowFrames - 1);
             }
             
+            // 移除不支持的FlushCommands调用
             // 严重性能下降时强制刷新命令
-            if (_consecutiveSlowFrames > 10)
-            {
-                Renderer.FlushCommands();
-                _consecutiveSlowFrames = 0; // 重置计数器
-            }
+            // if (_consecutiveSlowFrames > 10)
+            // {
+            //     _consecutiveSlowFrames = 0; // 重置计数器
+            // }
         }
 
         internal void CreateHostSyncIfNeeded(HostSyncFlags flags)
