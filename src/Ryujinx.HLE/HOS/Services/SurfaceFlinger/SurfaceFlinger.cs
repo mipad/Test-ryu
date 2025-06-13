@@ -16,7 +16,6 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
     class SurfaceFlinger : IConsumerListener, IDisposable
     {
         private const int TargetFps = 60;
-        private const int GpuTimeoutMs = 1000; // 新增GPU超时阈值
 
         private readonly Switch _device;
 
@@ -386,13 +385,9 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
                     PostFrameBuffer(layer, item);
                 }
-                else if (acquireStatus == Status.NoBufferAvailaible || acquireStatus == Status.InvalidOperation)
+                else if (acquireStatus != Status.NoBufferAvailaible && acquireStatus != Status.InvalidOperation)
                 {
-                    // 正常情况，无需处理
-                }
-                else
-                {
-                    Logger.Warning?.Print(LogClass.SurfaceFlinger, $"Unexpected buffer acquire status: {acquireStatus}");
+                    throw new InvalidOperationException();
                 }
             }
         }
@@ -449,68 +444,33 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 Item = item,
             };
 
-            // ========== 关键修复点 ==========
-            // 添加GPU超时处理逻辑
-            bool frameEnqueued = false;
-            try
+            if (_device.Gpu.Window.EnqueueFrameThreadSafe(
+                layer.Owner,
+                frameBufferAddress,
+                frameBufferWidth,
+                frameBufferHeight,
+                0,
+                false,
+                gobBlocksInY,
+                format,
+                bytesPerPixel,
+                crop,
+                AcquireBuffer,
+                ReleaseBuffer,
+                textureCallbackInformation))
             {
-                frameEnqueued = _device.Gpu.Window.EnqueueFrameThreadSafe(
-                    layer.Owner,
-                    frameBufferAddress,
-                    frameBufferWidth,
-                    frameBufferHeight,
-                    0,
-                    false,
-                    gobBlocksInY,
-                    format,
-                    bytesPerPixel,
-                    crop,
-                    AcquireBuffer,
-                    ReleaseBuffer,
-                    textureCallbackInformation);
-            }
-            catch (TimeoutException ex)
-            {
-                Logger.Warning?.Print(LogClass.SurfaceFlinger, 
-                    $"GPU timeout during frame enqueue: {ex.Message}. Forcing buffer release.");
-                ReleaseBuffer(textureCallbackInformation);
-                return;
-            }
-
-            if (frameEnqueued)
-            {
-                // 设置GPU超时回调
-                var timeoutEvent = new ManualResetEvent(false);
-                var callbackRegistered = false;
-
-                if (item.Fence.FenceCount > 0)
-                {
-                    callbackRegistered = true;
-                    item.Fence.RegisterCallback(_device.Gpu, (x) =>
-                    {
-                        timeoutEvent.Set();
-                        _device.Gpu.Window.SignalFrameReady();
-                        _device.Gpu.GPFifo.Interrupt();
-                    });
-                }
-
-                // 启动超时监控线程
-                ThreadPool.QueueUserWorkItem(_ =>
-                {
-                    if (!timeoutEvent.WaitOne(GpuTimeoutMs))
-                    {
-                        Logger.Warning?.Print(LogClass.Gpu, 
-                            $"Fence wait timed out after {GpuTimeoutMs}ms. Forcing frame ready.");
-                        _device.Gpu.Window.SignalFrameReady();
-                        _device.Gpu.GPFifo.Interrupt();
-                    }
-                });
-
-                // 如果无fence立即触发
-                if (!callbackRegistered)
+                if (item.Fence.FenceCount == 0)
                 {
                     _device.Gpu.Window.SignalFrameReady();
                     _device.Gpu.GPFifo.Interrupt();
+                }
+                else
+                {
+                    item.Fence.RegisterCallback(_device.Gpu, (x) =>
+                    {
+                        _device.Gpu.Window.SignalFrameReady();
+                        _device.Gpu.GPFifo.Interrupt();
+                    });
                 }
             }
             else
@@ -526,16 +486,9 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
         private void ReleaseBuffer(TextureCallbackInformation information)
         {
-            try
-            {
-                AndroidFence fence = AndroidFence.NoFence;
-                information.Layer.Consumer.ReleaseBuffer(information.Item, ref fence);
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning?.Print(LogClass.SurfaceFlinger, 
-                    $"Error releasing buffer: {ex.Message}");
-            }
+            AndroidFence fence = AndroidFence.NoFence;
+
+            information.Layer.Consumer.ReleaseBuffer(information.Item, ref fence);
         }
 
         private void AcquireBuffer(GpuContext ignored, object obj)
@@ -545,20 +498,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
         private void AcquireBuffer(TextureCallbackInformation information)
         {
-            try
-            {
-                // 修复：将毫秒数转换为TimeSpan
-                if (!information.Item.Fence.Wait(_device.Gpu, TimeSpan.FromMilliseconds(GpuTimeoutMs)))
-                {
-                    Logger.Warning?.Print(LogClass.Gpu, 
-                        $"Fence wait timed out after {GpuTimeoutMs}ms. Continuing without sync.");
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning?.Print(LogClass.SurfaceFlinger, 
-                    $"Error acquiring buffer: {ex.Message}");
-            }
+            information.Item.Fence.WaitForever(_device.Gpu);
         }
 
         public static Format ConvertColorFormat(ColorFormat colorFormat)
