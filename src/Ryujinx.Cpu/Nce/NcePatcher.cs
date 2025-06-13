@@ -126,20 +126,18 @@ namespace Ryujinx.Cpu.Nce
         {
             Assembler asm = new();
 
-            uint blacklistedRegMask = 0;
-
             WriteManagedCall(asm, (asm, ctx, tmp, tmp2) =>
             {
                 WriteInManagedLockAcquire(asm, ctx, tmp, tmp2);
 
                 asm.Mov(tmp, (ulong)NceNativeInterface.GetTickCounterAccessFunctionPointer());
                 asm.Blr(tmp);
-                asm.Mov(tmp2, Gpr(0));
+                asm.StrRiUn(Gpr(0), ctx, NceNativeContext.GetTempStorageOffset());
 
                 WriteInManagedLockRelease(asm, ctx, tmp, tmp2, ThreadExitMethod.GenerateReturn);
 
-                asm.Mov(Gpr((int)rd), tmp2);
-            }, blacklistedRegMask);
+                asm.LdrRiUn(Gpr((int)rd), ctx, NceNativeContext.GetTempStorageOffset());
+            }, 1u << (int)rd);
 
             asm.B(0);
 
