@@ -42,18 +42,12 @@ namespace Ryujinx.Graphics.Vulkan
         private ScalingFilter _currentScalingFilter;
         private bool _colorSpacePassthroughEnabled;
 
-        // 添加配置字段
-        private int _desiredBufferCount = 3; // 默认使用三缓冲
-
         public unsafe Window(VulkanRenderer gd, SurfaceKHR surface, PhysicalDevice physicalDevice, Device device)
         {
             _gd = gd;
             _physicalDevice = physicalDevice;
             _device = device;
             _surface = surface;
-
-            // 从配置获取缓冲区数量
-            _desiredBufferCount = ConfigurationState.Instance.Graphics.SwapchainBufferCount;
 
             CreateSwapchain();
         }
@@ -122,24 +116,22 @@ namespace Ryujinx.Graphics.Vulkan
                 _gd.SurfaceApi.GetPhysicalDeviceSurfacePresentModes(_physicalDevice, _surface, &presentModesCount, pPresentModes);
             }
 
-            // ======== 关键修改开始 ========
-            // 计算缓冲区数量
-            uint minImageCount = Math.Max(capabilities.MinImageCount, (uint)_desiredBufferCount);
-            
-            // 确保不超过硬件支持的最大数量
-            if (capabilities.MaxImageCount > 0 && minImageCount > capabilities.MaxImageCount)
+            // 修改为三缓冲逻辑
+            uint minImageCount = capabilities.MinImageCount;
+            uint imageCount = minImageCount + 1; // 默认使用双缓冲
+            const uint DesiredImageCount = 3; // 期望的三缓冲
+
+            if (minImageCount <= DesiredImageCount)
             {
-                minImageCount = capabilities.MaxImageCount;
+                if (capabilities.MaxImageCount == 0 || DesiredImageCount <= capabilities.MaxImageCount)
+                {
+                    imageCount = DesiredImageCount;
+                }
+                else if (capabilities.MaxImageCount > 0)
+                {
+                    imageCount = capabilities.MaxImageCount;
+                }
             }
-            
-            // 确保至少有两个缓冲区
-            if (minImageCount < 2)
-            {
-                minImageCount = 2;
-            }
-            
-            Logger.Info?.Print(LogClass.Gpu, $"Creating swapchain with {minImageCount} buffers (desired: {_desiredBufferCount})");
-            // ======== 关键修改结束 ========
 
             var surfaceFormat = ChooseSwapSurfaceFormat(surfaceFormats, _colorSpacePassthroughEnabled);
 
@@ -157,7 +149,7 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 SType = StructureType.SwapchainCreateInfoKhr,
                 Surface = _surface,
-                MinImageCount = minImageCount, // 使用计算后的缓冲区数量
+                MinImageCount = imageCount,
                 ImageFormat = surfaceFormat.Format,
                 ImageColorSpace = surfaceFormat.ColorSpace,
                 ImageExtent = extent,
@@ -189,16 +181,16 @@ namespace Ryujinx.Graphics.Vulkan
 
             _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain).ThrowOnError();
 
-            _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &minImageCount, null);
+            _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, null);
 
-            _swapchainImages = new Image[minImageCount];
+            _swapchainImages = new Image[imageCount];
 
             fixed (Image* pSwapchainImages = _swapchainImages)
             {
-                _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &minImageCount, pSwapchainImages);
+                _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, pSwapchainImages);
             }
 
-            _swapchainImageViews = new TextureView[minImageCount];
+            _swapchainImageViews = new TextureView[imageCount];
 
             for (int i = 0; i < _swapchainImageViews.Length; i++)
             {
@@ -210,14 +202,14 @@ namespace Ryujinx.Graphics.Vulkan
                 SType = StructureType.SemaphoreCreateInfo,
             };
 
-            _imageAvailableSemaphores = new Semaphore[minImageCount];
+            _imageAvailableSemaphores = new Semaphore[imageCount];
 
             for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
             {
                 _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _imageAvailableSemaphores[i]).ThrowOnError();
             }
 
-            _renderFinishedSemaphores = new Semaphore[minImageCount];
+            _renderFinishedSemaphores = new Semaphore[imageCount];
 
             for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
             {
