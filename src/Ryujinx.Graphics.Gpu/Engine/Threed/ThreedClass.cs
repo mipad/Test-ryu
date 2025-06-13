@@ -1,850 +1,714 @@
-using Ryujinx.Common.Memory;
-using Ryujinx.Graphics.Device;
+using Ryujinx.Common;
+using Ryujinx.Common.Configuration;
+using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
-using Ryujinx.Graphics.Gpu.Engine.GPFifo;
-using Ryujinx.Graphics.Gpu.Engine.InlineToMemory;
-using Ryujinx.Graphics.Gpu.Engine.Threed.Blender;
-using Ryujinx.Graphics.Gpu.Engine.Types;
-using Ryujinx.Graphics.Gpu.Synchronization;
-using Ryujinx.Memory.Range;
+using Ryujinx.Graphics.Vulkan.Effects;
+using Silk.NET.Vulkan;
+using Silk.NET.Vulkan.Extensions.KHR;
 using System;
-using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics;
+using System.Linq;
+using VkFormat = Silk.NET.Vulkan.Format;
 
-namespace Ryujinx.Graphics.Gpu.Engine.Threed
+namespace Ryujinx.Graphics.Vulkan
 {
-    /// <summary>
-    /// Represents a 3D engine class.
-    /// </summary>
-    class ThreedClass : IDeviceState, IDisposable
+    class Window : WindowBase, IDisposable
     {
-        private readonly GpuContext _context;
-        private readonly GPFifoClass _fifoClass;
-        private readonly DeviceStateWithShadow<ThreedClassState> _state;
+        private const int SurfaceWidth = 1280;
+        private const int SurfaceHeight = 720;
 
-        private readonly InlineToMemoryClass _i2mClass;
-        private readonly AdvancedBlendManager _blendManager;
-        private readonly DrawManager _drawManager;
-        private readonly SemaphoreUpdater _semaphoreUpdater;
-        private readonly ConstantBufferUpdater _cbUpdater;
-        private readonly StateUpdater _stateUpdater;
+        private readonly VulkanRenderer _gd;
+        private readonly PhysicalDevice _physicalDevice;
+        private readonly Device _device;
+        private SwapchainKHR _swapchain;
+        private SurfaceKHR _surface;
 
-        private SetMmeShadowRamControlMode ShadowMode => _state.State.SetMmeShadowRamControlMode;
+        private Image[] _swapchainImages;
+        private TextureView[] _swapchainImageViews;
 
-        /// <summary>
-        /// Creates a new instance of the 3D engine class.
-        /// </summary>
-        /// <param name="context">GPU context</param>
-        /// <param name="channel">GPU channel</param>
-        public ThreedClass(GpuContext context, GpuChannel channel, GPFifoClass fifoClass)
+        private Semaphore[] _imageAvailableSemaphores;
+        private Semaphore[] _renderFinishedSemaphores;
+
+        private int _frameIndex;
+
+        private int _width;
+        private int _height;
+        private bool _vsyncEnabled;
+        private bool _swapchainIsDirty;
+        private VkFormat _format;
+        private AntiAliasing _currentAntiAliasing;
+        private bool _updateEffect;
+        private IPostProcessingEffect _effect;
+        private IScalingFilter _scalingFilter;
+        private bool _isLinear;
+        private float _scalingFilterLevel;
+        private bool _updateScalingFilter;
+        private ScalingFilter _currentScalingFilter;
+        private bool _colorSpacePassthroughEnabled;
+
+        // 添加配置字段
+        private int _desiredBufferCount = 3; // 默认使用三缓冲
+
+        public unsafe Window(VulkanRenderer gd, SurfaceKHR surface, PhysicalDevice physicalDevice, Device device)
         {
-            _context = context;
-            _fifoClass = fifoClass;
-            _state = new DeviceStateWithShadow<ThreedClassState>(new Dictionary<string, RwCallback>
-            {
-                { nameof(ThreedClassState.LaunchDma), new RwCallback(LaunchDma, null) },
-                { nameof(ThreedClassState.LoadInlineData), new RwCallback(LoadInlineData, null) },
-                { nameof(ThreedClassState.SyncpointAction), new RwCallback(IncrementSyncpoint, null) },
-                { nameof(ThreedClassState.InvalidateSamplerCacheNoWfi), new RwCallback(InvalidateSamplerCacheNoWfi, null) },
-                { nameof(ThreedClassState.InvalidateTextureHeaderCacheNoWfi), new RwCallback(InvalidateTextureHeaderCacheNoWfi, null) },
-                { nameof(ThreedClassState.TextureBarrier), new RwCallback(TextureBarrier, null) },
-                { nameof(ThreedClassState.LoadBlendUcodeStart), new RwCallback(LoadBlendUcodeStart, null) },
-                { nameof(ThreedClassState.LoadBlendUcodeInstruction), new RwCallback(LoadBlendUcodeInstruction, null) },
-                { nameof(ThreedClassState.TextureBarrierTiled), new RwCallback(TextureBarrierTiled, null) },
-                { nameof(ThreedClassState.DrawTextureSrcY), new RwCallback(DrawTexture, null) },
-                { nameof(ThreedClassState.DrawVertexArrayBeginEndInstanceFirst), new RwCallback(DrawVertexArrayBeginEndInstanceFirst, null) },
-                { nameof(ThreedClassState.DrawVertexArrayBeginEndInstanceSubsequent), new RwCallback(DrawVertexArrayBeginEndInstanceSubsequent, null) },
-                { nameof(ThreedClassState.VbElementU8), new RwCallback(VbElementU8, null) },
-                { nameof(ThreedClassState.VbElementU16), new RwCallback(VbElementU16, null) },
-                { nameof(ThreedClassState.VbElementU32), new RwCallback(VbElementU32, null) },
-                { nameof(ThreedClassState.ResetCounter), new RwCallback(ResetCounter, null) },
-                { nameof(ThreedClassState.RenderEnableCondition), new RwCallback(null, Zero) },
-                { nameof(ThreedClassState.DrawEnd), new RwCallback(DrawEnd, null) },
-                { nameof(ThreedClassState.DrawBegin), new RwCallback(DrawBegin, null) },
-                { nameof(ThreedClassState.DrawIndexBuffer32BeginEndInstanceFirst), new RwCallback(DrawIndexBuffer32BeginEndInstanceFirst, null) },
-                { nameof(ThreedClassState.DrawIndexBuffer16BeginEndInstanceFirst), new RwCallback(DrawIndexBuffer16BeginEndInstanceFirst, null) },
-                { nameof(ThreedClassState.DrawIndexBuffer8BeginEndInstanceFirst), new RwCallback(DrawIndexBuffer8BeginEndInstanceFirst, null) },
-                { nameof(ThreedClassState.DrawIndexBuffer32BeginEndInstanceSubsequent), new RwCallback(DrawIndexBuffer32BeginEndInstanceSubsequent, null) },
-                { nameof(ThreedClassState.DrawIndexBuffer16BeginEndInstanceSubsequent), new RwCallback(DrawIndexBuffer16BeginEndInstanceSubsequent, null) },
-                { nameof(ThreedClassState.DrawIndexBuffer8BeginEndInstanceSubsequent), new RwCallback(DrawIndexBuffer8BeginEndInstanceSubsequent, null) },
-                { nameof(ThreedClassState.IndexBufferCount), new RwCallback(SetIndexBufferCount, null) },
-                { nameof(ThreedClassState.Clear), new RwCallback(Clear, null) },
-                { nameof(ThreedClassState.SemaphoreControl), new RwCallback(Report, null) },
-                { nameof(ThreedClassState.SetFalcon04), new RwCallback(SetFalcon04, null) },
-                { nameof(ThreedClassState.UniformBufferUpdateData), new RwCallback(ConstantBufferUpdate, null) },
-                { nameof(ThreedClassState.UniformBufferBindVertex), new RwCallback(ConstantBufferBindVertex, null) },
-                { nameof(ThreedClassState.UniformBufferBindTessControl), new RwCallback(ConstantBufferBindTessControl, null) },
-                { nameof(ThreedClassState.UniformBufferBindTessEvaluation), new RwCallback(ConstantBufferBindTessEvaluation, null) },
-                { nameof(ThreedClassState.UniformBufferBindGeometry), new RwCallback(ConstantBufferBindGeometry, null) },
-                { nameof(ThreedClassState.UniformBufferBindFragment), new RwCallback(ConstantBufferBindFragment, null) },
-            });
+            _gd = gd;
+            _physicalDevice = physicalDevice;
+            _device = device;
+            _surface = surface;
 
-            _i2mClass = new InlineToMemoryClass(context, channel, initializeState: false);
+            // 从配置获取缓冲区数量
+            _desiredBufferCount = ConfigurationState.Instance.Graphics.SwapchainBufferCount;
 
-            var spec = new SpecializationStateUpdater(context);
-            var drawState = new DrawState();
-
-            _drawManager = new DrawManager(context, channel, _state, drawState, spec);
-            _blendManager = new AdvancedBlendManager(_state);
-            _semaphoreUpdater = new SemaphoreUpdater(context, channel, _state);
-            _cbUpdater = new ConstantBufferUpdater(channel, _state);
-            _stateUpdater = new StateUpdater(context, channel, _state, drawState, _blendManager, spec);
-
-            // This defaults to "always", even without any register write.
-            // Reads just return 0, regardless of what was set there.
-            _state.State.RenderEnableCondition = Condition.Always;
+            CreateSwapchain();
         }
 
-        /// <summary>
-        /// Reads data from the class registers.
-        /// </summary>
-        /// <param name="offset">Register byte offset</param>
-        /// <returns>Data at the specified offset</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int Read(int offset) => _state.Read(offset);
-
-        /// <summary>
-        /// Writes data to the class registers.
-        /// </summary>
-        /// <param name="offset">Register byte offset</param>
-        /// <param name="data">Data to be written</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Write(int offset, int data)
+        private void RecreateSwapchain()
         {
-            _state.WriteWithRedundancyCheck(offset, data, out bool valueChanged);
+            var oldSwapchain = _swapchain;
+            _swapchainIsDirty = false;
 
-            if (valueChanged)
+            for (int i = 0; i < _swapchainImageViews.Length; i++)
             {
-                _stateUpdater.SetDirty(offset);
+                _swapchainImageViews[i].Dispose();
+            }
+
+            // Destroy old Swapchain.
+
+            _gd.Api.DeviceWaitIdle(_device);
+
+            unsafe
+            {
+                for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
+                {
+                    _gd.Api.DestroySemaphore(_device, _imageAvailableSemaphores[i], null);
+                }
+
+                for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
+                {
+                    _gd.Api.DestroySemaphore(_device, _renderFinishedSemaphores[i], null);
+                }
+            }
+
+            _gd.SwapchainApi.DestroySwapchain(_device, oldSwapchain, Span<AllocationCallbacks>.Empty);
+
+            CreateSwapchain();
+        }
+
+        internal void SetSurface(SurfaceKHR surface)
+        {
+            _surface = surface;
+            RecreateSwapchain();
+        }
+
+        private unsafe void CreateSwapchain()
+        {
+            _gd.SurfaceApi.GetPhysicalDeviceSurfaceCapabilities(_physicalDevice, _surface, out var capabilities);
+
+            uint surfaceFormatsCount;
+
+            _gd.SurfaceApi.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, &surfaceFormatsCount, null);
+
+            var surfaceFormats = new SurfaceFormatKHR[surfaceFormatsCount];
+
+            fixed (SurfaceFormatKHR* pSurfaceFormats = surfaceFormats)
+            {
+                _gd.SurfaceApi.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, &surfaceFormatsCount, pSurfaceFormats);
+            }
+
+            uint presentModesCount;
+
+            _gd.SurfaceApi.GetPhysicalDeviceSurfacePresentModes(_physicalDevice, _surface, &presentModesCount, null);
+
+            var presentModes = new PresentModeKHR[presentModesCount];
+
+            fixed (PresentModeKHR* pPresentModes = presentModes)
+            {
+                _gd.SurfaceApi.GetPhysicalDeviceSurfacePresentModes(_physicalDevice, _surface, &presentModesCount, pPresentModes);
+            }
+
+            // ======== 关键修改开始 ========
+            // 计算缓冲区数量
+            uint minImageCount = Math.Max(capabilities.MinImageCount, (uint)_desiredBufferCount);
+            
+            // 确保不超过硬件支持的最大数量
+            if (capabilities.MaxImageCount > 0 && minImageCount > capabilities.MaxImageCount)
+            {
+                minImageCount = capabilities.MaxImageCount;
+            }
+            
+            // 确保至少有两个缓冲区
+            if (minImageCount < 2)
+            {
+                minImageCount = 2;
+            }
+            
+            Logger.Info?.Print(LogClass.Gpu, $"Creating swapchain with {minImageCount} buffers (desired: {_desiredBufferCount})");
+            // ======== 关键修改结束 ========
+
+            var surfaceFormat = ChooseSwapSurfaceFormat(surfaceFormats, _colorSpacePassthroughEnabled);
+
+            var extent = ChooseSwapExtent(capabilities);
+
+            _width = (int)extent.Width;
+            _height = (int)extent.Height;
+            _format = surfaceFormat.Format;
+
+            var oldSwapchain = _swapchain;
+
+            CurrentTransform = capabilities.CurrentTransform;
+
+            var swapchainCreateInfo = new SwapchainCreateInfoKHR
+            {
+                SType = StructureType.SwapchainCreateInfoKhr,
+                Surface = _surface,
+                MinImageCount = minImageCount, // 使用计算后的缓冲区数量
+                ImageFormat = surfaceFormat.Format,
+                ImageColorSpace = surfaceFormat.ColorSpace,
+                ImageExtent = extent,
+                ImageUsage = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit | (Ryujinx.Common.PlatformInfo.IsBionic ? 0 : ImageUsageFlags.StorageBit),
+                ImageSharingMode = SharingMode.Exclusive,
+                ImageArrayLayers = 1,
+                PreTransform = Ryujinx.Common.PlatformInfo.IsBionic ? SurfaceTransformFlagsKHR.IdentityBitKhr : capabilities.CurrentTransform,
+                CompositeAlpha = ChooseCompositeAlpha(capabilities.SupportedCompositeAlpha),
+                PresentMode = ChooseSwapPresentMode(presentModes, _vsyncEnabled),
+                Clipped = true,
+            };
+
+            var textureCreateInfo = new TextureCreateInfo(
+                _width,
+                _height,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                FormatTable.GetFormat(surfaceFormat.Format),
+                DepthStencilMode.Depth,
+                Target.Texture2D,
+                SwizzleComponent.Red,
+                SwizzleComponent.Green,
+                SwizzleComponent.Blue,
+                SwizzleComponent.Alpha);
+
+            _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain).ThrowOnError();
+
+            _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &minImageCount, null);
+
+            _swapchainImages = new Image[minImageCount];
+
+            fixed (Image* pSwapchainImages = _swapchainImages)
+            {
+                _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &minImageCount, pSwapchainImages);
+            }
+
+            _swapchainImageViews = new TextureView[minImageCount];
+
+            for (int i = 0; i < _swapchainImageViews.Length; i++)
+            {
+                _swapchainImageViews[i] = CreateSwapchainImageView(_swapchainImages[i], surfaceFormat.Format, textureCreateInfo);
+            }
+
+            var semaphoreCreateInfo = new SemaphoreCreateInfo
+            {
+                SType = StructureType.SemaphoreCreateInfo,
+            };
+
+            _imageAvailableSemaphores = new Semaphore[minImageCount];
+
+            for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
+            {
+                _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _imageAvailableSemaphores[i]).ThrowOnError();
+            }
+
+            _renderFinishedSemaphores = new Semaphore[minImageCount];
+
+            for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
+            {
+                _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _renderFinishedSemaphores[i]).ThrowOnError();
             }
         }
 
-        /// <summary>
-        /// Sets the shadow ram control value of all sub-channels.
-        /// </summary>
-        /// <param name="control">New shadow ram control value</param>
-        public void SetShadowRamControl(int control)
+        private unsafe TextureView CreateSwapchainImageView(Image swapchainImage, VkFormat format, TextureCreateInfo info)
         {
-            _state.State.SetMmeShadowRamControl = (uint)control;
-        }
+            var componentMapping = new ComponentMapping(
+                ComponentSwizzle.R,
+                ComponentSwizzle.G,
+                ComponentSwizzle.B,
+                ComponentSwizzle.A);
 
-        /// <summary>
-        /// Updates current host state for all registers modified since the last call to this method.
-        /// </summary>
-        public void UpdateState()
-        {
-            _fifoClass.CreatePendingSyncs();
-            _cbUpdater.FlushUboDirty();
-            _stateUpdater.Update();
-        }
+            var aspectFlags = ImageAspectFlags.ColorBit;
 
-        /// <summary>
-        /// Updates current host state for all registers modified since the last call to this method.
-        /// </summary>
-        /// <param name="mask">Mask where each bit set indicates that the respective state group index should be checked</param>
-        public void UpdateState(ulong mask)
-        {
-            _stateUpdater.Update(mask);
-        }
+            var subresourceRange = new ImageSubresourceRange(aspectFlags, 0, 1, 0, 1);
 
-        /// <summary>
-        /// Updates render targets (color and depth-stencil buffers) based on current render target state.
-        /// </summary>
-        /// <param name="updateFlags">Flags indicating which render targets should be updated and how</param>
-        /// <param name="singleUse">If this is not -1, it indicates that only the given indexed target will be used.</param>
-        public void UpdateRenderTargetState(RenderTargetUpdateFlags updateFlags, int singleUse = -1)
-        {
-            _stateUpdater.UpdateRenderTargetState(updateFlags, singleUse);
-        }
-
-        /// <summary>
-        /// Updates scissor based on current render target state.
-        /// </summary>
-        public void UpdateScissorState()
-        {
-            _stateUpdater.UpdateScissorState();
-        }
-
-        /// <summary>
-        /// Marks the entire state as dirty, forcing a full host state update before the next draw.
-        /// </summary>
-        public void ForceStateDirty()
-        {
-            _drawManager.ForceStateDirty();
-            _stateUpdater.SetAllDirty();
-        }
-
-        /// <summary>
-        /// Marks the specified register offset as dirty, forcing the associated state to update on the next draw.
-        /// </summary>
-        /// <param name="offset">Register offset</param>
-        public void ForceStateDirty(int offset)
-        {
-            _stateUpdater.SetDirty(offset);
-        }
-
-        /// <summary>
-        /// Marks the specified register range for a group index as dirty, forcing the associated state to update on the next draw.
-        /// </summary>
-        /// <param name="groupIndex">Index of the group to dirty</param>
-        public void ForceStateDirtyByIndex(int groupIndex)
-        {
-            _stateUpdater.ForceDirty(groupIndex);
-        }
-
-        /// <summary>
-        /// Forces the shaders to be rebound on the next draw.
-        /// </summary>
-        public void ForceShaderUpdate()
-        {
-            _stateUpdater.ForceShaderUpdate();
-        }
-
-        /// <summary>
-        /// Create any syncs from WaitForIdle command that are currently pending.
-        /// </summary>
-        public void CreatePendingSyncs()
-        {
-            _fifoClass.CreatePendingSyncs();
-        }
-
-        /// <summary>
-        /// Flushes any queued UBO updates.
-        /// </summary>
-        public void FlushUboDirty()
-        {
-            _cbUpdater.FlushUboDirty();
-        }
-
-        /// <summary>
-        /// Perform any deferred draws.
-        /// </summary>
-        public void PerformDeferredDraws()
-        {
-            _drawManager.PerformDeferredDraws(this);
-        }
-
-        /// <summary>
-        /// Updates the currently bound constant buffer.
-        /// </summary>
-        /// <param name="data">Data to be written to the buffer</param>
-        public void ConstantBufferUpdate(ReadOnlySpan<int> data)
-        {
-            _cbUpdater.Update(data);
-        }
-
-        /// <summary>
-        /// Test if two 32 byte structs are equal. 
-        /// </summary>
-        /// <typeparam name="T">Type of the 32-byte struct</typeparam>
-        /// <param name="lhs">First struct</param>
-        /// <param name="rhs">Second struct</param>
-        /// <returns>True if equal, false otherwise</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool UnsafeEquals32Byte<T>(ref T lhs, ref T rhs) where T : unmanaged
-        {
-            if (Vector256.IsHardwareAccelerated)
+            var imageCreateInfo = new ImageViewCreateInfo
             {
-                return Vector256.EqualsAll(
-                    Unsafe.As<T, Vector256<uint>>(ref lhs),
-                    Unsafe.As<T, Vector256<uint>>(ref rhs)
-                );
+                SType = StructureType.ImageViewCreateInfo,
+                Image = swapchainImage,
+                ViewType = ImageViewType.Type2D,
+                Format = format,
+                Components = componentMapping,
+                SubresourceRange = subresourceRange,
+            };
+
+            _gd.Api.CreateImageView(_device, in imageCreateInfo, null, out var imageView).ThrowOnError();
+
+            return new TextureView(_gd, _device, new DisposableImageView(_gd.Api, _device, imageView), info, format);
+        }
+
+        private static SurfaceFormatKHR ChooseSwapSurfaceFormat(SurfaceFormatKHR[] availableFormats, bool colorSpacePassthroughEnabled)
+        {
+            if (availableFormats.Length == 1 && availableFormats[0].Format == VkFormat.Undefined)
+            {
+                return new SurfaceFormatKHR(VkFormat.B8G8R8A8Unorm, ColorSpaceKHR.PaceSrgbNonlinearKhr);
+            }
+
+            var formatToReturn = availableFormats[0];
+            if (colorSpacePassthroughEnabled)
+            {
+                foreach (var format in availableFormats)
+                {
+                    if (format.Format == VkFormat.B8G8R8A8Unorm && format.ColorSpace == ColorSpaceKHR.SpacePassThroughExt)
+                    {
+                        formatToReturn = format;
+                        break;
+                    }
+                    else if (format.Format == VkFormat.B8G8R8A8Unorm && format.ColorSpace == ColorSpaceKHR.PaceSrgbNonlinearKhr)
+                    {
+                        formatToReturn = format;
+                    }
+                }
             }
             else
             {
-                ref var lhsVec = ref Unsafe.As<T, Vector128<uint>>(ref lhs);
-                ref var rhsVec = ref Unsafe.As<T, Vector128<uint>>(ref rhs);
-
-                return Vector128.EqualsAll(lhsVec, rhsVec) &&
-                    Vector128.EqualsAll(Unsafe.Add(ref lhsVec, 1), Unsafe.Add(ref rhsVec, 1));
+                foreach (var format in availableFormats)
+                {
+                    if (format.Format == VkFormat.B8G8R8A8Unorm && format.ColorSpace == ColorSpaceKHR.PaceSrgbNonlinearKhr)
+                    {
+                        formatToReturn = format;
+                        break;
+                    }
+                }
             }
+
+            return formatToReturn;
         }
 
-        /// <summary>
-        /// Updates blend enable. Respects current shadow mode.
-        /// </summary>
-        /// <param name="masks">Blend enable</param>
-        public void UpdateBlendEnable(ref Array8<Boolean32> enable)
+        private static CompositeAlphaFlagsKHR ChooseCompositeAlpha(CompositeAlphaFlagsKHR supportedFlags)
         {
-            var shadow = ShadowMode;
-            ref var state = ref _state.State.BlendEnable;
-
-            if (shadow.IsReplay())
+            if (supportedFlags.HasFlag(CompositeAlphaFlagsKHR.OpaqueBitKhr))
             {
-                enable = _state.ShadowState.BlendEnable;
+                return CompositeAlphaFlagsKHR.OpaqueBitKhr;
             }
-
-            if (!UnsafeEquals32Byte(ref enable, ref state))
+            else if (supportedFlags.HasFlag(CompositeAlphaFlagsKHR.PreMultipliedBitKhr))
             {
-                state = enable;
-
-                _stateUpdater.ForceDirty(StateUpdater.BlendStateIndex);
+                return CompositeAlphaFlagsKHR.PreMultipliedBitKhr;
             }
-
-            if (shadow.IsTrack())
+            else
             {
-                _state.ShadowState.BlendEnable = enable;
+                return CompositeAlphaFlagsKHR.InheritBitKhr;
             }
         }
 
-        /// <summary>
-        /// Updates color masks. Respects current shadow mode.
-        /// </summary>
-        /// <param name="masks">Color masks</param>
-        public void UpdateColorMasks(ref Array8<RtColorMask> masks)
+        private static PresentModeKHR ChooseSwapPresentMode(PresentModeKHR[] availablePresentModes, bool vsyncEnabled)
         {
-            var shadow = ShadowMode;
-            ref var state = ref _state.State.RtColorMask;
-
-            if (shadow.IsReplay())
+            if (!vsyncEnabled && availablePresentModes.Contains(PresentModeKHR.ImmediateKhr))
             {
-                masks = _state.ShadowState.RtColorMask;
+                return PresentModeKHR.ImmediateKhr;
             }
-
-            if (!UnsafeEquals32Byte(ref masks, ref state))
+            else if (availablePresentModes.Contains(PresentModeKHR.MailboxKhr))
             {
-                state = masks;
-
-                _stateUpdater.ForceDirty(StateUpdater.RtColorMaskIndex);
+                return PresentModeKHR.MailboxKhr;
             }
-
-            if (shadow.IsTrack())
+            else
             {
-                _state.ShadowState.RtColorMask = masks;
+                return PresentModeKHR.FifoKhr;
             }
         }
 
-        /// <summary>
-        /// Updates index buffer state for an indexed draw. Respects current shadow mode.
-        /// </summary>
-        /// <param name="addrHigh">High part of the address</param>
-        /// <param name="addrLow">Low part of the address</param>
-        /// <param name="type">Type of the binding</param>
-        public void UpdateIndexBuffer(uint addrHigh, uint addrLow, IndexType type)
+        public static Extent2D ChooseSwapExtent(SurfaceCapabilitiesKHR capabilities)
         {
-            var shadow = ShadowMode;
-            ref var state = ref _state.State.IndexBufferState;
-
-            if (shadow.IsReplay())
+            if (capabilities.CurrentExtent.Width != uint.MaxValue)
             {
-                ref var shadowState = ref _state.ShadowState.IndexBufferState;
-                addrHigh = shadowState.Address.High;
-                addrLow = shadowState.Address.Low;
-                type = shadowState.Type;
+                return capabilities.CurrentExtent;
             }
 
-            if (state.Address.High != addrHigh || state.Address.Low != addrLow || state.Type != type)
+            uint width = Math.Max(capabilities.MinImageExtent.Width, Math.Min(capabilities.MaxImageExtent.Width, SurfaceWidth));
+            uint height = Math.Max(capabilities.MinImageExtent.Height, Math.Min(capabilities.MaxImageExtent.Height, SurfaceHeight));
+
+            return new Extent2D(width, height);
+        }
+
+        public unsafe override void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback)
+        {
+            _gd.PipelineInternal.AutoFlush.Present();
+
+            uint nextImage = 0;
+            int semaphoreIndex = _frameIndex++ % _imageAvailableSemaphores.Length;
+
+            while (true)
             {
-                state.Address.High = addrHigh;
-                state.Address.Low = addrLow;
-                state.Type = type;
+                var acquireResult = _gd.SwapchainApi.AcquireNextImage(
+                    _device,
+                    _swapchain,
+                    ulong.MaxValue,
+                    _imageAvailableSemaphores[semaphoreIndex],
+                    new Fence(),
+                    ref nextImage);
 
-                _stateUpdater.ForceDirty(StateUpdater.IndexBufferStateIndex);
+                if (acquireResult == Result.ErrorOutOfDateKhr ||
+                    acquireResult == Result.SuboptimalKhr ||
+                    _swapchainIsDirty)
+                {
+                    RecreateSwapchain();
+                    semaphoreIndex = (_frameIndex - 1) % _imageAvailableSemaphores.Length;
+                }
+                else if(acquireResult == Result.ErrorSurfaceLostKhr)
+                {
+                    _gd.RecreateSurface();
+                }
+                else
+                {
+                    acquireResult.ThrowOnError();
+                    break;
+                }
             }
 
-            if (shadow.IsTrack())
+            var swapchainImage = _swapchainImages[nextImage];
+
+            _gd.FlushAllCommands();
+
+            var cbs = _gd.CommandBufferPool.Rent();
+
+            Transition(
+                cbs.CommandBuffer,
+                swapchainImage,
+                0,
+                AccessFlags.TransferWriteBit,
+                ImageLayout.Undefined,
+                ImageLayout.General);
+
+            var view = (TextureView)texture;
+
+            UpdateEffect();
+
+            if (_effect != null)
             {
-                ref var shadowState = ref _state.ShadowState.IndexBufferState;
-                shadowState.Address.High = addrHigh;
-                shadowState.Address.Low = addrLow;
-                shadowState.Type = type;
+                view = _effect.Run(view, cbs, _width, _height);
             }
-        }
 
-        /// <summary>
-        /// Updates uniform buffer state for update or bind. Respects current shadow mode.
-        /// </summary>
-        /// <param name="size">Size of the binding</param>
-        /// <param name="addrHigh">High part of the addrsss</param>
-        /// <param name="addrLow">Low part of the address</param>
-        public void UpdateUniformBufferState(int size, uint addrHigh, uint addrLow)
-        {
-            var shadow = ShadowMode;
-            ref var state = ref _state.State.UniformBufferState;
+            int srcX0, srcX1, srcY0, srcY1;
 
-            if (shadow.IsReplay())
+            if (crop.Left == 0 && crop.Right == 0)
             {
-                ref var shadowState = ref _state.ShadowState.UniformBufferState;
-                size = shadowState.Size;
-                addrHigh = shadowState.Address.High;
-                addrLow = shadowState.Address.Low;
+                srcX0 = 0;
+                srcX1 = view.Width;
             }
-
-            state.Size = size;
-            state.Address.High = addrHigh;
-            state.Address.Low = addrLow;
-
-            if (shadow.IsTrack())
+            else
             {
-                ref var shadowState = ref _state.ShadowState.UniformBufferState;
-                shadowState.Size = size;
-                shadowState.Address.High = addrHigh;
-                shadowState.Address.Low = addrLow;
+                srcX0 = crop.Left;
+                srcX1 = crop.Right;
             }
-        }
 
-        /// <summary>
-        /// Updates a shader offset. Respects current shadow mode.
-        /// </summary>
-        /// <param name="index">Index of the shader to update</param>
-        /// <param name="offset">Offset to update with</param>
-        public void SetShaderOffset(int index, uint offset)
-        {
-            var shadow = ShadowMode;
-            ref var shaderState = ref _state.State.ShaderState[index];
-
-            if (shadow.IsReplay())
+            if (crop.Top == 0 && crop.Bottom == 0)
             {
-                offset = _state.ShadowState.ShaderState[index].Offset;
+                srcY0 = 0;
+                srcY1 = view.Height;
             }
-
-            if (shaderState.Offset != offset)
+            else
             {
-                shaderState.Offset = offset;
-
-                _stateUpdater.ForceDirty(StateUpdater.ShaderStateIndex);
+                srcY0 = crop.Top;
+                srcY1 = crop.Bottom;
             }
 
-            if (shadow.IsTrack())
+            if (ScreenCaptureRequested)
             {
-                _state.ShadowState.ShaderState[index].Offset = offset;
+                if (_effect != null)
+                {
+                    _gd.CommandBufferPool.Return(
+                        cbs,
+                        null,
+                        stackalloc[] { PipelineStageFlags.ColorAttachmentOutputBit },
+                        null);
+                    _gd.FlushAllCommands();
+                    cbs.GetFence().Wait();
+                    cbs = _gd.CommandBufferPool.Rent();
+                }
+
+                CaptureFrame(view, srcX0, srcY0, srcX1 - srcX0, srcY1 - srcY0, view.Info.Format.IsBgr(), crop.FlipX, crop.FlipY);
+
+                ScreenCaptureRequested = false;
             }
-        }
 
-        /// <summary>
-        /// Updates uniform buffer state for update. Respects current shadow mode.
-        /// </summary>
-        /// <param name="ubState">Uniform buffer state</param>
-        public void UpdateUniformBufferState(UniformBufferState ubState)
-        {
-            var shadow = ShadowMode;
-            ref var state = ref _state.State.UniformBufferState;
+            float ratioX = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _height * crop.AspectRatioX / (_width * crop.AspectRatioY));
+            float ratioY = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _width * crop.AspectRatioY / (_height * crop.AspectRatioX));
 
-            if (shadow.IsReplay())
+            int dstWidth = (int)(_width * ratioX);
+            int dstHeight = (int)(_height * ratioY);
+
+            int dstPaddingX = (_width - dstWidth) / 2;
+            int dstPaddingY = (_height - dstHeight) / 2;
+
+            int dstX0 = crop.FlipX ? _width - dstPaddingX : dstPaddingX;
+            int dstX1 = crop.FlipX ? dstPaddingX : _width - dstPaddingX;
+
+            int dstY0 = crop.FlipY ? dstPaddingY : _height - dstPaddingY;
+            int dstY1 = crop.FlipY ? _height - dstPaddingY : dstPaddingY;
+
+            if (_scalingFilter != null)
             {
-                ubState = _state.ShadowState.UniformBufferState;
+                _scalingFilter.Run(
+                    view,
+                    cbs,
+                    _swapchainImageViews[nextImage].GetImageViewForAttachment(),
+                    _format,
+                    _width,
+                    _height,
+                    new Extents2D(srcX0, srcY0, srcX1, srcY1),
+                    new Extents2D(dstX0, dstY0, dstX1, dstY1)
+                    );
             }
-
-            state = ubState;
-
-            if (shadow.IsTrack())
+            else
             {
-                _state.ShadowState.UniformBufferState = ubState;
+                _gd.HelperShader.BlitColor(
+                    _gd,
+                    cbs,
+                    view,
+                    _swapchainImageViews[nextImage],
+                    new Extents2D(srcX0, srcY0, srcX1, srcY1),
+                    new Extents2D(dstX0, dstY1, dstX1, dstY0),
+                    _isLinear,
+                    true);
+            }
+
+            Transition(
+                cbs.CommandBuffer,
+                swapchainImage,
+                0,
+                0,
+                ImageLayout.General,
+                ImageLayout.PresentSrcKhr);
+
+            _gd.CommandBufferPool.Return(
+                cbs,
+                stackalloc[] { _imageAvailableSemaphores[semaphoreIndex] },
+                stackalloc[] { PipelineStageFlags.ColorAttachmentOutputBit },
+                stackalloc[] { _renderFinishedSemaphores[semaphoreIndex] });
+
+            // TODO: Present queue.
+            var semaphore = _renderFinishedSemaphores[semaphoreIndex];
+            var swapchain = _swapchain;
+
+            Result result;
+
+            var presentInfo = new PresentInfoKHR
+            {
+                SType = StructureType.PresentInfoKhr,
+                WaitSemaphoreCount = 1,
+                PWaitSemaphores = &semaphore,
+                SwapchainCount = 1,
+                PSwapchains = &swapchain,
+                PImageIndices = &nextImage,
+                PResults = &result,
+            };
+
+            lock (_gd.QueueLock)
+            {
+                _gd.SwapchainApi.QueuePresent(_gd.Queue, in presentInfo);
+            }
+
+            //While this does nothing in most cases, it's useful to notify the end of the frame.
+            swapBuffersCallback?.Invoke();
+        }
+
+        public override void SetAntiAliasing(AntiAliasing effect)
+        {
+            if (_currentAntiAliasing == effect && _effect != null)
+            {
+                return;
+            }
+
+            _currentAntiAliasing = effect;
+
+            _updateEffect = true;
+        }
+
+        public override void SetScalingFilter(ScalingFilter type)
+        {
+            if (_currentScalingFilter == type && _effect != null)
+            {
+                return;
+            }
+
+            _currentScalingFilter = type;
+
+            _updateScalingFilter = true;
+        }
+
+        public override void SetColorSpacePassthrough(bool colorSpacePassthroughEnabled)
+        {
+            _colorSpacePassthroughEnabled = colorSpacePassthroughEnabled;
+            _swapchainIsDirty = true;
+        }
+
+        private void UpdateEffect()
+        {
+            if (_updateEffect)
+            {
+                _updateEffect = false;
+
+                switch (_currentAntiAliasing)
+                {
+                    case AntiAliasing.Fxaa:
+                        _effect?.Dispose();
+                        _effect = new FxaaPostProcessingEffect(_gd, _device);
+                        break;
+                    case AntiAliasing.None:
+                        _effect?.Dispose();
+                        _effect = null;
+                        break;
+                    case AntiAliasing.SmaaLow:
+                    case AntiAliasing.SmaaMedium:
+                    case AntiAliasing.SmaaHigh:
+                    case AntiAliasing.SmaaUltra:
+                        var quality = _currentAntiAliasing - AntiAliasing.SmaaLow;
+                        if (_effect is SmaaPostProcessingEffect smaa)
+                        {
+                            smaa.Quality = quality;
+                        }
+                        else
+                        {
+                            _effect?.Dispose();
+                            _effect = new SmaaPostProcessingEffect(_gd, _device, quality);
+                        }
+                        break;
+                }
+            }
+
+            if (_updateScalingFilter)
+            {
+                _updateScalingFilter = false;
+
+                switch (_currentScalingFilter)
+                {
+                    case ScalingFilter.Bilinear:
+                    case ScalingFilter.Nearest:
+                        _scalingFilter?.Dispose();
+                        _scalingFilter = null;
+                        _isLinear = _currentScalingFilter == ScalingFilter.Bilinear;
+                        break;
+                    case ScalingFilter.Fsr:
+                        if (_scalingFilter is not FsrScalingFilter)
+                        {
+                            _scalingFilter?.Dispose();
+                            _scalingFilter = new FsrScalingFilter(_gd, _device);
+                        }
+
+                        _scalingFilter.Level = _scalingFilterLevel;
+                        break;
+                    case ScalingFilter.Area:
+                        if (_scalingFilter is not AreaScalingFilter)
+                        {
+                            _scalingFilter?.Dispose();
+                            _scalingFilter = new AreaScalingFilter(_gd, _device);
+                        }
+                        break;
+                }
             }
         }
 
-        /// <summary>
-        /// Launches the Inline-to-Memory DMA copy operation.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void LaunchDma(int argument)
+        public override void SetScalingFilterLevel(float level)
         {
-            _i2mClass.LaunchDma(ref Unsafe.As<ThreedClassState, InlineToMemoryClassState>(ref _state.State), argument);
+            _scalingFilterLevel = level;
+            _updateScalingFilter = true;
         }
 
-        /// <summary>
-        /// Pushes a block of data to the Inline-to-Memory engine.
-        /// </summary>
-        /// <param name="data">Data to push</param>
-        public void LoadInlineData(ReadOnlySpan<int> data)
+        private unsafe void Transition(
+            CommandBuffer commandBuffer,
+            Image image,
+            AccessFlags srcAccess,
+            AccessFlags dstAccess,
+            ImageLayout srcLayout,
+            ImageLayout dstLayout)
         {
-            _i2mClass.LoadInlineData(data);
+            var subresourceRange = new ImageSubresourceRange(ImageAspectFlags.ColorBit, 0, 1, 0, 1);
+
+            var barrier = new ImageMemoryBarrier
+            {
+                SType = StructureType.ImageMemoryBarrier,
+                SrcAccessMask = srcAccess,
+                DstAccessMask = dstAccess,
+                OldLayout = srcLayout,
+                NewLayout = dstLayout,
+                SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                Image = image,
+                SubresourceRange = subresourceRange,
+            };
+
+            _gd.Api.CmdPipelineBarrier(
+                commandBuffer,
+                PipelineStageFlags.TopOfPipeBit,
+                PipelineStageFlags.AllCommandsBit,
+                0,
+                0,
+                null,
+                0,
+                null,
+                1,
+                in barrier);
         }
 
-        /// <summary>
-        /// Pushes a word of data to the Inline-to-Memory engine.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void LoadInlineData(int argument)
+        private void CaptureFrame(TextureView texture, int x, int y, int width, int height, bool isBgra, bool flipX, bool flipY)
         {
-            _i2mClass.LoadInlineData(argument);
+            byte[] bitmap = texture.GetData(x, y, width, height);
+
+            _gd.OnScreenCaptured(new ScreenCaptureImageInfo(width, height, isBgra, bitmap, flipX, flipY));
         }
 
-        /// <summary>
-        /// Performs an incrementation on a syncpoint.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        public void IncrementSyncpoint(int argument)
+        public override void SetSize(int width, int height)
         {
-            uint syncpointId = (uint)argument & 0xFFFF;
-
-            _context.AdvanceSequence();
-            _context.CreateHostSyncIfNeeded(HostSyncFlags.StrictSyncpoint);
-            _context.Renderer.UpdateCounters(); // Poll the query counters, the game may want an updated result.
-            _context.Synchronization.IncrementSyncpoint(syncpointId);
+            // We don't need to use width and height as we can get the size from the surface.
+            _swapchainIsDirty = true;
         }
 
-        /// <summary>
-        /// Invalidates the cache with the sampler descriptors from the sampler pool.
-        /// </summary>
-        /// <param name="argument">Method call argument (unused)</param>
-        private void InvalidateSamplerCacheNoWfi(int argument)
+        public override void ChangeVSyncMode(bool vsyncEnabled)
         {
-            _context.AdvanceSequence();
-        }
-
-        /// <summary>
-        /// Invalidates the cache with the texture descriptors from the texture pool.
-        /// </summary>
-        /// <param name="argument">Method call argument (unused)</param>
-        private void InvalidateTextureHeaderCacheNoWfi(int argument)
-        {
-            _context.AdvanceSequence();
-        }
-
-        /// <summary>
-        /// Issues a texture barrier.
-        /// This waits until previous texture writes from the GPU to finish, before
-        /// performing new operations with said textures.
-        /// </summary>
-        /// <param name="argument">Method call argument (unused)</param>
-        private void TextureBarrier(int argument)
-        {
-            _context.Renderer.Pipeline.TextureBarrier();
-        }
-
-        /// <summary>
-        /// Sets the start offset of the blend microcode in memory.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void LoadBlendUcodeStart(int argument)
-        {
-            _blendManager.LoadBlendUcodeStart(argument);
-        }
-
-        /// <summary>
-        /// Pushes one word of blend microcode.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void LoadBlendUcodeInstruction(int argument)
-        {
-            _blendManager.LoadBlendUcodeInstruction(argument);
-        }
-
-        /// <summary>
-        /// Issues a texture barrier.
-        /// This waits until previous texture writes from the GPU to finish, before
-        /// performing new operations with said textures.
-        /// This performs a per-tile wait, it is only valid if both the previous write
-        /// and current access has the same access patterns.
-        /// This may be faster than the regular barrier on tile-based rasterizers.
-        /// </summary>
-        /// <param name="argument">Method call argument (unused)</param>
-        private void TextureBarrierTiled(int argument)
-        {
-            _context.Renderer.Pipeline.TextureBarrierTiled();
-        }
-
-        /// <summary>
-        /// Draws a texture, without needing to specify shader programs.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void DrawTexture(int argument)
-        {
-            _drawManager.DrawTexture(this, argument);
-        }
-
-        /// <summary>
-        /// Performs a non-indexed draw with the specified topology, index and count.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void DrawVertexArrayBeginEndInstanceFirst(int argument)
-        {
-            _drawManager.DrawVertexArrayBeginEndInstanceFirst(this, argument);
-        }
-
-        /// <summary>
-        /// Performs a non-indexed draw with the specified topology, index and count,
-        /// while incrementing the current instance.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void DrawVertexArrayBeginEndInstanceSubsequent(int argument)
-        {
-            _drawManager.DrawVertexArrayBeginEndInstanceSubsequent(this, argument);
-        }
-
-        /// <summary>
-        /// Pushes four 8-bit index buffer elements.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void VbElementU8(int argument)
-        {
-            _drawManager.VbElementU8(argument);
-        }
-
-        /// <summary>
-        /// Pushes two 16-bit index buffer elements.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void VbElementU16(int argument)
-        {
-            _drawManager.VbElementU16(argument);
-        }
-
-        /// <summary>
-        /// Pushes one 32-bit index buffer element.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void VbElementU32(int argument)
-        {
-            _drawManager.VbElementU32(argument);
-        }
-
-        /// <summary>
-        /// Resets the value of an internal GPU counter back to zero.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void ResetCounter(int argument)
-        {
-            _semaphoreUpdater.ResetCounter(argument);
-        }
-
-        /// <summary>
-        /// Finishes the draw call.
-        /// This draws geometry on the bound buffers based on the current GPU state.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void DrawEnd(int argument)
-        {
-            _drawManager.DrawEnd(this, argument);
-        }
-
-        /// <summary>
-        /// Starts draw.
-        /// This sets primitive type and instanced draw parameters.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void DrawBegin(int argument)
-        {
-            _drawManager.DrawBegin(this, argument);
-        }
-
-        /// <summary>
-        /// Sets the index buffer count.
-        /// This also sets internal state that indicates that the next draw is an indexed draw.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void SetIndexBufferCount(int argument)
-        {
-            _drawManager.SetIndexBufferCount(argument);
-        }
-
-        /// <summary>
-        /// Performs a indexed draw with 8-bit index buffer elements.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void DrawIndexBuffer8BeginEndInstanceFirst(int argument)
-        {
-            _drawManager.DrawIndexBuffer8BeginEndInstanceFirst(this, argument);
-        }
-
-        /// <summary>
-        /// Performs a indexed draw with 16-bit index buffer elements.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void DrawIndexBuffer16BeginEndInstanceFirst(int argument)
-        {
-            _drawManager.DrawIndexBuffer16BeginEndInstanceFirst(this, argument);
-        }
-
-        /// <summary>
-        /// Performs a indexed draw with 32-bit index buffer elements.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void DrawIndexBuffer32BeginEndInstanceFirst(int argument)
-        {
-            _drawManager.DrawIndexBuffer32BeginEndInstanceFirst(this, argument);
-        }
-
-        /// <summary>
-        /// Performs a indexed draw with 8-bit index buffer elements,
-        /// while also pre-incrementing the current instance value.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void DrawIndexBuffer8BeginEndInstanceSubsequent(int argument)
-        {
-            _drawManager.DrawIndexBuffer8BeginEndInstanceSubsequent(this, argument);
-        }
-
-        /// <summary>
-        /// Performs a indexed draw with 16-bit index buffer elements,
-        /// while also pre-incrementing the current instance value.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void DrawIndexBuffer16BeginEndInstanceSubsequent(int argument)
-        {
-            _drawManager.DrawIndexBuffer16BeginEndInstanceSubsequent(this, argument);
-        }
-
-        /// <summary>
-        /// Performs a indexed draw with 32-bit index buffer elements,
-        /// while also pre-incrementing the current instance value.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void DrawIndexBuffer32BeginEndInstanceSubsequent(int argument)
-        {
-            _drawManager.DrawIndexBuffer32BeginEndInstanceSubsequent(this, argument);
-        }
-
-        /// <summary>
-        /// Clears the current color and depth-stencil buffers.
-        /// Which buffers should be cleared is also specified on the argument.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void Clear(int argument)
-        {
-            _drawManager.Clear(this, argument);
-        }
-
-        /// <summary>
-        /// Writes a GPU counter to guest memory.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void Report(int argument)
-        {
-            _semaphoreUpdater.Report(argument);
-        }
-
-        /// <summary>
-        /// Performs high-level emulation of Falcon microcode function number "4".
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void SetFalcon04(int argument)
-        {
-            _state.State.SetMmeShadowScratch[0] = 1;
-        }
-
-        /// <summary>
-        /// Updates the uniform buffer data with inline data.
-        /// </summary>
-        /// <param name="argument">New uniform buffer data word</param>
-        private void ConstantBufferUpdate(int argument)
-        {
-            _cbUpdater.Update(argument);
-        }
-
-        /// <summary>
-        /// Binds a uniform buffer for the vertex shader stage.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void ConstantBufferBindVertex(int argument)
-        {
-            _cbUpdater.BindVertex(argument);
-        }
-
-        /// <summary>
-        /// Binds a uniform buffer for the tessellation control shader stage.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void ConstantBufferBindTessControl(int argument)
-        {
-            _cbUpdater.BindTessControl(argument);
-        }
-
-        /// <summary>
-        /// Binds a uniform buffer for the tessellation evaluation shader stage.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-    private void ConstantBufferBindTessEvaluation(int argument)
-        {
-            _cbUpdater.BindTessEvaluation(argument);
-        }
-
-        /// <summary>
-        /// Binds a uniform buffer for the geometry shader stage.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void ConstantBufferBindGeometry(int argument)
-        {
-            _cbUpdater.BindGeometry(argument);
-        }
-
-        /// <summary>
-        /// Binds a uniform buffer for the fragment shader stage.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        private void ConstantBufferBindFragment(int argument)
-        {
-            _cbUpdater.BindFragment(argument);
-        }
-
-        /// <summary>
-        /// Generic register read function that just returns 0.
-        /// </summary>
-        /// <returns>Zero</returns>
-        private static int Zero()
-        {
-            return 0;
-        }
-
-        /// <summary>
-        /// Performs a indexed or non-indexed draw.
-        /// </summary>
-        /// <param name="topology">Primitive topology</param>
-        /// <param name="count">Index count for indexed draws, vertex count for non-indexed draws</param>
-        /// <param name="instanceCount">Instance count</param>
-        /// <param name="firstIndex">First index on the index buffer for indexed draws, ignored for non-indexed draws</param>
-        /// <param name="firstVertex">First vertex on the vertex buffer</param>
-        /// <param name="firstInstance">First instance</param>
-        /// <param name="indexed">True if the draw is indexed, false otherwise</param>
-        public void Draw(
-            PrimitiveTopology topology,
-            int count,
-            int instanceCount,
-            int firstIndex,
-            int firstVertex,
-            int firstInstance,
-            bool indexed)
-        {
-            _drawManager.Draw(this, topology, count, instanceCount, firstIndex, firstVertex, firstInstance, indexed);
-        }
-
-        /// <summary>
-        /// Performs a indirect draw, with parameters from a GPU buffer.
-        /// </summary>
-        /// <param name="topology">Primitive topology</param>
-        /// <param name="indirectBufferRange">Memory range of the buffer with the draw parameters, such as count, first index, etc</param>
-        /// <param name="parameterBufferRange">Memory range of the buffer with the draw count</param>
-        /// <param name="maxDrawCount">Maximum number of draws that can be made</param>
-        /// <param name="stride">Distance in bytes between each entry on the data pointed to by <paramref name="indirectBufferRange"/></param>
-        /// <param name="indexCount">Maximum number of indices that the draw can consume</param>
-        /// <param name="drawType">Type of the indirect draw, which can be indexed or non-indexed, with or without a draw count</param>
-        public void DrawIndirect(
-            PrimitiveTopology topology,
-            MultiRange indirectBufferRange,
-            MultiRange parameterBufferRange,
-            int maxDrawCount,
-            int stride,
-            int indexCount,
-            IndirectDrawType drawType)
-        {
-            _drawManager.DrawIndirect(this, topology, indirectBufferRange, parameterBufferRange, maxDrawCount, stride, indexCount, drawType);
-        }
-
-        /// <summary>
-        /// Clears the current color and depth-stencil buffers.
-        /// Which buffers should be cleared can also specified with the arguments.
-        /// </summary>
-        /// <param name="argument">Method call argument</param>
-        /// <param name="layerCount">For array and 3D textures, indicates how many layers should be cleared</param>
-        public void Clear(int argument, int layerCount)
-        {
-            _drawManager.Clear(this, argument, layerCount);
+            _vsyncEnabled = vsyncEnabled;
+            _swapchainIsDirty = true;
         }
 
         protected virtual void Dispose(bool disposing)
         {
             if (disposing)
             {
-                _drawManager.Dispose();
+                unsafe
+                {
+                    for (int i = 0; i < _swapchainImageViews.Length; i++)
+                    {
+                        _swapchainImageViews[i].Dispose();
+                    }
+
+                    for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
+                    {
+                        _gd.Api.DestroySemaphore(_device, _imageAvailableSemaphores[i], null);
+                    }
+
+                    for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
+                    {
+                        _gd.Api.DestroySemaphore(_device, _renderFinishedSemaphores[i], null);
+                    }
+
+                    _gd.SwapchainApi.DestroySwapchain(_device, _swapchain, null);
+                }
+
+                _effect?.Dispose();
+                _scalingFilter?.Dispose();
             }
         }
 
-        public void Dispose()
+        public override void Dispose()
         {
             Dispose(true);
-            GC.SuppressFinalize(this);
         }
     }
 }
