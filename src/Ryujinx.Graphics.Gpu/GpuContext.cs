@@ -8,76 +8,160 @@ using Ryujinx.Graphics.Gpu.Synchronization;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+using System.Linq;
 using System.Threading;
 
 namespace Ryujinx.Graphics.Gpu
 {
+    /// <summary>
+    /// GPU emulation context.
+    /// </summary>
     public sealed class GpuContext : IDisposable
     {
-        // 移动设备优化常量
-        private const int MobileCommandBatchSize = 50;
-        private const int MaxCommandBufferSize = 100;
-        private const int SlowFrameThreshold = 33; // 30FPS
-        
         private const int NsToTicksFractionNumerator = 384;
         private const int NsToTicksFractionDenominator = 625;
+        private const ulong NsToTicksFactor = (ulong)NsToTicksFractionNumerator / (ulong)NsToTicksFractionDenominator;
 
+        /// <summary>
+        /// Event signaled when the host emulation context is ready to be used by the gpu context.
+        /// </summary>
         public ManualResetEvent HostInitalized { get; }
+
+        /// <summary>
+        /// Host renderer.
+        /// </summary>
         public IRenderer Renderer { get; }
+
+        /// <summary>
+        /// GPU General Purpose FIFO queue.
+        /// </summary>
         public GPFifoDevice GPFifo { get; }
+
+        /// <summary>
+        /// GPU synchronization manager.
+        /// </summary>
         public SynchronizationManager Synchronization { get; }
+
+        /// <summary>
+        /// Presentation window.
+        /// </summary>
         public Window Window { get; }
+
+        /// <summary>
+        /// Internal sequence number, used to avoid needless resource data updates
+        /// in the middle of a command buffer before synchronizations.
+        /// </summary>
         internal int SequenceNumber { get; private set; }
+
+        /// <summary>
+        /// Internal sync number, used to denote points at which host synchronization can be requested.
+        /// </summary>
         internal ulong SyncNumber { get; private set; }
-        internal List<ISyncActionHandler> SyncActions { get; }
-        internal List<ISyncActionHandler> SyncpointActions { get; }
-        internal List<BufferMigration> BufferMigrations { get; }
-        internal Queue<Action> DeferredActions { get; }
+
+        /// <summary>
+        /// Actions to be performed when a CPU waiting syncpoint or barrier is triggered.
+        /// If there are more than 0 items when this happens, a host sync object will be generated for the given <see cref="SyncNumber"/>,
+        /// and the SyncNumber will be incremented.
+        /// </summary>
+        internal ConcurrentQueue<ISyncActionHandler> SyncActions { get; }
+
+        /// <summary>
+        /// Actions to be performed when a CPU waiting syncpoint is triggered.
+        /// If there are more than 0 items when this happens, a host sync object will be generated for the given <see cref="SyncNumber"/>,
+        /// and the SyncNumber will be incremented.
+        /// </summary>
+        internal ConcurrentQueue<ISyncActionHandler> SyncpointActions { get; }
+
+        /// <summary>
+        /// Buffer migrations that are currently in-flight. These are checked whenever sync is created to determine if buffer migration
+        /// copies have completed on the GPU, and their data can be freed.
+        /// </summary>
+        internal ConcurrentBag<BufferMigration> BufferMigrations { get; }
+
+        /// <summary>
+        /// Queue with deferred actions that must run on the render thread.
+        /// </summary>
+        internal ConcurrentQueue<Action> DeferredActions { get; }
+
+        /// <summary>
+        /// Registry with physical memories that can be used with this GPU context, keyed by owner process ID.
+        /// </summary>
         internal ConcurrentDictionary<ulong, PhysicalMemory> PhysicalMemoryRegistry { get; }
+
+        /// <summary>
+        /// Support buffer updater.
+        /// </summary>
         internal SupportBufferUpdater SupportBufferUpdater { get; }
+
+        /// <summary>
+        /// Host hardware capabilities.
+        /// </summary>
         internal Capabilities Capabilities;
 
-        public event Action<ShaderCacheState, int, int> ShaderCacheStateChanged;
+        /// <summary>
+        /// Event for signalling shader cache loading progress.
+        /// </summary>
+        public event Action<ShaderCacheState, int, int> ShaderCacheStateChanged = delegate { };
 
         private Thread _gpuThread;
         private bool _pendingSync;
+        private bool _disposed;
+
         private long _modifiedSequence;
         private readonly ulong _firstTimestamp;
-        private readonly ManualResetEvent _gpuReadyEvent;
-        
-        // 性能监控字段
-        private long _lastFrameTime;
-        private int _consecutiveSlowFrames;
-        private int _commandBatchSize = MobileCommandBatchSize;
-        
-        // ARM 优化字段
-        private int _timeAccelerationFactorShift = 8;  // log2(256)
 
+        private readonly ManualResetEvent _gpuReadyEvent;
+
+        // Synchronization locks
+        private readonly object _syncLock = new object();
+        private readonly object _migrationLock = new object();
+
+        /// <summary>
+        /// Creates a new instance of the GPU emulation context.
+        /// </summary>
+        /// <param name="renderer">Host renderer</param>
         public GpuContext(IRenderer renderer)
         {
             Renderer = renderer;
+
             GPFifo = new GPFifoDevice(this);
+
             Synchronization = new SynchronizationManager();
+
             Window = new Window(this);
+
             HostInitalized = new ManualResetEvent(false);
             _gpuReadyEvent = new ManualResetEvent(false);
-            SyncActions = new List<ISyncActionHandler>();
-            SyncpointActions = new List<ISyncActionHandler>();
-            BufferMigrations = new List<BufferMigration>();
-            DeferredActions = new Queue<Action>();
+
+            SyncActions = new ConcurrentQueue<ISyncActionHandler>();
+            SyncpointActions = new ConcurrentQueue<ISyncActionHandler>();
+            BufferMigrations = new ConcurrentBag<BufferMigration>();
+
+            DeferredActions = new ConcurrentQueue<Action>();
+
             PhysicalMemoryRegistry = new ConcurrentDictionary<ulong, PhysicalMemory>();
+
             SupportBufferUpdater = new SupportBufferUpdater(renderer);
+
             _firstTimestamp = ConvertNanosecondsToTicks((ulong)PerformanceCounter.ElapsedNanoseconds);
         }
 
+        /// <summary>
+        /// Creates a new GPU channel.
+        /// </summary>
+        /// <returns>The GPU channel</returns>
         public GpuChannel CreateChannel()
         {
             return new GpuChannel(this);
         }
 
+        /// <summary>
+        /// Creates a new GPU memory manager.
+        /// </summary>
+        /// <param name="pid">ID of the process that owns the memory manager</param>
+        /// <param name="cpuMemorySize">The amount of physical CPU Memory Avaiable on the device.</param>
+        /// <returns>The memory manager</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="pid"/> is invalid</exception>
         public MemoryManager CreateMemoryManager(ulong pid, ulong cpuMemorySize)
         {
             if (!PhysicalMemoryRegistry.TryGetValue(pid, out var physicalMemory))
@@ -88,6 +172,12 @@ namespace Ryujinx.Graphics.Gpu
             return new MemoryManager(physicalMemory, cpuMemorySize);
         }
 
+        /// <summary>
+        /// Creates a new device memory manager.
+        /// </summary>
+        /// <param name="pid">ID of the process that owns the memory manager</param>
+        /// <returns>The memory manager</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="pid"/> is invalid</exception>
         public DeviceMemoryManager CreateDeviceMemoryManager(ulong pid)
         {
             if (!PhysicalMemoryRegistry.TryGetValue(pid, out var physicalMemory))
@@ -98,6 +188,12 @@ namespace Ryujinx.Graphics.Gpu
             return physicalMemory.CreateDeviceMemoryManager();
         }
 
+        /// <summary>
+        /// Registers virtual memory used by a process for GPU memory access, caching and read/write tracking.
+        /// </summary>
+        /// <param name="pid">ID of the process that owns <paramref name="cpuMemory"/></param>
+        /// <param name="cpuMemory">Virtual memory owned by the process</param>
+        /// <exception cref="ArgumentException">Thrown if <paramref name="pid"/> was already registered</exception>
         public void RegisterProcess(ulong pid, Cpu.IVirtualMemoryManagerTracked cpuMemory)
         {
             var physicalMemory = new PhysicalMemory(this, cpuMemory);
@@ -109,6 +205,10 @@ namespace Ryujinx.Graphics.Gpu
             physicalMemory.ShaderCache.ShaderCacheStateChanged += ShaderCacheStateUpdate;
         }
 
+        /// <summary>
+        /// Unregisters a process, indicating that its memory will no longer be used, and that caches can be freed.
+        /// </summary>
+        /// <param name="pid">ID of the process</param>
         public void UnregisterProcess(ulong pid)
         {
             if (PhysicalMemoryRegistry.TryRemove(pid, out var physicalMemory))
@@ -118,94 +218,69 @@ namespace Ryujinx.Graphics.Gpu
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        /// <summary>
+        /// Converts a nanoseconds timestamp value to Maxwell time ticks.
+        /// </summary>
+        /// <remarks>
+        /// The frequency is 614400000 Hz.
+        /// </remarks>
+        /// <param name="nanoseconds">Timestamp in nanoseconds</param>
+        /// <returns>Maxwell ticks</returns>
         private static ulong ConvertNanosecondsToTicks(ulong nanoseconds)
         {
-            // 使用优化的整数运算避免浮点数
+            // We need to divide first to avoid overflows.
+            // We fix up the result later by calculating the difference and adding
+            // that to the result.
             ulong divided = nanoseconds / NsToTicksFractionDenominator;
+
             ulong rounded = divided * NsToTicksFractionDenominator;
+
             ulong errorBias = (nanoseconds - rounded) * NsToTicksFractionNumerator / NsToTicksFractionDenominator;
+
             return divided * NsToTicksFractionNumerator + errorBias;
         }
 
+        /// <summary>
+        /// Gets a sequence number for resource modification ordering. This increments on each call.
+        /// </summary>
+        /// <returns>A sequence number for resource modification ordering</returns>
         internal long GetModifiedSequence()
         {
-            return _modifiedSequence++;
+            return Interlocked.Increment(ref _modifiedSequence) - 1;
         }
 
+        /// <summary>
+        /// Gets the value of the GPU timer.
+        /// </summary>
+        /// <returns>The current GPU timestamp</returns>
         internal ulong GetTimestamp()
         {
-            ulong nanoseconds = GetHighPrecisionNanoseconds();
-            ulong ticks = ConvertNanosecondsToTicks(nanoseconds) - _firstTimestamp;
+            // Guest timestamp will start at 0, instead of host value.
+            ulong ticks = ConvertNanosecondsToTicks((ulong)PerformanceCounter.ElapsedNanoseconds) - _firstTimestamp;
 
             if (GraphicsConfig.FastGpuTime)
             {
-                // ARM 优化：使用位移代替除法
-                AdjustTimeAcceleration();
-                ticks >>= _timeAccelerationFactorShift;
+                // Use bit-shift instead of division for performance
+                ticks >>= 8; // Equivalent to division by 256
             }
 
             return ticks;
         }
 
-        private ulong GetHighPrecisionNanoseconds()
-        {
-            // 移动设备使用更高精度的计时器
-            if (IsMobileDevice)
-            {
-                long timestamp = Stopwatch.GetTimestamp();
-                return (ulong)(timestamp * (1_000_000_000.0 / Stopwatch.Frequency));
-            }
-            
-            return (ulong)PerformanceCounter.ElapsedNanoseconds;
-        }
-
-        private bool IsMobileDevice
-        {
-            get
-            {
-                try
-                {
-                    // 检测移动设备
-                    string osDescription = RuntimeInformation.OSDescription;
-                    return osDescription.Contains("Android", StringComparison.OrdinalIgnoreCase) || 
-                           osDescription.Contains("iOS", StringComparison.OrdinalIgnoreCase);
-                }
-                catch
-                {
-                    return false;
-                }
-            }
-        }
-
-        private void AdjustTimeAcceleration()
-        {
-            // 目标帧时间 (60FPS ≈ 16.67ms)
-            long targetFrameTime = (long)(Stopwatch.Frequency / 60.0);
-            
-            if (_lastFrameTime > targetFrameTime * 1.5) // 帧率下降
-            {
-                // 增加时间加速
-                if (_timeAccelerationFactorShift < 10) // 最大1024 (2^10)
-                {
-                    _timeAccelerationFactorShift++;
-                }
-            }
-            else if (_lastFrameTime < targetFrameTime * 0.8) // 帧率过高
-            {
-                // 减少时间加速
-                if (_timeAccelerationFactorShift > 6) // 最小64 (2^6)
-                {
-                    _timeAccelerationFactorShift--;
-                }
-            }
-        }
-
+        /// <summary>
+        /// Shader cache state update handler.
+        /// </summary>
+        /// <param name="state">Current state of the shader cache load process</param>
+        /// <param name="current">Number of the current shader being processed</param>
+        /// <param name="total">Total number of shaders to process</param>
         private void ShaderCacheStateUpdate(ShaderCacheState state, int current, int total)
         {
-            ShaderCacheStateChanged?.Invoke(state, current, total);
+            ShaderCacheStateChanged.Invoke(state, current, total);
         }
 
+        /// <summary>
+        /// Initialize the GPU shader cache.
+        /// </summary>
         public void InitializeShaderCache(CancellationToken cancellationToken)
         {
             HostInitalized.WaitOne();
@@ -218,25 +293,36 @@ namespace Ryujinx.Graphics.Gpu
             _gpuReadyEvent.Set();
         }
 
+        /// <summary>
+        /// Waits until the GPU is ready to receive commands.
+        /// </summary>
         public void WaitUntilGpuReady()
         {
             _gpuReadyEvent.WaitOne();
         }
 
+        /// <summary>
+        /// Sets the current thread as the main GPU thread.
+        /// </summary>
         public void SetGpuThread()
         {
             _gpuThread = Thread.CurrentThread;
+
             Capabilities = Renderer.GetCapabilities();
-            
-            // 移动设备初始优化
-            _commandBatchSize = MobileCommandBatchSize;
         }
 
+        /// <summary>
+        /// Checks if the current thread is the GPU thread.
+        /// </summary>
+        /// <returns>True if the thread is the GPU thread, false otherwise</returns>
         public bool IsGpuThread()
         {
             return _gpuThread == Thread.CurrentThread;
         }
 
+        /// <summary>
+        /// Processes the queue of shaders that must save their binaries to the disk cache.
+        /// </summary>
         public void ProcessShaderCacheQueue()
         {
             foreach (var physicalMemory in PhysicalMemoryRegistry.Values)
@@ -245,110 +331,144 @@ namespace Ryujinx.Graphics.Gpu
             }
         }
 
+        /// <summary>
+        /// Advances internal sequence number.
+        /// This forces the update of any modified GPU resource.
+        /// </summary>
         internal void AdvanceSequence()
         {
-            SequenceNumber++;
+            Interlocked.Increment(ref SequenceNumber);
         }
 
+        /// <summary>
+        /// Registers a buffer migration. These are checked to see if they can be disposed when the sync number increases,
+        /// and the migration copy has completed.
+        /// </summary>
+        /// <param name="migration">The buffer migration</param>
         internal void RegisterBufferMigration(BufferMigration migration)
         {
-            BufferMigrations.Add(migration);
-            _pendingSync = true;
-        }
-
-        internal void RegisterSyncAction(ISyncActionHandler action, bool syncpointOnly = false)
-        {
-            if (syncpointOnly)
+            lock (_migrationLock)
             {
-                SyncpointActions.Add(action);
-            }
-            else
-            {
-                SyncActions.Add(action);
+                BufferMigrations.Add(migration);
                 _pendingSync = true;
             }
         }
 
-        // 动态命令批处理大小调整
-        internal int GetCommandBatchSize()
+        /// <summary>
+        /// Registers an action to be performed the next time a syncpoint is incremented.
+        /// This will also ensure a host sync object is created, and <see cref="SyncNumber"/> is incremented.
+        /// </summary>
+        /// <param name="action">The resource with action to be performed on sync object creation</param>
+        /// <param name="syncpointOnly">True if the sync action should only run when syncpoints are incremented</param>
+        internal void RegisterSyncAction(ISyncActionHandler action, bool syncpointOnly = false)
         {
-            // 性能下降时减少批处理大小
-            if (_consecutiveSlowFrames > 5 && _commandBatchSize > 10)
+            lock (_syncLock)
             {
-                _commandBatchSize = Math.Max(10, _commandBatchSize - 5);
-            }
-            // 性能恢复时增加批处理大小
-            else if (_consecutiveSlowFrames == 0 && _commandBatchSize < MaxCommandBufferSize)
-            {
-                _commandBatchSize = Math.Min(MaxCommandBufferSize, _commandBatchSize + 2);
-            }
-            
-            return _commandBatchSize;
-        }
-
-        // 帧时间监控
-        internal void ReportFrameTime(long frameTime)
-        {
-            _lastFrameTime = frameTime;
-            
-            // 目标帧时间 (60FPS ≈ 16.67ms)
-            long targetFrameTime = (long)(Stopwatch.Frequency / 60.0);
-            
-            if (frameTime > targetFrameTime * 2) // 低于30FPS
-            {
-                _consecutiveSlowFrames++;
-            }
-            else
-            {
-                _consecutiveSlowFrames = Math.Max(0, _consecutiveSlowFrames - 1);
+                if (syncpointOnly)
+                {
+                    SyncpointActions.Enqueue(action);
+                }
+                else
+                {
+                    SyncActions.Enqueue(action);
+                    _pendingSync = true;
+                }
             }
         }
 
+        /// <summary>
+        /// Creates a host sync object if there are any pending sync actions. The actions will then be called.
+        /// If no actions are present, a host sync object is not created.
+        /// </summary>
+        /// <param name="flags">Modifiers for how host sync should be created</param>
         internal void CreateHostSyncIfNeeded(HostSyncFlags flags)
         {
             bool syncpoint = flags.HasFlag(HostSyncFlags.Syncpoint);
             bool strict = flags.HasFlag(HostSyncFlags.Strict);
             bool force = flags.HasFlag(HostSyncFlags.Force);
 
-            if (BufferMigrations.Count > 0)
+            // Process buffer migrations
+            lock (_migrationLock)
             {
-                ulong currentSyncNumber = Renderer.GetCurrentSync();
-
-                for (int i = 0; i < BufferMigrations.Count; i++)
+                if (!BufferMigrations.IsEmpty)
                 {
-                    BufferMigration migration = BufferMigrations[i];
-                    long diff = (long)(currentSyncNumber - migration.SyncNumber);
+                    ulong currentSyncNumber = Renderer.GetCurrentSync();
+                    var remainingMigrations = new ConcurrentBag<BufferMigration>();
 
-                    if (diff >= 0)
+                    foreach (var migration in BufferMigrations)
                     {
-                        migration.Dispose();
-                        BufferMigrations.RemoveAt(i--);
+                        long diff = (long)(currentSyncNumber - migration.SyncNumber);
+
+                        if (diff >= 0)
+                        {
+                            migration.Dispose();
+                        }
+                        else
+                        {
+                            remainingMigrations.Add(migration);
+                        }
                     }
+
+                    BufferMigrations = remainingMigrations;
                 }
             }
 
-            if (force || _pendingSync || (syncpoint && SyncpointActions.Count > 0))
+            bool needSync = false;
+
+            lock (_syncLock)
             {
-                foreach (var action in SyncActions)
-                {
-                    action.SyncPreAction(syncpoint);
-                }
-
-                foreach (var action in SyncpointActions)
-                {
-                    action.SyncPreAction(syncpoint);
-                }
-
-                Renderer.CreateSync(SyncNumber, strict);
-                SyncNumber++;
-
-                SyncActions.RemoveAll(action => action.SyncAction(syncpoint));
-                SyncpointActions.RemoveAll(action => action.SyncAction(syncpoint));
+                needSync = force || _pendingSync || (syncpoint && !SyncpointActions.IsEmpty);
             }
 
-            _pendingSync = false;
+            if (needSync)
+            {
+                lock (_syncLock)
+                {
+                    // Pre-action processing
+                    foreach (var action in SyncActions)
+                    {
+                        action.SyncPreAction(syncpoint);
+                    }
+                    foreach (var action in SyncpointActions)
+                    {
+                        action.SyncPreAction(syncpoint);
+                    }
+
+                    Renderer.CreateSync(SyncNumber, strict);
+                    SyncNumber++;
+
+                    // Post-action processing with removal
+                    ProcessSyncQueue(SyncActions, syncpoint);
+                    ProcessSyncQueue(SyncpointActions, syncpoint);
+                }
+
+                _pendingSync = false;
+            }
         }
 
+        private void ProcessSyncQueue(ConcurrentQueue<ISyncActionHandler> queue, bool syncpoint)
+        {
+            var remainingActions = new ConcurrentQueue<ISyncActionHandler>();
+
+            while (queue.TryDequeue(out var action))
+            {
+                if (!action.SyncAction(syncpoint))
+                {
+                    remainingActions.Enqueue(action);
+                }
+            }
+
+            // Re-add actions that need to be kept
+            while (remainingActions.TryDequeue(out var action))
+            {
+                queue.Enqueue(action);
+            }
+        }
+
+        /// <summary>
+        /// Performs deferred actions.
+        /// This is useful for actions that must run on the render thread, such as resource disposal.
+        /// </summary>
         internal void RunDeferredActions()
         {
             while (DeferredActions.TryDequeue(out Action action))
@@ -357,20 +477,37 @@ namespace Ryujinx.Graphics.Gpu
             }
         }
 
+        /// <summary>
+        /// Disposes all GPU resources currently cached.
+        /// It's an error to push any GPU commands after disposal.
+        /// Additionally, the GPU commands FIFO must be empty for disposal,
+        /// and processing of all commands must have finished.
+        /// </summary>
         public void Dispose()
         {
+            if (_disposed) return;
+            _disposed = true;
+
             GPFifo.Dispose();
             HostInitalized.Dispose();
             _gpuReadyEvent.Dispose();
 
-            foreach (var physicalMemory in PhysicalMemoryRegistry.Values)
+            // Create a copy to avoid modification during iteration
+            var physicalMemories = PhysicalMemoryRegistry.Values.ToArray();
+            PhysicalMemoryRegistry.Clear();
+
+            // Dispose physical memories
+            foreach (var physicalMemory in physicalMemories)
             {
+                physicalMemory.ShaderCache.ShaderCacheStateChanged -= ShaderCacheStateUpdate;
                 physicalMemory.Dispose();
             }
 
             SupportBufferUpdater.Dispose();
-            PhysicalMemoryRegistry.Clear();
+
+            // Process any remaining deferred actions
             RunDeferredActions();
+
             Renderer.Dispose();
         }
     }
