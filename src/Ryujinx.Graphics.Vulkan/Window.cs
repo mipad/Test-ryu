@@ -10,6 +10,15 @@ namespace Ryujinx.Graphics.Vulkan
 {
     class Window : WindowBase, IDisposable
     {
+        // 新增性能监控字段
+        private const int PerformanceWarningThreshold = 3;
+        private const float MinScalingLevel = 0.5f;
+        private const float ScalingStepDown = 0.1f;
+        private const float ScalingStepUp = 0.05f;
+        private int _consecutiveSlowFrames = 0;
+        private long _lastFrameTime;
+        private long _lastAdjustmentTime;
+        
         private const int SurfaceWidth = 1280;
         private const int SurfaceHeight = 720;
 
@@ -62,8 +71,7 @@ namespace Ryujinx.Graphics.Vulkan
                 _swapchainImageViews[i].Dispose();
             }
 
-            // Destroy old Swapchain.
-
+            // 添加GPU空闲等待安全机制
             _gd.Api.DeviceWaitIdle(_device);
 
             unsafe
@@ -116,20 +124,29 @@ namespace Ryujinx.Graphics.Vulkan
                 _gd.SurfaceApi.GetPhysicalDeviceSurfacePresentModes(_physicalDevice, _surface, &presentModesCount, pPresentModes);
             }
 
-            // 修改为三缓冲逻辑
+            // 优化缓冲策略 - 动态选择最佳缓冲数量
             uint minImageCount = capabilities.MinImageCount;
-            uint imageCount = minImageCount + 1; // 默认使用双缓冲
-            const uint DesiredImageCount = 3; // 期望的三缓冲
-
-            if (minImageCount <= DesiredImageCount)
+            uint maxImageCount = capabilities.MaxImageCount;
+            uint imageCount = minImageCount + 1;
+            
+            // 移动设备专用优化
+            if (Ryujinx.Common.PlatformInfo.IsMobile)
             {
-                if (capabilities.MaxImageCount == 0 || DesiredImageCount <= capabilities.MaxImageCount)
+                // 优先使用三缓冲
+                if (minImageCount <= 3 && (maxImageCount == 0 || 3 <= maxImageCount))
                 {
-                    imageCount = DesiredImageCount;
+                    imageCount = 3;
                 }
-                else if (capabilities.MaxImageCount > 0)
+                else if (maxImageCount > 0)
                 {
-                    imageCount = capabilities.MaxImageCount;
+                    imageCount = Math.Min(3, maxImageCount);
+                }
+            }
+            else
+            {
+                if (maxImageCount > 0 && imageCount > maxImageCount)
+                {
+                    imageCount = maxImageCount;
                 }
             }
 
@@ -145,6 +162,13 @@ namespace Ryujinx.Graphics.Vulkan
 
             CurrentTransform = capabilities.CurrentTransform;
 
+            // 移动设备降低图像使用标志
+            ImageUsageFlags usageFlags = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit;
+            if (!Ryujinx.Common.PlatformInfo.IsMobile)
+            {
+                usageFlags |= ImageUsageFlags.StorageBit;
+            }
+
             var swapchainCreateInfo = new SwapchainCreateInfoKHR
             {
                 SType = StructureType.SwapchainCreateInfoKhr,
@@ -153,10 +177,12 @@ namespace Ryujinx.Graphics.Vulkan
                 ImageFormat = surfaceFormat.Format,
                 ImageColorSpace = surfaceFormat.ColorSpace,
                 ImageExtent = extent,
-                ImageUsage = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit | (Ryujinx.Common.PlatformInfo.IsBionic ? 0 : ImageUsageFlags.StorageBit),
+                ImageUsage = usageFlags,
                 ImageSharingMode = SharingMode.Exclusive,
                 ImageArrayLayers = 1,
-                PreTransform = Ryujinx.Common.PlatformInfo.IsBionic ? SurfaceTransformFlagsKHR.IdentityBitKhr : capabilities.CurrentTransform,
+                PreTransform = Ryujinx.Common.PlatformInfo.IsMobile ? 
+                    SurfaceTransformFlagsKHR.IdentityBitKhr : 
+                    capabilities.CurrentTransform,
                 CompositeAlpha = ChooseCompositeAlpha(capabilities.SupportedCompositeAlpha),
                 PresentMode = ChooseSwapPresentMode(presentModes, _vsyncEnabled),
                 Clipped = true,
@@ -215,6 +241,11 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _renderFinishedSemaphores[i]).ThrowOnError();
             }
+            
+            // 重置性能计数器
+            _consecutiveSlowFrames = 0;
+            _lastFrameTime = 0;
+            _lastAdjustmentTime = 0;
         }
 
         private unsafe TextureView CreateSwapchainImageView(Image swapchainImage, VkFormat format, TextureCreateInfo info)
@@ -300,18 +331,33 @@ namespace Ryujinx.Graphics.Vulkan
 
         private static PresentModeKHR ChooseSwapPresentMode(PresentModeKHR[] availablePresentModes, bool vsyncEnabled)
         {
-            if (!vsyncEnabled && availablePresentModes.Contains(PresentModeKHR.ImmediateKhr))
+            // 移动设备优化策略
+            if (Ryujinx.Common.PlatformInfo.IsMobile)
             {
-                return PresentModeKHR.ImmediateKhr;
-            }
-            else if (availablePresentModes.Contains(PresentModeKHR.MailboxKhr))
-            {
-                return PresentModeKHR.MailboxKhr;
+                // 优先使用Mailbox模式（无撕裂的三缓冲）
+                if (availablePresentModes.Contains(PresentModeKHR.MailboxKhr))
+                {
+                    return PresentModeKHR.MailboxKhr;
+                }
+                // 次选Immediate模式（无VSync）
+                else if (!vsyncEnabled && availablePresentModes.Contains(PresentModeKHR.ImmediateKhr))
+                {
+                    return PresentModeKHR.ImmediateKhr;
+                }
             }
             else
             {
-                return PresentModeKHR.FifoKhr;
+                if (!vsyncEnabled && availablePresentModes.Contains(PresentModeKHR.ImmediateKhr))
+                {
+                    return PresentModeKHR.ImmediateKhr;
+                }
+                else if (availablePresentModes.Contains(PresentModeKHR.MailboxKhr))
+                {
+                    return PresentModeKHR.MailboxKhr;
+                }
             }
+            
+            return PresentModeKHR.FifoKhr;
         }
 
         public static Extent2D ChooseSwapExtent(SurfaceCapabilitiesKHR capabilities)
@@ -329,6 +375,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe override void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback)
         {
+            long frameStartTime = System.Diagnostics.Stopwatch.GetTimestamp();
+            
             _gd.PipelineInternal.AutoFlush.Present();
 
             uint nextImage = 0;
@@ -350,10 +398,12 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     RecreateSwapchain();
                     semaphoreIndex = (_frameIndex - 1) % _imageAvailableSemaphores.Length;
+                    _consecutiveSlowFrames++;
                 }
                 else if(acquireResult == Result.ErrorSurfaceLostKhr)
                 {
                     _gd.RecreateSurface();
+                    _consecutiveSlowFrames++;
                 }
                 else
                 {
@@ -483,7 +533,7 @@ namespace Ryujinx.Graphics.Vulkan
                 stackalloc[] { PipelineStageFlags.ColorAttachmentOutputBit },
                 stackalloc[] { _renderFinishedSemaphores[semaphoreIndex] });
 
-            // TODO: Present queue.
+            // 优化呈现队列处理
             var semaphore = _renderFinishedSemaphores[semaphoreIndex];
             var swapchain = _swapchain;
 
@@ -505,8 +555,54 @@ namespace Ryujinx.Graphics.Vulkan
                 _gd.SwapchainApi.QueuePresent(_gd.Queue, in presentInfo);
             }
 
-            //While this does nothing in most cases, it's useful to notify the end of the frame.
             swapBuffersCallback?.Invoke();
+            
+            // 性能监控与动态调整
+            long frameEndTime = System.Diagnostics.Stopwatch.GetTimestamp();
+            long frameTime = frameEndTime - frameStartTime;
+            
+            // 目标帧时间 (60FPS ≈ 16.67ms)
+            long targetFrameTime = (long)(System.Diagnostics.Stopwatch.Frequency / 60.0);
+            
+            if (frameTime > targetFrameTime * 1.5)
+            {
+                _consecutiveSlowFrames++;
+            }
+            else
+            {
+                _consecutiveSlowFrames = Math.Max(0, _consecutiveSlowFrames - 1);
+            }
+            
+            // 每10帧检查一次性能
+            if (_frameIndex % 10 == 0 && _consecutiveSlowFrames >= PerformanceWarningThreshold)
+            {
+                long now = System.Diagnostics.Stopwatch.GetTimestamp();
+                long timeSinceLastAdjust = now - _lastAdjustmentTime;
+                
+                // 至少间隔1秒再调整
+                if (timeSinceLastAdjust > System.Diagnostics.Stopwatch.Frequency)
+                {
+                    // 动态降低画质
+                    float newLevel = Math.Max(MinScalingLevel, _scalingFilterLevel - ScalingStepDown);
+                    SetScalingFilterLevel(newLevel);
+                    _lastAdjustmentTime = now;
+                }
+            }
+            // 性能恢复时逐步提升画质
+            else if (_consecutiveSlowFrames == 0 && _scalingFilterLevel < 1.0f)
+            {
+                long now = System.Diagnostics.Stopwatch.GetTimestamp();
+                long timeSinceLastAdjust = now - _lastAdjustmentTime;
+                
+                if (timeSinceLastAdjust > System.Diagnostics.Stopwatch.Frequency * 3)
+                {
+                    float newLevel = Math.Min(1.0f, _scalingFilterLevel + ScalingStepUp);
+                    SetScalingFilterLevel(newLevel);
+                    _lastAdjustmentTime = now;
+                }
+            }
+            
+            _lastFrameTime = frameTime;
         }
 
         public override void SetAntiAliasing(AntiAliasing effect)
@@ -656,7 +752,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public override void SetSize(int width, int height)
         {
-            // We don't need to use width and height as we can get the size from the surface.
             _swapchainIsDirty = true;
         }
 
