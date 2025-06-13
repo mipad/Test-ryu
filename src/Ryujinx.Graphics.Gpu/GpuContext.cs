@@ -20,7 +20,6 @@ namespace Ryujinx.Graphics.Gpu
     {
         private const int NsToTicksFractionNumerator = 384;
         private const int NsToTicksFractionDenominator = 625;
-        private const ulong NsToTicksFactor = (ulong)NsToTicksFractionNumerator / (ulong)NsToTicksFractionDenominator;
 
         /// <summary>
         /// Event signaled when the host emulation context is ready to be used by the gpu context.
@@ -76,7 +75,7 @@ namespace Ryujinx.Graphics.Gpu
         /// Buffer migrations that are currently in-flight. These are checked whenever sync is created to determine if buffer migration
         /// copies have completed on the GPU, and their data can be freed.
         /// </summary>
-        internal ConcurrentBag<BufferMigration> BufferMigrations { get; }
+        internal ConcurrentQueue<BufferMigration> BufferMigrations { get; }
 
         /// <summary>
         /// Queue with deferred actions that must run on the render thread.
@@ -135,7 +134,7 @@ namespace Ryujinx.Graphics.Gpu
 
             SyncActions = new ConcurrentQueue<ISyncActionHandler>();
             SyncpointActions = new ConcurrentQueue<ISyncActionHandler>();
-            BufferMigrations = new ConcurrentBag<BufferMigration>();
+            BufferMigrations = new ConcurrentQueue<BufferMigration>();
 
             DeferredActions = new ConcurrentQueue<Action>();
 
@@ -349,7 +348,7 @@ namespace Ryujinx.Graphics.Gpu
         {
             lock (_migrationLock)
             {
-                BufferMigrations.Add(migration);
+                BufferMigrations.Enqueue(migration);
                 _pendingSync = true;
             }
         }
@@ -390,26 +389,28 @@ namespace Ryujinx.Graphics.Gpu
             // Process buffer migrations
             lock (_migrationLock)
             {
-                if (!BufferMigrations.IsEmpty)
+                if (BufferMigrations.Count > 0)
                 {
                     ulong currentSyncNumber = Renderer.GetCurrentSync();
-                    var remainingMigrations = new ConcurrentBag<BufferMigration>();
-
-                    foreach (var migration in BufferMigrations)
+                    int count = BufferMigrations.Count;
+                    
+                    // 处理队列中的所有迁移项
+                    for (int i = 0; i < count; i++)
                     {
-                        long diff = (long)(currentSyncNumber - migration.SyncNumber);
+                        if (BufferMigrations.TryDequeue(out BufferMigration migration))
+                        {
+                            long diff = (long)(currentSyncNumber - migration.SyncNumber);
 
-                        if (diff >= 0)
-                        {
-                            migration.Dispose();
-                        }
-                        else
-                        {
-                            remainingMigrations.Add(migration);
+                            if (diff >= 0)
+                            {
+                                migration.Dispose();
+                            }
+                            else
+                            {
+                                BufferMigrations.Enqueue(migration);
+                            }
                         }
                     }
-
-                    BufferMigrations = remainingMigrations;
                 }
             }
 
@@ -417,7 +418,7 @@ namespace Ryujinx.Graphics.Gpu
 
             lock (_syncLock)
             {
-                needSync = force || _pendingSync || (syncpoint && !SyncpointActions.IsEmpty);
+                needSync = force || _pendingSync || (syncpoint && SyncpointActions.Count > 0);
             }
 
             if (needSync)
