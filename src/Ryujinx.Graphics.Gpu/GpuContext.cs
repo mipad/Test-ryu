@@ -426,14 +426,8 @@ namespace Ryujinx.Graphics.Gpu
                 lock (_syncLock)
                 {
                     // Pre-action processing
-                    foreach (var action in SyncActions)
-                    {
-                        action.SyncPreAction(syncpoint);
-                    }
-                    foreach (var action in SyncpointActions)
-                    {
-                        action.SyncPreAction(syncpoint);
-                    }
+                    ProcessQueue(SyncActions, (action) => action.SyncPreAction(syncpoint));
+                    ProcessQueue(SyncpointActions, (action) => action.SyncPreAction(syncpoint));
 
                     Renderer.CreateSync(SyncNumber, strict);
                     SyncNumber++;
@@ -444,6 +438,22 @@ namespace Ryujinx.Graphics.Gpu
                 }
 
                 _pendingSync = false;
+            }
+        }
+
+        private void ProcessQueue(ConcurrentQueue<ISyncActionHandler> queue, Action<ISyncActionHandler> action)
+        {
+            // 创建临时列表以安全地处理所有元素
+            var tempList = new List<ISyncActionHandler>();
+            while (queue.TryDequeue(out var handler))
+            {
+                tempList.Add(handler);
+            }
+
+            foreach (var handler in tempList)
+            {
+                action(handler);
+                queue.Enqueue(handler);
             }
         }
 
