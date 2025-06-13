@@ -116,21 +116,10 @@ namespace Ryujinx.Graphics.Vulkan
                 _gd.SurfaceApi.GetPhysicalDeviceSurfacePresentModes(_physicalDevice, _surface, &presentModesCount, pPresentModes);
             }
 
-            // 修改为三缓冲逻辑
-            uint minImageCount = capabilities.MinImageCount;
-            uint imageCount = minImageCount + 1; // 默认使用双缓冲
-            const uint DesiredImageCount = 3; // 期望的三缓冲
-
-            if (minImageCount <= DesiredImageCount)
+            uint imageCount = capabilities.MinImageCount + 1;
+            if (capabilities.MaxImageCount > 0 && imageCount > capabilities.MaxImageCount)
             {
-                if (capabilities.MaxImageCount == 0 || DesiredImageCount <= capabilities.MaxImageCount)
-                {
-                    imageCount = DesiredImageCount;
-                }
-                else if (capabilities.MaxImageCount > 0)
-                {
-                    imageCount = capabilities.MaxImageCount;
-                }
+                imageCount = capabilities.MaxImageCount;
             }
 
             var surfaceFormat = ChooseSwapSurfaceFormat(surfaceFormats, _colorSpacePassthroughEnabled);
