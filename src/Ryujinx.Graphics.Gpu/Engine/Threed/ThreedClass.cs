@@ -746,7 +746,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// Binds a uniform buffer for the tessellation evaluation shader stage.
         /// </summary>
         /// <param name="argument">Method call argument</param>
-  private void ConstantBufferBindTessEvaluation(int argument)
+    private void ConstantBufferBindTessEvaluation(int argument)
         {
             _cbUpdater.BindTessEvaluation(argument);
         }
@@ -797,11 +797,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
             int firstInstance,
             bool indexed)
         {
-            // 降低渲染精度以提升性能
-            _context.InvokeRendering(() => {
-                using var _ = _context.CreateLowPriorityScope();
-                _drawManager.Draw(this, topology, count, instanceCount, firstIndex, firstVertex, firstInstance, indexed);
-            });
+            _drawManager.Draw(this, topology, count, instanceCount, firstIndex, firstVertex, firstInstance, indexed);
         }
 
         /// <summary>
@@ -823,11 +819,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
             int indexCount,
             IndirectDrawType drawType)
         {
-            // 降低渲染精度以提升性能
-            _context.InvokeRendering(() => {
-                using var _ = _context.CreateLowPriorityScope();
-                _drawManager.DrawIndirect(this, topology, indirectBufferRange, parameterBufferRange, maxDrawCount, stride, indexCount, drawType);
-            });
+            _drawManager.DrawIndirect(this, topology, indirectBufferRange, parameterBufferRange, maxDrawCount, stride, indexCount, drawType);
         }
 
         /// <summary>
@@ -838,11 +830,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="layerCount">For array and 3D textures, indicates how many layers should be cleared</param>
         public void Clear(int argument, int layerCount)
         {
-            // 降低渲染精度以提升性能
-            _context.InvokeRendering(() => {
-                using var _ = _context.CreateLowPriorityScope();
-                _drawManager.Clear(this, argument, layerCount);
-            });
+            _drawManager.Clear(this, argument, layerCount);
         }
 
         protected virtual void Dispose(bool disposing)
