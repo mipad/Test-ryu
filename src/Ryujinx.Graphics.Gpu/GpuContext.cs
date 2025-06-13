@@ -50,7 +50,7 @@ namespace Ryujinx.Graphics.Gpu
         /// Internal sequence number, used to avoid needless resource data updates
         /// in the middle of a command buffer before synchronizations.
         /// </summary>
-        internal int SequenceNumber { get; private set; }
+        internal int SequenceNumber => _sequenceNumber;
 
         /// <summary>
         /// Internal sync number, used to denote points at which host synchronization can be requested.
@@ -110,6 +110,9 @@ namespace Ryujinx.Graphics.Gpu
         private readonly ulong _firstTimestamp;
 
         private readonly ManualResetEvent _gpuReadyEvent;
+
+        // 修复：将SequenceNumber改为字段
+        private int _sequenceNumber;
 
         // Synchronization locks
         private readonly object _syncLock = new object();
@@ -336,7 +339,8 @@ namespace Ryujinx.Graphics.Gpu
         /// </summary>
         internal void AdvanceSequence()
         {
-            Interlocked.Increment(ref SequenceNumber);
+            // 修复：使用字段而不是属性
+            Interlocked.Increment(ref _sequenceNumber);
         }
 
         /// <summary>
@@ -389,7 +393,6 @@ namespace Ryujinx.Graphics.Gpu
             // Process buffer migrations
             lock (_migrationLock)
             {
-                // 使用局部变量代替属性
                 var bufferMigrations = BufferMigrations;
                 int count = bufferMigrations.Count;
                 
@@ -397,7 +400,6 @@ namespace Ryujinx.Graphics.Gpu
                 {
                     ulong currentSyncNumber = Renderer.GetCurrentSync();
                     
-                    // 修复：先声明变量再使用out参数
                     BufferMigration migration;
                     for (int i = 0; i < count; i++)
                     {
@@ -422,7 +424,6 @@ namespace Ryujinx.Graphics.Gpu
 
             lock (_syncLock)
             {
-                // 使用局部变量代替属性
                 var syncpointActions = SyncpointActions;
                 needSync = force || _pendingSync || (syncpoint && syncpointActions.Count > 0);
             }
@@ -431,7 +432,6 @@ namespace Ryujinx.Graphics.Gpu
             {
                 lock (_syncLock)
                 {
-                    // 使用局部变量代替属性
                     var syncActions = SyncActions;
                     var syncpointActions = SyncpointActions;
 
@@ -453,10 +453,8 @@ namespace Ryujinx.Graphics.Gpu
 
         private void ProcessSyncPreActions(ConcurrentQueue<ISyncActionHandler> queue, bool syncpoint)
         {
-            // 安全地处理所有队列项
             var tempList = new List<ISyncActionHandler>();
             
-            // 修复：先声明变量再使用out参数
             ISyncActionHandler handler;
             while (queue.TryDequeue(out handler))
             {
@@ -474,7 +472,6 @@ namespace Ryujinx.Graphics.Gpu
         {
             var remainingActions = new ConcurrentQueue<ISyncActionHandler>();
             
-            // 修复：先声明变量再使用out参数
             ISyncActionHandler action;
             while (queue.TryDequeue(out action))
             {
@@ -497,7 +494,6 @@ namespace Ryujinx.Graphics.Gpu
         /// </summary>
         internal void RunDeferredActions()
         {
-            // 修复：先声明变量再使用out参数
             Action action;
             while (DeferredActions.TryDequeue(out action))
             {
