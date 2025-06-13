@@ -394,10 +394,12 @@ namespace Ryujinx.Graphics.Gpu
                     ulong currentSyncNumber = Renderer.GetCurrentSync();
                     int count = BufferMigrations.Count;
                     
-                    // 处理队列中的所有迁移项
+                    // 使用局部变量解决编译错误
+                    var bufferMigrations = BufferMigrations;
+                    
                     for (int i = 0; i < count; i++)
                     {
-                        if (BufferMigrations.TryDequeue(out BufferMigration migration))
+                        if (bufferMigrations.TryDequeue(out BufferMigration migration))
                         {
                             long diff = (long)(currentSyncNumber - migration.SyncNumber);
 
@@ -407,7 +409,7 @@ namespace Ryujinx.Graphics.Gpu
                             }
                             else
                             {
-                                BufferMigrations.Enqueue(migration);
+                                bufferMigrations.Enqueue(migration);
                             }
                         }
                     }
@@ -418,23 +420,29 @@ namespace Ryujinx.Graphics.Gpu
 
             lock (_syncLock)
             {
-                needSync = force || _pendingSync || (syncpoint && SyncpointActions.Count > 0);
+                // 使用局部变量解决编译错误
+                var syncpointActions = SyncpointActions;
+                needSync = force || _pendingSync || (syncpoint && syncpointActions.Count > 0);
             }
 
             if (needSync)
             {
                 lock (_syncLock)
                 {
+                    // 使用局部变量解决编译错误
+                    var syncActions = SyncActions;
+                    var syncpointActions = SyncpointActions;
+
                     // Pre-action processing
-                    ProcessSyncPreActions(SyncActions, syncpoint);
-                    ProcessSyncPreActions(SyncpointActions, syncpoint);
+                    ProcessSyncPreActions(syncActions, syncpoint);
+                    ProcessSyncPreActions(syncpointActions, syncpoint);
 
                     Renderer.CreateSync(SyncNumber, strict);
                     SyncNumber++;
 
                     // Post-action processing with removal
-                    ProcessSyncQueue(SyncActions, syncpoint);
-                    ProcessSyncQueue(SyncpointActions, syncpoint);
+                    ProcessSyncQueue(syncActions, syncpoint);
+                    ProcessSyncQueue(syncpointActions, syncpoint);
                 }
 
                 _pendingSync = false;
