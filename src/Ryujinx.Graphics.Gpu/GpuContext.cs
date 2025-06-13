@@ -389,7 +389,7 @@ namespace Ryujinx.Graphics.Gpu
             // Process buffer migrations
             lock (_migrationLock)
             {
-                // 修复：使用局部变量代替属性
+                // 使用局部变量代替属性
                 var bufferMigrations = BufferMigrations;
                 int count = bufferMigrations.Count;
                 
@@ -397,9 +397,10 @@ namespace Ryujinx.Graphics.Gpu
                 {
                     ulong currentSyncNumber = Renderer.GetCurrentSync();
                     
+                    // 修复：先声明变量再使用out参数
+                    BufferMigration migration;
                     for (int i = 0; i < count; i++)
                     {
-                        BufferMigration migration;
                         if (bufferMigrations.TryDequeue(out migration))
                         {
                             long diff = (long)(currentSyncNumber - migration.SyncNumber);
@@ -421,7 +422,7 @@ namespace Ryujinx.Graphics.Gpu
 
             lock (_syncLock)
             {
-                // 修复：使用局部变量代替属性
+                // 使用局部变量代替属性
                 var syncpointActions = SyncpointActions;
                 needSync = force || _pendingSync || (syncpoint && syncpointActions.Count > 0);
             }
@@ -430,7 +431,7 @@ namespace Ryujinx.Graphics.Gpu
             {
                 lock (_syncLock)
                 {
-                    // 修复：使用局部变量代替属性
+                    // 使用局部变量代替属性
                     var syncActions = SyncActions;
                     var syncpointActions = SyncpointActions;
 
@@ -454,6 +455,8 @@ namespace Ryujinx.Graphics.Gpu
         {
             // 安全地处理所有队列项
             var tempList = new List<ISyncActionHandler>();
+            
+            // 修复：先声明变量再使用out参数
             ISyncActionHandler handler;
             while (queue.TryDequeue(out handler))
             {
@@ -470,8 +473,9 @@ namespace Ryujinx.Graphics.Gpu
         private void ProcessSyncQueue(ConcurrentQueue<ISyncActionHandler> queue, bool syncpoint)
         {
             var remainingActions = new ConcurrentQueue<ISyncActionHandler>();
+            
+            // 修复：先声明变量再使用out参数
             ISyncActionHandler action;
-
             while (queue.TryDequeue(out action))
             {
                 if (!action.SyncAction(syncpoint))
@@ -493,6 +497,7 @@ namespace Ryujinx.Graphics.Gpu
         /// </summary>
         internal void RunDeferredActions()
         {
+            // 修复：先声明变量再使用out参数
             Action action;
             while (DeferredActions.TryDequeue(out action))
             {
