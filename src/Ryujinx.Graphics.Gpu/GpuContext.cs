@@ -11,8 +11,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
-using System.Runtime.Intrinsics.Arm;
 using System.Threading;
 
 namespace Ryujinx.Graphics.Gpu
@@ -57,7 +55,6 @@ namespace Ryujinx.Graphics.Gpu
         
         // ARM 优化字段
         private int _timeAccelerationFactorShift = 8;  // log2(256)
-        private int _slowFrameCount;
 
         public GpuContext(IRenderer renderer)
         {
@@ -121,35 +118,14 @@ namespace Ryujinx.Graphics.Gpu
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong ConvertNanosecondsToTicks(ulong nanoseconds)
         {
-            // 尝试使用 ARM NEON 优化
-            if (RuntimeInformation.ProcessArchitecture == Architecture.Arm64 &&
-                ArmBase.Arm64.IsSupported)
-            {
-                return ConvertNanosecondsToTicksNeon(nanoseconds);
-            }
-            
-            // 回退到标量计算
+            // 使用优化的整数运算避免浮点数
             ulong divided = nanoseconds / NsToTicksFractionDenominator;
             ulong rounded = divided * NsToTicksFractionDenominator;
             ulong errorBias = (nanoseconds - rounded) * NsToTicksFractionNumerator / NsToTicksFractionDenominator;
             return divided * NsToTicksFractionNumerator + errorBias;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static unsafe ulong ConvertNanosecondsToTicksNeon(ulong nanoseconds)
-        {
-            // 使用 ARM NEON 指令优化计算
-            Vector128<ulong> nsVec = Vector128.Create(nanoseconds);
-            Vector128<ulong> denomVec = Vector128.Create((ulong)NsToTicksFractionDenominator);
-            Vector128<ulong> numVec = Vector128.Create((ulong)NsToTicksFractionNumerator);
-            
-            // vdivq_u64 替代标量除法
-            Vector128<ulong> divided = AdvSimd.Divide(nsVec, denomVec);
-            Vector128<ulong> result = AdvSimd.Multiply(divided, numVec);
-            
-            return result.GetElement(0);
         }
 
         internal long GetModifiedSequence()
@@ -188,9 +164,17 @@ namespace Ryujinx.Graphics.Gpu
         {
             get
             {
-                // 检测移动设备
-                string osDescription = RuntimeInformation.OSDescription;
-                return osDescription.Contains("Android") || osDescription.Contains("iOS");
+                try
+                {
+                    // 检测移动设备
+                    string osDescription = RuntimeInformation.OSDescription;
+                    return osDescription.Contains("Android", StringComparison.OrdinalIgnoreCase) || 
+                           osDescription.Contains("iOS", StringComparison.OrdinalIgnoreCase);
+                }
+                catch
+                {
+                    return false;
+                }
             }
         }
 
@@ -201,20 +185,16 @@ namespace Ryujinx.Graphics.Gpu
             
             if (_lastFrameTime > targetFrameTime * 1.5) // 帧率下降
             {
-                _slowFrameCount++;
-                
-                // 连续3帧性能不足时，增加时间加速
-                if (_slowFrameCount > 3 && _timeAccelerationFactorShift < 10) // 最大1024 (2^10)
+                // 增加时间加速
+                if (_timeAccelerationFactorShift < 10) // 最大1024 (2^10)
                 {
                     _timeAccelerationFactorShift++;
                 }
             }
-            else if (_slowFrameCount > 0) // 性能恢复
+            else if (_lastFrameTime < targetFrameTime * 0.8) // 帧率过高
             {
-                _slowFrameCount--;
-                
-                // 连续5帧正常时，减少时间加速
-                if (_slowFrameCount == 0 && _timeAccelerationFactorShift > 6) // 最小64 (2^6)
+                // 减少时间加速
+                if (_timeAccelerationFactorShift > 6) // 最小64 (2^6)
                 {
                     _timeAccelerationFactorShift--;
                 }
