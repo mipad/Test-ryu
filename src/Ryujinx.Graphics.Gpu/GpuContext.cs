@@ -389,13 +389,13 @@ namespace Ryujinx.Graphics.Gpu
             // Process buffer migrations
             lock (_migrationLock)
             {
-                if (BufferMigrations.Count > 0)
+                // 修复：使用局部变量代替属性
+                var bufferMigrations = BufferMigrations;
+                int count = bufferMigrations.Count;
+                
+                if (count > 0)
                 {
                     ulong currentSyncNumber = Renderer.GetCurrentSync();
-                    int count = BufferMigrations.Count;
-                    
-                    // 使用局部变量解决编译错误
-                    var bufferMigrations = BufferMigrations;
                     
                     for (int i = 0; i < count; i++)
                     {
@@ -420,7 +420,7 @@ namespace Ryujinx.Graphics.Gpu
 
             lock (_syncLock)
             {
-                // 使用局部变量解决编译错误
+                // 修复：使用局部变量代替属性
                 var syncpointActions = SyncpointActions;
                 needSync = force || _pendingSync || (syncpoint && syncpointActions.Count > 0);
             }
@@ -429,7 +429,7 @@ namespace Ryujinx.Graphics.Gpu
             {
                 lock (_syncLock)
                 {
-                    // 使用局部变量解决编译错误
+                    // 修复：使用局部变量代替属性
                     var syncActions = SyncActions;
                     var syncpointActions = SyncpointActions;
 
