@@ -399,7 +399,8 @@ namespace Ryujinx.Graphics.Gpu
                     
                     for (int i = 0; i < count; i++)
                     {
-                        if (bufferMigrations.TryDequeue(out BufferMigration migration))
+                        BufferMigration migration;
+                        if (bufferMigrations.TryDequeue(out migration))
                         {
                             long diff = (long)(currentSyncNumber - migration.SyncNumber);
 
@@ -453,23 +454,25 @@ namespace Ryujinx.Graphics.Gpu
         {
             // 安全地处理所有队列项
             var tempList = new List<ISyncActionHandler>();
-            while (queue.TryDequeue(out var handler))
+            ISyncActionHandler handler;
+            while (queue.TryDequeue(out handler))
             {
                 tempList.Add(handler);
             }
 
-            foreach (var handler in tempList)
+            foreach (var item in tempList)
             {
-                handler.SyncPreAction(syncpoint);
-                queue.Enqueue(handler);
+                item.SyncPreAction(syncpoint);
+                queue.Enqueue(item);
             }
         }
 
         private void ProcessSyncQueue(ConcurrentQueue<ISyncActionHandler> queue, bool syncpoint)
         {
             var remainingActions = new ConcurrentQueue<ISyncActionHandler>();
+            ISyncActionHandler action;
 
-            while (queue.TryDequeue(out var action))
+            while (queue.TryDequeue(out action))
             {
                 if (!action.SyncAction(syncpoint))
                 {
@@ -478,7 +481,7 @@ namespace Ryujinx.Graphics.Gpu
             }
 
             // Re-add actions that need to be kept
-            while (remainingActions.TryDequeue(out var action))
+            while (remainingActions.TryDequeue(out action))
             {
                 queue.Enqueue(action);
             }
@@ -490,7 +493,8 @@ namespace Ryujinx.Graphics.Gpu
         /// </summary>
         internal void RunDeferredActions()
         {
-            while (DeferredActions.TryDequeue(out Action action))
+            Action action;
+            while (DeferredActions.TryDequeue(out action))
             {
                 action();
             }
