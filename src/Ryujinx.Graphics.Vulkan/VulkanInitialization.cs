@@ -48,7 +48,9 @@ namespace Ryujinx.Graphics.Vulkan
             "VK_EXT_attachment_feedback_loop_layout",
             "VK_EXT_attachment_feedback_loop_dynamic_state",
              "VK_KHR_timeline_semaphore", //添加时间线信号量功能
-             "VK_KHR_multiview" // 添加
+             "VK_KHR_multiview", // 添加
+            "VK_KHR_spirv_1_4", // 添加SPIR-V 1.4支持
+            "VK_EXT_texture_compression_astc_hdr" // 添加ASTC HDR纹理压缩支持
         ];
 
         private static readonly string[] _requiredExtensions =
