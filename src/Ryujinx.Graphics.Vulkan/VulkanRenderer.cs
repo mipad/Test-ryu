@@ -575,7 +575,7 @@ namespace Ryujinx.Graphics.Vulkan
                 });
             }
 
-            _device = VulkanInitialization.CreateDevice(Api, _physicalDevice, queueCreateInfos.ToArray());
+            _device = VulkanInitialization.CreateDevice(Api, _physicalDevice, queueFamilyIndex,1);
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrSwapchain swapchainApi))
             {
