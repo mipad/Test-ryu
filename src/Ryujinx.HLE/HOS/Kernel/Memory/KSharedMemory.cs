@@ -59,7 +59,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             {
                // Logger.Warning?.Print(LogClass.KernelSvc, 
                    // $"MapSharedMemory: Invalid address range 0x{address:X}-0x{endAddress:X} " +
-                    $"(max: 0x{memoryManager.AddrSpaceEnd:X})");
+                    //$"(max: 0x{memoryManager.AddrSpaceEnd:X})");
                 return KernelResult.InvalidMemRange;
             }
 
