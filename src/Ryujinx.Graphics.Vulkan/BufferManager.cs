@@ -675,5 +675,11 @@ namespace Ryujinx.Graphics.Vulkan
         {
             Dispose(true);
         }
+        
+        public static class ExternalMemoryHandleTypeFlagsExt
+    {
+        public const ExternalMemoryHandleTypeFlags MtlBufferBitExt = (ExternalMemoryHandleTypeFlags)0x00010000;
+        public const ExternalMemoryHandleTypeFlags MtlHeapBitExt = (ExternalMemoryHandleTypeFlags)0x00040000;
+    }
     }
 }
