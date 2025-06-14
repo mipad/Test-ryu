@@ -7,6 +7,7 @@ using Ryujinx.HLE.HOS.Services.Nv.Types;
 using Ryujinx.Horizon.Common;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 
@@ -36,11 +37,11 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         /// </summary>
         private const uint FailingCountMax = 2;
 
-        // 新增优化字段
+        // 优化字段
         private long _lastGpuSignalTime;
         private int _adaptiveThreshold = (int)FailingCountMax;
         private static readonly TimeSpan _shaderCompilationThreshold = TimeSpan.FromMilliseconds(50);
-        private readonly ConcurrentQueue<SyncpointWaiterHandle> _waiterPool = new();
+        private readonly Queue<SyncpointWaiterHandle> _waiterPool = new();
 
         public NvHostEvent(NvHostSyncpt syncpointManager, uint eventId, Horizon system)
         {
@@ -95,7 +96,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
                 if (waiterInformation != null && waiterInformation != _waiterInformation)
                 {
                     // 回收未使用的资源
-                    if (waiterInformation != null && !_waiterPool.Contains(waiterInformation))
+                    if (waiterInformation != null)
                     {
                         _waiterPool.Enqueue(waiterInformation);
                     }
@@ -109,7 +110,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
                 Signal();
                 
                 // 回收当前资源
-                if (_waiterInformation != null && !_waiterPool.Contains(_waiterInformation))
+                if (_waiterInformation != null)
                 {
                     _waiterPool.Enqueue(_waiterInformation);
                     _waiterInformation = null;
@@ -130,7 +131,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
                     gpuContext.Synchronization.UnregisterCallback(Fence.Id, _waiterInformation);
                     
                     // 回收资源前检查
-                    if (_waiterInformation != null && !_waiterPool.Contains(_waiterInformation))
+                    if (_waiterInformation != null)
                     {
                         _waiterPool.Enqueue(_waiterInformation);
                     }
@@ -167,21 +168,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         {
             lock (Lock)
             {
-                // 动态调整阈值：当检测到着色器编译时提高容错
-                /* 实际项目中需根据ShaderCompiler实现启用
-                if (gpuContext.ShaderCompiler != null && 
-                    gpuContext.ShaderCompiler.IsCompiling && 
-                    gpuContext.ShaderCompiler.ElapsedTime > _shaderCompilationThreshold)
-                {
-                    _adaptiveThreshold = (int)FailingCountMax * 2;
-                }
-                else
-                {
-                    _adaptiveThreshold = (int)FailingCountMax;
-                }
-                */
-                
-                // 默认使用动态阈值
+                // 使用动态阈值
                 _adaptiveThreshold = (int)FailingCountMax;
 
                 if (_failingCount >= _adaptiveThreshold)
@@ -203,13 +190,18 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
                 State = NvHostEventState.Waiting;
 
                 // 尝试从资源池获取或创建新的waiter
-                if (!_waiterPool.TryDequeue(out _waiterInformation))
+                if (_waiterPool.Count > 0)
+                {
+                    _waiterInformation = _waiterPool.Dequeue();
+                }
+                else
                 {
                     _waiterInformation = null;
                 }
 
-                // 异步快速路径检查
-                if (gpuContext.Synchronization.IsSyncpointReached(Fence.Id, Fence.Value))
+                // 同步点快速检查
+                uint currentValue = gpuContext.Synchronization.GetSyncpointValue(Fence.Id);
+                if (currentValue >= Fence.Value)
                 {
                     if (_waiterInformation != null)
                     {
@@ -235,14 +227,18 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
             int currentTimeout = initialTimeout;
             while (currentTimeout <= maxTimeout)
             {
-                if (ctx.Synchronization.IsSyncpointReached(fence.Id, fence.Value))
+                uint currentValue = ctx.Synchronization.GetSyncpointValue(fence.Id);
+                if (currentValue >= fence.Value)
                 {
                     return true;
                 }
                 Thread.Sleep(currentTimeout);
                 currentTimeout *= 2; // 指数退避
             }
-            return ctx.Synchronization.IsSyncpointReached(fence.Id, fence.Value);
+            
+            // 最终检查
+            uint finalValue = ctx.Synchronization.GetSyncpointValue(fence.Id);
+            return finalValue >= fence.Value;
         }
 
         // 智能退避计算
@@ -281,8 +277,9 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
             }
             
             // 清理资源池
-            while (_waiterPool.TryDequeue(out var waiter))
+            while (_waiterPool.Count > 0)
             {
+                var waiter = _waiterPool.Dequeue();
                 // 如果waiter需要显式释放，在此添加
             }
         }
