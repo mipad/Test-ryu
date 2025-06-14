@@ -1171,7 +1171,7 @@ namespace Ryujinx.Graphics.Vulkan
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Gpu, $"Device recovery failed: {ex.Message}");
-                throw new VulkanException("Unrecoverable device loss");
+                throw new Exception("Unrecoverable device loss");
             }
         }
 
@@ -1189,8 +1189,3 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
     
-    public class VulkanException : Exception
-    {
-        public VulkanException(string message) : base(message) { }
-    }
-}
