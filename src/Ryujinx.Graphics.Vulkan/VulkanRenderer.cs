@@ -538,8 +538,9 @@ namespace Ryujinx.Graphics.Vulkan
             return uint.MaxValue;
         }
 
-        private void SetupContext(GraphicsDebugLevel logLevel)
-        {
+
+            private void SetupContext(GraphicsDebugLevel logLevel)
+           {
             _instance = VulkanInitialization.CreateInstance(Api, logLevel, _getRequiredExtensions());
             _debugMessenger = new VulkanDebugMessenger(Api, _instance.Instance, logLevel);
 
@@ -553,29 +554,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             var queueFamilyIndex = VulkanInitialization.FindSuitableQueueFamily(Api, _physicalDevice, _surface, out uint maxQueueCount);
 
-            // 在设备创建时请求计算队列
-            var queueCreateInfos = new List<DeviceQueueCreateInfo>();
-            var uniqueQueueFamilies = new HashSet<uint> { queueFamilyIndex };
-            
-            uint computeFamilyIndex = FindComputeQueueFamily();
-            if (computeFamilyIndex != uint.MaxValue && computeFamilyIndex != queueFamilyIndex)
-            {
-                uniqueQueueFamilies.Add(computeFamilyIndex);
-            }
-
-            float queuePriority = 1.0f;
-            foreach (var familyIndex in uniqueQueueFamilies)
-            {
-                queueCreateInfos.Add(new DeviceQueueCreateInfo
-                {
-                    SType = StructureType.DeviceQueueCreateInfo,
-                    QueueFamilyIndex = familyIndex,
-                    QueueCount = 2,
-                    PQueuePriorities = &queuePriority
-                });
-            }
-
-            _device = VulkanInitialization.CreateDevice(Api, _physicalDevice, queueFamilyIndex,2);
+            _device = VulkanInitialization.CreateDevice(Api, _physicalDevice, queueFamilyIndex, maxQueueCount);
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrSwapchain swapchainApi))
             {
