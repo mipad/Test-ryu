@@ -1066,29 +1066,81 @@ unsafe
         internal unsafe void RecreateSurface()
         {
             SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
+
             _surface = _getSurface(_instance.Instance, Api);
+
             (_window as Window)?.SetSurface(_surface);
         }
 
-        public void RecreateVulkanDevice()
-        {
-            DisposeVulkanResources();
-            InitializeVulkan();
-        }
+// VulkanRenderer.cs
 
-        private void DisposeVulkanResources()
+// +++ 新增方法：设备丢失恢复 +++
+public void RecreateVulkanDevice()
+{
+    DisposeVulkanResources();
+    InitializeVulkan();
+}
+
+private void DisposeVulkanResources()
+{
+    // 销毁所有 Vulkan 资源
+    Api.DestroyDevice(_device, null);
+    Api.DestroyInstance(_instance.Instance, null);
+
+    // 释放其他关联资源
+    CommandBufferPool?.Dispose();
+    _window?.Dispose();
+    MemoryAllocator?.Dispose();
+    HostMemoryAllocator?.Dispose();
+    PipelineLayoutCache?.Dispose();
+    _counters?.Dispose();
+}
+
+private unsafe void InitializeVulkan()
+{
+    // 重新创建实例、物理设备和逻辑设备
+    _instance = VulkanInitialization.CreateInstance(Api, GraphicsDebugLevel.None, _getRequiredExtensions());
+    _surface = _getSurface(_instance.Instance, Api);
+    _physicalDevice = VulkanInitialization.FindSuitablePhysicalDevice(Api, _instance, _surface, _preferredGpuId);
+
+    var queueFamilyIndex = VulkanInitialization.FindSuitableQueueFamily(Api, _physicalDevice, _surface, out uint maxQueueCount);
+    _device = VulkanInitialization.CreateDevice(Api, _physicalDevice, queueFamilyIndex, maxQueueCount);
+
+    // 重新初始化队列
+    Api.GetDeviceQueue(_device, queueFamilyIndex, 0, out var queue);
+    Queue = queue;
+    QueueLock = new object();
+
+    // 重新初始化核心模块
+    LoadFeatures(maxQueueCount, queueFamilyIndex); // 内部会重建 MemoryAllocator、CommandBufferPool 等
+    _window = new Window(this, _surface, _physicalDevice.PhysicalDevice, _device);
+
+    // 重建管线和其他渲染组件
+    _pipeline = new PipelineFull(this, _device);
+    _pipeline.Initialize();
+    HelperShader = new HelperShader(this, _device);
+    Barriers = new BarrierBatch(this);
+    SyncManager = new SyncManager(this, _device);
+}
+
+        public unsafe void Dispose()
         {
-            // 按依赖顺序销毁资源
-            _counters?.Dispose();
-            _window?.Dispose();
-            HelperShader?.Dispose();
-            _pipeline?.Dispose();
-            BufferManager?.Dispose();
-            PipelineLayoutCache?.Dispose();
-            Barriers?.Dispose();
-            CommandBufferPool?.Dispose();
-            BackgroundResources?.Dispose();
-            MemoryAllocator?.Dispose();
+            if (!_initialized)
+            {
+                return;
+            }
+
+            CommandBufferPool.Dispose();
+            BackgroundResources.Dispose();
+            _counters.Dispose();
+            _window.Dispose();
+            HelperShader.Dispose();
+            _pipeline.Dispose();
+            BufferManager.Dispose();
+            PipelineLayoutCache.Dispose();
+            Barriers.Dispose();
+
+            MemoryAllocator.Dispose();
 
             foreach (var shader in Shaders)
             {
@@ -1105,69 +1157,14 @@ unsafe
                 sampler.Dispose();
             }
 
-            if (_surface.Handle != 0)
-            {
-                SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
-            }
+            SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
 
-            if (_device.Handle != 0)
-            {
-                Api.DestroyDevice(_device, null);
-            }
+            Api.DestroyDevice(_device, null);
 
-            _debugMessenger?.Dispose();
-            _instance?.Dispose();
+            _debugMessenger.Dispose();
 
-            // 重置关键状态
-            _surface = new SurfaceKHR();
-            _device = new Device();
-            _initialized = false;
-        }
-
-        private unsafe void InitializeVulkan()
-        {
-            try
-            {
-                // 重新初始化核心组件
-                SetupContext(GraphicsDebugLevel.Error);
-                PrintGpuInformation();
-                
-                // 重建GPU资源
-                _pipeline = new PipelineFull(this, _device);
-                _pipeline.Initialize();
-                HelperShader = new HelperShader(this, _device);
-                Barriers = new BarrierBatch(this);
-                SyncManager = new SyncManager(this, _device);
-                
-                Logger.Info?.Print(LogClass.Gpu, "Vulkan device successfully recreated");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.Gpu, $"Failed to recreate Vulkan device: {ex.Message}");
-                throw;
-            }
-        }
-
-        // +++ 新增：处理设备丢失错误 +++
-        internal void HandleDeviceLost()
-        {
-            Logger.Warning?.Print(LogClass.Gpu, "Vulkan device lost detected, attempting recovery...");
-            try
-            {
-                RecreateVulkanDevice();
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.Gpu, $"Device recovery failed: {ex.Message}");
-                throw new Exception("Unrecoverable device loss");
-            }
-        }
-
-        public unsafe void Dispose()
-        {
-            if (!_initialized) return;
-            
-            DisposeVulkanResources();
+            // Last step destroy the instance
+            _instance.Dispose();
         }
 
         public bool PrepareHostMapping(nint address, ulong size)
