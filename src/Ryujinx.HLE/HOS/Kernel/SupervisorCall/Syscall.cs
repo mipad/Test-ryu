@@ -1132,9 +1132,7 @@ public Result SendSyncRequest(int handle)
                 return KernelResult.InvalidHandle;
             }
 
-            if (currentProcess.MemoryManager.IsInvalidRegion(address, size) ||
-                currentProcess.MemoryManager.InsideHeapRegion(address, size) ||
-                currentProcess.MemoryManager.InsideAliasRegion(address, size))
+            if (currentProcess.MemoryManager.IsInvalidRegion(address, size))
             {
                 return KernelResult.InvalidMemRange;
             }
@@ -1174,9 +1172,7 @@ public Result SendSyncRequest(int handle)
                 return KernelResult.InvalidHandle;
             }
 
-            if (currentProcess.MemoryManager.IsInvalidRegion(address, size) ||
-                currentProcess.MemoryManager.InsideHeapRegion(address, size) ||
-                currentProcess.MemoryManager.InsideAliasRegion(address, size))
+            if (currentProcess.MemoryManager.IsInvalidRegion(address, size))
             {
                 return KernelResult.InvalidMemRange;
             }
