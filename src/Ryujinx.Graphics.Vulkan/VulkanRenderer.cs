@@ -1188,4 +1188,4 @@ namespace Ryujinx.Graphics.Vulkan
                 HostMemoryAllocator.TryImport(BufferManager.HostImportedBufferMemoryRequirements, BufferManager.DefaultBufferMemoryFlags, address, size);
         }
     }
-    
+}
