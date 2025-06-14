@@ -75,6 +75,14 @@ namespace Ryujinx.Cpu
 
         private ulong VirtualMemoryEvent(ulong address, ulong size, bool write)
         {
+            // 修复：添加零地址检查
+            if (address == 0)
+            {
+                // 记录日志以便调试（生产环境可移除）
+                // Logger.Warning?.Print(LogClass.Cpu, $"Zero address detected in VirtualMemoryEvent");
+                return 0;
+            }
+
             ulong pageSize = _pageSize;
             ulong addressAligned = BitUtils.AlignDown(address, pageSize);
             ulong endAddressAligned = BitUtils.AlignUp(address + size, pageSize);
