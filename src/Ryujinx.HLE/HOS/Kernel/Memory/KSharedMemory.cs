@@ -33,11 +33,11 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             KProcess process,
             KMemoryPermission permission)
         {
-            // 1. 验证地址对齐 - 使用位操作替代PageAlignment类
+            // 1. 验证地址对齐
             if ((address & (KPageTableBase.PageSize - 1)) != 0)
             {
-                //Logger.Warning?.Print(LogClass.KernelSvc, 
-                    //$"MapSharedMemory: Address 0x{address:X} not page aligned");
+                Logger.Warning?.Print(LogClass.KernelSvc, 
+                    $"MapSharedMemory: Address 0x{address:X} not page aligned");
                 return KernelResult.InvalidAddress;
             }
 
@@ -48,16 +48,18 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             // 3. 验证大小匹配
             if (actualPageCount != pageCount)
             {
-               // Logger.Warning?.Print(LogClass.KernelSvc, 
-                   // $"MapSharedMemory: Size mismatch (req: {pageCount} pages, actual: {actualPageCount} pages)");
+                Logger.Warning?.Print(LogClass.KernelSvc, 
+                    $"MapSharedMemory: Size mismatch (req: {pageCount} pages, actual: {actualPageCount} pages)");
                 return KernelResult.InvalidSize;
             }
 
-            // 4. 验证地址范围有效性 - 使用现有方法替代IsInsideAddressSpace
-            if (address + size > process.CpuMemoryManager.AddressSpaceSize)
+            // 4. 验证地址范围有效性 - 使用现有的地址空间大小
+            ulong addressSpaceSize = memoryManager.GetAddrSpaceSize();
+            if (address + size > addressSpaceSize)
             {
-               // Logger.Warning?.Print(LogClass.KernelSvc, 
-                   // $"MapSharedMemory: Invalid address range 0x{address:X}-0x{(address + size):X}");
+                Logger.Warning?.Print(LogClass.KernelSvc, 
+                    $"MapSharedMemory: Invalid address range 0x{address:X}-0x{(address + size):X} " +
+                    $"(max: 0x{addressSpaceSize:X})");
                 return KernelResult.InvalidMemRange;
             }
 
@@ -68,31 +70,24 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
 
             if (permission != expectedPermission)
             {
-               // Logger.Warning?.Print(LogClass.KernelSvc, 
-                  //  $"MapSharedMemory: Permission mismatch (req: {permission}, exp: {expectedPermission})");
+                Logger.Warning?.Print(LogClass.KernelSvc, 
+                    $"MapSharedMemory: Permission mismatch (req: {permission}, exp: {expectedPermission})");
                 return KernelResult.InvalidPermission;
             }
 
-            // 6. 验证内存状态 - 使用现有的CheckMemoryState方法
-            Result result = memoryManager.CheckMemoryState(
-                address, 
-                size, 
-                MemoryState.Mask, 
-                MemoryState.Unmapped,
-                permission, 
-                permission,
-                MemoryAttribute.Mask, 
-                MemoryAttribute.None);
-            
-            if (result != Result.Success)
+            // 6. 使用更简单的方法验证内存状态
+            // 替代CheckMemoryState：尝试直接映射，如果失败则返回错误
+            try
             {
-               // Logger.Warning?.Print(LogClass.KernelSvc, 
-                   // $"MapSharedMemory: Invalid memory state at 0x{address:X}");
-                return result;
+                // 7. 执行映射
+                return memoryManager.MapPages(address, _pageList, MemoryState.SharedMemory, permission);
             }
-
-            // 7. 执行映射
-            return memoryManager.MapPages(address, _pageList, MemoryState.SharedMemory, permission);
+            catch (InvalidMemoryRegionException)
+            {
+                Logger.Warning?.Print(LogClass.KernelSvc, 
+                    $"MapSharedMemory: Invalid memory state at 0x{address:X}");
+                return KernelResult.InvalidMemRange;
+            }
         }
 
         public Result UnmapFromProcess(KPageTableBase memoryManager, ulong address, ulong size, KProcess process)
@@ -113,7 +108,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             }
 
             // 4. 验证地址范围有效性
-            if (address + size > process.CpuMemoryManager.AddressSpaceSize)
+            ulong addressSpaceSize = memoryManager.GetAddrSpaceSize();
+            if (address + size > addressSpaceSize)
             {
                 return KernelResult.InvalidMemRange;
             }
