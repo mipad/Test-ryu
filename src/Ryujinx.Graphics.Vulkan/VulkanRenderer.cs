@@ -570,12 +570,12 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     SType = StructureType.DeviceQueueCreateInfo,
                     QueueFamilyIndex = familyIndex,
-                    QueueCount = 1,
+                    QueueCount = 2,
                     PQueuePriorities = &queuePriority
                 });
             }
 
-            _device = VulkanInitialization.CreateDevice(Api, _physicalDevice, queueFamilyIndex,1);
+            _device = VulkanInitialization.CreateDevice(Api, _physicalDevice, queueFamilyIndex,2);
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrSwapchain swapchainApi))
             {
