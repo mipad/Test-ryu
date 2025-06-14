@@ -24,15 +24,19 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
         private const int LoadInlineDataMethodOffset = 0x6d;
         private const int UniformBufferUpdateDataMethodOffset = 0x8e4;
 
-        // 新增性能监控阈值
-        private const int HighLoadThreshold = 500; // 命令数阈值
-        private const int CriticalLoadThreshold = 1000; // 临界阈值
-        private const int SleepDurationMs = 2; // CPU延迟时间
+        // 优化性能监控参数
+        private const int HighLoadThreshold = 500;
+        private const int CriticalLoadThreshold = 1000;
+        private const int SleepDurationMs = 2;
+        private const int BatchSizeNormal = 100;
+        private const int BatchSizeHighLoad = 50;
+        private const int BatchSizeCritical = 25;
 
         private readonly GpuChannel _channel;
         private readonly Stopwatch _perfTimer = new Stopwatch();
         private int _commandCount;
         private int _lastCommandCount;
+        private int _consecutiveHighLoad;
 
         /// <summary>
         /// Channel memory manager.
@@ -87,7 +91,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
             _2dClass = new TwodClass(channel);
             _dmaClass = new DmaClass(context, channel, _3dClass);
             
-            _perfTimer.Start(); // 启动性能监控
+            _perfTimer.Start();
         }
 
         /// <summary>
@@ -98,13 +102,17 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
         public void Process(ulong baseGpuVa, ReadOnlySpan<int> commandBuffer)
         {
             // 1. 性能监控：检测高负载
-            if (_commandCount - _lastCommandCount > HighLoadThreshold)
+            int commandDelta = _commandCount - _lastCommandCount;
+            
+            if (commandDelta > HighLoadThreshold)
             {
+                _consecutiveHighLoad++;
+                
                 // 2. 临界负载处理
-                if (_commandCount - _lastCommandCount > CriticalLoadThreshold)
+                if (commandDelta > CriticalLoadThreshold)
                 {
-                    //Logger.Warning?.Print(LogClass.GPU, 
-                       // $"GPU command queue overloaded ({_commandCount - _lastCommandCount} commands), throttling CPU");
+                   // Logger.Warning?.Print(LogClass.GPU, 
+                      //  $"GPU command queue overloaded ({commandDelta} commands), throttling CPU");
                     
                     // 3. 轻微延迟CPU提交
                     Thread.Sleep(SleepDurationMs);
@@ -113,8 +121,12 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
                 // 4. 记录当前命令计数
                 _lastCommandCount = _commandCount;
             }
+            else
+            {
+                _consecutiveHighLoad = 0;
+            }
 
-            // 5. 分批处理命令（优化高负载场景）
+            // 5. 分批处理命令
             int batchSize = CalculateBatchSize(commandBuffer.Length);
             int processed = 0;
             
@@ -130,10 +142,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
                 processed += currentBatch;
                 _commandCount += currentBatch;
                 
-                // 6. 每批处理后检查GPU状态
-                if (_3dClass.IsGpuThreadOverloaded())
+                // 6. 高负载时让出CPU时间片
+                if (_consecutiveHighLoad > 0)
                 {
-                    Thread.Yield(); // 让出CPU时间片
+                    Thread.Sleep(0); // 让出CPU时间片但不休眠
                 }
             }
 
@@ -146,23 +158,17 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int CalculateBatchSize(int totalCommands)
         {
-            // 默认批处理大小（低负载）
-            int batchSize = 100;
-            
-            // 高负载时减小批处理大小
-            if (_commandCount - _lastCommandCount > HighLoadThreshold)
+            // 根据连续高负载次数调整批处理大小
+            if (_consecutiveHighLoad > 3) // 连续3次高负载
             {
-                batchSize = 50;
+                return Math.Min(BatchSizeCritical, totalCommands);
+            }
+            else if (_consecutiveHighLoad > 0)
+            {
+                return Math.Min(BatchSizeHighLoad, totalCommands);
             }
             
-            // 临界负载时进一步减小
-            if (_commandCount - _lastCommandCount > CriticalLoadThreshold)
-            {
-                batchSize = 25;
-            }
-            
-            // 确保不超过命令总数
-            return Math.Min(batchSize, totalCommands);
+            return Math.Min(BatchSizeNormal, totalCommands);
         }
 
         /// <summary>
