@@ -192,7 +192,7 @@ if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaph
 
             if (maxQueueCount >= 2)
             {
-                Api.GetDeviceQueue(_device, queueFamilyIndex, 2, out var backgroundQueue);
+                Api.GetDeviceQueue(_device, queueFamilyIndex, 1, out var backgroundQueue);
                 BackgroundQueue = backgroundQueue;
                 BackgroundQueueLock = new object();
             }
@@ -1174,5 +1174,3 @@ private unsafe void InitializeVulkan()
         }
     }
 }
-
-                
