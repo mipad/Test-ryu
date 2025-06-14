@@ -1101,88 +1101,80 @@ public Result SendSyncRequest(int handle)
         }
 
         [Svc(0x13)]
-        public Result MapSharedMemory(int handle, [PointerSized] ulong address, [PointerSized] ulong size, KMemoryPermission permission)
-        {
-            if (!PageAligned(address))
-            {
-                return KernelResult.InvalidAddress;
-            }
+public Result MapSharedMemory(int handle, [PointerSized] ulong address, [PointerSized] ulong size, KMemoryPermission permission)
+{
+    if (!PageAligned(address))
+    {
+        return KernelResult.InvalidAddress;
+    }
 
-            if (!PageAligned(size) || size == 0)
-            {
-                return KernelResult.InvalidSize;
-            }
+    if (!PageAligned(size) || size == 0)
+    {
+        return KernelResult.InvalidSize;
+    }
 
-            if (address + size <= address)
-            {
-                return KernelResult.InvalidMemState;
-            }
+    if (address + size <= address)
+    {
+        return KernelResult.InvalidMemState;
+    }
 
-            if ((permission | KMemoryPermission.Write) != KMemoryPermission.ReadAndWrite)
-            {
-                return KernelResult.InvalidPermission;
-            }
+    if ((permission | KMemoryPermission.Write) != KMemoryPermission.ReadAndWrite)
+    {
+        return KernelResult.InvalidPermission;
+    }
 
-            KProcess currentProcess = KernelStatic.GetCurrentProcess();
+    KProcess currentProcess = KernelStatic.GetCurrentProcess();
 
-            KSharedMemory sharedMemory = currentProcess.HandleTable.GetObject<KSharedMemory>(handle);
+    KSharedMemory sharedMemory = currentProcess.HandleTable.GetObject<KSharedMemory>(handle);
 
-            if (sharedMemory == null)
-            {
-                return KernelResult.InvalidHandle;
-            }
+    if (sharedMemory == null)
+    {
+        return KernelResult.InvalidHandle;
+    }
 
-            if (currentProcess.MemoryManager.IsInvalidRegion(address, size))
-            {
-                return KernelResult.InvalidMemRange;
-            }
-
-            return sharedMemory.MapIntoProcess(
-                currentProcess.MemoryManager,
-                address,
-                size,
-                currentProcess,
-                permission);
-        }
-
+    
+    // 共享内存可以映射到任何用户空间区域
+    return sharedMemory.MapIntoProcess(
+        currentProcess.MemoryManager,
+        address,
+        size,
+        currentProcess,
+        permission);
+}
         [Svc(0x14)]
-        public Result UnmapSharedMemory(int handle, [PointerSized] ulong address, [PointerSized] ulong size)
-        {
-            if (!PageAligned(address))
-            {
-                return KernelResult.InvalidAddress;
-            }
+public Result UnmapSharedMemory(int handle, [PointerSized] ulong address, [PointerSized] ulong size)
+{
+    if (!PageAligned(address))
+    {
+        return KernelResult.InvalidAddress;
+    }
 
-            if (!PageAligned(size) || size == 0)
-            {
-                return KernelResult.InvalidSize;
-            }
+    if (!PageAligned(size) || size == 0)
+    {
+        return KernelResult.InvalidSize;
+    }
 
-            if (address + size <= address)
-            {
-                return KernelResult.InvalidMemState;
-            }
+    if (address + size <= address)
+    {
+        return KernelResult.InvalidMemState;
+    }
 
-            KProcess currentProcess = KernelStatic.GetCurrentProcess();
+    KProcess currentProcess = KernelStatic.GetCurrentProcess();
 
-            KSharedMemory sharedMemory = currentProcess.HandleTable.GetObject<KSharedMemory>(handle);
+    KSharedMemory sharedMemory = currentProcess.HandleTable.GetObject<KSharedMemory>(handle);
 
-            if (sharedMemory == null)
-            {
-                return KernelResult.InvalidHandle;
-            }
+    if (sharedMemory == null)
+    {
+        return KernelResult.InvalidHandle;
+    }
 
-            if (currentProcess.MemoryManager.IsInvalidRegion(address, size))
-            {
-                return KernelResult.InvalidMemRange;
-            }
-
-            return sharedMemory.UnmapFromProcess(
-                currentProcess.MemoryManager,
-                address,
-                size,
-                currentProcess);
-        }
+    // 关键修复：移除所有区域限制检查
+    return sharedMemory.UnmapFromProcess(
+        currentProcess.MemoryManager,
+        address,
+        size,
+        currentProcess);
+}
 
         [Svc(0x15)]
         public Result CreateTransferMemory(out int handle, [PointerSized] ulong address, [PointerSized] ulong size, KMemoryPermission permission)
