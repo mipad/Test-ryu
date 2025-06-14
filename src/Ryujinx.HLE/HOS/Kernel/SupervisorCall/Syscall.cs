@@ -248,28 +248,19 @@ namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
         }
 
         [Svc(0x21)]
-public Result SendSyncRequest(int handle)
-{
-    KProcess currentProcess = KernelStatic.GetCurrentProcess();
-    KClientSession session = currentProcess.HandleTable.GetObject<KClientSession>(handle);
+        public Result SendSyncRequest(int handle)
+        {
+            KProcess currentProcess = KernelStatic.GetCurrentProcess();
 
-    if (session == null)
-    {
-        return KernelResult.InvalidHandle;
-    }
+            KClientSession session = currentProcess.HandleTable.GetObject<KClientSession>(handle);
 
-    // 临时提升 IPC 线程优先级
-    KThread currentThread = KernelStatic.GetCurrentThread();
-    int originalPriority = currentThread.DynamicPriority;
-    currentThread.SetPriority((int)ThreadPriority.AboveNormal);
+            if (session == null)
+            {
+                return KernelResult.InvalidHandle;
+            }
 
-    Result result = session.SendSyncRequest();
-
-    // 恢复原始优先级
-    currentThread.SetPriority(originalPriority);
-
-    return result;
-}
+            return session.SendSyncRequest();
+        }
 
         [Svc(0x22)]
         public Result SendSyncRequestWithUserBuffer(
@@ -1101,80 +1092,92 @@ public Result SendSyncRequest(int handle)
         }
 
         [Svc(0x13)]
-public Result MapSharedMemory(int handle, [PointerSized] ulong address, [PointerSized] ulong size, KMemoryPermission permission)
-{
-    if (!PageAligned(address))
-    {
-        return KernelResult.InvalidAddress;
-    }
+        public Result MapSharedMemory(int handle, [PointerSized] ulong address, [PointerSized] ulong size, KMemoryPermission permission)
+        {
+            if (!PageAligned(address))
+            {
+                return KernelResult.InvalidAddress;
+            }
 
-    if (!PageAligned(size) || size == 0)
-    {
-        return KernelResult.InvalidSize;
-    }
+            if (!PageAligned(size) || size == 0)
+            {
+                return KernelResult.InvalidSize;
+            }
 
-    if (address + size <= address)
-    {
-        return KernelResult.InvalidMemState;
-    }
+            if (address + size <= address)
+            {
+                return KernelResult.InvalidMemState;
+            }
 
-    if ((permission | KMemoryPermission.Write) != KMemoryPermission.ReadAndWrite)
-    {
-        return KernelResult.InvalidPermission;
-    }
+            if ((permission | KMemoryPermission.Write) != KMemoryPermission.ReadAndWrite)
+            {
+                return KernelResult.InvalidPermission;
+            }
 
-    KProcess currentProcess = KernelStatic.GetCurrentProcess();
+            KProcess currentProcess = KernelStatic.GetCurrentProcess();
 
-    KSharedMemory sharedMemory = currentProcess.HandleTable.GetObject<KSharedMemory>(handle);
+            KSharedMemory sharedMemory = currentProcess.HandleTable.GetObject<KSharedMemory>(handle);
 
-    if (sharedMemory == null)
-    {
-        return KernelResult.InvalidHandle;
-    }
+            if (sharedMemory == null)
+            {
+                return KernelResult.InvalidHandle;
+            }
 
-    
-    // 共享内存可以映射到任何用户空间区域
-    return sharedMemory.MapIntoProcess(
-        currentProcess.MemoryManager,
-        address,
-        size,
-        currentProcess,
-        permission);
-}
+            if (currentProcess.MemoryManager.IsInvalidRegion(address, size) ||
+                currentProcess.MemoryManager.InsideHeapRegion(address, size) ||
+                currentProcess.MemoryManager.InsideAliasRegion(address, size))
+            {
+                return KernelResult.InvalidMemRange;
+            }
+
+            return sharedMemory.MapIntoProcess(
+                currentProcess.MemoryManager,
+                address,
+                size,
+                currentProcess,
+                permission);
+        }
+
         [Svc(0x14)]
-public Result UnmapSharedMemory(int handle, [PointerSized] ulong address, [PointerSized] ulong size)
-{
-    if (!PageAligned(address))
-    {
-        return KernelResult.InvalidAddress;
-    }
+        public Result UnmapSharedMemory(int handle, [PointerSized] ulong address, [PointerSized] ulong size)
+        {
+            if (!PageAligned(address))
+            {
+                return KernelResult.InvalidAddress;
+            }
 
-    if (!PageAligned(size) || size == 0)
-    {
-        return KernelResult.InvalidSize;
-    }
+            if (!PageAligned(size) || size == 0)
+            {
+                return KernelResult.InvalidSize;
+            }
 
-    if (address + size <= address)
-    {
-        return KernelResult.InvalidMemState;
-    }
+            if (address + size <= address)
+            {
+                return KernelResult.InvalidMemState;
+            }
 
-    KProcess currentProcess = KernelStatic.GetCurrentProcess();
+            KProcess currentProcess = KernelStatic.GetCurrentProcess();
 
-    KSharedMemory sharedMemory = currentProcess.HandleTable.GetObject<KSharedMemory>(handle);
+            KSharedMemory sharedMemory = currentProcess.HandleTable.GetObject<KSharedMemory>(handle);
 
-    if (sharedMemory == null)
-    {
-        return KernelResult.InvalidHandle;
-    }
+            if (sharedMemory == null)
+            {
+                return KernelResult.InvalidHandle;
+            }
 
-    // 关键修复：移除所有区域限制检查
-    return sharedMemory.UnmapFromProcess(
-        currentProcess.MemoryManager,
-        address,
-        size,
-        currentProcess);
-}
+            if (currentProcess.MemoryManager.IsInvalidRegion(address, size) ||
+                currentProcess.MemoryManager.InsideHeapRegion(address, size) ||
+                currentProcess.MemoryManager.InsideAliasRegion(address, size))
+            {
+                return KernelResult.InvalidMemRange;
+            }
+
+            return sharedMemory.UnmapFromProcess(
+                currentProcess.MemoryManager,
+                address,
+                size,
+                currentProcess);
+        }
 
         [Svc(0x15)]
         public Result CreateTransferMemory(out int handle, [PointerSized] ulong address, [PointerSized] ulong size, KMemoryPermission permission)
