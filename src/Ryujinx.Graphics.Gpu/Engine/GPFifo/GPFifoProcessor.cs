@@ -1,441 +1,110 @@
-using Ryujinx.Graphics.Device;
-using Ryujinx.Graphics.Gpu.Engine.Compute;
-using Ryujinx.Graphics.Gpu.Engine.Dma;
-using Ryujinx.Graphics.Gpu.Engine.InlineToMemory;
-using Ryujinx.Graphics.Gpu.Engine.Threed;
-using Ryujinx.Graphics.Gpu.Engine.Twod;
-using Ryujinx.Graphics.Gpu.Image;
-using Ryujinx.Graphics.Gpu.Memory;
+using Ryujinx.Common;
+using Ryujinx.HLE.HOS.Kernel.Common;
+using Ryujinx.HLE.HOS.Kernel.Process;
+using Ryujinx.Horizon.Common;
 using System;
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
-using System.Threading;
 
-namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
+namespace Ryujinx.HLE.HOS.Kernel.Memory
 {
-    /// <summary>
-    /// Represents a GPU General Purpose FIFO command processor.
-    /// </summary>
-    class GPFifoProcessor : IDisposable
+    class KSharedMemory : KAutoObject
     {
-        private const int MacrosCount = 0x80;
-        private const int MacroIndexMask = MacrosCount - 1;
+        private readonly KPageList _pageList;
+        private readonly ulong _ownerPid;
+        private readonly KMemoryPermission _ownerPermission;
+        private readonly KMemoryPermission _userPermission;
 
-        private const int LoadInlineDataMethodOffset = 0x6d;
-        private const int UniformBufferUpdateDataMethodOffset = 0x8e4;
-
-        // 优化性能监控参数
-        private const int HighLoadThreshold = 500;
-        private const int CriticalLoadThreshold = 1000;
-        private const int SleepDurationMs = 2;
-        private const int BatchSizeNormal = 100;
-        private const int BatchSizeHighLoad = 50;
-        private const int BatchSizeCritical = 25;
-
-        private readonly GpuChannel _channel;
-        private readonly Stopwatch _perfTimer = new Stopwatch();
-        private int _commandCount;
-        private int _lastCommandCount;
-        private int _consecutiveHighLoad;
-
-        /// <summary>
-        /// Channel memory manager.
-        /// </summary>
-        public MemoryManager MemoryManager => _channel.MemoryManager;
-
-        /// <summary>
-        /// Channel texture manager.
-        /// </summary>
-        public TextureManager TextureManager => _channel.TextureManager;
-
-        /// <summary>
-        /// 3D Engine.
-        /// </summary>
-        public ThreedClass ThreedClass => _3dClass;
-
-        /// <summary>
-        /// Internal GPFIFO state.
-        /// </summary>
-        private struct DmaState
+        public KSharedMemory(
+            KernelContext context,
+            SharedMemoryStorage storage,
+            ulong ownerPid,
+            KMemoryPermission ownerPermission,
+            KMemoryPermission userPermission) : base(context)
         {
-            public int Method;
-            public int SubChannel;
-            public int MethodCount;
-            public bool NonIncrementing;
-            public bool IncrementOnce;
+            _pageList = storage.GetPageList();
+            _ownerPid = ownerPid;
+            _ownerPermission = ownerPermission;
+            _userPermission = userPermission;
         }
 
-        private DmaState _state;
-
-        private readonly ThreedClass _3dClass;
-        private readonly ComputeClass _computeClass;
-        private readonly InlineToMemoryClass _i2mClass;
-        private readonly TwodClass _2dClass;
-        private readonly DmaClass _dmaClass;
-
-        private readonly GPFifoClass _fifoClass;
-
-        /// <summary>
-        /// Creates a new instance of the GPU General Purpose FIFO command processor.
-        /// </summary>
-        /// <param name="context">GPU context</param>
-        /// <param name="channel">Channel that the GPFIFO processor belongs to</param>
-        public GPFifoProcessor(GpuContext context, GpuChannel channel)
+        public Result MapIntoProcess(
+            KPageTableBase memoryManager,
+            ulong address,
+            ulong size,
+            KProcess process,
+            KMemoryPermission permission)
         {
-            _channel = channel;
+            // 1. 验证地址对齐
+            if ((address & (KPageTableBase.PageSize - 1)) != 0)
+            {
+               // Logger.Warning?.Print(LogClass.KernelSvc, 
+                   // $"MapSharedMemory: Address 0x{address:X} not page aligned");
+                return KernelResult.InvalidAddress;
+            }
 
-            _fifoClass = new GPFifoClass(context, this);
-            _3dClass = new ThreedClass(context, channel, _fifoClass);
-            _computeClass = new ComputeClass(context, channel, _3dClass);
-            _i2mClass = new InlineToMemoryClass(context, channel);
-            _2dClass = new TwodClass(channel);
-            _dmaClass = new DmaClass(context, channel, _3dClass);
+            // 2. 计算实际页数
+            ulong pageCount = BitUtils.DivRoundUp<ulong>(size, KPageTableBase.PageSize);
+            ulong actualPageCount = _pageList.GetPagesCount();
             
-            _perfTimer.Start();
+            // 3. 验证大小匹配
+            if (actualPageCount != pageCount)
+            {
+               // Logger.Warning?.Print(LogClass.KernelSvc, 
+                   // $"MapSharedMemory: Size mismatch (req: {pageCount} pages, actual: {actualPageCount} pages)");
+                return KernelResult.InvalidSize;
+            }
+
+            // 4. 验证地址范围有效性
+            ulong endAddress = address + size;
+            if (endAddress < address || endAddress > memoryManager.AddrSpaceEnd)
+            {
+               // Logger.Warning?.Print(LogClass.KernelSvc, 
+                   // $"MapSharedMemory: Invalid address range 0x{address:X}-0x{endAddress:X} " +
+                    //$"(max: 0x{memoryManager.AddrSpaceEnd:X})");
+                return KernelResult.InvalidMemRange;
+            }
+
+            // 5. 增强权限验证
+            KMemoryPermission expectedPermission = process.Pid == _ownerPid
+                ? _ownerPermission
+                : _userPermission;
+
+            if (permission != expectedPermission)
+            {
+                //Logger.Warning?.Print(LogClass.KernelSvc, 
+                    //$"MapSharedMemory: Permission mismatch (req: {permission}, exp: {expectedPermission})");
+                return KernelResult.InvalidPermission;
+            }
+
+            // 6. 执行映射
+            return memoryManager.MapPages(address, _pageList, MemoryState.SharedMemory, permission);
         }
 
-        /// <summary>
-        /// Processes a command buffer.
-        /// </summary>
-        /// <param name="baseGpuVa">Base GPU virtual address of the command buffer</param>
-        /// <param name="commandBuffer">Command buffer</param>
-        public void Process(ulong baseGpuVa, ReadOnlySpan<int> commandBuffer)
+        public Result UnmapFromProcess(KPageTableBase memoryManager, ulong address, ulong size, KProcess process)
         {
-            // 1. 性能监控：检测高负载
-            int commandDelta = _commandCount - _lastCommandCount;
+            // 1. 验证地址对齐
+            if ((address & (KPageTableBase.PageSize - 1)) != 0)
+            {
+                return KernelResult.InvalidAddress;
+            }
+
+            // 2. 计算实际页数
+            ulong pageCount = BitUtils.DivRoundUp<ulong>(size, KPageTableBase.PageSize);
             
-            if (commandDelta > HighLoadThreshold)
+            // 3. 验证大小匹配
+            if (_pageList.GetPagesCount() != pageCount)
             {
-                _consecutiveHighLoad++;
-                
-                // 2. 临界负载处理
-                if (commandDelta > CriticalLoadThreshold)
-                {
-                   // Logger.Warning?.Print(LogClass.GPU, 
-                      //  $"GPU command queue overloaded ({commandDelta} commands), throttling CPU");
-                    
-                    // 3. 轻微延迟CPU提交
-                    Thread.Sleep(SleepDurationMs);
-                }
-                
-                // 4. 记录当前命令计数
-                _lastCommandCount = _commandCount;
-            }
-            else
-            {
-                _consecutiveHighLoad = 0;
+                return KernelResult.InvalidSize;
             }
 
-            // 5. 分批处理命令
-            int batchSize = CalculateBatchSize(commandBuffer.Length);
-            int processed = 0;
-            
-            while (processed < commandBuffer.Length)
+            // 4. 验证地址范围有效性
+            ulong endAddress = address + size;
+            if (endAddress < address || endAddress > memoryManager.AddrSpaceEnd)
             {
-                int remaining = commandBuffer.Length - processed;
-                int currentBatch = Math.Min(batchSize, remaining);
-                
-                ProcessBatch(
-                    baseGpuVa + (ulong)processed * 4,
-                    commandBuffer.Slice(processed, currentBatch));
-                
-                processed += currentBatch;
-                _commandCount += currentBatch;
-                
-                // 6. 高负载时让出CPU时间片
-                if (_consecutiveHighLoad > 0)
-                {
-                    Thread.Sleep(0); // 让出CPU时间片但不休眠
-                }
+                return KernelResult.InvalidMemRange;
             }
 
-            _3dClass.FlushUboDirty();
-        }
-
-        /// <summary>
-        /// 根据系统负载动态计算批处理大小
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int CalculateBatchSize(int totalCommands)
-        {
-            // 根据连续高负载次数调整批处理大小
-            if (_consecutiveHighLoad > 3) // 连续3次高负载
-            {
-                return Math.Min(BatchSizeCritical, totalCommands);
-            }
-            else if (_consecutiveHighLoad > 0)
-            {
-                return Math.Min(BatchSizeHighLoad, totalCommands);
-            }
-            
-            return Math.Min(BatchSizeNormal, totalCommands);
-        }
-
-        /// <summary>
-        /// 处理命令批次
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ProcessBatch(ulong baseGpuVa, ReadOnlySpan<int> commandBuffer)
-        {
-            for (int index = 0; index < commandBuffer.Length; index++)
-            {
-                int command = commandBuffer[index];
-                ulong gpuVa = baseGpuVa + (ulong)index * 4;
-
-                if (_state.MethodCount != 0)
-                {
-                    if (TryFastI2mBufferUpdate(commandBuffer, ref index))
-                    {
-                        continue;
-                    }
-
-                    Send(gpuVa, _state.Method, command, _state.SubChannel, _state.MethodCount <= 1);
-
-                    if (!_state.NonIncrementing)
-                    {
-                        _state.Method++;
-                    }
-
-                    if (_state.IncrementOnce)
-                    {
-                        _state.NonIncrementing = true;
-                    }
-
-                    _state.MethodCount--;
-                }
-                else
-                {
-                    CompressedMethod meth = Unsafe.As<int, CompressedMethod>(ref command);
-
-                    if (TryFastUniformBufferUpdate(meth, commandBuffer, index))
-                    {
-                        index += meth.MethodCount;
-                        continue;
-                    }
-
-                    switch (meth.SecOp)
-                    {
-                        case SecOp.IncMethod:
-                        case SecOp.NonIncMethod:
-                        case SecOp.OneInc:
-                            _state.Method = meth.MethodAddress;
-                            _state.SubChannel = meth.MethodSubchannel;
-                            _state.MethodCount = meth.MethodCount;
-                            _state.IncrementOnce = meth.SecOp == SecOp.OneInc;
-                            _state.NonIncrementing = meth.SecOp == SecOp.NonIncMethod;
-                            break;
-                        case SecOp.ImmdDataMethod:
-                            Send(gpuVa, meth.MethodAddress, meth.ImmdData, meth.MethodSubchannel, true);
-                            break;
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// Tries to perform a fast Inline-to-Memory data update.
-        /// If successful, all data will be copied at once, and <see cref="DmaState.MethodCount"/>
-        /// command buffer entries will be consumed.
-        /// </summary>
-        /// <param name="commandBuffer">Command buffer where the data is contained</param>
-        /// <param name="offset">Offset at <paramref name="commandBuffer"/> where the data is located, auto-incremented on success</param>
-        /// <returns>True if the fast copy was successful, false otherwise</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private bool TryFastI2mBufferUpdate(ReadOnlySpan<int> commandBuffer, ref int offset)
-        {
-            if (_state.Method == LoadInlineDataMethodOffset && _state.NonIncrementing && _state.SubChannel <= 2)
-            {
-                int availableCount = commandBuffer.Length - offset;
-                int consumeCount = Math.Min(_state.MethodCount, availableCount);
-
-                var data = commandBuffer.Slice(offset, consumeCount);
-
-                if (_state.SubChannel == 0)
-                {
-                    _3dClass.LoadInlineData(data);
-                }
-                else if (_state.SubChannel == 1)
-                {
-                    _computeClass.LoadInlineData(data);
-                }
-                else /* if (_state.SubChannel == 2) */
-                {
-                    _i2mClass.LoadInlineData(data);
-                }
-
-                offset += consumeCount - 1;
-                _state.MethodCount -= consumeCount;
-
-                return true;
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Tries to perform a fast constant buffer data update.
-        /// If successful, all data will be copied at once, and <see cref="CompressedMethod.MethodCount"/> + 1
-        /// command buffer entries will be consumed.
-        /// </summary>
-        /// <param name="meth">Compressed method to be checked</param>
-        /// <param name="commandBuffer">Command buffer where <paramref name="meth"/> is contained</param>
-        /// <param name="offset">Offset at <paramref name="commandBuffer"/> where <paramref name="meth"/> is located</param>
-        /// <returns>True if the fast copy was successful, false otherwise</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private bool TryFastUniformBufferUpdate(CompressedMethod meth, ReadOnlySpan<int> commandBuffer, int offset)
-        {
-            int availableCount = commandBuffer.Length - offset;
-
-            if (meth.MethodAddress == UniformBufferUpdateDataMethodOffset &&
-                meth.MethodCount < availableCount &&
-                meth.SecOp == SecOp.NonIncMethod)
-            {
-                _3dClass.ConstantBufferUpdate(commandBuffer.Slice(offset + 1, meth.MethodCount));
-
-                return true;
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Sends a uncompressed method for processing by the graphics pipeline.
-        /// </summary>
-        /// <param name="gpuVa">GPU virtual address where the command word is located</param>
-        /// <param name="meth">Method to be processed</param>
-        private void Send(ulong gpuVa, int offset, int argument, int subChannel, bool isLastCall)
-        {
-            if (offset < 0x60)
-            {
-                _fifoClass.Write(offset * 4, argument);
-            }
-            else if (offset < 0xe00)
-            {
-                offset *= 4;
-
-                switch (subChannel)
-                {
-                    case 0:
-                        _3dClass.Write(offset, argument);
-                        break;
-                    case 1:
-                        _computeClass.Write(offset, argument);
-                        break;
-                    case 2:
-                        _i2mClass.Write(offset, argument);
-                        break;
-                    case 3:
-                        _2dClass.Write(offset, argument);
-                        break;
-                    case 4:
-                        _dmaClass.Write(offset, argument);
-                        break;
-                }
-            }
-            else
-            {
-                IDeviceState state = subChannel switch
-                {
-                    0 => _3dClass,
-                    3 => _2dClass,
-                    _ => null,
-                };
-
-                if (state != null)
-                {
-                    int macroIndex = (offset >> 1) & MacroIndexMask;
-
-                    if ((offset & 1) != 0)
-                    {
-                        _fifoClass.MmePushArgument(macroIndex, gpuVa, argument);
-                    }
-                    else
-                    {
-                        _fifoClass.MmeStart(macroIndex, argument);
-                    }
-
-                    if (isLastCall)
-                    {
-                        _fifoClass.CallMme(macroIndex, state);
-
-                        _3dClass.PerformDeferredDraws();
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// Writes data directly to the state of the specified class.
-        /// </summary>
-        /// <param name="classId">ID of the class to write the data into</param>
-        /// <param name="offset">State offset in bytes</param>
-        /// <param name="value">Value to be written</param>
-        public void Write(ClassId classId, int offset, int value)
-        {
-            switch (classId)
-            {
-                case ClassId.Threed:
-                    _3dClass.Write(offset, value);
-                    break;
-                case ClassId.Compute:
-                    _computeClass.Write(offset, value);
-                    break;
-                case ClassId.InlineToMemory:
-                    _i2mClass.Write(offset, value);
-                    break;
-                case ClassId.Twod:
-                    _2dClass.Write(offset, value);
-                    break;
-                case ClassId.Dma:
-                    _dmaClass.Write(offset, value);
-                    break;
-                case ClassId.GPFifo:
-                    _fifoClass.Write(offset, value);
-                    break;
-            }
-        }
-
-        /// <summary>
-        /// Sets the shadow ram control value of all sub-channels.
-        /// </summary>
-        /// <param name="control">New shadow ram control value</param>
-        public void SetShadowRamControl(int control)
-        {
-            _3dClass.SetShadowRamControl(control);
-        }
-
-        /// <summary>
-        /// Forces a full host state update by marking all state as modified,
-        /// and also requests all GPU resources in use to be rebound.
-        /// </summary>
-        public void ForceAllDirty()
-        {
-            _3dClass.ForceStateDirty();
-            _channel.BufferManager.Rebind();
-            _channel.TextureManager.Rebind();
-        }
-
-        /// <summary>
-        /// Perform any deferred draws.
-        /// </summary>
-        public void PerformDeferredDraws()
-        {
-            _3dClass.PerformDeferredDraws();
-        }
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                _perfTimer.Stop();
-                _3dClass.Dispose();
-            }
-        }
-
-        public void Dispose()
-        {
-            Dispose(true);
-            GC.SuppressFinalize(this);
+            // 5. 执行取消映射
+            return memoryManager.UnmapPages(address, _pageList, MemoryState.SharedMemory);
         }
     }
 }
