@@ -7,12 +7,13 @@ using System.Threading;
 
 namespace Ryujinx.Cpu.Nce
 {
-    class NceExecutionContext : IExecutionContext
+    class NceExecutionContext : IExecutionContext, IDisposable
     {
         private const ulong AlternateStackSize = 0x4000;
 
         private readonly NceNativeContext _context;
         private readonly ExceptionCallbacks _exceptionCallbacks;
+        private bool _disposed; // +++ 添加释放标记 +++
 
         internal IntPtr NativeContextPtr => _context.BasePtr;
 
@@ -143,6 +144,12 @@ namespace Ryujinx.Cpu.Nce
 
         public void RequestInterrupt()
         {
+            // +++ 检查对象是否已被释放 +++
+            if (_disposed)
+            {
+                return;
+            }
+
             IntPtr threadHandle = _context.GetStorage().HostThreadHandle;
             if (threadHandle != IntPtr.Zero)
             {
@@ -168,7 +175,17 @@ namespace Ryujinx.Cpu.Nce
 
         public void Dispose()
         {
-            _context.Dispose();
+            if (!_disposed)
+            {
+                _disposed = true; // +++ 标记已释放 +++
+                _context.Dispose();
+                
+                if (_alternateStackMemory != null)
+                {
+                    _alternateStackMemory.Dispose();
+                    _alternateStackMemory = null;
+                }
+            }
         }
     }
 }
