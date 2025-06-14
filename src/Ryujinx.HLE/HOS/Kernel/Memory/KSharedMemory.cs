@@ -36,8 +36,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             // 1. 验证地址对齐
             if ((address & (KPageTableBase.PageSize - 1)) != 0)
             {
-                Logger.Warning?.Print(LogClass.KernelSvc, 
-                    $"MapSharedMemory: Address 0x{address:X} not page aligned");
+               // Logger.Warning?.Print(LogClass.KernelSvc, 
+                   // $"MapSharedMemory: Address 0x{address:X} not page aligned");
                 return KernelResult.InvalidAddress;
             }
 
@@ -48,8 +48,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             // 3. 验证大小匹配
             if (actualPageCount != pageCount)
             {
-                Logger.Warning?.Print(LogClass.KernelSvc, 
-                    $"MapSharedMemory: Size mismatch (req: {pageCount} pages, actual: {actualPageCount} pages)");
+               // Logger.Warning?.Print(LogClass.KernelSvc, 
+                    //$"MapSharedMemory: Size mismatch (req: {pageCount} pages, actual: {actualPageCount} pages)");
                 return KernelResult.InvalidSize;
             }
 
@@ -57,8 +57,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             ulong addressSpaceSize = memoryManager.GetAddrSpaceSize();
             if (address + size > addressSpaceSize)
             {
-                Logger.Warning?.Print(LogClass.KernelSvc, 
-                    $"MapSharedMemory: Invalid address range 0x{address:X}-0x{(address + size):X} " +
+               // Logger.Warning?.Print(LogClass.KernelSvc, 
+                   // $"MapSharedMemory: Invalid address range 0x{address:X}-0x{(address + size):X} " +
                     $"(max: 0x{addressSpaceSize:X})");
                 return KernelResult.InvalidMemRange;
             }
@@ -70,8 +70,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
 
             if (permission != expectedPermission)
             {
-                Logger.Warning?.Print(LogClass.KernelSvc, 
-                    $"MapSharedMemory: Permission mismatch (req: {permission}, exp: {expectedPermission})");
+               // Logger.Warning?.Print(LogClass.KernelSvc, 
+                   // $"MapSharedMemory: Permission mismatch (req: {permission}, exp: {expectedPermission})");
                 return KernelResult.InvalidPermission;
             }
 
@@ -84,8 +84,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             }
             catch (InvalidMemoryRegionException)
             {
-                Logger.Warning?.Print(LogClass.KernelSvc, 
-                    $"MapSharedMemory: Invalid memory state at 0x{address:X}");
+              //  Logger.Warning?.Print(LogClass.KernelSvc, 
+                  //  $"MapSharedMemory: Invalid memory state at 0x{address:X}");
                 return KernelResult.InvalidMemRange;
             }
         }
