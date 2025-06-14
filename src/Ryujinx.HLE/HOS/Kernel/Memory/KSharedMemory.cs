@@ -53,13 +53,12 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
                 return KernelResult.InvalidSize;
             }
 
-            // 4. 验证地址范围有效性
+            // 4. 验证地址范围有效性（只保留溢出检查）
             ulong endAddress = address + size;
-            if (endAddress < address || endAddress > memoryManager.AddrSpaceEnd)
+            if (endAddress < address)
             {
                // Logger.Warning?.Print(LogClass.KernelSvc, 
-                   // $"MapSharedMemory: Invalid address range 0x{address:X}-0x{endAddress:X} " +
-                    //$"(max: 0x{memoryManager.AddrSpaceEnd:X})");
+                   // $"MapSharedMemory: Invalid address range 0x{address:X}-0x{endAddress:X} (overflow)");
                 return KernelResult.InvalidMemRange;
             }
 
@@ -96,9 +95,9 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
                 return KernelResult.InvalidSize;
             }
 
-            // 4. 验证地址范围有效性
+            // 4. 验证地址范围有效性（只保留溢出检查）
             ulong endAddress = address + size;
-            if (endAddress < address || endAddress > memoryManager.AddrSpaceEnd)
+            if (endAddress < address)
             {
                 return KernelResult.InvalidMemRange;
             }
