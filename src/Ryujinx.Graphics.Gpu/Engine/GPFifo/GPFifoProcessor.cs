@@ -7,7 +7,9 @@ using Ryujinx.Graphics.Gpu.Engine.Twod;
 using Ryujinx.Graphics.Gpu.Image;
 using Ryujinx.Graphics.Gpu.Memory;
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Threading;
 
 namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
 {
@@ -22,7 +24,15 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
         private const int LoadInlineDataMethodOffset = 0x6d;
         private const int UniformBufferUpdateDataMethodOffset = 0x8e4;
 
+        // 新增性能监控阈值
+        private const int HighLoadThreshold = 500; // 命令数阈值
+        private const int CriticalLoadThreshold = 1000; // 临界阈值
+        private const int SleepDurationMs = 2; // CPU延迟时间
+
         private readonly GpuChannel _channel;
+        private readonly Stopwatch _perfTimer = new Stopwatch();
+        private int _commandCount;
+        private int _lastCommandCount;
 
         /// <summary>
         /// Channel memory manager.
@@ -76,6 +86,8 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
             _i2mClass = new InlineToMemoryClass(context, channel);
             _2dClass = new TwodClass(channel);
             _dmaClass = new DmaClass(context, channel, _3dClass);
+            
+            _perfTimer.Start(); // 启动性能监控
         }
 
         /// <summary>
@@ -85,10 +97,83 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
         /// <param name="commandBuffer">Command buffer</param>
         public void Process(ulong baseGpuVa, ReadOnlySpan<int> commandBuffer)
         {
+            // 1. 性能监控：检测高负载
+            if (_commandCount - _lastCommandCount > HighLoadThreshold)
+            {
+                // 2. 临界负载处理
+                if (_commandCount - _lastCommandCount > CriticalLoadThreshold)
+                {
+                    //Logger.Warning?.Print(LogClass.GPU, 
+                       // $"GPU command queue overloaded ({_commandCount - _lastCommandCount} commands), throttling CPU");
+                    
+                    // 3. 轻微延迟CPU提交
+                    Thread.Sleep(SleepDurationMs);
+                }
+                
+                // 4. 记录当前命令计数
+                _lastCommandCount = _commandCount;
+            }
+
+            // 5. 分批处理命令（优化高负载场景）
+            int batchSize = CalculateBatchSize(commandBuffer.Length);
+            int processed = 0;
+            
+            while (processed < commandBuffer.Length)
+            {
+                int remaining = commandBuffer.Length - processed;
+                int currentBatch = Math.Min(batchSize, remaining);
+                
+                ProcessBatch(
+                    baseGpuVa + (ulong)processed * 4,
+                    commandBuffer.Slice(processed, currentBatch));
+                
+                processed += currentBatch;
+                _commandCount += currentBatch;
+                
+                // 6. 每批处理后检查GPU状态
+                if (_3dClass.IsGpuThreadOverloaded())
+                {
+                    Thread.Yield(); // 让出CPU时间片
+                }
+            }
+
+            _3dClass.FlushUboDirty();
+        }
+
+        /// <summary>
+        /// 根据系统负载动态计算批处理大小
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int CalculateBatchSize(int totalCommands)
+        {
+            // 默认批处理大小（低负载）
+            int batchSize = 100;
+            
+            // 高负载时减小批处理大小
+            if (_commandCount - _lastCommandCount > HighLoadThreshold)
+            {
+                batchSize = 50;
+            }
+            
+            // 临界负载时进一步减小
+            if (_commandCount - _lastCommandCount > CriticalLoadThreshold)
+            {
+                batchSize = 25;
+            }
+            
+            // 确保不超过命令总数
+            return Math.Min(batchSize, totalCommands);
+        }
+
+        /// <summary>
+        /// 处理命令批次
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ProcessBatch(ulong baseGpuVa, ReadOnlySpan<int> commandBuffer)
+        {
             for (int index = 0; index < commandBuffer.Length; index++)
             {
                 int command = commandBuffer[index];
-
                 ulong gpuVa = baseGpuVa + (ulong)index * 4;
 
                 if (_state.MethodCount != 0)
@@ -139,8 +224,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
                     }
                 }
             }
-
-            _3dClass.FlushUboDirty();
         }
 
         /// <summary>
@@ -338,6 +421,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
         {
             if (disposing)
             {
+                _perfTimer.Stop();
                 _3dClass.Dispose();
             }
         }
