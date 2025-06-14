@@ -1,4 +1,4 @@
-﻿using ARMeilleure.Memory;
+using ARMeilleure.Memory;
 using Ryujinx.Memory;
 using Ryujinx.Memory.Range;
 using Ryujinx.Memory.Tracking;
@@ -266,6 +266,14 @@ namespace Ryujinx.Cpu.Nce
         /// <inheritdoc/>
         public void TrackingReprotect(ulong va, ulong size, MemoryPermission protection, bool guest)
         {
+            // 修复：添加零地址检查
+            if (va == 0)
+            {
+                // 记录日志以便调试（生产环境可移除）
+                // Logger.Warning?.Print(LogClass.Cpu, $"Zero address detected in TrackingReprotect");
+                return;
+            }
+
             if (guest)
             {
                 _addressSpace.Reprotect(AddressToOffset(va), size, protection, false);
@@ -296,6 +304,14 @@ namespace Ryujinx.Cpu.Nce
 
         private ulong AddressToOffset(ulong address)
         {
+            // 修复：处理零地址情况
+            if (address == 0)
+            {
+                // 记录日志以便调试（生产环境可移除）
+                // Logger.Warning?.Print(LogClass.Cpu, $"Zero address detected in AddressToOffset");
+                return 0;
+            }
+
             if (address < ReservedSize)
             {
                 throw new ArgumentException($"Invalid address 0x{address:x16}");
