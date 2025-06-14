@@ -246,8 +246,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
                         tlsIoRegion.Size = 0x1000000000;
                         CodeRegionStart = BitUtils.AlignDown(address, RegionAlignment);
                         codeRegionSize = BitUtils.AlignUp(endAddr, RegionAlignment) - CodeRegionStart;
-                        AslrRegionStart = Math.Max(reservedSize, 0x8000000);
-                        AslrRegionEnd = 0x8000000000;
+                        AslrRegionStart = Math.Min(Math.Max(reservedSize, 0x8000000), addrSpaceEnd);
+                        AslrRegionEnd = addrSpaceEnd;
                         stackAndTlsIoStart = 0;
                         stackAndTlsIoEnd = 0;
                     }
