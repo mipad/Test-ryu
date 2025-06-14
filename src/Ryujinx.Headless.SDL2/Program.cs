@@ -19,7 +19,6 @@ using Ryujinx.Graphics.Gpu;
 using Ryujinx.Graphics.Gpu.Shader;
 using Ryujinx.Graphics.OpenGL;
 using Ryujinx.Graphics.Vulkan;
-using Ryujinx.Graphics.Vulkan.MoltenVK;
 using Ryujinx.Headless.SDL2.OpenGL;
 using Ryujinx.Headless.SDL2.Vulkan;
 using Ryujinx.HLE;
@@ -133,8 +132,18 @@ namespace Ryujinx.Headless.SDL2
                 if (gamepad == null)
                 {
                     Logger.Error?.Print(LogClass.Application, $"{index} gamepad not found (\"{inputId}\")");
-
-                    return null;
+                    
+                    // 输入处理改进：当输入设备无效时，自动回退到键盘
+                    Logger.Info?.Print(LogClass.Application, $"Falling back to keyboard for {index}");
+                    inputId = "0";
+                    gamepad = _inputManager.KeyboardDriver.GetGamepad(inputId);
+                    isKeyboard = true;
+                    
+                    if (gamepad == null)
+                    {
+                        Logger.Error?.Print(LogClass.Application, $"Keyboard not found for {index}");
+                        return null;
+                    }
                 }
             }
 
@@ -202,13 +211,24 @@ namespace Ryujinx.Headless.SDL2
                 else
                 {
                     bool isNintendoStyle = gamepadName.Contains("Nintendo");
+                    
+                    // 输入处理改进：自动检测手柄类型
+                    ControllerType currentController; 
+                    if (gamepadName.Contains("Joycons"))
+                    {
+                        currentController = ControllerType.JoyconPair;
+                    }
+                    else 
+                    {
+                        currentController = ControllerType.ProController;
+                    }
 
                     config = new StandardControllerInputConfig
                     {
                         Version = InputConfig.CurrentVersion,
                         Backend = InputBackendType.GamepadSDL2,
                         Id = null,
-                        ControllerType = ControllerType.JoyconPair,
+                        ControllerType = currentController, // 使用自动检测的手柄类型
                         DeadzoneLeft = 0.1f,
                         DeadzoneRight = 0.1f,
                         RangeLeft = 1.0f,
@@ -315,7 +335,7 @@ namespace Ryujinx.Headless.SDL2
 
             Logger.Info?.Print(LogClass.Application, $"{config.PlayerIndex} configured with {inputTypeName} \"{config.Id}\"");
 
-            // If both stick ranges are 0 (usually indicative of an outdated profile load) then both sticks will be set to 1.0.
+            // 输入处理改进：自动重置过时的摇杆范围配置
             if (config is StandardControllerInputConfig controllerConfig)
             {
                 if (controllerConfig.RangeLeft <= 0.0f && controllerConfig.RangeRight <= 0.0f)
@@ -350,7 +370,7 @@ namespace Ryujinx.Headless.SDL2
 
             GraphicsConfig.EnableShaderCache = true;
 
-            if (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS())
+            if (OperatingSystem.IsMacOS())
             {
                 if (option.GraphicsBackend == GraphicsBackend.OpenGl)
                 {
@@ -546,14 +566,8 @@ namespace Ryujinx.Headless.SDL2
 
         private static Switch InitializeEmulationContext(WindowBase window, IRenderer renderer, Options options)
         {
-            BackendThreading threadingMode = options.BackendThreading;
-
-            bool threadedGAL = threadingMode == BackendThreading.On || (threadingMode == BackendThreading.Auto && renderer.PreferThreading);
-
-            if (threadedGAL)
-            {
-                renderer = new ThreadedRenderer(renderer);
-            }
+            // 超线程处理强制启用：始终使用 ThreadedRenderer
+            renderer = new ThreadedRenderer(renderer);
 
             HLEConfiguration configuration = new(_virtualFileSystem,
                 _libHacHorizonManager,
