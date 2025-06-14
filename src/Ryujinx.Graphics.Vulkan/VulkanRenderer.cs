@@ -25,6 +25,7 @@ namespace Ryujinx.Graphics.Vulkan
         private Device _device;
         private WindowBase _window;
         private CommandBufferPool _computeCommandPool;
+        private bool _concurrentFenceWaitUnsupported; // 根据设备特性初始化
         private bool _initialized;
 
         internal KhrTimelineSemaphore TimelineSemaphoreApi { get; private set; }
@@ -134,32 +135,35 @@ namespace Ryujinx.Graphics.Vulkan
             FormatCapabilities = new FormatCapabilities(Api, _physicalDevice.PhysicalDevice);
 
             // 查找计算队列族
-            uint computeFamilyIndex = FindComputeQueueFamily();
+    uint computeFamilyIndex = FindComputeQueueFamily();
 
-            if (computeFamilyIndex != uint.MaxValue && computeFamilyIndex != queueFamilyIndex)
-            {
-                Queue computeQueue;
-                Api.GetDeviceQueue(_device, computeFamilyIndex, 0, &computeQueue);
+    if (computeFamilyIndex != uint.MaxValue && computeFamilyIndex != queueFamilyIndex)
+    {
+        // 正确获取队列的unsafe方式
+        Queue computeQueue;
+        Api.GetDeviceQueue(_device, computeFamilyIndex, 0, &computeQueue);
 
-                _computeCommandPool = new CommandBufferPool(
-                    Api,
-                    _device,
-                    computeQueue,
-                    new object(),
-                    computeFamilyIndex,
-                    IsQualcommProprietary,
-                    false);
-            }
+        // 正确的构造函数调用
+        _computeCommandPool = new CommandBufferPool(
+       Api,
+       _device,
+       computeQueue,
+       new object(),
+       computeFamilyIndex,
+       IsQualcommProprietary,  // 第六个参数
+       false);
+    }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtConditionalRendering conditionalRenderingApi))
             {
                 ConditionalRenderingApi = conditionalRenderingApi;
             }
 
-            if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaphore timelineSemaphoreApi))
-            {
-                TimelineSemaphoreApi = timelineSemaphoreApi;
-            }
+      //
+if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaphore timelineSemaphoreApi))
+{
+    TimelineSemaphoreApi = timelineSemaphoreApi;
+}
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtExtendedDynamicState extendedDynamicStateApi))
             {
@@ -378,7 +382,6 @@ namespace Ryujinx.Graphics.Vulkan
             var hasDriverProperties = _physicalDevice.TryGetPhysicalDeviceDriverPropertiesKHR(Api, out var driverProperties);
 
             Vendor = VendorUtils.FromId(properties.VendorID);
-            PhysicalDeviceVendorId = properties.VendorID; // 设置物理设备供应商ID
 
             IsAmdWindows = Vendor == Vendor.Amd && OperatingSystem.IsWindows();
             IsIntelWindows = Vendor == Vendor.Intel && OperatingSystem.IsWindows();
@@ -500,47 +503,32 @@ namespace Ryujinx.Graphics.Vulkan
             _counters = new Counters(this, _device, _pipeline);
         }
 
-        private unsafe uint FindComputeQueueFamily()
+        // +++ 新增方法：查找计算队列族 +++
+private uint FindComputeQueueFamily()
+{
+    // 正确代码（使用unsafe指针方式）
+unsafe 
+{
+    uint queueCount = 0;
+    // 第一次调用获取队列族数量
+    Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, &queueCount, null);
+    
+    // 分配数组空间
+    var queueFamilies = new QueueFamilyProperties[queueCount];
+    
+    // 第二次调用获取具体数据
+    fixed (QueueFamilyProperties* pQueueFamilies = queueFamilies)
+    {
+        Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, &queueCount, pQueueFamilies);
+    }
+}
+    
+
+    return uint.MaxValue;
+}
+
+        private void SetupContext(GraphicsDebugLevel logLevel)
         {
-            uint queueCount = 0;
-            Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, &queueCount, null);
-            
-            if (queueCount == 0)
-            {
-                return uint.MaxValue;
-            }
-
-            var queueFamilies = new QueueFamilyProperties[queueCount];
-            fixed (QueueFamilyProperties* pQueueFamilies = queueFamilies)
-            {
-                Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, &queueCount, pQueueFamilies);
-            }
-
-            // 优先选择专用计算队列
-            for (uint i = 0; i < queueCount; i++)
-            {
-                if ((queueFamilies[i].QueueFlags & QueueFlags.ComputeBit) != 0 &&
-                    (queueFamilies[i].QueueFlags & QueueFlags.GraphicsBit) == 0)
-                {
-                    return i;
-                }
-            }
-
-            // 如果没有专用计算队列，则使用支持计算的图形队列
-            for (uint i = 0; i < queueCount; i++)
-            {
-                if ((queueFamilies[i].QueueFlags & QueueFlags.ComputeBit) != 0)
-                {
-                    return i;
-                }
-            }
-
-            return uint.MaxValue;
-        }
-
-
-            private void SetupContext(GraphicsDebugLevel logLevel)
-           {
             _instance = VulkanInitialization.CreateInstance(Api, logLevel, _getRequiredExtensions());
             _debugMessenger = new VulkanDebugMessenger(Api, _instance.Instance, logLevel);
 
@@ -576,6 +564,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         internal int[] GetPushDescriptorReservedBindings(bool isOgl)
         {
+            // The first call of this method determines what push descriptor layout is used for all shaders on this renderer.
+            // This is chosen to minimize shaders that can't fit their uniforms on the device's max number of push descriptors.
             if (_pdReservedBindings == null)
             {
                 if (Capabilities.MaxPushDescriptors <= Constants.MaxUniformBuffersPerStage * 2)
@@ -650,19 +640,20 @@ namespace Ryujinx.Graphics.Vulkan
 
         internal TextureView CreateTextureView(TextureCreateInfo info)
         {
+            // This should be disposed when all views are destroyed.
             var storage = CreateTextureStorage(info);
             return storage.CreateView(info, 0, 0);
         }
 
         internal TextureStorage CreateTextureStorage(TextureCreateInfo info)
-        {
-            if (info.Width == 0 || info.Height == 0 || info.Depth == 0 || info.Levels == 0)
-            {
-                Logger.Error?.Print(LogClass.Gpu, $"Invalid texture dimensions: {info.Width}x{info.Height}x{info.Depth} Levels:{info.Levels}");
-                throw new ArgumentException("Invalid texture dimensions");
-            }
-            return new TextureStorage(this, _device, info);
-        }
+{
+    if (info.Width == 0 || info.Height == 0 || info.Depth == 0)
+    {
+        Logger.Error?.Print(LogClass.Gpu, $"Invalid texture dimensions: {info.Width}x{info.Height}x{info.Depth}");
+        throw new ArgumentException("Invalid texture dimensions");
+    }
+    return new TextureStorage(this, _device, info);
+}
 
         public void DeleteBuffer(BufferHandle buffer)
         {
@@ -677,6 +668,8 @@ namespace Ryujinx.Graphics.Vulkan
         internal void RegisterFlush()
         {
             SyncManager.RegisterFlush();
+
+            // Periodically free unused regions of the staging buffer to avoid doing it all at once.
             BufferManager.StagingBuffer.FreeCompleted();
         }
 
@@ -880,6 +873,11 @@ namespace Ryujinx.Graphics.Vulkan
             return new HardwareInfo(GpuVendor, GpuRenderer, GpuDriver);
         }
 
+        /// <summary>
+        /// Gets the available Vulkan devices using the default Vulkan API
+        /// object returned by <see cref="Vk.GetApi()"/>
+        /// </summary>
+        /// <returns></returns>
         public static DeviceInfo[] GetPhysicalDevices()
         {
             try
@@ -889,6 +887,7 @@ namespace Ryujinx.Graphics.Vulkan
             catch (Exception ex)
             {
                 Logger.Error?.PrintMsg(LogClass.Gpu, $"Error querying Vulkan devices: {ex.Message}");
+
                 return Array.Empty<DeviceInfo>();
             }
         }
@@ -901,6 +900,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             catch (Exception)
             {
+                // If we got an exception here, Vulkan is most likely not supported.
                 return Array.Empty<DeviceInfo>();
             }
         }
@@ -914,7 +914,8 @@ namespace Ryujinx.Graphics.Vulkan
         {
             uint driverVersionRaw = properties.DriverVersion;
 
-            if (properties.VendorID == 0x10DE) // NVIDIA
+            // NVIDIA differ from the standard here and uses a different format.
+            if (properties.VendorID == 0x10DE)
             {
                 return $"{(driverVersionRaw >> 22) & 0x3FF}.{(driverVersionRaw >> 14) & 0xFF}.{(driverVersionRaw >> 6) & 0xFF}.{driverVersionRaw & 0x3F}";
             }
@@ -954,6 +955,7 @@ namespace Ryujinx.Graphics.Vulkan
         public void Initialize(GraphicsDebugLevel logLevel)
         {
             SetupContext(logLevel);
+
             PrintGpuInformation();
         }
 
@@ -962,15 +964,22 @@ namespace Ryujinx.Graphics.Vulkan
             if (Capabilities.VertexBufferAlignment > 1)
             {
                 alignment = (int)Capabilities.VertexBufferAlignment;
+
                 return true;
             }
             else if (Vendor != Vendor.Nvidia)
             {
+                // Vulkan requires that vertex attributes are globally aligned by their component size,
+                // so buffer strides that don't divide by the largest scalar element are invalid.
+                // Guest applications do this, NVIDIA GPUs are OK with it, others are not.
+
                 alignment = attrScalarAlignment;
+
                 return true;
             }
 
             alignment = 1;
+
             return false;
         }
 
