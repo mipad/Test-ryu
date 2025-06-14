@@ -33,11 +33,11 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             KProcess process,
             KMemoryPermission permission)
         {
-            // 1. 验证地址对齐
-            if (!PageAlignment.IsPageAligned(address))
+            // 1. 验证地址对齐 - 使用位操作替代PageAlignment类
+            if ((address & (KPageTableBase.PageSize - 1)) != 0)
             {
-               // Logger.Warning?.Print(LogClass.KernelSvc, 
-                   // $"MapSharedMemory: Address 0x{address:X} not page aligned");
+                //Logger.Warning?.Print(LogClass.KernelSvc, 
+                    //$"MapSharedMemory: Address 0x{address:X} not page aligned");
                 return KernelResult.InvalidAddress;
             }
 
@@ -48,17 +48,17 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             // 3. 验证大小匹配
             if (actualPageCount != pageCount)
             {
-                //Logger.Warning?.Print(LogClass.KernelSvc, 
+               // Logger.Warning?.Print(LogClass.KernelSvc, 
                    // $"MapSharedMemory: Size mismatch (req: {pageCount} pages, actual: {actualPageCount} pages)");
                 return KernelResult.InvalidSize;
             }
 
-            // 4. 验证地址范围有效性
-            if (!memoryManager.IsInsideAddressSpace(address, size))
+            // 4. 验证地址范围有效性 - 使用现有方法替代IsInsideAddressSpace
+            if (address + size > process.CpuMemoryManager.AddressSpaceSize)
             {
                // Logger.Warning?.Print(LogClass.KernelSvc, 
-                  //  $"MapSharedMemory: Invalid address range 0x{address:X}-0x{(address + size):X}");
-                return KernelResult.InvalidMemRegion;
+                   // $"MapSharedMemory: Invalid address range 0x{address:X}-0x{(address + size):X}");
+                return KernelResult.InvalidMemRange;
             }
 
             // 5. 增强权限验证
@@ -66,14 +66,14 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
                 ? _ownerPermission
                 : _userPermission;
 
-            if (!permission.Equals(expectedPermission))
+            if (permission != expectedPermission)
             {
-                //Logger.Warning?.Print(LogClass.KernelSvc, 
-                   // $"MapSharedMemory: Permission mismatch (req: {permission}, exp: {expectedPermission})");
+               // Logger.Warning?.Print(LogClass.KernelSvc, 
+                  //  $"MapSharedMemory: Permission mismatch (req: {permission}, exp: {expectedPermission})");
                 return KernelResult.InvalidPermission;
             }
 
-            // 6. 验证内存状态
+            // 6. 验证内存状态 - 使用现有的CheckMemoryState方法
             Result result = memoryManager.CheckMemoryState(
                 address, 
                 size, 
@@ -98,7 +98,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         public Result UnmapFromProcess(KPageTableBase memoryManager, ulong address, ulong size, KProcess process)
         {
             // 1. 验证地址对齐
-            if (!PageAlignment.IsPageAligned(address))
+            if ((address & (KPageTableBase.PageSize - 1)) != 0)
             {
                 return KernelResult.InvalidAddress;
             }
@@ -113,9 +113,9 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             }
 
             // 4. 验证地址范围有效性
-            if (!memoryManager.IsInsideAddressSpace(address, size))
+            if (address + size > process.CpuMemoryManager.AddressSpaceSize)
             {
-                return KernelResult.InvalidMemRegion;
+                return KernelResult.InvalidMemRange;
             }
 
             // 5. 执行取消映射
