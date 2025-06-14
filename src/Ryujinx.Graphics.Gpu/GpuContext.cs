@@ -8,7 +8,6 @@ using Ryujinx.Graphics.Gpu.Synchronization;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 
 namespace Ryujinx.Graphics.Gpu
@@ -50,7 +49,7 @@ namespace Ryujinx.Graphics.Gpu
         /// Internal sequence number, used to avoid needless resource data updates
         /// in the middle of a command buffer before synchronizations.
         /// </summary>
-        internal int SequenceNumber => _sequenceNumber;
+        internal int SequenceNumber { get; private set; }
 
         /// <summary>
         /// Internal sync number, used to denote points at which host synchronization can be requested.
@@ -62,25 +61,25 @@ namespace Ryujinx.Graphics.Gpu
         /// If there are more than 0 items when this happens, a host sync object will be generated for the given <see cref="SyncNumber"/>,
         /// and the SyncNumber will be incremented.
         /// </summary>
-        internal ConcurrentQueue<ISyncActionHandler> SyncActions { get; }
+        internal List<ISyncActionHandler> SyncActions { get; }
 
         /// <summary>
         /// Actions to be performed when a CPU waiting syncpoint is triggered.
         /// If there are more than 0 items when this happens, a host sync object will be generated for the given <see cref="SyncNumber"/>,
         /// and the SyncNumber will be incremented.
         /// </summary>
-        internal ConcurrentQueue<ISyncActionHandler> SyncpointActions { get; }
+        internal List<ISyncActionHandler> SyncpointActions { get; }
 
         /// <summary>
         /// Buffer migrations that are currently in-flight. These are checked whenever sync is created to determine if buffer migration
         /// copies have completed on the GPU, and their data can be freed.
         /// </summary>
-        internal ConcurrentQueue<BufferMigration> BufferMigrations { get; }
+        internal List<BufferMigration> BufferMigrations { get; }
 
         /// <summary>
         /// Queue with deferred actions that must run on the render thread.
         /// </summary>
-        internal ConcurrentQueue<Action> DeferredActions { get; }
+        internal Queue<Action> DeferredActions { get; }
 
         /// <summary>
         /// Registry with physical memories that can be used with this GPU context, keyed by owner process ID.
@@ -100,23 +99,15 @@ namespace Ryujinx.Graphics.Gpu
         /// <summary>
         /// Event for signalling shader cache loading progress.
         /// </summary>
-        public event Action<ShaderCacheState, int, int> ShaderCacheStateChanged = delegate { };
+        public event Action<ShaderCacheState, int, int> ShaderCacheStateChanged;
 
         private Thread _gpuThread;
         private bool _pendingSync;
-        private bool _disposed;
 
         private long _modifiedSequence;
         private readonly ulong _firstTimestamp;
 
         private readonly ManualResetEvent _gpuReadyEvent;
-
-        // 修复：将SequenceNumber改为字段
-        private int _sequenceNumber;
-
-        // Synchronization locks
-        private readonly object _syncLock = new object();
-        private readonly object _migrationLock = new object();
 
         /// <summary>
         /// Creates a new instance of the GPU emulation context.
@@ -135,11 +126,11 @@ namespace Ryujinx.Graphics.Gpu
             HostInitalized = new ManualResetEvent(false);
             _gpuReadyEvent = new ManualResetEvent(false);
 
-            SyncActions = new ConcurrentQueue<ISyncActionHandler>();
-            SyncpointActions = new ConcurrentQueue<ISyncActionHandler>();
-            BufferMigrations = new ConcurrentQueue<BufferMigration>();
+            SyncActions = new List<ISyncActionHandler>();
+            SyncpointActions = new List<ISyncActionHandler>();
+            BufferMigrations = new List<BufferMigration>();
 
-            DeferredActions = new ConcurrentQueue<Action>();
+            DeferredActions = new Queue<Action>();
 
             PhysicalMemoryRegistry = new ConcurrentDictionary<ulong, PhysicalMemory>();
 
@@ -248,7 +239,7 @@ namespace Ryujinx.Graphics.Gpu
         /// <returns>A sequence number for resource modification ordering</returns>
         internal long GetModifiedSequence()
         {
-            return Interlocked.Increment(ref _modifiedSequence) - 1;
+            return _modifiedSequence++;
         }
 
         /// <summary>
@@ -262,8 +253,9 @@ namespace Ryujinx.Graphics.Gpu
 
             if (GraphicsConfig.FastGpuTime)
             {
-                // Use bit-shift instead of division for performance
-                ticks >>= 8; // Equivalent to division by 256
+                // Divide by some amount to report time as if operations were performed faster than they really are.
+                // This can prevent some games from switching to a lower resolution because rendering is too slow.
+                ticks /= 256;
             }
 
             return ticks;
@@ -277,7 +269,7 @@ namespace Ryujinx.Graphics.Gpu
         /// <param name="total">Total number of shaders to process</param>
         private void ShaderCacheStateUpdate(ShaderCacheState state, int current, int total)
         {
-            ShaderCacheStateChanged.Invoke(state, current, total);
+            ShaderCacheStateChanged?.Invoke(state, current, total);
         }
 
         /// <summary>
@@ -339,8 +331,7 @@ namespace Ryujinx.Graphics.Gpu
         /// </summary>
         internal void AdvanceSequence()
         {
-            // 修复：使用字段而不是属性
-            Interlocked.Increment(ref _sequenceNumber);
+            SequenceNumber++;
         }
 
         /// <summary>
@@ -350,11 +341,8 @@ namespace Ryujinx.Graphics.Gpu
         /// <param name="migration">The buffer migration</param>
         internal void RegisterBufferMigration(BufferMigration migration)
         {
-            lock (_migrationLock)
-            {
-                BufferMigrations.Enqueue(migration);
-                _pendingSync = true;
-            }
+            BufferMigrations.Add(migration);
+            _pendingSync = true;
         }
 
         /// <summary>
@@ -365,17 +353,14 @@ namespace Ryujinx.Graphics.Gpu
         /// <param name="syncpointOnly">True if the sync action should only run when syncpoints are incremented</param>
         internal void RegisterSyncAction(ISyncActionHandler action, bool syncpointOnly = false)
         {
-            lock (_syncLock)
+            if (syncpointOnly)
             {
-                if (syncpointOnly)
-                {
-                    SyncpointActions.Enqueue(action);
-                }
-                else
-                {
-                    SyncActions.Enqueue(action);
-                    _pendingSync = true;
-                }
+                SyncpointActions.Add(action);
+            }
+            else
+            {
+                SyncActions.Add(action);
+                _pendingSync = true;
             }
         }
 
@@ -390,102 +375,44 @@ namespace Ryujinx.Graphics.Gpu
             bool strict = flags.HasFlag(HostSyncFlags.Strict);
             bool force = flags.HasFlag(HostSyncFlags.Force);
 
-            // Process buffer migrations
-            lock (_migrationLock)
+            if (BufferMigrations.Count > 0)
             {
-                var bufferMigrations = BufferMigrations;
-                int count = bufferMigrations.Count;
-                
-                if (count > 0)
-                {
-                    ulong currentSyncNumber = Renderer.GetCurrentSync();
-                    
-                    BufferMigration migration;
-                    for (int i = 0; i < count; i++)
-                    {
-                        if (bufferMigrations.TryDequeue(out migration))
-                        {
-                            long diff = (long)(currentSyncNumber - migration.SyncNumber);
+                ulong currentSyncNumber = Renderer.GetCurrentSync();
 
-                            if (diff >= 0)
-                            {
-                                migration.Dispose();
-                            }
-                            else
-                            {
-                                bufferMigrations.Enqueue(migration);
-                            }
-                        }
+                for (int i = 0; i < BufferMigrations.Count; i++)
+                {
+                    BufferMigration migration = BufferMigrations[i];
+                    long diff = (long)(currentSyncNumber - migration.SyncNumber);
+
+                    if (diff >= 0)
+                    {
+                        migration.Dispose();
+                        BufferMigrations.RemoveAt(i--);
                     }
                 }
             }
 
-            bool needSync = false;
-
-            lock (_syncLock)
+            if (force || _pendingSync || (syncpoint && SyncpointActions.Count > 0))
             {
-                var syncpointActions = SyncpointActions;
-                needSync = force || _pendingSync || (syncpoint && syncpointActions.Count > 0);
-            }
-
-            if (needSync)
-            {
-                lock (_syncLock)
+                foreach (var action in SyncActions)
                 {
-                    var syncActions = SyncActions;
-                    var syncpointActions = SyncpointActions;
-
-                    // Pre-action processing
-                    ProcessSyncPreActions(syncActions, syncpoint);
-                    ProcessSyncPreActions(syncpointActions, syncpoint);
-
-                    Renderer.CreateSync(SyncNumber, strict);
-                    SyncNumber++;
-
-                    // Post-action processing with removal
-                    ProcessSyncQueue(syncActions, syncpoint);
-                    ProcessSyncQueue(syncpointActions, syncpoint);
+                    action.SyncPreAction(syncpoint);
                 }
 
-                _pendingSync = false;
-            }
-        }
-
-        private void ProcessSyncPreActions(ConcurrentQueue<ISyncActionHandler> queue, bool syncpoint)
-        {
-            var tempList = new List<ISyncActionHandler>();
-            
-            ISyncActionHandler handler;
-            while (queue.TryDequeue(out handler))
-            {
-                tempList.Add(handler);
-            }
-
-            foreach (var item in tempList)
-            {
-                item.SyncPreAction(syncpoint);
-                queue.Enqueue(item);
-            }
-        }
-
-        private void ProcessSyncQueue(ConcurrentQueue<ISyncActionHandler> queue, bool syncpoint)
-        {
-            var remainingActions = new ConcurrentQueue<ISyncActionHandler>();
-            
-            ISyncActionHandler action;
-            while (queue.TryDequeue(out action))
-            {
-                if (!action.SyncAction(syncpoint))
+                foreach (var action in SyncpointActions)
                 {
-                    remainingActions.Enqueue(action);
+                    action.SyncPreAction(syncpoint);
                 }
+
+                Renderer.CreateSync(SyncNumber, strict);
+
+                SyncNumber++;
+
+                SyncActions.RemoveAll(action => action.SyncAction(syncpoint));
+                SyncpointActions.RemoveAll(action => action.SyncAction(syncpoint));
             }
 
-            // Re-add actions that need to be kept
-            while (remainingActions.TryDequeue(out action))
-            {
-                queue.Enqueue(action);
-            }
+            _pendingSync = false;
         }
 
         /// <summary>
@@ -494,8 +421,7 @@ namespace Ryujinx.Graphics.Gpu
         /// </summary>
         internal void RunDeferredActions()
         {
-            Action action;
-            while (DeferredActions.TryDequeue(out action))
+            while (DeferredActions.TryDequeue(out Action action))
             {
                 action();
             }
@@ -509,27 +435,20 @@ namespace Ryujinx.Graphics.Gpu
         /// </summary>
         public void Dispose()
         {
-            if (_disposed) return;
-            _disposed = true;
-
             GPFifo.Dispose();
             HostInitalized.Dispose();
             _gpuReadyEvent.Dispose();
 
-            // Create a copy to avoid modification during iteration
-            var physicalMemories = PhysicalMemoryRegistry.Values.ToArray();
-            PhysicalMemoryRegistry.Clear();
-
-            // Dispose physical memories
-            foreach (var physicalMemory in physicalMemories)
+            // Has to be disposed before processing deferred actions, as it will produce some.
+            foreach (var physicalMemory in PhysicalMemoryRegistry.Values)
             {
-                physicalMemory.ShaderCache.ShaderCacheStateChanged -= ShaderCacheStateUpdate;
                 physicalMemory.Dispose();
             }
 
             SupportBufferUpdater.Dispose();
 
-            // Process any remaining deferred actions
+            PhysicalMemoryRegistry.Clear();
+
             RunDeferredActions();
 
             Renderer.Dispose();
