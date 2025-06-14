@@ -263,7 +263,7 @@ namespace Ryujinx.Graphics.Gpu
             if (GraphicsConfig.FastGpuTime)
             {
                 // Use bit-shift instead of division for performance
-                ticks >>= 8; // Equivalent to division by 256
+                ticks >>= 20; // Equivalent to division by 256
             }
 
             return ticks;
