@@ -41,6 +41,7 @@ namespace Ryujinx.Graphics.Vulkan
         internal ExtTransformFeedback TransformFeedbackApi { get; private set; }
         internal KhrDrawIndirectCount DrawIndirectCountApi { get; private set; }
         internal ExtAttachmentFeedbackLoopDynamicState DynamicFeedbackLoopApi { get; private set; }
+        internal ExtFragmentDensityMap FragmentDensityMapApi { get; private set; } // 添加片段密度映射API
 
         internal uint QueueFamilyIndex { get; private set; }
         internal Queue Queue { get; private set; }
@@ -135,35 +136,34 @@ namespace Ryujinx.Graphics.Vulkan
             FormatCapabilities = new FormatCapabilities(Api, _physicalDevice.PhysicalDevice);
 
             // 查找计算队列族
-    uint computeFamilyIndex = FindComputeQueueFamily();
+            uint computeFamilyIndex = FindComputeQueueFamily();
 
-    if (computeFamilyIndex != uint.MaxValue && computeFamilyIndex != queueFamilyIndex)
-    {
-        // 正确获取队列的unsafe方式
-        Queue computeQueue;
-        Api.GetDeviceQueue(_device, computeFamilyIndex, 0, &computeQueue);
+            if (computeFamilyIndex != uint.MaxValue && computeFamilyIndex != queueFamilyIndex)
+            {
+                // 正确获取队列的unsafe方式
+                Queue computeQueue;
+                Api.GetDeviceQueue(_device, computeFamilyIndex, 0, &computeQueue);
 
-        // 正确的构造函数调用
-        _computeCommandPool = new CommandBufferPool(
-       Api,
-       _device,
-       computeQueue,
-       new object(),
-       computeFamilyIndex,
-       IsQualcommProprietary,  // 第六个参数
-       false);
-    }
+                // 正确的构造函数调用
+                _computeCommandPool = new CommandBufferPool(
+                Api,
+                _device,
+                computeQueue,
+                new object(),
+                computeFamilyIndex,
+                IsQualcommProprietary,  // 第六个参数
+                false);
+            }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtConditionalRendering conditionalRenderingApi))
             {
                 ConditionalRenderingApi = conditionalRenderingApi;
             }
 
-      //
-if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaphore timelineSemaphoreApi))
-{
-    TimelineSemaphoreApi = timelineSemaphoreApi;
-}
+            if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaphore timelineSemaphoreApi))
+            {
+                TimelineSemaphoreApi = timelineSemaphoreApi;
+            }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtExtendedDynamicState extendedDynamicStateApi))
             {
@@ -188,6 +188,12 @@ if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaph
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtAttachmentFeedbackLoopDynamicState dynamicFeedbackLoopApi))
             {
                 DynamicFeedbackLoopApi = dynamicFeedbackLoopApi;
+            }
+
+            // +++ 添加片段密度映射扩展加载 +++
+            if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtFragmentDensityMap fragmentDensityMapApi))
+            {
+                FragmentDensityMapApi = fragmentDensityMapApi;
             }
 
             if (maxQueueCount >= 2)
@@ -504,28 +510,38 @@ if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaph
         }
 
         // +++ 新增方法：查找计算队列族 +++
-private uint FindComputeQueueFamily()
-{
-    // 正确代码（使用unsafe指针方式）
-unsafe 
-{
-    uint queueCount = 0;
-    // 第一次调用获取队列族数量
-    Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, &queueCount, null);
-    
-    // 分配数组空间
-    var queueFamilies = new QueueFamilyProperties[queueCount];
-    
-    // 第二次调用获取具体数据
-    fixed (QueueFamilyProperties* pQueueFamilies = queueFamilies)
-    {
-        Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, &queueCount, pQueueFamilies);
-    }
-}
-    
+        private uint FindComputeQueueFamily()
+        {
+            // 正确代码（使用unsafe指针方式）
+            unsafe 
+            {
+                uint queueCount = 0;
+                // 第一次调用获取队列族数量
+                Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, &queueCount, null);
+                
+                // 分配数组空间
+                var queueFamilies = new QueueFamilyProperties[queueCount];
+                
+                // 第二次调用获取具体数据
+                fixed (QueueFamilyProperties* pQueueFamilies = queueFamilies)
+                {
+                    Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, &queueCount, pQueueFamilies);
+                }
 
-    return uint.MaxValue;
-}
+                // 查找支持计算但不支持图形的队列族
+                for (uint i = 0; i < queueCount; i++)
+                {
+                    ref var property = ref queueFamilies[i];
+                    if (property.QueueFlags.HasFlag(QueueFlags.ComputeBit) &&
+                        !property.QueueFlags.HasFlag(QueueFlags.GraphicsBit))
+                    {
+                        return i;
+                    }
+                }
+            }
+
+            return uint.MaxValue;
+        }
 
         private void SetupContext(GraphicsDebugLevel logLevel)
         {
@@ -646,14 +662,14 @@ unsafe
         }
 
         internal TextureStorage CreateTextureStorage(TextureCreateInfo info)
-{
-    if (info.Width == 0 || info.Height == 0 || info.Depth == 0)
-    {
-        Logger.Error?.Print(LogClass.Gpu, $"Invalid texture dimensions: {info.Width}x{info.Height}x{info.Depth}");
-        throw new ArgumentException("Invalid texture dimensions");
-    }
-    return new TextureStorage(this, _device, info);
-}
+        {
+            if (info.Width == 0 || info.Height == 0 || info.Depth == 0)
+            {
+                Logger.Error?.Print(LogClass.Gpu, $"Invalid texture dimensions: {info.Width}x{info.Height}x{info.Depth}");
+                throw new ArgumentException("Invalid texture dimensions");
+            }
+            return new TextureStorage(this, _device, info);
+        }
 
         public void DeleteBuffer(BufferHandle buffer)
         {
@@ -785,6 +801,11 @@ unsafe
                     SystemMemoryType.DedicatedMemory;
             }
 
+            // +++ 添加片段密度映射支持标记 +++
+            bool supportsFragmentDensityMap = 
+                _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map") &&
+                FragmentDensityMapApi != null;
+
             return new Capabilities(
                 api: TargetApi.Vulkan,
                 GpuVendor,
@@ -831,6 +852,7 @@ unsafe
                 supportsViewportSwizzle: false,
                 supportsIndirectParameters: true,
                 supportsDepthClipControl: Capabilities.SupportsDepthClipControl,
+                supportsFragmentDensityMap: supportsFragmentDensityMap, // 添加支持标记
                 uniformBufferSetIndex: PipelineBase.UniformSetIndex,
                 storageBufferSetIndex: PipelineBase.StorageSetIndex,
                 textureSetIndex: PipelineBase.TextureSetIndex,
@@ -1072,56 +1094,54 @@ unsafe
             (_window as Window)?.SetSurface(_surface);
         }
 
-// VulkanRenderer.cs
+        // +++ 新增方法：设备丢失恢复 +++
+        public void RecreateVulkanDevice()
+        {
+            DisposeVulkanResources();
+            InitializeVulkan();
+        }
 
-// +++ 新增方法：设备丢失恢复 +++
-public void RecreateVulkanDevice()
-{
-    DisposeVulkanResources();
-    InitializeVulkan();
-}
+        private void DisposeVulkanResources()
+        {
+            // 销毁所有 Vulkan 资源
+            Api.DestroyDevice(_device, null);
+            Api.DestroyInstance(_instance.Instance, null);
 
-private void DisposeVulkanResources()
-{
-    // 销毁所有 Vulkan 资源
-    Api.DestroyDevice(_device, null);
-    Api.DestroyInstance(_instance.Instance, null);
+            // 释放其他关联资源
+            CommandBufferPool?.Dispose();
+            _window?.Dispose();
+            MemoryAllocator?.Dispose();
+            HostMemoryAllocator?.Dispose();
+            PipelineLayoutCache?.Dispose();
+            _counters?.Dispose();
+        }
 
-    // 释放其他关联资源
-    CommandBufferPool?.Dispose();
-    _window?.Dispose();
-    MemoryAllocator?.Dispose();
-    HostMemoryAllocator?.Dispose();
-    PipelineLayoutCache?.Dispose();
-    _counters?.Dispose();
-}
+        private unsafe void InitializeVulkan()
+        {
+            // 重新创建实例、物理设备和逻辑设备
+            _instance = VulkanInitialization.CreateInstance(Api, GraphicsDebugLevel.None, _getRequiredExtensions());
+            _surface = _getSurface(_instance.Instance, Api);
+            _physicalDevice = VulkanInitialization.FindSuitablePhysicalDevice(Api, _instance, _surface, _preferredGpuId);
 
-private unsafe void InitializeVulkan()
-{
-    // 重新创建实例、物理设备和逻辑设备
-    _instance = VulkanInitialization.CreateInstance(Api, GraphicsDebugLevel.None, _getRequiredExtensions());
-    _surface = _getSurface(_instance.Instance, Api);
-    _physicalDevice = VulkanInitialization.FindSuitablePhysicalDevice(Api, _instance, _surface, _preferredGpuId);
+            var queueFamilyIndex = VulkanInitialization.FindSuitableQueueFamily(Api, _physicalDevice, _surface, out uint maxQueueCount);
+            _device = VulkanInitialization.CreateDevice(Api, _physicalDevice, queueFamilyIndex, maxQueueCount);
 
-    var queueFamilyIndex = VulkanInitialization.FindSuitableQueueFamily(Api, _physicalDevice, _surface, out uint maxQueueCount);
-    _device = VulkanInitialization.CreateDevice(Api, _physicalDevice, queueFamilyIndex, maxQueueCount);
+            // 重新初始化队列
+            Api.GetDeviceQueue(_device, queueFamilyIndex, 0, out var queue);
+            Queue = queue;
+            QueueLock = new object();
 
-    // 重新初始化队列
-    Api.GetDeviceQueue(_device, queueFamilyIndex, 0, out var queue);
-    Queue = queue;
-    QueueLock = new object();
+            // 重新初始化核心模块
+            LoadFeatures(maxQueueCount, queueFamilyIndex); // 内部会重建 MemoryAllocator、CommandBufferPool 等
+            _window = new Window(this, _surface, _physicalDevice.PhysicalDevice, _device);
 
-    // 重新初始化核心模块
-    LoadFeatures(maxQueueCount, queueFamilyIndex); // 内部会重建 MemoryAllocator、CommandBufferPool 等
-    _window = new Window(this, _surface, _physicalDevice.PhysicalDevice, _device);
-
-    // 重建管线和其他渲染组件
-    _pipeline = new PipelineFull(this, _device);
-    _pipeline.Initialize();
-    HelperShader = new HelperShader(this, _device);
-    Barriers = new BarrierBatch(this);
-    SyncManager = new SyncManager(this, _device);
-}
+            // 重建管线和其他渲染组件
+            _pipeline = new PipelineFull(this, _device);
+            _pipeline.Initialize();
+            HelperShader = new HelperShader(this, _device);
+            Barriers = new BarrierBatch(this);
+            SyncManager = new SyncManager(this, _device);
+        }
 
         public unsafe void Dispose()
         {
