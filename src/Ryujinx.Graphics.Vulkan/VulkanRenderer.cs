@@ -41,7 +41,9 @@ namespace Ryujinx.Graphics.Vulkan
         internal ExtTransformFeedback TransformFeedbackApi { get; private set; }
         internal KhrDrawIndirectCount DrawIndirectCountApi { get; private set; }
         internal ExtAttachmentFeedbackLoopDynamicState DynamicFeedbackLoopApi { get; private set; }
-        internal ExtFragmentDensityMap FragmentDensityMapApi { get; private set; } // 添加片段密度映射API
+        
+        // 修改：使用布尔值代替具体类型
+        internal bool SupportsFragmentDensityMap { get; private set; }
 
         internal uint QueueFamilyIndex { get; private set; }
         internal Queue Queue { get; private set; }
@@ -190,11 +192,8 @@ namespace Ryujinx.Graphics.Vulkan
                 DynamicFeedbackLoopApi = dynamicFeedbackLoopApi;
             }
 
-            // +++ 添加片段密度映射扩展加载 +++
-            if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtFragmentDensityMap fragmentDensityMapApi))
-            {
-                FragmentDensityMapApi = fragmentDensityMapApi;
-            }
+            // 修改：使用布尔值代替具体类型
+            SupportsFragmentDensityMap = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map");
 
             if (maxQueueCount >= 2)
             {
@@ -801,10 +800,8 @@ namespace Ryujinx.Graphics.Vulkan
                     SystemMemoryType.DedicatedMemory;
             }
 
-            // +++ 添加片段密度映射支持标记 +++
-            bool supportsFragmentDensityMap = 
-                _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map") &&
-                FragmentDensityMapApi != null;
+            // 修改：直接使用布尔属性
+            bool supportsFragmentDensityMap = SupportsFragmentDensityMap;
 
             return new Capabilities(
                 api: TargetApi.Vulkan,
