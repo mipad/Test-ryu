@@ -7,7 +7,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
     /// <summary>
     /// Memory range used for buffers.
     /// </summary>
-    readonly struct BufferBounds : IEquatable<BufferBounds>
+    struct BufferBounds : IEquatable<BufferBounds>
     {
         /// <summary>
         /// Physical memory ranges where the buffer is mapped.
@@ -18,6 +18,11 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// Buffer usage flags.
         /// </summary>
         public BufferUsageFlags Flags { get; }
+
+        /// <summary>
+        /// Last frame number where the buffer was used.
+        /// </summary>
+        public long LastUsedFrame { get; set; }
 
         /// <summary>
         /// Indicates that the backing memory for the buffer does not exist.
@@ -33,6 +38,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             Range = range;
             Flags = flags;
+            LastUsedFrame = 0;
         }
 
         public override bool Equals(object obj)
