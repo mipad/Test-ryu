@@ -188,6 +188,7 @@ namespace Ryujinx.Graphics.OpenGL
                 supportsViewportSwizzle: HwCapabilities.SupportsViewportSwizzle,
                 supportsIndirectParameters: HwCapabilities.SupportsIndirectParameters,
                 supportsDepthClipControl: true,
+                supportsFragmentDensityMap: false, // OpenGL does not support fragment density mapping
                 uniformBufferSetIndex: 0,
                 storageBufferSetIndex: 1,
                 textureSetIndex: 2,
