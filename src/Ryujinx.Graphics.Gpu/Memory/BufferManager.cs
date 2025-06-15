@@ -10,22 +10,6 @@ using System.Runtime.CompilerServices;
 
 namespace Ryujinx.Graphics.Gpu.Memory
 {
-    internal struct BufferBounds
-    {
-        public MultiRange Range { get; }
-        public BufferUsageFlags Flags { get; }
-        public long LastUsedFrame { get; set; }
-
-        public BufferBounds(MultiRange range, BufferUsageFlags flags = BufferUsageFlags.None)
-        {
-            Range = range;
-            Flags = flags;
-            LastUsedFrame = 0;
-        }
-
-        public bool IsUnmapped => Range.IsUnmapped;
-    }
-
     /// <summary>
     /// Buffer manager.
     /// </summary>
@@ -332,13 +316,17 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="flags">Buffer usage flags</param>
         public void SetComputeStorageBuffer(int index, ulong gpuVa, ulong size, BufferUsageFlags flags)
         {
-            size += gpuVa & ((ulong)_context.Capabilities.StorageBufferOffsetAlignment - 1);
+            // Handle alignment requirements
+            ulong alignment = (ulong)_context.Capabilities.StorageBufferOffsetAlignment;
+            ulong alignmentMask = alignment - 1;
+            ulong offsetAdjustment = gpuVa & alignmentMask;
+            size = (size + offsetAdjustment + alignmentMask) & ~alignmentMask;
+            gpuVa = gpuVa & ~alignmentMask;
 
             RecordStorageAlignment(_cpStorageBuffers, index, gpuVa);
 
-            gpuVa = BitUtils.AlignDown<ulong>(gpuVa, (ulong)_context.Capabilities.StorageBufferOffsetAlignment);
-
-            MultiRange range = _channel.MemoryManager.Physical.BufferCache.TranslateAndCreateMultiBuffers(_channel.MemoryManager, gpuVa, size, BufferStageUtils.ComputeStorage(flags));
+            MultiRange range = _channel.MemoryManager.Physical.BufferCache.TranslateAndCreateMultiBuffers(
+                _channel.MemoryManager, gpuVa, size, BufferStageUtils.ComputeStorage(flags));
 
             _cpStorageBuffers.SetBounds(index, range, flags);
         }
@@ -366,8 +354,11 @@ namespace Ryujinx.Graphics.Gpu.Memory
             BuffersPerStage buffers = _gpStorageBuffers[stage];
             
             // Calculate aligned parameters
-            ulong alignedSize = size + (gpuVa & ((ulong)_context.Capabilities.StorageBufferOffsetAlignment - 1));
-            ulong alignedGpuVa = BitUtils.AlignDown<ulong>(gpuVa, (ulong)_context.Capabilities.StorageBufferOffsetAlignment);
+            ulong alignment = (ulong)_context.Capabilities.StorageBufferOffsetAlignment;
+            ulong alignmentMask = alignment - 1;
+            ulong offsetAdjustment = gpuVa & alignmentMask;
+            ulong alignedSize = (size + offsetAdjustment + alignmentMask) & ~alignmentMask;
+            ulong alignedGpuVa = gpuVa & ~alignmentMask;
             
             // Create unique identifier
             var bufferKey = (stage, alignedSize);
@@ -385,6 +376,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                         // Reuse existing buffer
                         range = existingBuffer.Range;
                         existingBuffer.LastUsedFrame = _currentFrameSequence;
+                        _storageBufferPool[bufferKey] = existingBuffer;
                     }
                     else
                     {
