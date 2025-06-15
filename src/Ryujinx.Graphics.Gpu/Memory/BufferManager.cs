@@ -10,6 +10,22 @@ using System.Runtime.CompilerServices;
 
 namespace Ryujinx.Graphics.Gpu.Memory
 {
+    internal struct BufferBounds
+    {
+        public MultiRange Range { get; }
+        public BufferUsageFlags Flags { get; }
+        public long LastUsedFrame { get; set; }
+
+        public BufferBounds(MultiRange range, BufferUsageFlags flags = BufferUsageFlags.None)
+        {
+            Range = range;
+            Flags = flags;
+            LastUsedFrame = 0;
+        }
+
+        public bool IsUnmapped => Range.IsUnmapped;
+    }
+
     /// <summary>
     /// Buffer manager.
     /// </summary>
@@ -1052,22 +1068,5 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             _rebind = true;
         }
-    }
-    
-    // Modified BufferBounds struct with lifetime tracking
-    internal struct BufferBounds
-    {
-        public MultiRange Range { get; }
-        public BufferUsageFlags Flags { get; }
-        public long LastUsedFrame { get; set; }
-
-        public BufferBounds(MultiRange range, BufferUsageFlags flags = BufferUsageFlags.None)
-        {
-            Range = range;
-            Flags = flags;
-            LastUsedFrame = 0;
-        }
-
-        public bool IsUnmapped => Range.IsUnmapped;
     }
 }
