@@ -929,62 +929,51 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="write">Whether the buffer will be written to by this use</param>
         /// <returns>The buffer where the range is fully contained</returns>
         private Buffer GetBuffer(ulong address, ulong size, BufferStage stage, bool write = false)
-        {   
-            // 关键修复：处理无效地址
-            if (address == 0xFFFFFFFFFFFFFFFF)
+{   
+    if (address == 0xFFFFFFFFFFFFFFFF)
+    {
+        return _dummyBuffer;
+    }
+
+    Buffer buffer = null;
+
+    if (size != 0)
+    {
+        buffer = _buffers.FindFirstOverlap(address, size);
+        
+        if (buffer == null)
+        {
+            CreateBuffer(address, size, stage);
+            buffer = _buffers.FindFirstOverlap(address, size);
+            
+            if (buffer == null)
             {
+                // 修复：使用全局 Logger 替代 _context.Logger
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Failed to create buffer for address 0x{address:X}, size 0x{size:X}");
                 return _dummyBuffer;
             }
-    
-            Buffer buffer = null;
-
-            // 当找不到缓冲区时创建新缓冲区
-            if (size != 0)
-            {
-                buffer = _buffers.FindFirstOverlap(address, size);
-                
-                // 未找到缓冲区时创建新缓冲区
-                if (buffer == null)
-                {
-                    // 创建实际需要的缓冲区（自动对齐地址和大小）
-                    CreateBuffer(address, size, stage);
-                    
-                    // 重新查询新创建的缓冲区
-                    buffer = _buffers.FindFirstOverlap(address, size);
-                    
-                    // 二次检查确保缓冲区存在
-                    if (buffer == null)
-                    {
-                        _context.Logger?.Warning?.Print(LogClass.Gpu, 
-                            $"Failed to create buffer for address 0x{address:X}, size 0x{size:X}");
-                        return _dummyBuffer; // 安全回退
-                    }
-                }
-                
-                // 处理虚拟缓冲区依赖关系
-                buffer.CopyFromDependantVirtualBuffers();
-                
-                // 同步内存内容
-                buffer.SynchronizeMemory(address, size);
-                
-                // 标记修改区域
-                if (write)
-                {
-                    buffer.SignalModified(address, size, stage);
-                }
-            }
-            else
-            {
-                // 对于零尺寸请求的特殊处理
-                buffer = _buffers.FindFirstOverlap(address, 1);
-                if (buffer == null)
-                {
-                    return _dummyBuffer;
-                }
-            }
-
-            return buffer;
         }
+        
+        buffer.CopyFromDependantVirtualBuffers();
+        buffer.SynchronizeMemory(address, size);
+        
+        if (write)
+        {
+            buffer.SignalModified(address, size, stage);
+        }
+    }
+    else
+    {
+        buffer = _buffers.FindFirstOverlap(address, 1);
+        if (buffer == null)
+        {
+            return _dummyBuffer;
+        }
+    }
+
+    return buffer;
+}
 
         /// <summary>
         /// Performs guest to host memory synchronization of a given memory range.
