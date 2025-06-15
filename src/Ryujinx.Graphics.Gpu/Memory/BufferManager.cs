@@ -1054,18 +1054,18 @@ namespace Ryujinx.Graphics.Gpu.Memory
         }
     }
     
-    // 新增：扩展BufferBounds以支持生命周期管理
+    // 修改：将新字段添加到原有的BufferBounds结构中
     internal struct BufferBounds
     {
         public MultiRange Range { get; }
         public BufferUsageFlags Flags { get; }
-        public long LastUsedFrame { get; set; }
+        public long LastUsedFrame { get; set; } // 添加生命周期跟踪
 
         public BufferBounds(MultiRange range, BufferUsageFlags flags = BufferUsageFlags.None)
         {
             Range = range;
             Flags = flags;
-            LastUsedFrame = 0;
+            LastUsedFrame = 0; // 初始化帧计数器
         }
 
         public bool IsUnmapped => Range.IsUnmapped;
