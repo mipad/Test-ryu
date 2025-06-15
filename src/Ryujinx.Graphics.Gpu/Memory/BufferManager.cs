@@ -53,6 +53,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             /// </summary>
             public BufferBounds[] Buffers { get; }
 
+            
             /// <summary>
             /// Flag indicating if this binding is unaligned.
             /// </summary>
@@ -383,8 +384,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                         // Create new buffer
                         range = _channel.MemoryManager.Physical.BufferCache.TranslateAndCreateMultiBuffers(
                             _channel.MemoryManager, alignedGpuVa, alignedSize, 
-                            BufferStageUtils.GraphicsStorage(stage, flags),
-                            preferDeviceLocal: true);
+                            BufferStageUtils.GraphicsStorage(stage, flags));
                         
                         // Update memory pool
                         var newBuffer = new BufferBounds(range, flags)
