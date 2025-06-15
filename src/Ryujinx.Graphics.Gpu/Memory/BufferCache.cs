@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Gpu.Memory
 {
@@ -70,7 +71,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 context,
                 physicalMemory,
                 0,         // address
-                0x10000,   // size
+                0x19000000,   // size
                 BufferStage.None,
                 false
             );
@@ -935,21 +936,38 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 return _dummyBuffer;
             }
     
-            Buffer buffer;
+            Buffer buffer = null;
 
+            // 当找不到缓冲区时创建新缓冲区
             if (size != 0)
             {
                 buffer = _buffers.FindFirstOverlap(address, size);
-
-                // 空指针保护
+                
+                // 未找到缓冲区时创建新缓冲区
                 if (buffer == null)
                 {
-                    return _dummyBuffer;
+                    // 创建实际需要的缓冲区（自动对齐地址和大小）
+                    CreateBuffer(address, size, stage);
+                    
+                    // 重新查询新创建的缓冲区
+                    buffer = _buffers.FindFirstOverlap(address, size);
+                    
+                    // 二次检查确保缓冲区存在
+                    if (buffer == null)
+                    {
+                        _context.Logger?.Warning?.Print(LogClass.Gpu, 
+                            $"Failed to create buffer for address 0x{address:X}, size 0x{size:X}");
+                        return _dummyBuffer; // 安全回退
+                    }
                 }
-        
+                
+                // 处理虚拟缓冲区依赖关系
                 buffer.CopyFromDependantVirtualBuffers();
+                
+                // 同步内存内容
                 buffer.SynchronizeMemory(address, size);
-
+                
+                // 标记修改区域
                 if (write)
                 {
                     buffer.SignalModified(address, size, stage);
@@ -957,6 +975,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             }
             else
             {
+                // 对于零尺寸请求的特殊处理
                 buffer = _buffers.FindFirstOverlap(address, 1);
                 if (buffer == null)
                 {
