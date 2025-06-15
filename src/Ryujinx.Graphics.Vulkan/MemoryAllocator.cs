@@ -3,7 +3,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Ryujinx.Common.Logging;
-using System.Linq;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -11,7 +10,6 @@ namespace Ryujinx.Graphics.Vulkan
     {
         private const ulong MaxDeviceMemoryUsageEstimate = 16UL * 1024 * 1024 * 1024;
         private const ulong LargeAllocationThreshold = 256 * 1024 * 1024; // 256MB
-        private const ulong ChunkSize = 64 * 1024 * 1024; // 64MB 分块大小
 
         private readonly Vk _api;
         private readonly VulkanPhysicalDevice _physicalDevice;
@@ -20,33 +18,8 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly int _blockAlignment;
         private readonly ReaderWriterLockSlim _lock;
         
-        // 内存压力回调
+        // 添加内存压力回调
         public event Action<ulong, ulong> OnMemoryPressure;
-
-        // 分块分配管理器
-        private class ChunkedAllocation : IDisposable
-        {
-            public List<MemoryAllocation> Chunks { get; }
-            public ulong TotalSize { get; }
-
-            public ChunkedAllocation(List<MemoryAllocation> chunks, ulong totalSize)
-            {
-                Chunks = chunks;
-                TotalSize = totalSize;
-            }
-
-            public void Dispose()
-            {
-                foreach (var chunk in Chunks)
-                {
-                    chunk.Dispose();
-                }
-                Chunks.Clear();
-            }
-        }
-
-        private readonly Dictionary<IntPtr, ChunkedAllocation> _chunkedAllocations = new();
-        private long _chunkedAllocationCounter = 1;
 
         public MemoryAllocator(Vk api, VulkanPhysicalDevice physicalDevice, Device device)
         {
@@ -71,38 +44,137 @@ namespace Ryujinx.Graphics.Vulkan
 
             bool map = flags.HasFlag(MemoryPropertyFlags.HostVisibleBit);
             
-            // 检查可用显存
-            if (!CanAllocate(requirements.Size, memoryTypeIndex))
-            {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Insufficient memory! Requested: {FormatSize(requirements.Size)}, " +
-                    $"Available: {FormatSize(GetAvailableMemory(memoryTypeIndex))}");
-                
-                // 触发内存压力回调
-                OnMemoryPressure?.Invoke(requirements.Size, 0);
-                Thread.Sleep(100); // 给释放操作一点时间
-            }
-
-            // 大内存分配使用分块策略
+            // 大内存分配警告
             if (requirements.Size > LargeAllocationThreshold)
             {
                 Logger.Warning?.Print(LogClass.Gpu, 
                     $"Allocating large buffer: {FormatSize(requirements.Size)} " +
                     $"(Type: {memoryTypeIndex}, Flags: {flags})");
-                
-                return AllocateChunked(memoryTypeIndex, requirements.Size, requirements.Alignment, map, isBuffer);
             }
 
-            // 普通分配
             return AllocateWithRetry(memoryTypeIndex, requirements.Size, requirements.Alignment, map, isBuffer);
         }
 
-        private MemoryAllocation AllocateChunked(
-            int memoryTypeIndex, 
-            ulong size, 
-            ulong alignment, 
-            bool map, 
-            bool isBuffer)
+        private MemoryAllocation AllocateWithRetry(int memoryTypeIndex, ulong size, ulong alignment, bool map, bool isBuffer)
         {
-            // 计算需要多少块
-            ulong chunks = (size + ChunkSize - 1)
+            const int MaxRetries = 3;
+            int attempt = 0;
+
+            while (attempt++ < MaxRetries)
+            {
+                var allocation = Allocate(memoryTypeIndex, size, alignment, map, isBuffer);
+                
+                // 使用Handle检查分配是否有效
+                if (allocation.Memory.Handle != 0)
+                {
+                    return allocation;
+                }
+
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Memory allocation failed for {FormatSize(size)} (attempt {attempt}/{MaxRetries})");
+                
+                // 触发内存清理回调
+                OnMemoryPressure?.Invoke(size, (ulong)attempt);
+                
+                // 等待资源释放
+                Thread.Sleep(50 * attempt);
+            }
+
+            Logger.Error?.Print(LogClass.Gpu, 
+                $"Memory allocation failed after {MaxRetries} attempts: {FormatSize(size)}");
+            return default;
+        }
+
+        private MemoryAllocation Allocate(int memoryTypeIndex, ulong size, ulong alignment, bool map, bool isBuffer)
+        {
+            _lock.EnterReadLock();
+
+            try
+            {
+                for (int i = 0; i < _blockLists.Count; i++)
+                {
+                    var bl = _blockLists[i];
+                    if (bl.MemoryTypeIndex == memoryTypeIndex && bl.ForBuffer == isBuffer)
+                    {
+                        return bl.Allocate(size, alignment, map);
+                    }
+                }
+            }
+            finally
+            {
+                _lock.ExitReadLock();
+            }
+
+            _lock.EnterWriteLock();
+
+            try
+            {
+                var newBl = new MemoryAllocatorBlockList(_api, _device, memoryTypeIndex, _blockAlignment, isBuffer);
+                _blockLists.Add(newBl);
+
+                return newBl.Allocate(size, alignment, map);
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
+        }
+
+        internal int FindSuitableMemoryTypeIndex(
+            uint memoryTypeBits,
+            MemoryPropertyFlags flags)
+        {
+            for (int i = 0; i < _physicalDevice.PhysicalDeviceMemoryProperties.MemoryTypeCount; i++)
+            {
+                var type = _physicalDevice.PhysicalDeviceMemoryProperties.MemoryTypes[i];
+
+                if ((memoryTypeBits & (1 << i)) != 0)
+                {
+                    if (type.PropertyFlags.HasFlag(flags))
+                    {
+                        return i;
+                    }
+                }
+            }
+
+            return -1;
+        }
+
+        public static bool IsDeviceMemoryShared(VulkanPhysicalDevice physicalDevice)
+        {
+            for (int i = 0; i < physicalDevice.PhysicalDeviceMemoryProperties.MemoryHeapCount; i++)
+            {
+                if (!physicalDevice.PhysicalDeviceMemoryProperties.MemoryHeaps[i].Flags.HasFlag(MemoryHeapFlags.DeviceLocalBit))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // 辅助方法：格式化内存大小
+        private static string FormatSize(ulong size)
+        {
+            string[] units = { "B", "KB", "MB", "GB" };
+            double value = size;
+            int unitIndex = 0;
+
+            while (value >= 1024 && unitIndex < units.Length - 1)
+            {
+                value /= 1024;
+                unitIndex++;
+            }
+
+            return $"{value:0.##} {units[unitIndex]}";
+        }
+
+        public void Dispose()
+        {
+            for (int i = 0; i < _blockLists.Count; i++)
+            {
+                _blockLists[i].Dispose();
+            }
+        }
+    }
+}
