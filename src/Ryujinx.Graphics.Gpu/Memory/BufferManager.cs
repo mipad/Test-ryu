@@ -31,6 +31,13 @@ namespace Ryujinx.Graphics.Gpu.Memory
         private readonly List<BufferTextureArrayBinding<IImageArray>> _bufferImageArrays;
         private readonly BufferAssignment[] _ranges;
 
+        // 添加：存储缓冲区内存池
+        private readonly Dictionary<(int Stage, ulong Size), BufferBounds> _storageBufferPool = new();
+        private readonly object _poolLock = new();
+        
+        // 添加：帧计数器用于缓冲区生命周期管理
+        private long _currentFrameSequence = 0;
+
         /// <summary>
         /// Holds shader stage buffer state and binding information.
         /// </summary>
@@ -146,6 +153,61 @@ namespace Ryujinx.Graphics.Gpu.Memory
             _bufferImageArrays = new List<BufferTextureArrayBinding<IImageArray>>();
 
             _ranges = new BufferAssignment[Constants.TotalGpUniformBuffers * Constants.ShaderStages];
+        }
+
+        /// <summary>
+        /// 新增：在帧结束时清理内存池
+        /// </summary>
+        public void OnFrameEnd()
+        {
+            TrimPool();
+            _currentFrameSequence++;
+        }
+
+        /// <summary>
+        /// 新增：清理闲置的缓冲区
+        /// </summary>
+        private void TrimPool()
+        {
+            lock (_poolLock)
+            {
+                var keysToRemove = new List<(int, ulong)>();
+
+                foreach (var kv in _storageBufferPool)
+                {
+                    // 超过2帧未使用的缓冲区
+                    if (kv.Value.LastUsedFrame < _currentFrameSequence - 2)
+                    {
+                        keysToRemove.Add(kv.Key);
+                    }
+                }
+
+                foreach (var key in keysToRemove)
+                {
+                    _storageBufferPool.Remove(key);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 新增：比较缓冲区范围是否匹配
+        /// </summary>
+        private bool RangesMatch(MultiRange a, MultiRange b)
+        {
+            if (a.Count != b.Count) return false;
+            
+            for (int i = 0; i < a.Count; i++)
+            {
+                var subA = a.GetSubRange(i);
+                var subB = b.GetSubRange(i);
+                
+                if (subA.Address != subB.Address || subA.Size != subB.Size)
+                {
+                    return false;
+                }
+            }
+            
+            return true;
         }
 
         /// <summary>
@@ -277,27 +339,77 @@ namespace Ryujinx.Graphics.Gpu.Memory
         public void SetGraphicsStorageBuffer(int stage, int index, ulong gpuVa, ulong size, BufferUsageFlags flags)
         {
             // 新增检查：检测无效地址
-    if (gpuVa == 0xFFFFFFFFFFFFFFFF || gpuVa == 0)
-    {
-        _gpStorageBuffers[stage].SetBounds(index, new MultiRange(MemoryManager.PteUnmapped, 0UL), flags);
-        return;
-        }
-        
-            size += gpuVa & ((ulong)_context.Capabilities.StorageBufferOffsetAlignment - 1);
-
+            if (gpuVa == 0xFFFFFFFFFFFFFFFF || gpuVa == 0)
+            {
+                _gpStorageBuffers[stage].SetBounds(index, new MultiRange(MemoryManager.PteUnmapped, 0UL), flags);
+                return;
+            }
+            
+            // 新增：内存池优化
+            const ulong LargeBufferThreshold = 100 * 1024 * 1024; // 100MB
             BuffersPerStage buffers = _gpStorageBuffers[stage];
-
-            RecordStorageAlignment(buffers, index, gpuVa);
-
-            gpuVa = BitUtils.AlignDown<ulong>(gpuVa, (ulong)_context.Capabilities.StorageBufferOffsetAlignment);
-
-            MultiRange range = _channel.MemoryManager.Physical.BufferCache.TranslateAndCreateMultiBuffers(_channel.MemoryManager, gpuVa, size, BufferStageUtils.GraphicsStorage(stage, flags));
-
+            
+            // 计算对齐后的关键参数
+            ulong alignedSize = size + (gpuVa & ((ulong)_context.Capabilities.StorageBufferOffsetAlignment - 1));
+            ulong alignedGpuVa = BitUtils.AlignDown<ulong>(gpuVa, (ulong)_context.Capabilities.StorageBufferOffsetAlignment);
+            
+            // 创建唯一标识符
+            var bufferKey = (stage, alignedSize);
+            MultiRange range;
+            
+            // 对于大缓冲区使用内存池
+            if (alignedSize > LargeBufferThreshold)
+            {
+                lock (_poolLock)
+                {
+                    // 尝试从内存池中获取缓冲区
+                    if (_storageBufferPool.TryGetValue(bufferKey, out var existingBuffer) && 
+                        RangesMatch(existingBuffer.Range, new MultiRange(alignedGpuVa, alignedSize)))
+                    {
+                        // 重用现有缓冲区
+                        range = existingBuffer.Range;
+                        existingBuffer.LastUsedFrame = _currentFrameSequence;
+                    }
+                    else
+                    {
+                        // 创建新缓冲区
+                        range = _channel.MemoryManager.Physical.BufferCache.TranslateAndCreateMultiBuffers(
+                            _channel.MemoryManager, alignedGpuVa, alignedSize, 
+                            BufferStageUtils.GraphicsStorage(stage, flags),
+                            preferDeviceLocal: true);
+                        
+                        // 更新内存池
+                        var newBuffer = new BufferBounds(range, flags)
+                        {
+                            LastUsedFrame = _currentFrameSequence
+                        };
+                        
+                        if (_storageBufferPool.ContainsKey(bufferKey))
+                        {
+                            _storageBufferPool[bufferKey] = newBuffer;
+                        }
+                        else
+                        {
+                            _storageBufferPool.Add(bufferKey, newBuffer);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // 小缓冲区使用标准处理
+                RecordStorageAlignment(buffers, index, gpuVa);
+                range = _channel.MemoryManager.Physical.BufferCache.TranslateAndCreateMultiBuffers(
+                    _channel.MemoryManager, alignedGpuVa, alignedSize, 
+                    BufferStageUtils.GraphicsStorage(stage, flags));
+            }
+            
+            // 设置缓冲区边界
             if (!buffers.Buffers[index].Range.Equals(range))
             {
                 _gpStorageBuffersDirty = true;
             }
-
+            
             buffers.SetBounds(index, range, flags);
         }
 
@@ -940,5 +1052,22 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             _rebind = true;
         }
+    }
+    
+    // 新增：扩展BufferBounds以支持生命周期管理
+    internal struct BufferBounds
+    {
+        public MultiRange Range { get; }
+        public BufferUsageFlags Flags { get; }
+        public long LastUsedFrame { get; set; }
+
+        public BufferBounds(MultiRange range, BufferUsageFlags flags = BufferUsageFlags.None)
+        {
+            Range = range;
+            Flags = flags;
+            LastUsedFrame = 0;
+        }
+
+        public bool IsUnmapped => Range.IsUnmapped;
     }
 }
