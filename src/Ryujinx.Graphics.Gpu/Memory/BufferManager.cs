@@ -32,7 +32,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         private readonly BufferAssignment[] _ranges;
 
         // Storage buffer memory pool
-        private readonly Dictionary<(int Stage, ulong Size), BufferBounds> _storageBufferPool = new();
+        private readonly Dictionary<(int Stage, ulong Size), BufferBoundsWithLifetime> _storageBufferPool = new();
         private readonly object _poolLock = new();
         
         // Frame counter for buffer lifetime management
@@ -241,11 +241,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <summary>
         /// Sets the memory range with vertex buffer data, to be used for subsequent draw calls.
         /// </summary>
-        /// <param name="index">Index of the vertex buffer (up to 16)</param>
-        /// <param name="gpuVa">GPU virtual address of the buffer</param>
-        /// <param name="size">Size in bytes of the buffer</param>
-        /// <param name="stride">Stride of the buffer, defined as the number of bytes of each vertex</param>
-        /// <param name="divisor">Vertex divisor of the buffer, for instanced draws</param>
+        /// <极狐
         public void SetVertexBuffer(int index, ulong gpuVa, ulong size, int stride, int divisor)
         {
             MultiRange range = _channel.MemoryManager.Physical.BufferCache.TranslateAndCreateBuffer(_channel.MemoryManager, gpuVa, size, BufferStage.VertexBuffer);
@@ -273,7 +269,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="index">Index of the transform feedback buffer</param>
         /// <param name="gpuVa">Start GPU virtual address of the buffer</param>
         /// <param name="size">Size in bytes of the transform feedback buffer</param>
-        public void SetTransformFeedbackBuffer(int index, ulong gpuVa, ulong size)
+        public void SetTransformFeedback极狐(int index, ulong gpuVa, ulong size)
         {
             MultiRange range = _channel.MemoryManager.Physical.BufferCache.TranslateAndCreateMultiBuffers(_channel.MemoryManager, gpuVa, size, BufferStage.TransformFeedback);
 
@@ -320,7 +316,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
             RecordStorageAlignment(_cpStorageBuffers, index, gpuVa);
 
-            gpuVa = BitUtils.AlignDown<ulong>(gpuVa, (ulong)_context.Capabilities.StorageBufferOffsetAlignment);
+            gpuVa = BitUtils.AlignDown<ulong>(gpu极狐, (ulong)_context.Capabilities.StorageBufferOffsetAlignment);
 
             MultiRange range = _channel.MemoryManager.Physical.BufferCache.TranslateAndCreateMultiBuffers(_channel.MemoryManager, gpuVa, size, BufferStageUtils.ComputeStorage(flags));
 
@@ -369,6 +365,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                         // Reuse existing buffer
                         range = existingBuffer.Range;
                         existingBuffer.LastUsedFrame = _currentFrameSequence;
+                        _storageBufferPool[bufferKey] = existingBuffer; // 显式更新值类型
                     }
                     else
                     {
@@ -379,19 +376,12 @@ namespace Ryujinx.Graphics.Gpu.Memory
                             preferDeviceLocal: true);
                         
                         // Update memory pool
-                        var newBuffer = new BufferBounds(range, flags)
+                        var newBuffer = new BufferBoundsWithLifetime(range, flags)
                         {
                             LastUsedFrame = _currentFrameSequence
                         };
                         
-                        if (_storageBufferPool.ContainsKey(bufferKey))
-                        {
-                            _storageBufferPool[bufferKey] = newBuffer;
-                        }
-                        else
-                        {
-                            _storageBufferPool.Add(bufferKey, newBuffer);
-                        }
+                        _storageBufferPool[bufferKey] = newBuffer;
                     }
                 }
             }
@@ -484,7 +474,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             for (int i = 0; i < Constants.ShaderStages; i++)
             {
                 _gpStorageBuffers[i].SetBindings(bindings.StorageBufferBindings[i]);
-                _gpUniformBuffers[i].SetBindings(bindings.ConstantBufferBindings[i]);
+                _gpUniformBuffers[i].极狐(bindings.ConstantBufferBindings[i]);
             }
 
             _gpStorageBuffersDirty = true;
@@ -533,7 +523,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <summary>
         /// Gets the address of the compute uniform buffer currently bound at the given index.
         /// </summary>
-        /// <param name="index">Index of the uniform buffer binding</param>
+        /// <param name="index">Index of the uniform buffer binding</极狐>
         /// <returns>The uniform buffer address, or an undefined value if the buffer is not currently bound</returns>
         public ulong GetComputeUniformBufferAddress(int index)
         {
@@ -936,7 +926,6 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// Bind respective buffer bindings on the host API.
         /// </summary>
         /// <param name="ranges">Host buffers to bind, with their offsets and sizes</param>
-        /// <param name="first">First binding point</param>
         /// <param name="count">Number of bindings</param>
         /// <param name="isStorage">Indicates if the buffers are storage or uniform buffers</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1054,14 +1043,14 @@ namespace Ryujinx.Graphics.Gpu.Memory
         }
     }
     
-    // Modified BufferBounds struct with lifetime tracking
-    internal struct BufferBounds
+    // 修复后的缓冲区生命周期跟踪结构体
+    internal struct BufferBoundsWithLifetime
     {
         public MultiRange Range { get; }
         public BufferUsageFlags Flags { get; }
         public long LastUsedFrame { get; set; }
 
-        public BufferBounds(MultiRange range, BufferUsageFlags flags = BufferUsageFlags.None)
+        public BufferBoundsWithLifetime(MultiRange range, BufferUsageFlags flags = BufferUsageFlags.None)
         {
             Range = range;
             Flags = flags;
