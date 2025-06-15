@@ -716,7 +716,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                         continue;
                     }
 
-BufferRange buffer = bufferCache.GetBufferRange(vb.Range, BufferStage.VertexBuffer);
+                    BufferRange buffer = bufferCache.GetBufferRange(vb.Range, BufferStage.VertexBuffer);
 
                     vertexBuffers[index] = new VertexBufferDescriptor(buffer, vb.Stride, vb.Divisor);
                 }
@@ -982,7 +982,7 @@ BufferRange buffer = bufferCache.GetBufferRange(vb.Range, BufferStage.VertexBuff
         /// Sets the buffer storage of a buffer texture. This will be bound when the buffer manager commits bindings.
         /// </summary>
         /// <param name="stage">Shader stage accessing the texture</param>
-        /// <param name="text极>
+        /// <param name="texture">Buffer texture</param>
         /// <param name="range">Physical ranges of memory where the buffer texture data is located</param>
         /// <param name="bindingInfo">Binding info for the buffer texture</param>
         /// <param name="format">Format of the buffer texture</param>
@@ -996,7 +996,7 @@ BufferRange buffer = bufferCache.GetBufferRange(vb.Range, BufferStage.VertexBuff
         {
             _channel.MemoryManager.Physical.BufferCache.CreateBuffer(range, BufferStageUtils.TextureBuffer(stage, bindingInfo.Flags));
 
-            _bufferTextures.Add(new BufferTextureBinding(stage, texture, range, binding极>
+            _bufferTextures.Add(new BufferTextureBinding(stage, texture, range, bindingInfo, isImage));
         }
 
         /// <summary>
@@ -1054,20 +1054,20 @@ BufferRange buffer = bufferCache.GetBufferRange(vb.Range, BufferStage.VertexBuff
         }
     }
     
-    // 修改后的BufferBounds结构体，增加生命周期跟踪
+    // Modified BufferBounds struct with lifetime tracking
     internal struct BufferBounds
     {
         public MultiRange Range { get; }
         public BufferUsageFlags Flags { get; }
-        public long LastUsedFrame { get; set; }  // 添加生命周期跟踪字段
+        public long LastUsedFrame { get; set; }
 
         public BufferBounds(MultiRange range, BufferUsageFlags flags = BufferUsageFlags.None)
         {
             Range = range;
             Flags = flags;
-            LastUsedFrame = 0;  // 初始化生命周期计数器
+            LastUsedFrame = 0;
         }
 
         public bool IsUnmapped => Range.IsUnmapped;
     }
-                                                         }
+}
