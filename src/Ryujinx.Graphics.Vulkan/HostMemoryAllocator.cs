@@ -70,15 +70,8 @@ namespace Ryujinx.Graphics.Vulkan
 
                     if (start >= existing.Start && end <= existing.End)
                     {
-                        try
-                        {
-                            existing.Allocation.IncrementReferenceCount();
-                            return true;
-                        }
-                        catch (InvalidOperationException)
-                        {
-                            // 分配已被释放，继续搜索
-                        }
+                        // 移除 IncrementReferenceCount() 调用
+                        return true;
                     }
                 }
 
@@ -195,7 +188,6 @@ namespace Ryujinx.Graphics.Vulkan
             _api.FreeMemory(_device, memory, ReadOnlySpan<AllocationCallbacks>.Empty);
         }
 
-        // ==================== 新增的 Dispose 方法 ====================
         public void Dispose()
         {
             lock (_lock)
