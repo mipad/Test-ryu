@@ -4,13 +4,57 @@ using System.Collections.Generic;
 using System.Threading;
 using Ryujinx.Common.Logging;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Diagnostics;
 
 namespace Ryujinx.Graphics.Vulkan
 {
+    // 扩展 MemoryAllocation 以支持分块分配
+    struct MemoryAllocation
+    {
+        public DeviceMemory Memory;
+        public ulong Offset;
+        public ulong Size;
+        public IntPtr HostPointer;
+        public bool IsMirror;
+        
+        // 分块分配支持
+        public List<MemoryAllocation> Chunks;
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool IsNull => Memory.Handle == 0;
+
+        public void Dispose(Vk api, Device device)
+        {
+            if (Chunks != null)
+            {
+                // 释放所有分块
+                foreach (var chunk in Chunks)
+                {
+                    if (!chunk.IsNull)
+                    {
+                        api.FreeMemory(device, chunk.Memory, null);
+                    }
+                }
+                Chunks = null;
+            }
+            else if (!IsNull)
+            {
+                api.FreeMemory(device, Memory, null);
+            }
+            
+            Memory = default;
+            Offset = 0;
+            Size = 0;
+            HostPointer = IntPtr.Zero;
+        }
+    }
+
     class MemoryAllocator : IDisposable
     {
         private const ulong MaxDeviceMemoryUsageEstimate = 16UL * 1024 * 1024 * 1024;
         private const ulong LargeAllocationThreshold = 256 * 1024 * 1024; // 256MB
+        private const ulong ChunkSize = 64 * 1024 * 1024; // 64MB 分块大小
 
         private readonly Vk _api;
         private readonly VulkanPhysicalDevice _physicalDevice;
@@ -57,15 +101,71 @@ namespace Ryujinx.Graphics.Vulkan
                 Thread.Sleep(100); // 给释放操作一点时间
             }
 
-            // 大内存分配警告
+            // 大内存分配使用分块策略
             if (requirements.Size > LargeAllocationThreshold)
             {
                 Logger.Warning?.Print(LogClass.Gpu, 
                     $"Allocating large buffer: {FormatSize(requirements.Size)} " +
                     $"(Type: {memoryTypeIndex}, Flags: {flags})");
+                
+                return AllocateChunked(memoryTypeIndex, requirements.Size, requirements.Alignment, map, isBuffer);
             }
 
+            // 普通分配
             return AllocateWithRetry(memoryTypeIndex, requirements.Size, requirements.Alignment, map, isBuffer);
+        }
+
+        private MemoryAllocation AllocateChunked(
+            int memoryTypeIndex, 
+            ulong size, 
+            ulong alignment, 
+            bool map, 
+            bool isBuffer)
+        {
+            // 计算需要多少块
+            ulong chunks = (size + ChunkSize - 1) / ChunkSize;
+            List<MemoryAllocation> allocations = new((int)chunks);
+
+            try
+            {
+                // 分配每个块
+                for (ulong i = 0; i < chunks; i++)
+                {
+                    ulong chunkSize = (i == chunks - 1) ? 
+                        size - (i * ChunkSize) : 
+                        ChunkSize;
+                        
+                    var allocation = AllocateWithRetry(
+                        memoryTypeIndex, 
+                        chunkSize, 
+                        alignment, 
+                        map, 
+                        isBuffer);
+                        
+                    if (allocation.IsNull)
+                    {
+                        throw new OutOfMemoryException($"Failed to allocate chunk {i}/{chunks}");
+                    }
+                    
+                    allocations.Add(allocation);
+                }
+
+                // 创建组合分配
+                return new MemoryAllocation
+                {
+                    Chunks = allocations,
+                    Size = size
+                };
+            }
+            catch
+            {
+                // 释放已分配的部分
+                foreach (var alloc in allocations)
+                {
+                    alloc.Dispose(_api, _device);
+                }
+                return default;
+            }
         }
 
         private MemoryAllocation AllocateWithRetry(
@@ -82,7 +182,7 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 var allocation = Allocate(memoryTypeIndex, size, alignment, map, isBuffer);
                 
-                if (allocation.Memory.Handle != 0)
+                if (!allocation.IsNull)
                 {
                     return allocation;
                 }
