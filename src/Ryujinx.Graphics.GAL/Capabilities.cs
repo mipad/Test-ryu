@@ -51,7 +51,7 @@ namespace Ryujinx.Graphics.GAL
         public readonly bool SupportsViewportSwizzle;
         public readonly bool SupportsIndirectParameters;
         public readonly bool SupportsDepthClipControl;
-        public readonly bool SupportsFragmentDensityMap; // 添加片段密度映射支持
+        public readonly bool SupportsFragmentDensityMap;
 
         public readonly int UniformBufferSetIndex;
         public readonly int StorageBufferSetIndex;
@@ -121,7 +121,7 @@ namespace Ryujinx.Graphics.GAL
             bool supportsViewportSwizzle,
             bool supportsIndirectParameters,
             bool supportsDepthClipControl,
-            bool supportsFragmentDensityMap, // 添加片段密度映射支持参数
+            bool supportsFragmentDensityMap,
             int uniformBufferSetIndex,
             int storageBufferSetIndex,
             int textureSetIndex,
@@ -185,7 +185,7 @@ namespace Ryujinx.Graphics.GAL
             SupportsViewportSwizzle = supportsViewportSwizzle;
             SupportsIndirectParameters = supportsIndirectParameters;
             SupportsDepthClipControl = supportsDepthClipControl;
-            SupportsFragmentDensityMap = supportsFragmentDensityMap; // 赋值
+            SupportsFragmentDensityMap = supportsFragmentDensityMap;
             UniformBufferSetIndex = uniformBufferSetIndex;
             StorageBufferSetIndex = storageBufferSetIndex;
             TextureSetIndex = textureSetIndex;
