@@ -12,6 +12,7 @@ using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.KHR;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -164,6 +165,9 @@ namespace LibRyujinx
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             CloseEmulation();
+            
+            // 调用新增的图形资源释放方法
+            DisposeGraphics();
         }
 
         [UnmanagedCallersOnly(EntryPoint = "deviceLoadDescriptor")]
@@ -312,13 +316,34 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "graphicsRendererRunLoop")]
         public static void JniRunLoopNative()
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            SetSwapBuffersCallback(() =>
+            Logger.Trace?.Print(LogClass.Application, "JniRunLoopNative called");
+            
+            try
             {
-                var time = SwitchDevice.EmulationContext.Statistics.GetGameFrameTime();
-                Interop.FrameEnded(time);
-            });
-            RunLoop();
+                SetSwapBuffersCallback(() =>
+                {
+                    try
+                    {
+                        var time = SwitchDevice?.EmulationContext?.Statistics.GetGameFrameTime() ?? 0;
+                        Interop.FrameEnded(time);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error?.Print(LogClass.Application, $"SwapBuffers callback error: {ex}");
+                    }
+                });
+                
+                RunLoop();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"JniRunLoopNative crashed: {ex}");
+                throw;
+            }
+            finally
+            {
+                Logger.Info?.Print(LogClass.Application, "JniRunLoopNative exited");
+            }
         }
 
         [UnmanagedCallersOnly(EntryPoint = "loggingSetEnabled")]
