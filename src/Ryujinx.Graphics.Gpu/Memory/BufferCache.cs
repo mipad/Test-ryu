@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Ryujinx.Common.Logging;
+using System.Buffers;
 
 namespace Ryujinx.Graphics.Gpu.Memory
 {
@@ -210,6 +211,8 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="stage">The type of usage that created the buffer</param>
         public void CreateBuffer(MultiRange range, BufferStage stage)
         {
+            if (range.Count == 0) return;
+
             if (range.Count > 1)
             {
                 CreateMultiRangeBuffer(range, stage);
@@ -281,6 +284,8 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="stage">The type of usage that created the buffer</param>
         private void CreateMultiRangeBuffer(MultiRange range, BufferStage stage)
         {
+            if (range.Count == 0) return;
+
             for (int i = 0; i < range.Count; i++)
             {
                 MemoryRange subRange = range.GetSubRange(i);
@@ -733,7 +738,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                         srcOffset = 0;
                     }
 
-                    if (dstRange.GetSubRange(dstRangeIndex).Size == dstOffset)
+               if (dstRange.GetSubRange(dstRangeIndex).Size == dstOffset)
                     {
                         dstRangeIndex++;
                         dstOffset = 0;
@@ -929,51 +934,50 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="write">Whether the buffer will be written to by this use</param>
         /// <returns>The buffer where the range is fully contained</returns>
         private Buffer GetBuffer(ulong address, ulong size, BufferStage stage, bool write = false)
-{   
-    if (address == 0xFFFFFFFFFFFFFFFF)
-    {
-        return _dummyBuffer;
-    }
-
-    Buffer buffer = null;
-
-    if (size != 0)
-    {
-        buffer = _buffers.FindFirstOverlap(address, size);
-        
-        if (buffer == null)
         {
-            CreateBuffer(address, size, stage);
-            buffer = _buffers.FindFirstOverlap(address, size);
-            
-            if (buffer == null)
+            if (address == ulong.MaxValue)
             {
-                // 修复：使用全局 Logger 替代 _context.Logger
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Failed to create buffer for address 0x{address:X}, size 0x{size:X}");
                 return _dummyBuffer;
             }
-        }
-        
-        buffer.CopyFromDependantVirtualBuffers();
-        buffer.SynchronizeMemory(address, size);
-        
-        if (write)
-        {
-            buffer.SignalModified(address, size, stage);
-        }
-    }
-    else
-    {
-        buffer = _buffers.FindFirstOverlap(address, 1);
-        if (buffer == null)
-        {
-            return _dummyBuffer;
-        }
-    }
 
-    return buffer;
-}
+            Buffer buffer = null;
+
+            if (size != 0)
+            {
+                buffer = _buffers.FindFirstOverlap(address, size);
+                
+                if (buffer == null)
+                {
+                    CreateBuffer(address, size, stage);
+                    buffer = _buffers.FindFirstOverlap(address, size);
+                    
+                    if (buffer == null)
+                    {
+                        Logger.Warning?.Print(LogClass.Gpu, 
+                            $"Failed to create buffer for address 0x{address:X}, size 0x{size:X}");
+                        return _dummyBuffer;
+                    }
+                }
+                
+                buffer.CopyFromDependantVirtualBuffers();
+                buffer.SynchronizeMemory(address, size);
+                
+                if (write)
+                {
+                    buffer.SignalModified(address, size, stage);
+                }
+            }
+            else
+            {
+                buffer = _buffers.FindFirstOverlap(address, 1);
+                if (buffer == null)
+                {
+                    return _dummyBuffer;
+                }
+            }
+
+            return buffer;
+        }
 
         /// <summary>
         /// Performs guest to host memory synchronization of a given memory range.
@@ -1062,8 +1066,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             List<ulong> toDelete = null;
 
             Prune(_dirtyCache, ref toDelete);
-
-            toDelete?.Clear();
+            toDelete = null; // Reset for next dictionary
 
             Prune(_modifiedCache, ref toDelete);
 
