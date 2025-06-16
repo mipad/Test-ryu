@@ -189,6 +189,7 @@ namespace Ryujinx.Graphics.OpenGL
                 supportsIndirectParameters: HwCapabilities.SupportsIndirectParameters,
                 supportsDepthClipControl: true,
                 supportsFragmentDensityMap: false, // OpenGL does not support fragment density mapping
+                supportsFragmentDensityMap2: false, // OpenGL does not support fragment density mapping 2
                 uniformBufferSetIndex: 0,
                 storageBufferSetIndex: 1,
                 textureSetIndex: 2,
