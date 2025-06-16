@@ -27,6 +27,10 @@ namespace LibRyujinx
         private static NativeGraphicsInterop _nativeGraphicsInterop;
         private static ManualResetEvent _gpuDoneEvent;
         private static bool _enableGraphicsLogging;
+        
+        // 添加线程同步和状态管理
+        private static readonly object _syncLock = new object();
+        private static bool _disposed = false;
 
         public delegate void SwapBuffersCallback();
         public delegate IntPtr GetProcAddress(string name);
@@ -92,25 +96,51 @@ namespace LibRyujinx
         {
             if (Renderer == null)
             {
+                Logger.Warning?.Print(LogClass.Application, "RunLoop: Renderer is null, exiting");
                 return;
             }
+            
             var device = SwitchDevice!.EmulationContext!;
             _gpuDoneEvent = new ManualResetEvent(true);
 
-            device.Gpu.Renderer.Initialize(_enableGraphicsLogging ? GraphicsDebugLevel.All : GraphicsDebugLevel.None);
-
-            _gpuCancellationTokenSource = new CancellationTokenSource();
-
-            device.Gpu.ShaderCacheStateChanged += LoadProgressStateChangedHandler;
-            device.Processes.ActiveApplication.DiskCacheLoadState.StateChanged += LoadProgressStateChangedHandler;
-
             try
             {
+                lock (_syncLock)
+                {
+                    if (_disposed)
+                    {
+                        Logger.Warning?.Print(LogClass.Application, "RunLoop called after disposal");
+                        return;
+                    }
+
+                    Logger.Info?.Print(LogClass.Application, "Starting GPU run loop");
+                    device.Gpu.Renderer.Initialize(_enableGraphicsLogging ? GraphicsDebugLevel.All : GraphicsDebugLevel.None);
+
+                    _gpuCancellationTokenSource = new CancellationTokenSource();
+                    _isActive = true;
+                    _isStopped = false;
+
+                    device.Gpu.ShaderCacheStateChanged += LoadProgressStateChangedHandler;
+                    device.Processes.ActiveApplication.DiskCacheLoadState.StateChanged += LoadProgressStateChangedHandler;
+                }
+
                 device.Gpu.Renderer.RunLoop(() =>
                 {
                     _gpuDoneEvent.Reset();
                     device.Gpu.SetGpuThread();
-                    device.Gpu.InitializeShaderCache(_gpuCancellationTokenSource.Token);
+                    
+                    try
+                    {
+                        device.Gpu.InitializeShaderCache(_gpuCancellationTokenSource.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        Logger.Info?.Print(LogClass.Application, "Shader cache initialization canceled");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error?.Print(LogClass.Application, $"Shader cache init failed: {ex}");
+                    }
 
                     _isActive = true;
 
@@ -121,43 +151,109 @@ namespace LibRyujinx
 
                     while (_isActive)
                     {
-                        if (_isStopped)
+                        if (_isStopped || _disposed)
                         {
+                            Logger.Info?.Print(LogClass.Application, "RunLoop exit requested");
                             break;
                         }
 
-                        if (device.WaitFifo())
+                        try
                         {
-                            device.Statistics.RecordFifoStart();
-                            device.ProcessFrame();
-                            device.Statistics.RecordFifoEnd();
-                        }
-
-                        while (device.ConsumeFrameAvailable())
-                        {
-                            device.PresentFrame(() =>
+                            if (device.WaitFifo())
                             {
-                                if (device.Gpu.Renderer is ThreadedRenderer threaded && threaded.BaseRenderer is VulkanRenderer vulkanRenderer)
+                                device.Statistics.RecordFifoStart();
+                                device.ProcessFrame();
+                                device.Statistics.RecordFifoEnd();
+                            }
+
+                            while (device.ConsumeFrameAvailable())
+                            {
+                                device.PresentFrame(() =>
                                 {
-                                    setCurrentTransform(_window, (int)vulkanRenderer.CurrentTransform);
-                                }
-                                _swapBuffersCallback?.Invoke();
-                            });
+                                    if (device.Gpu.Renderer is ThreadedRenderer threaded && threaded.BaseRenderer is VulkanRenderer vulkanRenderer)
+                                    {
+                                        setCurrentTransform(_window, (int)vulkanRenderer.CurrentTransform);
+                                    }
+                                    _swapBuffersCallback?.Invoke();
+                                });
+                            }
+                            
+                            // 添加短暂休眠防止CPU过载
+                            Thread.Sleep(1);
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Error?.Print(LogClass.Application, $"Frame processing error: {ex}");
+                            if (Debugger.IsAttached) Debugger.Break();
+                            throw;
                         }
                     }
 
-                    if (device.Gpu.Renderer is ThreadedRenderer threaded)
+                    try
                     {
-                        threaded.FlushThreadedCommands();
+                        if (device.Gpu.Renderer is ThreadedRenderer threadedRenderer)
+                        {
+                            threadedRenderer.FlushThreadedCommands();
+                        }
                     }
-
-                    _gpuDoneEvent.Set();
+                    catch (Exception ex)
+                    {
+                        Logger.Error?.Print(LogClass.Application, $"Flush threaded commands failed: {ex}");
+                    }
+                    finally
+                    {
+                        _gpuDoneEvent.Set();
+                    }
                 });
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"RunLoop crashed: {ex}");
+                throw;
             }
             finally
             {
-                device.Gpu.ShaderCacheStateChanged -= LoadProgressStateChangedHandler;
-                device.Processes.ActiveApplication.DiskCacheLoadState.StateChanged -= LoadProgressStateChangedHandler;
+                lock (_syncLock)
+                {
+                    device.Gpu.ShaderCacheStateChanged -= LoadProgressStateChangedHandler;
+                    device.Processes.ActiveApplication.DiskCacheLoadState.StateChanged -= LoadProgressStateChangedHandler;
+                    
+                    Logger.Info?.Print(LogClass.Application, "RunLoop cleanup complete");
+                }
+            }
+        }
+
+        // 添加显式的资源释放方法
+        public static void DisposeGraphics()
+        {
+            lock (_syncLock)
+            {
+                if (_disposed) return;
+                
+                Logger.Info?.Print(LogClass.Application, "Disposing graphics resources");
+                
+                _isActive = false;
+                _isStopped = true;
+                _disposed = true;
+                
+                try
+                {
+                    _gpuCancellationTokenSource?.Cancel();
+                    _gpuDoneEvent?.WaitOne(3000);
+                    
+                    if (Renderer is IDisposable disposable)
+                    {
+                        disposable.Dispose();
+                    }
+                    
+                    Renderer = null;
+                    _gpuCancellationTokenSource?.Dispose();
+                    _gpuDoneEvent?.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.Application, $"Graphics disposal error: {ex}");
+                }
             }
         }
 
