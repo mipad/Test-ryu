@@ -2,7 +2,8 @@ using Silk.NET.Vulkan;
 using System;
 using System.Diagnostics;
 using System.Collections.Generic;
-using Ryujinx.Common.Logging; // 确保添加日志支持
+using System.Threading; // 添加缺失的命名空间
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -18,7 +19,7 @@ namespace Ryujinx.Graphics.Vulkan
             // ARM Mali 的设备厂商ID是 0x13B5
             _isMobileDevice = vendorId == 0x13B5;
             Logger.Info?.Print(LogClass.Gpu, 
-                $"FenceHelper initialized for {(isMobileDevice ? "Mobile (Mali)" : "Desktop")} device");
+                $"FenceHelper initialized for {(_isMobileDevice ? "Mobile (Mali)" : "Desktop")} device"); // 修复变量名
         }
 
         public static bool AnySignaled(Vk api, Device device, ReadOnlySpan<Fence> fences, ulong timeout = 0)
@@ -39,8 +40,8 @@ namespace Ryujinx.Graphics.Vulkan
             int attempt = 0;
             while (true)
             {
-                // 指数退避策略：每次超时后等待时间翻倍
-                ulong timeout = baseTimeout * (ulong)Math.Pow(2, attempt);
+                // 修复：使用位移替代 Math.Pow 避免类型转换问题
+                ulong timeout = baseTimeout * (1UL << attempt);
                 
                 // 记录等待开始时间
                 long startTime = Stopwatch.GetTimestamp();
@@ -71,8 +72,9 @@ namespace Ryujinx.Graphics.Vulkan
                         }
                         catch (VulkanException ex)
                         {
+                            // 修复：使用 ex.Message 替代 ex.Result
                             Logger.Error?.Print(LogClass.Gpu, 
-                                $"Fence reset failed: {ex.Result}");
+                                $"Fence reset failed: {ex.Message}");
                         }
                         
                         // 移动设备允许更多重试次数
