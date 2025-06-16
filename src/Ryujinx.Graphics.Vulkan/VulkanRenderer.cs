@@ -44,6 +44,7 @@ namespace Ryujinx.Graphics.Vulkan
         
         // 修改：使用布尔值代替具体类型
         internal bool SupportsFragmentDensityMap { get; private set; }
+        internal bool SupportsFragmentDensityMap2 { get; private set; } // 新增属性
 
         internal uint QueueFamilyIndex { get; private set; }
         internal Queue Queue { get; private set; }
@@ -194,6 +195,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             // 修改：使用布尔值代替具体类型
             SupportsFragmentDensityMap = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map");
+            SupportsFragmentDensityMap2 = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map2"); // 新增
 
             if (maxQueueCount >= 2)
             {
@@ -802,6 +804,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             // 修改：直接使用布尔属性
             bool supportsFragmentDensityMap = SupportsFragmentDensityMap;
+            bool supportsFragmentDensityMap2 = SupportsFragmentDensityMap2; // 新增
 
             return new Capabilities(
                 api: TargetApi.Vulkan,
@@ -849,7 +852,8 @@ namespace Ryujinx.Graphics.Vulkan
                 supportsViewportSwizzle: false,
                 supportsIndirectParameters: true,
                 supportsDepthClipControl: Capabilities.SupportsDepthClipControl,
-                supportsFragmentDensityMap: supportsFragmentDensityMap, // 添加支持标记
+                supportsFragmentDensityMap: supportsFragmentDensityMap,
+                supportsFragmentDensityMap2: supportsFragmentDensityMap2, // 新增
                 uniformBufferSetIndex: PipelineBase.UniformSetIndex,
                 storageBufferSetIndex: PipelineBase.StorageSetIndex,
                 textureSetIndex: PipelineBase.TextureSetIndex,
