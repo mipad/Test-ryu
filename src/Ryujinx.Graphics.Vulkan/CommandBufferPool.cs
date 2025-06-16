@@ -9,10 +9,10 @@ namespace Ryujinx.Graphics.Vulkan
 {
     class CommandBufferPool : IDisposable
     {
-        public const int MaxCommandBuffers = 16;
+        public const int MaxCommandBuffers = 32;
 
-        private readonly int _totalCommandBuffers;
-        private readonly int _totalCommandBuffersMask;
+        private int _totalCommandBuffers;
+        private int _totalCommandBuffersMask;
 
         private readonly Vk _api;
         private readonly Device _device;
@@ -22,6 +22,8 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly CommandPool _pool;
         private readonly Thread _owner;
 
+        private object[] _bufferLocks;
+        
         public bool OwnedByCurrentThread => _owner == Thread.CurrentThread;
 
         private struct ReservedCommandBuffer
@@ -52,9 +54,9 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        private readonly ReservedCommandBuffer[] _commandBuffers;
+        private ReservedCommandBuffer[] _commandBuffers;
 
-        private readonly int[] _queuedIndexes;
+        private int[] _queuedIndexes;
         private int _queuedIndexesPtr;
         private int _queuedCount;
         private int _inUseCount;
@@ -86,10 +88,11 @@ namespace Ryujinx.Graphics.Vulkan
             api.CreateCommandPool(device, in commandPoolCreateInfo, null, out _pool).ThrowOnError();
 
             // We need at least 2 command buffers to get texture data in some cases.
-            _totalCommandBuffers = isLight ? 2 : MaxCommandBuffers;
+            _totalCommandBuffers = isLight ? 4 : MaxCommandBuffers;
             _totalCommandBuffersMask = _totalCommandBuffers - 1;
 
             _commandBuffers = new ReservedCommandBuffer[_totalCommandBuffers];
+            _bufferLocks = new object[_totalCommandBuffers];
 
             _queuedIndexes = new int[_totalCommandBuffers];
             _queuedIndexesPtr = 0;
@@ -97,6 +100,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             for (int i = 0; i < _totalCommandBuffers; i++)
             {
+                _bufferLocks[i] = new object();
                 _commandBuffers[i].Initialize(api, device, _pool);
                 WaitAndDecrementRef(i);
             }
@@ -234,35 +238,76 @@ namespace Ryujinx.Graphics.Vulkan
 
         public CommandBufferScoped Rent()
         {
-            lock (_commandBuffers)
+            const int MaxAttempts = 2;
+            int attempts = 0;
+
+            while (true)
             {
-                int cursor = FreeConsumed(_inUseCount + _queuedCount == _totalCommandBuffers);
-
-                for (int i = 0; i < _totalCommandBuffers; i++)
+                lock (_commandBuffers)
                 {
-                    ref var entry = ref _commandBuffers[cursor];
+                    int cursor = FreeConsumed(_inUseCount + _queuedCount == _totalCommandBuffers);
 
-                    if (!entry.InUse && !entry.InConsumption)
+                    // 遍历所有缓冲区，尝试找到未使用的
+                    for (int i = 0; i < _totalCommandBuffers; i++)
                     {
-                        entry.InUse = true;
+                        int index = (cursor + i) % _totalCommandBuffers;
+                        ref var entry = ref _commandBuffers[index];
 
-                        _inUseCount++;
-
-                        var commandBufferBeginInfo = new CommandBufferBeginInfo
+                        if (!entry.InUse && !entry.InConsumption)
                         {
-                            SType = StructureType.CommandBufferBeginInfo,
-                        };
+                            entry.InUse = true;
+                            _inUseCount++;
 
-                        _api.BeginCommandBuffer(entry.CommandBuffer, in commandBufferBeginInfo).ThrowOnError();
+                            var commandBufferBeginInfo = new CommandBufferBeginInfo
+                            {
+                                SType = StructureType.CommandBufferBeginInfo,
+                            };
 
-                        return new CommandBufferScoped(this, entry.CommandBuffer, cursor);
+                            _api.BeginCommandBuffer(entry.CommandBuffer, in commandBufferBeginInfo).ThrowOnError();
+
+                            return new CommandBufferScoped(this, entry.CommandBuffer, index);
+                        }
                     }
 
-                    cursor = (cursor + 1) & _totalCommandBuffersMask;
+                    // 若未找到可用缓冲区且未超过最大尝试次数，则扩容池
+                    if (attempts < MaxAttempts)
+                    {
+                        ExpandPool();
+                        attempts++;
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException(
+                            $"Out of command buffers (In use: {_inUseCount}, queued: {_queuedCount}, total: {_totalCommandBuffers})"
+                        );
+                    }
                 }
             }
+        }
 
-            throw new InvalidOperationException($"Out of command buffers (In use: {_inUseCount}, queued: {_queuedCount}, total: {_totalCommandBuffers})");
+        // 扩容池方法
+        private void ExpandPool()
+        {
+            lock (_commandBuffers)
+            {
+                int newSize = _totalCommandBuffers * 2;
+
+                // 扩容缓冲区数组和锁数组
+                Array.Resize(ref _commandBuffers, newSize);
+                Array.Resize(ref _bufferLocks, newSize);
+                Array.Resize(ref _queuedIndexes, newSize);
+
+                // 初始化新增的缓冲区
+                for (int i = _totalCommandBuffers; i < newSize; i++)
+                {
+                    _bufferLocks[i] = new object();
+                    _commandBuffers[i].Initialize(_api, _device, _pool);
+                    WaitAndDecrementRef(i); // 确保新缓冲区初始状态可用
+                }
+
+                _totalCommandBuffers = newSize;
+                _totalCommandBuffersMask = newSize - 1;
+            }
         }
 
         public void Return(CommandBufferScoped cbs)
@@ -328,9 +373,12 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (entry.InConsumption)
             {
-                entry.Fence.Wait();
+                entry.Fence?.Wait();
                 entry.InConsumption = false;
             }
+
+            // 释放当前fence（如果存在）
+            entry.Fence?.Dispose();
 
             foreach (var dependant in entry.Dependants)
             {
@@ -345,7 +393,6 @@ namespace Ryujinx.Graphics.Vulkan
 
             entry.Dependants.Clear();
             entry.Waitables.Clear();
-            entry.Fence?.Dispose();
 
             if (refreshFence)
             {
