@@ -71,7 +71,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 context,
                 physicalMemory,
                 0,         // address
-                0x19000000,   // size
+                0x1,   // size
                 BufferStage.None,
                 false
             );
