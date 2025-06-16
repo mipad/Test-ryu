@@ -52,6 +52,7 @@ namespace Ryujinx.Graphics.GAL
         public readonly bool SupportsIndirectParameters;
         public readonly bool SupportsDepthClipControl;
         public readonly bool SupportsFragmentDensityMap;
+        public readonly bool SupportsFragmentDensityMap2; // 新增
 
         public readonly int UniformBufferSetIndex;
         public readonly int StorageBufferSetIndex;
@@ -122,6 +123,7 @@ namespace Ryujinx.Graphics.GAL
             bool supportsIndirectParameters,
             bool supportsDepthClipControl,
             bool supportsFragmentDensityMap,
+            bool supportsFragmentDensityMap2, // 新增参数
             int uniformBufferSetIndex,
             int storageBufferSetIndex,
             int textureSetIndex,
@@ -186,6 +188,7 @@ namespace Ryujinx.Graphics.GAL
             SupportsIndirectParameters = supportsIndirectParameters;
             SupportsDepthClipControl = supportsDepthClipControl;
             SupportsFragmentDensityMap = supportsFragmentDensityMap;
+            SupportsFragmentDensityMap2 = supportsFragmentDensityMap2; // 新增赋值
             UniformBufferSetIndex = uniformBufferSetIndex;
             StorageBufferSetIndex = storageBufferSetIndex;
             TextureSetIndex = textureSetIndex;
