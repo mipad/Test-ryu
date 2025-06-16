@@ -2,7 +2,7 @@ using Silk.NET.Vulkan;
 using System;
 using System.Diagnostics;
 using System.Collections.Generic;
-using System.Threading; // 添加缺失的命名空间
+using System.Threading;
 using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Vulkan
@@ -13,13 +13,11 @@ namespace Ryujinx.Graphics.Vulkan
         private static readonly Dictionary<Fence, long> _fenceTimestamps = new();
         private static bool _isMobileDevice = false;
         
-        // 初始化设备类型（应在渲染器初始化时调用）
         public static void Initialize(uint vendorId)
         {
-            // ARM Mali 的设备厂商ID是 0x13B5
             _isMobileDevice = vendorId == 0x13B5;
             Logger.Info?.Print(LogClass.Gpu, 
-                $"FenceHelper initialized for {(_isMobileDevice ? "Mobile (Mali)" : "Desktop")} device"); // 修复变量名
+                $"FenceHelper initialized for {(_isMobileDevice ? "Mobile (Mali)" : "Desktop")} device");
         }
 
         public static bool AnySignaled(Vk api, Device device, ReadOnlySpan<Fence> fences, ulong timeout = 0)
@@ -34,21 +32,18 @@ namespace Ryujinx.Graphics.Vulkan
         
         public static void WaitAllIndefinitely(Vk api, Device device, ReadOnlySpan<Fence> fences)
         {
-            // 根据设备类型设置基础超时（移动设备使用更长超时）
-            ulong baseTimeout = _isMobileDevice ? 30_000_000_000 : 10_000_000_000; // 30s/10s
+            ulong baseTimeout = _isMobileDevice ? 30_000_000_000 : 10_000_000_000;
             
             int attempt = 0;
             while (true)
             {
-                // 修复：使用位移替代 Math.Pow 避免类型转换问题
-                ulong timeout = baseTimeout * (1UL << attempt);
+                // 修复：使用安全的指数计算避免溢出
+                ulong currentTimeout = CalculateExponentialTimeout(baseTimeout, attempt);
                 
-                // 记录等待开始时间
                 long startTime = Stopwatch.GetTimestamp();
                 
-                Result result = api.WaitForFences(device, (uint)fences.Length, fences, true, timeout);
+                Result result = api.WaitForFences(device, (uint)fences.Length, fences, true, currentTimeout);
                 
-                // 计算实际等待时间（毫秒）
                 double elapsedMs = (Stopwatch.GetTimestamp() - startTime) * 1000.0 / Stopwatch.Frequency;
                 
                 switch (result)
@@ -63,7 +58,6 @@ namespace Ryujinx.Graphics.Vulkan
                         Logger.Warning?.Print(LogClass.Gpu, 
                             $"VK Fence timeout (attempt {attempt}, waited {elapsedMs:F2}ms)");
                         
-                        // 重置所有围栏避免死锁
                         try
                         {
                             api.ResetFences(device, (uint)fences.Length, fences);
@@ -72,12 +66,10 @@ namespace Ryujinx.Graphics.Vulkan
                         }
                         catch (VulkanException ex)
                         {
-                            // 修复：使用 ex.Message 替代 ex.Result
                             Logger.Error?.Print(LogClass.Gpu, 
                                 $"Fence reset failed: {ex.Message}");
                         }
                         
-                        // 移动设备允许更多重试次数
                         int maxAttempts = _isMobileDevice ? 5 : 3;
                         if (attempt >= maxAttempts)
                         {
@@ -99,8 +91,32 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
         }
+
+        // 新增：安全的指数超时计算
+        private static ulong CalculateExponentialTimeout(ulong baseTimeout, int attempt)
+        {
+            // 限制最大指数值避免溢出
+            const int maxShift = 62; // ulong最大位移限制
+            
+            if (attempt > maxShift)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Exponential timeout capped at {maxShift} attempts");
+                return ulong.MaxValue;
+            }
+            
+            // 使用位移计算指数增长
+            ulong multiplier = 1UL << Math.Min(attempt, maxShift);
+            
+            // 检查乘法是否会导致溢出
+            if (multiplier > ulong.MaxValue / baseTimeout)
+            {
+                return ulong.MaxValue;
+            }
+            
+            return baseTimeout * multiplier;
+        }
         
-        // 记录围栏提交时间（在命令缓冲区提交时调用）
         public static void TrackFenceSubmission(Fence fence)
         {
             lock (_fenceTimestamps)
@@ -109,16 +125,15 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
         
-        // 围栏监控线程（在渲染器初始化时启动）
         public static void StartFenceMonitor(Vk api, Device device)
         {
             var monitorThread = new Thread(() =>
             {
-                const long TimeoutTicks = 15 * 10_000_000; // 15秒（以100ns ticks计）
+                const long TimeoutTicks = 15 * 10_000_000;
                 
                 while (true)
                 {
-                    Thread.Sleep(5000); // 每5秒检查一次
+                    Thread.Sleep(5000);
                     
                     lock (_fenceTimestamps)
                     {
