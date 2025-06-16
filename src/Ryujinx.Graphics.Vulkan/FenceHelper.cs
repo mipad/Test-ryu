@@ -32,12 +32,12 @@ namespace Ryujinx.Graphics.Vulkan
         
         public static void WaitAllIndefinitely(Vk api, Device device, ReadOnlySpan<Fence> fences)
         {
-            ulong baseTimeout = _isMobileDevice ? 30_000_000_000 : 10_000_000_000;
+            // 修复：添加 UL 后缀确保字面量为 ulong 类型
+            ulong baseTimeout = _isMobileDevice ? 30_000_000_000UL : 10_000_000_000UL;
             
             int attempt = 0;
             while (true)
             {
-                // 修复：使用安全的指数计算避免溢出
                 ulong currentTimeout = CalculateExponentialTimeout(baseTimeout, attempt);
                 
                 long startTime = Stopwatch.GetTimestamp();
@@ -92,11 +92,9 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        // 新增：安全的指数超时计算
         private static ulong CalculateExponentialTimeout(ulong baseTimeout, int attempt)
         {
-            // 限制最大指数值避免溢出
-            const int maxShift = 62; // ulong最大位移限制
+            const int maxShift = 62;
             
             if (attempt > maxShift)
             {
@@ -105,10 +103,8 @@ namespace Ryujinx.Graphics.Vulkan
                 return ulong.MaxValue;
             }
             
-            // 使用位移计算指数增长
             ulong multiplier = 1UL << Math.Min(attempt, maxShift);
             
-            // 检查乘法是否会导致溢出
             if (multiplier > ulong.MaxValue / baseTimeout)
             {
                 return ulong.MaxValue;
