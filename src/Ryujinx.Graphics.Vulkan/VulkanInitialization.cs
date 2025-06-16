@@ -47,10 +47,13 @@ namespace Ryujinx.Graphics.Vulkan
             "VK_KHR_maintenance2",
             "VK_EXT_attachment_feedback_loop_layout",
             "VK_EXT_attachment_feedback_loop_dynamic_state",
-             "VK_KHR_timeline_semaphore", //添加时间线信号量功能
-             "VK_KHR_multiview", // 添加
+            "VK_KHR_timeline_semaphore", // 添加时间线信号量功能
+            "VK_KHR_multiview", // 添加
             "VK_KHR_spirv_1_4", // 添加SPIR-V 1.4支持
-            "VK_EXT_texture_compression_astc_hdr" // 添加ASTC HDR纹理压缩支持
+            "VK_EXT_texture_compression_astc_hdr", // 添加ASTC HDR纹理压缩支持
+            //  添加片段密度图扩展 
+            "VK_EXT_fragment_density_map",
+            "VK_EXT_fragment_density_map2"
         ];
 
         private static readonly string[] _requiredExtensions =
@@ -413,6 +416,30 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
                 features2.PNext = &supportedFeaturesDynamicAttachmentFeedbackLoopLayout;
             }
 
+            //  添加片段密度图特性支持 
+            PhysicalDeviceFragmentDensityMapFeaturesEXT supportedFeaturesFragmentDensityMap = new()
+            {
+                SType = StructureType.PhysicalDeviceFragmentDensityMapFeaturesExt,
+                PNext = features2.PNext,
+            };
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map"))
+            {
+                features2.PNext = &supportedFeaturesFragmentDensityMap;
+            }
+
+            PhysicalDeviceFragmentDensityMap2FeaturesEXT supportedFeaturesFragmentDensityMap2 = new()
+            {
+                SType = StructureType.PhysicalDeviceFragmentDensityMap2FeaturesExt,
+                PNext = features2.PNext,
+            };
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map2"))
+            {
+                features2.PNext = &supportedFeaturesFragmentDensityMap2;
+            }
+            //  添加结束 
+
             PhysicalDeviceVulkan12Features supportedPhysicalDeviceVulkan12Features = new()
             {
                 SType = StructureType.PhysicalDeviceVulkan12Features,
@@ -633,6 +660,38 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
 
                 pExtendedFeatures = &featuresDynamicAttachmentFeedbackLoopLayout;
             }
+
+            // 添加片段密度图特性启用
+            PhysicalDeviceFragmentDensityMapFeaturesEXT featuresFragmentDensityMap;
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map") &&
+                supportedFeaturesFragmentDensityMap.FragmentDensityMap)
+            {
+                featuresFragmentDensityMap = new()
+                {
+                    SType = StructureType.PhysicalDeviceFragmentDensityMapFeaturesExt,
+                    PNext = pExtendedFeatures,
+                    FragmentDensityMap = true,
+                };
+
+                pExtendedFeatures = &featuresFragmentDensityMap;
+            }
+
+            PhysicalDeviceFragmentDensityMap2FeaturesEXT featuresFragmentDensityMap2;
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map2") &&
+                supportedFeaturesFragmentDensityMap2.FragmentDensityMapDeferred)
+            {
+                featuresFragmentDensityMap2 = new()
+                {
+                    SType = StructureType.PhysicalDeviceFragmentDensityMap2FeaturesExt,
+                    PNext = pExtendedFeatures,
+                    FragmentDensityMapDeferred = true,
+                };
+
+                pExtendedFeatures = &featuresFragmentDensityMap2;
+            }
+            // 
 
             var enabledExtensions = _requiredExtensions.Union(_desirableExtensions.Intersect(physicalDevice.DeviceExtensions)).ToArray();
 
