@@ -13,6 +13,7 @@ using Ryujinx.Graphics.Vulkan;
 using Silk.NET.Vulkan;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 
@@ -184,7 +185,9 @@ namespace LibRyujinx
                         catch (Exception ex)
                         {
                             Logger.Error?.Print(LogClass.Application, $"Frame processing error: {ex}");
-                            if (Debugger.IsAttached) Debugger.Break();
+                            // 使用标准Debug类替代
+                            if (System.Diagnostics.Debugger.IsAttached) 
+                                System.Diagnostics.Debugger.Break();
                             throw;
                         }
                     }
