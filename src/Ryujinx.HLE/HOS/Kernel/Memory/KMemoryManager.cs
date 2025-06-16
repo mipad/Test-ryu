@@ -1,10 +1,14 @@
 using Ryujinx.HLE.HOS.Kernel.Common;
 using System;
+using System.Collections.Generic;
+using System.Collections.Concurrent;
 
 namespace Ryujinx.HLE.HOS.Kernel.Memory
 {
     class KMemoryManager
     {
+        private readonly object _globalLock = new object();
+        private readonly ConcurrentDictionary<ulong, KMemoryRegionManager> _regionCache = new ConcurrentDictionary<ulong, KMemoryRegionManager>();
         public KMemoryRegionManager[] MemoryRegions { get; }
 
         public KMemoryManager(MemorySize size, MemoryArrange arrange)
@@ -27,6 +31,18 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             return null;
         }
 
+        private KMemoryRegionManager GetCachedRegion(ulong address)
+        {
+            // 使用地址的高44位作为缓存键（按16KB页对齐）
+            ulong cacheKey = address >> 14;
+            
+            return _regionCache.GetOrAdd(cacheKey, key => 
+            {
+                // 如果缓存未命中，执行实际查找
+                return GetMemoryRegion(address);
+            });
+        }
+
         public void IncrementPagesReferenceCount(ulong address, ulong pagesCount)
         {
             IncrementOrDecrementPagesReferenceCount(address, pagesCount, true);
@@ -39,26 +55,56 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
 
         private void IncrementOrDecrementPagesReferenceCount(ulong address, ulong pagesCount, bool increment)
         {
-            while (pagesCount != 0)
+            lock (_globalLock)
             {
-                var region = GetMemoryRegion(address);
-
-                ulong countToProcess = Math.Min(pagesCount, region.GetPageOffsetFromEnd(address));
-
-                lock (region)
+                // 使用字典按区域分组操作
+                var regionOperations = new Dictionary<KMemoryRegionManager, List<(ulong Address, ulong Count)>>();
+                
+                ulong remaining = pagesCount;
+                ulong currentAddr = address;
+                
+                // 批量收集操作并按区域分组
+                while (remaining != 0)
                 {
-                    if (increment)
+                    var region = GetCachedRegion(currentAddr);
+                    if (region == null)
                     {
-                        region.IncrementPagesReferenceCount(address, countToProcess);
+                        throw new InvalidOperationException($"Address 0x{currentAddr:X} is not mapped to any memory region");
                     }
-                    else
+
+                    ulong count = Math.Min(remaining, region.GetPageOffsetFromEnd(currentAddr));
+                    
+                    // 按区域分组操作
+                    if (!regionOperations.TryGetValue(region, out var operations))
                     {
-                        region.DecrementPagesReferenceCount(address, countToProcess);
+                        operations = new List<(ulong, ulong)>();
+                        regionOperations[region] = operations;
+                    }
+                    
+                    operations.Add((currentAddr, count));
+                    
+                    remaining -= count;
+                    currentAddr += count * KPageTableBase.PageSize;
+                }
+                
+                // 按区域批量执行操作
+                foreach (var kvp in regionOperations)
+                {
+                    var region = kvp.Key;
+                    var operations = kvp.Value;
+                    
+                    // 每个区域只锁定一次
+                    lock (region)
+                    {
+                        foreach (var op in operations)
+                        {
+                            if (increment)
+                                region.IncrementPagesReferenceCount(op.Address, op.Count);
+                            else
+                                region.DecrementPagesReferenceCount(op.Address, op.Count);
+                        }
                     }
                 }
-
-                pagesCount -= countToProcess;
-                address += countToProcess * KPageTableBase.PageSize;
             }
         }
     }
