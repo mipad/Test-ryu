@@ -6,7 +6,6 @@ using Ryujinx.Graphics.GAL.Multithreading.Commands.Renderer;
 using Ryujinx.Graphics.GAL.Multithreading.Model;
 using Ryujinx.Graphics.GAL.Multithreading.Resources;
 using Ryujinx.Graphics.GAL.Multithreading.Resources.Programs;
-using Ryujinx.Graphics.Vulkan; // 添加Vulkan命名空间
 using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -166,10 +165,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
                         Interlocked.Decrement(ref _commandCount);
                     }
                 }
-                catch (VulkanException ex) when (ex.Result == VkResult.ErrorDeviceLost)
-                {
-                    HandleDeviceLost(ex);
-                }
                 catch (OutOfMemoryException ex)
                 {
                     HandleMemoryExhaustion(ex);
@@ -182,42 +177,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             }
         }
 
-        private void HandleDeviceLost(VulkanException ex)
-        {
-            Logger.Error?.Print(LogClass.Gpu, $"Device lost detected: {ex.Message}");
-            _deviceLost = true;
-
-            // 尝试恢复设备
-            if (_recoveryAttempts < 3)
-            {
-                Logger.Info?.Print(LogClass.Gpu, $"Attempting device recovery ({_recoveryAttempts + 1}/3)");
-                try
-                {
-                    if (_baseRenderer is VulkanRenderer vulkanRenderer)
-                    {
-                        if (vulkanRenderer.TryRecoverFromDeviceLoss())
-                        {
-                            Logger.Info?.Print(LogClass.Gpu, "Device recovered successfully");
-                            _deviceLost = false;
-                            _recoveryAttempts = 0;
-                            return;
-                        }
-                    }
-                }
-                catch (Exception recoveryEx)
-                {
-                    Logger.Error?.Print(LogClass.Gpu, $"Device recovery failed: {recoveryEx.Message}");
-                }
-
-                _recoveryAttempts++;
-            }
-            else
-            {
-                Logger.Error?.Print(LogClass.Gpu, "Maximum device recovery attempts reached. Terminating.");
-                _shouldExit = true;
-            }
-        }
-
         private void HandleMemoryExhaustion(OutOfMemoryException ex)
         {
             Logger.Error?.Print(LogClass.Gpu, $"GPU memory exhausted: {ex.Message}");
@@ -225,23 +184,18 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             // 尝试释放未使用的资源
             try
             {
-                if (_baseRenderer is VulkanRenderer vulkanRenderer)
-                {
-                    vulkanRenderer.ReleaseUnusedResources();
-                    Logger.Info?.Print(LogClass.Gpu, "Released unused resources due to memory exhaustion");
-                }
+                // 通用资源释放逻辑，不依赖特定渲染器
+                _baseRenderer.ReleaseUnusedResources();
+                Logger.Info?.Print(LogClass.Gpu, "Released unused resources due to memory exhaustion");
             }
             catch (Exception memEx)
             {
                 Logger.Error?.Print(LogClass.Gpu, $"Resource release failed: {memEx.Message}");
             }
 
-            // 如果是严重的内存不足（例如分配大小超过总内存），则终止
-            if (ex is VulkanMemoryException vkEx && vkEx.IsCritical)
-            {
-                Logger.Error?.Print(LogClass.Gpu, "Critical memory error. Terminating render loop.");
-                _shouldExit = true;
-            }
+            // 内存不足时终止渲染循环
+            Logger.Error?.Print(LogClass.Gpu, "Critical memory error. Terminating render loop.");
+            _shouldExit = true;
         }
 
         internal SpanRef<T> CopySpan<T>(ReadOnlySpan<T> data) where T : unmanaged
