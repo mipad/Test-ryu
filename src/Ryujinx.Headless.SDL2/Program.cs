@@ -352,6 +352,9 @@ namespace Ryujinx.Headless.SDL2
 
         static void Load(Options option)
         {
+            // 强制启用 8GB DRAM 模式
+            option.ExpandRAM = true;
+            
             AppDataManager.Initialize(option.BaseDataDir);
 
             _virtualFileSystem = VirtualFileSystem.CreateInstance();
@@ -569,6 +572,7 @@ namespace Ryujinx.Headless.SDL2
             // 超线程处理强制启用：始终使用 ThreadedRenderer
             renderer = new ThreadedRenderer(renderer);
 
+            // 修改点1：强制使用8GB内存配置
             HLEConfiguration configuration = new(_virtualFileSystem,
                 _libHacHorizonManager,
                 _contentManager,
@@ -576,7 +580,7 @@ namespace Ryujinx.Headless.SDL2
                 _userChannelPersistence,
                 renderer,
                 new SDL2HardwareDeviceDriver(),
-                options.ExpandRAM ? MemoryConfiguration.MemoryConfiguration8GiB : MemoryConfiguration.MemoryConfiguration4GiB,
+                MemoryConfiguration.MemoryConfiguration8GiB, // 直接使用8GB配置
                 window,
                 options.SystemLanguage,
                 options.SystemRegion,
@@ -596,7 +600,12 @@ namespace Ryujinx.Headless.SDL2
                 options.MultiplayerLanInterfaceId,
                 Common.Configuration.Multiplayer.MultiplayerMode.Disabled);
 
-            return new Switch(configuration);
+            var switchInstance = new Switch(configuration);
+            
+            // 修改点2：设置默认的8GB DRAM ID
+            switchInstance.Memory.SetDramId(DramId.IowaSamsung8GiB);
+            
+            return switchInstance;
         }
 
         private static void ExecutionEntrypoint()
@@ -624,6 +633,13 @@ namespace Ryujinx.Headless.SDL2
 
         private static bool LoadApplication(Options options)
         {
+            // 内存不足警告
+            if (SystemInfo.GetTotalMemory() < 12L * 1024 * 1024 * 1024) // 12GB
+            {
+                Logger.Warning?.Print(LogClass.Application, 
+                    $"警告：物理内存不足！8GB模式需要至少16GB内存，当前内存：{SystemInfo.GetTotalMemory() / 1024 / 1024 / 1024}GB");
+            }
+            
             string path = options.InputPath;
 
             Logger.RestartTime();
