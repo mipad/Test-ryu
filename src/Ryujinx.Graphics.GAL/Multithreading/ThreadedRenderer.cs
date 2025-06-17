@@ -6,6 +6,7 @@ using Ryujinx.Graphics.GAL.Multithreading.Commands.Renderer;
 using Ryujinx.Graphics.GAL.Multithreading.Model;
 using Ryujinx.Graphics.GAL.Multithreading.Resources;
 using Ryujinx.Graphics.GAL.Multithreading.Resources.Programs;
+using Ryujinx.Graphics.Vulkan;
 using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -14,12 +15,6 @@ using System.Threading;
 
 namespace Ryujinx.Graphics.GAL.Multithreading
 {
-    /// <summary>
-    /// The ThreadedRenderer is a layer that can be put in front of any Renderer backend to make
-    /// its processing happen on a separate thread, rather than intertwined with the GPU emulation.
-    /// A new thread is created to handle the GPU command processing, separate from the renderer thread.
-    /// Calls to the renderer, pipeline and resources are queued to happen on the renderer thread.
-    /// </summary>
     public class ThreadedRenderer : IRenderer
     {
         private const int SpanPoolBytes = 4 * 1024 * 1024;
@@ -100,7 +95,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
             _commandQueue = new byte[_elementSize * QueueCount];
             _refQueue = new object[MaxRefsPerCommand * QueueCount];
-
+            
             // 初始化设备恢复状态
             _shouldExit = false;
             _deviceLost = false;
@@ -165,16 +160,80 @@ namespace Ryujinx.Graphics.GAL.Multithreading
                         Interlocked.Decrement(ref _commandCount);
                     }
                 }
-                catch (OutOfMemoryException)
+                catch (VulkanException ex) when (ex.Result == VkResult.ErrorDeviceLost)
                 {
-                    // 内存耗尽，终止渲染循环
+                    HandleDeviceLost(ex);
+                }
+                catch (VulkanException ex) when (ex.Result == VkResult.ErrorOutOfDeviceMemory)
+                {
+                    HandleMemoryExhaustion(ex);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, $"Unhandled exception in render loop: {ex}");
                     _shouldExit = true;
                 }
-                catch (Exception)
+            }
+        }
+
+        private void HandleDeviceLost(VulkanException ex)
+        {
+            Logger.Error?.Print(LogClass.Gpu, $"Device lost detected: {ex.Message}");
+            _deviceLost = true;
+            
+            if (_recoveryAttempts < 3)
+            {
+                Logger.Info?.Print(LogClass.Gpu, $"Attempting device recovery ({_recoveryAttempts + 1}/3)");
+                try
                 {
-                    // 发生未处理异常，终止渲染循环
-                    _shouldExit = true;
+                    if (_baseRenderer is VulkanRenderer vulkanRenderer)
+                    {
+                        if (vulkanRenderer.TryRecoverFromDeviceLoss())
+                        {
+                            Logger.Info?.Print(LogClass.Gpu, "Device recovered successfully");
+                            _deviceLost = false;
+                            _recoveryAttempts = 0;
+                            return;
+                        }
+                    }
                 }
+                catch (Exception recoveryEx)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, $"Device recovery failed: {recoveryEx.Message}");
+                }
+                
+                _recoveryAttempts++;
+            }
+            else
+            {
+                Logger.Error?.Print(LogClass.Gpu, "Maximum device recovery attempts reached. Terminating.");
+                _shouldExit = true;
+            }
+        }
+
+        private void HandleMemoryExhaustion(VulkanException ex)
+        {
+            Logger.Error?.Print(LogClass.Gpu, $"GPU memory exhausted: {ex.Message}");
+            
+            // 尝试释放未使用的资源
+            try
+            {
+                if (_baseRenderer is VulkanRenderer vulkanRenderer)
+                {
+                    vulkanRenderer.ReleaseUnusedResources();
+                    Logger.Info?.Print(LogClass.Gpu, "Released unused resources due to memory exhaustion");
+                }
+            }
+            catch (Exception memEx)
+            {
+                Logger.Error?.Print(LogClass.Gpu, $"Resource release failed: {memEx.Message}");
+            }
+            
+            // 如果是严重的内存不足，则终止
+            if (ex.AllocationSize > 300 * 1024 * 1024) // 超过300MB的分配失败
+            {
+                Logger.Error?.Print(LogClass.Gpu, "Critical memory error. Terminating render loop.");
+                _shouldExit = true;
             }
         }
 
