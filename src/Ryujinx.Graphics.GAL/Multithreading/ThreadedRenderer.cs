@@ -6,7 +6,6 @@ using Ryujinx.Graphics.GAL.Multithreading.Commands.Renderer;
 using Ryujinx.Graphics.GAL.Multithreading.Model;
 using Ryujinx.Graphics.GAL.Multithreading.Resources;
 using Ryujinx.Graphics.GAL.Multithreading.Resources.Programs;
-using Ryujinx.Graphics.Vulkan; // 添加 Vulkan 命名空间
 using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -166,23 +165,40 @@ namespace Ryujinx.Graphics.GAL.Multithreading
                         Interlocked.Decrement(ref _commandCount);
                     }
                 }
-                catch (Ryujinx.Graphics.Vulkan.VulkanException ex) when (ex.Result == VkResult.ErrorDeviceLost)
-                {
-                    HandleDeviceLost(ex);
-                }
-                catch (Ryujinx.Graphics.Vulkan.VulkanException ex) when (ex.Result == VkResult.ErrorOutOfDeviceMemory)
-                {
-                    HandleMemoryExhaustion(ex);
-                }
                 catch (Exception ex)
                 {
-                    Logger.Error?.Print(LogClass.Gpu, $"Unhandled exception in render loop: {ex}");
-                    _shouldExit = true;
+                    // 通用异常处理
+                    HandleRenderException(ex);
                 }
             }
         }
 
-        private void HandleDeviceLost(Ryujinx.Graphics.Vulkan.VulkanException ex)
+        private void HandleRenderException(Exception ex)
+        {
+            // 尝试检测特定类型的异常
+            string exType = ex.GetType().FullName;
+            string exMessage = ex.Message.ToLowerInvariant();
+            
+            // 检测设备丢失错误
+            if (exType == "Ryujinx.Graphics.Vulkan.VulkanException" && 
+                exMessage.Contains("device lost"))
+            {
+                HandleDeviceLost(ex);
+            }
+            // 检测内存耗尽错误
+            else if (exType == "Ryujinx.Graphics.Vulkan.VulkanException" && 
+                     (exMessage.Contains("out of device memory") || exMessage.Contains("memory exhausted")))
+            {
+                HandleMemoryExhaustion(ex);
+            }
+            else
+            {
+                Logger.Error?.Print(LogClass.Gpu, $"Unhandled exception in render loop: {ex}");
+                _shouldExit = true;
+            }
+        }
+
+        private void HandleDeviceLost(Exception ex)
         {
             Logger.Error?.Print(LogClass.Gpu, $"Device lost detected: {ex.Message}");
             _deviceLost = true;
@@ -193,9 +209,12 @@ namespace Ryujinx.Graphics.GAL.Multithreading
                 Logger.Info?.Print(LogClass.Gpu, $"Attempting device recovery ({_recoveryAttempts + 1}/3)");
                 try
                 {
-                    if (_baseRenderer is VulkanRenderer vulkanRenderer)
+                    // 使用反射尝试调用恢复方法
+                    var vulkanRenderer = _baseRenderer.GetType().GetProperty("VulkanRenderer")?.GetValue(_baseRenderer);
+                    if (vulkanRenderer != null)
                     {
-                        if (vulkanRenderer.TryRecoverFromDeviceLoss())
+                        var tryRecover = vulkanRenderer.GetType().GetMethod("TryRecoverFromDeviceLoss");
+                        if (tryRecover != null && (bool)tryRecover.Invoke(vulkanRenderer, null))
                         {
                             Logger.Info?.Print(LogClass.Gpu, "Device recovered successfully");
                             _deviceLost = false;
@@ -218,16 +237,19 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             }
         }
 
-        private void HandleMemoryExhaustion(Ryujinx.Graphics.Vulkan.VulkanException ex)
+        private void HandleMemoryExhaustion(Exception ex)
         {
             Logger.Error?.Print(LogClass.Gpu, $"GPU memory exhausted: {ex.Message}");
 
             // 尝试释放未使用的资源
             try
             {
-                if (_baseRenderer is VulkanRenderer vulkanRenderer)
+                // 使用反射尝试调用资源释放方法
+                var vulkanRenderer = _baseRenderer.GetType().GetProperty("VulkanRenderer")?.GetValue(_baseRenderer);
+                if (vulkanRenderer != null)
                 {
-                    vulkanRenderer.ReleaseUnusedResources();
+                    var releaseMethod = vulkanRenderer.GetType().GetMethod("ReleaseUnusedResources");
+                    releaseMethod?.Invoke(vulkanRenderer, null);
                     Logger.Info?.Print(LogClass.Gpu, "Released unused resources due to memory exhaustion");
                 }
             }
@@ -236,8 +258,20 @@ namespace Ryujinx.Graphics.GAL.Multithreading
                 Logger.Error?.Print(LogClass.Gpu, $"Resource release failed: {memEx.Message}");
             }
 
-            // 如果是严重的内存不足（例如分配大小超过300MB），则终止
-            if (ex.AllocationSize > 300 * 1024 * 1024)
+            // 尝试获取分配大小信息
+            long allocationSize = 0;
+            try
+            {
+                var sizeProperty = ex.GetType().GetProperty("AllocationSize");
+                if (sizeProperty != null)
+                {
+                    allocationSize = (long)sizeProperty.GetValue(ex);
+                }
+            }
+            catch { }
+            
+            // 如果是大内存分配失败（>300MB），则终止
+            if (allocationSize > 300 * 1024 * 1024)
             {
                 Logger.Error?.Print(LogClass.Gpu, "Critical memory error. Terminating render loop.");
                 _shouldExit = true;
