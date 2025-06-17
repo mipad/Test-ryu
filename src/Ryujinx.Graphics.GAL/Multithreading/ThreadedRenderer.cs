@@ -6,7 +6,7 @@ using Ryujinx.Graphics.GAL.Multithreading.Commands.Renderer;
 using Ryujinx.Graphics.GAL.Multithreading.Model;
 using Ryujinx.Graphics.GAL.Multithreading.Resources;
 using Ryujinx.Graphics.GAL.Multithreading.Resources.Programs;
-using Ryujinx.Graphics.Vulkan;
+using Ryujinx.Graphics.Vulkan; // 添加 Vulkan 命名空间
 using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -15,6 +15,12 @@ using System.Threading;
 
 namespace Ryujinx.Graphics.GAL.Multithreading
 {
+    /// <summary>
+    /// The ThreadedRenderer is a layer that can be put in front of any Renderer backend to make
+    /// its processing happen on a separate thread, rather than intertwined with the GPU emulation.
+    /// A new thread is created to handle the GPU command processing, separate from the renderer thread.
+    /// Calls to the renderer, pipeline and resources are queued to happen on the renderer thread.
+    /// </summary>
     public class ThreadedRenderer : IRenderer
     {
         private const int SpanPoolBytes = 4 * 1024 * 1024;
@@ -95,7 +101,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
             _commandQueue = new byte[_elementSize * QueueCount];
             _refQueue = new object[MaxRefsPerCommand * QueueCount];
-            
+
             // 初始化设备恢复状态
             _shouldExit = false;
             _deviceLost = false;
@@ -160,11 +166,11 @@ namespace Ryujinx.Graphics.GAL.Multithreading
                         Interlocked.Decrement(ref _commandCount);
                     }
                 }
-                catch (VulkanException ex) when (ex.Result == VkResult.ErrorDeviceLost)
+                catch (Ryujinx.Graphics.Vulkan.VulkanException ex) when (ex.Result == VkResult.ErrorDeviceLost)
                 {
                     HandleDeviceLost(ex);
                 }
-                catch (VulkanException ex) when (ex.Result == VkResult.ErrorOutOfDeviceMemory)
+                catch (Ryujinx.Graphics.Vulkan.VulkanException ex) when (ex.Result == VkResult.ErrorOutOfDeviceMemory)
                 {
                     HandleMemoryExhaustion(ex);
                 }
@@ -176,11 +182,12 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             }
         }
 
-        private void HandleDeviceLost(VulkanException ex)
+        private void HandleDeviceLost(Ryujinx.Graphics.Vulkan.VulkanException ex)
         {
             Logger.Error?.Print(LogClass.Gpu, $"Device lost detected: {ex.Message}");
             _deviceLost = true;
-            
+
+            // 尝试恢复设备
             if (_recoveryAttempts < 3)
             {
                 Logger.Info?.Print(LogClass.Gpu, $"Attempting device recovery ({_recoveryAttempts + 1}/3)");
@@ -201,7 +208,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
                 {
                     Logger.Error?.Print(LogClass.Gpu, $"Device recovery failed: {recoveryEx.Message}");
                 }
-                
+
                 _recoveryAttempts++;
             }
             else
@@ -211,10 +218,10 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             }
         }
 
-        private void HandleMemoryExhaustion(VulkanException ex)
+        private void HandleMemoryExhaustion(Ryujinx.Graphics.Vulkan.VulkanException ex)
         {
             Logger.Error?.Print(LogClass.Gpu, $"GPU memory exhausted: {ex.Message}");
-            
+
             // 尝试释放未使用的资源
             try
             {
@@ -228,9 +235,9 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             {
                 Logger.Error?.Print(LogClass.Gpu, $"Resource release failed: {memEx.Message}");
             }
-            
-            // 如果是严重的内存不足，则终止
-            if (ex.AllocationSize > 300 * 1024 * 1024) // 超过300MB的分配失败
+
+            // 如果是严重的内存不足（例如分配大小超过300MB），则终止
+            if (ex.AllocationSize > 300 * 1024 * 1024)
             {
                 Logger.Error?.Print(LogClass.Gpu, "Critical memory error. Terminating render loop.");
                 _shouldExit = true;
