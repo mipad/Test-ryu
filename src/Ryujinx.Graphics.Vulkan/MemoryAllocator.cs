@@ -14,7 +14,7 @@ namespace Ryujinx.Graphics.Vulkan
         private const int MaxRetries = 5;
         private const int BaseRetryDelayMs = 100;
         private const int MaxConcurrentLargeAllocations = 1;
-        private const float MemorySafetyMarginFactor = 0.05f; // 20% safety margin
+        private const float MemorySafetyMarginFactor = 0.2f; // 20% safety margin
 
         private readonly Vk _api;
         private readonly VulkanPhysicalDevice _physicalDevice;
@@ -160,11 +160,13 @@ namespace Ryujinx.Graphics.Vulkan
         {
             try
             {
-                // 获取内存堆信息
+                // 获取内存堆信息 - 修复类型转换问题
                 uint heapIndex = _physicalDevice.PhysicalDeviceMemoryProperties.MemoryTypes[memoryTypeIndex].HeapIndex;
-                ulong heapSize = _physicalDevice.PhysicalDeviceMemoryProperties.MemoryHeaps[heapIndex].Size;
+                int heapIndexInt = (int)heapIndex; // 显式转换为int
                 
-                // 估算已使用内存（简单实现，实际需要更精确统计）
+                ulong heapSize = _physicalDevice.PhysicalDeviceMemoryProperties.MemoryHeaps[heapIndexInt].Size;
+                
+                // 估算已使用内存
                 ulong estimatedUsed = EstimateUsedMemory(memoryTypeIndex);
                 ulong freeMemory = heapSize - estimatedUsed;
                 
@@ -195,7 +197,6 @@ namespace Ryujinx.Graphics.Vulkan
         private ulong EstimateUsedMemory(int memoryTypeIndex)
         {
             // 简化实现 - 实际应跟踪每个内存类型的使用量
-            // 此处返回0表示未知，后续需要完善
             return 0;
         }
 
@@ -203,13 +204,16 @@ namespace Ryujinx.Graphics.Vulkan
         {
             try
             {
+                // 修复类型转换问题
                 uint heapIndex = _physicalDevice.PhysicalDeviceMemoryProperties.MemoryTypes[memoryTypeIndex].HeapIndex;
-                ulong heapSize = _physicalDevice.PhysicalDeviceMemoryProperties.MemoryHeaps[heapIndex].Size;
+                int heapIndexInt = (int)heapIndex; // 显式转换为int
+                
+                ulong heapSize = _physicalDevice.PhysicalDeviceMemoryProperties.MemoryHeaps[heapIndexInt].Size;
                 
                 Logger.Error?.Print(LogClass.Gpu, 
                     $"Memory Heap Status: " +
                     $"TypeIndex={memoryTypeIndex}, " +
-                    $"HeapIndex={heapIndex}, " +
+                    $"HeapIndex={heapIndexInt}, " +
                     $"HeapSize={FormatSize(heapSize)}");
             }
             catch (Exception ex)
@@ -258,7 +262,10 @@ namespace Ryujinx.Graphics.Vulkan
             uint memoryTypeBits,
             MemoryPropertyFlags flags)
         {
-            for (int i = 0; i < _physicalDevice.PhysicalDeviceMemoryProperties.MemoryTypeCount; i++)
+            // 修复类型转换问题
+            int memoryTypeCount = (int)_physicalDevice.PhysicalDeviceMemoryProperties.MemoryTypeCount;
+            
+            for (int i = 0; i < memoryTypeCount; i++)
             {
                 var type = _physicalDevice.PhysicalDeviceMemoryProperties.MemoryTypes[i];
 
@@ -276,7 +283,10 @@ namespace Ryujinx.Graphics.Vulkan
 
         public static bool IsDeviceMemoryShared(VulkanPhysicalDevice physicalDevice)
         {
-            for (int i = 0; i < physicalDevice.PhysicalDeviceMemoryProperties.MemoryHeapCount; i++)
+            // 修复类型转换问题
+            int memoryHeapCount = (int)physicalDevice.PhysicalDeviceMemoryProperties.MemoryHeapCount;
+            
+            for (int i = 0; i < memoryHeapCount; i++)
             {
                 if (!physicalDevice.PhysicalDeviceMemoryProperties.MemoryHeaps[i].Flags.HasFlag(MemoryHeapFlags.DeviceLocalBit))
                 {
