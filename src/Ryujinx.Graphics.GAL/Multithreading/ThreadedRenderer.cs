@@ -6,6 +6,7 @@ using Ryujinx.Graphics.GAL.Multithreading.Commands.Renderer;
 using Ryujinx.Graphics.GAL.Multithreading.Model;
 using Ryujinx.Graphics.GAL.Multithreading.Resources;
 using Ryujinx.Graphics.GAL.Multithreading.Resources.Programs;
+using Ryujinx.Graphics.Vulkan; // 添加Vulkan命名空间
 using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -58,6 +59,11 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         private Action _interruptAction;
         private readonly object _interruptLock = new();
 
+        // 设备恢复状态
+        private bool _shouldExit;
+        private bool _deviceLost;
+        private int _recoveryAttempts;
+
         public event EventHandler<ScreenCaptureImageInfo> ScreenCaptured;
 
         internal BufferMap Buffers { get; }
@@ -95,6 +101,11 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
             _commandQueue = new byte[_elementSize * QueueCount];
             _refQueue = new object[MaxRefsPerCommand * QueueCount];
+
+            // 初始化设备恢复状态
+            _shouldExit = false;
+            _deviceLost = false;
+            _recoveryAttempts = 0;
         }
 
         public void RunLoop(ThreadStart gpuLoop)
@@ -117,41 +128,119 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         {
             // Power through the render queue until the Gpu thread work is done.
 
-            while (_running)
+            while (_running && !_shouldExit)
             {
-                _galWorkAvailable.Wait();
-                _galWorkAvailable.Reset();
-
-                if (Volatile.Read(ref _interruptAction) != null)
+                try
                 {
-                    _interruptAction();
-                    _interruptRun.Set();
+                    _galWorkAvailable.Wait();
+                    _galWorkAvailable.Reset();
 
-                    Interlocked.Exchange(ref _interruptAction, null);
-                }
-
-                // The other thread can only increase the command count.
-                // We can assume that if it is above 0, it will stay there or get higher.
-
-                while (Volatile.Read(ref _commandCount) > 0 && Volatile.Read(ref _interruptAction) == null)
-                {
-                    int commandPtr = _consumerPtr;
-
-                    Span<byte> command = new(_commandQueue, commandPtr * _elementSize, _elementSize);
-
-                    // Run the command.
-
-                    CommandHelper.RunCommand(command, this, _baseRenderer);
-
-                    if (Interlocked.CompareExchange(ref _invokePtr, -1, commandPtr) == commandPtr)
+                    if (Volatile.Read(ref _interruptAction) != null)
                     {
-                        _invokeRun.Set();
+                        _interruptAction();
+                        _interruptRun.Set();
+
+                        Interlocked.Exchange(ref _interruptAction, null);
                     }
 
-                    _consumerPtr = (_consumerPtr + 1) % QueueCount;
+                    // The other thread can only increase the command count.
+                    // We can assume that if it is above 0, it will stay there or get higher.
 
-                    Interlocked.Decrement(ref _commandCount);
+                    while (Volatile.Read(ref _commandCount) > 0 && Volatile.Read(ref _interruptAction) == null)
+                    {
+                        int commandPtr = _consumerPtr;
+
+                        Span<byte> command = new(_commandQueue, commandPtr * _elementSize, _elementSize);
+
+                        // Run the command.
+
+                        CommandHelper.RunCommand(command, this, _baseRenderer);
+
+                        if (Interlocked.CompareExchange(ref _invokePtr, -1, commandPtr) == commandPtr)
+                        {
+                            _invokeRun.Set();
+                        }
+
+                        _consumerPtr = (_consumerPtr + 1) % QueueCount;
+
+                        Interlocked.Decrement(ref _commandCount);
+                    }
                 }
+                catch (VulkanException ex) when (ex.Result == VkResult.ErrorDeviceLost)
+                {
+                    HandleDeviceLost(ex);
+                }
+                catch (OutOfMemoryException ex)
+                {
+                    HandleMemoryExhaustion(ex);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, $"Unhandled exception in render loop: {ex}");
+                    _shouldExit = true;
+                }
+            }
+        }
+
+        private void HandleDeviceLost(VulkanException ex)
+        {
+            Logger.Error?.Print(LogClass.Gpu, $"Device lost detected: {ex.Message}");
+            _deviceLost = true;
+
+            // 尝试恢复设备
+            if (_recoveryAttempts < 3)
+            {
+                Logger.Info?.Print(LogClass.Gpu, $"Attempting device recovery ({_recoveryAttempts + 1}/3)");
+                try
+                {
+                    if (_baseRenderer is VulkanRenderer vulkanRenderer)
+                    {
+                        if (vulkanRenderer.TryRecoverFromDeviceLoss())
+                        {
+                            Logger.Info?.Print(LogClass.Gpu, "Device recovered successfully");
+                            _deviceLost = false;
+                            _recoveryAttempts = 0;
+                            return;
+                        }
+                    }
+                }
+                catch (Exception recoveryEx)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, $"Device recovery failed: {recoveryEx.Message}");
+                }
+
+                _recoveryAttempts++;
+            }
+            else
+            {
+                Logger.Error?.Print(LogClass.Gpu, "Maximum device recovery attempts reached. Terminating.");
+                _shouldExit = true;
+            }
+        }
+
+        private void HandleMemoryExhaustion(OutOfMemoryException ex)
+        {
+            Logger.Error?.Print(LogClass.Gpu, $"GPU memory exhausted: {ex.Message}");
+
+            // 尝试释放未使用的资源
+            try
+            {
+                if (_baseRenderer is VulkanRenderer vulkanRenderer)
+                {
+                    vulkanRenderer.ReleaseUnusedResources();
+                    Logger.Info?.Print(LogClass.Gpu, "Released unused resources due to memory exhaustion");
+                }
+            }
+            catch (Exception memEx)
+            {
+                Logger.Error?.Print(LogClass.Gpu, $"Resource release failed: {memEx.Message}");
+            }
+
+            // 如果是严重的内存不足（例如分配大小超过总内存），则终止
+            if (ex is VulkanMemoryException vkEx && vkEx.IsCritical)
+            {
+                Logger.Error?.Print(LogClass.Gpu, "Critical memory error. Terminating render loop.");
+                _shouldExit = true;
             }
         }
 
