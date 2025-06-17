@@ -7,7 +7,6 @@ using Ryujinx.Graphics.GAL.Multithreading.Model;
 using Ryujinx.Graphics.GAL.Multithreading.Resources;
 using Ryujinx.Graphics.GAL.Multithreading.Resources.Programs;
 using System;
-using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -23,19 +22,15 @@ namespace Ryujinx.Graphics.GAL.Multithreading
     /// </summary>
     public class ThreadedRenderer : IRenderer
     {
-        // 将队列大小改为2的幂以启用位掩码优化
-        private const int QueueCount = 16384; // 2^14
-        private const int QueueMask = QueueCount - 1;
-        
         private const int SpanPoolBytes = 4 * 1024 * 1024;
         private const int MaxRefsPerCommand = 2;
+        private const int QueueCount = 10000;
 
         private readonly int _elementSize;
         private readonly IRenderer _baseRenderer;
         private Thread _gpuThread;
         private Thread _backendThread;
-        private volatile bool _running;
-        private volatile bool _disposing; // 新增：标记正在释放状态
+        private bool _running;
 
         private readonly AutoResetEvent _frameComplete = new(true);
 
@@ -51,7 +46,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         private readonly object[] _refQueue;
 
         private int _consumerPtr;
-        private volatile int _commandCount;
+        private int _commandCount;
 
         private int _producerPtr;
         private int _lastProducedPtr;
@@ -99,7 +94,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             _elementSize = BitUtils.AlignUp(CommandHelper.GetMaxCommandSize(), 4);
 
             _commandQueue = new byte[_elementSize * QueueCount];
-            _refQueue = ArrayPool<object>.Shared.Rent(MaxRefsPerCommand * QueueCount);
+            _refQueue = new object[MaxRefsPerCommand * QueueCount];
         }
 
         public void RunLoop(ThreadStart gpuLoop)
@@ -111,7 +106,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             _gpuThread = new Thread(gpuLoop)
             {
                 Name = "GPU.MainThread",
-                IsBackground = true // 设为后台线程
             };
 
             _gpuThread.Start();
@@ -122,63 +116,41 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         public void RenderLoop()
         {
             // Power through the render queue until the Gpu thread work is done.
-            SpinWait spinWait = new();
 
             while (_running)
             {
-                // 使用混合等待策略
-                while (Volatile.Read(ref _commandCount) == 0 && 
-                       Volatile.Read(ref _interruptAction) == null)
-                {
-                    if (!_running) return;
-                    spinWait.SpinOnce();
-                    
-                    // 每自旋100次检查一次事件
-                    if (spinWait.NextSpinWillYield)
-                    {
-                        _galWorkAvailable.Wait();
-                        break;
-                    }
-                }
+                _galWorkAvailable.Wait();
+                _galWorkAvailable.Reset();
 
-                // 处理中断
                 if (Volatile.Read(ref _interruptAction) != null)
                 {
                     _interruptAction();
                     _interruptRun.Set();
+
                     Interlocked.Exchange(ref _interruptAction, null);
                 }
 
-                // 批量处理命令 (最多32个)
-                int batchSize = 0;
-                while (batchSize < 32 && Volatile.Read(ref _commandCount) > 0 && 
-                       Volatile.Read(ref _interruptAction) == null)
+                // The other thread can only increase the command count.
+                // We can assume that if it is above 0, it will stay there or get higher.
+
+                while (Volatile.Read(ref _commandCount) > 0 && Volatile.Read(ref _interruptAction) == null)
                 {
                     int commandPtr = _consumerPtr;
 
                     Span<byte> command = new(_commandQueue, commandPtr * _elementSize, _elementSize);
 
-                    // 运行命令并处理异常
-                    try
-                    {
-                        CommandHelper.RunCommand(command, this, _baseRenderer);
-                    }
-                    catch (Exception ex)
-                    {
-                        // 在实际应用中应使用日志记录
-                        Debug.WriteLine($"Command execution failed: {ex.Message}");
-                    }
+                    // Run the command.
 
-                    // 处理同步调用
+                    CommandHelper.RunCommand(command, this, _baseRenderer);
+
                     if (Interlocked.CompareExchange(ref _invokePtr, -1, commandPtr) == commandPtr)
                     {
                         _invokeRun.Set();
                     }
 
-                    // 使用位掩码优化指针计算
-                    _consumerPtr = (_consumerPtr + 1) & QueueMask;
+                    _consumerPtr = (_consumerPtr + 1) % QueueCount;
+
                     Interlocked.Decrement(ref _commandCount);
-                    batchSize++;
                 }
             }
         }
@@ -195,26 +167,18 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         internal ref T New<T>() where T : struct
         {
-            // 双重检查防止释放后访问
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
-            SpinWait spinWait = new();
             while (_producerPtr == (Volatile.Read(ref _consumerPtr) + QueueCount - 1) % QueueCount)
             {
-                if (!_running || _disposing)
-                {
-                    throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-                }
-                spinWait.SpinOnce();
+                // If incrementing the producer pointer would overflow, we need to wait.
+                // _consumerPtr can only move forward, so there's no race to worry about here.
+
+                Thread.Sleep(1);
             }
 
             int taken = _producerPtr;
             _lastProducedPtr = taken;
 
-            _producerPtr = (_producerPtr + 1) & QueueMask; // 使用位掩码
+            _producerPtr = (_producerPtr + 1) % QueueCount;
 
             Span<byte> memory = new(_commandQueue, taken * _elementSize, _elementSize);
             ref T result = ref Unsafe.As<byte, T>(ref MemoryMarshal.GetReference(memory));
@@ -226,11 +190,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         internal int AddTableRef(object obj)
         {
-            // 添加状态检查
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
+            // The reference table is sized so that it will never overflow, so long as the references are taken after the command is allocated.
 
             int index = _refProducerPtr;
 
@@ -255,12 +215,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         internal void QueueCommand()
         {
-            // 双重检查防止释放后访问
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
             int result = Interlocked.Increment(ref _commandCount);
 
             if (result == 1)
@@ -271,42 +225,35 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         internal void InvokeCommand()
         {
-            if (!_running || _disposing) return;
-            
             _invokeRun.Reset();
             _invokePtr = _lastProducedPtr;
 
             QueueCommand();
 
-            // 等待命令完成
+            // Wait for the command to complete.
             _invokeRun.Wait();
         }
 
         internal void WaitForFrame()
         {
-            if (!_running || _disposing) return;
             _frameComplete.WaitOne();
         }
 
         internal void SignalFrame()
         {
-            if (!_running || _disposing) return;
             _frameComplete.Set();
         }
 
         internal bool IsGpuThread()
         {
-            // 添加null检查
-            return _gpuThread != null && Thread.CurrentThread == _gpuThread;
+            return Thread.CurrentThread == _gpuThread;
         }
 
         public void BackgroundContextAction(Action action, bool alwaysBackground = false)
         {
             if (IsGpuThread() && !alwaysBackground)
             {
-                // 添加状态检查
-                if (!_running || _disposing) return;
-                
+                // The action must be performed on the render thread.
                 New<ActionCommand>().Set(Ref(action));
                 InvokeCommand();
             }
@@ -318,12 +265,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         public BufferHandle CreateBuffer(int size, BufferAccess access)
         {
-            // 添加状态检查
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
             BufferHandle handle = Buffers.CreateBufferHandle();
             New<CreateBufferAccessCommand>().Set(handle, size, access);
             QueueCommand();
@@ -333,12 +274,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         public BufferHandle CreateBuffer(nint pointer, int size)
         {
-            // 添加状态检查
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
             BufferHandle handle = Buffers.CreateBufferHandle();
             New<CreateHostBufferCommand>().Set(handle, pointer, size);
             QueueCommand();
@@ -348,12 +283,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         public BufferHandle CreateBufferSparse(ReadOnlySpan<BufferRange> storageBuffers)
         {
-            // 添加状态检查
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
             BufferHandle handle = Buffers.CreateBufferHandle();
             New<CreateBufferSparseCommand>().Set(handle, CopySpan(storageBuffers));
             QueueCommand();
@@ -363,12 +292,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         public IImageArray CreateImageArray(int size, bool isBuffer)
         {
-            // 添加状态检查
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
             var imageArray = new ThreadedImageArray(this);
             New<CreateImageArrayCommand>().Set(Ref(imageArray), size, isBuffer);
             QueueCommand();
@@ -378,12 +301,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         public IProgram CreateProgram(ShaderSource[] shaders, ShaderInfo info)
         {
-            // 添加状态检查
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
             var program = new ThreadedProgram(this);
 
             SourceProgramRequest request = new(program, shaders, info);
@@ -398,12 +315,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         public ISampler CreateSampler(SamplerCreateInfo info)
         {
-            // 添加状态检查
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
             var sampler = new ThreadedSampler(this);
             New<CreateSamplerCommand>().Set(Ref(sampler), info);
             QueueCommand();
@@ -413,12 +324,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         public void CreateSync(ulong id, bool strict)
         {
-            // 添加状态检查
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
             Sync.CreateSyncHandle(id);
             New<CreateSyncCommand>().Set(id, strict);
             QueueCommand();
@@ -426,12 +331,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         public ITexture CreateTexture(TextureCreateInfo info)
         {
-            // 添加状态检查
-            if (!_running || _disposing) 
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
             if (IsGpuThread())
             {
                 var texture = new ThreadedTexture(this, info);
@@ -450,15 +349,8 @@ namespace Ryujinx.Graphics.GAL.Multithreading
                 return texture;
             }
         }
-        
         public ITextureArray CreateTextureArray(int size, bool isBuffer)
         {
-            // 添加状态检查
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
             var textureArray = new ThreadedTextureArray(this);
             New<CreateTextureArrayCommand>().Set(Ref(textureArray), size, isBuffer);
             QueueCommand();
@@ -468,24 +360,12 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         public void DeleteBuffer(BufferHandle buffer)
         {
-            // 添加状态检查
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
             New<BufferDisposeCommand>().Set(buffer);
             QueueCommand();
         }
 
         public PinnedSpan<byte> GetBufferData(BufferHandle buffer, int offset, int size)
         {
-            // 添加状态检查
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
             if (IsGpuThread())
             {
                 ResultBox<PinnedSpan<byte>> box = new();
@@ -502,12 +382,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         public Capabilities GetCapabilities()
         {
-            // 添加状态检查
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
             ResultBox<Capabilities> box = new();
             New<GetCapabilitiesCommand>().Set(Ref(box));
             InvokeCommand();
@@ -517,13 +391,11 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         public ulong GetCurrentSync()
         {
-            // 直接调用基础渲染器，无需检查状态
             return _baseRenderer.GetCurrentSync();
         }
 
         public HardwareInfo GetHardwareInfo()
         {
-            // 直接调用基础渲染器，无需检查状态
             return _baseRenderer.GetHardwareInfo();
         }
 
@@ -533,23 +405,11 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         /// <param name="logLevel">Log level to use</param>
         public void Initialize(GraphicsDebugLevel logLevel)
         {
-            // 添加状态检查
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
             _baseRenderer.Initialize(logLevel);
         }
 
         public IProgram LoadProgramBinary(byte[] programBinary, bool hasFragmentShader, ShaderInfo info)
         {
-            // 添加状态检查
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
             var program = new ThreadedProgram(this);
 
             BinaryProgramRequest request = new(program, programBinary, hasFragmentShader, info);
@@ -563,24 +423,12 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         public void PreFrame()
         {
-            // 添加状态检查
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
             New<PreFrameCommand>();
             QueueCommand();
         }
 
         public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
         {
-            // 添加状态检查
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
             ThreadedCounterEvent evt = new(this, type, _lastSampleCounterClear);
             New<ReportCounterCommand>().Set(Ref(evt), type, Ref(resultHandler), divisor, hostReserved);
             QueueCommand();
@@ -595,12 +443,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         public void ResetCounter(CounterType type)
         {
-            // 添加状态检查
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
             New<ResetCounterCommand>().Set(type);
             QueueCommand();
             _lastSampleCounterClear = true;
@@ -608,68 +450,49 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         public void Screenshot()
         {
-            // 直接调用基础渲染器，无需检查状态
             _baseRenderer.Screenshot();
         }
 
         public void SetBufferData(BufferHandle buffer, int offset, ReadOnlySpan<byte> data)
         {
-            // 添加状态检查
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
             New<BufferSetDataCommand>().Set(buffer, offset, CopySpan(data));
             QueueCommand();
         }
 
         public void UpdateCounters()
         {
-            // 添加状态检查
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
             New<UpdateCountersCommand>();
             QueueCommand();
         }
 
         public void WaitSync(ulong id)
         {
-            // 添加状态检查
-            if (!_running || _disposing)
-            {
-                throw new ObjectDisposedException("ThreadedRenderer has been disposed");
-            }
-
             Sync.WaitSyncAvailability(id);
+
             _baseRenderer.WaitSync(id);
         }
 
         private void Interrupt(Action action)
         {
-            // 添加状态检查
-            if (!_running || _disposing) return;
+            // Interrupt the backend thread from any external thread and invoke the given action.
 
             if (Thread.CurrentThread == _backendThread)
             {
+                // If this is called from the backend thread, the action can run immediately.
                 action();
             }
             else
             {
-                // 使用更高效的中断处理
-                var previousAction = Interlocked.Exchange(ref _interruptAction, action);
-                if (previousAction != null)
+                lock (_interruptLock)
                 {
-                    // 处理未完成的中断
-                    previousAction();
-                    _interruptRun.Set();
-                }
+                    while (Interlocked.CompareExchange(ref _interruptAction, action, null) != null)
+                    {
+                    }
 
-                _galWorkAvailable.Set();
-                _interruptRun.WaitOne();
+                    _galWorkAvailable.Set();
+
+                    _interruptRun.WaitOne();
+                }
             }
         }
 
@@ -680,15 +503,11 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         public bool PrepareHostMapping(nint address, ulong size)
         {
-            // 直接调用基础渲染器，无需检查状态
             return _baseRenderer.PrepareHostMapping(address, size);
         }
 
         public void FlushThreadedCommands()
         {
-            // 添加状态检查
-            if (!_running || _disposing) return;
-
             SpinWait wait = new();
 
             while (Volatile.Read(ref _commandCount) > 0)
@@ -699,52 +518,29 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         public void Dispose()
         {
-            if (!_running || _disposing) return;
-            _disposing = true; // 标记正在释放状态
-
             GC.SuppressFinalize(this);
+
+            // Dispose must happen from the render thread, after all commands have completed.
+
+            // Stop the GPU thread.
             _running = false;
-
-            // 刷新剩余命令
-            FlushThreadedCommands();
-
-            // 唤醒所有可能等待的线程
             _galWorkAvailable.Set();
-            _frameComplete.Set();
-            _interruptRun.Set();
-            _invokeRun.Set();
 
-            // 等待GPU线程退出
             if (_gpuThread != null && _gpuThread.IsAlive)
             {
-                // 更安全地等待线程结束
-                if (!_gpuThread.Join(100))
-                {
-                    // 如果超时，尝试优雅终止
-                    _gpuThread.Interrupt();
-                    
-                    // 再等待50ms
-                    if (!_gpuThread.Join(50))
-                    {
-                        Debug.WriteLine("Warning: GPU thread did not exit gracefully");
-                    }
-                }
+                _gpuThread.Join();
             }
 
-            // 释放基础渲染器
+            // Dispose the renderer.
             _baseRenderer.Dispose();
 
-            // 释放其他资源
-            Sync?.Dispose();
-
-            // 归还ArrayPool资源
-            ArrayPool<object>.Shared.Return(_refQueue);
-
-            // 释放事件对象
+            // Dispose events.
             _frameComplete.Dispose();
             _galWorkAvailable.Dispose();
             _invokeRun.Dispose();
             _interruptRun.Dispose();
+
+            Sync.Dispose();
         }
     }
 }
