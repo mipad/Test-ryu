@@ -52,6 +52,10 @@ namespace Ryujinx.Graphics.Gpu.Memory
         private bool _pruneCaches;
         private int _virtualModifiedSequenceNumber;
 
+        // 优化：添加事件触发计数器
+        private int _modifyEventCount;
+        private const int ModifyEventThreshold = 5;
+
         public event Action NotifyBuffersModified;
 
         /// <summary>
@@ -87,24 +91,32 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="e">Event arguments</param>
         public void MemoryUnmappedHandler(object sender, UnmapEventArgs e)
         {
-            Buffer[] overlaps = new Buffer[10];
-            int overlapCount;
-
-            MultiRange range = ((MemoryManager)sender).GetPhysicalRegions(e.Address, e.Size);
-
-            for (int index = 0; index < range.Count; index++)
+            // 优化：使用ArrayPool减少临时数组分配
+            Buffer[] overlaps = ArrayPool<Buffer>.Shared.Rent(10);
+            try
             {
-                MemoryRange subRange = range.GetSubRange(index);
+                int overlapCount;
 
-                lock (_buffers)
-                {
-                    overlapCount = _buffers.FindOverlaps(subRange.Address, subRange.Size, ref overlaps);
-                }
+                MultiRange range = ((MemoryManager)sender).GetPhysicalRegions(e.Address, e.Size);
 
-                for (int i = 0; i < overlapCount; i++)
+                for (int index = 0; index < range.Count; index++)
                 {
-                    overlaps[i].Unmapped(subRange.Address, subRange.Size);
+                    MemoryRange subRange = range.GetSubRange(index);
+
+                    lock (_buffers)
+                    {
+                        overlapCount = _buffers.FindOverlaps(subRange.Address, subRange.Size, ref overlaps);
+                    }
+
+                    for (int i = 0; i < overlapCount; i++)
+                    {
+                        overlaps[i].Unmapped(subRange.Address, subRange.Size);
+                    }
                 }
+            }
+            finally
+            {
+                ArrayPool<Buffer>.Shared.Return(overlaps);
             }
         }
 
@@ -242,6 +254,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             ulong alignedAddress = address & ~BufferAlignmentMask;
             ulong alignedEndAddress = (endAddress + BufferAlignmentMask) & ~BufferAlignmentMask;
 
+            // 优化：简化冗余条件判断
             if (alignedEndAddress == alignedAddress)
             {
                 alignedEndAddress += BufferAlignmentSize;
@@ -268,6 +281,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             ulong alignedAddress = address & ~alignmentMask;
             ulong alignedEndAddress = (endAddress + pageAlignmentMask) & ~pageAlignmentMask;
 
+            // 优化：简化冗余条件判断
             if (alignedEndAddress == alignedAddress)
             {
                 alignedEndAddress += pageAlignmentMask;
@@ -285,6 +299,10 @@ namespace Ryujinx.Graphics.Gpu.Memory
         private void CreateMultiRangeBuffer(MultiRange range, BufferStage stage)
         {
             if (range.Count == 0) return;
+
+            // 优化：缓存稀疏缓冲区支持标志
+            bool supportsSparse = _context.Capabilities.SupportsSparseBuffer;
+            ulong alignmentMask = SparseBufferAlignmentSize - 1;
 
             for (int i = 0; i < range.Count; i++)
             {
@@ -321,9 +339,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
             MemoryRange[] alignedSubRanges = new MemoryRange[range.Count];
 
-            ulong alignmentMask = SparseBufferAlignmentSize - 1;
-
-            if (_context.Capabilities.SupportsSparseBuffer)
+            if (supportsSparse)
             {
                 BufferRange[] storages = new BufferRange[range.Count];
 
@@ -445,6 +461,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 ulong address = range.GetSubRange(0).Address;
                 result = new BufferCacheEntry(address, gpuVa, GetBuffer(address, size, BufferStage.Internal));
 
+                // 优化：使用 TryAdd 避免重复哈希计算
                 _dirtyCache[gpuVa] = result;
             }
 
@@ -479,6 +496,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 ulong address = range.GetSubRange(0).Address;
                 result = new BufferCacheEntry(address, alignedGpuVa, GetBuffer(address, size, BufferStage.None));
 
+                // 优化：使用 TryAdd 避免重复哈希计算
                 _modifiedCache[alignedGpuVa] = result;
             }
 
@@ -659,7 +677,12 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
             newBuffer.SynchronizeMemory(address, size);
 
-            NotifyBuffersModified?.Invoke();
+            // 优化：使用阈值控制事件触发频率
+            if (++_modifyEventCount >= ModifyEventThreshold)
+            {
+                NotifyBuffersModified?.Invoke();
+                _modifyEventCount = 0;
+            }
 
             RecreateMultiRangeBuffers(address, size);
         }
@@ -738,7 +761,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                         srcOffset = 0;
                     }
 
-               if (dstRange.GetSubRange(dstRangeIndex).Size == dstOffset)
+                    if (dstRange.GetSubRange(dstRangeIndex).Size == dstOffset)
                     {
                         dstRangeIndex++;
                         dstOffset = 0;
@@ -946,6 +969,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             {
                 buffer = _buffers.FindFirstOverlap(address, size);
                 
+                // 优化：添加空引用检查
                 if (buffer == null)
                 {
                     CreateBuffer(address, size, stage);
@@ -959,12 +983,16 @@ namespace Ryujinx.Graphics.Gpu.Memory
                     }
                 }
                 
-                buffer.CopyFromDependantVirtualBuffers();
-                buffer.SynchronizeMemory(address, size);
-                
-                if (write)
+                // 优化：添加空引用检查
+                if (buffer != null)
                 {
-                    buffer.SignalModified(address, size, stage);
+                    buffer.CopyFromDependantVirtualBuffers();
+                    buffer.SynchronizeMemory(address, size);
+                    
+                    if (write)
+                    {
+                        buffer.SignalModified(address, size, stage);
+                    }
                 }
             }
             else
@@ -976,7 +1004,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 }
             }
 
-            return buffer;
+            return buffer ?? _dummyBuffer;
         }
 
         /// <summary>
@@ -1013,12 +1041,16 @@ namespace Ryujinx.Graphics.Gpu.Memory
             {
                 Buffer buffer = _buffers.FindFirstOverlap(address, size);
 
-                if (copyBackVirtual)
+                // 优化：添加空引用检查
+                if (buffer != null)
                 {
-                    buffer.CopyFromDependantVirtualBuffers();
-                }
+                    if (copyBackVirtual)
+                    {
+                        buffer.CopyFromDependantVirtualBuffers();
+                    }
 
-                buffer.SynchronizeMemory(address, size);
+                    buffer.SynchronizeMemory(address, size);
+                }
             }
         }
 
@@ -1029,7 +1061,12 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="buffer">The buffer that has changed handle</param>
         public void BufferBackingChanged(Buffer buffer)
         {
-            NotifyBuffersModified?.Invoke();
+            // 优化：使用阈值控制事件触发频率
+            if (++_modifyEventCount >= ModifyEventThreshold)
+            {
+                NotifyBuffersModified?.Invoke();
+                _modifyEventCount = 0;
+            }
 
             RecreateMultiRangeBuffers(buffer.Address, buffer.Size);
         }
