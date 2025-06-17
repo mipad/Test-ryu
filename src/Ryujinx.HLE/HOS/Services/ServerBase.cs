@@ -172,6 +172,65 @@ namespace Ryujinx.HLE.HOS.Services
             ServerLoop();
         }
 
+        // 内存分配策略枚举
+        private enum MemoryAllocationStrategy
+        {
+            Minimal,      // 256KB
+            Medium,       // 512KB
+            Large,        // 2MB
+            ExtraLarge    // 4MB (用于特殊服务)
+        }
+
+        // 根据服务名称确定内存分配策略
+        private MemoryAllocationStrategy GetAllocationStrategy()
+        {
+            // 根据服务名称确定内存分配策略
+            if (Name.StartsWith("nv") || Name.StartsWith("vi") || Name.Contains("dispdrv"))
+            {
+                // 图形和显示服务需要更多内存
+                return MemoryAllocationStrategy.Large;
+            }
+            else if (Name.StartsWith("applet") || Name.StartsWith("am") || Name.Contains("hid"))
+            {
+                // Applet和输入服务需要中等内存
+                return MemoryAllocationStrategy.Medium;
+            }
+            else if (Name == "sm:" || Name == "ldr:" || Name == "fsp-srv" || Name.Contains("fs"))
+            {
+                // 核心系统服务需要更多内存
+                return MemoryAllocationStrategy.Medium;
+            }
+            else if (Name.Contains("audio") || Name.Contains("bus") || Name.Contains("controller"))
+            {
+                // 音频和控制服务需要中等内存
+                return MemoryAllocationStrategy.Medium;
+            }
+            else if (Name.Contains("nifm") || Name.Contains("ssl") || Name.Contains("account"))
+            {
+                // 网络和账户服务需要中等内存
+                return MemoryAllocationStrategy.Medium;
+            }
+            else
+            {
+                // 其他服务使用最小内存
+                return MemoryAllocationStrategy.Minimal;
+            }
+        }
+
+        // 获取分配大小
+        private ulong GetAllocationSize(MemoryAllocationStrategy strategy)
+        {
+            // 定义不同策略的内存大小
+            return strategy switch
+            {
+                MemoryAllocationStrategy.Minimal => 0x40000,    // 256KB
+                MemoryAllocationStrategy.Medium  => 0x80000,    // 512KB
+                MemoryAllocationStrategy.Large   => 0x200000,   // 2MB
+                MemoryAllocationStrategy.ExtraLarge => 0x400000,// 4MB
+                _ => 0x40000                                    // 默认256KB
+            };
+        }
+
         private void ServerLoop()
         {
             _selfProcess = KernelStatic.GetCurrentProcess();
@@ -197,13 +256,47 @@ namespace Ryujinx.HLE.HOS.Services
             InitDone.Set();
 
             ulong messagePtr = _selfThread.TlsAddress;
-            _context.Syscall.SetHeapSize(out ulong heapAddr, 0x200000);
+            
+            // 动态内存分配 - 根据服务类型确定大小
+            MemoryAllocationStrategy strategy = GetAllocationStrategy();
+            ulong allocationSize = GetAllocationSize(strategy);
+            
+            // 记录分配策略信息
+            Logger.Info?.Print(LogClass.Service, 
+                $"Service {Name} using allocation strategy: {strategy} (0x{allocationSize:X} bytes)");
+            
+            Result heapResult = _context.Syscall.SetHeapSize(out ulong heapAddr, allocationSize);
+            
+            if (heapResult != Result.Success)
+            {
+                // 回退到默认2MB分配
+                Logger.Warning?.Print(LogClass.Service, 
+                    $"Service {Name} failed to allocate 0x{allocationSize:X} bytes, falling back to 2MB");
+                
+                heapResult = _context.Syscall.SetHeapSize(out heapAddr, 0x200000);
+                
+                if (heapResult != Result.Success)
+                {
+                    Logger.Error?.Print(LogClass.Service, 
+                        $"Critical: Service {Name} failed to allocate fallback heap memory");
+                    return;
+                }
+            }
+            else
+            {
+                Logger.Info?.Print(LogClass.Service, 
+                    $"Service {Name} allocated heap: 0x{heapAddr:X} (Size: 0x{allocationSize:X})");
+            }
 
             _selfProcess.CpuMemory.Write(messagePtr + 0x0, 0);
             _selfProcess.CpuMemory.Write(messagePtr + 0x4, 2 << 10);
             _selfProcess.CpuMemory.Write(messagePtr + 0x8, heapAddr | ((ulong)PointerBufferSize << 48));
             int replyTargetHandle = 0;
 
+            // 内存使用计数器
+            int memoryLogCounter = 0;
+            const int MemoryLogInterval = 1000; // 每1000次循环记录一次内存
+            
             while (true)
             {
                 int portHandleCount;
@@ -298,6 +391,18 @@ namespace Ryujinx.HLE.HOS.Services
                 }
 
                 ArrayPool<int>.Shared.Return(handles);
+                
+                // 定期记录内存使用情况
+                if (++memoryLogCounter >= MemoryLogInterval)
+                {
+                    memoryLogCounter = 0;
+                    if (_selfProcess != null)
+                    {
+                        ulong usedMemory = _selfProcess.GetUsedMemory();
+                        Logger.Debug?.Print(LogClass.Service, 
+                            $"{Name} memory usage: {usedMemory / 1024}KB");
+                    }
+                }
             }
 
             Dispose();
