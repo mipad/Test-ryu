@@ -17,29 +17,18 @@ namespace Ryujinx.Cpu.LightningJit.Cache
         private const int CacheSize = 2047 * 1024 * 1024;
 
         private static ReservedRegion _jitRegion;
+        private static JitCacheInvalidation _jitCacheInvalidator;
+
+        private static CacheMemoryAllocator _cacheAllocator;
+
+        private static readonly List<CacheEntry> _cacheEntries = new();
+
+        private static readonly object _lock = new();
         private static bool _initialized;
 
-        // Android/Linux 系统调用
-        [DllImport("libc", SetLastError = true)]
-        private static extern int mprotect(IntPtr addr, IntPtr len, int prot);
-        
-        [DllImport("libc", SetLastError = true)]
-        private static extern void __clear_cache(IntPtr start, IntPtr end);
-
-        private const int PROT_READ = 0x1;
-        private const int PROT_WRITE = 0x2;
-        private const int PROT_EXEC = 0x4;
-        private const int PROT_RW = PROT_READ | PROT_WRITE;
-        private const int PROT_RX = PROT_READ | PROT_EXEC;
-
-        private static readonly CacheMemoryAllocator _cacheAllocator;
-        private static readonly List<CacheEntry> _cacheEntries = new();
-        private static readonly object _lock = new();
-
-        static JitCache()
-        {
-            _cacheAllocator = new CacheMemoryAllocator(CacheSize);
-        }
+        [SupportedOSPlatform("windows")]
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        public static partial IntPtr FlushInstructionCache(IntPtr hProcess, IntPtr lpAddress, UIntPtr dwSize);
 
         public static void Initialize(IJitMemoryAllocator allocator)
         {
@@ -56,10 +45,14 @@ namespace Ryujinx.Cpu.LightningJit.Cache
                 }
 
                 _jitRegion = new ReservedRegion(allocator, CacheSize);
-                
-                // 初始映射为 RWX（Android 需要）
-                _jitRegion.Block.MapAsRwx(0, (ulong)CacheSize);
-                
+
+                if (!OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS())
+                {
+                    _jitCacheInvalidator = new JitCacheInvalidation(allocator);
+                }
+
+                _cacheAllocator = new CacheMemoryAllocator(CacheSize);
+
                 _initialized = true;
             }
         }
@@ -71,13 +64,34 @@ namespace Ryujinx.Cpu.LightningJit.Cache
                 Debug.Assert(_initialized);
 
                 int funcOffset = Allocate(code.Length);
+
                 IntPtr funcPtr = _jitRegion.Pointer + funcOffset;
 
-                // 始终使用 Android 标准方法
-                SetMemoryProtection(funcOffset, code.Length, PROT_RW);
-                code.CopyTo(new Span<byte>((void*)funcPtr, code.Length));
-                SetMemoryProtection(funcOffset, code.Length, PROT_RX);
-                InvalidateCache(funcPtr, code.Length);
+                if (OperatingSystem.IsMacOS() && RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
+                {
+                    unsafe
+                    {
+                        fixed (byte* codePtr = code)
+                        {
+                            JitSupportDarwin.Copy(funcPtr, (IntPtr)codePtr, (ulong)code.Length);
+                        }
+                    }
+                }
+                else
+                {
+                    ReprotectAsWritable(funcOffset, code.Length);
+                    code.CopyTo(new Span<byte>((void*)funcPtr, code.Length));
+                    ReprotectAsExecutable(funcOffset, code.Length);
+
+                    if (OperatingSystem.IsWindows() && RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
+                    {
+                        FlushInstructionCache(Process.GetCurrentProcess().Handle, funcPtr, (UIntPtr)code.Length);
+                    }
+                    else
+                    {
+                        _jitCacheInvalidator?.Invalidate(funcPtr, (ulong)code.Length);
+                    }
+                }
 
                 Add(funcOffset, code.Length);
 
@@ -97,31 +111,28 @@ namespace Ryujinx.Cpu.LightningJit.Cache
                 {
                     _cacheAllocator.Free(funcOffset, AlignCodeSize(entry.Size));
                     _cacheEntries.RemoveAt(entryIndex);
-                    
-                    // Android 不需要额外清理，内存可重用
                 }
             }
         }
 
-        private static void SetMemoryProtection(int offset, int size, int prot)
+        private static void ReprotectAsWritable(int offset, int size)
         {
-            int regionStart = offset & ~_pageMask;
-            int regionSize = ((offset + size + _pageMask) & ~_pageMask) - regionStart;
+            int endOffs = offset + size;
 
-            IntPtr start = _jitRegion.Pointer + regionStart;
-            IntPtr len = (IntPtr)regionSize;
-            
-            if (mprotect(start, len, prot) != 0)
-            {
-                int error = Marshal.GetLastWin32Error();
-                throw new InvalidOperationException($"mprotect failed with error {error}");
-            }
+            int regionStart = offset & ~_pageMask;
+            int regionEnd = (endOffs + _pageMask) & ~_pageMask;
+
+            _jitRegion.Block.MapAsRwx((ulong)regionStart, (ulong)(regionEnd - regionStart));
         }
 
-        private static void InvalidateCache(IntPtr start, int size)
+        private static void ReprotectAsExecutable(int offset, int size)
         {
-            IntPtr end = start + size;
-            __clear_cache(start, end);
+            int endOffs = offset + size;
+
+            int regionStart = offset & ~_pageMask;
+            int regionEnd = (endOffs + _pageMask) & ~_pageMask;
+
+            _jitRegion.Block.MapAsRx((ulong)regionStart, (ulong)(regionEnd - regionStart));
         }
 
         private static int Allocate(int codeSize)
