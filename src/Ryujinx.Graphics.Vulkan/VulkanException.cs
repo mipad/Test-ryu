@@ -22,14 +22,18 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 
+    [Serializable]
     class VulkanException : Exception
     {
-        public VulkanException()
+        public VkResult Result { get; }
+
+        public VulkanException() : base()
         {
         }
 
-        public VulkanException(Result result) : base($"Unexpected API error \"{result}\".")
+        public VulkanException(VkResult result) : base($"Unexpected API error \"{result}\".")
         {
+            Result = result;
         }
 
         public VulkanException(string message) : base(message)
@@ -37,6 +41,10 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         public VulkanException(string message, Exception innerException) : base(message, innerException)
+        {
+        }
+
+        protected VulkanException(SerializationInfo info, StreamingContext context) : base(info, context)
         {
         }
     }
