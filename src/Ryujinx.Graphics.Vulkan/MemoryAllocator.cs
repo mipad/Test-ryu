@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Ryujinx.Common.Logging;
 using System.Diagnostics;
-using System.Runtime.InteropServices; // Added for Encoding usage
+using System.Runtime.InteropServices;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -16,6 +16,9 @@ namespace Ryujinx.Graphics.Vulkan
         private const int BaseRetryDelayMs = 100;
         private const int MaxConcurrentLargeAllocations = 1;
         private const float MemorySafetyMarginFactor = 0.2f; // 20% safety margin
+
+        // ARM Vendor ID (PCI-SIG)
+        private const uint ArmVendorId = 0x13B5;
 
         private readonly Vk _api;
         private readonly VulkanPhysicalDevice _physicalDevice;
@@ -30,8 +33,8 @@ namespace Ryujinx.Graphics.Vulkan
         // 大内存分配信号量
         private readonly SemaphoreSlim _largeAllocSemaphore = new(MaxConcurrentLargeAllocations, MaxConcurrentLargeAllocations);
         
-        // 检测是否为ARM Mali设备
-        private readonly bool _isArmMaliDevice;
+        // 检测是否为ARM设备
+        private readonly bool _isArmDevice;
 
         public MemoryAllocator(Vk api, VulkanPhysicalDevice physicalDevice, Device device)
         {
@@ -42,15 +45,15 @@ namespace Ryujinx.Graphics.Vulkan
             _blockAlignment = (int)Math.Min(int.MaxValue, MaxDeviceMemoryUsageEstimate / _physicalDevice.PhysicalDeviceProperties.Limits.MaxMemoryAllocationCount);
             _lock = new(LockRecursionPolicy.NoRecursion);
             
-            // 安全获取设备名称
-            string deviceName = _physicalDevice.PhysicalDeviceProperties.GetDeviceName();
-            _isArmMaliDevice = deviceName.Contains("Mali");
+            // 通过Vendor ID检测ARM设备
+            _isArmDevice = _physicalDevice.PhysicalDeviceProperties.VendorID == ArmVendorId;
             
             Logger.Info?.Print(LogClass.Gpu, 
                 $"MemoryAllocator initialized: " +
                 $"BlockAlignment={FormatSize((ulong)_blockAlignment)}, " +
                 $"LargeThreshold={FormatSize(LargeAllocationThreshold)}, " +
-                $"IsArmMali={_isArmMaliDevice}");
+                $"VendorID=0x{_physicalDevice.PhysicalDeviceProperties.VendorID:X}, " +
+                $"IsArmDevice={_isArmDevice}");
         }
 
         public MemoryAllocation AllocateDeviceMemory(
@@ -60,11 +63,11 @@ namespace Ryujinx.Graphics.Vulkan
         {
             int memoryTypeIndex = FindSuitableMemoryTypeIndex(requirements.MemoryTypeBits, flags);
             
-            // ARM Mali回退机制：如果找不到匹配类型且是Mali设备，尝试移除HostCachedBit
-            if (memoryTypeIndex < 0 && _isArmMaliDevice && flags.HasFlag(MemoryPropertyFlags.HostCachedBit))
+            // ARM回退机制：如果找不到匹配类型且是ARM设备，尝试移除HostCachedBit
+            if (memoryTypeIndex < 0 && _isArmDevice && flags.HasFlag(MemoryPropertyFlags.HostCachedBit))
             {
                 Logger.Warning?.Print(LogClass.Gpu, 
-                    "ARM Mali compatibility: Retrying without HostCachedBit");
+                    "ARM compatibility: Retrying without HostCachedBit");
                 
                 var fallbackFlags = flags & ~MemoryPropertyFlags.HostCachedBit;
                 memoryTypeIndex = FindSuitableMemoryTypeIndex(requirements.MemoryTypeBits, fallbackFlags);
@@ -81,13 +84,13 @@ namespace Ryujinx.Graphics.Vulkan
             bool map = flags.HasFlag(MemoryPropertyFlags.HostVisibleBit);
             ulong size = requirements.Size;
             
-            // ARM Mali设备的大内存分配特殊处理
-            if (_isArmMaliDevice && size > LargeAllocationThreshold)
+            // ARM设备的大内存分配特殊处理
+            if (_isArmDevice && size > LargeAllocationThreshold)
             {
-                // 对于ARM Mali设备，大内存分配时不使用HostCachedBit
+                // 对于ARM设备，大内存分配时不使用HostCachedBit
                 map = map && !isBuffer; // 如果是buffer则不再尝试map
                 Logger.Info?.Print(LogClass.Gpu, 
-                    $"ARM Mali: Allocating large buffer without HostCachedBit: {FormatSize(size)}");
+                    $"ARM: Allocating large buffer without HostCachedBit: {FormatSize(size)}");
             }
             
             // 大内存分配特殊处理
@@ -176,11 +179,11 @@ namespace Ryujinx.Graphics.Vulkan
                 Thread.Sleep(delay);
             }
 
-            // ARM Mali设备的最终回退机制
-            if (_isArmMaliDevice && isLargeAllocation)
+            // ARM设备的最终回退机制
+            if (_isArmDevice && isLargeAllocation)
             {
                 Logger.Warning?.Print(LogClass.Gpu, 
-                    "Applying ARM Mali large allocation workaround...");
+                    "Applying ARM large allocation workaround...");
                 
                 // 尝试禁用HostCachedBit和map
                 var fallbackAlloc = Allocate(
@@ -193,7 +196,7 @@ namespace Ryujinx.Graphics.Vulkan
                 if (fallbackAlloc.Memory.Handle != 0)
                 {
                     Logger.Info?.Print(LogClass.Gpu, 
-                        $"ARM Mali workaround succeeded for {FormatSize(size)}");
+                        $"ARM workaround succeeded for {FormatSize(size)}");
                     return fallbackAlloc;
                 }
             }
