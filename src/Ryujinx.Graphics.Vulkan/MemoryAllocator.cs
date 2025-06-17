@@ -1,4 +1,4 @@
-using Silk.NET.Vulkan;
+using Silk.NET.Vulkan; // 添加必要的命名空间引用
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -82,7 +82,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             Logger.Error?.Print(LogClass.Gpu, 
                 $"Memory allocation failed after {MaxRetries} attempts: {FormatSize(size)}");
-            throw new VulkanMemoryException(VkResult.ErrorOutOfDeviceMemory, size, true);
+            throw new VulkanException(Result.ErrorOutOfDeviceMemory, $"Failed to allocate {FormatSize(size)}", size);
         }
 
         private MemoryAllocation Allocate(int memoryTypeIndex, ulong size, ulong alignment, bool map, bool isBuffer)
@@ -175,22 +175,6 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 _blockLists[i].Dispose();
             }
-        }
-    }
-
-    // 自定义内存异常
-    class VulkanMemoryException : OutOfMemoryException
-    {
-        public VkResult Result { get; }
-        public ulong AllocationSize { get; }
-        public bool IsCritical { get; }
-
-        public VulkanMemoryException(VkResult result, ulong allocationSize, bool isCritical) 
-            : base($"Vulkan memory allocation failed: {result}, size={allocationSize}")
-        {
-            Result = result;
-            AllocationSize = allocationSize;
-            IsCritical = isCritical;
         }
     }
 }
