@@ -579,17 +579,18 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             // 等待GPU线程退出
             if (_gpuThread != null && _gpuThread.IsAlive)
             {
-                _gpuThread.Join(50);
+                _gpuThread.Join(50); // 等待50ms
                 if (_gpuThread.IsAlive)
                 {
+                    // 如果线程还在运行，尝试中止（注意：这可能不安全，但确保释放）
                     _gpuThread.Abort();
                 }
             }
 
-            // 释放托管资源
+            // 释放基础渲染器
             _baseRenderer.Dispose();
-            _spanPool?.Dispose();
-            Programs?.Dispose();
+
+            // 释放其他资源
             Sync?.Dispose();
 
             // 归还ArrayPool资源
