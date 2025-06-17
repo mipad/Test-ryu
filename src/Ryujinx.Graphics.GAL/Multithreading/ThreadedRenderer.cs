@@ -165,37 +165,17 @@ namespace Ryujinx.Graphics.GAL.Multithreading
                         Interlocked.Decrement(ref _commandCount);
                     }
                 }
-                catch (OutOfMemoryException ex)
+                catch (OutOfMemoryException)
                 {
-                    HandleMemoryExhaustion(ex);
+                    // 内存耗尽，终止渲染循环
+                    _shouldExit = true;
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    Logger.Error?.Print(LogClass.Gpu, $"Unhandled exception in render loop: {ex}");
+                    // 发生未处理异常，终止渲染循环
                     _shouldExit = true;
                 }
             }
-        }
-
-        private void HandleMemoryExhaustion(OutOfMemoryException ex)
-        {
-            Logger.Error?.Print(LogClass.Gpu, $"GPU memory exhausted: {ex.Message}");
-
-            // 尝试释放未使用的资源
-            try
-            {
-                // 通用资源释放逻辑，不依赖特定渲染器
-                _baseRenderer.ReleaseUnusedResources();
-                Logger.Info?.Print(LogClass.Gpu, "Released unused resources due to memory exhaustion");
-            }
-            catch (Exception memEx)
-            {
-                Logger.Error?.Print(LogClass.Gpu, $"Resource release failed: {memEx.Message}");
-            }
-
-            // 内存不足时终止渲染循环
-            Logger.Error?.Print(LogClass.Gpu, "Critical memory error. Terminating render loop.");
-            _shouldExit = true;
         }
 
         internal SpanRef<T> CopySpan<T>(ReadOnlySpan<T> data) where T : unmanaged
