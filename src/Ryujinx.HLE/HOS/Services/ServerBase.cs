@@ -197,7 +197,7 @@ namespace Ryujinx.HLE.HOS.Services
             InitDone.Set();
 
             ulong messagePtr = _selfThread.TlsAddress;
-            _context.Syscall.SetHeapSize(out ulong heapAddr, 0x100000);
+            _context.Syscall.SetHeapSize(out ulong heapAddr, 0x200000);
 
             _selfProcess.CpuMemory.Write(messagePtr + 0x0, 0);
             _selfProcess.CpuMemory.Write(messagePtr + 0x4, 2 << 10);
