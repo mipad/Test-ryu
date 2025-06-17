@@ -293,10 +293,6 @@ namespace Ryujinx.HLE.HOS.Services
             _selfProcess.CpuMemory.Write(messagePtr + 0x8, heapAddr | ((ulong)PointerBufferSize << 48));
             int replyTargetHandle = 0;
 
-            // 内存使用计数器
-            int memoryLogCounter = 0;
-            const int MemoryLogInterval = 1000; // 每1000次循环记录一次内存
-            
             while (true)
             {
                 int portHandleCount;
@@ -391,18 +387,6 @@ namespace Ryujinx.HLE.HOS.Services
                 }
 
                 ArrayPool<int>.Shared.Return(handles);
-                
-                // 定期记录内存使用情况
-                if (++memoryLogCounter >= MemoryLogInterval)
-                {
-                    memoryLogCounter = 0;
-                    if (_selfProcess != null)
-                    {
-                        ulong usedMemory = _selfProcess.GetUsedMemory();
-                        Logger.Debug?.Print(LogClass.Service, 
-                            $"{Name} memory usage: {usedMemory / 1024}KB");
-                    }
-                }
             }
 
             Dispose();
