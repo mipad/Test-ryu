@@ -1,4 +1,4 @@
-using Silk.NET.Vulkan;
+using Silk.NET.Vulkan; // 添加必要的命名空间引用
 using System;
 using System.Runtime.Serialization;
 
@@ -25,15 +25,27 @@ namespace Ryujinx.Graphics.Vulkan
     [Serializable]
     class VulkanException : Exception
     {
-        public VkResult Result { get; }
+        public Result Result { get; }
+        public ulong AllocationSize { get; }
 
         public VulkanException() : base()
         {
         }
 
-        public VulkanException(VkResult result) : base($"Unexpected API error \"{result}\".")
+        public VulkanException(Result result) : base($"Unexpected API error \"{result}\".")
         {
             Result = result;
+        }
+        
+        public VulkanException(Result result, string message) : base($"{result}: {message}")
+        {
+            Result = result;
+        }
+        
+        public VulkanException(Result result, string message, ulong allocationSize) : base($"{result}: {message}")
+        {
+            Result = result;
+            AllocationSize = allocationSize;
         }
 
         public VulkanException(string message) : base(message)
