@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Ryujinx.Common.Logging;
+using System.Diagnostics;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -10,6 +11,10 @@ namespace Ryujinx.Graphics.Vulkan
     {
         private const ulong MaxDeviceMemoryUsageEstimate = 16UL * 1024 * 1024 * 1024;
         private const ulong LargeAllocationThreshold = 256 * 1024 * 1024; // 256MB
+        private const int MaxRetries = 5;
+        private const int BaseRetryDelayMs = 100;
+        private const int MaxConcurrentLargeAllocations = 1;
+        private const float MemorySafetyMarginFactor = 0.05f; // 20% safety margin
 
         private readonly Vk _api;
         private readonly VulkanPhysicalDevice _physicalDevice;
@@ -18,8 +23,11 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly int _blockAlignment;
         private readonly ReaderWriterLockSlim _lock;
         
-        // 添加内存压力回调
+        // 内存压力回调
         public event Action<ulong, ulong> OnMemoryPressure;
+        
+        // 大内存分配信号量
+        private readonly SemaphoreSlim _largeAllocSemaphore = new(MaxConcurrentLargeAllocations, MaxConcurrentLargeAllocations);
 
         public MemoryAllocator(Vk api, VulkanPhysicalDevice physicalDevice, Device device)
         {
@@ -29,6 +37,11 @@ namespace Ryujinx.Graphics.Vulkan
             _blockLists = new List<MemoryAllocatorBlockList>();
             _blockAlignment = (int)Math.Min(int.MaxValue, MaxDeviceMemoryUsageEstimate / _physicalDevice.PhysicalDeviceProperties.Limits.MaxMemoryAllocationCount);
             _lock = new(LockRecursionPolicy.NoRecursion);
+            
+            Logger.Info?.Print(LogClass.Gpu, 
+                $"MemoryAllocator initialized: " +
+                $"BlockAlignment={FormatSize((ulong)_blockAlignment)}, " +
+                $"LargeThreshold={FormatSize(LargeAllocationThreshold)}");
         }
 
         public MemoryAllocation AllocateDeviceMemory(
@@ -39,50 +52,171 @@ namespace Ryujinx.Graphics.Vulkan
             int memoryTypeIndex = FindSuitableMemoryTypeIndex(requirements.MemoryTypeBits, flags);
             if (memoryTypeIndex < 0)
             {
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"No suitable memory type found! " +
+                    $"TypeBits: {requirements.MemoryTypeBits}, Flags: {flags}");
                 return default;
             }
 
             bool map = flags.HasFlag(MemoryPropertyFlags.HostVisibleBit);
+            ulong size = requirements.Size;
             
-            // 大内存分配警告
-            if (requirements.Size > LargeAllocationThreshold)
+            // 大内存分配特殊处理
+            if (size > LargeAllocationThreshold)
             {
                 Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Allocating large buffer: {FormatSize(requirements.Size)} " +
+                    $"Allocating large buffer: {FormatSize(size)} " +
                     $"(Type: {memoryTypeIndex}, Flags: {flags})");
+                
+                // 获取大内存分配信号量（限制并发）
+                if (!_largeAllocSemaphore.Wait(TimeSpan.FromSeconds(30)))
+                {
+                    Logger.Error?.Print(LogClass.Gpu, 
+                        "Timeout waiting for large allocation semaphore!");
+                    return default;
+                }
+                
+                try
+                {
+                    return AllocateWithRetry(memoryTypeIndex, size, requirements.Alignment, map, isBuffer, true);
+                }
+                finally
+                {
+                    _largeAllocSemaphore.Release();
+                }
             }
-
-            return AllocateWithRetry(memoryTypeIndex, requirements.Size, requirements.Alignment, map, isBuffer);
+            
+            return AllocateWithRetry(memoryTypeIndex, size, requirements.Alignment, map, isBuffer, false);
         }
 
-        private MemoryAllocation AllocateWithRetry(int memoryTypeIndex, ulong size, ulong alignment, bool map, bool isBuffer)
+        private MemoryAllocation AllocateWithRetry(
+            int memoryTypeIndex, 
+            ulong size, 
+            ulong alignment, 
+            bool map, 
+            bool isBuffer,
+            bool isLargeAllocation)
         {
-            const int MaxRetries = 3;
             int attempt = 0;
+            var sw = Stopwatch.StartNew();
+            string sizeStr = FormatSize(size);
 
-            while (attempt++ < MaxRetries)
+            while (attempt < MaxRetries)
             {
+                attempt++;
+                
+                // 检查内存可用性（大分配需要额外安全余量）
+                if (isLargeAllocation && !IsMemoryAvailable(memoryTypeIndex, size, MemorySafetyMarginFactor))
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"Memory insufficient for large allocation: {sizeStr} " +
+                        $"(Type: {memoryTypeIndex}, Attempt: {attempt}/{MaxRetries})");
+                    
+                    // 触发内存压力事件
+                    OnMemoryPressure?.Invoke(size, (ulong)attempt);
+                    
+                    // 指数退避等待（100ms, 200ms, 400ms...）
+                    int waitTime = BaseRetryDelayMs * (1 << (attempt - 1));
+                    Logger.Info?.Print(LogClass.Gpu, $"Waiting {waitTime}ms for memory release...");
+                    Thread.Sleep(waitTime);
+                    continue;
+                }
+
                 var allocation = Allocate(memoryTypeIndex, size, alignment, map, isBuffer);
                 
-                // 使用Handle检查分配是否有效
                 if (allocation.Memory.Handle != 0)
                 {
+                    if (isLargeAllocation || attempt > 1)
+                    {
+                        Logger.Info?.Print(LogClass.Gpu, 
+                            $"Allocation succeeded after {attempt} attempts " +
+                            $"(Time: {sw.ElapsedMilliseconds}ms): {sizeStr}");
+                    }
                     return allocation;
                 }
 
                 Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Memory allocation failed for {FormatSize(size)} (attempt {attempt}/{MaxRetries})");
+                    $"Memory allocation failed: {sizeStr} " +
+                    $"(Type: {memoryTypeIndex}, Attempt: {attempt}/{MaxRetries})");
                 
-                // 触发内存清理回调
+                // 触发内存压力事件
                 OnMemoryPressure?.Invoke(size, (ulong)attempt);
                 
-                // 等待资源释放
-                Thread.Sleep(50 * attempt);
+                // 指数退避等待
+                int delay = BaseRetryDelayMs * (1 << (attempt - 1));
+                Thread.Sleep(delay);
             }
 
+            // 最终失败处理
             Logger.Error?.Print(LogClass.Gpu, 
-                $"Memory allocation failed after {MaxRetries} attempts: {FormatSize(size)}");
+                $"Memory allocation FAILED after {MaxRetries} attempts: {sizeStr} " +
+                $"(Total time: {sw.ElapsedMilliseconds}ms)");
+            
+            LogMemoryStatus(memoryTypeIndex);
             return default;
+        }
+
+        private bool IsMemoryAvailable(int memoryTypeIndex, ulong requiredSize, float safetyMarginFactor)
+        {
+            try
+            {
+                // 获取内存堆信息
+                uint heapIndex = _physicalDevice.PhysicalDeviceMemoryProperties.MemoryTypes[memoryTypeIndex].HeapIndex;
+                ulong heapSize = _physicalDevice.PhysicalDeviceMemoryProperties.MemoryHeaps[heapIndex].Size;
+                
+                // 估算已使用内存（简单实现，实际需要更精确统计）
+                ulong estimatedUsed = EstimateUsedMemory(memoryTypeIndex);
+                ulong freeMemory = heapSize - estimatedUsed;
+                
+                // 计算安全余量
+                ulong safetyMargin = (ulong)(heapSize * safetyMarginFactor);
+                ulong requiredTotal = requiredSize + safetyMargin;
+                
+                bool available = freeMemory >= requiredTotal;
+                
+                if (!available)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"Memory check: Required={FormatSize(requiredTotal)} " +
+                        $"(Size: {FormatSize(requiredSize)} + Margin: {FormatSize(safetyMargin)}), " +
+                        $"Free={FormatSize(freeMemory)}/{FormatSize(heapSize)}");
+                }
+                
+                return available;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Memory check failed: {ex.Message}");
+                return true; // 出错时允许尝试分配
+            }
+        }
+
+        private ulong EstimateUsedMemory(int memoryTypeIndex)
+        {
+            // 简化实现 - 实际应跟踪每个内存类型的使用量
+            // 此处返回0表示未知，后续需要完善
+            return 0;
+        }
+
+        private void LogMemoryStatus(int memoryTypeIndex)
+        {
+            try
+            {
+                uint heapIndex = _physicalDevice.PhysicalDeviceMemoryProperties.MemoryTypes[memoryTypeIndex].HeapIndex;
+                ulong heapSize = _physicalDevice.PhysicalDeviceMemoryProperties.MemoryHeaps[heapIndex].Size;
+                
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Memory Heap Status: " +
+                    $"TypeIndex={memoryTypeIndex}, " +
+                    $"HeapIndex={heapIndex}, " +
+                    $"HeapSize={FormatSize(heapSize)}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Memory status logging failed: {ex.Message}");
+            }
         }
 
         private MemoryAllocation Allocate(int memoryTypeIndex, ulong size, ulong alignment, bool map, bool isBuffer)
@@ -175,6 +309,11 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 _blockLists[i].Dispose();
             }
+            
+            _largeAllocSemaphore.Dispose();
+            _lock.Dispose();
+            
+            Logger.Info?.Print(LogClass.Gpu, "MemoryAllocator disposed");
         }
     }
 }
