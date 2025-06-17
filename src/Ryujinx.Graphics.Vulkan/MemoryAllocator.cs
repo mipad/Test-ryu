@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Ryujinx.Common.Logging;
 using System.Diagnostics;
+using System.Runtime.InteropServices; // Added for Encoding usage
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -41,8 +42,9 @@ namespace Ryujinx.Graphics.Vulkan
             _blockAlignment = (int)Math.Min(int.MaxValue, MaxDeviceMemoryUsageEstimate / _physicalDevice.PhysicalDeviceProperties.Limits.MaxMemoryAllocationCount);
             _lock = new(LockRecursionPolicy.NoRecursion);
             
-            // 检测是否为ARM Mali设备
-            _isArmMaliDevice = _physicalDevice.PhysicalDeviceProperties.DeviceName.Contains("Mali");
+            // 安全获取设备名称
+            string deviceName = _physicalDevice.PhysicalDeviceProperties.GetDeviceName();
+            _isArmMaliDevice = deviceName.Contains("Mali");
             
             Logger.Info?.Print(LogClass.Gpu, 
                 $"MemoryAllocator initialized: " +
