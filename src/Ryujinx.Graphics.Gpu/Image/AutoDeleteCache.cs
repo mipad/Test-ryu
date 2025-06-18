@@ -59,7 +59,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         private const ulong TextureSizeCapacity10GiB = 10 * GiB;
         private const ulong TextureSizeCapacity12GiB = 12 * GiB;
 
-        private const float MemoryScaleFactor = 0.50f;
+        private const float MemoryScaleFactor = 0.75f;
         private ulong _maxCacheMemoryUsage = DefaultTextureSizeCapacity;
 
         private readonly LinkedList<Texture> _textures;
