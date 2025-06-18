@@ -123,6 +123,12 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             var surfaceFormat = ChooseSwapSurfaceFormat(surfaceFormats, _colorSpacePassthroughEnabled);
+            
+            // 添加安全检查：确保surfaceFormat有效
+            if (surfaceFormat.Format == VkFormat.Undefined)
+            {
+                surfaceFormat = new SurfaceFormatKHR(VkFormat.B8G8R8A8Unorm, ColorSpaceKHR.PaceSrgbNonlinearKhr);
+            }
 
             var extent = ChooseSwapExtent(capabilities);
 
@@ -235,6 +241,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         private static SurfaceFormatKHR ChooseSwapSurfaceFormat(SurfaceFormatKHR[] availableFormats, bool colorSpacePassthroughEnabled)
         {
+            // 修复点1：添加空数组安全防护
+            if (availableFormats == null || availableFormats.Length == 0)
+            {
+                return new SurfaceFormatKHR(VkFormat.B8G8R8A8Unorm, ColorSpaceKHR.PaceSrgbNonlinearKhr);
+            }
+
+            // 修复点2：处理单元素Undefined情况
             if (availableFormats.Length == 1 && availableFormats[0].Format == VkFormat.Undefined)
             {
                 return new SurfaceFormatKHR(VkFormat.B8G8R8A8Unorm, ColorSpaceKHR.PaceSrgbNonlinearKhr);
@@ -266,6 +279,12 @@ namespace Ryujinx.Graphics.Vulkan
                         break;
                     }
                 }
+            }
+
+            // 修复点3：确保返回有效格式
+            if (formatToReturn.Format == VkFormat.Undefined)
+            {
+                formatToReturn = new SurfaceFormatKHR(VkFormat.B8G8R8A8Unorm, ColorSpaceKHR.PaceSrgbNonlinearKhr);
             }
 
             return formatToReturn;
