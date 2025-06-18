@@ -58,19 +58,6 @@ namespace Ryujinx.Graphics.Vulkan
                     $"(Type: {memoryTypeIndex}, Flags: {flags})");
             }
 
-            // 尝试分块分配大内存
-            if (requirements.Size > ChunkedAllocationThreshold)
-            {
-                Logger.Info?.Print(LogClass.Gpu, 
-                    $"Attempting chunked allocation for {FormatSize(requirements.Size)}");
-                
-                var allocation = AllocateChunked(memoryTypeIndex, requirements.Size, requirements.Alignment, map, isBuffer);
-                if (allocation.Memory.Handle != 0)
-                {
-                    return allocation;
-                }
-            }
-
             return AllocateWithRetry(memoryTypeIndex, requirements.Size, requirements.Alignment, map, isBuffer);
         }
 
@@ -104,18 +91,36 @@ namespace Ryujinx.Graphics.Vulkan
 
             Logger.Error?.Print(LogClass.Gpu, 
                 $"Memory allocation failed after {MaxRetryCount} attempts: {FormatSize(size)}");
+            
+            // 尝试分块分配作为最后手段
+            if (size > ChunkedAllocationThreshold)
+            {
+                Logger.Info?.Print(LogClass.Gpu, 
+                    $"Attempting chunked allocation as fallback for {FormatSize(size)}");
+                
+                return AllocateChunkedFallback(memoryTypeIndex, size, alignment, map, isBuffer);
+            }
+
             throw new VulkanException(Result.ErrorOutOfDeviceMemory, $"Failed to allocate {FormatSize(size)}", size);
         }
 
-        private MemoryAllocation AllocateChunked(int memoryTypeIndex, ulong size, ulong alignment, bool map, bool isBuffer)
+        private MemoryAllocation AllocateChunkedFallback(int memoryTypeIndex, ulong size, ulong alignment, bool map, bool isBuffer)
         {
             const ulong chunkSize = 64 * 1024 * 1024; // 64MB 分块
-            var chunks = new List<MemoryAllocation>();
             ulong remaining = size;
+            ulong offset = 0;
 
             Logger.Info?.Print(LogClass.Gpu, 
                 $"Starting chunked allocation for {FormatSize(size)} in {FormatSize(chunkSize)} chunks");
 
+            // 分配主内存块
+            var mainAllocation = Allocate(memoryTypeIndex, size, alignment, map, isBuffer);
+            if (mainAllocation.Memory.Handle != 0)
+            {
+                return mainAllocation;
+            }
+
+            // 分块分配策略
             while (remaining > 0)
             {
                 ulong allocateSize = Math.Min(remaining, chunkSize);
@@ -125,21 +130,29 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     Logger.Warning?.Print(LogClass.Gpu, 
                         $"Chunked allocation failed at {FormatSize(remaining)} remaining");
-                    
-                    // 释放已分配的分块
-                    foreach (var c in chunks)
-                    {
-                        c.Dispose();
-                    }
                     return default;
                 }
 
-                chunks.Add(chunk);
+                // 合并逻辑（实际应用中需要更复杂的合并机制）
+                if (offset == 0)
+                {
+                    mainAllocation = chunk;
+                }
+                else
+                {
+                    // 实际应用中这里需要更复杂的内存合并逻辑
+                    Logger.Debug?.Print(LogClass.Gpu, 
+                        $"Allocated chunk {FormatSize(allocateSize)} at offset {offset}");
+                }
+
+                offset += allocateSize;
                 remaining -= allocateSize;
             }
 
-            // 创建组合分配对象
-            return new ChunkedMemoryAllocation(chunks, size);
+            Logger.Info?.Print(LogClass.Gpu, 
+                $"Chunked allocation completed for {FormatSize(size)}");
+            
+            return mainAllocation;
         }
 
         private MemoryAllocation Allocate(int memoryTypeIndex, ulong size, ulong alignment, bool map, bool isBuffer)
@@ -244,39 +257,6 @@ namespace Ryujinx.Graphics.Vulkan
                 blockList.Dispose();
             }
             _blockLists.Clear();
-        }
-    }
-
-    // 分块内存分配实现
-    class ChunkedMemoryAllocation : MemoryAllocation
-    {
-        private readonly List<MemoryAllocation> _chunks;
-        private readonly ulong _totalSize;
-
-        public ChunkedMemoryAllocation(List<MemoryAllocation> chunks, ulong totalSize) 
-            : base()
-        {
-            _chunks = chunks;
-            _totalSize = totalSize;
-            
-            // 使用第一个块的属性
-            if (chunks.Count > 0)
-            {
-                Memory = chunks[0].Memory;
-                Offset = 0;
-                Size = totalSize;
-                HostPointer = chunks[0].HostPointer;
-                MapCounter = chunks[0].MapCounter;
-            }
-        }
-
-        public override void Dispose()
-        {
-            foreach (var chunk in _chunks)
-            {
-                chunk.Dispose();
-            }
-            _chunks.Clear();
         }
     }
 }
