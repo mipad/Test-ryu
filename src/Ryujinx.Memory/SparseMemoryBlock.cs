@@ -15,6 +15,12 @@ namespace Ryujinx.Memory
         
         // 动态计算最大保留大小
         private static readonly ulong _maxReserveSize = GetPlatformMaxReserveSize();
+        
+        // Android平台专用设置
+        #if ANDROID
+        private const int MaxMappedBlocks = 8; // 限制物理内存块数量
+        private const ulong MaxPhysicalMemory = MaxMappedBlocks * MapGranularity; // 1MB
+        #endif
 
         private readonly PageInitDelegate _pageInit;
         private readonly object _lock = new object();
@@ -99,7 +105,8 @@ namespace Ryujinx.Memory
             
             // 记录创建信息
             Logger.Info?.Print(LogClass.Application, 
-                $"SparseMemoryBlock created: Requested={size} bytes, Reserved={reservedSize} bytes");
+                $"SparseMemoryBlock created: Requested={FormatSize(size)}, Reserved={FormatSize(reservedSize)}, " +
+                $"PageSize={FormatSize(_pageSize)}");
         }
 
         private void MapPage(ulong pageOffset)
@@ -114,12 +121,37 @@ namespace Ryujinx.Memory
             // 从最新的映射块中获取页面
             MemoryBlock block = _mappedBlocks.LastOrDefault();
 
+            #if ANDROID
+            // Android专用内存优化：物理内存块复用
+            if (_mappedBlocks.Count >= MaxMappedBlocks && _mappedBlockUsage == MapGranularity)
+            {
+                // 回收最早的物理内存块
+                var oldestBlock = _mappedBlocks[0];
+                _mappedBlocks.RemoveAt(0);
+                
+                // 重用该内存块
+                oldestBlock.Dispose(); // 释放旧资源
+                block = new MemoryBlock(MapGranularity, MemoryAllocationFlags.Mirrorable);
+                _mappedBlocks.Add(block);
+                _mappedBlockUsage = 0;
+                
+                Logger.Debug?.Print(LogClass.Memory, 
+                    $"Recycled physical memory block, total blocks: {_mappedBlocks.Count}");
+            }
+            else
+            #endif
             if (block == null || _mappedBlockUsage == MapGranularity)
             {
                 // 需要映射更多内存
                 block = new MemoryBlock(MapGranularity, MemoryAllocationFlags.Mirrorable);
                 _mappedBlocks.Add(block);
                 _mappedBlockUsage = 0;
+                
+                #if ANDROID
+                Logger.Debug?.Print(LogClass.Memory, 
+                    $"New physical memory block allocated, total blocks: {_mappedBlocks.Count}/" +
+                    $"{MaxMappedBlocks}, Usage: {FormatSize(_mappedBlockUsage)}");
+                #endif
             }
 
             // 初始化页面内容
@@ -129,6 +161,16 @@ namespace Ryujinx.Memory
             _reservedBlock.MapView(block, _mappedBlockUsage, pageOffset, _pageSize);
 
             _mappedBlockUsage += _pageSize;
+            
+            #if ANDROID
+            // Android: 记录详细内存使用情况
+            if ((_mappedBlockUsage % (MapGranularity / 4)) == 0)
+            {
+                Logger.Debug?.Print(LogClass.Memory, 
+                    $"Page mapped at 0x{pageOffset:X}, Block usage: {FormatSize(_mappedBlockUsage)}/" +
+                    $"{FormatSize(MapGranularity)}");
+            }
+            #endif
         }
 
         public void EnsureMapped(ulong offset)
@@ -171,7 +213,25 @@ namespace Ryujinx.Memory
 
             GC.SuppressFinalize(this);
             
-            Logger.Info?.Print(LogClass.Application, "SparseMemoryBlock disposed");
+            Logger.Info?.Print(LogClass.Application, 
+                $"SparseMemoryBlock disposed: MappedBlocks={_mappedBlocks.Count}, " +
+                $"PhysicalUsage={FormatSize((ulong)_mappedBlocks.Count * MapGranularity)}");
+        }
+        
+        // 辅助方法：格式化内存大小
+        private static string FormatSize(ulong size)
+        {
+            string[] units = { "B", "KB", "MB", "GB" };
+            double value = size;
+            int unitIndex = 0;
+
+            while (value >= 1024 && unitIndex < units.Length - 1)
+            {
+                value /= 1024;
+                unitIndex++;
+            }
+
+            return $"{value:0.##} {units[unitIndex]}";
         }
     }
 }
