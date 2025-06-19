@@ -64,9 +64,23 @@ namespace Ryujinx.Graphics.Gpu.Memory
             CounterCache = new CounterCache();
             _pageTable = new ulong[PtLvl0Size][];
             
+            // 根据平台调整虚拟地址空间大小
+            ulong addressSpaceSize = 1UL << AddressSpaceBits;
+            
+            // Android 平台特殊处理：限制虚拟地址空间大小为 1GB
+            #if ANDROID
+            const ulong AndroidMaxAddressSpace = 1UL << 30; // 1GB
+            if (addressSpaceSize > AndroidMaxAddressSpace)
+            {
+                addressSpaceSize = AndroidMaxAddressSpace;
+                Logger.Warning?.Print(LogClass.Memory, 
+                    $"Reducing GPU address space from {1UL << AddressSpaceBits} to {addressSpaceSize} for Android compatibility");
+            }
+            #endif
+            
             // 创建稀疏内存块管理GPU地址空间
             _sparseMemoryBlock = new SparseMemoryBlock(
-                1UL << AddressSpaceBits,
+                addressSpaceSize,
                 page => page.Clear(),  // 页面初始化为0
                 fill: null
             );
