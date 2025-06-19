@@ -12,8 +12,8 @@ namespace Ryujinx.Memory
     {
         private const ulong MapGranularity = 1UL << 17; // 128KB mapping granularity
         
-        // Android 平台特殊处理：限制保留内存大小为 1GB
-        private const ulong AndroidMaxReserveSize = 1UL << 30; // 1GB for Android
+        // 动态计算最大保留大小
+        private static readonly ulong _maxReserveSize = GetPlatformMaxReserveSize();
 
         private readonly PageInitDelegate _pageInit;
         private readonly object _lock = new object();
@@ -25,22 +25,32 @@ namespace Ryujinx.Memory
 
         public MemoryBlock Block => _reservedBlock;
 
+        // 获取平台特定的最大保留大小
+        private static ulong GetPlatformMaxReserveSize()
+        {
+            #if ANDROID
+            // Android: 使用更小的保留空间 (512MB)
+            return 512 * 1024 * 1024;
+            #else
+            // 其他平台: 默认 4GB
+            return 4UL * 1024 * 1024 * 1024;
+            #endif
+        }
+
         public SparseMemoryBlock(ulong size, PageInitDelegate pageInit, MemoryBlock fill)
         {
             _pageSize = MemoryBlock.GetPageSize();
             _pageInit = pageInit;
 
-            // Android 平台特殊处理：限制保留内存大小
-            ulong reservedSize = size;
+            // 动态限制保留大小
+            ulong reservedSize = Math.Min(size, _maxReserveSize);
             
-            #if ANDROID
-            if (reservedSize > AndroidMaxReserveSize)
+            // 记录大小调整信息
+            if (reservedSize < size)
             {
-                reservedSize = AndroidMaxReserveSize;
                 Logger.Warning?.Print(LogClass.Memory, 
-                    $"Reducing reserved memory from {size / (1024 * 1024)}MB to {reservedSize / (1024 * 1024)}MB for Android compatibility");
+                    $"Reducing reserved memory from {size / (1024 * 1024)}MB to {reservedSize / (1024 * 1024)}MB");
             }
-            #endif
             
             // 创建保留内存块（虚拟地址空间）
             _reservedBlock = new MemoryBlock(reservedSize, MemoryAllocationFlags.Reserve | MemoryAllocationFlags.ViewCompatible);
@@ -63,10 +73,20 @@ namespace Ryujinx.Memory
                 ulong offset = 0;
                 for (int i = 0; i < repeats; i++)
                 {
-                    _reservedBlock.MapView(fill, 0, offset, Math.Min(fill.Size, size - offset));
-                    offset += fill.Size;
+                    ulong fillSize = Math.Min(fill.Size, size - offset);
+                    
+                    // 确保填充操作不会超出保留内存范围
+                    if (offset + fillSize <= reservedSize)
+                    {
+                        _reservedBlock.MapView(fill, 0, offset, fillSize);
+                    }
+                    offset += fillSize;
                 }
             }
+            
+            // 记录创建信息
+            Logger.Info?.Print(LogClass.Memory, 
+                $"SparseMemoryBlock created: Requested={size} bytes, Reserved={reservedSize} bytes");
         }
 
         private void MapPage(ulong pageOffset)
@@ -130,6 +150,8 @@ namespace Ryujinx.Memory
             }
 
             GC.SuppressFinalize(this);
+            
+            Logger.Info?.Print(LogClass.Memory, "SparseMemoryBlock disposed");
         }
     }
 }
