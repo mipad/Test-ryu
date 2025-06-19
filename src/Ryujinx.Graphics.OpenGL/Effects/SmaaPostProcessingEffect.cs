@@ -222,8 +222,8 @@ namespace Ryujinx.Graphics.OpenGL.Effects.Smaa
             GL.BindImageTexture(0, blendOutput.Handle, 0, false, 0, TextureAccess.ReadWrite, SizedInternalFormat.Rgba8);
             GL.UseProgram(_blendShaderPrograms[Quality]);
             edgeOutput.Bind(0);
-            areaTexture.Bind(1);
-            searchTexture.Bind(2);
+            areaTexture?.Bind(1);
+            searchTexture?.Bind(2);
             GL.Uniform1(_inputUniform, 0);
             GL.Uniform1(_outputUniform, 0);
             GL.Uniform1(_samplerAreaUniform, 1);
@@ -243,7 +243,7 @@ namespace Ryujinx.Graphics.OpenGL.Effects.Smaa
             GL.DispatchCompute(dispatchX, dispatchY, 1);
             GL.MemoryBarrier(MemoryBarrierFlags.ShaderImageAccessBarrierBit);
 
-            (_renderer.Pipeline as Pipeline).RestoreImages1And2();
+            (_renderer.Pipeline as Pipeline)?.RestoreImages1And2();
 
             GL.UseProgram(previousProgram);
 
