@@ -2,7 +2,6 @@ using Ryujinx.Common;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Ryujinx.Common.Logging;
 using System.Threading;
 
 namespace Ryujinx.Memory
@@ -49,7 +48,7 @@ namespace Ryujinx.Memory
             // 记录大小调整信息
             if (reservedSize < size)
             {
-                Logger.Warning?.Print(LogClass.Memory, 
+                Logger.Warning?.PrintMsg(
                     $"Reducing reserved memory from {size / (1024 * 1024)}MB to {reservedSize / (1024 * 1024)}MB");
             }
             
@@ -86,7 +85,7 @@ namespace Ryujinx.Memory
             }
             
             // 记录创建信息
-            Logger.Info?.Print(LogClass.Memory, 
+            Logger.Info?.PrintMsg(
                 $"SparseMemoryBlock created: Requested={size} bytes, Reserved={reservedSize} bytes");
         }
 
@@ -152,7 +151,7 @@ namespace Ryujinx.Memory
 
             GC.SuppressFinalize(this);
             
-            Logger.Info?.Print(LogClass.Memory, "SparseMemoryBlock disposed");
+            Logger.Info?.PrintMsg("SparseMemoryBlock disposed");
         }
     }
 }
