@@ -33,6 +33,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         public const ulong PteUnmapped = ulong.MaxValue;
 
         private readonly ulong[][] _pageTable;
+        private readonly SparseMemoryBlock _sparseMemoryBlock;
 
         public event EventHandler<UnmapEventArgs> MemoryUnmapped;
 
@@ -62,11 +63,40 @@ namespace Ryujinx.Graphics.Gpu.Memory
             VirtualRangeCache = new VirtualRangeCache(this);
             CounterCache = new CounterCache();
             _pageTable = new ulong[PtLvl0Size][];
+            
+            // 创建稀疏内存块管理GPU地址空间
+            _sparseMemoryBlock = new SparseMemoryBlock(
+                1UL << AddressSpaceBits,
+                page => page.Clear(),  // 页面初始化为0
+                fill: null
+            );
+            
             MemoryUnmapped += Physical.TextureCache.MemoryUnmappedHandler;
             MemoryUnmapped += Physical.BufferCache.MemoryUnmappedHandler;
             MemoryUnmapped += VirtualRangeCache.MemoryUnmappedHandler;
             MemoryUnmapped += CounterCache.MemoryUnmappedHandler;
             Physical.TextureCache.Initialize(cpuMemorySize);
+        }
+
+        /// <summary>
+        /// 确保内存范围已映射
+        /// </summary>
+        /// <param name="va">虚拟地址</param>
+        /// <param name="size">大小</param>
+        private void EnsureRangeMapped(ulong va, ulong size)
+        {
+            ulong endVa = va + size;
+            ulong currentVa = va & ~PageMask;
+            
+            while (currentVa < endVa)
+            {
+                if (!IsMapped(currentVa))
+                {
+                    // 触发按需分页
+                    _sparseMemoryBlock.EnsureMapped(currentVa);
+                }
+                currentVa += PageSize;
+            }
         }
 
         /// <summary>
@@ -79,6 +109,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         public T Read<T>(ulong va, bool tracked = false) where T : unmanaged
         {
             int size = Unsafe.SizeOf<T>();
+            EnsureRangeMapped(va, (ulong)size);
 
             if (IsContiguous(va, size))
             {
@@ -96,9 +127,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             else
             {
                 Span<byte> data = new byte[size];
-
                 ReadImpl(va, data, tracked);
-
                 return MemoryMarshal.Cast<byte, T>(data)[0];
             }
         }
@@ -112,6 +141,8 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <returns>The span of the data at the specified memory location</returns>
         public ReadOnlySpan<byte> GetSpan(ulong va, int size, bool tracked = false)
         {
+            EnsureRangeMapped(va, (ulong)size);
+
             if (IsContiguous(va, size))
             {
                 return Physical.GetSpan(Translate(va), size, tracked);
@@ -119,9 +150,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             else
             {
                 Span<byte> data = new byte[size];
-
                 ReadImpl(va, data, tracked);
-
                 return data;
             }
         }
@@ -136,6 +165,8 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <returns>The span of the data at the specified memory location</returns>
         public ReadOnlySpan<byte> GetSpanMapped(ulong va, int size, bool tracked = false)
         {
+            EnsureRangeMapped(va, (ulong)size);
+
             bool isContiguous = true;
             int mappedSize;
 
@@ -186,9 +217,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             else
             {
                 Span<byte> data = new byte[mappedSize];
-
                 ReadImpl(va, data, tracked);
-
                 return data;
             }
         }
@@ -252,6 +281,8 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <returns>A writable region with the data at the specified memory location</returns>
         public WritableRegion GetWritableRegion(ulong va, int size, bool tracked = false)
         {
+            EnsureRangeMapped(va, (ulong)size);
+
             if (IsContiguous(va, size))
             {
                 return Physical.GetWritableRegion(Translate(va), size, tracked);
@@ -259,9 +290,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             else
             {
                 MemoryOwner<byte> memoryOwner = MemoryOwner<byte>.Rent(size);
-
                 ReadImpl(va, memoryOwner.Span, tracked);
-
                 return new WritableRegion(this, va, memoryOwner, tracked);
             }
         }
@@ -284,6 +313,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="data">The data to be written</param>
         public void Write(ulong va, ReadOnlySpan<byte> data)
         {
+            EnsureRangeMapped(va, (ulong)data.Length);
             WriteImpl(va, data, Physical.Write);
         }
 
@@ -294,6 +324,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="data">The data to be written</param>
         public void WriteTrackedResource(ulong va, ReadOnlySpan<byte> data)
         {
+            EnsureRangeMapped(va, (ulong)data.Length);
             WriteImpl(va, data, Physical.WriteTrackedResource);
         }
 
@@ -304,6 +335,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="data">The data to be written</param>
         public void WriteUntracked(ulong va, ReadOnlySpan<byte> data)
         {
+            EnsureRangeMapped(va, (ulong)data.Length);
             WriteImpl(va, data, Physical.WriteUntracked);
         }
 
@@ -377,6 +409,9 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             lock (_pageTable)
             {
+                // 确保整个区域已映射
+                EnsureRangeMapped(va, size);
+                
                 UnmapEventArgs e = new(va, size);
                 MemoryUnmapped?.Invoke(this, e);
 
