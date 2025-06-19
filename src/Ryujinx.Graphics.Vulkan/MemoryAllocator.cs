@@ -1,6 +1,7 @@
 using Silk.NET.Vulkan;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Ryujinx.Common.Logging;
 
@@ -8,16 +9,8 @@ namespace Ryujinx.Graphics.Vulkan
 {
     class MemoryAllocator : IDisposable
     {
-        // Android平台使用更保守的内存设置
-        #if ANDROID
-        private const ulong MaxDeviceMemoryUsageEstimate = 4UL * 1024 * 1024 * 1024; // 4GB
-        private const ulong LargeAllocationThreshold = 64 * 1024 * 1024; // 64MB
-        private const int MaxRetryAttempts = 5; // 增加重试次数
-        #else
-        private const ulong MaxDeviceMemoryUsageEstimate = 16UL * 1024 * 1024 * 1024; // 16GB
+        private const ulong MaxDeviceMemoryUsageEstimate = 16UL * 1024 * 1024 * 1024;
         private const ulong LargeAllocationThreshold = 256 * 1024 * 1024; // 256MB
-        private const int MaxRetryAttempts = 3;
-        #endif
 
         private readonly Vk _api;
         private readonly VulkanPhysicalDevice _physicalDevice;
@@ -28,10 +21,6 @@ namespace Ryujinx.Graphics.Vulkan
         
         // 添加内存压力回调
         public event Action<ulong, ulong> OnMemoryPressure;
-        
-        // 大内存分配节流机制
-        private readonly Dictionary<int, DateTime> _lastLargeAllocTime = new();
-        private readonly object _allocationThrottleLock = new();
 
         public MemoryAllocator(Vk api, VulkanPhysicalDevice physicalDevice, Device device)
         {
@@ -41,10 +30,6 @@ namespace Ryujinx.Graphics.Vulkan
             _blockLists = new List<MemoryAllocatorBlockList>();
             _blockAlignment = (int)Math.Min(int.MaxValue, MaxDeviceMemoryUsageEstimate / _physicalDevice.PhysicalDeviceProperties.Limits.MaxMemoryAllocationCount);
             _lock = new(LockRecursionPolicy.NoRecursion);
-            
-            Logger.Info?.Print(LogClass.Gpu, 
-                $"MemoryAllocator initialized: MaxBlockSize={FormatSize((ulong)_blockAlignment)}, " +
-                $"LargeThreshold={FormatSize(LargeAllocationThreshold)}");
         }
 
         public MemoryAllocation AllocateDeviceMemory(
@@ -52,67 +37,84 @@ namespace Ryujinx.Graphics.Vulkan
             MemoryPropertyFlags flags = 0,
             bool isBuffer = false)
         {
-            int memoryTypeIndex = FindSuitableMemoryTypeIndex(requirements.MemoryTypeBits, flags);
-            if (memoryTypeIndex < 0)
+            // 创建优先级降序的标志组合列表
+            var flagCombinations = new List<MemoryPropertyFlags>
             {
-                Logger.Error?.Print(LogClass.Gpu, 
-                    $"No suitable memory type found for flags: {flags}");
-                return default;
-            }
+                // 1. 首选：完整请求的标志
+                flags,
+                
+                // 2. 次选：去掉 HostCachedBit（移动设备常见限制）
+                flags & ~MemoryPropertyFlags.HostCachedBit,
+                
+                // 3. 保底：仅保留必要标志
+                MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit
+            };
 
-            bool map = flags.HasFlag(MemoryPropertyFlags.HostVisibleBit);
-            
-            // 大内存分配警告
-            if (requirements.Size > LargeAllocationThreshold)
-            {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Allocating large buffer: {FormatSize(requirements.Size)} " +
-                    $"(Type: {memoryTypeIndex}, Flags: {flags})");
-            }
-
-            // Android平台：大内存分配节流
+            // 添加 Android 专用回退方案
             #if ANDROID
-            if (requirements.Size > LargeAllocationThreshold)
+            flagCombinations.AddRange(new[]
             {
-                ThrottleLargeAllocations(memoryTypeIndex, requirements.Size);
-            }
+                // 4. Android 专用：某些设备需要 DeviceLocalBit
+                MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit | MemoryPropertyFlags.DeviceLocalBit,
+                
+                // 5. Android 专用：某些设备不支持 HostCoherentBit
+                MemoryPropertyFlags.HostVisibleBit,
+                
+                // 6. Android 最终回退：仅设备本地内存
+                MemoryPropertyFlags.DeviceLocalBit
+            });
             #endif
 
-            return AllocateWithRetry(memoryTypeIndex, requirements.Size, requirements.Alignment, map, isBuffer);
-        }
-
-        // Android专用：大内存分配节流机制
-        private void ThrottleLargeAllocations(int memoryTypeIndex, ulong size)
-        {
-            const int MinDelayMs = 50;
-            const int MaxDelayMs = 500;
-            const double DelayMultiplier = 1.5;
-
-            lock (_allocationThrottleLock)
+            // 尝试所有标志组合
+            foreach (var flagCombo in flagCombinations.Distinct())
             {
-                if (_lastLargeAllocTime.TryGetValue(memoryTypeIndex, out DateTime lastTime))
+                int memoryTypeIndex = FindSuitableMemoryTypeIndex(
+                    requirements.MemoryTypeBits, 
+                    flagCombo
+                );
+
+                if (memoryTypeIndex >= 0)
                 {
-                    var elapsed = DateTime.UtcNow - lastTime;
-                    int baseDelay = (int)(MinDelayMs * Math.Pow(DelayMultiplier, _lastLargeAllocTime.Count));
-                    int requiredDelay = Math.Min(MaxDelayMs, baseDelay);
-                    
-                    if (elapsed.TotalMilliseconds < requiredDelay)
+                    // 记录回退决策（如果与原始请求不同）
+                    if (flagCombo != flags)
                     {
-                        int delay = (int)(requiredDelay - elapsed.TotalMilliseconds);
                         Logger.Warning?.Print(LogClass.Gpu, 
-                            $"Throttling large allocation ({FormatSize(size)}) for {delay}ms");
-                        Thread.Sleep(delay);
+                            $"Using fallback memory flags: {flagCombo} " +
+                            $"instead of requested: {flags}");
                     }
+
+                    bool map = flagCombo.HasFlag(MemoryPropertyFlags.HostVisibleBit);
+                    
+                    // 大内存分配警告
+                    if (requirements.Size > LargeAllocationThreshold)
+                    {
+                        Logger.Warning?.Print(LogClass.Gpu, 
+                            $"Allocating large buffer: {FormatSize(requirements.Size)} " +
+                            $"(Type: {memoryTypeIndex}, Flags: {flagCombo})");
+                    }
+
+                    return AllocateWithRetry(
+                        memoryTypeIndex, 
+                        requirements.Size, 
+                        requirements.Alignment, 
+                        map, 
+                        isBuffer
+                    );
                 }
-                _lastLargeAllocTime[memoryTypeIndex] = DateTime.UtcNow;
             }
+
+            // 所有尝试均失败
+            Logger.Error?.Print(LogClass.Gpu, 
+                $"All memory allocation strategies failed for flags: {flags}");
+            return default;
         }
 
         private MemoryAllocation AllocateWithRetry(int memoryTypeIndex, ulong size, ulong alignment, bool map, bool isBuffer)
         {
+            const int MaxRetries = 3;
             int attempt = 0;
 
-            while (attempt++ < MaxRetryAttempts)
+            while (attempt++ < MaxRetries)
             {
                 var allocation = Allocate(memoryTypeIndex, size, alignment, map, isBuffer);
                 
@@ -123,18 +125,17 @@ namespace Ryujinx.Graphics.Vulkan
                 }
 
                 Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Memory allocation failed for {FormatSize(size)} (attempt {attempt}/{MaxRetryAttempts})");
+                    $"Memory allocation failed for {FormatSize(size)} (attempt {attempt}/{MaxRetries})");
                 
                 // 触发内存清理回调
                 OnMemoryPressure?.Invoke(size, (ulong)attempt);
                 
-                // 指数退避等待
-                int waitTime = 50 * (int)Math.Pow(2, attempt - 1);
-                Thread.Sleep(waitTime);
+                // 等待资源释放
+                Thread.Sleep(50 * attempt);
             }
 
             Logger.Error?.Print(LogClass.Gpu, 
-                $"Memory allocation failed after {MaxRetryAttempts} attempts: {FormatSize(size)}");
+                $"Memory allocation failed after {MaxRetries} attempts: {FormatSize(size)}");
             return default;
         }
 
@@ -228,8 +229,6 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 _blockLists[i].Dispose();
             }
-            
-            Logger.Info?.Print(LogClass.Gpu, "MemoryAllocator disposed");
         }
     }
 }
