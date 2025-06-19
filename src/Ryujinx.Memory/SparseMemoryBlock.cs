@@ -2,6 +2,7 @@ using Ryujinx.Common;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Ryujinx.Common.Logging;
 using System.Threading;
 
 namespace Ryujinx.Memory
