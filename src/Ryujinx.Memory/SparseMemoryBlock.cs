@@ -23,6 +23,7 @@ namespace Ryujinx.Memory
         private readonly List<MemoryBlock> _mappedBlocks;
         private ulong _mappedBlockUsage;
         private readonly ulong[] _mappedPageBitmap;
+        private readonly int _totalPages; // 新增：记录总页数
 
         public MemoryBlock Block => _reservedBlock;
 
@@ -70,8 +71,8 @@ namespace Ryujinx.Memory
             _mappedBlocks = new List<MemoryBlock>();
 
             // 初始化页映射位图
-            int pages = (int)BitUtils.DivRoundUp(size, _pageSize);
-            int bitmapEntries = BitUtils.DivRoundUp(pages, 64);
+            _totalPages = (int)BitUtils.DivRoundUp(reservedSize, _pageSize); // 基于实际保留大小计算
+            int bitmapEntries = BitUtils.DivRoundUp(_totalPages, 64);
             _mappedPageBitmap = new ulong[bitmapEntries];
 
             if (fill != null)
@@ -82,11 +83,11 @@ namespace Ryujinx.Memory
                     throw new ArgumentException("Fill memory block should be page aligned.", nameof(fill));
                 }
 
-                int repeats = (int)BitUtils.DivRoundUp(size, fill.Size);
+                int repeats = (int)BitUtils.DivRoundUp(reservedSize, fill.Size); // 使用reservedSize
                 ulong offset = 0;
                 for (int i = 0; i < repeats; i++)
                 {
-                    ulong fillSize = Math.Min(fill.Size, size - offset);
+                    ulong fillSize = Math.Min(fill.Size, reservedSize - offset); // 确保不超过保留大小
                     
                     // 确保填充操作不会超出保留内存范围
                     if (offset + fillSize <= reservedSize)
@@ -99,7 +100,7 @@ namespace Ryujinx.Memory
             
             // 记录创建信息
             Logger.Info?.Print(LogClass.Application, 
-                $"SparseMemoryBlock created: Requested={size} bytes, Reserved={reservedSize} bytes");
+                $"SparseMemoryBlock created: Requested={size} bytes, Reserved={reservedSize} bytes, Pages={_totalPages}");
         }
 
         private void MapPage(ulong pageOffset)
@@ -107,6 +108,8 @@ namespace Ryujinx.Memory
             // 检查偏移是否在保留范围内
             if (pageOffset >= _reservedBlock.Size)
             {
+                Logger.Error?.Print(LogClass.Memory, 
+                    $"MapPage: Page offset 0x{pageOffset:X} exceeds reserved block size 0x{_reservedBlock.Size:X}");
                 throw new ArgumentOutOfRangeException(nameof(pageOffset),
                     $"Page offset {pageOffset} exceeds reserved block size {_reservedBlock.Size}");
             }
@@ -134,6 +137,16 @@ namespace Ryujinx.Memory
         public void EnsureMapped(ulong offset)
         {
             int pageIndex = (int)(offset / _pageSize);
+            
+            // === 关键修复：添加边界检查 ===
+            if (pageIndex < 0 || pageIndex >= _totalPages)
+            {
+                Logger.Error?.Print(LogClass.Memory, 
+                    $"EnsureMapped: Offset 0x{offset:X} is outside valid range [0-0x{_reservedBlock.Size:X}]");
+                throw new ArgumentOutOfRangeException(nameof(offset),
+                    $"Offset {offset} is outside valid range [0-{_reservedBlock.Size}]");
+            }
+            
             int bitmapIndex = pageIndex >> 6;
 
             ref ulong entry = ref _mappedPageBitmap[bitmapIndex];
