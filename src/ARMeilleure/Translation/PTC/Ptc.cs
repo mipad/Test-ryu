@@ -32,7 +32,7 @@ namespace ARMeilleure.Translation.PTC
         private const string InnerHeaderMagicString = "PTCihd\0\0";
 
         private const uint InternalVersion = 7008; //! To be incremented manually for each change to the ARMeilleure project.
-
+        
         private const string ActualDir = "0";
         private const string BackupDir = "1";
 
@@ -42,7 +42,6 @@ namespace ARMeilleure.Translation.PTC
         public static readonly Symbol PageTableSymbol = new(SymbolType.Special, 1);
         public static readonly Symbol CountTableSymbol = new(SymbolType.Special, 2);
         public static readonly Symbol DispatchStubSymbol = new(SymbolType.Special, 3);
-        public static readonly Symbol FunctionTableSymbol = new(SymbolType.Special, 4);
 
         private const byte FillingByte = 0x00;
         private const CompressionLevel SaveCompressionLevel = CompressionLevel.Fastest;
@@ -60,7 +59,7 @@ namespace ARMeilleure.Translation.PTC
 
         private readonly ManualResetEvent _waitEvent;
 
-        private readonly object _lock = new();
+        private readonly object _lock;
 
         private bool _disposed;
 
@@ -90,6 +89,8 @@ namespace ARMeilleure.Translation.PTC
 
             _waitEvent = new ManualResetEvent(true);
 
+            _lock = new object();
+
             _disposed = false;
 
             TitleIdText = TitleIdTextDefault;
@@ -101,7 +102,7 @@ namespace ARMeilleure.Translation.PTC
             Disable();
         }
 
-        public void Initialize(string titleIdText, string displayVersion, bool enabled, MemoryManagerType memoryMode, string cacheSelector)
+        public void Initialize(string titleIdText, string displayVersion, bool enabled, MemoryManagerType memoryMode)
         {
             Wait();
 
@@ -127,8 +128,6 @@ namespace ARMeilleure.Translation.PTC
             DisplayVersion = !string.IsNullOrEmpty(displayVersion) ? displayVersion : DisplayVersionDefault;
             _memoryMode = memoryMode;
 
-            Logger.Info?.Print(LogClass.Ptc, $"PPTC (v{InternalVersion}) Profile: {DisplayVersion}-{cacheSelector}");
-
             string workPathActual = Path.Combine(AppDataManager.GamesDirPath, TitleIdText, "cache", "cpu", ActualDir);
             string workPathBackup = Path.Combine(AppDataManager.GamesDirPath, TitleIdText, "cache", "cpu", BackupDir);
 
@@ -142,8 +141,8 @@ namespace ARMeilleure.Translation.PTC
                 Directory.CreateDirectory(workPathBackup);
             }
 
-            CachePathActual = Path.Combine(workPathActual, DisplayVersion) + "-" + cacheSelector;
-            CachePathBackup = Path.Combine(workPathBackup, DisplayVersion) + "-" + cacheSelector;
+            CachePathActual = Path.Combine(workPathActual, DisplayVersion);
+            CachePathBackup = Path.Combine(workPathBackup, DisplayVersion);
 
             PreLoad();
             Profiler.PreLoad();
@@ -154,7 +153,7 @@ namespace ARMeilleure.Translation.PTC
         private void InitializeCarriers()
         {
             _infosStream = MemoryStreamManager.Shared.GetStream();
-            _codesList = [];
+            _codesList = new List<byte[]>();
             _relocsStream = MemoryStreamManager.Shared.GetStream();
             _unwindInfosStream = MemoryStreamManager.Shared.GetStream();
         }
@@ -184,36 +183,6 @@ namespace ARMeilleure.Translation.PTC
             InitializeCarriers();
         }
 
-        private bool ContainsBlacklistedFunctions()
-        {
-            List<ulong> blacklist = Profiler.GetBlacklistedFunctions();
-            bool containsBlacklistedFunctions = false;
-            _infosStream.Seek(0L, SeekOrigin.Begin);
-            bool foundBadFunction = false;
-
-            for (int index = 0; index < GetEntriesCount(); index++)
-            {
-                InfoEntry infoEntry = DeserializeStructure<InfoEntry>(_infosStream);
-                foreach (ulong address in blacklist)
-                {
-                    if (infoEntry.Address == address)
-                    {
-                        containsBlacklistedFunctions = true;
-                        Logger.Warning?.Print(LogClass.Ptc, "PPTC cache invalidated: Found blacklisted functions in PPTC cache");
-                        foundBadFunction = true;
-                        break;
-                    }
-                }
-
-                if (foundBadFunction)
-                {
-                    break;
-                }
-            }
-
-            return containsBlacklistedFunctions;
-        }
-
         private void PreLoad()
         {
             string fileNameActual = $"{CachePathActual}.cache";
@@ -224,7 +193,7 @@ namespace ARMeilleure.Translation.PTC
 
             if (fileInfoActual.Exists && fileInfoActual.Length != 0L)
             {
-                if (!Load(fileNameActual, false) || ContainsBlacklistedFunctions())
+                if (!Load(fileNameActual, false))
                 {
                     if (fileInfoBackup.Exists && fileInfoBackup.Length != 0L)
                     {
@@ -446,8 +415,6 @@ namespace ARMeilleure.Translation.PTC
             finally
             {
                 ResetCarriersIfNeeded();
-
-                GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
             }
 
             _waitEvent.Set();
@@ -562,11 +529,9 @@ namespace ARMeilleure.Translation.PTC
 
         public void LoadTranslations(Translator translator)
         {
-            if (AreCarriersEmpty() || ContainsBlacklistedFunctions())
+            if (AreCarriersEmpty())
             {
-                _infosStream.SetLength(0);
-                _relocsStream.SetLength(0);
-                _unwindInfosStream.SetLength(0);
+                ResetCarriersIfNeeded();
                 return;
             }
 
@@ -581,7 +546,7 @@ namespace ARMeilleure.Translation.PTC
             using (BinaryReader relocsReader = new(_relocsStream, EncodingCache.UTF8NoBOM, true))
             using (BinaryReader unwindInfosReader = new(_unwindInfosStream, EncodingCache.UTF8NoBOM, true))
             {
-                for (int index = 0; index < GetEntriesCount(); index++)
+                for (int index = 0; index < _infosStream.Length / Unsafe.SizeOf<InfoEntry>(); index++)
                 {
                     InfoEntry infoEntry = DeserializeStructure<InfoEntry>(_infosStream);
 
@@ -741,10 +706,6 @@ namespace ARMeilleure.Translation.PTC
                 {
                     imm = translator.Stubs.DispatchStub;
                 }
-                else if (symbol == FunctionTableSymbol)
-                {
-                    imm = translator.FunctionTable.Base;
-                }
 
                 if (imm == null)
                 {
@@ -798,7 +759,7 @@ namespace ARMeilleure.Translation.PTC
 
         private void StubCode(int index)
         {
-            _codesList[index] = [];
+            _codesList[index] = Array.Empty<byte>();
         }
 
         private void StubReloc(int relocEntriesCount)
@@ -824,24 +785,19 @@ namespace ARMeilleure.Translation.PTC
             var profiledFuncsToTranslate = Profiler.GetProfiledFuncsToTranslate(translator.Functions);
 
             _translateCount = 0;
-     _translateTotalCount = profiledFuncsToTranslate.Count;
+            _translateTotalCount = profiledFuncsToTranslate.Count;
 
             if (_translateTotalCount == 0)
             {
                 ResetCarriersIfNeeded();
-
-                GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
 
                 return;
             }
 
             int degreeOfParallelism = Environment.ProcessorCount;
 
-            if (Optimizations.EcoFriendly)
-                degreeOfParallelism /= 3;
-
             // If there are enough cores lying around, we leave one alone for other tasks.
-            if (degreeOfParallelism > 4 && !Optimizations.EcoFriendly)
+            if (degreeOfParallelism > 4)
             {
                 degreeOfParallelism--;
             }
@@ -866,19 +822,11 @@ namespace ARMeilleure.Translation.PTC
                 while (profiledFuncsToTranslate.TryDequeue(out var item))
                 {
                     ulong address = item.address;
-                    ExecutionMode executionMode = item.funcProfile.Mode;
-                    bool highCq = item.funcProfile.HighCq;
 
                     Debug.Assert(Profiler.IsAddressInStaticCodeRange(address));
 
-                    TranslatedFunction func = translator.Translate(address, executionMode, highCq);
-
-                    if (func == null)
-                    {
-                        Profiler.UpdateEntry(address, executionMode, true, true);
-                        continue;
-                    }
-
+                    TranslatedFunction func = translator.Translate(address, item.funcProfile.Mode, item.funcProfile.HighCq, pptcTranslation: true);
+                    
                     bool isAddressUnique = translator.Functions.TryAdd(address, func.GuestSize, func);
 
                     Debug.Assert(isAddressUnique, $"The address 0x{address:X16} is not unique.");
@@ -894,7 +842,7 @@ namespace ARMeilleure.Translation.PTC
                 }
             }
 
-            List<Thread> threads = [];
+            List<Thread> threads = new();
 
             for (int i = 0; i < degreeOfParallelism; i++)
             {
@@ -926,14 +874,7 @@ namespace ARMeilleure.Translation.PTC
 
             PtcStateChanged?.Invoke(PtcLoadingState.Loaded, _translateCount, _translateTotalCount);
 
-            if (_translateCount == _translateTotalCount)
-            {
-                Logger.Info?.Print(LogClass.Ptc, $"{_translateCount} of {_translateTotalCount} functions translated | Thread count: {degreeOfParallelism} in {sw.Elapsed.TotalSeconds} s");
-            }
-            else
-            {
-                Logger.Info?.Print(LogClass.Ptc, $"{_translateCount} of {_translateTotalCount} functions translated | {_translateTotalCount - _translateCount} function{(_translateTotalCount - _translateCount != 1 ? "s" : "")} blacklisted | Thread count: {degreeOfParallelism} in {sw.Elapsed.TotalSeconds} s");
-            }
+            Logger.Info?.Print(LogClass.Ptc, $"{_translateCount} of {_translateTotalCount} functions translated | Thread count: {degreeOfParallelism} in {sw.Elapsed.TotalSeconds} s");
 
             Thread preSaveThread = new(PreSave)
             {
@@ -1068,6 +1009,7 @@ namespace ARMeilleure.Translation.PTC
             osPlatform |= (OperatingSystem.IsLinux()   ? 1u : 0u) << 1;
             osPlatform |= (OperatingSystem.IsMacOS()   ? 1u : 0u) << 2;
             osPlatform |= (OperatingSystem.IsWindows() ? 1u : 0u) << 3;
+            osPlatform |= (Ryujinx.Common.PlatformInfo.IsBionic ? 1u : 0u) << 4;
 #pragma warning restore IDE0055
 
             return osPlatform;
