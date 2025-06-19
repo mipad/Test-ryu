@@ -37,6 +37,18 @@ namespace Ryujinx.Memory
             return 4UL * 1024 * 1024 * 1024;
             #endif
         }
+        
+        // 获取平台特定的最大地址空间大小
+        public static ulong GetPlatformMaxAddressSpace()
+        {
+            #if ANDROID
+            // Android: 512MB
+            return 512 * 1024 * 1024;
+            #else
+            // 其他平台: 4GB
+            return 4UL * 1024 * 1024 * 1024;
+            #endif
+        }
 
         public SparseMemoryBlock(ulong size, PageInitDelegate pageInit, MemoryBlock fill)
         {
@@ -92,6 +104,13 @@ namespace Ryujinx.Memory
 
         private void MapPage(ulong pageOffset)
         {
+            // 检查偏移是否在保留范围内
+            if (pageOffset >= _reservedBlock.Size)
+            {
+                throw new ArgumentOutOfRangeException(nameof(pageOffset),
+                    $"Page offset {pageOffset} exceeds reserved block size {_reservedBlock.Size}");
+            }
+            
             // 从最新的映射块中获取页面
             MemoryBlock block = _mappedBlocks.LastOrDefault();
 
