@@ -65,8 +65,9 @@ namespace Ryujinx.Graphics.Gpu.Memory
             CounterCache = new CounterCache();
             _pageTable = new ulong[PtLvl0Size][];
             
-            // 创建稀疏内存块管理GPU地址空间
-            ulong addressSpaceSize = 1UL << AddressSpaceBits;
+            // 使用平台特定的地址空间大小
+            ulong addressSpaceSize = SparseMemoryBlock.GetPlatformMaxAddressSpace();
+            
             _sparseMemoryBlock = new SparseMemoryBlock(
                 addressSpaceSize,
                 page => page.Clear(),  // 页面初始化为0
