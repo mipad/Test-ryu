@@ -173,9 +173,6 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// </summary>
         private void RemoveLeastUsedTexture()
         {
-        {
-            if (_textures.First != null)
-            
             Texture oldestTexture = _textures.First.Value;
 
             _totalSize -= oldestTexture.Size;
@@ -195,7 +192,6 @@ namespace Ryujinx.Graphics.Gpu.Image
             oldestTexture.DecrementReferenceCount();
             oldestTexture.CacheNode = null;
         }
-       }
        
         /// <summary>
         /// Removes a texture from the cache.
