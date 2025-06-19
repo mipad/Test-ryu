@@ -82,7 +82,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             // 初始化纹理缓存
             Physical.TextureCache.Initialize(cpuMemorySize);
             
-            Logger.Info?.Print(LogClass.Memory, 
+            Logger.Info?.Print(LogClass.LogClass.Application, 
                 $"MemoryManager initialized with {addressSpaceSize / (1024 * 1024)}MB virtual address space");
         }
 
