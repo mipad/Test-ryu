@@ -1,6 +1,7 @@
 using Ryujinx.Common.Memory;
 using Ryujinx.Graphics.Gpu.Image;
 using Ryujinx.Memory;
+using Ryujinx.Common.Logging;
 using Ryujinx.Memory.Range;
 using System;
 using System.Collections.Generic;
