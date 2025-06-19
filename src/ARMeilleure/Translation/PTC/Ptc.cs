@@ -42,7 +42,6 @@ namespace ARMeilleure.Translation.PTC
         public static readonly Symbol PageTableSymbol = new(SymbolType.Special, 1);
         public static readonly Symbol CountTableSymbol = new(SymbolType.Special, 2);
         public static readonly Symbol DispatchStubSymbol = new(SymbolType.Special, 3);
-        public static readonly Symbol FunctionTableSymbol = new(SymbolType.Special, 4); // 新增符号类型
 
         private const byte FillingByte = 0x00;
         private const CompressionLevel SaveCompressionLevel = CompressionLevel.Fastest;
@@ -103,7 +102,7 @@ namespace ARMeilleure.Translation.PTC
             Disable();
         }
 
-        public void Initialize(string titleIdText, string displayVersion, bool enabled, MemoryManagerType memoryMode, string cacheSelector) // 增加cacheSelector参数
+        public void Initialize(string titleIdText, string displayVersion, bool enabled, MemoryManagerType memoryMode)
         {
             Wait();
 
@@ -129,9 +128,6 @@ namespace ARMeilleure.Translation.PTC
             DisplayVersion = !string.IsNullOrEmpty(displayVersion) ? displayVersion : DisplayVersionDefault;
             _memoryMode = memoryMode;
 
-            // 添加缓存选择器到日志
-            Logger.Info?.Print(LogClass.Ptc, $"PPTC (v{InternalVersion}) Profile: {DisplayVersion}-{cacheSelector}");
-
             string workPathActual = Path.Combine(AppDataManager.GamesDirPath, TitleIdText, "cache", "cpu", ActualDir);
             string workPathBackup = Path.Combine(AppDataManager.GamesDirPath, TitleIdText, "cache", "cpu", BackupDir);
 
@@ -145,9 +141,8 @@ namespace ARMeilleure.Translation.PTC
                 Directory.CreateDirectory(workPathBackup);
             }
 
-            // 使用cacheSelector构建缓存路径
-            CachePathActual = Path.Combine(workPathActual, DisplayVersion) + "-" + cacheSelector;
-            CachePathBackup = Path.Combine(workPathBackup, DisplayVersion) + "-" + cacheSelector;
+            CachePathActual = Path.Combine(workPathActual, DisplayVersion);
+            CachePathBackup = Path.Combine(workPathBackup, DisplayVersion);
 
             PreLoad();
             Profiler.PreLoad();
@@ -186,37 +181,6 @@ namespace ARMeilleure.Translation.PTC
             DisposeCarriers();
 
             InitializeCarriers();
-        }
-
-        // 新增黑名单函数检查方法
-        private bool ContainsBlacklistedFunctions()
-        {
-            List<ulong> blacklist = Profiler.GetBlacklistedFunctions();
-            bool containsBlacklistedFunctions = false;
-            _infosStream.Seek(0L, SeekOrigin.Begin);
-            bool foundBadFunction = false;
-
-            for (int index = 0; index < GetEntriesCount(); index++)
-            {
-                InfoEntry infoEntry = DeserializeStructure<InfoEntry>(_infosStream);
-                foreach (ulong address in blacklist)
-                {
-                    if (infoEntry.Address == address)
-                    {
-                        containsBlacklistedFunctions = true;
-                        Logger.Warning?.Print(LogClass.Ptc, "PPTC cache invalidated: Found blacklisted functions in PPTC cache");
-                        foundBadFunction = true;
-                        break;
-                    }
-                }
-
-                if (foundBadFunction)
-                {
-                    break;
-                }
-            }
-
-            return containsBlacklistedFunctions;
         }
 
         private void PreLoad()
@@ -451,9 +415,6 @@ namespace ARMeilleure.Translation.PTC
             finally
             {
                 ResetCarriersIfNeeded();
-                
-                // 新增大对象堆压缩
-                GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
             }
 
             _waitEvent.Set();
@@ -568,12 +529,9 @@ namespace ARMeilleure.Translation.PTC
 
         public void LoadTranslations(Translator translator)
         {
-            // 添加黑名单函数检查
-            if (AreCarriersEmpty() || ContainsBlacklistedFunctions())
+            if (AreCarriersEmpty())
             {
-                _infosStream.SetLength(0);
-                _relocsStream.SetLength(0);
-                _unwindInfosStream.SetLength(0);
+                ResetCarriersIfNeeded();
                 return;
             }
 
@@ -588,7 +546,7 @@ namespace ARMeilleure.Translation.PTC
             using (BinaryReader relocsReader = new(_relocsStream, EncodingCache.UTF8NoBOM, true))
             using (BinaryReader unwindInfosReader = new(_unwindInfosStream, EncodingCache.UTF8NoBOM, true))
             {
-                for (int index = 0; index < GetEntriesCount(); index++)
+                for (int index = 0; index < _infosStream.Length / Unsafe.SizeOf<InfoEntry>(); index++)
                 {
                     InfoEntry infoEntry = DeserializeStructure<InfoEntry>(_infosStream);
 
@@ -748,11 +706,6 @@ namespace ARMeilleure.Translation.PTC
                 {
                     imm = translator.Stubs.DispatchStub;
                 }
-                // 新增函数表符号处理
-                else if (symbol == FunctionTableSymbol)
-                {
-                    imm = translator.FunctionTable.Base;
-                }
 
                 if (imm == null)
                 {
@@ -837,21 +790,14 @@ namespace ARMeilleure.Translation.PTC
             if (_translateTotalCount == 0)
             {
                 ResetCarriersIfNeeded();
-                
-                // 新增大对象堆压缩
-                GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
 
                 return;
             }
 
             int degreeOfParallelism = Environment.ProcessorCount;
 
-            // 新增节能模式支持
-            if (Optimizations.EcoFriendly)
-                degreeOfParallelism /= 3;
-
             // If there are enough cores lying around, we leave one alone for other tasks.
-            if (degreeOfParallelism > 4 && !Optimizations.EcoFriendly) // 修改条件
+            if (degreeOfParallelism > 4)
             {
                 degreeOfParallelism--;
             }
@@ -876,23 +822,14 @@ namespace ARMeilleure.Translation.PTC
                 while (profiledFuncsToTranslate.TryDequeue(out var item))
                 {
                     ulong address = item.address;
-                    ExecutionMode executionMode = item.funcProfile.Mode;
-                    bool highCq = item.funcProfile.HighCq;
 
                     Debug.Assert(Profiler.IsAddressInStaticCodeRange(address));
 
-                    // 新增空函数处理
-                    TranslatedFunction func = translator.Translate(address, executionMode, highCq, pptcTranslation: true);
+                    TranslatedFunction func = translator.Translate(address, item.funcProfile.Mode, item.funcProfile.HighCq, pptcTranslation: true);
                     
-                    if (func == null)
-                    {
-                        Profiler.UpdateEntry(address, executionMode, true, true);
-                        continue;
-                    }
-
                     bool isAddressUnique = translator.Functions.TryAdd(address, func.GuestSize, func);
 
-                    Debug.Assert(isAddressUnique, $"The address 0x{address:X16} is not unique.");
+                                        Debug.Assert(isAddressUnique, $"The address 0x{address:X16} is not unique.");
 
                     Interlocked.Increment(ref _translateCount);
 
@@ -905,7 +842,7 @@ namespace ARMeilleure.Translation.PTC
                 }
             }
 
-            List<Thread> threads = new List<Thread>();
+            List<Thread> threads = new();
 
             for (int i = 0; i < degreeOfParallelism; i++)
             {
@@ -937,15 +874,7 @@ namespace ARMeilleure.Translation.PTC
 
             PtcStateChanged?.Invoke(PtcLoadingState.Loaded, _translateCount, _translateTotalCount);
 
-            // 新增黑名单函数统计日志
-            if (_translateCount == _translateTotalCount)
-            {
-                Logger.Info?.Print(LogClass.Ptc, $"{_translateCount} of {_translateTotalCount} functions translated | Thread count: {degreeOfParallelism} in {sw.Elapsed.TotalSeconds} s");
-            }
-            else
-            {
-                Logger.Info?.Print(LogClass.Ptc, $"{_translateCount} of {_translateTotalCount} functions translated | {_translateTotalCount - _translateCount} function{(_translateTotalCount - _translateCount != 1 ? "s" : "")} blacklisted | Thread count: {degreeOfParallelism} in {sw.Elapsed.TotalSeconds} s");
-            }
+            Logger.Info?.Print(LogClass.Ptc, $"{_translateCount} of {_translateTotalCount} functions translated | Thread count: {degreeOfParallelism} in {sw.Elapsed.TotalSeconds} s");
 
             Thread preSaveThread = new(PreSave)
             {
@@ -1080,6 +1009,7 @@ namespace ARMeilleure.Translation.PTC
             osPlatform |= (OperatingSystem.IsLinux()   ? 1u : 0u) << 1;
             osPlatform |= (OperatingSystem.IsMacOS()   ? 1u : 0u) << 2;
             osPlatform |= (OperatingSystem.IsWindows() ? 1u : 0u) << 3;
+            osPlatform |= (Ryujinx.Common.PlatformInfo.IsBionic ? 1u : 0u) << 4;
 #pragma warning restore IDE0055
 
             return osPlatform;
@@ -1209,4 +1139,4 @@ namespace ARMeilleure.Translation.PTC
             }
         }
     }
-}
+} 
