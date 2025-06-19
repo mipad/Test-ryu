@@ -125,7 +125,10 @@ namespace Ryujinx.Graphics.OpenGL.Effects
             GL.ActiveTexture(TextureUnit.Texture0);
             int previousTextureBinding = GL.GetInteger(GetPName.TextureBinding2D);
 
-            GL.BindImageTexture(0, textureView.Handle, 0, false, 0, TextureAccess.ReadWrite, SizedInternalFormat.Rgba8);
+            if (textureView != null)
+            {
+                GL.BindImageTexture(0, textureView.Handle, 0, false, 0, TextureAccess.ReadWrite,
+                    SizedInternalFormat.Rgba8);
 
             int threadGroupWorkRegionDim = 16;
             int dispatchX = (width + (threadGroupWorkRegionDim - 1)) / threadGroupWorkRegionDim;
@@ -156,17 +159,19 @@ namespace Ryujinx.Graphics.OpenGL.Effects
 
             // Sharpening Pass
             GL.UseProgram(_sharpeningShaderProgram);
-            GL.BindImageTexture(0, destinationTexture.Handle, 0, false, 0, TextureAccess.ReadWrite, SizedInternalFormat.Rgba8);
+            GL.BindImageTexture(0, destinationTexture.Handle, 0, false, 0, TextureAccess.ReadWrite,
+                    SizedInternalFormat.Rgba8);
             textureView.Bind(0);
             GL.Uniform1(_inputUniform, 0);
             GL.Uniform1(_outputUniform, 0);
             GL.Uniform1(_sharpeningUniform, 1.5f - (Level * 0.01f * 1.5f));
             GL.DispatchCompute(dispatchX, dispatchY, 1);
+            }
 
             GL.UseProgram(previousProgram);
             GL.MemoryBarrier(MemoryBarrierFlags.ShaderImageAccessBarrierBit);
 
-            (_renderer.Pipeline as Pipeline).RestoreImages1And2();
+            (_renderer.Pipeline as Pipeline)?.RestoreImages1And2();
 
             GL.ActiveTexture(TextureUnit.Texture0);
             GL.BindTexture(TextureTarget.Texture2D, previousTextureBinding);
