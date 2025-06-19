@@ -108,7 +108,7 @@ namespace Ryujinx.Memory
             // 检查偏移是否在保留范围内
             if (pageOffset >= _reservedBlock.Size)
             {
-                Logger.Error?.Print(LogClass.Memory, 
+                Logger.Error?.Print(LogClass.Application, 
                     $"MapPage: Page offset 0x{pageOffset:X} exceeds reserved block size 0x{_reservedBlock.Size:X}");
                 throw new ArgumentOutOfRangeException(nameof(pageOffset),
                     $"Page offset {pageOffset} exceeds reserved block size {_reservedBlock.Size}");
@@ -141,7 +141,7 @@ namespace Ryujinx.Memory
             // === 关键修复：添加边界检查 ===
             if (pageIndex < 0 || pageIndex >= _totalPages)
             {
-                Logger.Error?.Print(LogClass.Memory, 
+                Logger.Error?.Print(LogClass.Application, 
                     $"EnsureMapped: Offset 0x{offset:X} is outside valid range [0-0x{_reservedBlock.Size:X}]");
                 throw new ArgumentOutOfRangeException(nameof(offset),
                     $"Offset {offset} is outside valid range [0-{_reservedBlock.Size}]");
