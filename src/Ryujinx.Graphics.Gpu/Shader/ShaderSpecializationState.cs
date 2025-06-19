@@ -991,10 +991,14 @@ namespace Ryujinx.Graphics.Gpu.Shader
 
             if (hasPipelineState)
             {
+                if (PipelineState != null)
+               {
+                    
                 ProgramPipelineState pipelineState = PipelineState.Value;
                 dataWriter.WriteWithMagicAndSize(ref pipelineState, PgpsMagic);
-            }
-
+               }
+           }
+                
             if (_queriedState.HasFlag(QueriedStateFlags.TransformFeedback))
             {
                 ushort tfCount = (ushort)TransformFeedbackDescriptors.Length;
