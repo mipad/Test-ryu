@@ -21,16 +21,6 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
         private const ulong SmallRegionLimit = 0x400000000UL; // 16 GiB
         private const ulong DefaultUserSize = 1UL << 37;
 
-        // 新增：获取平台最大保留大小
-        private static ulong GetPlatformMaxReserveSize()
-        {
-            #if ANDROID
-            return 512 * 1024 * 1024; // 512MB
-            #else
-            return 4UL * 1024 * 1024 * 1024; // 4GB
-            #endif
-        }
-        
         private readonly struct VmRegion
         {
             public ulong Start { get; }
@@ -50,13 +40,11 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
 
         private readonly AddressSpaceContext _asContext;
         private readonly NvMemoryAllocator _memoryAllocator;
-        private readonly ulong _maxReservedSize; // 新增：记录最大保留大小
 
         public NvHostAsGpuDeviceFile(ServiceCtx context, IVirtualMemoryManager memory, ulong owner) : base(context, owner)
         {
             _asContext = new AddressSpaceContext(context.Device.Gpu.CreateMemoryManager(owner, context.Device.Memory.Size));
             _memoryAllocator = new NvMemoryAllocator();
-            _maxReservedSize = GetPlatformMaxReserveSize(); // 初始化最大保留大小
         }
 
         public override NvInternalResult Ioctl(NvIoctl command, Span<byte> arguments)
@@ -136,26 +124,10 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
 
             lock (_asContext)
             {
-                // === 新增：检查分配大小是否超过限制 ===
-                if (size > _maxReservedSize)
-                {
-                    Logger.Warning?.Print(LogClass.ServiceNv, 
-                        $"Allocation size 0x{size:X} exceeds max reserved size 0x{_maxReservedSize:X}");
-                    return NvInternalResult.OutOfMemory;
-                }
-
                 // Note: When the fixed offset flag is not set,
                 // the Offset field holds the alignment size instead.
                 if ((arguments.Flags & AddressSpaceFlags.FixedOffset) != 0)
                 {
-                    // === 新增：检查固定偏移是否有效 ===
-                    if (arguments.Offset >= _maxReservedSize)
-                    {
-                        Logger.Warning?.Print(LogClass.ServiceNv,
-                            $"Fixed offset 0x{arguments.Offset:X} exceeds max reserved size 0x{_maxReservedSize:X}");
-                        return NvInternalResult.InvalidInput;
-                    }
-
                     bool regionInUse = _memoryAllocator.IsRegionInUse(arguments.Offset, size, out ulong freeAddressStartPosition);
                     ulong address;
 
@@ -192,15 +164,6 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
                 }
                 else
                 {
-                    // === 新增：检查保留范围 ===
-                    if (arguments.Offset + size > _maxReservedSize)
-                    {
-                        Logger.Warning?.Print(LogClass.ServiceNv,
-                            $"Reservation 0x{arguments.Offset:X}-0x{arguments.Offset + size:X} exceeds max reserved size");
-                        _memoryAllocator.DeallocateRange(arguments.Offset, size);
-                        return NvInternalResult.OutOfMemory;
-                    }
-
                     _asContext.AddReservation(arguments.Offset, size);
                 }
             }
@@ -307,14 +270,6 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
                 size = map.Size;
             }
 
-            // === 关键修复：检查映射大小是否超过限制 ===
-            if (size > _maxReservedSize)
-            {
-                Logger.Warning?.Print(LogClass.ServiceNv, 
-                    $"Mapping size 0x{size:X} exceeds max reserved size 0x{_maxReservedSize:X}");
-                return NvInternalResult.OutOfMemory;
-            }
-
             NvInternalResult result = NvInternalResult.Success;
 
             lock (_asContext)
@@ -325,21 +280,6 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
 
                 if (!virtualAddressAllocated)
                 {
-                    // === 关键修复：检查固定偏移是否有效 ===
-                    if (arguments.Offset >= _maxReservedSize)
-                    {
-                        Logger.Warning?.Print(LogClass.ServiceNv,
-                            $"Fixed offset 0x{arguments.Offset:X} exceeds max reserved size 0x{_maxReservedSize:X}");
-                        return NvInternalResult.InvalidInput;
-                    }
-                    
-                    if (arguments.Offset + size > _maxReservedSize)
-                    {
-                        Logger.Warning?.Print(LogClass.ServiceNv,
-                            $"Mapping range 0x{arguments.Offset:X}-0x{arguments.Offset + size:X} exceeds reserved memory");
-                        return NvInternalResult.OutOfMemory;
-                    }
-
                     if (_asContext.ValidateFixedBuffer(arguments.Offset, size, pageSize))
                     {
                         _asContext.Gmm.Map(physicalAddress, arguments.Offset, size, (PteKind)arguments.Kind);
@@ -358,17 +298,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
                     ulong va = _memoryAllocator.GetFreeAddress(size, out ulong freeAddressStartPosition, pageSize);
                     if (va != NvMemoryAllocator.PteUnmapped)
                     {
-                        // === 新增：检查分配的VA是否有效 ===
-                        if (va + size > _maxReservedSize)
-                        {
-                            Logger.Warning?.Print(LogClass.ServiceNv,
-                                $"Allocated VA 0x{va:X}-0x{va + size:X} exceeds reserved memory");
-                            va = NvMemoryAllocator.PteUnmapped;
-                        }
-                        else
-                        {
-                            _memoryAllocator.AllocateRange(va, size, freeAddressStartPosition);
-                        }
+                        _memoryAllocator.AllocateRange(va, size, freeAddressStartPosition);
                     }
 
                     _asContext.Gmm.Map(physicalAddress, va, size, (PteKind)arguments.Kind);
@@ -430,78 +360,72 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
             return NvInternalResult.Success;
         }
 
-        private NvInternalResult RemapIoctl(Span<byte> arguments)
-        {
-            int structSize = Unsafe.SizeOf<RemapArguments>();
-            if (arguments.Length == 0 || arguments.Length % structSize != 0)
-            {
-                return NvInternalResult.InvalidInput;
-            }
+        // 新增 RemapIoctl 方法
+private NvInternalResult RemapIoctl(Span<byte> arguments)
+{
+    int structSize = Unsafe.SizeOf<RemapArguments>();
+    if (arguments.Length == 0 || arguments.Length % structSize != 0)
+    {
+        return NvInternalResult.InvalidInput;
+    }
 
-            int count = arguments.Length / structSize;
-            Span<RemapArguments> remapArgs = MemoryMarshal.Cast<byte, RemapArguments>(arguments).Slice(0, count);
-            return Remap(remapArgs);
-        }
+    int count = arguments.Length / structSize;
+    Span<RemapArguments> remapArgs = MemoryMarshal.Cast<byte, RemapArguments>(arguments).Slice(0, count);
+    return Remap(remapArgs);
+}
+
         
-        private NvInternalResult Remap(Span<RemapArguments> arguments)
+    private NvInternalResult Remap(Span<RemapArguments> arguments)
+{
+    lock (_asContext)
+    {
+        MemoryManager gmm = _asContext.Gmm;
+
+        for (int index = 0; index < arguments.Length; index++)
         {
-            lock (_asContext)
+            ref RemapArguments argument = ref arguments[index];
+            ulong gpuVa = (ulong)argument.GpuOffset << 16;
+            ulong size = (ulong)argument.Pages << 16;
+            int nvmapHandle = argument.NvMapHandle;
+
+            if (nvmapHandle == 0)
             {
-                MemoryManager gmm = _asContext.Gmm;
-
-                for (int index = 0; index < arguments.Length; index++)
-                {
-                    ref RemapArguments argument = ref arguments[index];
-                    ulong gpuVa = (ulong)argument.GpuOffset << 16;
-                    ulong size = (ulong)argument.Pages << 16;
-                    int nvmapHandle = argument.NvMapHandle;
-
-                    // === 新增：检查GPU VA范围 ===
-                    if (gpuVa + size > _maxReservedSize)
-                    {
-                        Logger.Warning?.Print(LogClass.ServiceNv,
-                            $"Remap range 0x{gpuVa:X}-0x{gpuVa + size:X} exceeds reserved memory");
-                        return NvInternalResult.OutOfMemory;
-                    }
-
-                    if (nvmapHandle == 0)
-                    {
-                        // 直接取消映射，不检查上下文
-                        gmm.Unmap(gpuVa, size);
-                    }
-                    else
-                    {
-                        ulong mapOffs = (ulong)argument.MapOffset << 16;
-                        PteKind kind = (PteKind)argument.Kind;
-
-                        NvMapHandle map = NvMapDeviceFile.GetMapFromHandle(Owner, nvmapHandle);
-
-                        if (map == null)
-                        {
-                            Logger.Warning?.Print(LogClass.ServiceNv, 
-                                $"Invalid NvMap handle 0x{nvmapHandle:x8}!");
-                            return NvInternalResult.InvalidInput;
-                        }
-
-                        ulong physicalAddress = mapOffs + map.Address;
-                        ulong mapEnd = map.Address + map.Size;
-                        
-                        if (physicalAddress < map.Address || (physicalAddress + size) > mapEnd)
-                        {
-                            Logger.Warning?.Print(LogClass.ServiceNv,
-                                $"Invalid physical range: 0x{physicalAddress:x16}-0x{physicalAddress + size:x16} " +
-                                $"(NvMap: 0x{map.Address:x16}-0x{mapEnd:x16})");
-                            return NvInternalResult.InvalidInput;
-                        }
-
-                        // 直接映射，覆盖该VA区域之前的映射（如果有）
-                        gmm.Map(physicalAddress, gpuVa, size, kind);
-                    }
-                }
+                // 直接取消映射，不检查上下文
+                gmm.Unmap(gpuVa, size);
             }
+            else
+            {
+                ulong mapOffs = (ulong)argument.MapOffset << 16;
+                PteKind kind = (PteKind)argument.Kind;
 
-            return NvInternalResult.Success;
+                NvMapHandle map = NvMapDeviceFile.GetMapFromHandle(Owner, nvmapHandle);
+
+                if (map == null)
+                {
+                    Logger.Warning?.Print(LogClass.ServiceNv, 
+                        $"Invalid NvMap handle 0x{nvmapHandle:x8}!");
+                    return NvInternalResult.InvalidInput;
+                }
+
+                ulong physicalAddress = mapOffs + map.Address;
+                ulong mapEnd = map.Address + map.Size;
+                
+                if (physicalAddress < map.Address || (physicalAddress + size) > mapEnd)
+                {
+                    Logger.Warning?.Print(LogClass.ServiceNv,
+                        $"Invalid physical range: 0x{physicalAddress:x16}-0x{physicalAddress + size:x16} " +
+                        $"(NvMap: 0x{map.Address:x16}-0x{mapEnd:x16})");
+                    return NvInternalResult.InvalidInput;
+                }
+
+                // 直接映射，覆盖该VA区域之前的映射（如果有）
+                gmm.Map(physicalAddress, gpuVa, size, kind);
+            }
         }
+    }
+
+    return NvInternalResult.Success;
+}
 
         public override void Close() { }
     }
