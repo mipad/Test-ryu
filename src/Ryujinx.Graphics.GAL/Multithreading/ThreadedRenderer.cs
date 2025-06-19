@@ -124,7 +124,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
                 if (Volatile.Read(ref _interruptAction) != null)
                 {
-                    _interruptAction();
+                    _interruptAction?.Invoke();
                     _interruptRun.Set();
 
                     Interlocked.Exchange(ref _interruptAction, null);
