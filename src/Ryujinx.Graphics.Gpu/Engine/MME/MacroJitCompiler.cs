@@ -296,7 +296,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
                     EmitLoadGprA(opCode);
                     EmitLoadImm(opCode);
                     _ilGen.Emit(OpCodes.Add);
-                    _ilGen.Emit(OpCodes.Call, typeof(MacroJitContext).GetMethod(nameof(MacroJitContext.Read)));
+                    _ilGen.Emit(OpCodes.Call, typeof(MacroJitContext).GetMethod(nameof(MacroJitContext.Read))!);
                     break;
 
                 default:
@@ -456,7 +456,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
         private void EmitFetchParam()
         {
             _ilGen.Emit(OpCodes.Ldarg_0);
-            _ilGen.Emit(OpCodes.Call, typeof(MacroJitContext).GetMethod(nameof(MacroJitContext.FetchParam)));
+            _ilGen.Emit(OpCodes.Call, typeof(MacroJitContext).GetMethod(nameof(MacroJitContext.FetchParam))!);
         }
 
         /// <summary>
@@ -507,7 +507,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
         {
             _ilGen.Emit(OpCodes.Ldarg_1);
             _ilGen.Emit(OpCodes.Ldloc_S, _methAddr);
-            _ilGen.Emit(OpCodes.Call, typeof(MacroJitContext).GetMethod(nameof(MacroJitContext.Send)));
+            _ilGen.Emit(OpCodes.Call, typeof(MacroJitContext).GetMethod(nameof(MacroJitContext.Send))!);
             _ilGen.Emit(OpCodes.Ldloc_S, _methAddr);
             _ilGen.Emit(OpCodes.Ldloc_S, _methIncr);
             _ilGen.Emit(OpCodes.Add);
