@@ -3015,6 +3015,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         /// </summary>
         /// <param name="dstVa">Destination virtual address that should be mapped</param>
         /// <param name="pagesCount">Number of pages to map</param>
+        /// <param极
         /// <param name="srcPa">Physical address where the pages should be mapped. May be ignored if aliasing is not supported</param>
         /// <param name="permission">Permission of the region to be mapped</param>
         /// <param name="flags">Flags controlling the memory map operation</param>
@@ -3023,6 +3024,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         /// <returns>Result of the mapping operation</returns>
         protected abstract Result MapPages(
             ulong dstVa,
+            ul极
             ulong pagesCount,
             ulong srcPa,
             KMemoryPermission permission,
@@ -3070,7 +3072,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         /// </summary>
         /// <param name="address">Virtual address of the region to have the permission changes</param>
         /// <param name="pagesCount">Number of pages to have their permissions changed</param>
-        /// <param name="permission">New permission</param>
+        /// <param name="permission">New permission</极
         /// <returns>Result of the permission change operation</returns>
         protected abstract Result Reprotect(ulong address, ulong pagesCount, KMemoryPermission permission);
 
@@ -3141,7 +3143,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         protected override IEnumerable<HostMemoryRange> GetHostRegions(ulong va, ulong size)
         {
             // 在Android上，我们直接使用虚拟地址范围
-            return new[] { new HostMemoryRange((IntPtr)va, (int)size) };
+            return new[] { new HostMemoryRange((IntPtr)va, (long)size) };
         }
 
         protected override void GetPhysicalRegions(ulong va, ulong size, KPageList pageList)
@@ -3168,7 +3170,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
 
         protected override ReadOnlySpan<byte> GetSpan(ulong va, int size)
         {
-            lock (_mappingLock)
+            lock (_mapping极
             {
                 if (_mappedViews.TryGetValue(va, out var accessor))
                 {
@@ -3189,9 +3191,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             
             // 在Android上使用mmap进行内存映射
             int prot = GetProtectionFlags(newDstPermission);
-            UIntPtr uSize = (UIntPtr)size;
-            UIntPtr uSrc = (UIntPtr)src;
-            IntPtr result = mmap(new IntPtr((long)dst), uSize, prot, MAP_SHARED | MAP_FIXED, -1, uSrc);
+            IntPtr result = mmap((IntPtr)(long)dst, (UIntPtr)size, prot, MAP_SHARED | MAP_FIXED, -1, UIntPtr.Zero);
             
             if (result == (IntPtr)(-1))
             {
@@ -3209,8 +3209,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             ulong size = pagesCount * PageSize;
             
             // 在Android上使用munmap解除内存映射
-            UIntPtr uSize = (UIntPtr)size;
-            int result = munmap(new IntPtr((long)dst), uSize);
+            int result = munmap((IntPtr)(long)dst, (UIntPtr)size);
             if (result != 0)
             {
                 int error = Marshal.GetLastWin32Error();
@@ -3239,8 +3238,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
                 mapFlags |= MAP_PRIVATE;
             }
 
-            UIntPtr uSize = (UIntPtr)size;
-            IntPtr result = mmap(new IntPtr((long)dstVa), uSize, prot, mapFlags, -1, UIntPtr.Zero);
+            IntPtr result = mmap((IntPtr)(long)dstVa, (UIntPtr)size, prot, mapFlags, -1, UIntPtr.Zero);
             
             if (result == (IntPtr)(-1))
             {
@@ -3271,7 +3269,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             KMemoryPermission permission,
             MemoryMapFlags flags,
             bool shouldFillPages = false,
-            byte fillValue = 0)
+            byte fill极 = 0)
         {
             // 在Android上，我们简化处理，直接分配新内存
             return MapPages(address, pageList.GetPagesCount(), 0, permission, flags, shouldFillPages, fillValue);
@@ -3281,8 +3279,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         {
             // 在Android上，我们可以使用mmap的MAP_FIXED来映射外部内存
             int prot = PROT_READ | PROT_WRITE;
-            UIntPtr uSize = (UIntPtr)size;
-            IntPtr result = mmap(new IntPtr((long)va), uSize, prot, MAP_SHARED | MAP_FIXED, -1, UIntPtr.Zero);
+            IntPtr result = mmap((IntPtr)(long)va, (UIntPtr)size, prot, MAP_SHARED | MAP_FIXED, -1, UIntPtr.Zero);
             
             if (result == (IntPtr)(-1))
             {
@@ -3304,9 +3301,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         {
             ulong size = pagesCount * PageSize;
             int prot = GetProtectionFlags(permission);
-            UIntPtr uSize = (UIntPtr)size;
             
-            int result = mprotect(new IntPtr((long)address), uSize, prot);
+            int result = mprotect((IntPtr)(long)address, (UIntPtr)size, prot);
             if (result != 0)
             {
                 int error = Marshal.GetLastWin32Error();
@@ -3318,7 +3314,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         }
 
         protected override Result ReprotectAndFlush(ulong address, ulong pagesCount, KMemoryPermission permission)
-   {
+        {
             // 在Android上，我们只需要重新设置保护权限，缓存刷新由系统处理
             return Reprotect(address, pagesCount, permission);
         }
