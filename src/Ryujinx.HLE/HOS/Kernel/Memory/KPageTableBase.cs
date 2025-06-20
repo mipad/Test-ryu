@@ -654,6 +654,11 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
 
                     Result result = MapMemory(src, dst, pagesCount, permission, KMemoryPermission.None);
 
+                    if (result != Result.Success)
+                    {
+                        return result;
+                    }
+
                     _blockManager.InsertBlock(src, pagesCount, state, KMemoryPermission.None, MemoryAttribute.Borrowed);
                     _blockManager.InsertBlock(dst, pagesCount, MemoryState.ModCodeStatic);
 
@@ -1739,7 +1744,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
                 return KernelResult.OutOfResource;
             }
 
-            ulong visitedSize = 0;
+        ulong visitedSize = 0;
 
             void CleanUpForError()
             {
