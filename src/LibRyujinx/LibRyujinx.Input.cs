@@ -32,12 +32,11 @@ namespace LibRyujinx
         // 游戏ID到控制器配置的映射
         private static readonly Dictionary<string, ControllerSetup> _gameControllerMapping = new()
         {
-            // 示例配置：特定游戏使用特定控制器设置
             ["0100F8F0000A2000"] = new ControllerSetup // 塞尔达传说：荒野之息
             {
                 Player1 = ControllerType.Handheld,
                 Player2 = ControllerType.ProController,
-                Handheld = null // 不需要额外的手持控制器
+                Handheld = null
             },
             ["01006F8002326000"] = new ControllerSetup // 超级马力欧派对
             {
@@ -80,7 +79,6 @@ namespace LibRyujinx
         /// <summary>
         /// 设置当前运行的游戏ID，用于控制器类型映射
         /// </summary>
-        /// <param name="gameId">游戏ID</param>
         public static void SetGameId(string gameId)
         {
             _currentGameId = gameId;
@@ -90,15 +88,13 @@ namespace LibRyujinx
         /// <summary>
         /// 覆盖指定玩家的控制器类型
         /// </summary>
-        /// <param name="type">控制器类型</param>
-        /// <param name="playerIndex">玩家索引(默认为0)</param>
         public static void OverrideControllerType(ControllerType type, int playerIndex = 0)
         {
             if (playerIndex >= 0 && playerIndex < _configs.Length && 
                 _configs[playerIndex] is StandardControllerInputConfig config)
             {
                 config.ControllerType = type;
-                _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
+                ReloadNpadConfiguration();
             }
         }
 
@@ -108,6 +104,34 @@ namespace LibRyujinx
         public static void ResetToGameDefault()
         {
             ApplyControllerConfiguration();
+        }
+
+        /// <summary>
+        /// 重新加载Npad配置
+        /// </summary>
+        private static void ReloadNpadConfiguration()
+        {
+            if (_npadManager != null && _configs != null)
+            {
+                // 关键修复：确保所有配置都有有效ID
+                var validConfigs = new List<InputConfig>();
+                
+                foreach (var config in _configs)
+                {
+                    if (config != null)
+                    {
+                        // 确保ID不为空
+                        if (string.IsNullOrEmpty(config.Id))
+                        {
+                            // 生成唯一ID
+                            config.Id = $"virtual_{Guid.NewGuid()}";
+                        }
+                        validConfigs.Add(config);
+                    }
+                }
+                
+                _npadManager.ReloadConfiguration(validConfigs, false, false);
+            }
         }
 
         /// <summary>
@@ -140,7 +164,6 @@ namespace LibRyujinx
             // 配置手持模式（额外控制器）
             if (setup.Handheld.HasValue)
             {
-                // 寻找空闲插槽或创建新配置
                 int handheldIndex = FindOrCreateHandheldSlot();
                 
                 if (handheldIndex >= 0 && _configs[handheldIndex] is StandardControllerInputConfig handheldConfig)
@@ -150,7 +173,7 @@ namespace LibRyujinx
             }
             else
             {
-                // 如果不需要手持控制器，确保没有配置
+                // 清理不需要的手持控制器
                 for (int i = 2; i < _configs.Length; i++)
                 {
                     if (_configs[i] is StandardControllerInputConfig config && 
@@ -161,7 +184,7 @@ namespace LibRyujinx
                 }
             }
 
-            _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
+            ReloadNpadConfiguration();
         }
 
         /// <summary>
@@ -189,7 +212,7 @@ namespace LibRyujinx
                 }
             }
             
-            // 没有空闲插槽，使用玩家2的插槽（通常不建议）
+            // 没有空闲插槽，使用玩家2的插槽
             return 1;
         }
 
@@ -213,17 +236,16 @@ namespace LibRyujinx
             _touchScreenManager = _inputManager.CreateTouchScreenManager();
             _touchScreenManager.Initialize(SwitchDevice!.EmulationContext);
 
+            // 关键修复：初始化时不加载任何配置
             _npadManager.Initialize(SwitchDevice.EmulationContext, new List<InputConfig>(), false, false);
 
             _virtualTouchScreen.ClientSize = new Size(width, height);
             
-            // 初始化所有控制器插槽
+            // 初始化数组，但不创建配置
             for (int i = 0; i < _configs.Length; i++)
             {
-                _configs[i] = CreateDefaultInputConfig(i);
+                _configs[i] = null;
             }
-            
-            ApplyControllerConfiguration();
         }
 
         public static void SetClientSize(int width, int height)
@@ -271,17 +293,24 @@ namespace LibRyujinx
             var gamepad = _gamepadDriver?.GetGamepad(index);
             if (gamepad != null)
             {
-                // 确保配置存在
+                // 修复：仅在连接时创建配置
                 if (_configs[index] == null)
                 {
                     _configs[index] = CreateDefaultInputConfig(index);
                 }
                 
                 var config = _configs[index];
-                config.Id = gamepad.Id;
+                config.Id = gamepad.Id; // 设置真实ID
                 config.PlayerIndex = (PlayerIndex)index;
 
-                _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
+                // 关键修复：确保所有配置都有有效ID
+                if (string.IsNullOrEmpty(config.Id))
+                {
+                    config.Id = $"virtual_{index}_{Guid.NewGuid()}";
+                }
+
+                // 应用配置
+                ApplyControllerConfiguration();
             }
 
             return int.TryParse(gamepad?.Id, out var idInt) ? idInt : -1;
@@ -292,11 +321,14 @@ namespace LibRyujinx
         /// </summary>
         private static InputConfig CreateDefaultInputConfig(int playerIndex)
         {
+            // 关键修复：生成唯一ID
+            string configId = $"virtual_{playerIndex}_{Guid.NewGuid()}";
+            
             return new StandardControllerInputConfig
             {
                 Version = InputConfig.CurrentVersion,
                 Backend = InputBackendType.GamepadSDL2,
-                Id = null,
+                Id = configId, // 设置唯一ID
                 ControllerType = ControllerType.ProController,
                 DeadzoneLeft = 0.1f,
                 DeadzoneRight = 0.1f,
