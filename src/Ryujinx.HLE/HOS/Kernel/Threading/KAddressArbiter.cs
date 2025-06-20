@@ -118,10 +118,10 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
             currentThread.SignaledObj = null;
             currentThread.ObjSyncResult = KernelResult.TimedOut;
 
+            // 检查线程终止状态
             if (currentThread.TerminationRequested)
             {
                 _context.CriticalSection.Leave();
-
                 return KernelResult.ThreadTerminating;
             }
 
@@ -164,6 +164,12 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
             currentThread.MutexOwner?.RemoveMutexWaiter(currentThread);
 
             _condVarThreads.Remove(currentThread);
+
+            // 再次检查终止状态
+            if (currentThread.TerminationRequested)
+            {
+                currentThread.ObjSyncResult = KernelResult.ThreadTerminating;
+            }
 
             _context.CriticalSection.Leave();
 
@@ -334,6 +340,12 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
                     currentThread.WaitingInArbitration = false;
                 }
 
+                // 再次检查终止状态
+                if (currentThread.TerminationRequested)
+                {
+                    currentThread.ObjSyncResult = KernelResult.ThreadTerminating;
+                }
+
                 _context.CriticalSection.Leave();
 
                 return currentThread.ObjSyncResult;
@@ -409,6 +421,12 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
                     _arbiterThreads.Remove(currentThread);
 
                     currentThread.WaitingInArbitration = false;
+                }
+
+                // 再次检查终止状态
+                if (currentThread.TerminationRequested)
+                {
+                    currentThread.ObjSyncResult = KernelResult.ThreadTerminating;
                 }
 
                 _context.CriticalSection.Leave();
