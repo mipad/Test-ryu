@@ -3141,7 +3141,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         protected override IEnumerable<HostMemoryRange> GetHostRegions(ulong va, ulong size)
         {
             // 在Android上，我们直接使用虚拟地址范围
-            return new[] { new HostMemoryRange((IntPtr)va, size) };
+            return new[] { new HostMemoryRange((nuint)va, size) };
         }
 
         protected override void GetPhysicalRegions(ulong va, ulong size, KPageList pageList)
