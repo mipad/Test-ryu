@@ -3126,7 +3126,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             : base(context, reservedAddressSpaceSize)
         {
             // 创建共享内存文件用于模拟物理内存
-            _sharedMemory = MemoryMappedFile.CreateNew(null, reservedAddressSpaceSize);
+            _sharedMemory = MemoryMappedFile.CreateNew(null, (long)reservedAddressSpaceSize);
         }
 
         [DllImport("libc", SetLastError = true)]
@@ -3141,7 +3141,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         protected override IEnumerable<HostMemoryRange> GetHostRegions(ulong va, ulong size)
         {
             // 在Android上，我们直接使用虚拟地址范围
-            return new[] { new HostMemoryRange((IntPtr)va, (int)size) };
+            return new[] { new HostMemoryRange((IntPtr)va, size) };
         }
 
         protected override void GetPhysicalRegions(ulong va, ulong size, KPageList pageList)
