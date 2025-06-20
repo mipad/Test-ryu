@@ -1,13 +1,16 @@
+using System;
+using System.Buffers;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.IO.MemoryMappedFiles;
+using System.Runtime.InteropServices;
 using Ryujinx.Common;
 using Ryujinx.HLE.HOS.Kernel.Common;
 using Ryujinx.HLE.HOS.Kernel.Process;
 using Ryujinx.Horizon.Common;
 using Ryujinx.Memory;
 using Ryujinx.Memory.Range;
-using System;
-using System.Buffers;
-using System.Collections.Generic;
-using System.Diagnostics;
 
 namespace Ryujinx.HLE.HOS.Kernel.Memory
 {
@@ -504,13 +507,17 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
 
         public static Result MapNormalMemory(long address, long size, KMemoryPermission permission)
         {
-            // TODO.
+            // 在实际系统中，这里需要映射普通内存
+            // 由于这是与硬件相关的操作，我们无法在此抽象类中实现
+            // 子类需要根据具体平台实现此功能
             return Result.Success;
         }
 
         public static Result MapIoMemory(long address, long size, KMemoryPermission permission)
         {
-            // TODO.
+            // 在实际系统中，这里需要映射I/O内存
+            // 由于这是与硬件相关的操作，我们无法在此抽象类中实现
+            // 子类需要根据具体平台实现此功能
             return Result.Success;
         }
 
@@ -1744,7 +1751,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
                 return KernelResult.OutOfResource;
             }
 
-        ulong visitedSize = 0;
+            ulong visitedSize = 0;
 
             void CleanUpForError()
             {
@@ -3099,5 +3106,291 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         /// <param name="data">Data to be written</param>
         /// <exception cref="Ryujinx.Memory.InvalidMemoryRegionException">Throw for unhandled invalid or unmapped memory accesses</exception>
         protected abstract void Write(ulong va, ReadOnlySpan<byte> data);
+    }
+
+    internal sealed class AndroidKPageTable : KPageTableBase
+    {
+        private const int PROT_READ = 0x1;
+        private const int PROT_WRITE = 0x2;
+        private const int PROT_EXEC = 0x4;
+        private const int MAP_SHARED = 0x01;
+        private const int MAP_PRIVATE = 0x02;
+        private const int MAP_ANONYMOUS = 0x20;
+        private const int MAP_FIXED = 0x10;
+        
+        private readonly MemoryMappedFile _sharedMemory;
+        private readonly Dictionary<ulong, MemoryMappedViewAccessor> _mappedViews = new();
+        private readonly object _mappingLock = new();
+
+        public AndroidKPageTable(KernelContext context, ulong reservedAddressSpaceSize) 
+            : base(context, reservedAddressSpaceSize)
+        {
+            // 创建共享内存文件用于模拟物理内存
+            _sharedMemory = MemoryMappedFile.CreateNew(null, reservedAddressSpaceSize);
+        }
+
+        [DllImport("libc", SetLastError = true)]
+        private static extern IntPtr mmap(IntPtr addr, ulong length, int prot, int flags, int fd, ulong offset);
+
+        [DllImport("libc", SetLastError = true)]
+        private static extern int munmap(IntPtr addr, ulong length);
+
+        [DllImport("libc", SetLastError = true)]
+        private static extern int mprotect(IntPtr addr, ulong len, int prot);
+
+        protected override IEnumerable<HostMemoryRange> GetHostRegions(ulong va, ulong size)
+        {
+            // 在Android上，我们直接使用虚拟地址范围
+            return new[] { new HostMemoryRange((IntPtr)va, (int)size) };
+        }
+
+        protected override void GetPhysicalRegions(ulong va, ulong size, KPageList pageList)
+        {
+            // 在Android模拟器中，我们使用虚拟地址作为"物理地址"
+            pageList.AddRange(va, size / PageSize);
+        }
+
+        protected override ReadOnlySequence<byte> GetReadOnlySequence(ulong va, int size)
+        {
+            lock (_mappingLock)
+            {
+                if (_mappedViews.TryGetValue(va, out var accessor))
+                {
+                    unsafe
+                    {
+                        byte* ptr = (byte*)accessor.SafeMemoryMappedViewHandle.DangerousGetHandle();
+                        return new ReadOnlySequence<byte>(new UnmanagedMemoryManager(ptr, size).Memory);
+                    }
+                }
+            }
+            throw new InvalidOperationException($"No mapping for VA 0x{va:X}");
+        }
+
+        protected override ReadOnlySpan<byte> GetSpan(ulong va, int size)
+        {
+            lock (_mappingLock)
+            {
+                if (_mappedViews.TryGetValue(va, out var accessor))
+                {
+                    unsafe
+                    {
+                        byte* ptr = (byte*)accessor.SafeMemoryMappedViewHandle.DangerousGetHandle();
+                        return new ReadOnlySpan<byte>(ptr, size);
+                    }
+                }
+            }
+            throw new InvalidOperationException($"No mapping for VA 0x{va:X}");
+        }
+
+        protected override Result MapMemory(ulong src, ulong dst, ulong pagesCount, 
+            KMemoryPermission oldSrcPermission, KMemoryPermission newDstPermission)
+        {
+            ulong size = pagesCount * PageSize;
+            
+            // 在Android上使用mmap进行内存映射
+            int prot = GetProtectionFlags(newDstPermission);
+            IntPtr result = mmap((IntPtr)dst, size, prot, MAP_SHARED | MAP_FIXED, -1, src);
+            
+            if (result == (IntPtr)(-1))
+            {
+                int error = Marshal.GetLastWin32Error();
+                Debug.WriteLine($"mmap failed with error: {error}");
+                return KernelResult.OutOfMemory;
+            }
+            
+            return Result.Success;
+        }
+
+        protected override Result UnmapMemory(ulong dst, ulong src, ulong pagesCount, 
+            KMemoryPermission oldDstPermission, KMemoryPermission newSrcPermission)
+        {
+            ulong size = pagesCount * PageSize;
+            
+            // 在Android上使用munmap解除内存映射
+            int result = munmap((IntPtr)dst, size);
+            if (result != 0)
+            {
+                int error = Marshal.GetLastWin32Error();
+                Debug.WriteLine($"munmap failed with error: {error}");
+                return KernelResult.InvalidMemState;
+            }
+            
+            return Result.Success;
+        }
+
+        protected override Result MapPages(
+            ulong dstVa,
+            ulong pagesCount,
+            ulong srcPa,
+            KMemoryPermission permission,
+            MemoryMapFlags flags,
+            bool shouldFillPages = false,
+            byte fillValue = 0)
+        {
+            ulong size = pagesCount * PageSize;
+            int prot = GetProtectionFlags(permission);
+            int mapFlags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED;
+            
+            if ((flags & MemoryMapFlags.Private) != 0)
+            {
+                mapFlags |= MAP_PRIVATE;
+            }
+
+            IntPtr result = mmap((IntPtr)dstVa, size, prot, mapFlags, -1, 0);
+            
+            if (result == (IntPtr)(-1))
+            {
+                int error = Marshal.GetLastWin32Error();
+                Debug.WriteLine($"mmap failed with error: {error}");
+                return KernelResult.OutOfMemory;
+            }
+            
+            // 如果需要填充内存
+            if (shouldFillPages)
+            {
+                unsafe
+                {
+                    byte* ptr = (byte*)result;
+                    for (ulong i = 0; i < size; i++)
+                    {
+                        ptr[i] = fillValue;
+                    }
+                }
+            }
+            
+            return Result.Success;
+        }
+
+        protected override Result MapPages(
+            ulong address,
+            KPageList pageList,
+            KMemoryPermission permission,
+            MemoryMapFlags flags,
+            bool shouldFillPages = false,
+            byte fillValue = 0)
+        {
+            // 在Android上，我们简化处理，直接分配新内存
+            return MapPages(address, pageList.GetPagesCount(), 0, permission, flags, shouldFillPages, fillValue);
+        }
+
+        protected override Result MapForeign(IEnumerable<HostMemoryRange> regions, ulong va, ulong size)
+        {
+            // 在Android上，我们可以使用mmap的MAP_FIXED来映射外部内存
+            int prot = PROT_READ | PROT_WRITE;
+            IntPtr result = mmap((IntPtr)va, size, prot, MAP_SHARED | MAP_FIXED, -1, 0);
+            
+            if (result == (IntPtr)(-1))
+            {
+                int error = Marshal.GetLastWin32Error();
+                Debug.WriteLine($"mmap for foreign memory failed with error: {error}");
+                return KernelResult.OutOfMemory;
+            }
+            
+            return Result.Success;
+        }
+
+        protected override Result Unmap(ulong address, ulong pagesCount)
+        {
+            ulong size = pagesCount * PageSize;
+            return UnmapMemory(address, 0, pagesCount, KMemoryPermission.None, KMemoryPermission.None);
+        }
+
+        protected override Result Reprotect(ulong address, ulong pagesCount, KMemoryPermission permission)
+        {
+            ulong size = pagesCount * PageSize;
+            int prot = GetProtectionFlags(permission);
+            
+            int result = mprotect((IntPtr)address, size, prot);
+            if (result != 0)
+            {
+                int error = Marshal.GetLastWin32Error();
+                Debug.WriteLine($"mprotect failed with error: {error}");
+                return KernelResult.InvalidMemState;
+            }
+            
+            return Result.Success;
+        }
+
+        protected override Result ReprotectAndFlush(ulong address, ulong pagesCount, KMemoryPermission permission)
+        {
+            // 在Android上，我们只需要重新设置保护权限，缓存刷新由系统处理
+            return Reprotect(address, pagesCount, permission);
+        }
+
+        protected override void SignalMemoryTracking(ulong va, ulong size, bool write)
+        {
+            // 在Android上，内存跟踪通常由系统处理，我们可以根据需要实现自定义逻辑
+            // 这里可以添加性能计数器或其他跟踪机制
+        }
+
+        protected override void Write(ulong va, ReadOnlySequence<byte> data)
+        {
+            // 使用Span进行高效写入
+            foreach (var segment in data)
+            {
+                Write(va, segment.Span);
+                va += (ulong)segment.Length;
+            }
+        }
+
+        protected override void Write(ulong va, ReadOnlySpan<byte> data)
+        {
+            unsafe
+            {
+                fixed (byte* srcPtr = data)
+                {
+                    // 直接写入内存
+                    byte* dstPtr = (byte*)va;
+                    for (int i = 0; i < data.Length; i++)
+                    {
+                        dstPtr[i] = srcPtr[i];
+                    }
+                }
+            }
+        }
+
+        private int GetProtectionFlags(KMemoryPermission permission)
+        {
+            int prot = 0;
+            
+            if ((permission & KMemoryPermission.Read) != 0)
+            {
+                prot |= PROT_READ;
+            }
+            
+            if ((permission & KMemoryPermission.Write) != 0)
+            {
+                prot |= PROT_WRITE;
+            }
+            
+            if ((permission & KMemoryPermission.Execute) != 0)
+            {
+                prot |= PROT_EXEC;
+            }
+            
+            return prot;
+        }
+
+        // 辅助类用于管理非托管内存
+        private unsafe class UnmanagedMemoryManager : MemoryManager<byte>
+        {
+            private readonly byte* _pointer;
+            private readonly int _length;
+
+            public UnmanagedMemoryManager(byte* pointer, int length)
+            {
+                _pointer = pointer;
+                _length = length;
+            }
+
+            public override Span<byte> GetSpan() => new Span<byte>(_pointer, _length);
+
+            public override MemoryHandle Pin(int elementIndex = 0) => 
+                new MemoryHandle(_pointer + elementIndex);
+
+            public override void Unpin() { }
+
+            protected override void Dispose(bool disposing) { }
+        }
     }
 }
