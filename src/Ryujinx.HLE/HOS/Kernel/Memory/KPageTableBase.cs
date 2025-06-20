@@ -3189,7 +3189,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             
             // 在Android上使用mmap进行内存映射
             int prot = GetProtectionFlags(newDstPermission);
-            IntPtr result = mmap((IntPtr)dst, size, prot, MAP_SHARED | MAP_FIXED, -1, src);
+            IntPtr result = mmap(new IntPtr((long)dst), size, prot, MAP_SHARED | MAP_FIXED, -1, src);
             
             if (result == (IntPtr)(-1))
             {
@@ -3207,7 +3207,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             ulong size = pagesCount * PageSize;
             
             // 在Android上使用munmap解除内存映射
-            int result = munmap((IntPtr)dst, size);
+            int result = munmap(new IntPtr((long)dst), size);
             if (result != 0)
             {
                 int error = Marshal.GetLastWin32Error();
@@ -3236,7 +3236,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
                 mapFlags |= MAP_PRIVATE;
             }
 
-            IntPtr result = mmap((IntPtr)dstVa, size, prot, mapFlags, -1, 0);
+            IntPtr result = mmap(new IntPtr((long)dstVa), size, prot, mapFlags, -1, 0);
             
             if (result == (IntPtr)(-1))
             {
@@ -3277,7 +3277,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         {
             // 在Android上，我们可以使用mmap的MAP_FIXED来映射外部内存
             int prot = PROT_READ | PROT_WRITE;
-            IntPtr result = mmap((IntPtr)va, size, prot, MAP_SHARED | MAP_FIXED, -1, 0);
+            IntPtr result = mmap(new IntPtr((long)va), size, prot, MAP_SHARED | MAP_FIXED, -1, 0);
             
             if (result == (IntPtr)(-1))
             {
@@ -3298,9 +3298,9 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         protected override Result Reprotect(ulong address, ulong pagesCount, KMemoryPermission permission)
         {
             ulong size = pagesCount * PageSize;
-            int prot = GetProtectionFlags(permission);
+                        int prot = GetProtectionFlags(permission);
             
-            int result = mprotect((IntPtr)address, size, prot);
+            int result = mprotect(new IntPtr((long)address), size, prot);
             if (result != 0)
             {
                 int error = Marshal.GetLastWin32Error();
