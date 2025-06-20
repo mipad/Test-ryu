@@ -3130,13 +3130,13 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         }
 
         [DllImport("libc", SetLastError = true)]
-        private static extern IntPtr mmap(IntPtr addr, ulong length, int prot, int flags, int fd, ulong offset);
+        private static extern IntPtr mmap(IntPtr addr, UIntPtr length, int prot, int flags, int fd, UIntPtr offset);
 
         [DllImport("libc", SetLastError = true)]
-        private static extern int munmap(IntPtr addr, ulong length);
+        private static extern int munmap(IntPtr addr, UIntPtr length);
 
         [DllImport("libc", SetLastError = true)]
-        private static extern int mprotect(IntPtr addr, ulong len, int prot);
+        private static extern int mprotect(IntPtr addr, UIntPtr len, int prot);
 
         protected override IEnumerable<HostMemoryRange> GetHostRegions(ulong va, ulong size)
         {
@@ -3189,7 +3189,9 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             
             // 在Android上使用mmap进行内存映射
             int prot = GetProtectionFlags(newDstPermission);
-            IntPtr result = mmap(new IntPtr((long)dst), size, prot, MAP_SHARED | MAP_FIXED, -1, src);
+            UIntPtr uSize = (UIntPtr)size;
+            UIntPtr uSrc = (UIntPtr)src;
+            IntPtr result = mmap(new IntPtr((long)dst), uSize, prot, MAP_SHARED | MAP_FIXED, -1, uSrc);
             
             if (result == (IntPtr)(-1))
             {
@@ -3207,7 +3209,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             ulong size = pagesCount * PageSize;
             
             // 在Android上使用munmap解除内存映射
-            int result = munmap(new IntPtr((long)dst), size);
+            UIntPtr uSize = (UIntPtr)size;
+            int result = munmap(new IntPtr((long)dst), uSize);
             if (result != 0)
             {
                 int error = Marshal.GetLastWin32Error();
@@ -3236,7 +3239,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
                 mapFlags |= MAP_PRIVATE;
             }
 
-            IntPtr result = mmap(new IntPtr((long)dstVa), size, prot, mapFlags, -1, 0);
+            UIntPtr uSize = (UIntPtr)size;
+            IntPtr result = mmap(new IntPtr((long)dstVa), uSize, prot, mapFlags, -1, UIntPtr.Zero);
             
             if (result == (IntPtr)(-1))
             {
@@ -3277,7 +3281,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         {
             // 在Android上，我们可以使用mmap的MAP_FIXED来映射外部内存
             int prot = PROT_READ | PROT_WRITE;
-            IntPtr result = mmap(new IntPtr((long)va), size, prot, MAP_SHARED | MAP_FIXED, -1, 0);
+            UIntPtr uSize = (UIntPtr)size;
+            IntPtr result = mmap(new IntPtr((long)va), uSize, prot, MAP_SHARED | MAP_FIXED, -1, UIntPtr.Zero);
             
             if (result == (IntPtr)(-1))
             {
@@ -3298,9 +3303,10 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         protected override Result Reprotect(ulong address, ulong pagesCount, KMemoryPermission permission)
         {
             ulong size = pagesCount * PageSize;
-                        int prot = GetProtectionFlags(permission);
+            int prot = GetProtectionFlags(permission);
+            UIntPtr uSize = (UIntPtr)size;
             
-            int result = mprotect(new IntPtr((long)address), size, prot);
+            int result = mprotect(new IntPtr((long)address), uSize, prot);
             if (result != 0)
             {
                 int error = Marshal.GetLastWin32Error();
@@ -3312,7 +3318,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         }
 
         protected override Result ReprotectAndFlush(ulong address, ulong pagesCount, KMemoryPermission permission)
-        {
+   {
             // 在Android上，我们只需要重新设置保护权限，缓存刷新由系统处理
             return Reprotect(address, pagesCount, permission);
         }
@@ -3337,10 +3343,10 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         {
             unsafe
             {
+                // 直接写入内存
+                byte* dstPtr = (byte*)va;
                 fixed (byte* srcPtr = data)
                 {
-                    // 直接写入内存
-                    byte* dstPtr = (byte*)va;
                     for (int i = 0; i < data.Length; i++)
                     {
                         dstPtr[i] = srcPtr[i];
