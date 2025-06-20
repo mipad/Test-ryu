@@ -3015,7 +3015,6 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         /// </summary>
         /// <param name="dstVa">Destination virtual address that should be mapped</param>
         /// <param name="pagesCount">Number of pages to map</param>
-        /// <param极
         /// <param name="srcPa">Physical address where the pages should be mapped. May be ignored if aliasing is not supported</param>
         /// <param name="permission">Permission of the region to be mapped</param>
         /// <param name="flags">Flags controlling the memory map operation</param>
@@ -3024,7 +3023,6 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         /// <returns>Result of the mapping operation</returns>
         protected abstract Result MapPages(
             ulong dstVa,
-            ul极
             ulong pagesCount,
             ulong srcPa,
             KMemoryPermission permission,
@@ -3072,7 +3070,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         /// </summary>
         /// <param name="address">Virtual address of the region to have the permission changes</param>
         /// <param name="pagesCount">Number of pages to have their permissions changed</param>
-        /// <param name="permission">New permission</极
+        /// <param name="permission">New permission</param>
         /// <returns>Result of the permission change operation</returns>
         protected abstract Result Reprotect(ulong address, ulong pagesCount, KMemoryPermission permission);
 
@@ -3132,18 +3130,18 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         }
 
         [DllImport("libc", SetLastError = true)]
-        private static extern IntPtr mmap(IntPtr addr, UIntPtr length, int prot, int flags, int fd, UIntPtr offset);
+        private static extern IntPtr mmap(IntPtr addr, nuint length, int prot, int flags, int fd, nuint offset);
 
         [DllImport("libc", SetLastError = true)]
-        private static extern int munmap(IntPtr addr, UIntPtr length);
+        private static extern int munmap(IntPtr addr, nuint length);
 
         [DllImport("libc", SetLastError = true)]
-        private static extern int mprotect(IntPtr addr, UIntPtr len, int prot);
+        private static extern int mprotect(IntPtr addr, nuint len, int prot);
 
         protected override IEnumerable<HostMemoryRange> GetHostRegions(ulong va, ulong size)
         {
             // 在Android上，我们直接使用虚拟地址范围
-            return new[] { new HostMemoryRange((IntPtr)va, (long)size) };
+            return new[] { new HostMemoryRange((IntPtr)va, (int)size) };
         }
 
         protected override void GetPhysicalRegions(ulong va, ulong size, KPageList pageList)
@@ -3170,7 +3168,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
 
         protected override ReadOnlySpan<byte> GetSpan(ulong va, int size)
         {
-            lock (_mapping极
+            lock (_mappingLock)
             {
                 if (_mappedViews.TryGetValue(va, out var accessor))
                 {
@@ -3191,7 +3189,9 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             
             // 在Android上使用mmap进行内存映射
             int prot = GetProtectionFlags(newDstPermission);
-            IntPtr result = mmap((IntPtr)(long)dst, (UIntPtr)size, prot, MAP_SHARED | MAP_FIXED, -1, UIntPtr.Zero);
+            nuint uSize = (nuint)size;
+            nuint uSrc = (nuint)src;
+            IntPtr result = mmap((IntPtr)(long)dst, uSize, prot, MAP_SHARED | MAP_FIXED, -1, uSrc);
             
             if (result == (IntPtr)(-1))
             {
@@ -3209,7 +3209,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             ulong size = pagesCount * PageSize;
             
             // 在Android上使用munmap解除内存映射
-            int result = munmap((IntPtr)(long)dst, (UIntPtr)size);
+            nuint uSize = (nuint)size;
+            int result = munmap((IntPtr)(long)dst, uSize);
             if (result != 0)
             {
                 int error = Marshal.GetLastWin32Error();
@@ -3238,7 +3239,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
                 mapFlags |= MAP_PRIVATE;
             }
 
-            IntPtr result = mmap((IntPtr)(long)dstVa, (UIntPtr)size, prot, mapFlags, -1, UIntPtr.Zero);
+            nuint uSize = (nuint)size;
+            IntPtr result = mmap((IntPtr)(long)dstVa, uSize, prot, mapFlags, -1, (nuint)0);
             
             if (result == (IntPtr)(-1))
             {
@@ -3269,7 +3271,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             KMemoryPermission permission,
             MemoryMapFlags flags,
             bool shouldFillPages = false,
-            byte fill极 = 0)
+            byte fillValue = 0)
         {
             // 在Android上，我们简化处理，直接分配新内存
             return MapPages(address, pageList.GetPagesCount(), 0, permission, flags, shouldFillPages, fillValue);
@@ -3279,7 +3281,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         {
             // 在Android上，我们可以使用mmap的MAP_FIXED来映射外部内存
             int prot = PROT_READ | PROT_WRITE;
-            IntPtr result = mmap((IntPtr)(long)va, (UIntPtr)size, prot, MAP_SHARED | MAP_FIXED, -1, UIntPtr.Zero);
+            nuint uSize = (nuint)size;
+            IntPtr result = mmap((IntPtr)(long)va, uSize, prot, MAP_SHARED | MAP_FIXED, -1, (nuint)0);
             
             if (result == (IntPtr)(-1))
             {
@@ -3301,8 +3304,9 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         {
             ulong size = pagesCount * PageSize;
             int prot = GetProtectionFlags(permission);
+            nuint uSize = (nuint)size;
             
-            int result = mprotect((IntPtr)(long)address, (UIntPtr)size, prot);
+            int result = mprotect((IntPtr)(long)address, uSize, prot);
             if (result != 0)
             {
                 int error = Marshal.GetLastWin32Error();
@@ -3316,7 +3320,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
         protected override Result ReprotectAndFlush(ulong address, ulong pagesCount, KMemoryPermission permission)
         {
             // 在Android上，我们只需要重新设置保护权限，缓存刷新由系统处理
-            return Reprotect(address, pagesCount, permission);
+   return Reprotect(address, pagesCount, permission);
         }
 
         protected override void SignalMemoryTracking(ulong va, ulong size, bool write)
