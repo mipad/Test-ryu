@@ -25,6 +25,57 @@ namespace LibRyujinx
         private static InputManager? _inputManager;
         private static NpadManager? _npadManager;
         private static InputConfig[] _configs;
+        
+        // 当前运行的游戏ID
+        private static string? _currentGameId;
+        // 游戏ID到控制器类型的映射
+        private static readonly Dictionary<string, ControllerType> _gameControllerMapping = new()
+        {
+            // 示例配置：特定游戏使用特定控制器
+            ["0100F8F0000A2000"] = ControllerType.Handheld,      // 塞尔达传说：荒野之息
+            ["01006F8002326000"] = ControllerType.JoyconPair,    // 超级马力欧派对
+            ["010003F003A34000"] = ControllerType.JoyconLeft | ControllerType.JoyconRight, // 1-2-Switch
+            ["0100187003A36000"] = ControllerType.Pokeball,      // 宝可梦 Let's Go
+        };
+        // 默认控制器类型
+        private const ControllerType DefaultControllerType = ControllerType.ProController;
+
+        /// <summary>
+        /// 设置当前运行的游戏ID，用于控制器类型映射
+        /// </summary>
+        /// <param name="gameId">游戏ID</param>
+        public static void SetGameId(string gameId)
+        {
+            _currentGameId = gameId;
+        }
+
+        /// <summary>
+        /// 覆盖指定玩家的控制器类型
+        /// </summary>
+        /// <param name="type">控制器类型</param>
+        /// <param name="playerIndex">玩家索引(默认为0)</param>
+        public static void OverrideControllerType(ControllerType type, int playerIndex = 0)
+        {
+            if (playerIndex >= 0 && playerIndex < _configs.Length && 
+                _configs[playerIndex] is StandardControllerInputConfig config)
+            {
+                config.ControllerType = type;
+                _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
+            }
+        }
+
+        /// <summary>
+        /// 重置指定玩家的控制器类型为游戏默认配置
+        /// </summary>
+        /// <param name="playerIndex">玩家索引(默认为0)</param>
+        public static void ResetToGameDefault(int playerIndex = 0)
+        {
+            if (playerIndex >= 0 && playerIndex < _configs.Length)
+            {
+                _configs[playerIndex] = CreateDefaultInputConfig(playerIndex);
+                _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
+            }
+        }
 
         public static void InitializeInput(int width, int height)
         {
@@ -96,7 +147,7 @@ namespace LibRyujinx
             var gamepad = _gamepadDriver?.GetGamepad(index);
             if (gamepad != null)
             {
-                var config = CreateDefaultInputConfig();
+                var config = CreateDefaultInputConfig(index);
 
                 config.Id = gamepad.Id;
                 config.PlayerIndex = (PlayerIndex)index;
@@ -109,14 +160,28 @@ namespace LibRyujinx
             return int.TryParse(gamepad?.Id, out var idInt) ? idInt : -1;
         }
 
-        private static InputConfig CreateDefaultInputConfig()
+        /// <summary>
+        /// 创建默认输入配置，根据当前游戏ID自动选择控制器类型
+        /// </summary>
+        /// <param name="playerIndex">玩家索引</param>
+        /// <returns>输入配置</returns>
+        private static InputConfig CreateDefaultInputConfig(int playerIndex)
         {
+            // 确定当前游戏的控制器类型
+            ControllerType controllerType = DefaultControllerType;
+            
+            if (_currentGameId != null && 
+                _gameControllerMapping.TryGetValue(_currentGameId, out var mappedType))
+            {
+                controllerType = mappedType;
+            }
+
             return new StandardControllerInputConfig
             {
                 Version = InputConfig.CurrentVersion,
                 Backend = InputBackendType.GamepadSDL2,
                 Id = null,
-                ControllerType = ControllerType.ProController,
+                ControllerType = controllerType,
                 DeadzoneLeft = 0.1f,
                 DeadzoneRight = 0.1f,
                 RangeLeft = 1.0f,
