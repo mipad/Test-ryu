@@ -5,7 +5,6 @@ import android.content.Context
 import android.util.Log
 import android.view.KeyEvent
 import android.view.LayoutInflater
-import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.fillMaxSize
@@ -43,27 +42,6 @@ class GameController(var activity: Activity) {
             val view = inflator.inflate(R.layout.game_layout, null)
             view.findViewById<FrameLayout>(R.id.leftcontainer)!!.addView(controller.leftGamePad)
             view.findViewById<FrameLayout>(R.id.rightcontainer)!!.addView(controller.rightGamePad)
-            
-            // 添加触摸支持
-            view.setOnTouchListener { _, event ->
-                when (event.action) {
-                    MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                        // 直接调用 RyujinxNative 的方法
-                        RyujinxNative.jnaInstance.setTouchPoint(
-                            event.x.toInt(), 
-                            event.y.toInt()
-                        )
-                        true
-                    }
-                    MotionEvent.ACTION_UP -> {
-                        // 直接调用 RyujinxNative 的方法
-                        RyujinxNative.jnaInstance.releaseTouchPoint()
-                        true
-                    }
-                    else -> false
-                }
-            }
-
             return view
         }
 
