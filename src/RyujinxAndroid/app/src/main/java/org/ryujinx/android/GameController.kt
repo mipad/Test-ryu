@@ -30,36 +30,6 @@ import kotlinx.coroutines.launch
 import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.QuickSettings
 
-// 添加缺失的按钮ID定义
-object GamepadButtonInputId {
-    const val A = 0
-    const val B = 1
-    const val X = 2
-    const val Y = 3
-    const val LeftStick = 4
-    const val RightStick = 5
-    const val LeftShoulder = 6
-    const val RightShoulder = 7
-    const val LeftTrigger = 8
-    const val RightTrigger = 9
-    const val DpadUp = 10
-    const val DpadDown = 11
-    const val DpadLeft = 12
-    const val DpadRight = 13
-    const val Minus = 14
-    const val Plus = 15
-    const val Start = 16
-    const val Back = 17
-    const val Guide = 18
-    const val Misc = 19
-    const val Paddle1 = 20
-    const val Paddle2 = 21
-    const val Paddle3 = 22
-    const val Paddle4 = 23
-    const val TouchPad = 24
-    const val Count = 25
-}
-
 typealias GamePad = RadialGamePad
 typealias GamePadConfig = RadialGamePadConfig
 
@@ -114,24 +84,6 @@ class GameController(var activity: Activity) {
             return false
         }
 
-    // 按钮映射表
-    private val buttonMapping = mapOf(
-        GamePadButtonInputId.A.ordinal to GamepadButtonInputId.A,
-        GamePadButtonInputId.B.ordinal to GamepadButtonInputId.B,
-        GamePadButtonInputId.X.ordinal to GamepadButtonInputId.X,
-        GamePadButtonInputId.Y.ordinal to GamepadButtonInputId.Y,
-        GamePadButtonInputId.LeftShoulder.ordinal to GamepadButtonInputId.LeftShoulder,
-        GamePadButtonInputId.RightShoulder.ordinal to GamepadButtonInputId.RightShoulder,
-        GamePadButtonInputId.LeftTrigger.ordinal to GamepadButtonInputId.LeftTrigger,
-        GamePadButtonInputId.RightTrigger.ordinal to GamepadButtonInputId.RightTrigger,
-        GamePadButtonInputId.Minus.ordinal to GamepadButtonInputId.Minus,
-        GamePadButtonInputId.Plus.ordinal to GamepadButtonInputId.Plus,
-        GamePadButtonInputId.DpadUp.ordinal to GamepadButtonInputId.DpadUp,
-        GamePadButtonInputId.DpadDown.ordinal to GamepadButtonInputId.DpadDown,
-        GamePadButtonInputId.DpadLeft.ordinal to GamepadButtonInputId.DpadLeft,
-        GamePadButtonInputId.DpadRight.ordinal to GamepadButtonInputId.DpadRight
-    )
-
     init {
         leftGamePad = GamePad(generateConfig(true), 16f, activity)
         rightGamePad = GamePad(generateConfig(false), 16f, activity)
@@ -155,125 +107,119 @@ class GameController(var activity: Activity) {
     }
 
     fun connect() {
-        if (controllerId == -1) {
+        if (controllerId == -1)
             controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
-        }
     }
 
     private fun handleEvent(ev: Event) {
-        // 使用固定设备ID=0
-        val deviceId = 0
-        
-        if (controllerId == -1) {
-            connect()
-        }
+        if (controllerId == -1)
+            controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
 
-        when (ev) {
-            is Event.Button -> {
-                // 使用映射表转换按钮ID
-                val mappedId = buttonMapping[ev.id] ?: ev.id
-                when (ev.action) {
-                    KeyEvent.ACTION_UP -> {
-                        RyujinxNative.jnaInstance.inputSetButtonReleased(mappedId, deviceId)
+        controllerId.apply {
+            when (ev) {
+                is Event.Button -> {
+                    val action = ev.action
+                    when (action) {
+                        KeyEvent.ACTION_UP -> {
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(ev.id, this)
+                        }
+
+                        KeyEvent.ACTION_DOWN -> {
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(ev.id, this)
+                        }
                     }
-                    KeyEvent.ACTION_DOWN -> {
-                        RyujinxNative.jnaInstance.inputSetButtonPressed(mappedId, deviceId)
+                }
+
+                is Event.Direction -> {
+                    val direction = ev.id
+
+                    when (direction) {
+                        GamePadButtonInputId.DpadUp.ordinal -> {
+                            if (ev.xAxis > 0) {
+                                RyujinxNative.jnaInstance.inputSetButtonPressed(
+                                    GamePadButtonInputId.DpadRight.ordinal,
+                                    this
+                                )
+                                RyujinxNative.jnaInstance.inputSetButtonReleased(
+                                    GamePadButtonInputId.DpadLeft.ordinal,
+                                    this
+                                )
+                            } else if (ev.xAxis < 0) {
+                                RyujinxNative.jnaInstance.inputSetButtonPressed(
+                                    GamePadButtonInputId.DpadLeft.ordinal,
+                                    this
+                                )
+                                RyujinxNative.jnaInstance.inputSetButtonReleased(
+                                    GamePadButtonInputId.DpadRight.ordinal,
+                                    this
+                                )
+                            } else {
+                                RyujinxNative.jnaInstance.inputSetButtonReleased(
+                                    GamePadButtonInputId.DpadLeft.ordinal,
+                                    this
+                                )
+                                RyujinxNative.jnaInstance.inputSetButtonReleased(
+                                    GamePadButtonInputId.DpadRight.ordinal,
+                                    this
+                                )
+                            }
+                            if (ev.yAxis < 0) {
+                                RyujinxNative.jnaInstance.inputSetButtonPressed(
+                                    GamePadButtonInputId.DpadUp.ordinal,
+                                    this
+                                )
+                                RyujinxNative.jnaInstance.inputSetButtonReleased(
+                                    GamePadButtonInputId.DpadDown.ordinal,
+                                    this
+                                )
+                            } else if (ev.yAxis > 0) {
+                                RyujinxNative.jnaInstance.inputSetButtonPressed(
+                                    GamePadButtonInputId.DpadDown.ordinal,
+                                    this
+                                )
+                                RyujinxNative.jnaInstance.inputSetButtonReleased(
+                                    GamePadButtonInputId.DpadUp.ordinal,
+                                    this
+                                )
+                            } else {
+                                RyujinxNative.jnaInstance.inputSetButtonReleased(
+                                    GamePadButtonInputId.DpadDown.ordinal,
+                                    this
+                                )
+                                RyujinxNative.jnaInstance.inputSetButtonReleased(
+                                    GamePadButtonInputId.DpadUp.ordinal,
+                                    this
+                                )
+                            }
+                        }
+
+                        GamePadButtonInputId.LeftStick.ordinal -> {
+                            val setting = QuickSettings(activity)
+                            val x = MathUtils.clamp(ev.xAxis * setting.controllerStickSensitivity, -1f, 1f)
+                            val y = MathUtils.clamp(ev.yAxis * setting.controllerStickSensitivity, -1f, 1f)
+                            RyujinxNative.jnaInstance.inputSetStickAxis(
+                                1,
+                                x,
+                                -y,
+                                this
+                            )
+                        }
+
+                        GamePadButtonInputId.RightStick.ordinal -> {
+                            val setting = QuickSettings(activity)
+                            val x = MathUtils.clamp(ev.xAxis * setting.controllerStickSensitivity, -1f, 1f)
+                            val y = MathUtils.clamp(ev.yAxis * setting.controllerStickSensitivity, -1f, 1f)
+                            RyujinxNative.jnaInstance.inputSetStickAxis(
+                                2,
+                                x,
+                                -y,
+                                this
+                            )
+                        }
                     }
                 }
             }
-            is Event.Direction -> {
-                val direction = ev.id
-
-                when (direction) {
-                    GamePadButtonInputId.DpadUp.ordinal -> {
-                        if (ev.xAxis > 0) {
-                            RyujinxNative.jnaInstance.inputSetButtonPressed(
-                                GamepadButtonInputId.DpadRight,
-                                deviceId
-                            )
-                            RyujinxNative.jnaInstance.inputSetButtonReleased(
-                                GamepadButtonInputId.DpadLeft,
-                                deviceId
-                            )
-                        } else if (ev.xAxis < 0) {
-                            RyujinxNative.jnaInstance.inputSetButtonPressed(
-                                GamepadButtonInputId.DpadLeft,
-                                deviceId
-                            )
-                            RyujinxNative.jnaInstance.inputSetButtonReleased(
-                                GamepadButtonInputId.DpadRight,
-                                deviceId
-                            )
-                        } else {
-                            RyujinxNative.jnaInstance.inputSetButtonReleased(
-                                GamepadButtonInputId.DpadLeft,
-                                deviceId
-                            )
-                            RyujinxNative.jnaInstance.inputSetButtonReleased(
-                                GamepadButtonInputId.DpadRight,
-                                deviceId
-                            )
-                        }
-                        if (ev.yAxis < 0) {
-                            RyujinxNative.jnaInstance.inputSetButtonPressed(
-                                GamepadButtonInputId.DpadUp,
-                                deviceId
-                            )
-                            RyujinxNative.jnaInstance.inputSetButtonReleased(
-                                GamepadButtonInputId.DpadDown,
-                                deviceId
-                            )
-                        } else if (ev.yAxis > 0) {
-                            RyujinxNative.jnaInstance.inputSetButtonPressed(
-                                GamepadButtonInputId.DpadDown,
-                                deviceId
-                            )
-                            RyujinxNative.jnaInstance.inputSetButtonReleased(
-                                GamepadButtonInputId.DpadUp,
-                                deviceId
-                            )
-                        } else {
-                            RyujinxNative.jnaInstance.inputSetButtonReleased(
-                                GamepadButtonInputId.DpadDown,
-                                deviceId
-                            )
-                            RyujinxNative.jnaInstance.inputSetButtonReleased(
-                                GamepadButtonInputId.DpadUp,
-                                deviceId
-                            )
-                        }
-                    }
-                    GamePadButtonInputId.LeftStick.ordinal -> {
-                        val setting = QuickSettings(activity)
-                        val x = MathUtils.clamp(ev.xAxis * setting.controllerStickSensitivity, -1f, 1f)
-                        val y = MathUtils.clamp(ev.yAxis * setting.controllerStickSensitivity, -1f, 1f)
-                        RyujinxNative.jnaInstance.inputSetStickAxis(
-                            GamepadButtonInputId.LeftStick,
-                            x,
-                            -y,
-                            deviceId
-                        )
-                    }
-                    GamePadButtonInputId.RightStick.ordinal -> {
-                        val setting = QuickSettings(activity)
-                        val x = MathUtils.clamp(ev.xAxis * setting.controllerStickSensitivity, -1f, 1f)
-                        val y = MathUtils.clamp(ev.yAxis * setting.controllerStickSensitivity, -1f, 1f)
-                        RyujinxNative.jnaInstance.inputSetStickAxis(
-                            GamepadButtonInputId.RightStick,
-                            x,
-                            -y,
-                            deviceId
-                        )
-                    }
-                }
-            }
         }
-    }
-    
-    // 添加陀螺仪处理方法
-    fun handleGyroData(x: Float, y: Float, z: Float) {
-        if (controllerId == -1) return
-        RyujinxNative.jnaInstance.inputSetGyroData(x, y, z, 0)
     }
 }
 
