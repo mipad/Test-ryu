@@ -215,17 +215,12 @@ namespace Ryujinx.Input.HLE
         public string Id { get; private set; }
 
         private readonly CemuHookClient _cemuHookClient;
-        
-        // 新增：控制器类型属性
-        private ConfigControllerType _controllerType;
-        public ConfigControllerType ControllerType => _controllerType;
 
         public NpadController(CemuHookClient cemuHookClient)
         {
             State = default;
             Id = null;
             _cemuHookClient = cemuHookClient;
-            _controllerType = ConfigControllerType.None; // 初始化为None
         }
 
         public bool UpdateDriverConfiguration(IGamepadDriver gamepadDriver, InputConfig config)
@@ -254,27 +249,16 @@ namespace Ryujinx.Input.HLE
                 {
                     UpdateMotionInput(controllerConfig.Motion);
                 }
-                
-                // 新增：设置控制器类型
-                _controllerType = controllerConfig.ControllerType;
             }
             else
             {
                 // Non-controller doesn't have motions.
                 _leftMotionInput = null;
-                // 新增：非手柄控制器设为None
-                _controllerType = ConfigControllerType.None;
             }
 
             _config = config;
 
             _gamepad?.SetConfiguration(config);
-        }
-
-        // 新增：设置控制器类型的方法
-        public void SetControllerType(ConfigControllerType type)
-        {
-            _controllerType = type;
         }
 
         private void UpdateMotionInput(MotionConfigController motionConfig)
