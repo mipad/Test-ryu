@@ -402,7 +402,9 @@ namespace Ryujinx.HLE.HOS.Services.Hid
             // 关键修改：为Handheld模式添加特定属性
             if (currentNpad.StyleSet == NpadStyleTag.Handheld)
             {
-                newState.Attributes |= NpadAttribute.IsHandheld;
+                newState.Attributes |= NpadAttribute.IsConnected | 
+                          NpadAttribute.IsLeftConnected | 
+                          NpadAttribute.IsRightConnected;
             }
 
             switch (currentNpad.StyleSet)
