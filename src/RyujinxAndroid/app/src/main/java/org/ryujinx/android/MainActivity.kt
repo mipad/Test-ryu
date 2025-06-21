@@ -111,6 +111,15 @@ class MainActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+    // 强制使用 AAudio 低延迟驱动
+    System.setProperty("SDL_AUDIODRIVER", "aaudio")
+    
+    // Android 8.0+ 启用独占模式（更低延迟）
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+        System.setProperty("SDL_AUDIO_AAUDIO_EXCLUSIVE", "1")
+    }
+    //  新增代码结束 
+    
         motionSensorManager = MotionSensorManager(this)
         Thread.setDefaultUncaughtExceptionHandler(crashHandler)
 
