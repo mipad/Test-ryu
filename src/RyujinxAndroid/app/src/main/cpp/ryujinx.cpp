@@ -200,7 +200,10 @@ void setCurrentTransform(long native_window, int transform) {
             nativeTransform = ANativeWindowTransform::ANATIVEWINDOW_TRANSFORM_IDENTITY;
     }
 
-    ANativeWindow_setBuffersTransform(nativeWindow, nativeTransform);
+    ANativeWindow_setBuffersGeometry(nativeWindow, 
+                                     ANativeWindow_getWidth(nativeWindow),
+                                     ANativeWindow_getHeight(nativeWindow),
+                                     ANativeWindow_getFormat(nativeWindow));
 }
 
 extern "C"
