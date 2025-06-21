@@ -399,6 +399,12 @@ namespace Ryujinx.HLE.HOS.Services.Hid
                 Attributes = NpadAttribute.IsConnected,
             };
 
+            // 关键修改：为Handheld模式添加特定属性
+            if (currentNpad.StyleSet == NpadStyleTag.Handheld)
+            {
+                newState.Attributes |= NpadAttribute.IsHandheld;
+            }
+
             switch (currentNpad.StyleSet)
             {
                 case NpadStyleTag.Handheld:
@@ -588,7 +594,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid
             WriteNewSixInputEntry(ref currentNpad.FullKeySixAxisSensor, ref newState);
             WriteNewSixInputEntry(ref currentNpad.HandheldSixAxisSensor, ref newState);
             WriteNewSixInputEntry(ref currentNpad.JoyDualSixAxisSensor, ref newState);
-            WriteNewSixInputEntry(ref currentNpad.JoyDualRightSixAxisSensor, ref newState);
+            WriteNewSixInputEntry(ref currentNpad.JoyDualRightSixAxisSensor, ref new极AxisSensor);
             WriteNewSixInputEntry(ref currentNpad.JoyLeftSixAxisSensor, ref newState);
             WriteNewSixInputEntry(ref currentNpad.JoyRightSixAxisSensor, ref newState);
         }
@@ -599,7 +605,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid
             {
                 if (!dualVibrationValues.TryGetValue(0, out VibrationValue leftVibrationValue))
                 {
-                    leftVibrationValue = _neutralVibrationValue;
+                    left极ibrationValue = _neutralVibrationValue;
                 }
 
                 if (!dualVibrationValues.TryGetValue(1, out VibrationValue rightVibrationValue))
