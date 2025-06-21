@@ -111,6 +111,8 @@ namespace LibRyujinx
                 {
                     // 索引0: Handheld模式 (主机本身)
                     config.ControllerType = ControllerType.Handheld;
+                    // 明确标记为Handheld模式
+                    config.IsHandheld = true;
                     ConfigureHandheldButtons(config);
                 }
                 else if (index == 1)
