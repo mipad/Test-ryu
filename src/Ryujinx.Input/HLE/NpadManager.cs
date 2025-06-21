@@ -11,7 +11,6 @@ using CemuHookClient = Ryujinx.Input.Motion.CemuHook.Client;
 using ControllerType = Ryujinx.Common.Configuration.Hid.ControllerType;
 using PlayerIndex = Ryujinx.HLE.HOS.Services.Hid.PlayerIndex;
 using Switch = Ryujinx.HLE.Switch;
-using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Input.HLE
 {
@@ -36,19 +35,6 @@ namespace Ryujinx.Input.HLE
         private bool _enableKeyboard;
         private bool _enableMouse;
         private Switch _device;
-        
-        // 新增：应用请求的控制器类型
-        private List<string> _requestedTypes = new List<string>();
-        
-        // 新增：控制器类型映射
-        private static readonly Dictionary<string, ControllerType> _typeMapping = new()
-        {
-            ["Handheld"] = ControllerType.Handheld,
-            ["JoyconLeft"] = ControllerType.JoyconLeft,
-            ["JoyconRight"] = ControllerType.JoyconRight,
-            ["Pokeball"] = ControllerType.Pokeball,
-            ["ProController"] = ControllerType.ProController
-        };
 
         public NpadManager(IGamepadDriver keyboardDriver, IGamepadDriver gamepadDriver, IGamepadDriver mouseDriver)
         {
@@ -62,19 +48,6 @@ namespace Ryujinx.Input.HLE
 
             _gamepadDriver.OnGamepadConnected += HandleOnGamepadConnected;
             _gamepadDriver.OnGamepadDisconnected += HandleOnGamepadDisconnected;
-        }
-
-        // 新增：设置应用请求的控制器类型
-        public void SetRequestedControllerTypes(IEnumerable<string> types)
-        {
-            lock (_lock)
-            {
-                _requestedTypes = types.ToList();
-                Logger.Info?.Print(LogClass.Hid, $"Application requests: {string.Join(", ", _requestedTypes)}");
-                
-                // 立即重新映射控制器
-                RemapControllers();
-            }
         }
 
         private void RefreshInputConfigForHLE()
@@ -194,91 +167,7 @@ namespace Ryujinx.Input.HLE
                 _enableMouse = enableMouse;
 
                 _device.Hid.RefreshInputConfig(validInputs);
-                
-                // 关键修复：重新映射控制器
-                RemapControllers();
             }
-        }
-
-        // 新增：重新映射控制器以匹配请求
-        private void RemapControllers()
-        {
-            if (_requestedTypes == null || !_requestedTypes.Any()) 
-                return;
-            
-            // 1. 创建控制器类型映射表
-            var requestedTypes = _requestedTypes.ToList();
-            
-            Logger.Info?.Print(LogClass.Hid, 
-                $"Remapping controllers for request: {string.Join(", ", requestedTypes)}");
-            
-            // 2. 遍历所有控制器
-            for (int i = 0; i < _controllers.Length; i++)
-            {
-                var controller = _controllers[i];
-                if (controller == null) 
-                    continue;
-                
-                // 3. 检查当前控制器类型是否匹配请求
-                var controllerType = controller.ControllerType;
-                var mappedType = MapToRequestedType(controllerType);
-                
-                if (requestedTypes.Contains(mappedType))
-                {
-                    // 匹配成功，从请求列表中移除
-                    requestedTypes.Remove(mappedType);
-                    Logger.Info?.Print(LogClass.Hid, 
-                        $"Controller {i} ({controllerType}) matches requested type: {mappedType}");
-                }
-                else if (requestedTypes.Any())
-                {
-                    // 4. 如果不匹配，尝试重新映射
-                    var newType = MapRequestedType(requestedTypes.First());
-                    if (newType != ControllerType.None)
-                    {
-                        controller.SetControllerType(newType);
-                        requestedTypes.RemoveAt(0);
-                        Logger.Info?.Print(LogClass.Hid, 
-                            $"Remapped controller {i} to {newType}");
-                    }
-                }
-            }
-            
-            // 5. 记录未满足的请求
-            if (requestedTypes.Any())
-            {
-                Logger.Warning?.Print(LogClass.Hid, 
-                    $"No controllers available for requested types: {string.Join(", ", requestedTypes)}");
-            }
-        }
-        
-        // 新增：将控制器类型映射到请求类型
-        private string MapToRequestedType(ControllerType type)
-        {
-            return type switch
-            {
-                ControllerType.Handheld => "Handheld",
-                ControllerType.JoyconLeft => "JoyconLeft",
-                ControllerType.JoyconRight => "JoyconRight",
-                ControllerType.Pokeball => "Pokeball",
-                ControllerType.ProController => "ProController",
-                ControllerType.JoyconPair => "JoyconPair",
-                _ => "Unknown"
-            };
-        }
-        
-        // 新增：将请求类型映射到控制器类型
-        private ControllerType MapRequestedType(string requestedType)
-        {
-            if (_typeMapping.TryGetValue(requestedType, out var controllerType))
-            {
-                return controllerType;
-            }
-            
-            Logger.Warning?.Print(LogClass.Hid, 
-                $"Unknown controller type requested: {requestedType}");
-            
-            return ControllerType.None;
         }
 
         public void UnblockInputUpdates()
@@ -314,13 +203,6 @@ namespace Ryujinx.Input.HLE
         {
             lock (_lock)
             {
-                // 关键修复：在更新前检查匹配
-                if (_requestedTypes != null && _requestedTypes.Any() && !HasMatchingController())
-                {
-                    Logger.Warning?.Print(LogClass.Hid, 
-                        $"No matching controllers found for: {string.Join(", ", _requestedTypes)}");
-                }
-                
                 List<GamepadInput> hleInputStates = new();
                 List<SixAxisInput> hleMotionStates = new(NpadDevices.MaxControllers);
 
@@ -432,29 +314,6 @@ namespace Ryujinx.Input.HLE
 
                 _device.TamperMachine.UpdateInput(hleInputStates);
             }
-        }
-        
-        // 新增：检查是否有匹配的控制器
-        private bool HasMatchingController()
-        {
-            if (_requestedTypes == null || !_requestedTypes.Any())
-                return true;
-            
-            foreach (var requestedType in _requestedTypes)
-            {
-                var mappedType = MapRequestedType(requestedType);
-                if (mappedType == ControllerType.None) 
-                    continue;
-                
-                foreach (var controller in _controllers)
-                {
-                    if (controller != null && controller.ControllerType == mappedType)
-                    {
-                        return true;
-                    }
-                }
-            }
-            return false;
         }
 
         internal InputConfig GetPlayerInputConfigByIndex(int index)
