@@ -48,11 +48,16 @@ class GameController(var activity: Activity) {
             view.setOnTouchListener { _, event ->
                 when (event.action) {
                     MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                        controller.setTouchPoint(event.x.toInt(), event.y.toInt())
+                        // 直接调用 RyujinxNative 的方法
+                        RyujinxNative.jnaInstance.setTouchPoint(
+                            event.x.toInt(), 
+                            event.y.toInt()
+                        )
                         true
                     }
                     MotionEvent.ACTION_UP -> {
-                        controller.releaseTouchPoint()
+                        // 直接调用 RyujinxNative 的方法
+                        RyujinxNative.jnaInstance.releaseTouchPoint()
                         true
                     }
                     else -> false
@@ -134,14 +139,6 @@ class GameController(var activity: Activity) {
         Log.d("GameController", "Controller 1 connected with ID: $id1")
         
         controllerId = 1 // 使用Pro控制器接收输入
-    }
-
-    fun setTouchPoint(x: Int, y: Int) {
-        RyujinxNative.jnaInstance.setTouchPoint(x, y)
-    }
-
-    fun releaseTouchPoint() {
-        RyujinxNative.jnaInstance.releaseTouchPoint()
     }
 
     private fun handleEvent(ev: Event) {
