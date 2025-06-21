@@ -187,7 +187,7 @@ namespace LibRyujinx
         {
             if (config is StandardControllerInputConfig proConfig)
             {
-                // Pro控制器按钮配置
+                // Pro控制器按钮配置 - 左部分
                 proConfig.LeftJoycon = new LeftJoyconCommonConfig<ConfigGamepadInputId>
                 {
                     DpadUp = ConfigGamepadInputId.DpadUp,
@@ -201,6 +201,7 @@ namespace LibRyujinx
                     ButtonSr = ConfigGamepadInputId.Unbound,
                 };
 
+                // Pro控制器按钮配置 - 右部分
                 proConfig.RightJoycon = new RightJoyconCommonConfig<ConfigGamepadInputId>
                 {
                     ButtonA = ConfigGamepadInputId.A,
@@ -212,8 +213,6 @@ namespace LibRyujinx
                     ButtonZr = ConfigGamepadInputId.RightTrigger,
                     ButtonSl = ConfigGamepadInputId.Unbound,
                     ButtonSr = ConfigGamepadInputId.Unbound,
-                    // Home按钮配置
-                    ButtonHome = ConfigGamepadInputId.Home
                 };
 
                 // 左摇杆配置
