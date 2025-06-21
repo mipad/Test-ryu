@@ -51,6 +51,7 @@ add_library( # Sets the name of the library.
 # you want to add. CMake verifies that the library exists before
 # completing its build.
 
+find_library(android-lib android)
 find_library( # Sets the name of the path variable.
               log-lib
 
