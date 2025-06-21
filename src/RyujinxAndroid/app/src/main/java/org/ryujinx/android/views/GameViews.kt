@@ -120,8 +120,8 @@ class GameViews {
                         awaitPointerEventScope {
                             while (true) {
                                 val event = awaitPointerEvent()
-                                if (showController.value)
-                                    continue
+                                //if (showController.value)
+                                    //continue
 
                                 val change = event
                                     .component1()
@@ -133,7 +133,8 @@ class GameViews {
                                         PointerEventType.Press -> {
                                             RyujinxNative.jnaInstance.inputSetTouchPoint(
                                                 position.x.roundToInt(),
-                                                position.y.roundToInt()
+                                                position.y.roundToInt(),
+                                                0
                                             )
                                         }
 
