@@ -182,26 +182,42 @@ namespace LibRyujinx
             }
         }
 
-        // 新增方法：配置Pro控制器的按钮映射
+        // 修复方法：正确配置Pro控制器的按钮映射
         private static void ConfigureProControllerButtons(InputConfig config)
         {
             if (config is StandardControllerInputConfig proConfig)
             {
                 // Pro控制器按钮配置
-                proConfig.ButtonA = ConfigGamepadInputId.A;
-                proConfig.ButtonB = ConfigGamepadInputId.B;
-                proConfig.ButtonX = ConfigGamepadInputId.X;
-                proConfig.ButtonY = ConfigGamepadInputId.Y;
-                proConfig.ButtonPlus = ConfigGamepadInputId.Plus;
-                proConfig.ButtonMinus = ConfigGamepadInputId.Minus;
-                proConfig.ButtonHome = ConfigGamepadInputId.Home;
-                proConfig.ButtonL = ConfigGamepadInputId.LeftShoulder;
-                proConfig.ButtonR = ConfigGamepadInputId.RightShoulder;
-                proConfig.ButtonZl = ConfigGamepadInputId.LeftTrigger;
-                proConfig.ButtonZr = ConfigGamepadInputId.RightTrigger;
+                proConfig.LeftJoycon = new LeftJoyconCommonConfig<ConfigGamepadInputId>
+                {
+                    DpadUp = ConfigGamepadInputId.DpadUp,
+                    DpadDown = ConfigGamepadInputId.DpadDown,
+                    DpadLeft = ConfigGamepadInputId.DpadLeft,
+                    DpadRight = ConfigGamepadInputId.DpadRight,
+                    ButtonMinus = ConfigGamepadInputId.Minus,
+                    ButtonL = ConfigGamepadInputId.LeftShoulder,
+                    ButtonZl = ConfigGamepadInputId.LeftTrigger,
+                    ButtonSl = ConfigGamepadInputId.Unbound,
+                    ButtonSr = ConfigGamepadInputId.Unbound,
+                };
+
+                proConfig.RightJoycon = new RightJoyconCommonConfig<ConfigGamepadInputId>
+                {
+                    ButtonA = ConfigGamepadInputId.A,
+                    ButtonB = ConfigGamepadInputId.B,
+                    ButtonX = ConfigGamepadInputId.X,
+                    ButtonY = ConfigGamepadInputId.Y,
+                    ButtonPlus = ConfigGamepadInputId.Plus,
+                    ButtonR = ConfigGamepadInputId.RightShoulder,
+                    ButtonZr = ConfigGamepadInputId.RightTrigger,
+                    ButtonSl = ConfigGamepadInputId.Unbound,
+                    ButtonSr = ConfigGamepadInputId.Unbound,
+                    // Home按钮配置
+                    ButtonHome = ConfigGamepadInputId.Home
+                };
 
                 // 左摇杆配置
-                proConfig.LeftStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
+                proConfig.LeftJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
                 {
                     Joystick = ConfigStickInputId.Left,
                     StickButton = ConfigGamepadInputId.LeftStick,
@@ -211,7 +227,7 @@ namespace LibRyujinx
                 };
 
                 // 右摇杆配置
-                proConfig.RightStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
+                proConfig.RightJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
                 {
                     Joystick = ConfigStickInputId.Right,
                     StickButton = ConfigGamepadInputId.RightStick,
