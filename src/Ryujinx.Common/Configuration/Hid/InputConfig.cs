@@ -31,6 +31,26 @@ namespace Ryujinx.Common.Configuration.Hid
         /// </summary>
         public PlayerIndex PlayerIndex { get; set; }
 
+        /// <summary>
+        /// 表示此配置是否为手持模式控制器
+        /// </summary>
+        public bool IsHandheld
+        {
+            get => ControllerType == ControllerType.Handheld;
+            set
+            {
+                if (value)
+                {
+                    ControllerType = ControllerType.Handheld;
+                }
+                else if (ControllerType == ControllerType.Handheld)
+                {
+                    ControllerType = ControllerType.ProController; // 默认回退
+                }
+                OnPropertyChanged();
+            }
+        }
+
         public event PropertyChangedEventHandler PropertyChanged;
 
         protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
