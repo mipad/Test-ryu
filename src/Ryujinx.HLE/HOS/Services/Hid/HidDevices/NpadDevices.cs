@@ -137,11 +137,8 @@ namespace Ryujinx.HLE.HOS.Services.Hid
                     throw new InvalidOperationException("Player must be Player1-8 or Handheld");
                 }
 
-                if (controllerType == ControllerType.Handheld)
-                {
-                    player = PlayerIndex.Handheld;
-                }
-
+                // 关键修改：移除强制设置 Handheld 为索引8的逻辑
+                // 允许 Handheld 控制器配置到任意索引
                 _configuredTypes[(int)player] = controllerType;
 
                 Logger.Info?.Print(LogClass.Hid, $"Configured Controller {controllerType} to {player}");
