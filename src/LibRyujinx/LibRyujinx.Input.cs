@@ -46,7 +46,6 @@ namespace LibRyujinx
             _touchScreenManager = _inputManager.CreateTouchScreenManager();
             _touchScreenManager.Initialize(SwitchDevice!.EmulationContext);
 
-            // 确保使用正确的输入配置列表
             _npadManager.Initialize(SwitchDevice.EmulationContext, new List<InputConfig>(), false, false);
 
             _virtualTouchScreen.ClientSize = new Size(width, height);
@@ -94,10 +93,6 @@ namespace LibRyujinx
 
         public static int ConnectGamepad(int index)
         {
-            // 允许连接多个控制器（0-3）
-            if (index < 0 || index >= _configs.Length) 
-                return -1;
-
             var gamepad = _gamepadDriver?.GetGamepad(index);
             if (gamepad != null)
             {
@@ -106,139 +101,12 @@ namespace LibRyujinx
                 config.Id = gamepad.Id;
                 config.PlayerIndex = (PlayerIndex)index;
 
-                // 根据索引配置不同的控制器类型
-                if (index == 0)
-                {
-                    // 索引0: Handheld模式 (主机本身)
-                    config.ControllerType = ControllerType.Handheld;
-                    // 明确标记为Handheld模式
-                    config.IsHandheld = true;
-                    ConfigureHandheldButtons(config);
-                }
-                else if (index == 1)
-                {
-                    // 索引1: Pro控制器 (外接手柄)
-                    config.ControllerType = ControllerType.ProController;
-                    ConfigureProControllerButtons(config);
-                }
-
                 _configs[index] = config;
             }
 
-            // 确保重新加载配置时包含所有已配置的控制器
             _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
 
             return int.TryParse(gamepad?.Id, out var idInt) ? idInt : -1;
-        }
-
-        // 配置Handheld模式的按钮映射
-        private static void ConfigureHandheldButtons(InputConfig config)
-        {
-            if (config is StandardControllerInputConfig handheldConfig)
-            {
-                // 左Joycon按钮配置
-                handheldConfig.LeftJoycon = new LeftJoyconCommonConfig<ConfigGamepadInputId>
-                {
-                    DpadUp = ConfigGamepadInputId.DpadUp,
-                    DpadDown = ConfigGamepadInputId.DpadDown,
-                    DpadLeft = ConfigGamepadInputId.DpadLeft,
-                    DpadRight = ConfigGamepadInputId.DpadRight,
-                    ButtonMinus = ConfigGamepadInputId.Minus,
-                    ButtonL = ConfigGamepadInputId.LeftShoulder,
-                    ButtonZl = ConfigGamepadInputId.LeftTrigger,
-                    ButtonSl = ConfigGamepadInputId.Unbound,
-                    ButtonSr = ConfigGamepadInputId.Unbound,
-                };
-
-                // 右Joycon按钮配置
-                handheldConfig.RightJoycon = new RightJoyconCommonConfig<ConfigGamepadInputId>
-                {
-                    ButtonA = ConfigGamepadInputId.A,
-                    ButtonB = ConfigGamepadInputId.B,
-                    ButtonX = ConfigGamepadInputId.X,
-                    ButtonY = ConfigGamepadInputId.Y,
-                    ButtonPlus = ConfigGamepadInputId.Plus,
-                    ButtonR = ConfigGamepadInputId.RightShoulder,
-                    ButtonZr = ConfigGamepadInputId.RightTrigger,
-                    ButtonSl = ConfigGamepadInputId.Unbound,
-                    ButtonSr = ConfigGamepadInputId.Unbound,
-                };
-
-                // 左摇杆配置
-                handheldConfig.LeftJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
-                {
-                    Joystick = ConfigStickInputId.Left,
-                    StickButton = ConfigGamepadInputId.LeftStick,
-                    InvertStickX = false,
-                    InvertStickY = false,
-                    Rotate90CW = false,
-                };
-
-                // 右摇杆配置
-                handheldConfig.RightJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
-                {
-                    Joystick = ConfigStickInputId.Right,
-                    StickButton = ConfigGamepadInputId.RightStick,
-                    InvertStickX = false,
-                    InvertStickY = false,
-                    Rotate90CW = false,
-                };
-            }
-        }
-
-        // 配置Pro控制器的按钮映射
-        private static void ConfigureProControllerButtons(InputConfig config)
-        {
-            if (config is StandardControllerInputConfig proConfig)
-            {
-                // Pro控制器按钮配置 - 左部分
-                proConfig.LeftJoycon = new LeftJoyconCommonConfig<ConfigGamepadInputId>
-                {
-                    DpadUp = ConfigGamepadInputId.DpadUp,
-                    DpadDown = ConfigGamepadInputId.DpadDown,
-                    DpadLeft = ConfigGamepadInputId.DpadLeft,
-                    DpadRight = ConfigGamepadInputId.DpadRight,
-                    ButtonMinus = ConfigGamepadInputId.Minus,
-                    ButtonL = ConfigGamepadInputId.LeftShoulder,
-                    ButtonZl = ConfigGamepadInputId.LeftTrigger,
-                    ButtonSl = ConfigGamepadInputId.Unbound,
-                    ButtonSr = ConfigGamepadInputId.Unbound,
-                };
-
-                // Pro控制器按钮配置 - 右部分
-                proConfig.RightJoycon = new RightJoyconCommonConfig<ConfigGamepadInputId>
-                {
-                    ButtonA = ConfigGamepadInputId.A,
-                    ButtonB = ConfigGamepadInputId.B,
-                    ButtonX = ConfigGamepadInputId.X,
-                    ButtonY = ConfigGamepadInputId.Y,
-                    ButtonPlus = ConfigGamepadInputId.Plus,
-                    ButtonR = ConfigGamepadInputId.RightShoulder,
-                    ButtonZr = ConfigGamepadInputId.RightTrigger,
-                    ButtonSl = ConfigGamepadInputId.Unbound,
-                    ButtonSr = ConfigGamepadInputId.Unbound,
-                };
-
-                // 左摇杆配置
-                proConfig.LeftJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
-                {
-                    Joystick = ConfigStickInputId.Left,
-                    StickButton = ConfigGamepadInputId.LeftStick,
-                    InvertStickX = false,
-                    InvertStickY = false,
-                    Rotate90CW = false,
-                };
-
-                // 右摇杆配置
-                proConfig.RightJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
-                {
-                    Joystick = ConfigStickInputId.Right,
-                    StickButton = ConfigGamepadInputId.RightStick,
-                    InvertStickX = false,
-                    InvertStickY = false,
-                    Rotate90CW = false,
-                };
-            }
         }
 
         private static InputConfig CreateDefaultInputConfig()
@@ -248,17 +116,60 @@ namespace LibRyujinx
                 Version = InputConfig.CurrentVersion,
                 Backend = InputBackendType.GamepadSDL2,
                 Id = null,
-                ControllerType = ControllerType.ProController,  // 默认改为Pro控制器
+                ControllerType = ControllerType.ProController,
                 DeadzoneLeft = 0.1f,
                 DeadzoneRight = 0.1f,
                 RangeLeft = 1.0f,
                 RangeRight = 1.0f,
                 TriggerThreshold = 0.5f,
-                
+                LeftJoycon = new LeftJoyconCommonConfig<ConfigGamepadInputId>
+                {
+                    DpadUp = ConfigGamepadInputId.DpadUp,
+                    DpadDown = ConfigGamepadInputId.DpadDown,
+                    DpadLeft = ConfigGamepadInputId.DpadLeft,
+                    DpadRight = ConfigGamepadInputId.DpadRight,
+                    ButtonMinus = ConfigGamepadInputId.Minus,
+                    ButtonL = ConfigGamepadInputId.LeftShoulder,
+                    ButtonZl = ConfigGamepadInputId.LeftTrigger,
+                    ButtonSl = ConfigGamepadInputId.Unbound,
+                    ButtonSr = ConfigGamepadInputId.Unbound,
+                },
+
+                LeftJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
+                {
+                    Joystick = ConfigStickInputId.Left,
+                    StickButton = ConfigGamepadInputId.LeftStick,
+                    InvertStickX = false,
+                    InvertStickY = false,
+                    Rotate90CW = false,
+                },
+
+                RightJoycon = new RightJoyconCommonConfig<ConfigGamepadInputId>
+                {
+                    ButtonA = ConfigGamepadInputId.A,
+                    ButtonB = ConfigGamepadInputId.B,
+                    ButtonX = ConfigGamepadInputId.X,
+                    ButtonY = ConfigGamepadInputId.Y,
+                    ButtonPlus = ConfigGamepadInputId.Plus,
+                    ButtonR = ConfigGamepadInputId.RightShoulder,
+                    ButtonZr = ConfigGamepadInputId.RightTrigger,
+                    ButtonSl = ConfigGamepadInputId.Unbound,
+                    ButtonSr = ConfigGamepadInputId.Unbound,
+                },
+
+                RightJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
+                {
+                    Joystick = ConfigStickInputId.Right,
+                    StickButton = ConfigGamepadInputId.RightStick,
+                    InvertStickX = false,
+                    InvertStickY = false,
+                    Rotate90CW = false,
+                },
+
                 Motion = new StandardMotionConfigController
                 {
                     MotionBackend = MotionInputBackendType.GamepadDriver,
-                    EnableMotion = true,  // 启用陀螺仪支持
+                    EnableMotion = true,
                     Sensitivity = 100,
                     GyroDeadzone = 1,
                 },
