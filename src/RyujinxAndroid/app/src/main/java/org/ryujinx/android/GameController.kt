@@ -109,23 +109,22 @@ class GameController(var activity: Activity) {
     fun connect() {
         if (controllerId == -1)
             controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
-            // 添加调试日志
-        android.util.Log.d("GameController", "Connected gamepad with ID: $controllerId")
     }
 
     private fun handleEvent(ev: Event) {
-        if (controllerId == -1)
-            controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
+        val deviceId = 0 // 固定设备ID为0
 
-        controllerId.apply {
             when (ev) {
                 is Event.Button -> {
-                    val action = ev.action
-                    when (action) {
-                        KeyEvent.ACTION_UP -> {
-                            RyujinxNative.jnaInstance.inputSetButtonReleased(ev.id, this)
+                    val mappedId = buttonMapping[ev.id] ?: ev.id
+            when (ev.action) {
+                KeyEvent.ACTION_UP -> 
+                    RyujinxNative.jnaInstance.inputSetButtonReleased(mappedId, deviceId)
+                KeyEvent.ACTION_DOWN -> 
+                    RyujinxNative.jnaInstance.inputSetButtonPressed(mappedId, deviceId)
                         }
-
+                    
+                    }
                         KeyEvent.ACTION_DOWN -> {
                             RyujinxNative.jnaInstance.inputSetButtonPressed(ev.id, this)
                         }
