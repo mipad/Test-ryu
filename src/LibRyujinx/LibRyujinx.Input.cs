@@ -46,6 +46,7 @@ namespace LibRyujinx
             _touchScreenManager = _inputManager.CreateTouchScreenManager();
             _touchScreenManager.Initialize(SwitchDevice!.EmulationContext);
 
+            // 确保使用正确的输入配置列表
             _npadManager.Initialize(SwitchDevice.EmulationContext, new List<InputConfig>(), false, false);
 
             _virtualTouchScreen.ClientSize = new Size(width, height);
@@ -122,6 +123,7 @@ namespace LibRyujinx
                 _configs[index] = config;
             }
 
+            // 确保重新加载配置时包含所有已配置的控制器
             _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
 
             return int.TryParse(gamepad?.Id, out var idInt) ? idInt : -1;
@@ -182,7 +184,7 @@ namespace LibRyujinx
             }
         }
 
-        // 修复方法：正确配置Pro控制器的按钮映射
+        // 配置Pro控制器的按钮映射
         private static void ConfigureProControllerButtons(InputConfig config)
         {
             if (config is StandardControllerInputConfig proConfig)
@@ -250,7 +252,6 @@ namespace LibRyujinx
                 RangeLeft = 1.0f,
                 RangeRight = 1.0f,
                 TriggerThreshold = 0.5f,
-                // 注意：左右Joycon配置将在ConfigureHandheldButtons或ConfigureProControllerButtons中单独设置
                 
                 Motion = new StandardMotionConfigController
                 {
