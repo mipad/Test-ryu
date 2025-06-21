@@ -2,8 +2,10 @@ package org.ryujinx.android
 
 import android.app.Activity
 import android.content.Context
+import android.util.Log
 import android.view.KeyEvent
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.fillMaxSize
@@ -41,6 +43,21 @@ class GameController(var activity: Activity) {
             val view = inflator.inflate(R.layout.game_layout, null)
             view.findViewById<FrameLayout>(R.id.leftcontainer)!!.addView(controller.leftGamePad)
             view.findViewById<FrameLayout>(R.id.rightcontainer)!!.addView(controller.rightGamePad)
+            
+            // 添加触摸支持
+            view.setOnTouchListener { _, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                        controller.setTouchPoint(event.x.toInt(), event.y.toInt())
+                        true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        controller.releaseTouchPoint()
+                        true
+                    }
+                    else -> false
+                }
+            }
 
             return view
         }
@@ -107,24 +124,40 @@ class GameController(var activity: Activity) {
     }
 
     fun connect() {
-        // 连接两个控制器：索引0为Handheld模式，索引1为Pro控制器
-        if (controllerId == -1) {
-            RyujinxNative.jnaInstance.inputConnectGamepad(0) // 索引0: Handheld模式
-            RyujinxNative.jnaInstance.inputConnectGamepad(1) // 索引1: Pro控制器
-            controllerId = 1 // 使用Pro控制器接收输入
-        }
+        Log.d("GameController", "Connecting controllers...")
+        
+        // 连接两个控制器
+        val id0 = RyujinxNative.jnaInstance.inputConnectGamepad(0)
+        val id1 = RyujinxNative.jnaInstance.inputConnectGamepad(1)
+        
+        Log.d("GameController", "Controller 0 connected with ID: $id0")
+        Log.d("GameController", "Controller 1 connected with ID: $id1")
+        
+        controllerId = 1 // 使用Pro控制器接收输入
+    }
+
+    fun setTouchPoint(x: Int, y: Int) {
+        RyujinxNative.jnaInstance.setTouchPoint(x, y)
+    }
+
+    fun releaseTouchPoint() {
+        RyujinxNative.jnaInstance.releaseTouchPoint()
     }
 
     private fun handleEvent(ev: Event) {
+        Log.d("GameController", "Received event: $ev")
+        
         if (controllerId == -1) {
+            Log.d("GameController", "Controller not connected, connecting...")
             connect()
         }
 
-        // 使用Pro控制器（索引1）接收输入
         val targetControllerId = 1
-
+        Log.d("GameController", "Handling event on controller $targetControllerId")
+        
         when (ev) {
             is Event.Button -> {
+                Log.d("GameController", "Button event: id=${ev.id}, action=${ev.action}")
                 val action = ev.action
                 when (action) {
                     KeyEvent.ACTION_UP -> {
@@ -138,6 +171,7 @@ class GameController(var activity: Activity) {
             }
 
             is Event.Direction -> {
+                Log.d("GameController", "Direction event: id=${ev.id}, x=${ev.xAxis}, y=${ev.yAxis}")
                 val direction = ev.id
 
                 when (direction) {
@@ -201,11 +235,14 @@ class GameController(var activity: Activity) {
                     }
 
                     GamePadButtonInputId.LeftStick.ordinal -> {
+                        Log.d("GameController", "Left stick movement: x=${ev.xAxis}, y=${ev.yAxis}")
                         val setting = QuickSettings(activity)
                         val x = MathUtils.clamp(ev.xAxis * setting.controllerStickSensitivity, -1f, 1f)
                         val y = MathUtils.clamp(ev.yAxis * setting.controllerStickSensitivity, -1f, 1f)
+                        
+                        // StickInputId.Left 在C#中是0
                         RyujinxNative.jnaInstance.inputSetStickAxis(
-                            1, // StickInputId.Left 在C#中是0，但这里使用1表示左摇杆
+                            0,
                             x,
                             -y,
                             targetControllerId
@@ -213,11 +250,14 @@ class GameController(var activity: Activity) {
                     }
 
                     GamePadButtonInputId.RightStick.ordinal -> {
+                        Log.d("GameController", "Right stick movement: x=${ev.xAxis}, y=${ev.yAxis}")
                         val setting = QuickSettings(activity)
                         val x = MathUtils.clamp(ev.xAxis * setting.controllerStickSensitivity, -1f, 1f)
                         val y = MathUtils.clamp(ev.yAxis * setting.controllerStickSensitivity, -1f, 1f)
+                        
+                        // StickInputId.Right 在C#中是1
                         RyujinxNative.jnaInstance.inputSetStickAxis(
-                            2, // StickInputId.Right 在C#中是1，但这里使用2表示右摇杆
+                            1,
                             x,
                             -y,
                             targetControllerId
