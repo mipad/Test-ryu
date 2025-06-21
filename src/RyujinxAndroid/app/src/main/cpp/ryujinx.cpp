@@ -20,6 +20,11 @@
 #include "pthread.h"
 #include <chrono>
 #include <csignal>
+#include <android/api-level.h> // 添加 Android API 级别检查
+
+#if __ANDROID_API__ < 30
+#error "This application requires Android 11 (API level 30) or higher"
+#endif
 
 std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
 
@@ -158,37 +163,37 @@ void setCurrentTransform(long native_window, int transform) {
     auto nativeTransform = ANativeWindowTransform::ANATIVEWINDOW_TRANSFORM_IDENTITY;
 
     switch (transform) {
-        case 0x00000001:
+        case 0x00000001: // VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR
             nativeTransform = ANativeWindowTransform::ANATIVEWINDOW_TRANSFORM_IDENTITY;
             break;
-        case 0x00000002:
+        case 0x00000002: // VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR
             nativeTransform = ANativeWindowTransform::ANATIVEWINDOW_TRANSFORM_ROTATE_90;
             break;
-        case 0x00000004:
+        case 0x00000004: // VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR
             nativeTransform = isInitialOrientationFlipped
                               ? ANativeWindowTransform::ANATIVEWINDOW_TRANSFORM_IDENTITY
                               : ANativeWindowTransform::ANATIVEWINDOW_TRANSFORM_ROTATE_180;
             break;
-        case 0x00000008:
+        case 0x00000008: // VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR
             nativeTransform = ANativeWindowTransform::ANATIVEWINDOW_TRANSFORM_ROTATE_270;
             break;
-        case 0x00000010:
+        case 0x00000010: // VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_BIT_KHR
             nativeTransform = ANativeWindowTransform::ANATIVEWINDOW_TRANSFORM_MIRROR_HORIZONTAL;
             break;
-        case 0x00000020:
+        case 0x00000020: // VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR
             nativeTransform = static_cast<ANativeWindowTransform>(
                     ANativeWindowTransform::ANATIVEWINDOW_TRANSFORM_MIRROR_HORIZONTAL |
                     ANativeWindowTransform::ANATIVEWINDOW_TRANSFORM_ROTATE_90);
             break;
-        case 0x00000040:
+        case 0x00000040: // VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_180_BIT_KHR
             nativeTransform = ANativeWindowTransform::ANATIVEWINDOW_TRANSFORM_MIRROR_VERTICAL;
             break;
-        case 0x00000080:
+        case 0x00000080: // VK_SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR
             nativeTransform = static_cast<ANativeWindowTransform>(
                     ANativeWindowTransform::ANATIVEWINDOW_TRANSFORM_MIRROR_VERTICAL |
                     ANativeWindowTransform::ANATIVEWINDOW_TRANSFORM_ROTATE_90);
             break;
-        case 0x00000100:
+        case 0x00000100: // VK_SURFACE_TRANSFORM_INHERIT_BIT_KHR
             nativeTransform = ANativeWindowTransform::ANATIVEWINDOW_TRANSFORM_IDENTITY;
             break;
         default:
@@ -309,4 +314,18 @@ JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setIsInitialOrientationFlipped(JNIEnv *env, jobject thiz,
                                                                       jboolean is_flipped) {
     isInitialOrientationFlipped = is_flipped;
+}
+
+// 添加资源清理函数
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_MainActivity_cleanupNative(JNIEnv *env, jobject thiz) {
+    if (_mainActivity != nullptr) {
+        env->DeleteGlobalRef(_mainActivity);
+        _mainActivity = nullptr;
+    }
+    if (_mainActivityClass != nullptr) {
+        env->DeleteGlobalRef(_mainActivityClass);
+        _mainActivityClass = nullptr;
+    }
 }
