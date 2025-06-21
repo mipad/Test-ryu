@@ -137,8 +137,11 @@ namespace Ryujinx.HLE.HOS.Services.Hid
                     throw new InvalidOperationException("Player must be Player1-8 or Handheld");
                 }
 
-                // 关键修改：移除强制设置 Handheld 为索引8的逻辑
-                // 允许 Handheld 控制器配置到任意索引
+                if (controllerType == ControllerType.Handheld)
+                {
+                    player = PlayerIndex.Handheld;
+                }
+
                 _configuredTypes[(int)player] = controllerType;
 
                 Logger.Info?.Print(LogClass.Hid, $"Configured Controller {controllerType} to {player}");
@@ -398,14 +401,6 @@ namespace Ryujinx.HLE.HOS.Services.Hid
                 },
                 Attributes = NpadAttribute.IsConnected,
             };
-
-            // 关键修改：为Handheld模式添加特定属性
-            if (currentNpad.StyleSet == NpadStyleTag.Handheld)
-            {
-                newState.Attributes |= NpadAttribute.IsConnected | 
-                          NpadAttribute.IsLeftConnected | 
-                          NpadAttribute.IsRightConnected;
-            }
 
             switch (currentNpad.StyleSet)
             {
