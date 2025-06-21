@@ -93,9 +93,6 @@ namespace LibRyujinx
 
         public static int ConnectGamepad(int index)
         {
-            // 宝可梦GO只支持Handheld模式，因此只连接第一个控制器
-            if (index != 0) return -1;
-
             var gamepad = _gamepadDriver?.GetGamepad(index);
             if (gamepad != null)
             {
@@ -103,9 +100,6 @@ namespace LibRyujinx
 
                 config.Id = gamepad.Id;
                 config.PlayerIndex = (PlayerIndex)index;
-
-                // 应用Handheld模式专用按钮配置
-                ConfigureHandheldButtons(config);
 
                 _configs[index] = config;
             }
@@ -115,13 +109,20 @@ namespace LibRyujinx
             return int.TryParse(gamepad?.Id, out var idInt) ? idInt : -1;
         }
 
-        // 新增方法：专门配置Handheld模式的按钮映射
-        private static void ConfigureHandheldButtons(InputConfig config)
+        private static InputConfig CreateDefaultInputConfig()
         {
-            if (config is StandardControllerInputConfig handheldConfig)
+            return new StandardControllerInputConfig
             {
-                // 左Joycon按钮配置
-                handheldConfig.LeftJoycon = new LeftJoyconCommonConfig<ConfigGamepadInputId>
+                Version = InputConfig.CurrentVersion,
+                Backend = InputBackendType.GamepadSDL2,
+                Id = null,
+                ControllerType = ControllerType.ProController,
+                DeadzoneLeft = 0.1f,
+                DeadzoneRight = 0.1f,
+                RangeLeft = 1.0f,
+                RangeRight = 1.0f,
+                TriggerThreshold = 0.5f,
+                LeftJoycon = new LeftJoyconCommonConfig<ConfigGamepadInputId>
                 {
                     DpadUp = ConfigGamepadInputId.DpadUp,
                     DpadDown = ConfigGamepadInputId.DpadDown,
@@ -132,10 +133,18 @@ namespace LibRyujinx
                     ButtonZl = ConfigGamepadInputId.LeftTrigger,
                     ButtonSl = ConfigGamepadInputId.Unbound,
                     ButtonSr = ConfigGamepadInputId.Unbound,
-                };
+                },
 
-                // 右Joycon按钮配置
-                handheldConfig.RightJoycon = new RightJoyconCommonConfig<ConfigGamepadInputId>
+                LeftJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
+                {
+                    Joystick = ConfigStickInputId.Left,
+                    StickButton = ConfigGamepadInputId.LeftStick,
+                    InvertStickX = false,
+                    InvertStickY = false,
+                    Rotate90CW = false,
+                },
+
+                RightJoycon = new RightJoyconCommonConfig<ConfigGamepadInputId>
                 {
                     ButtonA = ConfigGamepadInputId.A,
                     ButtonB = ConfigGamepadInputId.B,
@@ -146,49 +155,21 @@ namespace LibRyujinx
                     ButtonZr = ConfigGamepadInputId.RightTrigger,
                     ButtonSl = ConfigGamepadInputId.Unbound,
                     ButtonSr = ConfigGamepadInputId.Unbound,
-                };
+                },
 
-                // 左摇杆配置
-                handheldConfig.LeftJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
-                {
-                    Joystick = ConfigStickInputId.Left,
-                    StickButton = ConfigGamepadInputId.LeftStick,
-                    InvertStickX = false,
-                    InvertStickY = false,
-                    Rotate90CW = false,
-                };
-
-                // 右摇杆配置
-                handheldConfig.RightJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
+                RightJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
                 {
                     Joystick = ConfigStickInputId.Right,
                     StickButton = ConfigGamepadInputId.RightStick,
                     InvertStickX = false,
                     InvertStickY = false,
                     Rotate90CW = false,
-                };
-            }
-        }
+                },
 
-        private static InputConfig CreateDefaultInputConfig()
-        {
-            return new StandardControllerInputConfig
-            {
-                Version = InputConfig.CurrentVersion,
-                Backend = InputBackendType.GamepadSDL2,
-                Id = null,
-                ControllerType = ControllerType.Handheld,  // 关键修改：使用掌机模式
-                DeadzoneLeft = 0.1f,
-                DeadzoneRight = 0.1f,
-                RangeLeft = 1.0f,
-                RangeRight = 1.0f,
-                TriggerThreshold = 0.5f,
-                // 注意：左右Joycon配置将在ConfigureHandheldButtons中单独设置
-                
                 Motion = new StandardMotionConfigController
                 {
                     MotionBackend = MotionInputBackendType.GamepadDriver,
-                    EnableMotion = true,  // 启用陀螺仪支持
+                    EnableMotion = true,
                     Sensitivity = 100,
                     GyroDeadzone = 1,
                 },
