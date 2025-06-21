@@ -109,6 +109,8 @@ class GameController(var activity: Activity) {
     fun connect() {
         if (controllerId == -1)
             controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
+            // 添加调试日志
+        android.util.Log.d("GameController", "Connected gamepad with ID: $controllerId")
     }
 
     private fun handleEvent(ev: Event) {
