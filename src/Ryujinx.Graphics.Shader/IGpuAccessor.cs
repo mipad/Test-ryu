@@ -406,7 +406,7 @@ namespace Ryujinx.Graphics.Shader
         /// <returns>True if the GPU and driver supports shader viewport mask output for vertex/tessellation, false otherwise</returns>
         bool QueryHostSupportsViewportMaskVertexTessellation()
         {
-            return false; // Most mobile GPUs don't support this feature
+            return false;
         }
 
         /// <summary>
@@ -415,6 +415,16 @@ namespace Ryujinx.Graphics.Shader
         /// <returns>True if the GPU and driver supports depth clip control, false otherwise</returns>
         bool QueryHostSupportsDepthClipControl()
         {
+            return true;
+        }
+
+        /// <summary>
+        /// Queries whether the host supports UserDefined IO variables in shaders.
+        /// </summary>
+        /// <returns>True if the GPU and driver supports UserDefined variables, false otherwise</returns>
+        bool QueryHostSupportsUserDefined()
+        {
+            // Default implementation assumes support unless overridden by specific GPU implementations
             return true;
         }
 
@@ -519,8 +529,7 @@ namespace Ryujinx.Graphics.Shader
         /// <returns>Allocated slot index</returns>
         int AllocateFallbackStorageSlot()
         {
-            // Default implementation returns fixed slot
-            return 16; // Use the last slot as fallback storage
+            return 16;
         }
     }
 }
