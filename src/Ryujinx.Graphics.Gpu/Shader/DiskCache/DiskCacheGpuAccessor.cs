@@ -59,7 +59,7 @@ namespace Ryujinx.Graphics.Gpu.Shader.DiskCache
         }
 
         /// <inheritdoc/>
-        public string QueryGpuVendor()
+        public GpuVendor QueryGpuVendor()
         {
             return _oldSpecState.GpuVendor;
         }
