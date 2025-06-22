@@ -63,6 +63,12 @@ namespace Ryujinx.Graphics.Gpu.Shader
         }
 
         /// <inheritdoc/>
+        public string QueryGpuVendor()
+        {
+            return _channel.Context.Capabilities.GpuVendor;
+        }
+
+        /// <inheritdoc/>
         public uint ConstantBuffer1Read(int offset)
         {
             ulong baseAddress = _compute
