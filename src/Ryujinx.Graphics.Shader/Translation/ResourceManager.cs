@@ -13,6 +13,7 @@ namespace Ryujinx.Graphics.Shader.Translation
         // but for some reason the supplied size was 0.
         private const int DefaultLocalMemorySize = 128;
         private const int DefaultSharedMemorySize = 4096;
+        private const int StorageBufferSlotCount = 18;
 
         private static readonly string[] _stagePrefixes = new string[] { "cp", "vp", "tcp", "tep", "gp", "fp" };
 
@@ -66,7 +67,7 @@ namespace Ryujinx.Graphics.Shader.Translation
             _stagePrefix = GetShaderStagePrefix(stage);
 
             _cbSlotToBindingMap = new SetBindingPair[18];
-            _sbSlotToBindingMap = new SetBindingPair[16];
+            _sbSlotToBindingMap = new SetBindingPair[StorageBufferSlotCount];
             _cbSlotToBindingMap.AsSpan().Fill(new(-1, -1));
             _sbSlotToBindingMap.AsSpan().Fill(new(-1, -1));
 
@@ -161,14 +162,13 @@ namespace Ryujinx.Graphics.Shader.Translation
 
         public bool TryGetStorageBufferBinding(int sbCbSlot, int sbCbOffset, bool write, out int binding)
         {
-            // Handle invalid slot indices
-            if (sbCbSlot < 0 || sbCbSlot >= _sbSlotToBindingMap.Length)
+            if (!TryGetSbSlot((byte)sbCbSlot, (ushort)sbCbOffset, out int slot))
             {
                 binding = 0;
                 return false;
             }
 
-            if (!TryGetSbSlot((byte)sbCbSlot, (ushort)sbCbOffset, out int slot))
+            if (slot < 0 || slot >= _sbSlotToBindingMap.Length)
             {
                 binding = 0;
                 return false;
@@ -203,7 +203,12 @@ namespace Ryujinx.Graphics.Shader.Translation
 
                 if (slot >= _sbSlotToBindingMap.Length)
                 {
-                    return false;
+                    int newSize = Math.Max(_sbSlotToBindingMap.Length * 2, slot + 1);
+                    Array.Resize(ref _sbSlotToBindingMap, newSize);
+                    for (int i = _sbSlots.Count; i < newSize; i++)
+                    {
+                        _sbSlotToBindingMap[i] = new SetBindingPair(-1, -1);
+                    }
                 }
 
                 _sbSlots.Add(key, slot);
@@ -293,8 +298,6 @@ namespace Ryujinx.Graphics.Shader.Translation
 
                 if (!canScale)
                 {
-                    // Resolution scaling cannot be applied to this texture right now.
-                    // Flag so that we know to blacklist scaling on related textures when binding them.
                     usageFlags |= TextureUsageFlags.ResScaleUnsupported;
                 }
             }
@@ -309,8 +312,6 @@ namespace Ryujinx.Graphics.Shader.Translation
                 usageFlags |= TextureUsageFlags.ImageCoherent;
             }
 
-            // For array textures, we also want to use type as key,
-            // since we may have texture handles stores in the same buffer, but for textures with different types.
             var keyType = arrayLength > 1 ? type : SamplerType.None;
             var info = new TextureInfo(cbufSlot, handle, arrayLength, separate, keyType, format);
             var meta = new TextureMeta()
@@ -333,10 +334,6 @@ namespace Ryujinx.Graphics.Shader.Translation
             {
                 if (arrayLength > 1 && (setIndex = _gpuAccessor.CreateExtraSet()) >= 0)
                 {
-                    // We reserved an "extra set" for the array.
-                    // In this case the binding is always the first one (0).
-                    // Using separate sets for array is better as we need to do less descriptor set updates.
-
                     binding = 0;
                 }
                 else
@@ -408,8 +405,6 @@ namespace Ryujinx.Graphics.Shader.Translation
             meta.Binding = existingMeta.Binding;
             meta.UsageFlags |= existingMeta.UsageFlags;
 
-            // If the texture we have has inaccurate type information, then
-            // we prefer the most accurate one.
             if (existingMeta.AccurateType)
             {
                 meta.AccurateType = true;
@@ -445,8 +440,6 @@ namespace Ryujinx.Graphics.Shader.Translation
 
                 if (!canScale)
                 {
-                    // Resolution scaling cannot be applied to this texture right now.
-                    // Flag so that we know to blacklist scaling on related textures when binding them.
                     selectedMeta.UsageFlags |= TextureUsageFlags.ResScaleUnsupported;
                 }
 
