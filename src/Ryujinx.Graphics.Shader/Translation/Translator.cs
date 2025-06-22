@@ -181,8 +181,6 @@ namespace Ryujinx.Graphics.Shader.Translation
 
         private static void EmitOutputsInitialization(EmitterContext context, AttributeUsage attributeUsage, IGpuAccessor gpuAccessor, ShaderStage stage)
         {
-            // Compute has no output attributes, and fragment is the last stage, so we
-            // don't need to initialize outputs on those stages.
             if (stage == ShaderStage.Compute || stage == ShaderStage.Fragment)
             {
                 return;
@@ -201,7 +199,6 @@ namespace Ryujinx.Graphics.Shader.Translation
 
                 usedAttributes &= ~(UInt128.One << index);
 
-                // We don't need to initialize passthrough attributes.
                 if ((context.TranslatorContext.AttributeUsage.PassthroughAttributes & (1 << vecIndex)) != 0)
                 {
                     continue;
@@ -263,6 +260,11 @@ namespace Ryujinx.Graphics.Shader.Translation
         private static void InitializeOutputComponent(EmitterContext context, int location, int c, bool perPatch)
         {
             StorageKind storageKind = perPatch ? StorageKind.OutputPerPatch : StorageKind.Output;
+            
+            // 关键修改：根据GPU支持选择输出变量类型
+            IoVariable outputVariable = context.TranslatorContext.GpuAccessor.QueryHostSupportsUserDefined() ? 
+                                      IoVariable.UserDefined : 
+                                      IoVariable.TextureCoord;
 
             if (context.TranslatorContext.Definitions.OaIndexing)
             {
@@ -275,18 +277,18 @@ namespace Ryujinx.Graphics.Shader.Translation
 
                 int index = location * 4 + c;
 
-                context.Store(storageKind, IoVariable.UserDefined, invocationId, Const(index), ConstF(c == 3 ? 1f : 0f));
+                context.Store(storageKind, outputVariable, invocationId, Const(index), ConstF(c == 3 ? 1f : 0f));
             }
             else
             {
                 if (context.TranslatorContext.Definitions.Stage == ShaderStage.TessellationControl && !perPatch)
                 {
                     Operand invocationId = context.Load(StorageKind.Input, IoVariable.InvocationId);
-                    context.Store(storageKind, IoVariable.UserDefined, Const(location), invocationId, Const(c), ConstF(c == 3 ? 1f : 0f));
+                    context.Store(storageKind, outputVariable, Const(location), invocationId, Const(c), ConstF(c == 3 ? 1f : 0f));
                 }
                 else
                 {
-                    context.Store(storageKind, IoVariable.UserDefined, null, Const(location), Const(c), ConstF(c == 3 ? 1f : 0f));
+                    context.Store(storageKind, outputVariable, null, Const(location), Const(c), ConstF(c == 3 ? 1f : 0f));
                 }
             }
         }
@@ -298,23 +300,15 @@ namespace Ryujinx.Graphics.Shader.Translation
                 InstOp op = block.OpCodes[opIndex];
 
                 if (context.TranslatorContext.Options.Flags.HasFlag(TranslationFlags.DebugMode))
-        {
-            string instName = "Unknown"; // 初始化默认值
+                {
+                    string instName = op.Emitter != null ? op.Name.ToString() : "???";
+                    context.Add(new CommentNode($"0x{op.Address:X6}: 0x{op.RawOpCode:X16} {instName}"));
 
-            if (op.Emitter != null)
-            {
-                instName = op.Name.ToString();
-            }
-            else
-            {
-                instName = "???";
-                context.TranslatorContext.GpuAccessor.Log($"Invalid instruction at 0x{op.Address:X6} (0x{op.RawOpCode:X16}).");
-                return; // 提前返回，确保后续代码不依赖 instName
-            }
-
-                    string dbgComment = $"0x{op.Address:X6}: 0x{op.RawOpCode:X16} {instName}";
-
-                    context.Add(new CommentNode(dbgComment));
+                    if (op.Emitter == null)
+                    {
+                        context.TranslatorContext.GpuAccessor.Log($"Invalid instruction at 0x{op.Address:X6} (0x{op.RawOpCode:X16}).");
+                        return;
+                    }
                 }
 
                 InstConditional opConditional = new(op.RawOpCode);
@@ -329,10 +323,6 @@ namespace Ryujinx.Graphics.Shader.Translation
 
                 if (Decoder.IsPopBranch(op.Name))
                 {
-                    // If the instruction is a SYNC or BRK instruction with only one
-                    // possible target address, then the instruction is basically
-                    // just a simple branch, we can generate code similar to branch
-                    // instructions, with the condition check on the branch itself.
                     noPred = block.SyncTargets.Count <= 1;
                 }
                 else if (op.Name == InstName.Bra)
@@ -342,21 +332,13 @@ namespace Ryujinx.Graphics.Shader.Translation
 
                 if (!(opConditional.Pred == RegisterConsts.PredicateTrueIndex || noPred))
                 {
-                    Operand label;
+                    Operand label = opIndex == block.OpCodes.Count - 1 && block.HasNext() ? 
+                                  context.GetLabel(block.Successors[0].Address) : 
+                                  Label();
 
-                    if (opIndex == block.OpCodes.Count - 1 && block.HasNext())
-                    {
-                        label = context.GetLabel(block.Successors[0].Address);
-                    }
-                    else
-                    {
-                        label = Label();
-
-                        predSkipLbl = label;
-                    }
+                    predSkipLbl = label;
 
                     Operand pred = Register(opConditional.Pred, RegisterType.Predicate);
-
                     if (opConditional.PredInv)
                     {
                         context.BranchIfTrue(label, pred);
@@ -368,7 +350,6 @@ namespace Ryujinx.Graphics.Shader.Translation
                 }
 
                 context.CurrOp = op;
-
                 op.Emitter?.Invoke(context);
 
                 if (predSkipLbl != null)
