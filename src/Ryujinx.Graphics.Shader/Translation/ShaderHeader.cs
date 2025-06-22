@@ -61,7 +61,7 @@ namespace Ryujinx.Graphics.Shader.Translation
 
         public int SassVersion { get; }
 
-        public bool GpPassthrough { get; internal set; } // 修改为internal set
+        public bool GpPassthrough { get; }
 
         public bool DoesLoadOrStore { get; }
         public bool DoesFp64 { get; }
