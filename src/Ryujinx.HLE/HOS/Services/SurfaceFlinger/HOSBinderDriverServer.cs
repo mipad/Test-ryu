@@ -1,6 +1,6 @@
 using Ryujinx.Common.Logging;
 using Ryujinx.HLE.HOS.Kernel.Threading;
-using Ryujinx.Horizon.Common;
+using Ryujinx.HLE.HOS.Services.SurfaceFlinger.Types; // 添加这个命名空间
 using System;
 using System.Collections.Generic;
 
@@ -104,8 +104,8 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             if (binder == null)
             {
                 Logger.Error?.Print(LogClass.SurfaceFlinger, $"Invalid binder id: {binderId}");
-                // 使用正确的错误码：无效句柄
-                return ResultCode.InvalidHandle;
+                // 使用 SurfaceFlinger 的错误码
+                return (ResultCode)Status.BadValue;
             }
 
             // 使用正确的事务代码处理 Disconnect
@@ -116,8 +116,8 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 {
                     Logger.Error?.Print(LogClass.SurfaceFlinger, 
                         $"Disconnect parcel too small: {inputParcel.Length} < {requiredSize}");
-                    // 使用正确的错误码：参数超出范围
-                    return ResultCode.OutOfRange;
+                    // 使用 SurfaceFlinger 的错误码
+                    return (ResultCode)Status.BadValue;
                 }
                 
                 int api = BitConverter.ToInt32(inputParcel);
