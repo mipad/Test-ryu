@@ -61,7 +61,7 @@ namespace Ryujinx.Graphics.Shader.Translation
 
         public int SassVersion { get; }
 
-        public bool GpPassthrough { get; } 
+        public bool GpPassthrough { get; private set; }
 
         public bool DoesLoadOrStore { get; }
         public bool DoesFp64 { get; }
@@ -163,6 +163,11 @@ namespace Ryujinx.Graphics.Shader.Translation
             OmapTargets = type2OmapTarget;
             OmapSampleMask = type2Omap.Extract(0);
             OmapDepth = type2Omap.Extract(1);
+        }
+
+        public void SetGpPassthrough(bool value)
+        {
+            this.GpPassthrough = value;
         }
     }
 }
