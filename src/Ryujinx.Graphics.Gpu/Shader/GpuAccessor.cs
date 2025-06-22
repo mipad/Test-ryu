@@ -19,6 +19,7 @@ namespace Ryujinx.Graphics.Gpu.Shader
         private readonly bool _isVulkan;
         private readonly bool _hasGeometryShader;
         private readonly bool _supportsQuads;
+        private readonly GpuContext _context;
 
         /// <summary>
         /// Creates a new instance of the GPU state accessor for graphics shader translation.
@@ -38,6 +39,7 @@ namespace Ryujinx.Graphics.Gpu.Shader
             _channel = channel;
             _state = state;
             _stageIndex = stageIndex;
+            _context = context;
             _isVulkan = context.Capabilities.Api == TargetApi.Vulkan;
             _hasGeometryShader = hasGeometryShader;
             _supportsQuads = context.Capabilities.SupportsQuads;
@@ -59,13 +61,14 @@ namespace Ryujinx.Graphics.Gpu.Shader
         {
             _channel = channel;
             _state = state;
+            _context = context;
             _compute = true;
         }
 
         /// <inheritdoc/>
         public GpuVendor QueryGpuVendor()
         {
-            return _channel.Context.Capabilities.GpuVendor;
+            return _context.Capabilities.GpuVendor;
         }
 
         /// <inheritdoc/>
