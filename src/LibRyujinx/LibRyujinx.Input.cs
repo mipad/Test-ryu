@@ -25,6 +25,7 @@ namespace LibRyujinx
         private static InputManager? _inputManager;
         private static NpadManager? _npadManager;
         private static InputConfig[] _configs;
+        private static int[] _connectedDeviceIds = new int[4]; // 存储已连接设备的ID
 
         public static void InitializeInput(int width, int height)
         {
@@ -49,6 +50,16 @@ namespace LibRyujinx
             _npadManager.Initialize(SwitchDevice.EmulationContext, new List<InputConfig>(), false, false);
 
             _virtualTouchScreen.ClientSize = new Size(width, height);
+            
+            // 连接所有控制器
+            ConnectAllGamepads();
+        }
+
+        private static void ConnectAllGamepads()
+        {
+            // 连接两个控制器：Player1和Handheld
+            _connectedDeviceIds[0] = ConnectGamepad(0); // Player1
+            _connectedDeviceIds[2] = ConnectGamepad(2); // Handheld
         }
 
         public static void SetClientSize(int width, int height)
@@ -66,29 +77,64 @@ namespace LibRyujinx
             _virtualTouchScreen?.ReleaseTouch();
         }
 
-        public static void SetButtonPressed(GamepadButtonInputId button, int id)
+        public static void SetButtonPressed(GamepadButtonInputId button, int playerIndex)
         {
-            _gamepadDriver?.SetButtonPressed(button, id);
+            if (playerIndex == 0) // Player1
+            {
+                _gamepadDriver?.SetButtonPressed(button, _connectedDeviceIds[0]);
+            }
+            else if (playerIndex == 2) // Handheld
+            {
+                _gamepadDriver?.SetButtonPressed(button, _connectedDeviceIds[2]);
+            }
         }
 
-        public static void SetButtonReleased(GamepadButtonInputId button, int id)
+        public static void SetButtonReleased(GamepadButtonInputId button, int playerIndex)
         {
-            _gamepadDriver?.SetButtonReleased(button, id);
+            if (playerIndex == 0) // Player1
+            {
+                _gamepadDriver?.SetButtonReleased(button, _connectedDeviceIds[0]);
+            }
+            else if (playerIndex == 2) // Handheld
+            {
+                _gamepadDriver?.SetButtonReleased(button, _connectedDeviceIds[2]);
+            }
         }
 
-        public static void SetAccelerometerData(Vector3 accel, int id)
+        public static void SetAccelerometerData(Vector3 accel, int playerIndex)
         {
-            _gamepadDriver?.SetAccelerometerData(accel, id);
+            if (playerIndex == 0) // Player1
+            {
+                _gamepadDriver?.SetAccelerometerData(accel, _connectedDeviceIds[0]);
+            }
+            else if (playerIndex == 2) // Handheld
+            {
+                _gamepadDriver?.SetAccelerometerData(accel, _connectedDeviceIds[2]);
+            }
         }
 
-        public static void SetGryoData(Vector3 gyro, int id)
+        public static void SetGryoData(Vector3 gyro, int playerIndex)
         {
-            _gamepadDriver?.SetGryoData(gyro, id);
+            if (playerIndex == 0) // Player1
+            {
+                _gamepadDriver?.SetGryoData(gyro, _connectedDeviceIds[0]);
+            }
+            else if (playerIndex == 2) // Handheld
+            {
+                _gamepadDriver?.SetGryoData(gyro, _connectedDeviceIds[2]);
+            }
         }
 
-        public static void SetStickAxis(StickInputId stick, Vector2 axes, int deviceId)
+        public static void SetStickAxis(StickInputId stick, Vector2 axes, int playerIndex)
         {
-            _gamepadDriver?.SetStickAxis(stick, axes, deviceId);
+            if (playerIndex == 0) // Player1
+            {
+                _gamepadDriver?.SetStickAxis(stick, axes, _connectedDeviceIds[0]);
+            }
+            else if (playerIndex == 2) // Handheld
+            {
+                _gamepadDriver?.SetStickAxis(stick, axes, _connectedDeviceIds[2]);
+            }
         }
 
         public static int ConnectGamepad(int index)
@@ -105,16 +151,11 @@ namespace LibRyujinx
                 switch (index)
                 {
                     case 0: // Player1
-                        config.ControllerType = ControllerType.JoyconPair;
-                        break;
-                    case 1: // Player2
-                        config.ControllerType = ControllerType.JoyconPair;
+                        // 使用 ProController 或 JoyconPair
+                        config.ControllerType = ControllerType.ProController; 
                         break;
                     case 2: // Handheld
                         config.ControllerType = ControllerType.Handheld;
-                        break;
-                    case 3: // Pokeball (如果需要)
-                        config.ControllerType = ControllerType.Pokeball;
                         break;
                     default: // 其他情况保持默认
                         break;
@@ -135,7 +176,7 @@ namespace LibRyujinx
                 Version = InputConfig.CurrentVersion,
                 Backend = InputBackendType.GamepadSDL2,
                 Id = null,
-                ControllerType = ControllerType.Handheld, // 默认设置为 Handheld
+                ControllerType = ControllerType.ProController, // 默认设置为 ProController
                 DeadzoneLeft = 0.1f,
                 DeadzoneRight = 0.1f,
                 RangeLeft = 1.0f,
