@@ -10,6 +10,8 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
     static class GlobalToStorage
     {
         private const int DriverReservedCb = 0;
+        private static int _fallbackSlot = -1;
+        private static int _fallbackOffset = 0;
 
         enum LsMemoryType
         {
@@ -214,6 +216,14 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
             TargetLanguage targetLanguage)
         {
             GtsContext gtsContext = new(hfm);
+            
+            // Initialize fallback storage slot if not already allocated
+            if (_fallbackSlot == -1)
+            {
+                _fallbackSlot = gpuAccessor.AllocateFallbackStorageSlot();
+                _fallbackOffset = 0;
+                gpuAccessor.Log($"Allocated fallback storage at slot {_fallbackSlot}");
+            }
 
             foreach (BasicBlock block in blocks)
             {
@@ -409,7 +419,25 @@ namespace Ryujinx.Graphics.Shader.Translation.Optimizations
             SearchResult result)
         {
             bool isStore = operation.Inst == Instruction.Store || operation.Inst.IsAtomic();
-            if (!resourceManager.TryGetStorageBufferBinding(result.SbCbSlot, result.SbCbOffset, isStore, out int binding))
+            
+            // First try to get binding from the found result
+            bool foundBinding = resourceManager.TryGetStorageBufferBinding(
+                result.SbCbSlot, 
+                result.SbCbOffset, 
+                isStore, 
+                out int binding);
+                
+            // If not found, try fallback storage slot
+            if (!foundBinding)
+            {
+                foundBinding = resourceManager.TryGetStorageBufferBinding(
+                    _fallbackSlot, 
+                    _fallbackOffset, 
+                    isStore, 
+                    out binding);
+            }
+            
+            if (!foundBinding)
             {
                 return null;
             }
