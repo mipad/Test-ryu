@@ -617,7 +617,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             if (!Enum.IsDefined(typeof(NativeWindowApi), api) || 
                 api == NativeWindowApi.NoApi)
             {
-                Logger.Error?.Print(LogClass.SurfaceFlinger, 
+                Logger.Warning?.Print(LogClass.SurfaceFlinger, 
                     $"Invalid API in Disconnect: {api}");
                 return Status.BadValue;
             }
@@ -632,8 +632,9 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 // 已断开连接的特殊处理
                 if (Core.ConnectedApi == NativeWindowApi.NoApi)
                 {
-                    Logger.Warning?.Print(LogClass.SurfaceFlinger,
-                        $"Disconnect called on already disconnected layer");
+                    // 降级为调试日志，避免过多警告
+                    Logger.Debug?.Print(LogClass.SurfaceFlinger,
+                        $"Disconnect called on already disconnected layer (API={api})");
                     return Status.BadValue;
                 }
 
@@ -831,7 +832,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                     return Status.InvalidOperation;
                 }
 
-               if (Core.BufferHasBeenQueued)
+                if (Core.BufferHasBeenQueued)
                 {
                     int newUndequeuedCount = maxBufferCount - (dequeuedCount + 1);
                     int minUndequeuedCount = Core.GetMinUndequeuedBufferCountLocked(async);
