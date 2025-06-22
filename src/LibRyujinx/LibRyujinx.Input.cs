@@ -100,25 +100,6 @@ namespace LibRyujinx
 
                 config.Id = gamepad.Id;
                 config.PlayerIndex = (PlayerIndex)index;
-                
-                // 根据玩家位置设置不同的控制器类型
-                switch (index)
-                {
-                    case 0: // Player1
-                        config.ControllerType = ControllerType.JoyconPair;
-                        break;
-                    case 1: // Player2
-                        config.ControllerType = ControllerType.JoyconPair;
-                        break;
-                    case 2: // Handheld
-                        config.ControllerType = ControllerType.Handheld;
-                        break;
-                    case 3: // Pokeball (如果需要)
-                        config.ControllerType = ControllerType.Pokeball;
-                        break;
-                    default: // 其他情况保持默认
-                        break;
-                }
 
                 _configs[index] = config;
             }
@@ -135,7 +116,7 @@ namespace LibRyujinx
                 Version = InputConfig.CurrentVersion,
                 Backend = InputBackendType.GamepadSDL2,
                 Id = null,
-                ControllerType = ControllerType.Handheld, // 默认设置为 Handheld
+                ControllerType = ControllerType.ProController,
                 DeadzoneLeft = 0.1f,
                 DeadzoneRight = 0.1f,
                 RangeLeft = 1.0f,
