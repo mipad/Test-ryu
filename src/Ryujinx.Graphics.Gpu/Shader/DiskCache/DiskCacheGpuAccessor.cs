@@ -20,6 +20,7 @@ namespace Ryujinx.Graphics.Gpu.Shader.DiskCache
         private readonly bool _isVulkan;
         private readonly bool _hasGeometryShader;
         private readonly bool _supportsQuads;
+        private readonly GpuVendor _gpuVendor;
 
         /// <summary>
         /// Creates a new instance of the cached GPU state accessor for shader translation.
@@ -50,6 +51,7 @@ namespace Ryujinx.Graphics.Gpu.Shader.DiskCache
             _isVulkan = context.Capabilities.Api == TargetApi.Vulkan;
             _hasGeometryShader = hasGeometryShader;
             _supportsQuads = context.Capabilities.SupportsQuads;
+            _gpuVendor = context.Capabilities.GpuVendor;
 
             if (stageIndex == (int)ShaderStage.Geometry - 1)
             {
@@ -61,7 +63,7 @@ namespace Ryujinx.Graphics.Gpu.Shader.DiskCache
         /// <inheritdoc/>
         public GpuVendor QueryGpuVendor()
         {
-            return _oldSpecState.GpuVendor;
+            return _gpuVendor;
         }
 
         /// <inheritdoc/>
