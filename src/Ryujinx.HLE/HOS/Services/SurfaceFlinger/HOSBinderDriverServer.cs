@@ -103,7 +103,8 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             if (binder == null)
             {
                 Logger.Error?.Print(LogClass.SurfaceFlinger, $"Invalid binder id: {binderId}");
-                return ResultCode.BadValue;
+                // 修复点1：使用正确的错误码
+                return ResultCode.InvalidValue;
             }
 
             // 使用正确的事务代码处理 Disconnect
@@ -114,7 +115,8 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 {
                     Logger.Error?.Print(LogClass.SurfaceFlinger, 
                         $"Disconnect parcel too small: {inputParcel.Length} < {requiredSize}");
-                    return ResultCode.BadValue;
+                    // 修复点2：使用正确的错误码
+                    return ResultCode.InvalidValue;
                 }
                 
                 int api = BitConverter.ToInt32(inputParcel);
