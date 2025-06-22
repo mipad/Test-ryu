@@ -2,9 +2,9 @@ name: Android CI  Fix
 
 on:
   push:
-    branches: [ "nw11-aabb" ]
+    branches: [ "nw11-aabb-1" ]
   pull_request:
-    branches: [ "nw11-aabb" ]
+    branches: [ "nw11-aabb-1" ]
 
 jobs:
   build:
