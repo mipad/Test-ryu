@@ -25,7 +25,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: nw11-aabb
+        ref: nw11-aabb-1
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
