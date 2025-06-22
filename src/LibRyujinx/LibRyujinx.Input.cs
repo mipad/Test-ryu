@@ -105,7 +105,7 @@ namespace LibRyujinx
                 switch (index)
                 {
                     case 0: // Player1
-                        config.ControllerType = ControllerType.JoyconPair;
+                        config.ControllerType = ControllerType.ProController;
                         break;
                     case 1: // Player2
                         config.ControllerType = ControllerType.JoyconRight;
