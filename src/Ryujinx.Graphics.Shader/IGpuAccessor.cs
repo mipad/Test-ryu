@@ -66,6 +66,15 @@ namespace Ryujinx.Graphics.Shader
         }
 
         /// <summary>
+        /// Queries whether force passthrough should be enabled.
+        /// </summary>
+        /// <returns>True if force passthrough should be enabled, false otherwise</returns>
+        bool QueryForcePassthrough()
+        {
+            return false;
+        }
+
+        /// <summary>
         /// Queries Local Size X for compute shaders.
         /// </summary>
         /// <returns>Local Size X</returns>
@@ -424,7 +433,6 @@ namespace Ryujinx.Graphics.Shader
         /// <returns>True if the GPU and driver supports UserDefined variables, false otherwise</returns>
         bool QueryHostSupportsUserDefined()
         {
-            // Default implementation assumes support unless overridden by specific GPU implementations
             return true;
         }
 
