@@ -78,23 +78,12 @@ namespace Ryujinx.Graphics.Shader.Translation
 
         private static ShaderDefinitions CreateGraphicsDefinitions(IGpuAccessor gpuAccessor, ShaderHeader header)
         {
-            // 检测是否为Mali GPU的几何着色器
-            bool isMaliGeometryShader = header.Stage == ShaderStage.Geometry && 
-                                      gpuAccessor.QueryGpuVendor() == GpuVendor.ARM;
-
-            // 强制启用几何着色器直通模式
-            if (isMaliGeometryShader)
-            {
-                header.GpPassthrough = true;
-                gpuAccessor.Log("强制启用几何着色器直通模式 (Mali GPU优化)");
-            }
-
             TransformFeedbackOutput[] transformFeedbackOutputs = GetTransformFeedbackOutputs(gpuAccessor, out ulong transformFeedbackVecMap);
 
-            return new ShaderDefinitions(
+            var definitions = new ShaderDefinitions(
                 header.Stage,
                 gpuAccessor.QueryGraphicsState(),
-                header.GpPassthrough,
+                header.Stage == ShaderStage.Geometry && header.GpPassthrough,
                 header.ThreadsPerInputPrimitive,
                 header.OutputTopology,
                 header.MaxOutputVertexCount,
@@ -104,8 +93,11 @@ namespace Ryujinx.Graphics.Shader.Translation
                 header.OmapDepth,
                 gpuAccessor.QueryHostSupportsScaledVertexFormats(),
                 transformFeedbackVecMap,
-                transformFeedbackOutputs,
-                isMaliGeometryShader);
+                transformFeedbackOutputs);
+
+            definitions.ForcePassthrough = gpuAccessor.QueryForcePassthrough();
+
+            return definitions;
         }
 
         internal static TransformFeedbackOutput[] GetTransformFeedbackOutputs(IGpuAccessor gpuAccessor, out ulong transformFeedbackVecMap)
@@ -273,13 +265,18 @@ namespace Ryujinx.Graphics.Shader.Translation
         {
             StorageKind storageKind = perPatch ? StorageKind.OutputPerPatch : StorageKind.Output;
             
-            // 根据是否为Mali几何着色器选择输出变量类型
-            bool useTextureCoord = context.TranslatorContext.Definitions.IsMaliGeometryShader || 
-                                 !context.TranslatorContext.GpuAccessor.QueryHostSupportsUserDefined();
-            
-            IoVariable outputVariable = useTextureCoord ? 
-                                      IoVariable.TextureCoord : 
-                                      IoVariable.UserDefined;
+            // 强制直通模式：直接将输入传递给输出
+            if (context.TranslatorContext.Definitions.ForcePassthrough)
+            {
+                Operand inputValue = context.Load(StorageKind.Input, IoVariable.UserDefined, null, Const(location), Const(c));
+                context.Store(storageKind, IoVariable.UserDefined, null, Const(location), Const(c), inputValue);
+                return;
+            }
+
+            // 原有逻辑
+            IoVariable outputVariable = context.TranslatorContext.GpuAccessor.QueryHostSupportsUserDefined() ? 
+                                      IoVariable.UserDefined : 
+                                      IoVariable.TextureCoord;
 
             if (context.TranslatorContext.Definitions.OaIndexing)
             {
