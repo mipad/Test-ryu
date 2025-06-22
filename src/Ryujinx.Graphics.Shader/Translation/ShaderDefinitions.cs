@@ -31,7 +31,6 @@ namespace Ryujinx.Graphics.Shader.Translation
 
         public bool GpPassthrough { get; }
         public bool LastInVertexPipeline { get; set; }
-        public bool IsMaliGeometryShader { get; } // 新增属性
 
         public int ThreadsPerInputPrimitive { get; private set; }
 
@@ -151,9 +150,14 @@ namespace Ryujinx.Graphics.Shader.Translation
             bool omapDepth,
             bool supportsScaledVertexFormats,
             ulong transformFeedbackVecMap,
-            TransformFeedbackOutput[] transformFeedbackOutputs,
-            bool isMaliGeometryShader = false) : this(stage, graphicsState, gpPassthrough, threadsPerInputPrimitive, outputTopology, maxOutputVertices)
+            TransformFeedbackOutput[] transformFeedbackOutputs)
         {
+            Stage = stage;
+            _graphicsState = graphicsState;
+            GpPassthrough = gpPassthrough;
+            ThreadsPerInputPrimitive = threadsPerInputPrimitive;
+            OutputTopology = outputTopology;
+            MaxOutputVertices = gpPassthrough ? graphicsState.Topology.ToInputVerticesNoAdjacency() : maxOutputVertices;
             ImapTypes = imapTypes;
             OmapTargets = omapTargets;
             OmapSampleMask = omapSampleMask;
@@ -163,7 +167,6 @@ namespace Ryujinx.Graphics.Shader.Translation
             TransformFeedbackEnabled = transformFeedbackOutputs != null;
             _transformFeedbackOutputs = transformFeedbackOutputs;
             _transformFeedbackDefinitions = new();
-            IsMaliGeometryShader = isMaliGeometryShader;
 
             PopulateTransformFeedbackDefinitions(transformFeedbackVecMap, transformFeedbackOutputs);
         }
