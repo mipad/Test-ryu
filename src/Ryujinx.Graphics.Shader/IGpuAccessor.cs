@@ -3,10 +3,25 @@ using System;
 
 namespace Ryujinx.Graphics.Shader
 {
+    public enum GpuVendor
+    {
+        Unknown,
+        NVIDIA,
+        AMD,
+        Intel,
+        ARM,
+        Qualcomm
+    }
+
+    public interface IGpuVendorAccessor
+    {
+        GpuVendor QueryGpuVendor();
+    }
+
     /// <summary>
     /// GPU state access interface.
     /// </summary>
-    public interface IGpuAccessor : ILogger
+    public interface IGpuAccessor : ILogger, IGpuVendorAccessor
     {
         /// <summary>
         /// Reads data from the constant buffer 1.
@@ -424,7 +439,6 @@ namespace Ryujinx.Graphics.Shader
         /// <returns>True if the GPU and driver supports UserDefined variables, false otherwise</returns>
         bool QueryHostSupportsUserDefined()
         {
-            // Default implementation assumes support unless overridden by specific GPU implementations
             return true;
         }
 
