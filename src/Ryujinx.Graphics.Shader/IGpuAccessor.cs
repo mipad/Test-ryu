@@ -503,5 +503,15 @@ namespace Ryujinx.Graphics.Shader
         {
             // Only useful when recording information for a disk shader cache.
         }
+        
+        /// <summary>
+        /// Allocates a slot for fallback storage buffer.
+        /// </summary>
+        /// <returns>Allocated slot index</returns>
+        int AllocateFallbackStorageSlot()
+        {
+            // Default implementation returns fixed slot
+            return 16; // Use the last slot as fallback storage
+        }
     }
 }
