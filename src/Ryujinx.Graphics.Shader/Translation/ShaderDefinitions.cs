@@ -30,6 +30,7 @@ namespace Ryujinx.Graphics.Shader.Translation
         public float AlphaTestReference => _graphicsState.AlphaTestReference;
 
         public bool GpPassthrough { get; }
+        public bool ForcePassthrough { get; set; }
         public bool LastInVertexPipeline { get; set; }
 
         public int ThreadsPerInputPrimitive { get; private set; }
