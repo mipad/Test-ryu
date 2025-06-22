@@ -26,6 +26,10 @@ namespace Ryujinx.Graphics.Shader.Translation
         public const int TexCoordBase = 0x300;
         public const int TexCoordEnd = TexCoordBase + TexCoordCount * 16;
         public const int ViewportMask = 0x3a0;
+        public const int ViewportMask0 = 0x3a0;
+        public const int ViewportMask1 = 0x3a4;
+        public const int ViewportMask2 = 0x3a8;
+        public const int ViewportMask3 = 0x3ac;
         public const int FrontFacing = 0x3fc;
 
         public const int UserAttributesCount = 32;
