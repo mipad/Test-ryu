@@ -401,6 +401,15 @@ namespace Ryujinx.Graphics.Shader
         }
 
         /// <summary>
+        /// Queries host GPU shader viewport mask output support for vertex and tessellation stages.
+        /// </summary>
+        /// <returns>True if the GPU and driver supports shader viewport mask output for vertex/tessellation, false otherwise</returns>
+        bool QueryHostSupportsViewportMaskVertexTessellation()
+        {
+            return false; // Most mobile GPUs don't support this feature
+        }
+
+        /// <summary>
         /// Queries whether the host supports depth clip control.
         /// </summary>
         /// <returns>True if the GPU and driver supports depth clip control, false otherwise</returns>
