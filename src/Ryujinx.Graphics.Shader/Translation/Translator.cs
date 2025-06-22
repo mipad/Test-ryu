@@ -78,12 +78,21 @@ namespace Ryujinx.Graphics.Shader.Translation
 
         private static ShaderDefinitions CreateGraphicsDefinitions(IGpuAccessor gpuAccessor, ShaderHeader header)
         {
+            // Mali GPU 特殊处理：禁用几何着色器非直通模式
+            if (header.Stage == ShaderStage.Geometry && 
+                gpuAccessor is IGpuVendorAccessor vendorAccessor && 
+                vendorAccessor.QueryGpuVendor() == GpuVendor.ARM)
+            {
+                header.GpPassthrough = true;
+                gpuAccessor.Log("Geometry shader passthrough enforced on Mali GPU");
+            }
+
             TransformFeedbackOutput[] transformFeedbackOutputs = GetTransformFeedbackOutputs(gpuAccessor, out ulong transformFeedbackVecMap);
 
             return new ShaderDefinitions(
                 header.Stage,
                 gpuAccessor.QueryGraphicsState(),
-                header.Stage == ShaderStage.Geometry && header.GpPassthrough,
+                header.GpPassthrough,
                 header.ThreadsPerInputPrimitive,
                 header.OutputTopology,
                 header.MaxOutputVertexCount,
@@ -261,10 +270,14 @@ namespace Ryujinx.Graphics.Shader.Translation
         {
             StorageKind storageKind = perPatch ? StorageKind.OutputPerPatch : StorageKind.Output;
             
-            // 关键修改：根据GPU支持选择输出变量类型
-            IoVariable outputVariable = context.TranslatorContext.GpuAccessor.QueryHostSupportsUserDefined() ? 
-                                      IoVariable.UserDefined : 
-                                      IoVariable.TextureCoord;
+            // 自动选择变量类型
+            IoVariable outputVariable = IoVariable.UserDefined;
+            if (context.TranslatorContext.GpuAccessor is IGpuVendorAccessor vendorAccessor)
+            {
+                bool isMali = vendorAccessor.QueryGpuVendor() == GpuVendor.ARM;
+                bool supportsUserDefined = context.TranslatorContext.GpuAccessor.QueryHostSupportsUserDefined();
+                outputVariable = (isMali || !supportsUserDefined) ? IoVariable.TextureCoord : IoVariable.UserDefined;
+            }
 
             if (context.TranslatorContext.Definitions.OaIndexing)
             {
