@@ -78,13 +78,15 @@ namespace Ryujinx.Graphics.Shader.Translation
 
         private static ShaderDefinitions CreateGraphicsDefinitions(IGpuAccessor gpuAccessor, ShaderHeader header)
         {
-            // Mali GPU 特殊处理：禁用几何着色器非直通模式
-            if (header.Stage == ShaderStage.Geometry && 
-                gpuAccessor is IGpuVendorAccessor vendorAccessor && 
-                vendorAccessor.QueryGpuVendor() == GpuVendor.ARM)
+            // 检测是否为Mali GPU的几何着色器
+            bool isMaliGeometryShader = header.Stage == ShaderStage.Geometry && 
+                                      gpuAccessor.QueryGpuVendor() == GpuVendor.ARM;
+
+            // 强制启用几何着色器直通模式
+            if (isMaliGeometryShader)
             {
                 header.GpPassthrough = true;
-                gpuAccessor.Log("Geometry shader passthrough enforced on Mali GPU");
+                gpuAccessor.Log("强制启用几何着色器直通模式 (Mali GPU优化)");
             }
 
             TransformFeedbackOutput[] transformFeedbackOutputs = GetTransformFeedbackOutputs(gpuAccessor, out ulong transformFeedbackVecMap);
@@ -102,7 +104,8 @@ namespace Ryujinx.Graphics.Shader.Translation
                 header.OmapDepth,
                 gpuAccessor.QueryHostSupportsScaledVertexFormats(),
                 transformFeedbackVecMap,
-                transformFeedbackOutputs);
+                transformFeedbackOutputs,
+                isMaliGeometryShader);
         }
 
         internal static TransformFeedbackOutput[] GetTransformFeedbackOutputs(IGpuAccessor gpuAccessor, out ulong transformFeedbackVecMap)
@@ -270,14 +273,13 @@ namespace Ryujinx.Graphics.Shader.Translation
         {
             StorageKind storageKind = perPatch ? StorageKind.OutputPerPatch : StorageKind.Output;
             
-            // 自动选择变量类型
-            IoVariable outputVariable = IoVariable.UserDefined;
-            if (context.TranslatorContext.GpuAccessor is IGpuVendorAccessor vendorAccessor)
-            {
-                bool isMali = vendorAccessor.QueryGpuVendor() == GpuVendor.ARM;
-                bool supportsUserDefined = context.TranslatorContext.GpuAccessor.QueryHostSupportsUserDefined();
-                outputVariable = (isMali || !supportsUserDefined) ? IoVariable.TextureCoord : IoVariable.UserDefined;
-            }
+            // 根据是否为Mali几何着色器选择输出变量类型
+            bool useTextureCoord = context.TranslatorContext.Definitions.IsMaliGeometryShader || 
+                                 !context.TranslatorContext.GpuAccessor.QueryHostSupportsUserDefined();
+            
+            IoVariable outputVariable = useTextureCoord ? 
+                                      IoVariable.TextureCoord : 
+                                      IoVariable.UserDefined;
 
             if (context.TranslatorContext.Definitions.OaIndexing)
             {
