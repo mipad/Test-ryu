@@ -53,6 +53,15 @@ namespace Ryujinx.Graphics.Shader.Translation
             UsedOutputAttributesPerPatch.Add(index);
         }
 
+        public void SetViewportMaskUsage(ShaderStage stage)
+        {
+            if (stage == ShaderStage.Geometry || stage == ShaderStage.Fragment)
+            {
+                int viewportMaskIndex = (AttributeConsts.ViewportMask - AttributeConsts.UserAttributeBase) >> 4;
+                SetOutputUserAttribute(viewportMaskIndex);
+            }
+        }
+
         public void MergeFromtNextStage(bool gpPassthrough, bool nextUsesFixedFunctionAttributes, AttributeUsage nextStage)
         {
             NextInputAttributesComponents = nextStage.ThisInputAttributesComponents;
@@ -62,9 +71,6 @@ namespace Ryujinx.Graphics.Shader.Translation
 
             if (UsedOutputAttributesPerPatch.Count != 0)
             {
-                // Regular and per-patch input/output locations can't overlap,
-                // so we must assign on our location using unused regular input/output locations.
-
                 Dictionary<int, int> locationsMap = new();
 
                 int freeMask = ~UsedOutputAttributes;
@@ -82,7 +88,6 @@ namespace Ryujinx.Graphics.Shader.Translation
                     freeMask &= ~(1 << location);
                 }
 
-                // Both stages must agree on the locations, so use the same "map" for both.
                 _perPatchAttributeLocations = locationsMap;
                 nextStage._perPatchAttributeLocations = locationsMap;
             }
@@ -115,8 +120,6 @@ namespace Ryujinx.Graphics.Shader.Translation
 
         public bool IsUsedOutputAttribute(int attr)
         {
-            // The check for fixed function attributes on the next stage is conservative,
-            // returning false if the output is just not used by the next stage is also valid.
             if (NextUsesFixedFuncAttributes &&
                 attr >= AttributeConsts.UserAttributeBase &&
                 attr < AttributeConsts.UserAttributeEnd)
