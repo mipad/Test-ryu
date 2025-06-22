@@ -59,6 +59,12 @@ namespace Ryujinx.Graphics.Gpu.Shader.DiskCache
         }
 
         /// <inheritdoc/>
+        public string QueryGpuVendor()
+        {
+            return _oldSpecState.GpuVendor;
+        }
+
+        /// <inheritdoc/>
         public uint ConstantBuffer1Read(int offset)
         {
             if (offset + sizeof(uint) > _cb1Data.Length)
