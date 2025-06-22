@@ -61,7 +61,7 @@ namespace Ryujinx.Graphics.Shader.Translation
 
         public int SassVersion { get; }
 
-        public bool GpPassthrough { get; set; } // 添加 set 访问器
+        public bool GpPassthrough { get; } 
 
         public bool DoesLoadOrStore { get; }
         public bool DoesFp64 { get; }
