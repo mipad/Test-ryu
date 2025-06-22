@@ -21,8 +21,8 @@ namespace Ryujinx.Graphics.Shader.Translation
         private readonly ShaderStage _stage;
         private readonly string _stagePrefix;
 
-        private readonly SetBindingPair[] _cbSlotToBindingMap;
-        private readonly SetBindingPair[] _sbSlotToBindingMap;
+        private  SetBindingPair[] _cbSlotToBindingMap;
+        private  SetBindingPair[] _sbSlotToBindingMap;
         private uint _sbSlotWritten;
 
         private readonly Dictionary<int, int> _sbSlots;
