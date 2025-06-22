@@ -63,7 +63,7 @@ namespace Ryujinx.Graphics.Gpu.Shader
         }
 
         /// <inheritdoc/>
-        public string QueryGpuVendor()
+        public GpuVendor QueryGpuVendor()
         {
             return _channel.Context.Capabilities.GpuVendor;
         }
