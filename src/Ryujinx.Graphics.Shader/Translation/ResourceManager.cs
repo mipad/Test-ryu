@@ -161,6 +161,13 @@ namespace Ryujinx.Graphics.Shader.Translation
 
         public bool TryGetStorageBufferBinding(int sbCbSlot, int sbCbOffset, bool write, out int binding)
         {
+            // Handle invalid slot indices
+            if (sbCbSlot < 0 || sbCbSlot >= _sbSlotToBindingMap.Length)
+            {
+                binding = 0;
+                return false;
+            }
+
             if (!TryGetSbSlot((byte)sbCbSlot, (ushort)sbCbOffset, out int slot))
             {
                 binding = 0;
