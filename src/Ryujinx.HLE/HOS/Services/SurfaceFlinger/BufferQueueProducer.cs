@@ -560,6 +560,9 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
             lock (Core.Lock)
             {
+                Logger.Info?.Print(LogClass.SurfaceFlinger, 
+                    $"Connect: API={api}, CurrentAPI={Core.ConnectedApi}");
+
                 if (Core.IsAbandoned || Core.ConsumerListener == null)
                 {
                     return Status.NoInit;
@@ -567,6 +570,8 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
                 if (Core.ConnectedApi != NativeWindowApi.NoApi)
                 {
+                    Logger.Warning?.Print(LogClass.SurfaceFlinger, 
+                        $"Already connected to API: {Core.ConnectedApi}");
                     return Status.BadValue;
                 }
 
@@ -592,8 +597,12 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                             output.TransformHint |= NativeWindowTransform.NoVSyncCapability;
                         }
 
+                        Logger.Info?.Print(LogClass.SurfaceFlinger, 
+                            $"Connected successfully to API: {api}");
                         return Status.Success;
                     default:
+                        Logger.Error?.Print(LogClass.SurfaceFlinger, 
+                            $"Invalid API: {api}");
                         return Status.BadValue;
                 }
             }
@@ -601,47 +610,66 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
         public override Status Disconnect(NativeWindowApi api)
         {
-            IProducerListener producerListener = null;
+            Logger.Info?.Print(LogClass.SurfaceFlinger, 
+                $"Disconnect called: API={api}, CurrentAPI={Core.ConnectedApi}");
 
+            // 检查 API 有效性
+            if (!Enum.IsDefined(typeof(NativeWindowApi), api) || 
+                api == NativeWindowApi.NoApi)
+            {
+                Logger.Error?.Print(LogClass.SurfaceFlinger, 
+                    $"Invalid API in Disconnect: {api}");
+                return Status.BadValue;
+            }
+
+            IProducerListener producerListener = null;
             Status status = Status.BadValue;
 
             lock (Core.Lock)
             {
                 Core.WaitWhileAllocatingLocked();
 
+                // 已断开连接的特殊处理
+                if (Core.ConnectedApi == NativeWindowApi.NoApi)
+                {
+                    Logger.Warning?.Print(LogClass.SurfaceFlinger,
+                        $"Disconnect called on already disconnected layer");
+                    return Status.BadValue;
+                }
+
                 if (Core.IsAbandoned)
                 {
+                    Logger.Info?.Print(LogClass.SurfaceFlinger,
+                        "Disconnect called on abandoned layer");
                     return Status.Success;
                 }
 
-                switch (api)
+                if (Core.ConnectedApi == api)
                 {
-                    case NativeWindowApi.NVN:
-                    case NativeWindowApi.CPU:
-                    case NativeWindowApi.Media:
-                    case NativeWindowApi.Camera:
-                        if (Core.ConnectedApi == api)
-                        {
-                            Core.Queue.Clear();
-                            Core.FreeAllBuffersLocked();
-                            Core.SignalDequeueEvent();
+                    Core.Queue.Clear();
+                    Core.FreeAllBuffersLocked();
+                    Core.SignalDequeueEvent();
 
-                            producerListener = Core.ProducerListener;
+                    producerListener = Core.ProducerListener;
 
-                            Core.ProducerListener = null;
-                            Core.ConnectedApi = NativeWindowApi.NoApi;
+                    Core.ProducerListener = null;
+                    Core.ConnectedApi = NativeWindowApi.NoApi;
 
-                            Core.SignalWaitBufferFreeEvent();
-                            Core.SignalFrameAvailableEvent();
+                    Core.SignalWaitBufferFreeEvent();
+                    Core.SignalFrameAvailableEvent();
 
-                            status = Status.Success;
-                        }
-                        break;
+                    Logger.Info?.Print(LogClass.SurfaceFlinger,
+                        $"Disconnected successfully from API: {api}");
+                    status = Status.Success;
+                }
+                else
+                {
+                    Logger.Warning?.Print(LogClass.SurfaceFlinger,
+                        $"API mismatch: Current={Core.ConnectedApi}, Requested={api}");
                 }
             }
 
             producerListener?.OnBufferReleased();
-
             return status;
         }
 
@@ -803,7 +831,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                     return Status.InvalidOperation;
                 }
 
-                if (Core.BufferHasBeenQueued)
+               if (Core.BufferHasBeenQueued)
                 {
                     int newUndequeuedCount = maxBufferCount - (dequeuedCount + 1);
                     int minUndequeuedCount = Core.GetMinUndequeuedBufferCountLocked(async);
