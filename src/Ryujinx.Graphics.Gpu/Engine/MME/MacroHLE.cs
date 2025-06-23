@@ -146,13 +146,13 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
             uint cbAddress = (uint)FetchParam().Word;
 
             // Batch uniform buffer updates
-            _processor.ThreedClass.BeginBatch();
+            _processor.ThreedClass.ForceStateDirty();
             _processor.ThreedClass.UpdateUniformBufferState(65536, cbAddress >> 24, cbAddress << 8);
             
             int stageOffset = (stage & 0x7f) << 3;
             state.Write((UniformBufferBindVertexOffset + stageOffset * 4) & addrMask, 17);
             
-            _processor.ThreedClass.EndBatch();
+            _processor.ThreedClass.UpdateState();
         }
 
         /// <summary>
@@ -258,9 +258,9 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
             int index = (arg0 >> 6) & 0xf;
             int layerCount = state.Read(ColorLayerCountOffset + index * ColorStructSize);
 
-            _processor.ThreedClass.BeginBatch();
+            _processor.ThreedClass.ForceStateDirty();
             _processor.ThreedClass.Clear(arg0, layerCount);
-            _processor.ThreedClass.EndBatch();
+            _processor.ThreedClass.UpdateState();
         }
 
         /// <summary>
@@ -270,9 +270,9 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
         {
             int layerCount = state.Read(ZetaLayerCountOffset);
 
-            _processor.ThreedClass.BeginBatch();
+            _processor.ThreedClass.ForceStateDirty();
             _processor.ThreedClass.Clear(arg0, layerCount);
-            _processor.ThreedClass.EndBatch();
+            _processor.ThreedClass.UpdateState();
         }
 
         /// <summary>
@@ -291,7 +291,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
                 return;
             }
 
-            _processor.ThreedClass.BeginBatch();
+            _processor.ThreedClass.ForceStateDirty();
             _processor.ThreedClass.Draw(
                 topology,
                 count.Word,
@@ -300,7 +300,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
                 firstVertex.Word,
                 firstInstance.Word,
                 indexed: false);
-            _processor.ThreedClass.EndBatch();
+            _processor.ThreedClass.UpdateState();
         }
 
         /// <summary>
@@ -314,7 +314,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
             var indexType = FetchParam();
             var indexCount = FetchParam();
 
-            _processor.ThreedClass.BeginBatch();
+            _processor.ThreedClass.ForceStateDirty();
             _processor.ThreedClass.UpdateIndexBuffer(
                 (uint)indexAddressHigh.Word,
                 (uint)indexAddressLow.Word,
@@ -328,7 +328,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
                 state.Read(FirstVertexOffset),
                 0,
                 indexed: true);
-            _processor.ThreedClass.EndBatch();
+            _processor.ThreedClass.UpdateState();
         }
 
         /// <summary>
@@ -348,7 +348,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
                 return;
             }
 
-            _processor.ThreedClass.BeginBatch();
+            _processor.ThreedClass.ForceStateDirty();
             _processor.ThreedClass.Draw(
                 topology,
                 count.Word,
@@ -357,7 +357,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
                 firstVertex.Word,
                 firstInstance.Word,
                 indexed: true);
-            _processor.ThreedClass.EndBatch();
+            _processor.ThreedClass.UpdateState();
         }
 
         /// <summary>
@@ -377,7 +377,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
 
             bool useBuffer = bufferCache.CheckModified(_processor.MemoryManager, indirectBufferGpuVa, IndirectIndexedDataEntrySize, out ulong indirectBufferAddress);
 
-            _processor.ThreedClass.BeginBatch();
+            _processor.ThreedClass.ForceStateDirty();
             if (useBuffer)
             {
                 int indexCount = firstIndex.Word + count.Word;
@@ -401,7 +401,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
                     firstInstance.Word,
                     indexed: true);
             }
-            _processor.ThreedClass.EndBatch();
+            _processor.ThreedClass.UpdateState();
         }
 
         /// <summary>
@@ -470,7 +470,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
             var bufferCache = _processor.MemoryManager.Physical.BufferCache;
             ulong indirectBufferSize = (ulong)maxDrawCount * (ulong)stride;
 
-            _processor.ThreedClass.BeginBatch();
+            _processor.ThreedClass.ForceStateDirty();
             MultiRange indirectBufferRange = bufferCache.TranslateAndCreateMultiBuffers(
                 _processor.MemoryManager, indirectBufferGpuVa, indirectBufferSize, BufferStage.Indirect);
             MultiRange parameterBufferRange = bufferCache.TranslateAndCreateMultiBuffers(
@@ -484,7 +484,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
                 stride,
                 indexCount,
                 Threed.IndirectDrawType.DrawIndexedIndirectCount);
-            _processor.ThreedClass.EndBatch();
+            _processor.ThreedClass.UpdateState();
         }
 
         private static bool ShouldSkipDraw(IDeviceState state, int instanceCount)
