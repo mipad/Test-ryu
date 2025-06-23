@@ -90,7 +90,18 @@ namespace ARMeilleure.Translation.Cache
                 else
                 {
                     ReprotectAsWritable(funcOffset, code.Length);
-                    Marshal.Copy(code, 0, funcPtr, code.Length);
+                    unsafe
+                    {
+                        fixed (byte* codePtr = code)
+                        {
+                            Buffer.MemoryCopy(
+                                source: codePtr,
+                                destination: funcPtr.ToPointer(),
+                                destinationSizeInBytes: code.Length,
+                                sourceBytesToCopy: code.Length
+                            );
+                        }
+                    }
                     ReprotectAsExecutable(funcOffset, code.Length);
 
                     if (OperatingSystem.IsWindows() && RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
