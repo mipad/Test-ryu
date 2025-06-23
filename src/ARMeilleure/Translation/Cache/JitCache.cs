@@ -83,7 +83,7 @@ namespace ARMeilleure.Translation.Cache
                     {
                         fixed (byte* codePtr = code)
                         {
-                            JitSupportDarwin.Copy(funcPtr, (IntPtr)codePtr, (ulong)code.Length);
+                            JitSupportAndroid.Copy(funcPtr, (IntPtr)codePtr, (ulong)code.Length);
                         }
                     }
                 }
