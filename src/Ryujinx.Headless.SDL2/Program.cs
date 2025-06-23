@@ -212,13 +212,25 @@ namespace Ryujinx.Headless.SDL2
                 {
                     bool isNintendoStyle = gamepadName.Contains("Nintendo");
                     
-                    // 输入处理改进：自动检测手柄类型
-                    ControllerType currentController; 
-                    if (gamepadName.Contains("Joycons"))
+                    // 增强版JoyconPair自动检测
+                    ControllerType currentController = ControllerType.ProController; // 默认值
+                    
+                    // 检测单个Joycon (L/R)
+                    bool isSingleJoycon = gamepadName.Contains("Joy-Con (L)") || 
+                                         gamepadName.Contains("Joy-Con (R)");
+                    
+                    // 检测Joycon Pair (通过名称或数量判断)
+                    bool isJoyconPair = gamepadName.Contains("Joy-Con") || 
+                                       _inputManager.GamepadDriver.GamepadsIds.Count >= 2;
+                    
+                    // 检测Pro Controller
+                    bool isProController = gamepadName.Contains("Pro Controller");
+
+                    if (isSingleJoycon || isJoyconPair)
                     {
                         currentController = ControllerType.JoyconPair;
                     }
-                    else 
+                    else if (isProController)
                     {
                         currentController = ControllerType.ProController;
                     }
@@ -228,7 +240,7 @@ namespace Ryujinx.Headless.SDL2
                         Version = InputConfig.CurrentVersion,
                         Backend = InputBackendType.GamepadSDL2,
                         Id = null,
-                        ControllerType = currentController, // 使用自动检测的手柄类型
+                        ControllerType = currentController,
                         DeadzoneLeft = 0.1f,
                         DeadzoneRight = 0.1f,
                         RangeLeft = 1.0f,
