@@ -80,6 +80,8 @@ namespace Ryujinx.Graphics.Shader.Translation
         {
             TransformFeedbackOutput[] transformFeedbackOutputs = GetTransformFeedbackOutputs(gpuAccessor, out ulong transformFeedbackVecMap);
 
+            bool supportsUserDefined = gpuAccessor.QueryHostSupportsUserDefined(header.Stage);
+
             var definitions = new ShaderDefinitions(
                 header.Stage,
                 gpuAccessor.QueryGraphicsState(),
@@ -93,9 +95,10 @@ namespace Ryujinx.Graphics.Shader.Translation
                 header.OmapDepth,
                 gpuAccessor.QueryHostSupportsScaledVertexFormats(),
                 transformFeedbackVecMap,
-                transformFeedbackOutputs);
+                transformFeedbackOutputs,
+                supportsUserDefined);
 
-            definitions.ForcePassthrough = gpuAccessor.QueryForcePassthrough();
+            definitions.ForcePassthrough = gpuAccessor.QueryForcePassthrough() && supportsUserDefined;
 
             return definitions;
         }
@@ -265,19 +268,28 @@ namespace Ryujinx.Graphics.Shader.Translation
         {
             StorageKind storageKind = perPatch ? StorageKind.OutputPerPatch : StorageKind.Output;
             
-            // 强制直通模式：直接将输入传递给输出
-            if (context.TranslatorContext.Definitions.ForcePassthrough)
+            // 检查是否支持UserDefined
+            bool supportsUserDefined = context.TranslatorContext.Definitions.SupportsUserDefined;
+            IoVariable outputVariable = supportsUserDefined ? IoVariable.UserDefined : IoVariable.TextureCoord;
+
+            // 强制直通模式
+            if (context.TranslatorContext.Definitions.ForcePassthrough && supportsUserDefined)
             {
-                Operand inputValue = context.Load(StorageKind.Input, IoVariable.UserDefined, null, Const(location), Const(c));
-                context.Store(storageKind, IoVariable.UserDefined, null, Const(location), Const(c), inputValue);
-                return;
+                try 
+                {
+                    Operand inputValue = context.Load(StorageKind.Input, IoVariable.UserDefined, null, Const(location), Const(c));
+                    context.Store(storageKind, IoVariable.UserDefined, null, Const(location), Const(c), inputValue);
+                    return;
+                }
+                catch
+                {
+                    // 回退到默认初始化
+                    context.Store(storageKind, outputVariable, null, Const(location), Const(c), ConstF(c == 3 ? 1f : 0f));
+                    return;
+                }
             }
 
             // 原有逻辑
-            IoVariable outputVariable = context.TranslatorContext.GpuAccessor.QueryHostSupportsUserDefined() ? 
-                                      IoVariable.UserDefined : 
-                                      IoVariable.TextureCoord;
-
             if (context.TranslatorContext.Definitions.OaIndexing)
             {
                 Operand invocationId = null;
