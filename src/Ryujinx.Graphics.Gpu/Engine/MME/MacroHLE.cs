@@ -365,6 +365,9 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
 
             if (useBuffer)
             {
+                _processor.ThreedClass.FlushUboDirty();
+                _processor.ThreedClass.CreatePendingSyncs();
+
                 int indexCount = firstIndex.Word + count.Word;
                 _processor.ThreedClass.DrawIndirect(
                     topology,
@@ -458,6 +461,9 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
                 _processor.MemoryManager, indirectBufferGpuVa, indirectBufferSize, BufferStage.Indirect);
             MultiRange parameterBufferRange = bufferCache.TranslateAndCreateMultiBuffers(
                 _processor.MemoryManager, parameterBufferGpuVa, 4, BufferStage.Indirect);
+
+            _processor.ThreedClass.FlushUboDirty();
+            _processor.ThreedClass.CreatePendingSyncs();
 
             _processor.ThreedClass.DrawIndirect(
                 topology,
