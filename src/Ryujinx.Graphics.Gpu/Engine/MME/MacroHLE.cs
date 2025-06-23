@@ -13,7 +13,7 @@ using System.Collections.Generic;
 namespace Ryujinx.Graphics.Gpu.Engine.MME
 {
     /// <summary>
-    /// Optimized Macro High-level emulation with GPU-specific enhancements.
+    /// Macro High-level emulation.
     /// </summary>
     class MacroHLE : IMacroEE
     {
@@ -34,151 +34,150 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
 
         private readonly GPFifoProcessor _processor;
         private readonly MacroHLEFunctionName _functionName;
-        private readonly Dictionary<int, int> _shaderCache = new Dictionary<int, int>();
 
         /// <summary>
-        /// Arguments FIFO with improved memory access pattern.
+        /// Arguments FIFO.
         /// </summary>
         public Queue<FifoWord> Fifo { get; }
 
         /// <summary>
-        /// Creates a new instance of the optimized HLE macro handler.
+        /// Creates a new instance of the HLE macro handler.
         /// </summary>
+        /// <param name="processor">GPU GP FIFO command processor</param>
+        /// <param name="functionName">Name of the HLE macro function to be called</param>
         public MacroHLE(GPFifoProcessor processor, MacroHLEFunctionName functionName)
         {
             _processor = processor;
             _functionName = functionName;
-            Fifo = new Queue<FifoWord>(32); // Pre-allocate for common case
+
+            Fifo = new Queue<FifoWord>();
         }
 
         /// <summary>
-        /// Executes a macro program with optimized paths for common operations.
+        /// Executes a macro program until it exits.
         /// </summary>
+        /// <param name="code">Code of the program to execute</param>
+        /// <param name="state">GPU state at the time of the call</param>
+        /// <param name="arg0">Optional argument passed to the program, 0 if not used</param>
         public void Execute(ReadOnlySpan<int> code, IDeviceState state, int arg0)
         {
-            try
+            switch (_functionName)
             {
-                switch (_functionName)
-                {
-                    case MacroHLEFunctionName.BindShaderProgram:
-                        OptimizedBindShaderProgram(state, arg0);
-                        break;
-                    case MacroHLEFunctionName.ClearColor:
-                        OptimizedClearColor(state, arg0);
-                        break;
-                    case MacroHLEFunctionName.ClearDepthStencil:
-                        OptimizedClearDepthStencil(state, arg0);
-                        break;
-                    case MacroHLEFunctionName.DrawArraysInstanced:
-                        OptimizedDrawArraysInstanced(state, arg0);
-                        break;
-                    case MacroHLEFunctionName.DrawElements:
-                        OptimizedDrawElements(state, arg0);
-                        break;
-                    case MacroHLEFunctionName.DrawElementsInstanced:
-                        OptimizedDrawElementsInstanced(state, arg0);
-                        break;
-                    case MacroHLEFunctionName.DrawElementsIndirect:
-                        OptimizedDrawElementsIndirect(state, arg0);
-                        break;
-                    case MacroHLEFunctionName.MultiDrawElementsIndirectCount:
-                        OptimizedMultiDrawElementsIndirectCount(state, arg0);
-                        break;
-                    case MacroHLEFunctionName.UpdateBlendState:
-                        OptimizedUpdateBlendState(state, arg0);
-                        break;
-                    case MacroHLEFunctionName.UpdateColorMasks:
-                        OptimizedUpdateColorMasks(state, arg0);
-                        break;
-                    case MacroHLEFunctionName.UpdateUniformBufferState:
-                        OptimizedUpdateUniformBufferState(state, arg0);
-                        break;
-                    case MacroHLEFunctionName.UpdateUniformBufferStateCbu:
-                        OptimizedUpdateUniformBufferStateCbu(state, arg0);
-                        break;
-                    case MacroHLEFunctionName.UpdateUniformBufferStateCbuV2:
-                        OptimizedUpdateUniformBufferStateCbuV2(state, arg0);
-                        break;
-                    default:
-                        throw new NotImplementedException(_functionName.ToString());
-                }
+                case MacroHLEFunctionName.BindShaderProgram:
+                    BindShaderProgram(state, arg0);
+                    break;
+                case MacroHLEFunctionName.ClearColor:
+                    ClearColor(state, arg0);
+                    break;
+                case MacroHLEFunctionName.ClearDepthStencil:
+                    ClearDepthStencil(state, arg0);
+                    break;
+                case MacroHLEFunctionName.DrawArraysInstanced:
+                    DrawArraysInstanced(state, arg0);
+                    break;
+                case MacroHLEFunctionName.DrawElements:
+                    DrawElements(state, arg0);
+                    break;
+                case MacroHLEFunctionName.DrawElementsInstanced:
+                    DrawElementsInstanced(state, arg0);
+                    break;
+                case MacroHLEFunctionName.DrawElementsIndirect:
+                    DrawElementsIndirect(state, arg0);
+                    break;
+                case MacroHLEFunctionName.MultiDrawElementsIndirectCount:
+                    MultiDrawElementsIndirectCount(state, arg0);
+                    break;
+                case MacroHLEFunctionName.UpdateBlendState:
+                    UpdateBlendState(state, arg0);
+                    break;
+                case MacroHLEFunctionName.UpdateColorMasks:
+                    UpdateColorMasks(state, arg0);
+                    break;
+                case MacroHLEFunctionName.UpdateUniformBufferState:
+                    UpdateUniformBufferState(state, arg0);
+                    break;
+                case MacroHLEFunctionName.UpdateUniformBufferStateCbu:
+                    UpdateUniformBufferStateCbu(state, arg0);
+                    break;
+                case MacroHLEFunctionName.UpdateUniformBufferStateCbuV2:
+                    UpdateUniformBufferStateCbuV2(state, arg0);
+                    break;
+                default:
+                    throw new NotImplementedException(_functionName.ToString());
             }
-            finally
-            {
-                Fifo.Clear(); // Ensure FIFO is always cleared
-            }
+
+            // It should be empty at this point, but clear it just to be safe.
+            Fifo.Clear();
         }
 
         /// <summary>
-        /// Optimized shader program binding with caching.
+        /// Binds a shader program with the index in arg0.
         /// </summary>
-        private void OptimizedBindShaderProgram(IDeviceState state, int arg0)
+        /// <param name="state">GPU state at the time of the call</param>
+        /// <param name="arg0">First argument of the call</param>
+        private void BindShaderProgram(IDeviceState state, int arg0)
         {
             int scratchOffset = ShaderIdScratchOffset + arg0 * 4;
+
             int lastId = state.Read(scratchOffset);
-            
-            var idParam = FetchParam();
-            var offsetParam = FetchParam();
-            
-            if (lastId == idParam.Word)
+            int id = FetchParam().Word;
+            int offset = FetchParam().Word;
+
+            if (lastId == id)
             {
-                FetchParam(); // Skip unused params
                 FetchParam();
+                FetchParam();
+
                 return;
             }
 
-            // Update shader cache
-            _shaderCache[arg0] = idParam.Word;
-            
-            uint offset = (uint)offsetParam.Word;
-            _processor.ThreedClass.SetShaderOffset(arg0, offset);
+            _processor.ThreedClass.SetShaderOffset(arg0, (uint)offset);
 
-            // Optimized address masking
+            // Removes overflow on the method address into the increment portion.
+            // Present in the original macro.
             int addrMask = unchecked((int)0xfffc0fff) << 2;
-            int maskedScratchOffset = scratchOffset & addrMask;
-            int maskedShaderOffset = (ShaderAddressScratchOffset + arg0 * 4) & addrMask;
 
-            state.Write(maskedScratchOffset, idParam.Word);
-            state.Write(maskedShaderOffset, offsetParam.Word);
+            state.Write(scratchOffset & addrMask, id);
+            state.Write((ShaderAddressScratchOffset + arg0 * 4) & addrMask, offset);
 
-            // Process remaining parameters
             int stage = FetchParam().Word;
             uint cbAddress = (uint)FetchParam().Word;
 
             _processor.ThreedClass.UpdateUniformBufferState(65536, cbAddress >> 24, cbAddress << 8);
-            
+
             int stageOffset = (stage & 0x7f) << 3;
+
             state.Write((UniformBufferBindVertexOffset + stageOffset * 4) & addrMask, 17);
         }
 
         /// <summary>
-        /// Optimized uniform buffer state update.
+        /// Updates uniform buffer state for update or bind.
         /// </summary>
-        private void OptimizedUpdateUniformBufferState(IDeviceState state, int arg0)
+        /// <param name="state">GPU state at the time of the call</param>
+        /// <param name="arg0">First argument of the call</param>
+        private void UpdateUniformBufferState(IDeviceState state, int arg0)
         {
             uint address = (uint)state.Read(UpdateConstantBufferAddressesBase + arg0 * 4);
             int size = state.Read(UpdateConstantBufferSizesBase + arg0 * 4);
-
-            // Align for better GPU memory access
-            size = (size + 255) & ~255;
-            address = address & ~255u;
 
             _processor.ThreedClass.UpdateUniformBufferState(size, address >> 24, address << 8);
         }
 
         /// <summary>
-        /// Optimized uniform buffer state update for CBU.
+        /// Updates uniform buffer state for update.
         /// </summary>
-        private void OptimizedUpdateUniformBufferStateCbu(IDeviceState state, int arg0)
+        /// <param name="state">GPU state at the time of the call</param>
+        /// <param name="arg0">First argument of the call</param>
+        private void UpdateUniformBufferStateCbu(IDeviceState state, int arg0)
         {
             uint address = (uint)state.Read(UpdateConstantBufferAddressCbu);
 
-            var ubState = new UniformBufferState
+            UniformBufferState ubState = new()
             {
                 Address = new()
                 {
                     High = address >> 24,
-                    Low = (address << 8) & ~255u // Align to 256 bytes
+                    Low = address << 8
                 },
                 Size = 24320,
                 Offset = arg0 << 2
@@ -188,18 +187,20 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
         }
 
         /// <summary>
-        /// Optimized uniform buffer state update for CBU v2.
+        /// Updates uniform buffer state for update.
         /// </summary>
-        private void OptimizedUpdateUniformBufferStateCbuV2(IDeviceState state, int arg0)
+        /// <param name="state">GPU state at the time of the call</param>
+        /// <param name="arg0">First argument of the call</param>
+        private void UpdateUniformBufferStateCbuV2(IDeviceState state, int arg0)
         {
             uint address = (uint)state.Read(UpdateConstantBufferAddressCbu);
 
-            var ubState = new UniformBufferState
+            UniformBufferState ubState = new()
             {
                 Address = new()
                 {
                     High = address >> 24,
-                    Low = (address << 8) & ~255u // Align to 256 bytes
+                    Low = address << 8
                 },
                 Size = 28672,
                 Offset = arg0 << 2
@@ -209,13 +210,16 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
         }
 
         /// <summary>
-        /// Optimized blend state update.
+        /// Updates blend enable using the given argument.
         /// </summary>
-        private void OptimizedUpdateBlendState(IDeviceState state, int arg0)
+        /// <param name="state">GPU state at the time of the call</param>
+        /// <param name="arg0">First argument of the call</param>
+        private void UpdateBlendState(IDeviceState state, int arg0)
         {
             state.Write(LogicOpOffset, 0);
 
-            var enable = new Array8<Boolean32>();
+            Array8<Boolean32> enable = new();
+
             for (int i = 0; i < 8; i++)
             {
                 enable[i] = new Boolean32((uint)(arg0 >> (i + 8)) & 1);
@@ -225,11 +229,14 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
         }
 
         /// <summary>
-        /// Optimized color masks update.
+        /// Updates color masks using the given argument and three pushed arguments.
         /// </summary>
-        private void OptimizedUpdateColorMasks(IDeviceState state, int arg0)
+        /// <param name="state">GPU state at the time of the call</param>
+        /// <param name="arg0">First argument of the call</param>
+        private void UpdateColorMasks(IDeviceState state, int arg0)
         {
-            var masks = new Array8<RtColorMask>();
+            Array8<RtColorMask> masks = new();
+
             int index = 0;
 
             for (int i = 0; i < 4; i++)
@@ -247,9 +254,11 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
         }
 
         /// <summary>
-        /// Optimized color clear operation.
+        /// Clears one bound color target.
         /// </summary>
-        private void OptimizedClearColor(IDeviceState state, int arg0)
+        /// <param name="state">GPU state at the time of the call</param>
+        /// <param name="arg0">First argument of the call</param>
+        private void ClearColor(IDeviceState state, int arg0)
         {
             int index = (arg0 >> 6) & 0xf;
             int layerCount = state.Read(ColorLayerCountOffset + index * ColorStructSize);
@@ -258,9 +267,11 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
         }
 
         /// <summary>
-        /// Optimized depth-stencil clear operation.
+        /// Clears the current depth-stencil target.
         /// </summary>
-        private void OptimizedClearDepthStencil(IDeviceState state, int arg0)
+        /// <param name="state">GPU state at the time of the call</param>
+        /// <param name="arg0">First argument of the call</param>
+        private void ClearDepthStencil(IDeviceState state, int arg0)
         {
             int layerCount = state.Read(ZetaLayerCountOffset);
 
@@ -268,11 +279,14 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
         }
 
         /// <summary>
-        /// Optimized instanced draw operation.
+        /// Performs a draw.
         /// </summary>
-        private void OptimizedDrawArraysInstanced(IDeviceState state, int arg0)
+        /// <param name="state">GPU state at the time of the call</param>
+        /// <param name="arg0">First argument of the call</param>
+        private void DrawArraysInstanced(IDeviceState state, int arg0)
         {
             var topology = (PrimitiveTopology)arg0;
+
             var count = FetchParam();
             var instanceCount = FetchParam();
             var firstVertex = FetchParam();
@@ -294,14 +308,18 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
         }
 
         /// <summary>
-        /// Optimized indexed draw operation.
+        /// Performs a indexed draw.
         /// </summary>
-        private void OptimizedDrawElements(IDeviceState state, int arg0)
+        /// <param name="state">GPU state at the time of the call</param>
+        /// <param name="arg0">First argument of the call</param>
+        private void DrawElements(IDeviceState state, int arg0)
         {
             var topology = (PrimitiveTopology)arg0;
+
             var indexAddressHigh = FetchParam();
             var indexAddressLow = FetchParam();
             var indexType = FetchParam();
+            var firstIndex = 0;
             var indexCount = FetchParam();
 
             _processor.ThreedClass.UpdateIndexBuffer(
@@ -313,18 +331,21 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
                 topology,
                 indexCount.Word,
                 1,
-                0,
+                firstIndex,
                 state.Read(FirstVertexOffset),
                 0,
                 indexed: true);
         }
 
         /// <summary>
-        /// Optimized indexed instanced draw operation.
+        /// Performs a indexed draw.
         /// </summary>
-        private void OptimizedDrawElementsInstanced(IDeviceState state, int arg0)
+        /// <param name="state">GPU state at the time of the call</param>
+        /// <param name="arg0">First argument of the call</param>
+        private void DrawElementsInstanced(IDeviceState state, int arg0)
         {
             var topology = (PrimitiveTopology)arg0;
+
             var count = FetchParam();
             var instanceCount = FetchParam();
             var firstIndex = FetchParam();
@@ -347,11 +368,14 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
         }
 
         /// <summary>
-        /// Optimized indirect indexed draw operation.
+        /// Performs a indirect indexed draw, with parameters from a GPU buffer.
         /// </summary>
-        private void OptimizedDrawElementsIndirect(IDeviceState state, int arg0)
+        /// <param name="state">GPU state at the time of the call</param>
+        /// <param name="arg0">First argument of the call</param>
+        private void DrawElementsIndirect(IDeviceState state, int arg0)
         {
             var topology = (PrimitiveTopology)arg0;
+
             var count = FetchParam();
             var instanceCount = FetchParam();
             var firstIndex = FetchParam();
@@ -359,16 +383,15 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
             var firstInstance = FetchParam();
 
             ulong indirectBufferGpuVa = count.GpuVa;
+
             var bufferCache = _processor.MemoryManager.Physical.BufferCache;
 
             bool useBuffer = bufferCache.CheckModified(_processor.MemoryManager, indirectBufferGpuVa, IndirectIndexedDataEntrySize, out ulong indirectBufferAddress);
 
             if (useBuffer)
             {
-                _processor.ThreedClass.FlushUboDirty();
-                _processor.ThreedClass.CreatePendingSyncs();
-
                 int indexCount = firstIndex.Word + count.Word;
+
                 _processor.ThreedClass.DrawIndirect(
                     topology,
                     new MultiRange(indirectBufferAddress, IndirectIndexedDataEntrySize),
@@ -378,8 +401,13 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
                     indexCount,
                     IndirectDrawType.DrawIndexedIndirect);
             }
-            else if (!ShouldSkipDraw(state, instanceCount.Word))
+            else
             {
+                if (ShouldSkipDraw(state, instanceCount.Word))
+                {
+                    return;
+                }
+
                 _processor.ThreedClass.Draw(
                     topology,
                     count.Word,
@@ -392,9 +420,11 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
         }
 
         /// <summary>
-        /// Optimized indirect multi-draw operation.
+        /// Performs a indirect indexed multi-draw, with parameters from a GPU buffer.
         /// </summary>
-        private void OptimizedMultiDrawElementsIndirectCount(IDeviceState state, int arg0)
+        /// <param name="state">GPU state at the time of the call</param>
+        /// <param name="arg0">First argument of the call</param>
+        private void MultiDrawElementsIndirectCount(IDeviceState state, int arg0)
         {
             int arg1 = FetchParam().Word;
             int arg2 = FetchParam().Word;
@@ -407,23 +437,29 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
             int stride = paddingWords * 4 + 0x14;
 
             ulong parameterBufferGpuVa = FetchParam().GpuVa;
+
             int maxDrawCount = endDraw - startDraw;
 
             if (startDraw != 0)
             {
                 int drawCount = _processor.MemoryManager.Read<int>(parameterBufferGpuVa, tracked: true);
+
+                // Calculate maximum draw count based on the previous draw count and current draw count.
                 if ((uint)drawCount <= (uint)startDraw)
                 {
+                    // The start draw is past our total draw count, so all draws were already performed.
                     maxDrawCount = 0;
                 }
                 else
                 {
+                    // Perform just the missing number of draws.
                     maxDrawCount = (int)Math.Min((uint)maxDrawCount, (uint)(drawCount - startDraw));
                 }
             }
 
             if (maxDrawCount == 0)
             {
+                Fifo.Clear();
                 return;
             }
 
@@ -433,10 +469,12 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
             for (int i = 0; i < maxDrawCount; i++)
             {
                 var count = FetchParam();
+#pragma warning disable IDE0059 // Remove unnecessary value assignment
                 var instanceCount = FetchParam();
                 var firstIndex = FetchParam();
                 var firstVertex = FetchParam();
                 var firstInstance = FetchParam();
+#pragma warning restore IDE0059
 
                 if (i == 0)
                 {
@@ -455,15 +493,11 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
             }
 
             var bufferCache = _processor.MemoryManager.Physical.BufferCache;
+
             ulong indirectBufferSize = (ulong)maxDrawCount * (ulong)stride;
 
-            MultiRange indirectBufferRange = bufferCache.TranslateAndCreateMultiBuffers(
-                _processor.MemoryManager, indirectBufferGpuVa, indirectBufferSize, BufferStage.Indirect);
-            MultiRange parameterBufferRange = bufferCache.TranslateAndCreateMultiBuffers(
-                _processor.MemoryManager, parameterBufferGpuVa, 4, BufferStage.Indirect);
-
-            _processor.ThreedClass.FlushUboDirty();
-            _processor.ThreedClass.CreatePendingSyncs();
+            MultiRange indirectBufferRange = bufferCache.TranslateAndCreateMultiBuffers(_processor.MemoryManager, indirectBufferGpuVa, indirectBufferSize, BufferStage.Indirect);
+            MultiRange parameterBufferRange = bufferCache.TranslateAndCreateMultiBuffers(_processor.MemoryManager, parameterBufferGpuVa, 4, BufferStage.Indirect);
 
             _processor.ThreedClass.DrawIndirect(
                 topology,
@@ -475,21 +509,39 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
                 Threed.IndirectDrawType.DrawIndexedIndirectCount);
         }
 
+        /// <summary>
+        /// Checks if the draw should be skipped, because the masked instance count is zero.
+        /// </summary>
+        /// <param name="state">Current GPU state</param>
+        /// <param name="instanceCount">Draw instance count</param>
+        /// <returns>True if the draw should be skipped, false otherwise</returns>
         private static bool ShouldSkipDraw(IDeviceState state, int instanceCount)
         {
             return (Read(state, 0xd1b) & instanceCount) == 0;
         }
 
+        /// <summary>
+        /// Fetches a arguments from the arguments FIFO.
+        /// </summary>
+        /// <returns>The call argument, or a 0 value with null address if the FIFO is empty</returns>
         private FifoWord FetchParam()
         {
             if (!Fifo.TryDequeue(out var value))
             {
                 Logger.Warning?.Print(LogClass.Gpu, "Macro attempted to fetch an inexistent argument.");
+
                 return new FifoWord(0UL, 0);
             }
+
             return value;
         }
 
+        /// <summary>
+        /// Reads data from a GPU register.
+        /// </summary>
+        /// <param name="state">Current GPU state</param>
+        /// <param name="reg">Register offset to read</param>
+        /// <returns>GPU register value</returns>
         private static int Read(IDeviceState state, int reg)
         {
             return state.Read(reg * 4);
