@@ -28,6 +28,11 @@ namespace LibRyujinx
                 return false;
             }
 
+            // ========== 强制修改点 ========== //
+            // 强制启用 HostMappedUnsafe 模式
+            isHostMapped = true;
+            // =============================== //
+
             return SwitchDevice.InitializeContext(isHostMapped,
                                                   useHypervisor,
                                                   systemLanguage,
