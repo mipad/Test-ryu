@@ -430,9 +430,15 @@ namespace Ryujinx.Graphics.Shader
         /// <summary>
         /// Queries whether the host supports UserDefined IO variables in shaders.
         /// </summary>
+        /// <param name="stage">Shader stage to query support for</param>
         /// <returns>True if the GPU and driver supports UserDefined variables, false otherwise</returns>
-        bool QueryHostSupportsUserDefined()
+        bool QueryHostSupportsUserDefined(ShaderStage stage)
         {
+            // Disable UserDefined support for Geometry shader on Mali GPUs
+            if (stage == ShaderStage.Geometry)
+            {
+                return false;
+            }
             return true;
         }
 
