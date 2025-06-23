@@ -69,7 +69,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
 
                 if (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS())
                 {
-                    JitSupportDarwin.SysIcacheInvalidate(_region.Block.Pointer + offset, size);
+                    JitSupportAndroid.SysIcacheInvalidate(_region.Block.Pointer + offset, size);
                 }
                 else
                 {
