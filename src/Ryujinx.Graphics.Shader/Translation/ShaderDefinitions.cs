@@ -57,6 +57,7 @@ namespace Ryujinx.Graphics.Shader.Translation
         public bool OmapDepth { get; }
 
         public bool SupportsScaledVertexFormats { get; }
+        public bool SupportsUserDefined { get; }
 
         public bool TransformFeedbackEnabled { get; }
 
@@ -151,7 +152,8 @@ namespace Ryujinx.Graphics.Shader.Translation
             bool omapDepth,
             bool supportsScaledVertexFormats,
             ulong transformFeedbackVecMap,
-            TransformFeedbackOutput[] transformFeedbackOutputs)
+            TransformFeedbackOutput[] transformFeedbackOutputs,
+            bool supportsUserDefined)
         {
             Stage = stage;
             _graphicsState = graphicsState;
@@ -165,6 +167,7 @@ namespace Ryujinx.Graphics.Shader.Translation
             OmapDepth = omapDepth;
             LastInVertexPipeline = stage < ShaderStage.Fragment;
             SupportsScaledVertexFormats = supportsScaledVertexFormats;
+            SupportsUserDefined = supportsUserDefined;
             TransformFeedbackEnabled = transformFeedbackOutputs != null;
             _transformFeedbackOutputs = transformFeedbackOutputs;
             _transformFeedbackDefinitions = new();
@@ -238,7 +241,7 @@ namespace Ryujinx.Graphics.Shader.Translation
         {
             if (ioVariable == IoVariable.UserDefined)
             {
-                return (!isOutput && !IaIndexing) || (isOutput && !OaIndexing);
+                return SupportsUserDefined && ((!isOutput && !IaIndexing) || (isOutput && !OaIndexing));
             }
 
             return ioVariable == IoVariable.FragmentOutputColor;
