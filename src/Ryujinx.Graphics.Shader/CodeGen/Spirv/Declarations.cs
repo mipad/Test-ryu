@@ -103,10 +103,15 @@ namespace Ryujinx.Graphics.Shader.CodeGen.Spirv
 
                     if (field.Type.HasFlag(AggregateType.Array))
                     {
+                        // We can't decorate the type more than once.
                         if (decoratedTypes.Add(structFieldTypes[fieldIndex]))
                         {
                             context.Decorate(structFieldTypes[fieldIndex], Decoration.ArrayStride, (LiteralInteger)fieldSize);
                         }
+
+                        // Zero lengths are assumed to be a "runtime array" (which does not have a explicit length
+                        // specified on the shader, and instead assumes the bound buffer length).
+                        // It is only valid as the last struct element.
 
                         Debug.Assert(field.ArrayLength > 0 || fieldIndex == buffer.Type.Fields.Length - 1);
 
@@ -488,10 +493,12 @@ namespace Ryujinx.Graphics.Shader.CodeGen.Spirv
             BuiltIn builtIn = default;
             AggregateType varType;
 
-            // Handle TextureCoord as a special case
-            if (ioDefinition.Name == "TextureCoord")
+            // 双重保障：通过位置和变量名识别TextureCoord
+            if (ioVariable == IoVariable.UserDefined && 
+                context.Definitions.IsTextureCoordVariable(ioDefinition.Location))
             {
-                varType = AggregateType.FP32 | AggregateType.Vector2; // Assume vec2 for texture coordinates
+                // 纹理坐标通常是 vec2 类型
+                varType = AggregateType.FP32 | AggregateType.Vector2;
                 isBuiltIn = false;
             }
             else if (ioVariable == IoVariable.UserDefined)
@@ -509,9 +516,19 @@ namespace Ryujinx.Graphics.Shader.CodeGen.Spirv
                 (builtIn, varType) = IoMap.GetSpirvBuiltIn(ioVariable);
                 isBuiltIn = true;
 
+                // 如果内置变量映射失败，检查是否为TextureCoord
                 if (varType == AggregateType.Invalid)
                 {
-                    throw new InvalidOperationException($"Unknown variable {ioVariable}.");
+                    // 通过变量名二次检查
+                    if (ioVariable.ToString().Contains("TextureCoord", StringComparison.OrdinalIgnoreCase))
+                    {
+                        varType = AggregateType.FP32 | AggregateType.Vector2;
+                        isBuiltIn = false;
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException($"Unknown variable {ioVariable}.");
+                    }
                 }
             }
 
@@ -585,7 +602,9 @@ namespace Ryujinx.Graphics.Shader.CodeGen.Spirv
                     context.Decorate(spvVar, Decoration.Location, (LiteralInteger)location);
                 }
             }
-            else if (ioVariable == IoVariable.UserDefined || ioDefinition.Name == "TextureCoord")
+            else if (ioVariable == IoVariable.UserDefined || 
+                    (varType == (AggregateType.FP32 | AggregateType.Vector2) && 
+                     context.Definitions.IsTextureCoordVariable(ioDefinition.Location)))
             {
                 context.Decorate(spvVar, Decoration.Location, (LiteralInteger)ioDefinition.Location);
 
@@ -640,7 +659,7 @@ namespace Ryujinx.Graphics.Shader.CodeGen.Spirv
             }
             else if (context.Definitions.TryGetTransformFeedbackOutput(
                 ioVariable,
- ioDefinition.Location,
+                ioDefinition.Location,
                 ioDefinition.Component,
                 out var transformFeedbackOutput))
             {
