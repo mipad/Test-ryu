@@ -103,15 +103,10 @@ namespace Ryujinx.Graphics.Shader.CodeGen.Spirv
 
                     if (field.Type.HasFlag(AggregateType.Array))
                     {
-                        // We can't decorate the type more than once.
                         if (decoratedTypes.Add(structFieldTypes[fieldIndex]))
                         {
                             context.Decorate(structFieldTypes[fieldIndex], Decoration.ArrayStride, (LiteralInteger)fieldSize);
                         }
-
-                        // Zero lengths are assumed to be a "runtime array" (which does not have a explicit length
-                        // specified on the shader, and instead assumes the bound buffer length).
-                        // It is only valid as the last struct element.
 
                         Debug.Assert(field.ArrayLength > 0 || fieldIndex == buffer.Type.Fields.Length - 1);
 
@@ -493,7 +488,13 @@ namespace Ryujinx.Graphics.Shader.CodeGen.Spirv
             BuiltIn builtIn = default;
             AggregateType varType;
 
-            if (ioVariable == IoVariable.UserDefined)
+            // Handle TextureCoord as a special case
+            if (ioDefinition.Name == "TextureCoord")
+            {
+                varType = AggregateType.FP32 | AggregateType.Vector2; // Assume vec2 for texture coordinates
+                isBuiltIn = false;
+            }
+            else if (ioVariable == IoVariable.UserDefined)
             {
                 varType = context.Definitions.GetUserDefinedType(ioDefinition.Location, isOutput);
                 isBuiltIn = false;
@@ -584,7 +585,7 @@ namespace Ryujinx.Graphics.Shader.CodeGen.Spirv
                     context.Decorate(spvVar, Decoration.Location, (LiteralInteger)location);
                 }
             }
-            else if (ioVariable == IoVariable.UserDefined)
+            else if (ioVariable == IoVariable.UserDefined || ioDefinition.Name == "TextureCoord")
             {
                 context.Decorate(spvVar, Decoration.Location, (LiteralInteger)ioDefinition.Location);
 
@@ -639,7 +640,7 @@ namespace Ryujinx.Graphics.Shader.CodeGen.Spirv
             }
             else if (context.Definitions.TryGetTransformFeedbackOutput(
                 ioVariable,
-                ioDefinition.Location,
+ ioDefinition.Location,
                 ioDefinition.Component,
                 out var transformFeedbackOutput))
             {
