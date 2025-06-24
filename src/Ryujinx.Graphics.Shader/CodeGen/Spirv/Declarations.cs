@@ -493,15 +493,7 @@ namespace Ryujinx.Graphics.Shader.CodeGen.Spirv
             BuiltIn builtIn = default;
             AggregateType varType;
 
-            // 双重保障：通过位置和变量名识别TextureCoord
-            if (ioVariable == IoVariable.UserDefined && 
-                context.Definitions.IsTextureCoordVariable(ioDefinition.Location))
-            {
-                // 纹理坐标通常是 vec2 类型
-                varType = AggregateType.FP32 | AggregateType.Vector2;
-                isBuiltIn = false;
-            }
-            else if (ioVariable == IoVariable.UserDefined)
+            if (ioVariable == IoVariable.UserDefined)
             {
                 varType = context.Definitions.GetUserDefinedType(ioDefinition.Location, isOutput);
                 isBuiltIn = false;
@@ -516,19 +508,9 @@ namespace Ryujinx.Graphics.Shader.CodeGen.Spirv
                 (builtIn, varType) = IoMap.GetSpirvBuiltIn(ioVariable);
                 isBuiltIn = true;
 
-                // 如果内置变量映射失败，检查是否为TextureCoord
                 if (varType == AggregateType.Invalid)
                 {
-                    // 通过变量名二次检查
-                    if (ioVariable.ToString().Contains("TextureCoord", StringComparison.OrdinalIgnoreCase))
-                    {
-                        varType = AggregateType.FP32 | AggregateType.Vector2;
-                        isBuiltIn = false;
-                    }
-                    else
-                    {
-                        throw new InvalidOperationException($"Unknown variable {ioVariable}.");
-                    }
+                    throw new InvalidOperationException($"Unknown variable {ioVariable}.");
                 }
             }
 
@@ -602,9 +584,7 @@ namespace Ryujinx.Graphics.Shader.CodeGen.Spirv
                     context.Decorate(spvVar, Decoration.Location, (LiteralInteger)location);
                 }
             }
-            else if (ioVariable == IoVariable.UserDefined || 
-                    (varType == (AggregateType.FP32 | AggregateType.Vector2) && 
-                     context.Definitions.IsTextureCoordVariable(ioDefinition.Location)))
+            else if (ioVariable == IoVariable.UserDefined)
             {
                 context.Decorate(spvVar, Decoration.Location, (LiteralInteger)ioDefinition.Location);
 
