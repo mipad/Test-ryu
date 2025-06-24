@@ -1,4 +1,9 @@
-// AttributeDiagnosticService.cs
+using System;
+using System.Collections.Concurrent;
+using System.Linq;
+using System.Text;
+using Ryujinx.Graphics.Shader.Translation;
+
 public class AttributeDiagnosticService
 {
     private static AttributeDiagnosticService _instance;
