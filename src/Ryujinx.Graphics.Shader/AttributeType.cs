@@ -40,13 +40,19 @@ namespace Ryujinx.Graphics.Shader
 
         public static AggregateType ToAggregateType(this AttributeType type, bool supportsScaledFormats)
         {
-            // 安全处理Invalid类型
+            // 统一无效类型处理
             if (type == AttributeType.Invalid)
             {
                 return AggregateType.FP32;
             }
             
+            // 处理未知类型
             var baseType = type & ~AttributeType.AnyPacked;
+            if (!Enum.IsDefined(typeof(AttributeType), baseType))
+            {
+                return AggregateType.FP32;
+            }
+
             return baseType switch
             {
                 AttributeType.Float => AggregateType.FP32,
