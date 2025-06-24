@@ -9,15 +9,13 @@ namespace Ryujinx.Graphics.Shader.StructuredIr
         public IoVariable IoVariable { get; }
         public int Location { get; }
         public int Component { get; }
-        public string Name { get; } // 新增 Name 属性
 
-        public IoDefinition(StorageKind storageKind, IoVariable ioVariable, int location = 0, int component = 0, string name = null)
+        public IoDefinition(StorageKind storageKind, IoVariable ioVariable, int location = 0, int component = 0)
         {
             StorageKind = storageKind;
             IoVariable = ioVariable;
             Location = location;
             Component = component;
-            Name = name; // 初始化 Name
         }
 
         public override bool Equals(object other)
@@ -30,18 +28,17 @@ namespace Ryujinx.Graphics.Shader.StructuredIr
             return StorageKind == other.StorageKind &&
                    IoVariable == other.IoVariable &&
                    Location == other.Location &&
-                   Component == other.Component &&
-                   Name == other.Name; // 比较 Name
+                   Component == other.Component;
         }
 
         public override int GetHashCode()
         {
-            return HashCode.Combine(StorageKind, IoVariable, Location, Component, Name); // 包含 Name
+            return (int)StorageKind | ((int)IoVariable << 8) | (Location << 16) | (Component << 24);
         }
 
         public override string ToString()
         {
-            return $"{StorageKind}.{IoVariable}.{Location}.{Component}.{Name}"; // 包含 Name
+            return $"{StorageKind}.{IoVariable}.{Location}.{Component}";
         }
     }
 }
