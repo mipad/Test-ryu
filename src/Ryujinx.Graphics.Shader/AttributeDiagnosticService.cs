@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Linq;
 using System.Text;
+using Ryujinx.Graphics.Shader; // 添加缺失的命名空间引用
 using Ryujinx.Graphics.Shader.Translation;
 
 public class AttributeDiagnosticService
@@ -12,7 +13,8 @@ public class AttributeDiagnosticService
     
     private readonly ConcurrentDictionary<int, (AttributeType, AggregateType)> _invalidAttributes = new();
     
-    public void RecordInvalidAttribute(int location, AttributeType originalType, AggregateType resolvedType)
+    // 修复可访问性问题：将方法改为 internal
+    internal void RecordInvalidAttribute(int location, AttributeType originalType, AggregateType resolvedType)
     {
         _invalidAttributes.TryAdd(location, (originalType, resolvedType));
     }
