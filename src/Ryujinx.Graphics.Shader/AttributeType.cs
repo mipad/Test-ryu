@@ -6,6 +6,7 @@ namespace Ryujinx.Graphics.Shader
     public enum AttributeType : byte
     {
         // Generic types.
+        Invalid = 0,
         Float,
         Sint,
         Uint,
