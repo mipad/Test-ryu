@@ -15,6 +15,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Ryujinx.Graphics.Gpu.Engine.Threed;
 
 namespace Ryujinx.Graphics.Gpu.Engine.Threed
 {
