@@ -4,6 +4,7 @@ using Ryujinx.Graphics.Shader.Translation;
 using Spv.Generator;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using static Spv.Specification;
 using Instruction = Spv.Generator.Instruction;
 
@@ -290,6 +291,13 @@ namespace Ryujinx.Graphics.Shader.CodeGen.Spirv
 
         public Instruction GetType(AggregateType type, int length = 1)
         {
+            // 深度防御：记录无效类型诊断信息
+            if (type == AggregateType.Invalid || type == AggregateType.Unsupported)
+            {
+                Logger?.Warning($"Invalid attribute type \"{type}\", using FP32 as fallback.");
+                return TypeFP32();
+            }
+
             if ((type & AggregateType.Array) != 0)
             {
                 if (length > 0)
@@ -322,7 +330,12 @@ namespace Ryujinx.Graphics.Shader.CodeGen.Spirv
                 AggregateType.FP64 => TypeFP64(),
                 AggregateType.S32 => TypeS32(),
                 AggregateType.U32 => TypeU32(),
-                _ => throw new ArgumentException($"Invalid attribute type \"{type}\"."),
+                _ => 
+                {
+                    // 记录无效类型警告
+                    Logger?.Warning($"Unsupported attribute type \"{type}\", using FP32 as fallback.");
+                    return TypeFP32();
+                }
             };
         }
 
