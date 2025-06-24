@@ -14,6 +14,7 @@ namespace Ryujinx.Graphics.Shader.Translation
         FP64,
         S32,
         U32,
+        Unsupported, // 添加 Unsupported 成员
         
         // 新增特殊类型处理
         FallbackFP32 = 0x400,  // 用于标记回退类型
@@ -39,7 +40,8 @@ namespace Ryujinx.Graphics.Shader.Translation
             // 检查是否包含有效的基础类型
             var baseType = type & AggregateType.ElementTypeMask;
             return baseType != AggregateType.Invalid && 
-                   baseType != AggregateType.Void;
+                   baseType != AggregateType.Void &&
+                   baseType != AggregateType.Unsupported; // 添加 Unsupported 检查
         }
         
         public static AggregateType Sanitize(this AggregateType type)
