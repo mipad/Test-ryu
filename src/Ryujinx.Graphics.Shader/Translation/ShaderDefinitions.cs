@@ -299,7 +299,11 @@ namespace Ryujinx.Graphics.Shader.Translation
         {
             if (location >= 0 && location < _graphicsState.FragmentOutputTypes.Length)
             {
-                return AggregateType.Vector4 | _graphicsState.FragmentOutputTypes[location].ToAggregateType();
+                AttributeType attrType = _graphicsState.FragmentOutputTypes[location];
+                AggregateType baseType = AggregateType.Vector4;
+                
+                // 修复类型转换问题
+                return baseType | attrType.ToAggregateType();
             }
             // 无效位置使用默认类型
             return AggregateType.Vector4 | AggregateType.FP32;
@@ -314,14 +318,20 @@ namespace Ryujinx.Graphics.Shader.Translation
 
         public AggregateType GetUserDefinedType(int location, bool isOutput)
         {
-            // 边界检查和安全回退
-            if (_graphicsState == null || location < 0 || location >= _graphicsState.AttributeTypes.Length)
+            // 如果是计算着色器，返回默认类型
+            if (IsComputeShader)
             {
                 return AggregateType.Vector4 | AggregateType.FP32;
             }
 
-            // 获取属性类型（带安全处理）
-            AttributeType attrType = GetAttributeType(location);
+            // 边界检查
+            if (location < 0 || location >= _graphicsState.AttributeTypes.Length)
+            {
+                return AggregateType.Vector4 | AggregateType.FP32;
+            }
+
+            // 获取属性类型
+            AttributeType attrType = _graphicsState.AttributeTypes[location];
 
             // 特殊处理纹理坐标变量
             if (IsTextureCoordVariable(location))
@@ -350,9 +360,17 @@ namespace Ryujinx.Graphics.Shader.Translation
             return type;
         }
 
+        // 检查是否为计算着色器
+        private bool IsComputeShader => Stage == ShaderStage.Compute;
+
         // 增强属性类型获取的安全性
         public AttributeType GetAttributeType(int location)
         {
+            if (IsComputeShader)
+            {
+                return AttributeType.Float;
+            }
+            
             // 边界检查
             if (location >= 0 && location < _graphicsState.AttributeTypes.Length)
             {
@@ -370,13 +388,13 @@ namespace Ryujinx.Graphics.Shader.Translation
         public bool IsAttributePacked(int location)
         {
             var attrType = GetAttributeType(location);
-            return attrType.HasFlag(AttributeType.Packed);
+            return (attrType & AttributeType.Packed) != 0;
         }
 
         public bool IsAttributePackedRgb10A2Signed(int location)
         {
             var attrType = GetAttributeType(location);
-            return attrType.HasFlag(AttributeType.PackedRgb10A2Signed);
+            return (attrType & AttributeType.PackedRgb10A2Signed) != 0;
         }
 
         public int GetGeometryOutputIndexBufferStridePerInstance()
