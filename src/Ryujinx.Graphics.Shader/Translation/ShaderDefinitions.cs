@@ -300,8 +300,22 @@ namespace Ryujinx.Graphics.Shader.Translation
             return AggregateType.Vector4 | _graphicsState.FragmentOutputTypes[location].ToAggregateType();
         }
 
+        // 新添加的方法：检查是否为纹理坐标变量
+        public bool IsTextureCoordVariable(int location)
+        {
+            // 纹理坐标通常位于特定位置范围（如8-15）
+            // 实际范围可能需要根据目标平台调整
+            return location >= 8 && location <= 15;
+        }
+
         public AggregateType GetUserDefinedType(int location, bool isOutput)
         {
+            // 如果是纹理坐标，返回 vec2 类型
+            if (IsTextureCoordVariable(location))
+            {
+                return AggregateType.Vector2 | AggregateType.FP32;
+            }
+
             if ((!isOutput && IaIndexing) || (isOutput && OaIndexing))
             {
                 return AggregateType.Array | AggregateType.Vector4 | AggregateType.FP32;
