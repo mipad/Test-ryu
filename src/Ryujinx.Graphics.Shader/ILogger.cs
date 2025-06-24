@@ -13,14 +13,5 @@ namespace Ryujinx.Graphics.Shader.CodeGen
         {
             // No default log output.
         }
-
-        /// <summary>
-        /// Prints a warning message.
-        /// </summary>
-        /// <param name="message">Warning message to print</param>
-        void Warning(string message)
-        {
-            // No default warning output.
-        }
     }
 }
