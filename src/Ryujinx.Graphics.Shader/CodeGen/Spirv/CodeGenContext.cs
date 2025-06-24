@@ -330,13 +330,15 @@ namespace Ryujinx.Graphics.Shader.CodeGen.Spirv
                 AggregateType.FP64 => TypeFP64(),
                 AggregateType.S32 => TypeS32(),
                 AggregateType.U32 => TypeU32(),
-                _ => 
-                {
-                    // 记录无效类型警告
-                    Logger?.Warning($"Unsupported attribute type \"{type}\", using FP32 as fallback.");
-                    return TypeFP32();
-                }
+                _ => FallbackType(type)
             };
+        }
+
+        private Instruction FallbackType(AggregateType type)
+        {
+            // 记录无效类型警告
+            Logger?.Warning($"Unsupported attribute type \"{type}\", using FP32 as fallback.");
+            return TypeFP32();
         }
 
         public Instruction BitcastIfNeeded(AggregateType dstType, AggregateType srcType, Instruction value)
