@@ -314,19 +314,22 @@ namespace Ryujinx.Graphics.Shader.Translation
 
         public AggregateType GetUserDefinedType(int location, bool isOutput)
         {
-            // 安全获取属性类型，避免无效位置
-            AttributeType attrType = AttributeType.Float; // 默认类型
-            if (location >= 0 && location < _graphicsState.AttributeTypes.Length)
+            // 边界检查和安全回退
+            if (_graphicsState == null || location < 0 || location >= _graphicsState.AttributeTypes.Length)
             {
-                attrType = _graphicsState.AttributeTypes[location];
+                return AggregateType.Vector4 | AggregateType.FP32;
             }
 
-            // 如果是纹理坐标，返回 vec2 类型
+            // 获取属性类型（带安全处理）
+            AttributeType attrType = GetAttributeType(location);
+
+            // 特殊处理纹理坐标变量
             if (IsTextureCoordVariable(location))
             {
                 return AggregateType.Vector2 | AggregateType.FP32;
             }
 
+            // 处理索引属性
             if ((!isOutput && IaIndexing) || (isOutput && OaIndexing))
             {
                 return AggregateType.Array | AggregateType.Vector4 | AggregateType.FP32;
@@ -336,16 +339,8 @@ namespace Ryujinx.Graphics.Shader.Translation
 
             if (Stage == ShaderStage.Vertex && !isOutput)
             {
-                // 安全类型转换：处理无效属性类型
-                if (attrType != AttributeType.Invalid)
-                {
-                    type |= attrType.ToAggregateType(SupportsScaledVertexFormats);
-                }
-                else
-                {
-                    // 无效类型使用默认浮点类型
-                    type |= AggregateType.FP32;
-                }
+                // 安全类型转换
+                type |= attrType.ToAggregateType(SupportsScaledVertexFormats);
             }
             else
             {
