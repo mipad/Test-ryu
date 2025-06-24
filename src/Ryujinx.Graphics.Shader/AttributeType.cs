@@ -6,7 +6,6 @@ namespace Ryujinx.Graphics.Shader
     public enum AttributeType : byte
     {
         // Generic types.
-        Invalid = 0,
         Float,
         Sint,
         Uint,
@@ -22,52 +21,26 @@ namespace Ryujinx.Graphics.Shader
     {
         public static AggregateType ToAggregateType(this AttributeType type)
         {
-            // 安全处理Invalid类型
-            if (type == AttributeType.Invalid)
-            {
-                return AggregateType.FP32;
-            }
-            
-            var baseType = type & ~AttributeType.AnyPacked;
-            return baseType switch
+            return (type & ~AttributeType.AnyPacked) switch
             {
                 AttributeType.Float => AggregateType.FP32,
                 AttributeType.Sint => AggregateType.S32,
                 AttributeType.Uint => AggregateType.U32,
-                _ => AggregateType.FP32 // 默认回退
+                _ => throw new ArgumentException($"Invalid attribute type \"{type}\"."),
             };
         }
 
         public static AggregateType ToAggregateType(this AttributeType type, bool supportsScaledFormats)
         {
-            // 统一无效类型处理
-            if (type == AttributeType.Invalid)
-            {
-                return AggregateType.FP32;
-            }
-            
-            // 处理未知类型
-            var baseType = type & ~AttributeType.AnyPacked;
-            if (!Enum.IsDefined(typeof(AttributeType), baseType))
-            {
-                return AggregateType.FP32;
-            }
-
-            return baseType switch
+            return (type & ~AttributeType.AnyPacked) switch
             {
                 AttributeType.Float => AggregateType.FP32,
                 AttributeType.Sint => AggregateType.S32,
                 AttributeType.Uint => AggregateType.U32,
                 AttributeType.Sscaled => supportsScaledFormats ? AggregateType.FP32 : AggregateType.S32,
                 AttributeType.Uscaled => supportsScaledFormats ? AggregateType.FP32 : AggregateType.U32,
-                _ => AggregateType.FP32 // 默认回退
+                _ => throw new ArgumentException($"Invalid attribute type \"{type}\"."),
             };
-        }
-
-        // 新增安全转换方法
-        public static AttributeType Sanitize(this AttributeType type)
-        {
-            return type == AttributeType.Invalid ? AttributeType.Float : type;
         }
     }
 }
