@@ -18,7 +18,7 @@ namespace Ryujinx.Graphics.Vulkan
         private static readonly uint _minimalInstanceVulkanVersion = Vk.Version12.Value;
         private static readonly uint _maximumVulkanVersion = Vk.Version12.Value;
         private const string AppName = "Ryujinx.Graphics.Vulkan";
-        private const int QueuesCount = 2;
+        private const int QueuesCount = 4;
 
         private static readonly string[] _desirableExtensions =
         [
@@ -53,7 +53,11 @@ namespace Ryujinx.Graphics.Vulkan
             "VK_EXT_texture_compression_astc_hdr", // 添加ASTC HDR纹理压缩支持
             //  添加片段密度图扩展 
             "VK_EXT_fragment_density_map",
-            "VK_EXT_fragment_density_map2"
+            "VK_EXT_fragment_density_map2",
+             "VK_ARM_rasterization_order_attachment_access", // 渲染顺序附件访问
+    "VK_KHR_driver_properties",                    // 驱动属性查询
+    "VK_ARM_scheduling_controls",                  // Mali调度控制
+    "VK_EXT_shader_core_properties"                // 着色器核心属性
         ];
 
         private static readonly string[] _requiredExtensions =
@@ -277,450 +281,466 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         internal static Device CreateDevice(Vk api, VulkanPhysicalDevice physicalDevice, uint queueFamilyIndex, uint queueCount)
-        {
-            if (queueCount > QueuesCount)
-            {
-                queueCount = QueuesCount;
-            }
-
-            float* queuePriorities = stackalloc float[(int)queueCount];
-
-            for (int i = 0; i < queueCount; i++)
-            {
-                queuePriorities[i] = 1f;
-            }
-
-            var queueCreateInfo = new DeviceQueueCreateInfo
-            {
-                SType = StructureType.DeviceQueueCreateInfo,
-                QueueFamilyIndex = queueFamilyIndex,
-                QueueCount = queueCount,
-                PQueuePriorities = queuePriorities,
-            };
-
-            bool useRobustBufferAccess = VendorUtils.FromId(physicalDevice.PhysicalDeviceProperties.VendorID) == Vendor.Nvidia;
-
-            PhysicalDeviceFeatures2 features2 = new()
-            {
-                SType = StructureType.PhysicalDeviceFeatures2,
-            };
-
-// 添加多视图特性检测 
-PhysicalDeviceMultiviewFeatures supportedFeaturesMultiview = new()
 {
-    SType = StructureType.PhysicalDeviceMultiviewFeatures,
-    PNext = features2.PNext,
-};
+    if (queueCount > QueuesCount)
+    {
+        queueCount = QueuesCount;
+    }
 
-if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
-{
-    features2.PNext = &supportedFeaturesMultiview;
-}
-// 添加结束 
+    float* queuePriorities = stackalloc float[(int)queueCount];
+    for (int i = 0; i < queueCount; i++)
+    {
+        queuePriorities[i] = 1f;
+    }
 
-PhysicalDeviceTimelineSemaphoreFeaturesKHR supportedFeaturesTimelineSemaphore = new()
-{
-    SType = StructureType.PhysicalDeviceTimelineSemaphoreFeatures,
-    PNext = features2.PNext,
-    TimelineSemaphore = true // 明确启用时间线信号量
-};
+    var queueCreateInfo = new DeviceQueueCreateInfo
+    {
+        SType = StructureType.DeviceQueueCreateInfo,
+        QueueFamilyIndex = queueFamilyIndex,
+        QueueCount = queueCount,
+        PQueuePriorities = queuePriorities,
+    };
 
-if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
-{
-    features2.PNext = &supportedFeaturesTimelineSemaphore;
-}
+    bool useRobustBufferAccess = VendorUtils.FromId(physicalDevice.PhysicalDeviceProperties.VendorID) == Vendor.Nvidia;
 
-            PhysicalDeviceVulkan11Features supportedFeaturesVk11 = new()
-            {
-                SType = StructureType.PhysicalDeviceVulkan11Features,
-                PNext = features2.PNext,
-            };
+    PhysicalDeviceFeatures2 features2 = new()
+    {
+        SType = StructureType.PhysicalDeviceFeatures2,
+    };
 
-            features2.PNext = &supportedFeaturesVk11;
-
-            PhysicalDeviceCustomBorderColorFeaturesEXT supportedFeaturesCustomBorderColor = new()
-            {
-                SType = StructureType.PhysicalDeviceCustomBorderColorFeaturesExt,
-                PNext = features2.PNext,
-            };
-
-            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_custom_border_color"))
-            {
-                features2.PNext = &supportedFeaturesCustomBorderColor;
-            }
-
-            PhysicalDevicePrimitiveTopologyListRestartFeaturesEXT supportedFeaturesPrimitiveTopologyListRestart = new()
-            {
-                SType = StructureType.PhysicalDevicePrimitiveTopologyListRestartFeaturesExt,
-                PNext = features2.PNext,
-            };
-
-            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_primitive_topology_list_restart"))
-            {
-                features2.PNext = &supportedFeaturesPrimitiveTopologyListRestart;
-            }
-
-            PhysicalDeviceTransformFeedbackFeaturesEXT supportedFeaturesTransformFeedback = new()
-            {
-                SType = StructureType.PhysicalDeviceTransformFeedbackFeaturesExt,
-                PNext = features2.PNext,
-            };
-
-            if (physicalDevice.IsDeviceExtensionPresent(ExtTransformFeedback.ExtensionName))
-            {
-                features2.PNext = &supportedFeaturesTransformFeedback;
-            }
-
-            PhysicalDeviceRobustness2FeaturesEXT supportedFeaturesRobustness2 = new()
-            {
-                SType = StructureType.PhysicalDeviceRobustness2FeaturesExt,
-            };
-
-            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_robustness2"))
-            {
-                supportedFeaturesRobustness2.PNext = features2.PNext;
-
-                features2.PNext = &supportedFeaturesRobustness2;
-            }
-
-            PhysicalDeviceDepthClipControlFeaturesEXT supportedFeaturesDepthClipControl = new()
-            {
-                SType = StructureType.PhysicalDeviceDepthClipControlFeaturesExt,
-                PNext = features2.PNext,
-            };
-
-            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_depth_clip_control"))
-            {
-                features2.PNext = &supportedFeaturesDepthClipControl;
-            }
-
-            PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT supportedFeaturesAttachmentFeedbackLoopLayout = new()
-            {
-                SType = StructureType.PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesExt,
-                PNext = features2.PNext,
-            };
-
-            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_attachment_feedback_loop_layout"))
-            {
-                features2.PNext = &supportedFeaturesAttachmentFeedbackLoopLayout;
-            }
-
-            PhysicalDeviceAttachmentFeedbackLoopDynamicStateFeaturesEXT supportedFeaturesDynamicAttachmentFeedbackLoopLayout = new()
-            {
-                SType = StructureType.PhysicalDeviceAttachmentFeedbackLoopDynamicStateFeaturesExt,
-                PNext = features2.PNext,
-            };
-
-            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_attachment_feedback_loop_dynamic_state"))
-            {
-                features2.PNext = &supportedFeaturesDynamicAttachmentFeedbackLoopLayout;
-            }
-
-            //  添加片段密度图特性支持 
-            PhysicalDeviceFragmentDensityMapFeaturesEXT supportedFeaturesFragmentDensityMap = new()
-            {
-                SType = StructureType.PhysicalDeviceFragmentDensityMapFeaturesExt,
-                PNext = features2.PNext,
-            };
-
-            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map"))
-            {
-                features2.PNext = &supportedFeaturesFragmentDensityMap;
-            }
-
-            PhysicalDeviceFragmentDensityMap2FeaturesEXT supportedFeaturesFragmentDensityMap2 = new()
-            {
-                SType = StructureType.PhysicalDeviceFragmentDensityMap2FeaturesExt,
-                PNext = features2.PNext,
-            };
-
-            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map2"))
-            {
-                features2.PNext = &supportedFeaturesFragmentDensityMap2;
-            }
-            //  添加结束 
-
-            PhysicalDeviceVulkan12Features supportedPhysicalDeviceVulkan12Features = new()
-            {
-                SType = StructureType.PhysicalDeviceVulkan12Features,
-                PNext = features2.PNext,
-            };
-
-            features2.PNext = &supportedPhysicalDeviceVulkan12Features;
-
-            api.GetPhysicalDeviceFeatures2(physicalDevice.PhysicalDevice, &features2);
-
-            var supportedFeatures = features2.Features;
-
-            var features = new PhysicalDeviceFeatures
-            {
-                DepthBiasClamp = supportedFeatures.DepthBiasClamp,
-                DepthClamp = supportedFeatures.DepthClamp,
-                DualSrcBlend = supportedFeatures.DualSrcBlend,
-                FragmentStoresAndAtomics = supportedFeatures.FragmentStoresAndAtomics,
-                GeometryShader = supportedFeatures.GeometryShader,
-                ImageCubeArray = supportedFeatures.ImageCubeArray,
-                IndependentBlend = supportedFeatures.IndependentBlend,
-                LogicOp = supportedFeatures.LogicOp,
-                OcclusionQueryPrecise = supportedFeatures.OcclusionQueryPrecise,
-                MultiViewport = supportedFeatures.MultiViewport,
-                PipelineStatisticsQuery = supportedFeatures.PipelineStatisticsQuery,
-                SamplerAnisotropy = supportedFeatures.SamplerAnisotropy,
-                ShaderClipDistance = supportedFeatures.ShaderClipDistance,
-                ShaderFloat64 = supportedFeatures.ShaderFloat64,
-                ShaderImageGatherExtended = supportedFeatures.ShaderImageGatherExtended,
-                ShaderStorageImageMultisample = supportedFeatures.ShaderStorageImageMultisample,
-                ShaderStorageImageReadWithoutFormat = supportedFeatures.ShaderStorageImageReadWithoutFormat,
-                ShaderStorageImageWriteWithoutFormat = supportedFeatures.ShaderStorageImageWriteWithoutFormat,
-                TessellationShader = supportedFeatures.TessellationShader,
-                VertexPipelineStoresAndAtomics = supportedFeatures.VertexPipelineStoresAndAtomics,
-                RobustBufferAccess = useRobustBufferAccess,
-                SampleRateShading = supportedFeatures.SampleRateShading,
-            };
-
-            void* pExtendedFeatures = null;
-
-// 添加多视图特性启用 
-PhysicalDeviceMultiviewFeatures featuresMultiview;
-
-if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
-{
-    featuresMultiview = new PhysicalDeviceMultiviewFeatures
+    // 多视图特性检测
+    PhysicalDeviceMultiviewFeatures supportedFeaturesMultiview = new()
     {
         SType = StructureType.PhysicalDeviceMultiviewFeatures,
-        PNext = pExtendedFeatures,
-        Multiview = supportedFeaturesMultiview.Multiview,
-        MultiviewGeometryShader = supportedFeaturesMultiview.MultiviewGeometryShader,
-        MultiviewTessellationShader = supportedFeaturesMultiview.MultiviewTessellationShader
+        PNext = features2.PNext,
     };
-    
-    pExtendedFeatures = &featuresMultiview;
-}
-// 添加结束 
-            PhysicalDeviceTransformFeedbackFeaturesEXT featuresTransformFeedback;
 
-            if (physicalDevice.IsDeviceExtensionPresent(ExtTransformFeedback.ExtensionName))
-            {
-                featuresTransformFeedback = new PhysicalDeviceTransformFeedbackFeaturesEXT
-                {
-                    SType = StructureType.PhysicalDeviceTransformFeedbackFeaturesExt,
-                    PNext = pExtendedFeatures,
-                    TransformFeedback = supportedFeaturesTransformFeedback.TransformFeedback,
-                };
+    if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
+    {
+        features2.PNext = &supportedFeaturesMultiview;
+    }
 
-                pExtendedFeatures = &featuresTransformFeedback;
-            }
+    // 时间线信号量特性检测
+    PhysicalDeviceTimelineSemaphoreFeaturesKHR supportedFeaturesTimelineSemaphore = new()
+    {
+        SType = StructureType.PhysicalDeviceTimelineSemaphoreFeatures,
+        PNext = features2.PNext,
+        TimelineSemaphore = true
+    };
 
-            PhysicalDevicePrimitiveTopologyListRestartFeaturesEXT featuresPrimitiveTopologyListRestart;
+    if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
+    {
+        features2.PNext = &supportedFeaturesTimelineSemaphore;
+    }
 
-            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_primitive_topology_list_restart"))
-            {
-                featuresPrimitiveTopologyListRestart = new PhysicalDevicePrimitiveTopologyListRestartFeaturesEXT
-                {
-                    SType = StructureType.PhysicalDevicePrimitiveTopologyListRestartFeaturesExt,
-                    PNext = pExtendedFeatures,
-                    PrimitiveTopologyListRestart = supportedFeaturesPrimitiveTopologyListRestart.PrimitiveTopologyListRestart,
-                    PrimitiveTopologyPatchListRestart = supportedFeaturesPrimitiveTopologyListRestart.PrimitiveTopologyPatchListRestart,
-                };
+    // Mali 渲染顺序附件访问特性检测
+    PhysicalDeviceRasterizationOrderAttachmentAccessFeaturesARM supportedFeaturesRasterizationOrder = new()
+    {
+        SType = StructureType.PhysicalDeviceRasterizationOrderAttachmentAccessFeaturesArm,
+        PNext = features2.PNext,
+    };
 
-                pExtendedFeatures = &featuresPrimitiveTopologyListRestart;
-            }
+    if (physicalDevice.IsDeviceExtensionPresent("VK_ARM_rasterization_order_attachment_access"))
+    {
+        features2.PNext = &supportedFeaturesRasterizationOrder;
+    }
 
-            PhysicalDeviceRobustness2FeaturesEXT featuresRobustness2;
+    // Vulkan 1.1 特性
+    PhysicalDeviceVulkan11Features supportedFeaturesVk11 = new()
+    {
+        SType = StructureType.PhysicalDeviceVulkan11Features,
+        PNext = features2.PNext,
+    };
+    features2.PNext = &supportedFeaturesVk11;
 
-            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_robustness2"))
-            {
-                featuresRobustness2 = new PhysicalDeviceRobustness2FeaturesEXT
-                {
-                    SType = StructureType.PhysicalDeviceRobustness2FeaturesExt,
-                    PNext = pExtendedFeatures,
-                    NullDescriptor = supportedFeaturesRobustness2.NullDescriptor,
-                };
+    // 自定义边框颜色特性检测
+    PhysicalDeviceCustomBorderColorFeaturesEXT supportedFeaturesCustomBorderColor = new()
+    {
+        SType = StructureType.PhysicalDeviceCustomBorderColorFeaturesExt,
+        PNext = features2.PNext,
+    };
 
-                pExtendedFeatures = &featuresRobustness2;
-            }
+    if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_custom_border_color"))
+    {
+        features2.PNext = &supportedFeaturesCustomBorderColor;
+    }
 
-            var featuresExtendedDynamicState = new PhysicalDeviceExtendedDynamicStateFeaturesEXT
-            {
-                SType = StructureType.PhysicalDeviceExtendedDynamicStateFeaturesExt,
-                PNext = pExtendedFeatures,
-                ExtendedDynamicState = physicalDevice.IsDeviceExtensionPresent(ExtExtendedDynamicState.ExtensionName),
-            };
+    // 图元拓扑列表重启特性检测
+    PhysicalDevicePrimitiveTopologyListRestartFeaturesEXT supportedFeaturesPrimitiveTopologyListRestart = new()
+    {
+        SType = StructureType.PhysicalDevicePrimitiveTopologyListRestartFeaturesExt,
+        PNext = features2.PNext,
+    };
 
-            pExtendedFeatures = &featuresExtendedDynamicState;
+    if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_primitive_topology_list_restart"))
+    {
+        features2.PNext = &supportedFeaturesPrimitiveTopologyListRestart;
+    }
 
-            var featuresVk11 = new PhysicalDeviceVulkan11Features
-            {
-                SType = StructureType.PhysicalDeviceVulkan11Features,
-                PNext = pExtendedFeatures,
-                ShaderDrawParameters = supportedFeaturesVk11.ShaderDrawParameters,
-            };
+    // 变换反馈特性检测
+    PhysicalDeviceTransformFeedbackFeaturesEXT supportedFeaturesTransformFeedback = new()
+    {
+        SType = StructureType.PhysicalDeviceTransformFeedbackFeaturesExt,
+        PNext = features2.PNext,
+    };
 
-            pExtendedFeatures = &featuresVk11;
+    if (physicalDevice.IsDeviceExtensionPresent(ExtTransformFeedback.ExtensionName))
+    {
+        features2.PNext = &supportedFeaturesTransformFeedback;
+    }
 
-            var featuresVk12 = new PhysicalDeviceVulkan12Features
-            {
-                SType = StructureType.PhysicalDeviceVulkan12Features,
-                PNext = pExtendedFeatures,
-                DescriptorIndexing = supportedPhysicalDeviceVulkan12Features.DescriptorIndexing,
-                DrawIndirectCount = supportedPhysicalDeviceVulkan12Features.DrawIndirectCount,
-                UniformBufferStandardLayout = supportedPhysicalDeviceVulkan12Features.UniformBufferStandardLayout,
-                UniformAndStorageBuffer8BitAccess = supportedPhysicalDeviceVulkan12Features.UniformAndStorageBuffer8BitAccess,
-                StorageBuffer8BitAccess = supportedPhysicalDeviceVulkan12Features.StorageBuffer8BitAccess,
-            };
+    // 鲁棒性2特性检测
+    PhysicalDeviceRobustness2FeaturesEXT supportedFeaturesRobustness2 = new()
+    {
+        SType = StructureType.PhysicalDeviceRobustness2FeaturesExt,
+    };
 
-            pExtendedFeatures = &featuresVk12;
+    if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_robustness2"))
+    {
+        supportedFeaturesRobustness2.PNext = features2.PNext;
+        features2.PNext = &supportedFeaturesRobustness2;
+    }
 
-            PhysicalDeviceIndexTypeUint8FeaturesEXT featuresIndexU8;
+    // 深度裁剪控制特性检测
+    PhysicalDeviceDepthClipControlFeaturesEXT supportedFeaturesDepthClipControl = new()
+    {
+        SType = StructureType.PhysicalDeviceDepthClipControlFeaturesExt,
+        PNext = features2.PNext,
+    };
 
-            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_index_type_uint8"))
-            {
-                featuresIndexU8 = new PhysicalDeviceIndexTypeUint8FeaturesEXT
-                {
-                    SType = StructureType.PhysicalDeviceIndexTypeUint8FeaturesExt,
-                    PNext = pExtendedFeatures,
-                    IndexTypeUint8 = true,
-                };
+    if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_depth_clip_control"))
+    {
+        features2.PNext = &supportedFeaturesDepthClipControl;
+    }
 
-                pExtendedFeatures = &featuresIndexU8;
-            }
+    // 附件反馈循环布局特性检测
+    PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT supportedFeaturesAttachmentFeedbackLoopLayout = new()
+    {
+        SType = StructureType.PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesExt,
+        PNext = features2.PNext,
+    };
 
-            PhysicalDeviceFragmentShaderInterlockFeaturesEXT featuresFragmentShaderInterlock;
+    if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_attachment_feedback_loop_layout"))
+    {
+        features2.PNext = &supportedFeaturesAttachmentFeedbackLoopLayout;
+    }
 
-            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_shader_interlock"))
-            {
-                featuresFragmentShaderInterlock = new PhysicalDeviceFragmentShaderInterlockFeaturesEXT
-                {
-                    SType = StructureType.PhysicalDeviceFragmentShaderInterlockFeaturesExt,
-                    PNext = pExtendedFeatures,
-                    FragmentShaderPixelInterlock = true,
-                };
+    // 动态附件反馈循环布局特性检测
+    PhysicalDeviceAttachmentFeedbackLoopDynamicStateFeaturesEXT supportedFeaturesDynamicAttachmentFeedbackLoopLayout = new()
+    {
+        SType = StructureType.PhysicalDeviceAttachmentFeedbackLoopDynamicStateFeaturesExt,
+        PNext = features2.PNext,
+    };
 
-                pExtendedFeatures = &featuresFragmentShaderInterlock;
-            }
+    if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_attachment_feedback_loop_dynamic_state"))
+    {
+        features2.PNext = &supportedFeaturesDynamicAttachmentFeedbackLoopLayout;
+    }
 
-            PhysicalDeviceCustomBorderColorFeaturesEXT featuresCustomBorderColor;
+    // 片段密度图特性检测
+    PhysicalDeviceFragmentDensityMapFeaturesEXT supportedFeaturesFragmentDensityMap = new()
+    {
+        SType = StructureType.PhysicalDeviceFragmentDensityMapFeaturesExt,
+        PNext = features2.PNext,
+    };
 
-            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_custom_border_color") &&
-                supportedFeaturesCustomBorderColor.CustomBorderColors &&
-                supportedFeaturesCustomBorderColor.CustomBorderColorWithoutFormat)
-            {
-                featuresCustomBorderColor = new PhysicalDeviceCustomBorderColorFeaturesEXT
-                {
-                    SType = StructureType.PhysicalDeviceCustomBorderColorFeaturesExt,
-                    PNext = pExtendedFeatures,
-                    CustomBorderColors = true,
-                    CustomBorderColorWithoutFormat = true,
-                };
+    if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map"))
+    {
+        features2.PNext = &supportedFeaturesFragmentDensityMap;
+    }
 
-                pExtendedFeatures = &featuresCustomBorderColor;
-            }
+    // 片段密度图2特性检测
+    PhysicalDeviceFragmentDensityMap2FeaturesEXT supportedFeaturesFragmentDensityMap2 = new()
+    {
+        SType = StructureType.PhysicalDeviceFragmentDensityMap2FeaturesExt,
+        PNext = features2.PNext,
+    };
 
-            PhysicalDeviceDepthClipControlFeaturesEXT featuresDepthClipControl;
+    if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map2"))
+    {
+        features2.PNext = &supportedFeaturesFragmentDensityMap2;
+    }
 
-            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_depth_clip_control") &&
-                supportedFeaturesDepthClipControl.DepthClipControl)
-            {
-                featuresDepthClipControl = new PhysicalDeviceDepthClipControlFeaturesEXT
-                {
-                    SType = StructureType.PhysicalDeviceDepthClipControlFeaturesExt,
-                    PNext = pExtendedFeatures,
-                    DepthClipControl = true,
-                };
+    // Vulkan 1.2 特性
+    PhysicalDeviceVulkan12Features supportedPhysicalDeviceVulkan12Features = new()
+    {
+        SType = StructureType.PhysicalDeviceVulkan12Features,
+        PNext = features2.PNext,
+    };
+    features2.PNext = &supportedPhysicalDeviceVulkan12Features;
 
-                pExtendedFeatures = &featuresDepthClipControl;
-            }
+    api.GetPhysicalDeviceFeatures2(physicalDevice.PhysicalDevice, &features2);
 
-            PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT featuresAttachmentFeedbackLoopLayout;
+    var supportedFeatures = features2.Features;
 
-            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_attachment_feedback_loop_layout") &&
-                supportedFeaturesAttachmentFeedbackLoopLayout.AttachmentFeedbackLoopLayout)
-            {
-                featuresAttachmentFeedbackLoopLayout = new()
-                {
-                    SType = StructureType.PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesExt,
-                    PNext = pExtendedFeatures,
-                    AttachmentFeedbackLoopLayout = true,
-                };
+    var features = new PhysicalDeviceFeatures
+    {
+        DepthBiasClamp = supportedFeatures.DepthBiasClamp,
+        DepthClamp = supportedFeatures.DepthClamp,
+        DualSrcBlend = supportedFeatures.DualSrcBlend,
+        FragmentStoresAndAtomics = supportedFeatures.FragmentStoresAndAtomics,
+        GeometryShader = supportedFeatures.GeometryShader,
+        ImageCubeArray = supportedFeatures.ImageCubeArray,
+        IndependentBlend = supportedFeatures.IndependentBlend,
+        LogicOp = supportedFeatures.LogicOp,
+        OcclusionQueryPrecise = supportedFeatures.OcclusionQueryPrecise,
+        MultiViewport = supportedFeatures.MultiViewport,
+        PipelineStatisticsQuery = supportedFeatures.PipelineStatisticsQuery,
+        SamplerAnisotropy = supportedFeatures.SamplerAnisotropy,
+        ShaderClipDistance = supportedFeatures.ShaderClipDistance,
+        ShaderFloat64 = supportedFeatures.ShaderFloat64,
+        ShaderImageGatherExtended = supportedFeatures.ShaderImageGatherExtended,
+        ShaderStorageImageMultisample = supportedFeatures.ShaderStorageImageMultisample,
+        ShaderStorageImageReadWithoutFormat = supportedFeatures.ShaderStorageImageReadWithoutFormat,
+        ShaderStorageImageWriteWithoutFormat = supportedFeatures.ShaderStorageImageWriteWithoutFormat,
+        TessellationShader = supportedFeatures.TessellationShader,
+        VertexPipelineStoresAndAtomics = supportedFeatures.VertexPipelineStoresAndAtomics,
+        RobustBufferAccess = useRobustBufferAccess,
+        SampleRateShading = supportedFeatures.SampleRateShading,
+    };
 
-                pExtendedFeatures = &featuresAttachmentFeedbackLoopLayout;
-            }
+    void* pExtendedFeatures = null;
 
-            PhysicalDeviceAttachmentFeedbackLoopDynamicStateFeaturesEXT featuresDynamicAttachmentFeedbackLoopLayout;
+    // 多视图特性启用
+    PhysicalDeviceMultiviewFeatures featuresMultiview;
+    if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
+    {
+        featuresMultiview = new PhysicalDeviceMultiviewFeatures
+        {
+            SType = StructureType.PhysicalDeviceMultiviewFeatures,
+            PNext = pExtendedFeatures,
+            Multiview = supportedFeaturesMultiview.Multiview,
+            MultiviewGeometryShader = supportedFeaturesMultiview.MultiviewGeometryShader,
+            MultiviewTessellationShader = supportedFeaturesMultiview.MultiviewTessellationShader
+        };
+        pExtendedFeatures = &featuresMultiview;
+    }
 
-            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_attachment_feedback_loop_dynamic_state") &&
-                supportedFeaturesDynamicAttachmentFeedbackLoopLayout.AttachmentFeedbackLoopDynamicState)
-            {
-                featuresDynamicAttachmentFeedbackLoopLayout = new()
-                {
-                    SType = StructureType.PhysicalDeviceAttachmentFeedbackLoopDynamicStateFeaturesExt,
-                    PNext = pExtendedFeatures,
-                    AttachmentFeedbackLoopDynamicState = true,
-                };
+    // Mali 渲染顺序附件访问特性启用
+    PhysicalDeviceRasterizationOrderAttachmentAccessFeaturesARM featuresRasterizationOrder;
+    if (physicalDevice.IsDeviceExtensionPresent("VK_ARM_rasterization_order_attachment_access"))
+    {
+        featuresRasterizationOrder = new PhysicalDeviceRasterizationOrderAttachmentAccessFeaturesARM
+        {
+            SType = StructureType.PhysicalDeviceRasterizationOrderAttachmentAccessFeaturesArm,
+            PNext = pExtendedFeatures,
+            RasterizationOrderColorAttachmentAccess = true,
+            RasterizationOrderDepthAttachmentAccess = true,
+            RasterizationOrderStencilAttachmentAccess = true
+        };
+        pExtendedFeatures = &featuresRasterizationOrder;
+    }
 
-                pExtendedFeatures = &featuresDynamicAttachmentFeedbackLoopLayout;
-            }
+    // 变换反馈特性启用
+    PhysicalDeviceTransformFeedbackFeaturesEXT featuresTransformFeedback;
+    if (physicalDevice.IsDeviceExtensionPresent(ExtTransformFeedback.ExtensionName))
+    {
+        featuresTransformFeedback = new PhysicalDeviceTransformFeedbackFeaturesEXT
+        {
+            SType = StructureType.PhysicalDeviceTransformFeedbackFeaturesExt,
+            PNext = pExtendedFeatures,
+            TransformFeedback = supportedFeaturesTransformFeedback.TransformFeedback,
+        };
+        pExtendedFeatures = &featuresTransformFeedback;
+    }
 
-            // 添加片段密度图特性启用
-            PhysicalDeviceFragmentDensityMapFeaturesEXT featuresFragmentDensityMap;
+    // 图元拓扑列表重启特性启用
+    PhysicalDevicePrimitiveTopologyListRestartFeaturesEXT featuresPrimitiveTopologyListRestart;
+    if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_primitive_topology_list_restart"))
+    {
+        featuresPrimitiveTopologyListRestart = new PhysicalDevicePrimitiveTopologyListRestartFeaturesEXT
+        {
+            SType = StructureType.PhysicalDevicePrimitiveTopologyListRestartFeaturesExt,
+            PNext = pExtendedFeatures,
+            PrimitiveTopologyListRestart = supportedFeaturesPrimitiveTopologyListRestart.PrimitiveTopologyListRestart,
+            PrimitiveTopologyPatchListRestart = supportedFeaturesPrimitiveTopologyListRestart.PrimitiveTopologyPatchListRestart,
+        };
+        pExtendedFeatures = &featuresPrimitiveTopologyListRestart;
+    }
 
-            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map") &&
-                supportedFeaturesFragmentDensityMap.FragmentDensityMap)
-            {
-                featuresFragmentDensityMap = new()
-                {
-                    SType = StructureType.PhysicalDeviceFragmentDensityMapFeaturesExt,
-                    PNext = pExtendedFeatures,
-                    FragmentDensityMap = true,
-                };
+    // 鲁棒性2特性启用
+    PhysicalDeviceRobustness2FeaturesEXT featuresRobustness2;
+    if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_robustness2"))
+    {
+        featuresRobustness2 = new PhysicalDeviceRobustness2FeaturesEXT
+        {
+            SType = StructureType.PhysicalDeviceRobustness2FeaturesExt,
+            PNext = pExtendedFeatures,
+            NullDescriptor = supportedFeaturesRobustness2.NullDescriptor,
+        };
+        pExtendedFeatures = &featuresRobustness2;
+    }
 
-                pExtendedFeatures = &featuresFragmentDensityMap;
-            }
+    // 扩展动态状态特性
+    var featuresExtendedDynamicState = new PhysicalDeviceExtendedDynamicStateFeaturesEXT
+    {
+        SType = StructureType.PhysicalDeviceExtendedDynamicStateFeaturesExt,
+        PNext = pExtendedFeatures,
+        ExtendedDynamicState = physicalDevice.IsDeviceExtensionPresent(ExtExtendedDynamicState.ExtensionName),
+    };
+    pExtendedFeatures = &featuresExtendedDynamicState;
 
-            PhysicalDeviceFragmentDensityMap2FeaturesEXT featuresFragmentDensityMap2;
+    // Vulkan 1.1 特性启用
+    var featuresVk11 = new PhysicalDeviceVulkan11Features
+    {
+        SType = StructureType.PhysicalDeviceVulkan11Features,
+        PNext = pExtendedFeatures,
+        ShaderDrawParameters = supportedFeaturesVk11.ShaderDrawParameters,
+    };
+    pExtendedFeatures = &featuresVk11;
 
-            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map2") &&
-                supportedFeaturesFragmentDensityMap2.FragmentDensityMapDeferred)
-            {
-                featuresFragmentDensityMap2 = new()
-                {
-                    SType = StructureType.PhysicalDeviceFragmentDensityMap2FeaturesExt,
-                    PNext = pExtendedFeatures,
-                    FragmentDensityMapDeferred = true,
-                };
+    // Vulkan 1.2 特性启用
+    var featuresVk12 = new PhysicalDeviceVulkan12Features
+    {
+        SType = StructureType.PhysicalDeviceVulkan12Features,
+        PNext = pExtendedFeatures,
+        DescriptorIndexing = supportedPhysicalDeviceVulkan12Features.DescriptorIndexing,
+        DrawIndirectCount = supportedPhysicalDeviceVulkan12Features.DrawIndirectCount,
+        UniformBufferStandardLayout = supportedPhysicalDeviceVulkan12Features.UniformBufferStandardLayout,
+        UniformAndStorageBuffer8BitAccess = supportedPhysicalDeviceVulkan12Features.UniformAndStorageBuffer8BitAccess,
+        StorageBuffer8BitAccess = supportedPhysicalDeviceVulkan12Features.StorageBuffer8BitAccess,
+    };
+    pExtendedFeatures = &featuresVk12;
 
-                pExtendedFeatures = &featuresFragmentDensityMap2;
-            }
-            // 
+    // 8位索引类型特性启用
+    PhysicalDeviceIndexTypeUint8FeaturesEXT featuresIndexU8;
+    if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_index_type_uint8"))
+    {
+        featuresIndexU8 = new PhysicalDeviceIndexTypeUint8FeaturesEXT
+        {
+            SType = StructureType.PhysicalDeviceIndexTypeUint8FeaturesExt,
+            PNext = pExtendedFeatures,
+            IndexTypeUint8 = true,
+        };
+        pExtendedFeatures = &featuresIndexU8;
+    }
 
-            var enabledExtensions = _requiredExtensions.Union(_desirableExtensions.Intersect(physicalDevice.DeviceExtensions)).ToArray();
+    // 片段着色器互锁特性启用
+    PhysicalDeviceFragmentShaderInterlockFeaturesEXT featuresFragmentShaderInterlock;
+    if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_shader_interlock"))
+    {
+        featuresFragmentShaderInterlock = new PhysicalDeviceFragmentShaderInterlockFeaturesEXT
+        {
+            SType = StructureType.PhysicalDeviceFragmentShaderInterlockFeaturesExt,
+            PNext = pExtendedFeatures,
+            FragmentShaderPixelInterlock = true,
+        };
+        pExtendedFeatures = &featuresFragmentShaderInterlock;
+    }
 
-            IntPtr* ppEnabledExtensions = stackalloc IntPtr[enabledExtensions.Length];
+    // 自定义边框颜色特性启用
+    PhysicalDeviceCustomBorderColorFeaturesEXT featuresCustomBorderColor;
+    if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_custom_border_color") &&
+        supportedFeaturesCustomBorderColor.CustomBorderColors &&
+        supportedFeaturesCustomBorderColor.CustomBorderColorWithoutFormat)
+    {
+        featuresCustomBorderColor = new PhysicalDeviceCustomBorderColorFeaturesEXT
+        {
+            SType = StructureType.PhysicalDeviceCustomBorderColorFeaturesExt,
+            PNext = pExtendedFeatures,
+            CustomBorderColors = true,
+            CustomBorderColorWithoutFormat = true,
+        };
+        pExtendedFeatures = &featuresCustomBorderColor;
+    }
 
-            for (int i = 0; i < enabledExtensions.Length; i++)
-            {
-                ppEnabledExtensions[i] = Marshal.StringToHGlobalAnsi(enabledExtensions[i]);
-            }
+    // 深度裁剪控制特性启用
+    PhysicalDeviceDepthClipControlFeaturesEXT featuresDepthClipControl;
+    if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_depth_clip_control") &&
+        supportedFeaturesDepthClipControl.DepthClipControl)
+    {
+        featuresDepthClipControl = new PhysicalDeviceDepthClipControlFeaturesEXT
+        {
+            SType = StructureType.PhysicalDeviceDepthClipControlFeaturesExt,
+            PNext = pExtendedFeatures,
+            DepthClipControl = true,
+        };
+        pExtendedFeatures = &featuresDepthClipControl;
+    }
 
-            var deviceCreateInfo = new DeviceCreateInfo
-            {
-                SType = StructureType.DeviceCreateInfo,
-                PNext = pExtendedFeatures,
-                QueueCreateInfoCount = 1,
-                PQueueCreateInfos = &queueCreateInfo,
-                PpEnabledExtensionNames = (byte**)ppEnabledExtensions,
-                EnabledExtensionCount = (uint)enabledExtensions.Length,
-                PEnabledFeatures = &features,
-            };
+    // 附件反馈循环布局特性启用
+    PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT featuresAttachmentFeedbackLoopLayout;
+    if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_attachment_feedback_loop_layout") &&
+        supportedFeaturesAttachmentFeedbackLoopLayout.AttachmentFeedbackLoopLayout)
+    {
+        featuresAttachmentFeedbackLoopLayout = new()
+        {
+            SType = StructureType.PhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesExt,
+            PNext = pExtendedFeatures,
+            AttachmentFeedbackLoopLayout = true,
+        };
+        pExtendedFeatures = &featuresAttachmentFeedbackLoopLayout;
+    }
 
-            api.CreateDevice(physicalDevice.PhysicalDevice, in deviceCreateInfo, null, out var device).ThrowOnError();
+    // 动态附件反馈循环布局特性启用
+    PhysicalDeviceAttachmentFeedbackLoopDynamicStateFeaturesEXT featuresDynamicAttachmentFeedbackLoopLayout;
+    if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_attachment_feedback_loop_dynamic_state") &&
+        supportedFeaturesDynamicAttachmentFeedbackLoopLayout.AttachmentFeedbackLoopDynamicState)
+    {
+        featuresDynamicAttachmentFeedbackLoopLayout = new()
+        {
+            SType = StructureType.PhysicalDeviceAttachmentFeedbackLoopDynamicStateFeaturesExt,
+            PNext = pExtendedFeatures,
+            AttachmentFeedbackLoopDynamicState = true,
+        };
+        pExtendedFeatures = &featuresDynamicAttachmentFeedbackLoopLayout;
+    }
 
-            for (int i = 0; i < enabledExtensions.Length; i++)
-            {
-                Marshal.FreeHGlobal(ppEnabledExtensions[i]);
-            }
+    // 片段密度图特性启用
+    PhysicalDeviceFragmentDensityMapFeaturesEXT featuresFragmentDensityMap;
+    if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map") &&
+        supportedFeaturesFragmentDensityMap.FragmentDensityMap)
+    {
+        featuresFragmentDensityMap = new()
+        {
+            SType = StructureType.PhysicalDeviceFragmentDensityMapFeaturesExt,
+            PNext = pExtendedFeatures,
+            FragmentDensityMap = true,
+        };
+        pExtendedFeatures = &featuresFragmentDensityMap;
+    }
 
-            return device;
+    // 片段密度图2特性启用
+    PhysicalDeviceFragmentDensityMap2FeaturesEXT featuresFragmentDensityMap2;
+    if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map2") &&
+        supportedFeaturesFragmentDensityMap2.FragmentDensityMapDeferred)
+    {
+        featuresFragmentDensityMap2 = new()
+        {
+            SType = StructureType.PhysicalDeviceFragmentDensityMap2FeaturesExt,
+            PNext = pExtendedFeatures,
+            FragmentDensityMapDeferred = true,
+        };
+        pExtendedFeatures = &featuresFragmentDensityMap2;
+    }
+
+    var enabledExtensions = _requiredExtensions.Union(_desirableExtensions.Intersect(physicalDevice.DeviceExtensions)).ToArray();
+
+    IntPtr* ppEnabledExtensions = stackalloc IntPtr[enabledExtensions.Length];
+    for (int i = 0; i < enabledExtensions.Length; i++)
+    {
+        ppEnabledExtensions[i] = Marshal.StringToHGlobalAnsi(enabledExtensions[i]);
+    }
+
+    var deviceCreateInfo = new DeviceCreateInfo
+    {
+        SType = StructureType.DeviceCreateInfo,
+        PNext = pExtendedFeatures,
+        QueueCreateInfoCount = 1,
+        PQueueCreateInfos = &queueCreateInfo,
+        PpEnabledExtensionNames = (byte**)ppEnabledExtensions,
+        EnabledExtensionCount = (uint)enabledExtensions.Length,
+        PEnabledFeatures = &features,
+    };
+
+    api.CreateDevice(physicalDevice.PhysicalDevice, in deviceCreateInfo, null, out var device).ThrowOnError();
+
+    for (int i = 0; i < enabledExtensions.Length; i++)
+    {
+        Marshal.FreeHGlobal(ppEnabledExtensions[i]);
+    }
+
+    return device;
         }
     }
 }
