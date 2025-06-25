@@ -16,7 +16,7 @@
     <PackageVersion Include="DynamicData" Version="9.0.4" />
     <PackageVersion Include="FluentAvaloniaUI" Version="2.4.0-preview1" />
     <PackageVersion Include="Ryujinx.LibHac" Version="0.20.0" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="4.14.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.5-beta1.23320.2" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.12.0" />
     <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.9.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
