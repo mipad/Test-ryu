@@ -297,11 +297,36 @@ namespace Ryujinx.Graphics.Shader.Translation
 
         public AggregateType GetFragmentOutputColorType(int location)
         {
-            return AggregateType.Vector4 | _graphicsState.FragmentOutputTypes[location].ToAggregateType();
+            if (location >= 0 && location < _graphicsState.FragmentOutputTypes.Length)
+            {
+                return AggregateType.Vector4 | _graphicsState.FragmentOutputTypes[location].ToAggregateType();
+            }
+            // 无效位置使用默认类型
+            return AggregateType.Vector4 | AggregateType.FP32;
+        }
+
+        // 检查是否为纹理坐标变量
+        public bool IsTextureCoordVariable(int location)
+        {
+            // 纹理坐标通常位于特定位置范围（如8-15）
+            return location >= 8 && location <= 15;
         }
 
         public AggregateType GetUserDefinedType(int location, bool isOutput)
         {
+            // 安全获取属性类型，避免无效位置
+            AttributeType attrType = AttributeType.Float; // 默认类型
+            if (location >= 0 && location < _graphicsState.AttributeTypes.Length)
+            {
+                attrType = _graphicsState.AttributeTypes[location];
+            }
+
+            // 如果是纹理坐标，返回 vec2 类型
+            if (IsTextureCoordVariable(location))
+            {
+                return AggregateType.Vector2 | AggregateType.FP32;
+            }
+
             if ((!isOutput && IaIndexing) || (isOutput && OaIndexing))
             {
                 return AggregateType.Array | AggregateType.Vector4 | AggregateType.FP32;
@@ -311,7 +336,16 @@ namespace Ryujinx.Graphics.Shader.Translation
 
             if (Stage == ShaderStage.Vertex && !isOutput)
             {
-                type |= _graphicsState.AttributeTypes[location].ToAggregateType(SupportsScaledVertexFormats);
+                // 安全类型转换：处理无效属性类型
+                if (attrType != AttributeType.Invalid)
+                {
+                    type |= attrType.ToAggregateType(SupportsScaledVertexFormats);
+                }
+                else
+                {
+                    // 无效类型使用默认浮点类型
+                    type |= AggregateType.FP32;
+                }
             }
             else
             {
@@ -321,24 +355,33 @@ namespace Ryujinx.Graphics.Shader.Translation
             return type;
         }
 
+        // 增强属性类型获取的安全性
         public AttributeType GetAttributeType(int location)
         {
-            return _graphicsState.AttributeTypes[location];
+            // 边界检查
+            if (location >= 0 && location < _graphicsState.AttributeTypes.Length)
+            {
+                return _graphicsState.AttributeTypes[location];
+            }
+            return AttributeType.Float; // 返回默认类型
         }
 
         public bool IsAttributeSint(int location)
         {
-            return (_graphicsState.AttributeTypes[location] & ~AttributeType.AnyPacked) == AttributeType.Sint;
+            var attrType = GetAttributeType(location);
+            return (attrType & ~AttributeType.AnyPacked) == AttributeType.Sint;
         }
 
         public bool IsAttributePacked(int location)
         {
-            return _graphicsState.AttributeTypes[location].HasFlag(AttributeType.Packed);
+            var attrType = GetAttributeType(location);
+            return attrType.HasFlag(AttributeType.Packed);
         }
 
         public bool IsAttributePackedRgb10A2Signed(int location)
         {
-            return _graphicsState.AttributeTypes[location].HasFlag(AttributeType.PackedRgb10A2Signed);
+            var attrType = GetAttributeType(location);
+            return attrType.HasFlag(AttributeType.PackedRgb10A2Signed);
         }
 
         public int GetGeometryOutputIndexBufferStridePerInstance()
