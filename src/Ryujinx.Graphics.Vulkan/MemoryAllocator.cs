@@ -78,9 +78,9 @@ namespace Ryujinx.Graphics.Vulkan
                     // 记录回退决策（如果与原始请求不同）
                     if (flagCombo != flags)
                     {
-                        Logger.Warning?.Print(LogClass.Gpu, 
-                            $"Using fallback memory flags: {flagCombo} " +
-                            $"instead of requested: {flags}");
+                        //Logger.Warning?.Print(LogClass.Gpu, 
+                            //$"Using fallback memory flags: {flagCombo} " +
+                            //$"instead of requested: {flags}");
                     }
 
                     bool map = flagCombo.HasFlag(MemoryPropertyFlags.HostVisibleBit);
