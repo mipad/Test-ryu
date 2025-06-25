@@ -160,8 +160,6 @@ namespace Ryujinx.Memory
             const int O_TRUNC = 0x400;
             const int S_IRUSR = 0x100;  // 用户读权限
             const int S_IWUSR = 0x80;   // 用户写权限
-            const int S_IRGRP = 0x20;   // 组读权限
-            const int S_IWGRP = 0x10;   // 组写权限
             
             int fd = -1;
             string tempName = $"/Kenji-NX-{Guid.NewGuid():N}"; // 生成唯一名称
