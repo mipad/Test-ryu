@@ -1,8 +1,13 @@
 using Ryujinx.Memory;
 using System;
+using System.Runtime.Versioning;
 
 namespace Ryujinx.Cpu
 {
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("android")]
+    [SupportedOSPlatform("windows")]
+    [SupportedOSPlatform("macos")]
     public class AddressSpace : IDisposable
     {
         private const MemoryAllocationFlags AsFlags = MemoryAllocationFlags.Reserve | MemoryAllocationFlags.ViewCompatible;
@@ -56,9 +61,7 @@ namespace Ryujinx.Cpu
             {
                 try
                 {
-                    MemoryBlock baseMemory = new MemoryBlock(addressSpaceSize, AsFlags);
-                    addressSpace = baseMemory;
-
+                    addressSpace = new MemoryBlock(addressSpaceSize, AsFlags);
                     break;
                 }
                 catch (SystemException)
