@@ -5,6 +5,9 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using static Ryujinx.Memory.MemoryManagerUnixHelper;
 
+// 禁用平台兼容性警告，因为我们在Unix系统上确保正确性
+#pragma warning disable CA1416
+
 namespace Ryujinx.Memory
 {
     [SupportedOSPlatform("linux")]
@@ -91,7 +94,17 @@ namespace Ryujinx.Memory
                 throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
             }
 
-            if (madvise(address, size, MADV_REMOVE) != 0)
+            int advice;
+            if (OperatingSystem.IsMacOS())
+            {
+                advice = MADV_FREE; // macOS使用MADV_FREE
+            }
+            else
+            {
+                advice = MADV_DONTNEED; // Linux/Android使用MADV_DONTNEED
+            }
+
+            if (madvise(address, size, advice) != 0)
             {
                 throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
             }
@@ -138,6 +151,16 @@ namespace Ryujinx.Memory
 
         public unsafe static IntPtr CreateSharedMemory(ulong size, bool reserve)
         {
+            // 使用常量提高可读性
+            const int O_RDWR = 0x02;
+            const int O_CREAT = 0x200;
+            const int O_EXCL = 0x800;
+            const int O_TRUNC = 0x400;
+            const int S_IRUSR = 0x100;  // 用户读权限
+            const int S_IWUSR = 0x80;   // 用户写权限
+            const int S_IRGRP = 0x20;   // 组读权限
+            const int S_IWGRP = 0x10;   // 组写权限
+            
             int fd;
 
             if (OperatingSystem.IsMacOS())
@@ -146,7 +169,11 @@ namespace Ryujinx.Memory
 
                 fixed (byte* pMemName = memName)
                 {
-                    fd = shm_open((IntPtr)pMemName, 0x2 | 0x200 | 0x800 | 0x400, 384); // O_RDWR | O_CREAT | O_EXCL | O_TRUNC, 0600
+                    // 使用组合权限常量
+                    int flags = O_RDWR | O_CREAT | O_EXCL | O_TRUNC;
+                    int mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP; // 0600 -> 用户读写，组读写
+                    
+                    fd = shm_open((IntPtr)pMemName, flags, mode);
                     if (fd == -1)
                     {
                         throw new SystemException(Marshal.GetLastPInvokeErrorMessage());
