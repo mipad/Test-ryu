@@ -17,8 +17,12 @@ namespace ARMeilleure.Translation.Cache
         private static readonly int _pageMask = _pageSize - 2;
 
         private const int CodeAlignment = 4; // Bytes.
-        private const int CacheSize = 2047 * 1024 * 1024;
-        private const int CacheSizeAndroid = 256 * 1024 * 1024;
+        
+        #if UNITY_ANDROID
+        private const int CacheSize = 64 * 1024 * 1024;  // Android
+        #else
+        private const int CacheSize = 2047 * 1024 * 1024; // 其他平台
+        #endif
         
         private static ReservedRegion _jitRegion;
         private static JitCacheInvalidation _jitCacheInvalidator;
