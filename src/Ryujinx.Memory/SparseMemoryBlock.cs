@@ -3,12 +3,17 @@ using Ryujinx.Common.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.Versioning;
 using System.Threading;
 
 namespace Ryujinx.Memory
 {
     public delegate void PageInitDelegate(Span<byte> page);
 
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("windows")]
+    [SupportedOSPlatform("android")]
     public class SparseMemoryBlock : IDisposable
     {
         private const ulong MapGranularity = 1UL << 17; // 128KB mapping granularity
@@ -27,6 +32,10 @@ namespace Ryujinx.Memory
         public MemoryBlock Block => _reservedBlock;
 
         // 获取平台特定的最大保留大小
+        [SupportedOSPlatform("linux")]
+        [SupportedOSPlatform("macos")]
+        [SupportedOSPlatform("windows")]
+        [SupportedOSPlatform("android")]
         private static ulong GetPlatformMaxReserveSize()
         {
             #if ANDROID
@@ -39,6 +48,10 @@ namespace Ryujinx.Memory
         }
         
         // 获取平台特定的最大地址空间大小
+        [SupportedOSPlatform("linux")]
+        [SupportedOSPlatform("macos")]
+        [SupportedOSPlatform("windows")]
+        [SupportedOSPlatform("android")]
         public static ulong GetPlatformMaxAddressSpace()
         {
             #if ANDROID
@@ -50,6 +63,9 @@ namespace Ryujinx.Memory
             #endif
         }
 
+        [SupportedOSPlatform("linux")]
+        [SupportedOSPlatform("windows")]
+        [SupportedOSPlatform("android")]
         public SparseMemoryBlock(ulong size, PageInitDelegate pageInit, MemoryBlock fill)
         {
             #if ANDROID
@@ -108,6 +124,9 @@ namespace Ryujinx.Memory
                 $"SparseMemoryBlock created: Requested={size} bytes, Reserved={reservedSize} bytes, PageSize={_pageSize / 1024}KB");
         }
 
+        [SupportedOSPlatform("linux")]
+        [SupportedOSPlatform("windows")]
+        [SupportedOSPlatform("android")]
         private void MapPage(ulong pageOffset)
         {
             // 检查偏移是否在保留范围内
@@ -137,6 +156,9 @@ namespace Ryujinx.Memory
             _mappedBlockUsage += _pageSize;
         }
 
+        [SupportedOSPlatform("linux")]
+        [SupportedOSPlatform("windows")]
+        [SupportedOSPlatform("android")]
         public void EnsureMapped(ulong offset)
         {
             int pageIndex = (int)(offset / _pageSize);
@@ -165,6 +187,10 @@ namespace Ryujinx.Memory
             }
         }
 
+        [SupportedOSPlatform("linux")]
+        [SupportedOSPlatform("macos")]
+        [SupportedOSPlatform("windows")]
+        [SupportedOSPlatform("android")]
         public void Dispose()
         {
             // 释放所有内存块
