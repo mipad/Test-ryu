@@ -1,8 +1,10 @@
+using Ryujinx.Memory;
 using Ryujinx.Memory.Range;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.Versioning;
 
 namespace Ryujinx.Memory
 {
@@ -10,6 +12,10 @@ namespace Ryujinx.Memory
     /// Represents a address space manager.
     /// Supports virtual memory region mapping, address translation and read/write access to mapped regions.
     /// </summary>
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("android")]
+    [SupportedOSPlatform("windows")]
+    [SupportedOSPlatform("macos")]
     public sealed class AddressSpaceManager : VirtualMemoryManagerBase, IVirtualMemoryManager
     {
         /// <inheritdoc/>
