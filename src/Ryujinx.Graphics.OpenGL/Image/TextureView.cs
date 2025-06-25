@@ -553,7 +553,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                             level,
                             x,
                             width,
-                            format.PixelInternalFormat,
+                            (InternalFormat)format.PixelInternalFormat,
                             mipSize,
                             data);
                     }
@@ -580,7 +580,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                             layer,
                             width,
                             1,
-                            format.PixelInternalFormat,
+                            (InternalFormat)format.PixelInternalFormat,
                             mipSize,
                             data);
                     }
@@ -609,7 +609,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                             y,
                             width,
                             height,
-                            format.PixelInternalFormat,
+                            (InternalFormat)format.PixelInternalFormat,
                             mipSize,
                             data);
                     }
@@ -642,7 +642,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                             width,
                             height,
                             1,
-                            format.PixelInternalFormat,
+                            (InternalFormat)format.PixelInternalFormat,
                             mipSize,
                             data);
                     }
@@ -673,7 +673,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                             y,
                             width,
                             height,
-                            format.PixelInternalFormat,
+                            (InternalFormat)format.PixelInternalFormat,
                             mipSize,
                             data);
                     }
@@ -741,7 +741,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                                 level,
                                 0,
                                 width,
-                                format.PixelInternalFormat,
+                                (InternalFormat)format.PixelInternalFormat,
                                 mipSize,
                                 data);
                         }
@@ -769,7 +769,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                                 0,
                                 width,
                                 height,
-                                format.PixelInternalFormat,
+                                (InternalFormat)format.PixelInternalFormat,
                                 mipSize,
                                 data);
                         }
@@ -802,7 +802,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                                 width,
                                 height,
                                 depth,
-                                format.PixelInternalFormat,
+                                (InternalFormat)format.PixelInternalFormat,
                                 mipSize,
                                 data);
                         }
@@ -826,7 +826,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                     case Target.Cubemap:
                         int faceOffset = 0;
 
-                      for (int face = 0; face < 6; face++, faceOffset += mipSize / 6)
+                        for (int face = 0; face < 6; face++, faceOffset += mipSize / 6)
                         {
                          if (format.IsCompressed)
                             {
@@ -837,7 +837,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
                                     0,
                                     width,
                                     height,
-                                    format.PixelInternalFormat,
+                                    (InternalFormat)format.PixelInternalFormat,
                                     mipSize / 6,
                                     data + faceOffset);
                             }
