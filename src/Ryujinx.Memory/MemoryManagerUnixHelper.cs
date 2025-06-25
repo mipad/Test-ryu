@@ -6,6 +6,7 @@ namespace Ryujinx.Memory
 {
     [SupportedOSPlatform("linux")]
     [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("android")]
     public static partial class MemoryManagerUnixHelper
     {
         [Flags]
@@ -54,6 +55,7 @@ namespace Ryujinx.Memory
         private const int MAP_ANONYMOUS_DARWIN = 0x1000;
 
         public const int MADV_DONTNEED = 4;
+        public const int MADV_FREE = 5; // 添加 macOS 专用常量
         public const int MADV_REMOVE = 9;
 
         [LibraryImport("libc", EntryPoint = "mmap", SetLastError = true)]
