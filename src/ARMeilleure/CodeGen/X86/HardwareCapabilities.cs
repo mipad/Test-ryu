@@ -40,6 +40,13 @@ namespace ARMeilleure.CodeGen.X86
                 return 0;
             }
 
+            // 只在使用MemoryBlock支持的平台上执行
+            if (!(OperatingSystem.IsAndroid() || OperatingSystem.IsLinux() || 
+                  OperatingSystem.IsMacOS() || OperatingSystem.IsWindows()))
+            {
+                return 0;
+            }
+
             ReadOnlySpan<byte> asmGetXcr0 = new byte[]
             {
                 0x31, 0xc9, // xor ecx, ecx
@@ -47,6 +54,7 @@ namespace ARMeilleure.CodeGen.X86
                 0xc3, // ret
             };
 
+#pragma warning disable CA1416 // 验证平台兼容性
             using MemoryBlock memGetXcr0 = new((ulong)asmGetXcr0.Length);
 
             memGetXcr0.Write(0, asmGetXcr0);
@@ -54,6 +62,7 @@ namespace ARMeilleure.CodeGen.X86
             memGetXcr0.Reprotect(0, (ulong)asmGetXcr0.Length, MemoryPermission.ReadAndExecute);
 
             var fGetXcr0 = Marshal.GetDelegateForFunctionPointer<GetXcr0>(memGetXcr0.Pointer);
+#pragma warning restore CA1416
 
             return fGetXcr0();
         }
