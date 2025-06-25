@@ -13,8 +13,8 @@ namespace ARMeilleure.Translation.Cache
 {
     static partial class JitCache
     {
-        private static readonly int _pageSize = (int)MemoryBlock.GetPageSize();
-        private static readonly int _pageMask = _pageSize - 2;
+        private static readonly int _pageSize;
+        private static readonly int _pageMask;
 
         private const int CodeAlignment = 4; // Bytes.
         
@@ -33,6 +33,20 @@ namespace ARMeilleure.Translation.Cache
 
         private static readonly object _lock = new();
         private static bool _initialized;
+
+        static JitCache()
+        {
+            if (OperatingSystem.IsAndroid() || OperatingSystem.IsLinux() || 
+                OperatingSystem.IsMacOS() || OperatingSystem.IsWindows())
+            {
+                _pageSize = (int)MemoryBlock.GetPageSize();
+            }
+            else
+            {
+                _pageSize = 4096; // 默认页面大小
+            }
+            _pageMask = _pageSize - 2;
+        }
 
         [SupportedOSPlatform("windows")]
         [LibraryImport("kernel32.dll", SetLastError = true)]
@@ -84,6 +98,7 @@ namespace ARMeilleure.Translation.Cache
 
                 if (OperatingSystem.IsMacOS() && RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
                 {
+#pragma warning disable CA1416 // 验证平台兼容性
                     unsafe
                     {
                         fixed (byte* codePtr = code)
@@ -91,6 +106,7 @@ namespace ARMeilleure.Translation.Cache
                             JitSupportDarwin.Copy(funcPtr, (IntPtr)codePtr, (ulong)code.Length);
                         }
                     }
+#pragma warning restore CA1416
                 }
                 else
                 {
