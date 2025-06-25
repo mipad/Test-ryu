@@ -1,8 +1,10 @@
 using Ryujinx.Common.Logging;
+using Ryujinx.Common; // 添加 PlatformInfo 引用
 using System;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Text; // 添加字符串编码支持
 using static Ryujinx.Memory.MemoryManagerUnixHelper;
 
 // 禁用平台兼容性警告，因为我们在Unix系统上确保正确性
@@ -97,11 +99,11 @@ namespace Ryujinx.Memory
             int advice;
             if (OperatingSystem.IsMacOS())
             {
-                advice = MADV_FREE; // macOS使用MADV_FREE
+                advice = MADV_FREE; // 使用新定义的 macOS 常量
             }
             else
             {
-                advice = MADV_DONTNEED; // Linux/Android使用MADV_DONTNEED
+                advice = MADV_DONTNEED; // Linux/Android 使用 MADV_DONTNEED
             }
 
             if (madvise(address, size, advice) != 0)
@@ -161,18 +163,19 @@ namespace Ryujinx.Memory
             const int S_IRGRP = 0x20;   // 组读权限
             const int S_IWGRP = 0x10;   // 组写权限
             
-            int fd;
+            int fd = -1;
+            string tempName = $"/Kenji-NX-{Guid.NewGuid():N}"; // 生成唯一名称
 
             if (OperatingSystem.IsMacOS())
             {
-                byte[] memName = "Kenji-NX-XXXXXX"u8.ToArray();
+                byte[] memName = Encoding.ASCII.GetBytes(tempName + '\0');
 
                 fixed (byte* pMemName = memName)
                 {
                     // 使用组合权限常量
                     int flags = O_RDWR | O_CREAT | O_EXCL | O_TRUNC;
-                    int mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP; // 0600 -> 用户读写，组读写
-                    
+                    uint mode = (uint)(S_IRUSR | S_IWUSR); // 修正为 uint 类型
+
                     fd = shm_open((IntPtr)pMemName, flags, mode);
                     if (fd == -1)
                     {
@@ -185,9 +188,9 @@ namespace Ryujinx.Memory
                     }
                 }
             }
-            else if (Ryujinx.Common.PlatformInfo.IsBionic)
+            else if (PlatformInfo.IsBionic) // 使用 PlatformInfo
             {
-                byte[] memName = "Kenji-NX-XXXXXX"u8.ToArray();
+                byte[] memName = Encoding.ASCII.GetBytes(tempName + '\0');
 
                 Logger.Debug?.Print(LogClass.Cpu, $"Creating Android SharedMemory of size:{size}");
 
@@ -205,9 +208,10 @@ namespace Ryujinx.Memory
             }
             else
             {
-                byte[] fileName = "/dev/shm/Kenji-NX-XXXXXX"u8.ToArray();
+                string fileName = $"/dev/shm/Kenji-NX-{Guid.NewGuid():N}";
+                byte[] fileNameBytes = Encoding.ASCII.GetBytes(fileName + '\0');
 
-                fixed (byte* pFileName = fileName)
+                fixed (byte* pFileName = fileNameBytes)
                 {
                     fd = mkstemp((IntPtr)pFileName);
                     if (fd == -1)
