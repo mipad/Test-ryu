@@ -14,45 +14,31 @@ namespace Ryujinx.HLE.HOS.Services.Ldn
 
         public NetworkInterface(Horizon system)
         {
-            // TODO(Ac_K): Determine where the internal state is set.
-            NifmState = ResultCode.Success;
-            StateChangeEvent = new KEvent(system.KernelContext);
-
+            // 初始化为 None 状态（表示网络不可用）
             _state = NetworkState.None;
+            StateChangeEvent = new KEvent(system.KernelContext);
+            StateChangeEvent.WritableEvent.Signal(); // 立即通知状态变化
         }
 
         public ResultCode Initialize(int unknown, int version, IPAddress ipv4Address, IPAddress subnetMaskAddress)
         {
-            // TODO(Ac_K): Call nn::nifm::InitializeSystem().
-            //             If the call failed, it returns the result code.
-            //             If the call succeed, it signal and clear an event then start a new thread named nn.ldn.NetworkInterfaceMonitor.
-
-            Logger.Stub?.PrintStub(LogClass.ServiceLdn, new { version });
-
-            // NOTE: Since we don't support ldn for now, we can return this following result code to make it disabled.
-            return ResultCode.DeviceDisabled;
+            // 返回成功但保持 None 状态
+            Logger.Info?.Print(LogClass.ServiceLdn, "网络服务初始化成功（模拟禁用状态）");
+            return ResultCode.Success;
         }
 
         public ResultCode GetState(out NetworkState state)
         {
-            // Return ResultCode.InvalidArgument if _state is null, doesn't occur in our case.
-
-            state = _state;
-
+            // 始终返回 None 状态（网络不可用）
+            state = NetworkState.None;
             return ResultCode.Success;
         }
 
         public ResultCode Finalize()
         {
-            // TODO(Ac_K): Finalize nifm service then kill the thread named nn.ldn.NetworkInterfaceMonitor.
-
+            // 保持 None 状态
             _state = NetworkState.None;
-
             StateChangeEvent.WritableEvent.Signal();
-            StateChangeEvent.WritableEvent.Clear();
-
-            Logger.Stub?.PrintStub(LogClass.ServiceLdn);
-
             return ResultCode.Success;
         }
     }
