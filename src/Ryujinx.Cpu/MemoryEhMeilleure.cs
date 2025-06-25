@@ -4,9 +4,16 @@ using Ryujinx.Memory;
 using Ryujinx.Memory.Tracking;
 using System;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning; // 添加命名空间以使用SupportedOSPlatform
 
 namespace Ryujinx.Cpu
 {
+    // 明确指定支持的操作系统平台
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("android")]
+    [SupportedOSPlatform("windows")]
+    [UnsupportedOSPlatform("browser")] // 明确标记不支持browser平台
     public class MemoryEhMeilleure : IDisposable
     {
         public delegate ulong TrackingEventDelegate(ulong address, ulong size, bool write);
