@@ -1,4 +1,5 @@
 using Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.HLE.HOS.Services.Ldn
 {
@@ -10,9 +11,9 @@ namespace Ryujinx.HLE.HOS.Services.Ldn
         [CommandCmif(0)]
         public ResultCode CreateUserLocalCommunicationService(ServiceCtx context)
         {
-            // +++ 允许创建服务但内部模拟无网络状态 +++
+            // 允许创建服务但内部模拟无网络状态
             MakeObject(context, new IUserLocalCommunicationService(context));
-            Logger.Info?.Print(LogClass.ServiceLdn, "Network service created (simulated disabled state)");
+            Logger.Info?.Print(LogClass.ServiceLdn, "网络服务创建成功（模拟禁用状态）");
             return ResultCode.Success;
         }
     }
