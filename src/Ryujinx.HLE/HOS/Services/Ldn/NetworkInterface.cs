@@ -14,30 +14,30 @@ namespace Ryujinx.HLE.HOS.Services.Ldn
 
         public NetworkInterface(Horizon system)
         {
-            // +++ 初始化为不可用状态 +++
-            _state = NetworkState.Disabled;
+            // 初始化为 None 状态（表示网络不可用）
+            _state = NetworkState.None;
             StateChangeEvent = new KEvent(system.KernelContext);
             StateChangeEvent.WritableEvent.Signal(); // 立即通知状态变化
         }
 
         public ResultCode Initialize(int unknown, int version, IPAddress ipv4Address, IPAddress subnetMaskAddress)
         {
-            // +++ 返回成功但保持禁用状态 +++
-            Logger.Info?.Print(LogClass.ServiceLdn, "Network service initialized (disabled)");
+            // 返回成功但保持 None 状态
+            Logger.Info?.Print(LogClass.ServiceLdn, "网络服务初始化成功（模拟禁用状态）");
             return ResultCode.Success;
         }
 
         public ResultCode GetState(out NetworkState state)
         {
-            // +++ 始终返回禁用状态 +++
-            state = NetworkState.Disabled;
+            // 始终返回 None 状态（网络不可用）
+            state = NetworkState.None;
             return ResultCode.Success;
         }
 
         public ResultCode Finalize()
         {
-            // +++ 简化清理过程 +++
-            _state = NetworkState.Disabled;
+            // 保持 None 状态
+            _state = NetworkState.None;
             StateChangeEvent.WritableEvent.Signal();
             return ResultCode.Success;
         }
