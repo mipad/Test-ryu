@@ -14,45 +14,31 @@ namespace Ryujinx.HLE.HOS.Services.Ldn
 
         public NetworkInterface(Horizon system)
         {
-            // TODO(Ac_K): Determine where the internal state is set.
-            NifmState = ResultCode.Success;
+            // +++ 初始化为不可用状态 +++
+            _state = NetworkState.Disabled;
             StateChangeEvent = new KEvent(system.KernelContext);
-
-            _state = NetworkState.None;
+            StateChangeEvent.WritableEvent.Signal(); // 立即通知状态变化
         }
 
         public ResultCode Initialize(int unknown, int version, IPAddress ipv4Address, IPAddress subnetMaskAddress)
         {
-            // TODO(Ac_K): Call nn::nifm::InitializeSystem().
-            //             If the call failed, it returns the result code.
-            //             If the call succeed, it signal and clear an event then start a new thread named nn.ldn.NetworkInterfaceMonitor.
-
-            Logger.Stub?.PrintStub(LogClass.ServiceLdn, new { version });
-
-            // NOTE: Since we don't support ldn for now, we can return this following result code to make it disabled.
-            return ResultCode.DeviceDisabled;
+            // +++ 返回成功但保持禁用状态 +++
+            Logger.Info?.Print(LogClass.ServiceLdn, "Network service initialized (disabled)");
+            return ResultCode.Success;
         }
 
         public ResultCode GetState(out NetworkState state)
         {
-            // Return ResultCode.InvalidArgument if _state is null, doesn't occur in our case.
-
-            state = _state;
-
+            // +++ 始终返回禁用状态 +++
+            state = NetworkState.Disabled;
             return ResultCode.Success;
         }
 
         public ResultCode Finalize()
         {
-            // TODO(Ac_K): Finalize nifm service then kill the thread named nn.ldn.NetworkInterfaceMonitor.
-
-            _state = NetworkState.None;
-
+            // +++ 简化清理过程 +++
+            _state = NetworkState.Disabled;
             StateChangeEvent.WritableEvent.Signal();
-            StateChangeEvent.WritableEvent.Clear();
-
-            Logger.Stub?.PrintStub(LogClass.ServiceLdn);
-
             return ResultCode.Success;
         }
     }
