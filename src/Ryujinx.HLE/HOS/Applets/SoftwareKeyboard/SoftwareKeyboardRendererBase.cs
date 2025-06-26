@@ -305,19 +305,19 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
             _logoPosition = new SKPoint(logoPositionX, logoPositionY);
         }
 
-        // 使用 SKFont 替代 SKPaint 进行测量
+        // 修复测量方法：使用 out 参数替代 ref
         private static SKRect MeasureString(string text, SKFont font)
         {
-            SKRect bounds = new SKRect();
-            font.MeasureText(text, ref bounds);
+            font.MeasureText(text, out var bounds);
             return bounds;
         }
 
-        // 使用 SKFont 替代 SKPaint 进行测量
+        // 修复测量方法：使用 ToString() 转换 ReadOnlySpan<char>
         private static SKRect MeasureString(ReadOnlySpan<char> text, SKFont font)
         {
-            SKRect bounds = new SKRect();
-            font.MeasureText(text, ref bounds);
+            // 将 ReadOnlySpan<char> 转换为字符串
+            string str = text.ToString();
+            font.MeasureText(str, out var bounds);
             return bounds;
         }
 
@@ -484,6 +484,7 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
                 IsAntialias = true
             };
 
+            // 修复：移除重复的变量声明
             SKRect labelRectangle = MeasureString(label, _labelsTextFont);
 
             // Use relative positions so we can center the entire drawing later.
@@ -492,8 +493,6 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
             float iconY = 0;
             float iconWidth = icon.Width;
             float iconHeight = icon.Height;
-
-            SKRect labelRectangle = MeasureString(label, _labelsTextFont);
 
             float labelPositionX = iconWidth + 8 - labelRectangle.Left;
             float labelPositionY = 3;
