@@ -19,7 +19,7 @@ namespace ARMeilleure.Translation.Cache
         private const int CodeAlignment = 4; // Bytes.
         
         #if UNITY_ANDROID
-        private const int CacheSize = 64 * 1024 * 1024;  // Android
+        private const int CacheSize = 1024 * 1024 * 1024;  // Android
         #else
         private const int CacheSize = 2047 * 1024 * 1024; // 其他平台
         #endif
