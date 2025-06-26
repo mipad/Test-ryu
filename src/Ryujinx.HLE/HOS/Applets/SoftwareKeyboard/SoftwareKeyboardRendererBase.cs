@@ -180,7 +180,8 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
             if (newHeight != 0 && newWidth != 0)
             {
-                var resized = bitmap.Resize(new SKImageInfo(newWidth, newHeight), SKFilterMode.High);
+                // 修复：使用正确的SKFilterMode值
+                var resized = bitmap.Resize(new SKImageInfo(newWidth, newHeight), SKFilterQuality.High);
                 if (resized != null)
                 {
                     bitmap.Dispose();
@@ -227,7 +228,7 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
             };
 
             var canvas = _surface.Canvas;
-            var messageRectangle = MeasureString(MessageText, paint);
+            SKRect messageRectangle = MeasureString(MessageText, paint);
             float messagePositionX = (_panelRectangle.Width - messageRectangle.Width) / 2 - messageRectangle.Left;
             float messagePositionY = _messagePositionY - messageRectangle.Top;
             var messagePosition = new SKPoint(messagePositionX, messagePositionY);
@@ -303,28 +304,21 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
             _logoPosition = new SKPoint(logoPositionX, logoPositionY);
         }
+
+        // 修复：返回正确的SKRect类型
         private static SKRect MeasureString(string text, SKPaint paint)
         {
-            if (string.IsNullOrEmpty(text))
-            {
-                return paint.MeasureText(" ");
-            }
-            else
-            {
-                return paint.MeasureText(text);
-            }
+            SKRect bounds = new SKRect();
+            paint.MeasureText(text, ref bounds);
+            return bounds;
         }
 
+        // 修复：返回正确的SKRect类型
         private static SKRect MeasureString(ReadOnlySpan<char> text, SKPaint paint)
         {
-            if (text == "")
-            {
-                return paint.MeasureText(" ");
-            }
-            else
-            {
-                return paint.MeasureText(text);
-            }
+            SKRect bounds = new SKRect();
+            paint.MeasureText(text, ref bounds);
+            return bounds;
         }
 
         private void DrawTextBox(SKCanvas canvas, SoftwareKeyboardUIState state)
@@ -336,7 +330,7 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
                 IsAntialias = true,
                 Color = _textNormalColor
             };
-            var inputTextRectangle = MeasureString(state.InputText, textPaint);
+            SKRect inputTextRectangle = MeasureString(state.InputText, textPaint);
 
             float boxWidth = (int)(Math.Max(300, inputTextRectangle.Width + inputTextRectangle.Left + 8));
             float boxHeight = 32;
@@ -382,8 +376,8 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
                 ReadOnlySpan<char> textUntilBegin = state.InputText.AsSpan(0, state.CursorBegin);
                 ReadOnlySpan<char> textUntilEnd = state.InputText.AsSpan(0, state.CursorEnd);
 
-                var selectionBeginRectangle = MeasureString(textUntilBegin, textPaint);
-                var selectionEndRectangle = MeasureString(textUntilEnd, textPaint);
+                SKRect selectionBeginRectangle = MeasureString(textUntilBegin, textPaint);
+                SKRect selectionEndRectangle = MeasureString(textUntilEnd, textPaint);
 
                 cursorVisible = true;
                 cursorPositionXLeft = inputTextX + selectionBeginRectangle.Width + selectionBeginRectangle.Left;
@@ -401,7 +395,7 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
                     int cursorBegin = Math.Min(state.InputText.Length, state.CursorBegin);
                     ReadOnlySpan<char> textUntilCursor = state.InputText.AsSpan(0, cursorBegin);
-                    var cursorTextRectangle = MeasureString(textUntilCursor, textPaint);
+                    SKRect cursorTextRectangle = MeasureString(textUntilCursor, textPaint);
 
                     cursorVisible = true;
                     cursorPositionXLeft = inputTextX + cursorTextRectangle.Width + cursorTextRectangle.Left;
@@ -497,7 +491,7 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
                 IsAntialias = true
             };
 
-            var labelRectangle = MeasureString(label, paint);
+            SKRect labelRectangle = MeasureString(label, paint);
 
             float labelPositionX = iconWidth + 8 - labelRectangle.Left;
             float labelPositionY = 3;
@@ -551,7 +545,7 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
                 IsAntialias = true,
                 Color = _textNormalColor
             };
-            var labelRectangle = MeasureString(ControllerToggleText, paint);
+            SKRect labelRectangle = MeasureString(ControllerToggleText, paint);
 
             // Use relative positions so we can center the entire drawing later.
 
