@@ -1,4 +1,6 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 
@@ -63,6 +65,30 @@ namespace Ryujinx.Cpu.Signal
         [LibraryImport("libc", SetLastError = true)]
         private static partial int sigaltstack(ref Stack ss, out Stack oldSs);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static SigAction ConvertBionicToSigAction(in SigActionBionic bionicAction)
+        {
+            return new SigAction
+            {
+                sa_handler = bionicAction.sa_handler,
+                sa_mask = bionicAction.sa_mask,
+                sa_flags = bionicAction.sa_flags,
+                sa_restorer = bionicAction.sa_restorer
+            };
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static SigActionBionic ConvertSigActionToBionic(in SigAction action)
+        {
+            return new SigActionBionic
+            {
+                sa_handler = action.sa_handler,
+                sa_mask = action.sa_mask,
+                sa_flags = action.sa_flags,
+                sa_restorer = action.sa_restorer
+            };
+        }
+
         public static SigAction GetSegfaultExceptionHandler()
         {
             int result;
@@ -70,15 +96,10 @@ namespace Ryujinx.Cpu.Signal
 
             if (Ryujinx.Common.PlatformInfo.IsBionic)
             {
+#pragma warning disable CA1416
                 result = sigaction(SIGSEGV, IntPtr.Zero, out SigActionBionic tmp);
-
-                old = new SigAction
-                {
-                    sa_handler = tmp.sa_handler,
-                    sa_mask = tmp.sa_mask,
-                    sa_flags = tmp.sa_flags,
-                    sa_restorer = tmp.sa_restorer
-                };
+                old = ConvertBionicToSigAction(tmp);
+#pragma warning restore CA1416
             }
             else
             {
@@ -100,6 +121,7 @@ namespace Ryujinx.Cpu.Signal
 
             if (Ryujinx.Common.PlatformInfo.IsBionic)
             {
+#pragma warning disable CA1416
                 SigActionBionic sig = new()
                 {
                     sa_handler = action,
@@ -109,14 +131,8 @@ namespace Ryujinx.Cpu.Signal
                 sigemptyset(ref sig.sa_mask);
 
                 result = sigaction(SIGSEGV, ref sig, out SigActionBionic tmp);
-
-                old = new SigAction
-                {
-                    sa_handler = tmp.sa_handler,
-                    sa_mask = tmp.sa_mask,
-                    sa_flags = tmp.sa_flags,
-                    sa_restorer = tmp.sa_restorer
-                };
+                old = ConvertBionicToSigAction(tmp);
+#pragma warning restore CA1416
             }
             else
             {
@@ -187,6 +203,7 @@ namespace Ryujinx.Cpu.Signal
 
             if (Ryujinx.Common.PlatformInfo.IsBionic)
             {
+#pragma warning disable CA1416
                 SigActionBionic sig = new()
                 {
                     sa_handler = action,
@@ -197,15 +214,11 @@ namespace Ryujinx.Cpu.Signal
 
                 result = sigaction(sigNum, ref sig, out SigActionBionic oldu);
 
-                if (oldu.sa_handler != IntPtr.Zero)
+                if (OperatingSystem.IsAndroid() && oldu.sa_handler != IntPtr.Zero)
                 {
                     throw new InvalidOperationException($"SIG{sigNum} is already in use.");
                 }
-
-                if (result != 0)
-                {
-                    throw new SystemException($"Could not register SIG{sigNum} sigaction. Error: {Marshal.GetLastPInvokeErrorMessage()}");
-                }
+#pragma warning restore CA1416
             }
             else
             {
@@ -223,11 +236,11 @@ namespace Ryujinx.Cpu.Signal
                 {
                     throw new InvalidOperationException($"SIG{sigNum} is already in use.");
                 }
+            }
 
-                if (result != 0)
-                {
-                    throw new SystemException($"Could not register SIG{sigNum} sigaction. Error: {Marshal.GetLastPInvokeErrorMessage()}");
-                }
+            if (result != 0)
+            {
+                throw new SystemException($"Could not register SIG{sigNum} sigaction. Error: {Marshal.GetLastPInvokeErrorMessage()}");
             }
         }
 
@@ -235,15 +248,15 @@ namespace Ryujinx.Cpu.Signal
         {
             if (Ryujinx.Common.PlatformInfo.IsBionic)
             {
-                SigActionBionic tmp = new SigActionBionic
+#pragma warning disable CA1416
+                if (!OperatingSystem.IsAndroid())
                 {
-                    sa_handler = oldAction.sa_handler,
-                    sa_mask = oldAction.sa_mask,
-                    sa_flags = oldAction.sa_flags,
-                    sa_restorer = oldAction.sa_restorer
-                };
+                    return false;
+                }
 
+                var tmp = ConvertSigActionToBionic(oldAction);
                 return sigaction(SIGSEGV, ref tmp, out SigActionBionic _) == 0;
+#pragma warning restore CA1416
             }
             else
             {
