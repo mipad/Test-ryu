@@ -180,8 +180,7 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
             if (newHeight != 0 && newWidth != 0)
             {
-                // 使用 SKSamplingOptions 替代过时的 SKFilterQuality
-                var resized = bitmap.Resize(new SKImageInfo(newWidth, newHeight), new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));
+                var resized = bitmap.Resize(new SKImageInfo(newWidth, newHeight), SKFilterQuality.High);
                 if (resized != null)
                 {
                     bitmap.Dispose();
@@ -219,15 +218,14 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
                 return;
             }
 
-            // 使用 SKFont 替代 SKPaint 的字体属性
-            using var textPaint = new SKPaint
+            using var paint = new SKPaint(_messageFont)
             {
                 Color = _textNormalColor,
                 IsAntialias = true
             };
 
             var canvas = _surface.Canvas;
-            SKRect messageRectangle = MeasureString(MessageText, _messageFont);
+            var messageRectangle = MeasureString(MessageText, paint);
             float messagePositionX = (_panelRectangle.Width - messageRectangle.Width) / 2 - messageRectangle.Left;
             float messagePositionY = _messagePositionY - messageRectangle.Top;
             var messagePosition = new SKPoint(messagePositionX, messagePositionY);
@@ -235,8 +233,7 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
             canvas.DrawRect(messageBoundRectangle, _panelBrush);
 
-            // 使用新版 DrawText 方法
-            canvas.DrawText(MessageText, messagePosition.X, messagePosition.Y + _messageFont.Metrics.XHeight + _messageFont.Metrics.Descent, _messageFont, textPaint);
+            canvas.DrawText(MessageText, messagePosition.X, messagePosition.Y + _messageFont.Metrics.XHeight + _messageFont.Metrics.Descent, paint);
 
             if (!state.TypingEnabled)
             {
@@ -304,33 +301,46 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
             _logoPosition = new SKPoint(logoPositionX, logoPositionY);
         }
-
-        // 修复测量方法：使用 out 参数替代 ref
-        private static SKRect MeasureString(string text, SKFont font)
+        private static SKRect MeasureString(string text, SKPaint paint)
         {
-            font.MeasureText(text, out var bounds);
+            SKRect bounds = SKRect.Empty;
+
+            if (text == "")
+            {
+                paint.MeasureText(" ", ref bounds);
+            }
+            else
+            {
+                paint.MeasureText(text, ref bounds);
+            }
+
             return bounds;
         }
 
-        // 修复测量方法：使用 ToString() 转换 ReadOnlySpan<char>
-        private static SKRect MeasureString(ReadOnlySpan<char> text, SKFont font)
+        private static SKRect MeasureString(ReadOnlySpan<char> text, SKPaint paint)
         {
-            // 将 ReadOnlySpan<char> 转换为字符串
-            string str = text.ToString();
-            font.MeasureText(str, out var bounds);
+            SKRect bounds = SKRect.Empty;
+
+            if (text == "")
+            {
+                paint.MeasureText(" ", ref bounds);
+            }
+            else
+            {
+                paint.MeasureText(text, ref bounds);
+            }
+
             return bounds;
         }
 
         private void DrawTextBox(SKCanvas canvas, SoftwareKeyboardUIState state)
         {
-            // 使用 SKFont 替代 SKPaint 的字体属性
-            using var textPaint = new SKPaint
+            using var textPaint = new SKPaint(_labelsTextFont)
             {
                 IsAntialias = true,
                 Color = _textNormalColor
             };
-            
-            SKRect inputTextRectangle = MeasureString(state.InputText, _labelsTextFont);
+            var inputTextRectangle = MeasureString(state.InputText, textPaint);
 
             float boxWidth = (int)(Math.Max(300, inputTextRectangle.Width + inputTextRectangle.Left + 8));
             float boxHeight = 32;
@@ -350,9 +360,7 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
             float inputTextY = boxY + 5;
 
             var inputTextPosition = new SKPoint(inputTextX, inputTextY);
-            
-            // 使用新版 DrawText 方法
-            canvas.DrawText(state.InputText, inputTextPosition.X, inputTextPosition.Y + (_labelsTextFont.Metrics.XHeight + _labelsTextFont.Metrics.Descent), _labelsTextFont, textPaint);
+            canvas.DrawText(state.InputText, inputTextPosition.X, inputTextPosition.Y + (_labelsTextFont.Metrics.XHeight + _labelsTextFont.Metrics.Descent), textPaint);
 
             // Draw the cursor on top of the text and redraw the text with a different color if necessary.
 
@@ -378,8 +386,8 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
                 ReadOnlySpan<char> textUntilBegin = state.InputText.AsSpan(0, state.CursorBegin);
                 ReadOnlySpan<char> textUntilEnd = state.InputText.AsSpan(0, state.CursorEnd);
 
-                SKRect selectionBeginRectangle = MeasureString(textUntilBegin, _labelsTextFont);
-                SKRect selectionEndRectangle = MeasureString(textUntilEnd, _labelsTextFont);
+                var selectionBeginRectangle = MeasureString(textUntilBegin, textPaint);
+                var selectionEndRectangle = MeasureString(textUntilEnd, textPaint);
 
                 cursorVisible = true;
                 cursorPositionXLeft = inputTextX + selectionBeginRectangle.Width + selectionBeginRectangle.Left;
@@ -397,7 +405,7 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
                     int cursorBegin = Math.Min(state.InputText.Length, state.CursorBegin);
                     ReadOnlySpan<char> textUntilCursor = state.InputText.AsSpan(0, cursorBegin);
-                    SKRect cursorTextRectangle = MeasureString(textUntilCursor, _labelsTextFont);
+                    var cursorTextRectangle = MeasureString(textUntilCursor, textPaint);
 
                     cursorVisible = true;
                     cursorPositionXLeft = inputTextX + cursorTextRectangle.Width + cursorTextRectangle.Left;
@@ -409,7 +417,7 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
                         if (state.CursorBegin < state.InputText.Length)
                         {
                             textUntilCursor = state.InputText.AsSpan(0, cursorBegin + 1);
-                            cursorTextRectangle = MeasureString(textUntilCursor, _labelsTextFont);
+                            cursorTextRectangle = MeasureString(textUntilCursor, textPaint);
                             cursorPositionXRight = inputTextX + cursorTextRectangle.Width + cursorTextRectangle.Left;
                         }
                         else
@@ -452,14 +460,13 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
                     var textOverCanvas = textOverCursor.Canvas;
                     var textRelativePosition = new SKPoint(inputTextPosition.X - cursorRectangle.Left, inputTextPosition.Y - cursorRectangle.Top);
 
-                    using var cursorPaint = new SKPaint
+                    using var cursorPaint = new SKPaint(_inputTextFont)
                     {
                         Color = cursorTextColor,
                         IsAntialias = true
                     };
 
-                    // 使用新版 DrawText 方法
-                    textOverCanvas.DrawText(state.InputText, textRelativePosition.X, textRelativePosition.Y + _inputTextFont.Metrics.XHeight + _inputTextFont.Metrics.Descent, _inputTextFont, cursorPaint);
+                    textOverCanvas.DrawText(state.InputText, textRelativePosition.X, textRelativePosition.Y + _inputTextFont.Metrics.XHeight + _inputTextFont.Metrics.Descent, cursorPaint);
 
                     var cursorPosition = new SKPoint((int)cursorRectangle.Left, (int)cursorRectangle.Top);
                     textOverCursor.Flush();
@@ -477,22 +484,20 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
         private void DrawPadButton(SKCanvas canvas, SKPoint point, SKBitmap icon, string label, bool pressed, bool enabled)
         {
-            // 使用 SKFont 替代 SKPaint 的字体属性
-            using var paint = new SKPaint
-            {
-                Color = _textNormalColor,
-                IsAntialias = true
-            };
-
-            // 修复：移除重复的变量声明
-            SKRect labelRectangle = MeasureString(label, _labelsTextFont);
-
             // Use relative positions so we can center the entire drawing later.
 
             float iconX = 0;
             float iconY = 0;
             float iconWidth = icon.Width;
             float iconHeight = icon.Height;
+
+            using var paint = new SKPaint(_labelsTextFont)
+            {
+                Color = _textNormalColor,
+                IsAntialias = true
+            };
+
+            var labelRectangle = MeasureString(label, paint);
 
             float labelPositionX = iconWidth + 8 - labelRectangle.Left;
             float labelPositionY = 3;
@@ -519,9 +524,7 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
             canvas.DrawRect(boundRectangle, _panelBrush);
             canvas.DrawBitmap(icon, iconPosition);
-            
-            // 使用新版 DrawText 方法
-            canvas.DrawText(label, labelPosition.X, labelPosition.Y + _labelsTextFont.Metrics.XHeight + _labelsTextFont.Metrics.Descent, _labelsTextFont, paint);
+            canvas.DrawText(label, labelPosition.X, labelPosition.Y + _labelsTextFont.Metrics.XHeight + _labelsTextFont.Metrics.Descent, paint);
 
             if (enabled)
             {
@@ -541,13 +544,12 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
 
         private void DrawControllerToggle(SKCanvas canvas, SKPoint point)
         {
-            // 使用 SKFont 替代 SKPaint 的字体属性
-            using var paint = new SKPaint
+            using var paint = new SKPaint(_labelsTextFont)
             {
                 IsAntialias = true,
                 Color = _textNormalColor
             };
-            SKRect labelRectangle = MeasureString(ControllerToggleText, _labelsTextFont);
+            var labelRectangle = MeasureString(ControllerToggleText, paint);
 
             // Use relative positions so we can center the entire drawing later.
 
@@ -575,9 +577,7 @@ namespace Ryujinx.HLE.HOS.Applets.SoftwareKeyboard
             var overlayPosition = new SKPoint((int)keyX, (int)keyY);
 
             canvas.DrawBitmap(_keyModeIcon, overlayPosition);
-            
-            // 使用新版 DrawText 方法
-            canvas.DrawText(ControllerToggleText, labelPosition.X, labelPosition.Y + _labelsTextFont.Metrics.XHeight, _labelsTextFont, paint);
+            canvas.DrawText(ControllerToggleText, labelPosition.X, labelPosition.Y + _labelsTextFont.Metrics.XHeight, paint);
         }
 
         public unsafe void CopyImageToBuffer()
