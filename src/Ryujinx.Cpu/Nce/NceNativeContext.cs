@@ -3,9 +3,14 @@ using Ryujinx.Common.Memory;
 using Ryujinx.Memory;
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.Versioning;
 
 namespace Ryujinx.Cpu.Nce
 {
+    [SupportedOSPlatform("windows")]
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("android")]
     class NceNativeContext : IDisposable
     {
         public struct NativeCtxStorage
