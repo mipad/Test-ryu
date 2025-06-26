@@ -1,9 +1,14 @@
 using Ryujinx.Memory;
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.Versioning;
 
 namespace Ryujinx.Cpu.Nce
 {
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("windows")]
+    [SupportedOSPlatform("android")]
     static class NceThreadTable
     {
         private const int MaxThreads = 4096;
