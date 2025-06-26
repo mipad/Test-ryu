@@ -4,9 +4,14 @@ using System;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 
 namespace Ryujinx.Cpu.Jit.HostTracked
 {
+    [SupportedOSPlatform("windows")]
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("android")]
     sealed class NativePageTable : IDisposable
     {
         private delegate ulong TrackingEventDelegate(ulong address, ulong size, bool write);
