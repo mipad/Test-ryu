@@ -65,6 +65,7 @@ namespace Ryujinx.Cpu.Signal
         [LibraryImport("libc", SetLastError = true)]
         private static partial int sigaltstack(ref Stack ss, out Stack oldSs);
 
+        [UnconditionalSuppressMessage("", "CA1416")]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static SigAction ConvertBionicToSigAction(in SigActionBionic bionicAction)
         {
@@ -77,6 +78,7 @@ namespace Ryujinx.Cpu.Signal
             };
         }
 
+        [UnconditionalSuppressMessage("", "CA1416")]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static SigActionBionic ConvertSigActionToBionic(in SigAction action)
         {
