@@ -1,4 +1,4 @@
-using Silk.NET.Vulkan; // 添加必要的命名空间引用
+using Silk.NET.Vulkan; 
 using System;
 using System.Runtime.Serialization;
 
@@ -56,6 +56,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
         }
 
+        [Obsolete("This API supports obsolete formatter-based serialization")]
         protected VulkanException(SerializationInfo info, StreamingContext context) : base(info, context)
         {
         }
