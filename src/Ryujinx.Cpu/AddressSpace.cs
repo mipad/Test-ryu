@@ -1,5 +1,6 @@
 using Ryujinx.Memory;
 using System;
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 
 namespace Ryujinx.Cpu
@@ -74,14 +75,24 @@ namespace Ryujinx.Cpu
 
         public void Map(ulong va, ulong pa, ulong size, MemoryMapFlags flags)
         {
-            Base.MapView(_backingMemory, pa, va, size);
-            Mirror.MapView(_backingMemory, pa, va, size);
+            if (OperatingSystem.IsWindows() || 
+                OperatingSystem.IsLinux() || 
+                OperatingSystem.IsAndroid())
+            {
+                Base.MapView(_backingMemory, pa, va, size);
+                Mirror.MapView(_backingMemory, pa, va, size);
+            }
         }
 
         public void Unmap(ulong va, ulong size)
         {
-            Base.UnmapView(_backingMemory, va, size);
-            Mirror.UnmapView(_backingMemory, va, size);
+            if (OperatingSystem.IsWindows() || 
+                OperatingSystem.IsLinux() || 
+                OperatingSystem.IsAndroid())
+            {
+                Base.UnmapView(_backingMemory, va, size);
+                Mirror.UnmapView(_backingMemory, va, size);
+            }
         }
 
         public void Dispose()
