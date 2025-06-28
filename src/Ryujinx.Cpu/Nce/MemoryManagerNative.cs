@@ -129,6 +129,7 @@ namespace Ryujinx.Cpu.Nce
             _addressSpace.Reprotect(AddressToOffset(va), size, permission);
         }
 
+#pragma warning disable CA1416 
         public ref T GetRef<T>(ulong va) where T : unmanaged
         {
             if (!IsContiguous(va, Unsafe.SizeOf<T>()))
@@ -140,6 +141,7 @@ namespace Ryujinx.Cpu.Nce
 
             return ref _backingMemory.GetRef<T>(GetPhysicalAddressChecked(va));
         }
+#pragma warning restore CA1416 
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override bool IsMapped(ulong va)
@@ -156,6 +158,7 @@ namespace Ryujinx.Cpu.Nce
         }
 
         /// <inheritdoc/>
+#pragma warning disable CA1416 
         public IEnumerable<HostMemoryRange> GetHostRegions(ulong va, ulong size)
         {
             if (size == 0)
@@ -180,6 +183,7 @@ namespace Ryujinx.Cpu.Nce
 
             return regions;
         }
+#pragma warning restore CA1416 
 
         /// <inheritdoc/>
         public IEnumerable<MemoryRange> GetPhysicalRegions(ulong va, ulong size)
@@ -266,7 +270,7 @@ namespace Ryujinx.Cpu.Nce
         /// <inheritdoc/>
         public void TrackingReprotect(ulong va, ulong size, MemoryPermission protection, bool guest)
         {
-            // 修复：添加零地址检查
+            // 零地址检查
             if (va == 0)
             {
                 // 记录日志以便调试（生产环境可移除）
@@ -304,7 +308,7 @@ namespace Ryujinx.Cpu.Nce
 
         private ulong AddressToOffset(ulong address)
         {
-            // 修复：处理零地址情况
+            // 处理零地址情况
             if (address == 0)
             {
                 // 记录日志以便调试（生产环境可移除）
@@ -329,8 +333,10 @@ namespace Ryujinx.Cpu.Nce
             _memoryEh.Dispose();
         }
 
+#pragma warning disable CA1416 
         protected override Memory<byte> GetPhysicalAddressMemory(nuint pa, int size)
             => _backingMemory.GetMemory(pa, size);
+#pragma warning restore CA1416 
 
         protected override Span<byte> GetPhysicalAddressSpan(nuint pa, int size)
             => _backingMemory.GetSpan(pa, size);
