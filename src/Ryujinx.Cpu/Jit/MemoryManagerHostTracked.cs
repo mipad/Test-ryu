@@ -37,7 +37,9 @@ namespace Ryujinx.Cpu.Jit
         /// <inheritdoc/>
         public bool UsesPrivateAllocations => true;
 
+#pragma warning disable CA1416 
         public IntPtr PageTablePointer => _nativePageTable.PageTablePointer;
+#pragma warning restore CA1416 
 
         public MemoryManagerType Type => _unsafeMode ? MemoryManagerType.HostTrackedUnsafe : MemoryManagerType.HostTracked;
 
@@ -52,7 +54,9 @@ namespace Ryujinx.Cpu.Jit
         /// <param name="invalidAccessHandler">Optional function to handle invalid memory accesses</param>
         public MemoryManagerHostTracked(MemoryBlock backingMemory, ulong addressSpaceSize, bool unsafeMode, InvalidAccessHandler invalidAccessHandler)
         {
+#pragma warning disable CA1416 
             bool useProtectionMirrors = MemoryBlock.GetPageSize() > PageSize;
+#pragma warning restore CA1416 
 
             Tracking = new MemoryTracking(this, PageSize, invalidAccessHandler, useProtectionMirrors);
 
@@ -81,7 +85,9 @@ namespace Ryujinx.Cpu.Jit
             }
 
             _pages = new ManagedPageFlags(asBits);
+#pragma warning disable CA1416 
             _nativePageTable = new(asSize);
+#pragma warning restore CA1416 
             _addressSpace = new(Tracking, backingMemory, _nativePageTable, useProtectionMirrors);
         }
 
@@ -112,7 +118,9 @@ namespace Ryujinx.Cpu.Jit
                 {
                     (MemoryBlock memory, ulong rangeOffset, ulong copySize) = GetMemoryOffsetAndSize(va, (ulong)(size - offset));
 
+#pragma warning disable CA1416 
                     Memory<byte> physicalMemory = memory.GetMemory(rangeOffset, (int)copySize);
+#pragma warning restore CA1416 
 
                     if (first is null)
                     {
@@ -160,7 +168,9 @@ namespace Ryujinx.Cpu.Jit
             }
 
             _pages.AddMapping(va, size);
+#pragma warning disable CA1416 
             _nativePageTable.Map(va, pa, size, _addressSpace, _backingMemory, flags.HasFlag(MemoryMapFlags.Private));
+#pragma warning restore CA1416 
 
             Tracking.Map(va, size);
         }
@@ -176,7 +186,9 @@ namespace Ryujinx.Cpu.Jit
             Tracking.Unmap(va, size);
 
             _pages.RemoveMapping(va, size);
+#pragma warning disable CA1416 
             _nativePageTable.Unmap(va, size);
+#pragma warning restore CA1416 
         }
 
         public override T ReadTracked<T>(ulong va)
@@ -214,7 +226,9 @@ namespace Ryujinx.Cpu.Jit
                 {
                     (MemoryBlock memory, ulong rangeOffset, ulong copySize) = GetMemoryOffsetAndSize(va, (ulong)(data.Length - offset));
 
-                    memory.GetSpan(rangeOffset, (int)copySize).CopyTo(data.Slice(offset, (int)copySize));
+#pragma warning disable CA1416 
+                    memory.GetSpan(rangeOffset, (int)copySize).CopyTo(data.Slice(offset, (int)copySize);
+#pragma warning restore CA1416 
 
                     va += copySize;
                     offset += (int)copySize;
@@ -240,7 +254,9 @@ namespace Ryujinx.Cpu.Jit
 
             if (TryGetVirtualContiguous(va, data.Length, out MemoryBlock memoryBlock, out ulong offset))
             {
+#pragma warning disable CA1416 
                 var target = memoryBlock.GetSpan(offset, data.Length);
+#pragma warning restore CA1416 
 
                 bool changed = !data.SequenceEqual(target);
 
@@ -273,7 +289,9 @@ namespace Ryujinx.Cpu.Jit
 
             if (TryGetVirtualContiguous(va, size, out MemoryBlock memoryBlock, out ulong offset))
             {
+#pragma warning disable CA1416 
                 return memoryBlock.GetSpan(offset, size);
+#pragma warning restore CA1416 
             }
             else
             {
@@ -299,7 +317,9 @@ namespace Ryujinx.Cpu.Jit
 
             if (TryGetVirtualContiguous(va, size, out MemoryBlock memoryBlock, out ulong offset))
             {
+#pragma warning disable CA1416 
                 return new WritableRegion(null, va, memoryBlock.GetMemory(offset, size));
+#pragma warning restore CA1416 
             }
             else
             {
@@ -311,6 +331,7 @@ namespace Ryujinx.Cpu.Jit
             }
         }
 
+#pragma warning disable CA1416 
         public ref T GetRef<T>(ulong va) where T : unmanaged
         {
             if (!TryGetVirtualContiguous(va, Unsafe.SizeOf<T>(), out MemoryBlock memory, out ulong offset))
@@ -322,6 +343,7 @@ namespace Ryujinx.Cpu.Jit
 
             return ref memory.GetRef<T>(offset);
         }
+#pragma warning restore CA1416 
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override bool IsMapped(ulong va)
@@ -436,6 +458,7 @@ namespace Ryujinx.Cpu.Jit
             return (_backingMemory, GetPhysicalAddressChecked(va), physSize);
         }
 
+#pragma warning disable CA1416 
         public IEnumerable<HostMemoryRange> GetHostRegions(ulong va, ulong size)
         {
             if (!ValidateAddressAndSize(va, size))
@@ -464,6 +487,7 @@ namespace Ryujinx.Cpu.Jit
 
             return regions;
         }
+#pragma warning restore CA1416 
 
         public IEnumerable<MemoryRange> GetPhysicalRegions(ulong va, ulong size)
         {
@@ -560,7 +584,17 @@ namespace Ryujinx.Cpu.Jit
 
         private ulong GetPhysicalAddressInternal(ulong va)
         {
+            // 零地址检查
+            if (va == 0)
+            {
+                // 记录日志以便调试（生产环境可移除）
+                // Logger.Warning?.Print(LogClass.Cpu, $"Zero address detected in GetPhysicalAddressInternal");
+                return 0;
+            }
+
+#pragma warning disable CA1416 
             return _nativePageTable.GetPhysicalAddress(va);
+#pragma warning restore CA1416 
         }
 
         /// <inheritdoc/>
@@ -572,6 +606,14 @@ namespace Ryujinx.Cpu.Jit
         /// <inheritdoc/>
         public void TrackingReprotect(ulong va, ulong size, MemoryPermission protection, bool guest)
         {
+            // 零地址检查
+            if (va == 0)
+            {
+                // 记录日志以便调试（生产环境可移除）
+                // Logger.Warning?.Print(LogClass.Cpu, $"Zero address detected in TrackingReprotect");
+                return;
+            }
+
             if (guest)
             {
                 _addressSpace.Reprotect(va, size, protection);
@@ -591,8 +633,10 @@ namespace Ryujinx.Cpu.Jit
             _nativePageTable.Dispose();
         }
 
+#pragma warning disable CA1416 
         protected override Memory<byte> GetPhysicalAddressMemory(nuint pa, int size)
             => _backingMemory.GetMemory(pa, size);
+#pragma warning restore CA1416 
 
         protected override Span<byte> GetPhysicalAddressSpan(nuint pa, int size)
             => _backingMemory.GetSpan(pa, size);
