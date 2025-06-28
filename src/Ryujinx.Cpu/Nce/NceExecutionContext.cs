@@ -3,17 +3,22 @@ using Ryujinx.Cpu.Signal;
 using Ryujinx.Memory;
 using System;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Threading;
 
 namespace Ryujinx.Cpu.Nce
 {
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("android")]
+    [SupportedOSPlatform("windows")]
     class NceExecutionContext : IExecutionContext, IDisposable
     {
         private const ulong AlternateStackSize = 0x4000;
 
         private readonly NceNativeContext _context;
         private readonly ExceptionCallbacks _exceptionCallbacks;
-        private bool _disposed; // +++ 添加释放标记 +++
+        private bool _disposed;
 
         internal IntPtr NativeContextPtr => _context.BasePtr;
 
@@ -78,7 +83,7 @@ namespace Ryujinx.Cpu.Nce
             ref var storage = ref _context.GetStorage();
             storage.SvcCallHandler = svcHandlerPtr;
             storage.InManaged = 1u;
-            storage.CtrEl0 = 0x8444c004; // TODO: Get value from host CPU instead of using guest one?
+            storage.CtrEl0 = 0x8444c004;
 
             Running = true;
             _exceptionCallbacks = exceptionCallbacks;
@@ -90,11 +95,9 @@ namespace Ryujinx.Cpu.Nce
         public V128 GetV(int index) => _context.GetStorage().V[index];
         public void SetV(int index, V128 value) => _context.GetStorage().V[index] = value;
 
-        // TODO
         public bool GetPstateFlag(PState flag) => false;
         public void SetPstateFlag(PState flag, bool value) { }
 
-        // TODO
         public bool GetFPstateFlag(FPState flag) => false;
         public void SetFPstateFlag(FPState flag, bool value) { }
 
@@ -116,18 +119,29 @@ namespace Ryujinx.Cpu.Nce
 
         private void RegisterAlternateStack()
         {
-            // We need to use an alternate stack to handle the suspend signal,
-            // as the guest stack may be in a state that is not suitable for the signal handlers.
-
-            _alternateStackMemory = new MemoryBlock(AlternateStackSize);
-            NativeSignalHandler.InstallUnixAlternateStackForCurrentThread(_alternateStackMemory.GetPointer(0UL, AlternateStackSize), AlternateStackSize);
+            if (OperatingSystem.IsWindows() || 
+                OperatingSystem.IsLinux() || 
+                OperatingSystem.IsMacOS() || 
+                OperatingSystem.IsAndroid())
+            {
+                _alternateStackMemory = new MemoryBlock(AlternateStackSize);
+                NativeSignalHandler.InstallUnixAlternateStackForCurrentThread(
+                    _alternateStackMemory.GetPointer(0UL, AlternateStackSize), 
+                    AlternateStackSize);
+            }
         }
 
         private void UnregisterAlternateStack()
         {
-            NativeSignalHandler.UninstallUnixAlternateStackForCurrentThread();
-            _alternateStackMemory.Dispose();
-            _alternateStackMemory = null;
+            if (OperatingSystem.IsWindows() || 
+                OperatingSystem.IsLinux() || 
+                OperatingSystem.IsMacOS() || 
+                OperatingSystem.IsAndroid())
+            {
+                NativeSignalHandler.UninstallUnixAlternateStackForCurrentThread();
+                _alternateStackMemory?.Dispose();
+                _alternateStackMemory = null;
+            }
         }
 
         public bool OnSupervisorCall(int imm)
@@ -144,7 +158,6 @@ namespace Ryujinx.Cpu.Nce
 
         public void RequestInterrupt()
         {
-            // +++ 检查对象是否已被释放 +++
             if (_disposed)
             {
                 return;
@@ -153,15 +166,14 @@ namespace Ryujinx.Cpu.Nce
             IntPtr threadHandle = _context.GetStorage().HostThreadHandle;
             if (threadHandle != IntPtr.Zero)
             {
-                // Bit 0 set means that the thread is currently running managed code.
-                // Bit 1 set means that an interrupt was requested for the thread.
-                // This, we only need to send the suspend signal if the value was 0 (not running managed code,
-                // and no interrupt was requested before).
-
                 ref uint inManaged = ref _context.GetStorage().InManaged;
                 uint oldValue = Interlocked.Or(ref inManaged, 2);
 
-                if (oldValue == 0)
+                if (oldValue == 0 && 
+                    (OperatingSystem.IsWindows() || 
+                     OperatingSystem.IsLinux() || 
+                     OperatingSystem.IsMacOS() || 
+                     OperatingSystem.IsAndroid()))
                 {
                     NceThreadPal.SuspendThread(threadHandle);
                 }
@@ -177,7 +189,7 @@ namespace Ryujinx.Cpu.Nce
         {
             if (!_disposed)
             {
-                _disposed = true; // +++ 标记已释放 +++
+                _disposed = true;
                 _context.Dispose();
                 
                 if (_alternateStackMemory != null)
