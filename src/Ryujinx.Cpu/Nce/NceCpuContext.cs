@@ -4,9 +4,14 @@ using Ryujinx.Memory;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 
 namespace Ryujinx.Cpu.Nce
 {
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("android")]
+    [SupportedOSPlatform("windows")]
     class NceCpuContext : ICpuContext
     {
         private static uint[] _getTpidrEl0Code = new uint[]
@@ -50,8 +55,14 @@ namespace Ryujinx.Cpu.Nce
 
                 MemoryBlock codeBlock = new(BitUtils.AlignUp((ulong)codeBytes.Length, 0x1000UL));
 
-                codeBlock.Write(0, codeBytes);
-                codeBlock.Reprotect(0, (ulong)codeBytes.Length, MemoryPermission.ReadAndExecute, true);
+                if (OperatingSystem.IsWindows() || 
+                    OperatingSystem.IsLinux() || 
+                    OperatingSystem.IsMacOS() || 
+                    OperatingSystem.IsAndroid())
+                {
+                    codeBlock.Write(0, codeBytes);
+                    codeBlock.Reprotect(0, (ulong)codeBytes.Length, MemoryPermission.ReadAndExecute, true);
+                }
 
                 return codeBlock;
             }
@@ -68,6 +79,14 @@ namespace Ryujinx.Cpu.Nce
 
         static NceCpuContext()
         {
+            if (!OperatingSystem.IsWindows() && 
+                !OperatingSystem.IsLinux() && 
+                !OperatingSystem.IsMacOS() && 
+                !OperatingSystem.IsAndroid())
+            {
+                return;
+            }
+
             CodeWriter codeWriter = new();
 
             uint[] threadStartCode = NcePatcher.GenerateThreadStartCode();
@@ -87,7 +106,13 @@ namespace Ryujinx.Cpu.Nce
                 return codeBlock.GetPointer(ehWrapperCodeOffset, (ulong)ehWrapperCode.Length * sizeof(uint));
             });
 
-            NativeSignalHandler.InstallUnixSignalHandler(NceThreadPal.UnixSuspendSignal, codeBlock.GetPointer(ehSuspendCodeOffset, (ulong)ehSuspendCode.Length * sizeof(uint)));
+            if (OperatingSystem.IsWindows() || 
+                OperatingSystem.IsLinux() || 
+                OperatingSystem.IsMacOS() || 
+                OperatingSystem.IsAndroid())
+            {
+                NativeSignalHandler.InstallUnixSignalHandler(NceThreadPal.UnixSuspendSignal, codeBlock.GetPointer(ehSuspendCodeOffset, (ulong)ehSuspendCode.Length * sizeof(uint)));
+            }
 
             _threadStart = Marshal.GetDelegateForFunctionPointer<ThreadStart>(codeBlock.GetPointer(threadStartCodeOffset, (ulong)threadStartCode.Length * sizeof(uint)));
             _getTpidrEl0 = Marshal.GetDelegateForFunctionPointer<GetTpidrEl0>(codeBlock.GetPointer(getTpidrEl0CodeOffset, (ulong)_getTpidrEl0Code.Length * sizeof(uint)));
@@ -109,6 +134,14 @@ namespace Ryujinx.Cpu.Nce
         /// <inheritdoc/>
         public void Execute(IExecutionContext context, ulong address)
         {
+            if (!OperatingSystem.IsWindows() && 
+                !OperatingSystem.IsLinux() && 
+                !OperatingSystem.IsMacOS() && 
+                !OperatingSystem.IsAndroid())
+            {
+                return;
+            }
+
             NceExecutionContext nec = (NceExecutionContext)context;
             NceNativeInterface.RegisterThread(nec, _tickSource);
             int tableIndex = NceThreadTable.Register(_getTpidrEl0(), nec.NativeContextPtr);
@@ -138,6 +171,15 @@ namespace Ryujinx.Cpu.Nce
 
         public void Dispose()
         {
+            if (_codeBlock != null && 
+                (OperatingSystem.IsWindows() || 
+                 OperatingSystem.IsLinux() || 
+                 OperatingSystem.IsMacOS() || 
+                 OperatingSystem.IsAndroid()))
+            {
+                _codeBlock.Dispose();
+                _codeBlock = null;
+            }
         }
     }
 }
