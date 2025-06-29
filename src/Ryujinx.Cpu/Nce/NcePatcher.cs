@@ -68,6 +68,7 @@ namespace Ryujinx.Cpu.Nce
         {
             Assembler asm = new();
 
+#pragma warning disable CA1416
             WriteManagedCall(asm, (asm, ctx, tmp, tmp2) =>
             {
                 for (int i = 0; i < 8; i++)
@@ -101,6 +102,7 @@ namespace Ryujinx.Cpu.Nce
                     asm.LdrRiUn(Gpr(i), ctx, NceNativeContext.GetXOffset(i));
                 }
             }, 0xff);
+#pragma warning restore CA1416
 
             asm.B(0);
 
@@ -109,23 +111,30 @@ namespace Ryujinx.Cpu.Nce
 
         private static uint[] WriteMrsTpidrroEl0Patch(uint rd)
         {
+#pragma warning disable CA1416
             return WriteMrsContextRead(rd, NceNativeContext.GetTpidrroEl0Offset());
+#pragma warning restore CA1416
         }
 
         private static uint[] WriteMrsTpidrEl0Patch(uint rd)
         {
+#pragma warning disable CA1416
             return WriteMrsContextRead(rd, NceNativeContext.GetTpidrEl0Offset());
+#pragma warning restore CA1416
         }
 
         private static uint[] WriteMrsCtrEl0Patch(uint rd)
         {
+#pragma warning disable CA1416
             return WriteMrsContextRead(rd, NceNativeContext.GetCtrEl0Offset());
+#pragma warning restore CA1416
         }
 
         private static uint[] WriteMrsCntpctEl0Patch(uint rd)
         {
             Assembler asm = new();
 
+#pragma warning disable CA1416
             WriteManagedCall(asm, (asm, ctx, tmp, tmp2) =>
             {
                 WriteInManagedLockAcquire(asm, ctx, tmp, tmp2);
@@ -138,6 +147,7 @@ namespace Ryujinx.Cpu.Nce
 
                 asm.LdrRiUn(Gpr((int)rd), ctx, NceNativeContext.GetTempStorageOffset());
             }, 1u << (int)rd);
+#pragma warning restore CA1416
 
             asm.B(0);
 
@@ -148,6 +158,7 @@ namespace Ryujinx.Cpu.Nce
         {
             Assembler asm = new();
 
+#pragma warning disable CA1416
             Span<int> scratchRegs = stackalloc int[3];
             PickScratchRegs(scratchRegs, 1u << (int)rd);
 
@@ -159,6 +170,7 @@ namespace Ryujinx.Cpu.Nce
             asm.StrRiUn(Gpr((int)rd), Gpr(scratchRegs[0]),NceNativeContext.GetTpidrEl0Offset());
 
             rsr.WriteEpilogue(asm);
+#pragma warning restore CA1416
 
             asm.B(0);
 
@@ -169,6 +181,7 @@ namespace Ryujinx.Cpu.Nce
         {
             Assembler asm = new();
 
+#pragma warning disable CA1416
             Span<int> scratchRegs = stackalloc int[3];
             PickScratchRegs(scratchRegs, 1u << (int)rd);
 
@@ -182,6 +195,7 @@ namespace Ryujinx.Cpu.Nce
             rsr.WriteEpilogue(asm);
 
             asm.LdrRiUn(Gpr((int)rd), Gpr((int)rd), 0);
+#pragma warning restore CA1416
 
             asm.B(0);
 
@@ -190,6 +204,7 @@ namespace Ryujinx.Cpu.Nce
 
         private static void WriteLoadContext(Assembler asm, Operand tmp0, Operand tmp1, Operand tmp2)
         {
+#pragma warning disable CA1416
             asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
 
             if (OperatingSystem.IsMacOS())
@@ -214,10 +229,12 @@ namespace Ryujinx.Cpu.Nce
             asm.MarkLabel(lblFound);
 
             asm.Ldur(tmp0, tmp0, -8);
+#pragma warning restore CA1416
         }
 
         private static void WriteLoadContextSafe(Assembler asm, Operand lblFail, Operand tmp0, Operand tmp1, Operand tmp2, Operand tmp3)
         {
+#pragma warning disable CA1416
             asm.Mov(tmp0, (ulong)NceThreadTable.EntriesPointer);
             asm.Ldur(tmp3, tmp0, -8);
             asm.Add(tmp3, tmp0, tmp3, ArmShiftType.Lsl, 4);
@@ -246,6 +263,7 @@ namespace Ryujinx.Cpu.Nce
             asm.MarkLabel(lblFound);
 
             asm.Ldur(tmp0, tmp0, -8);
+#pragma warning restore CA1416
         }
 
         private static void PickScratchRegs(Span<int> scratchRegs, uint blacklistedRegMask)
@@ -328,6 +346,7 @@ namespace Ryujinx.Cpu.Nce
 
             rsr.WritePrologue(asm);
 
+#pragma warning disable CA1416
             WriteLoadContext(asm, Gpr(scratchRegs[0]), Gpr(scratchRegs[1]), Gpr(scratchRegs[2]));
 
             asm.MovSp(Gpr(scratchRegs[1]), Gpr(Assembler.SpRegister));
@@ -339,6 +358,7 @@ namespace Ryujinx.Cpu.Nce
 
             asm.LdrRiUn(Gpr(scratchRegs[1]), Gpr(scratchRegs[0]), NceNativeContext.GetGuestSPOffset());
             asm.MovSp(Gpr(Assembler.SpRegister), Gpr(scratchRegs[1]));
+#pragma warning restore CA1416
 
             rsr.WriteEpilogue(asm);
         }
@@ -347,6 +367,7 @@ namespace Ryujinx.Cpu.Nce
         {
             Assembler asm = new();
 
+#pragma warning disable CA1416
             CreateRegisterSaveRestoreForManaged().WritePrologue(asm);
 
             asm.MovSp(Gpr(1), Gpr(Assembler.SpRegister));
@@ -368,6 +389,8 @@ namespace Ryujinx.Cpu.Nce
             asm.StrRiUn(Gpr(Assembler.ZrRegister, OperandType.I32), Gpr(0), NceNativeContext.GetInManagedOffset());
 
             asm.LdpRiUn(Gpr(0), Gpr(1), Gpr(0), NceNativeContext.GetXOffset(0));
+#pragma warning restore CA1416
+
             asm.Br(Gpr(30));
 
             return asm.GetCode();
@@ -377,6 +400,7 @@ namespace Ryujinx.Cpu.Nce
         {
             Assembler asm = new();
 
+#pragma warning disable CA1416
             Span<int> scratchRegs = stackalloc int[4];
             PickScratchRegs(scratchRegs, 0u);
 
@@ -421,6 +445,7 @@ namespace Ryujinx.Cpu.Nce
             rsr.WriteEpilogue(asm);
 
             asm.Ret(Gpr(30));
+#pragma warning restore CA1416
 
             return asm.GetCode();
         }
@@ -429,6 +454,7 @@ namespace Ryujinx.Cpu.Nce
         {
             Assembler asm = new();
 
+#pragma warning disable CA1416
             Span<int> scratchRegs = stackalloc int[4];
             PickScratchRegs(scratchRegs, 0u);
 
@@ -465,12 +491,14 @@ namespace Ryujinx.Cpu.Nce
 
             asm.Mov(Gpr(3), (ulong)oldSignalHandlerSegfaultPtr);
             asm.Br(Gpr(3));
+#pragma warning restore CA1416
 
             return asm.GetCode();
         }
 
         private static void WriteInManagedLockAcquire(Assembler asm, Operand ctx, Operand tmp, Operand tmp2)
         {
+#pragma warning disable CA1416
             Operand tmpUint = new Operand(tmp.GetRegister().Index, RegisterType.Integer, OperandType.I32);
             Operand tmp2Uint = new Operand(tmp2.GetRegister().Index, RegisterType.Integer, OperandType.I32);
 
@@ -488,6 +516,7 @@ namespace Ryujinx.Cpu.Nce
             asm.Mov(tmp2Uint, Const(OperandType.I32, 1));
             asm.Stlxr(tmp2Uint, tmp, tmpUint);
             asm.Cbnz(tmpUint, lblLoop); // Retry if store failed.
+#pragma warning restore CA1416
         }
 
         private enum ThreadExitMethod
@@ -499,6 +528,7 @@ namespace Ryujinx.Cpu.Nce
 
         private static void WriteInManagedLockRelease(Assembler asm, Operand ctx, Operand tmp, Operand tmp2, ThreadExitMethod exitMethod, Operand lblQuit = default)
         {
+#pragma warning disable CA1416
             Operand tmpUint = new Operand(tmp.GetRegister().Index, RegisterType.Integer, OperandType.I32);
             Operand tmp2Uint = new Operand(tmp2.GetRegister().Index, RegisterType.Integer, OperandType.I32);
 
@@ -558,10 +588,12 @@ namespace Ryujinx.Cpu.Nce
             }
 
             asm.MarkLabel(lblDone);
+#pragma warning restore CA1416
         }
 
         private static void WriteInManagedLockReleaseForSuspendHandler(Assembler asm, Operand ctx, Operand tmp, Operand tmp2, Operand lblAgain)
         {
+#pragma warning disable CA1416
             Operand tmpUint = new Operand(tmp.GetRegister().Index, RegisterType.Integer, OperandType.I32);
             Operand tmp2Uint = new Operand(tmp2.GetRegister().Index, RegisterType.Integer, OperandType.I32);
 
@@ -593,6 +625,7 @@ namespace Ryujinx.Cpu.Nce
             asm.B(lblAgain);
 
             asm.MarkLabel(lblDone);
+#pragma warning restore CA1416
         }
 
         private static RegisterSaveRestore CreateRegisterSaveRestoreForManaged()
