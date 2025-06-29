@@ -8,5 +8,6 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         Signaling = 3,
         Signaled = 4,
         Cancelled = 5,
+        Invalid = 6  // 状态：标记事件已失效
     }
 }
