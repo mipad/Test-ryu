@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 
 namespace Ryujinx.Cpu.Signal
 {
@@ -52,6 +53,11 @@ namespace Ryujinx.Cpu.Signal
         public SignalHandlerRangeArray Ranges;
     }
 
+    [SupportedOSPlatform("windows")]
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("android")]
+    [SupportedOSPlatform("ios")]
     static class NativeSignalHandler
     {
         private static readonly IntPtr _handlerConfig;
@@ -90,6 +96,11 @@ namespace Ryujinx.Cpu.Signal
 
                 if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || PlatformInfo.IsBionic || OperatingSystem.IsIOS())
                 {
+                    if (OperatingSystem.IsWindows())
+                    {
+                        throw new PlatformNotSupportedException("Unexpected platform: Unix signal handler should not be used on Windows.");
+                    }
+
                     _signalHandlerPtr = MapCode(NativeSignalHandlerGenerator.GenerateUnixSignalHandler(_handlerConfig, rangeStructSize));
 
                     if (PlatformInfo.IsBionic)
@@ -108,7 +119,7 @@ namespace Ryujinx.Cpu.Signal
                     config.UnixOldSigaction = (nuint)(ulong)old.sa_handler;
                     config.UnixOldSigaction3Arg = old.sa_flags & 4;
                 }
-                else
+                else if (OperatingSystem.IsWindows())
                 {
                     config.StructAddressOffset = 40; // ExceptionInformation1
                     config.StructWriteOffset = 32; // ExceptionInformation0
@@ -122,6 +133,10 @@ namespace Ryujinx.Cpu.Signal
 
                     WindowsSignalHandlerRegistration.RegisterExceptionHandler(_signalHandlerPtr);
                 }
+                else
+                {
+                    throw new PlatformNotSupportedException();
+                }
 
                 _initialized = true;
             }
@@ -129,19 +144,39 @@ namespace Ryujinx.Cpu.Signal
 
         public static void InstallUnixAlternateStackForCurrentThread(IntPtr stackPtr, ulong stackSize)
         {
+            if (OperatingSystem.IsWindows())
+            {
+                throw new PlatformNotSupportedException("Alternate stack is not supported on Windows.");
+            }
+
             UnixSignalHandlerRegistration.RegisterAlternateStack(stackPtr, stackSize);
         }
 
         public static void UninstallUnixAlternateStackForCurrentThread()
         {
+            if (OperatingSystem.IsWindows())
+            {
+                throw new PlatformNotSupportedException("Alternate stack is not supported on Windows.");
+            }
+
             UnixSignalHandlerRegistration.UnregisterAlternateStack();
         }
 
         public static void InstallUnixSignalHandler(int sigNum, IntPtr action)
         {
+            if (OperatingSystem.IsWindows())
+            {
+                throw new PlatformNotSupportedException("Unix signals are not supported on Windows.");
+            }
+
             UnixSignalHandlerRegistration.RegisterExceptionHandler(sigNum, action);
         }
 
+        [SupportedOSPlatform("windows")]
+        [SupportedOSPlatform("linux")]
+        [SupportedOSPlatform("macos")]
+        [SupportedOSPlatform("android")]
+        [SupportedOSPlatform("ios")]
         private static IntPtr MapCode(ReadOnlySpan<byte> code)
         {
             Debug.Assert(_codeBlock == null);
