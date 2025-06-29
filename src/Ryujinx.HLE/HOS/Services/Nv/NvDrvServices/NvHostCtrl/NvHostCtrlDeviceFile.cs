@@ -219,7 +219,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
 
                 if (result == NvInternalResult.Success)
                 {
-                    _events[userEventId] = new NvHostEvent(_device.System.HostSyncpoint, userEventId, _device.System, _device.GpuContext);
+                    _events[userEventId] = new NvHostEvent(_device.System.HostSyncpoint, userEventId, _device.System, _device.Gpu);
                 }
 
                 return result;
@@ -298,7 +298,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
                     return NvInternalResult.InvalidInput;
                 }
 
-                hostEvent.Cancel(_device.Gpu);
+                hostEvent.Cancel();
 
                 _device.System.HostSyncpoint.UpdateMin(hostEvent.Fence.Id);
 
@@ -396,7 +396,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
                             hostEvent.State == NvHostEventState.Signaled ||
                             hostEvent.State == NvHostEventState.Cancelled)
                         {
-                            bool timedOut = hostEvent.Wait(_device.Gpu, fence);
+                            bool timedOut = hostEvent.Wait(fence);
 
                             if (timedOut)
                             {
@@ -426,7 +426,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
 
                             if (hostEvent != null)
                             {
-                                Logger.Error?.Print(LogClass.ServiceNv, hostEvent.DumpState(_device.Gpu));
+                                Logger.Error?.Print(LogClass.ServiceNv, hostEvent.DumpState());
                             }
 
                             result = NvInternalResult.InvalidInput;
@@ -510,7 +510,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
                             {
                                 evnt.State = NvHostEventState.Cancelling;
 
-                                evnt.Cancel(_device.Gpu);
+                                evnt.Cancel();
                             }
                             else if (evnt.State == NvHostEventState.Signaling)
                             {
