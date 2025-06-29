@@ -1,9 +1,14 @@
-﻿using ARMeilleure.Memory;
+using ARMeilleure.Memory;
 using Ryujinx.Memory;
 using System;
+using System.Runtime.Versioning;
 
 namespace Ryujinx.Cpu.Nce
 {
+    [SupportedOSPlatform("windows")]
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("android")]
     class NceMemoryBlock : IJitMemoryBlock
     {
         private readonly MemoryBlock _impl;
@@ -12,6 +17,14 @@ namespace Ryujinx.Cpu.Nce
 
         public NceMemoryBlock(ulong size, MemoryAllocationFlags flags)
         {
+            if (!OperatingSystem.IsWindows() && 
+                !OperatingSystem.IsLinux() && 
+                !OperatingSystem.IsMacOS() && 
+                !OperatingSystem.IsAndroid())
+            {
+                throw new PlatformNotSupportedException();
+            }
+
             _impl = new MemoryBlock(size, flags);
         }
 
