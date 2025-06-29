@@ -55,15 +55,15 @@ namespace LibRyujinx.Jni.Primitives
         #region Public Methods
         public Int32 CompareTo(Single other) => this._value.CompareTo(other);
         public Int32 CompareTo(JFloat other) => this._value.CompareTo(other._value);
-        public Int32 CompareTo(Object obj) => obj is JFloat jvalue ? this.CompareTo(jvalue) : obj is Single value ? this.CompareTo(value) : this._value.CompareTo(obj);
+        public Int32 CompareTo(Object? obj) => obj is JFloat jvalue ? this.CompareTo(jvalue) : obj is Single value ? this.CompareTo(value) : this._value.CompareTo(obj);
         public Boolean Equals(Single other) => this._value.Equals(other);
         public Boolean Equals(JFloat other) => this._value.Equals(other._value);
-        public String ToString(String format, IFormatProvider formatProvider) => this._value.ToString(format, formatProvider);
+        public String ToString(String? format, IFormatProvider? formatProvider) => this._value.ToString(format, formatProvider);
         #endregion
 
         #region Overrided Methods
         public override String ToString() => this._value.ToString();
-        public override Boolean Equals(Object obj) => obj is JFloat jvalue ? this.Equals(jvalue) : obj is Single value ? this.Equals(value) : this._value.Equals(obj);
+        public override Boolean Equals(Object? obj) => obj is JFloat jvalue ? this.Equals(jvalue) : obj is Single value ? this.Equals(value) : this._value.Equals(obj);
         public override Int32 GetHashCode() => this._value.GetHashCode();
         #endregion
     }
