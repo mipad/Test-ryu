@@ -242,7 +242,7 @@ namespace Ryujinx.Cpu.Jit
 
                     if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
                     {
-                        memory.GetSpan(rangeOffset, (int)copySize).CopyTo(data.Slice(offset, (int)copySize);
+                        memory.GetSpan(rangeOffset, (int)copySize).CopyTo(data.Slice(offset, (int)copySize));
                     }
                     else
                     {
