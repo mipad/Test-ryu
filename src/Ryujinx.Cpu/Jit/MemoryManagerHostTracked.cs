@@ -510,44 +510,45 @@ namespace Ryujinx.Cpu.Jit
         }
 
         public IEnumerable<HostMemoryRange> GetHostRegions(ulong va, ulong size)
+{
+    if (!ValidateAddressAndSize(va, size))
+    {
+        return null;
+    }
+
+    var regions = new List<HostMemoryRange>();
+    ulong endVa = va + size;
+
+    try
+    {
+        while (va < endVa)
         {
-            if (!ValidateAddressAndSize(va, size))
+            (MemoryBlock memory, ulong rangeOffset, ulong rangeSize) = GetMemoryOffsetAndSize(va, endVa - va);
+
+            nuint pointer;
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
             {
-                return null;
+                // 将 IntPtr 转换为 nuint
+                pointer = (nuint)memory.GetPointer(rangeOffset, rangeSize);
+            }
+            else
+            {
+                // Fallback for unsupported platforms
+                pointer = 0;
             }
 
-            var regions = new List<HostMemoryRange>();
-            ulong endVa = va + size;
+            regions.Add(new HostMemoryRange(pointer, rangeSize));
 
-            try
-            {
-                while (va < endVa)
-                {
-                    (MemoryBlock memory, ulong rangeOffset, ulong rangeSize) = GetMemoryOffsetAndSize(va, endVa - va);
-
-                    IntPtr pointer;
-                    if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
-                    {
-                        pointer = (IntPtr)memory.GetPointer(rangeOffset, rangeSize);
-                    }
-                    else
-                    {
-                        // Fallback for unsupported platforms
-                        pointer = IntPtr.Zero;
-                    }
-
-                    regions.Add(new HostMemoryRange(pointer, rangeSize));
-
-                    va += rangeSize;
-                }
-            }
-            catch (InvalidMemoryRegionException)
-            {
-                return null;
-            }
-
-            return regions;
+            va += rangeSize;
         }
+    }
+    catch (InvalidMemoryRegionException)
+    {
+        return null;
+    }
+
+    return regions;
+}
 
         public IEnumerable<MemoryRange> GetPhysicalRegions(ulong va, ulong size)
         {
@@ -699,36 +700,34 @@ namespace Ryujinx.Cpu.Jit
         }
 
         protected override Memory<byte> GetPhysicalAddressMemory(nuint pa, int size)
-{
-    if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
-    {
-        // 将 nuint 显式转换为 ulong
-        return _backingMemory.GetMemory((ulong)pa, size);
-    }
-    else
-    {
-        // Fallback for unsupported platforms
-        byte[] buffer = new byte[size];
-        _backingMemory.Read((ulong)pa, buffer);
-        return buffer;
-    }
-}
+        {
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+            {
+                return _backingMemory.GetMemory(pa, size);
+            }
+            else
+            {
+                // Fallback for unsupported platforms
+                byte[] buffer = new byte[size];
+                _backingMemory.Read(pa, buffer);
+                return buffer;
+            }
+        }
 
-protected override Span<byte> GetPhysicalAddressSpan(nuint pa, int size)
-{
-    if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
-    {
-        // 将 nuint 显式转换为 ulong
-        return _backingMemory.GetSpan((ulong)pa, size);
-    }
-    else
-    {
-        // Fallback for unsupported platforms
-        byte[] buffer = new byte[size];
-        _backingMemory.Read((ulong)pa, buffer);
-        return buffer;
-    }
-}
+        protected override Span<byte> GetPhysicalAddressSpan(nuint pa, int size)
+        {
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+            {
+                return _backingMemory.GetSpan(pa, size);
+            }
+            else
+            {
+                // Fallback for unsupported platforms
+                byte[] buffer = new byte[size];
+                _backingMemory.Read(pa, buffer);
+                return buffer;
+            }
+        }
 
         protected override void WriteImpl(ulong va, ReadOnlySpan<byte> data)
         {
