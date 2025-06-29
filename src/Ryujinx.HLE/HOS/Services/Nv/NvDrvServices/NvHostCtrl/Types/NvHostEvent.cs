@@ -143,7 +143,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
             }
         }
 
-        public void Cancel(GpuContext gpuContext)
+        public void Cancel()
         {
             lock (Lock)
             {
@@ -161,7 +161,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
 
                 if (oldState == NvHostEventState.Waiting && _waiterInformation != null)
                 {
-                    gpuContext.Synchronization.UnregisterCallback(Fence.Id, _waiterInformation);
+                    _gpuContext.Synchronization.UnregisterCallback(Fence.Id, _waiterInformation);
                     
                     // 回收资源前检查
                     if (_waiterInformation != null)
@@ -197,7 +197,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
             }
         }
 
-        public bool Wait(GpuContext gpuContext, NvFence fence)
+        public bool Wait(NvFence fence)
         {
             lock (Lock)
             {
@@ -218,7 +218,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
                         $"GPU processing slow (fails: {_failingCount}). Waiting on CPU...");
 
                     // 使用增量等待策略
-                    bool waitResult = IncrementalWait(gpuContext, fence, 16, 100);
+                    bool waitResult = IncrementalWait(fence, 16, 100);
                     
                     if (waitResult)
                     {
@@ -241,7 +241,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
                 }
 
                 // 同步点快速检查
-                uint currentValue = gpuContext.Synchronization.GetSyncpointValue(Fence.Id);
+                uint currentValue = _gpuContext.Synchronization.GetSyncpointValue(Fence.Id);
                 if (currentValue >= Fence.Value)
                 {
                     if (_waiterInformation != null)
@@ -253,7 +253,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
                 }
 
                 // 注册回调
-                _waiterInformation = gpuContext.Synchronization.RegisterCallbackOnSyncpoint(
+                _waiterInformation = _gpuContext.Synchronization.RegisterCallbackOnSyncpoint(
                     Fence.Id, 
                     Fence.Value, 
                     GpuSignaled);
@@ -263,7 +263,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         }
         
         // 增量等待方法实现
-        private bool IncrementalWait(GpuContext ctx, NvFence fence, int initialTimeout, int maxTimeout)
+        private bool IncrementalWait(NvFence fence, int initialTimeout, int maxTimeout)
         {
             // 事件0的特殊超时处理
             int event0Multiplier = (_eventId == 0) ? 2 : 1;
@@ -272,7 +272,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
             int currentTimeout = initialTimeout;
             while (currentTimeout <= adjustedMaxTimeout)
             {
-                uint currentValue = ctx.Synchronization.GetSyncpointValue(fence.Id);
+                uint currentValue = _gpuContext.Synchronization.GetSyncpointValue(fence.Id);
                 if (currentValue >= fence.Value)
                 {
                     return true;
@@ -282,7 +282,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
             }
             
             // 最终检查
-            uint finalValue = ctx.Synchronization.GetSyncpointValue(fence.Id);
+            uint finalValue = _gpuContext.Synchronization.GetSyncpointValue(fence.Id);
             return finalValue >= fence.Value;
         }
 
@@ -294,7 +294,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
                 Math.Min(100, (int)Math.Pow(2, _failingCount)) : 0;
         }
 
-        public string DumpState(GpuContext gpuContext)
+        public string DumpState()
         {
             string res = $"\nNvHostEvent {_eventId}:\n";
             res += $"\tState: {State}\n";
@@ -306,7 +306,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
                 res += "\tFence:\n";
                 res += $"\t\tId            : {Fence.Id}\n";
                 res += $"\t\tThreshold     : {Fence.Value}\n";
-                res += $"\t\tCurrent Value : {gpuContext.Synchronization.GetSyncpointValue(Fence.Id)}\n";
+                res += $"\t\tCurrent Value : {_gpuContext.Synchronization.GetSyncpointValue(Fence.Id)}\n";
                 res += $"\t\tWaiter Valid  : {_waiterInformation != null}\n";
             }
 
