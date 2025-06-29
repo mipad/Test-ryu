@@ -24,17 +24,16 @@ namespace LibRyujinx
         private static TouchScreenManager? _touchScreenManager;
         private static InputManager? _inputManager;
         private static NpadManager? _npadManager;
-        private static InputConfig[] _configs;
+        private static InputConfig[] _configs = new InputConfig[4]; // 初始化数组
 
         public static void InitializeInput(int width, int height)
         {
-            if(SwitchDevice!.InputManager != null)
+            if (SwitchDevice!.InputManager != null)
             {
                 throw new InvalidOperationException("Input is already initialized");
             }
 
             _gamepadDriver = new VirtualGamepadDriver(4);
-            _configs = new InputConfig[4];
             _virtualTouchScreen = new VirtualTouchScreen();
             _touchScreenDriver = new VirtualTouchScreenDriver(_virtualTouchScreen);
             _inputManager = new InputManager(null, _gamepadDriver);
@@ -53,7 +52,10 @@ namespace LibRyujinx
 
         public static void SetClientSize(int width, int height)
         {
-            _virtualTouchScreen!.ClientSize = new Size(width, height);
+            if (_virtualTouchScreen != null)
+            {
+                _virtualTouchScreen.ClientSize = new Size(width, height);
+            }
         }
 
         public static void SetTouchPoint(int x, int y)
@@ -186,7 +188,8 @@ namespace LibRyujinx
         {
             _npadManager?.Update(GraphicsConfiguration.AspectRatio.ToFloat());
 
-            if(!_touchScreenManager!.Update(true, _virtualTouchScreen!.IsButtonPressed(MouseButton.Button1), GraphicsConfiguration.AspectRatio.ToFloat()))
+            if (_touchScreenManager != null && _virtualTouchScreen != null && 
+                !_touchScreenManager.Update(true, _virtualTouchScreen.IsButtonPressed(MouseButton.Button1), GraphicsConfiguration.AspectRatio.ToFloat()))
             {
                 SwitchDevice!.EmulationContext?.Hid.Touchscreen.Update();
             }
@@ -330,8 +333,8 @@ namespace LibRyujinx
 
         public string DriverName => "Virtual";
 
-        public event Action<string> OnGamepadConnected;
-        public event Action<string> OnGamepadDisconnected;
+        public event Action<string> OnGamepadConnected = delegate { };
+        public event Action<string> OnGamepadDisconnected = delegate { };
 
         private Dictionary<int, VirtualGamepad> _gamePads;
 
@@ -384,7 +387,7 @@ namespace LibRyujinx
 
         public void SetStickAxis(StickInputId stick, Vector2 axes, int deviceId)
         {
-            if(_gamePads.TryGetValue(deviceId, out var gamePad))
+            if (_gamePads.TryGetValue(deviceId, out var gamePad))
             {
                 gamePad.StickInputs[(int)stick] = axes;
             }
