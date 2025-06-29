@@ -699,34 +699,36 @@ namespace Ryujinx.Cpu.Jit
         }
 
         protected override Memory<byte> GetPhysicalAddressMemory(nuint pa, int size)
-        {
-            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
-            {
-                return _backingMemory.GetMemory(pa, size);
-            }
-            else
-            {
-                // Fallback for unsupported platforms
-                byte[] buffer = new byte[size];
-                _backingMemory.Read(pa, buffer);
-                return buffer;
-            }
-        }
+{
+    if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+    {
+        // 将 nuint 显式转换为 ulong
+        return _backingMemory.GetMemory((ulong)pa, size);
+    }
+    else
+    {
+        // Fallback for unsupported platforms
+        byte[] buffer = new byte[size];
+        _backingMemory.Read((ulong)pa, buffer);
+        return buffer;
+    }
+}
 
-        protected override Span<byte> GetPhysicalAddressSpan(nuint pa, int size)
-        {
-            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
-            {
-                return _backingMemory.GetSpan(pa, size);
-            }
-            else
-            {
-                // Fallback for unsupported platforms
-                byte[] buffer = new byte[size];
-                _backingMemory.Read(pa, buffer);
-                return buffer;
-            }
-        }
+protected override Span<byte> GetPhysicalAddressSpan(nuint pa, int size)
+{
+    if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+    {
+        // 将 nuint 显式转换为 ulong
+        return _backingMemory.GetSpan((ulong)pa, size);
+    }
+    else
+    {
+        // Fallback for unsupported platforms
+        byte[] buffer = new byte[size];
+        _backingMemory.Read((ulong)pa, buffer);
+        return buffer;
+    }
+}
 
         protected override void WriteImpl(ulong va, ReadOnlySpan<byte> data)
         {
