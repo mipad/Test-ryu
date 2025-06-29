@@ -1,4 +1,4 @@
-﻿using ARMeilleure.Memory;
+using ARMeilleure.Memory;
 using Ryujinx.Memory;
 using Ryujinx.Memory.Range;
 using Ryujinx.Memory.Tracking;
@@ -7,12 +7,17 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.Versioning;
 
 namespace Ryujinx.Cpu.Jit
 {
     /// <summary>
     /// Represents a CPU memory manager which maps guest virtual memory directly onto a host virtual region.
     /// </summary>
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("android")]
+    [SupportedOSPlatform("windows")]
+    [SupportedOSPlatform("macos")]
     public sealed class MemoryManagerHostMapped : VirtualMemoryManagerRefCountedBase, ICpuMemoryManager, IVirtualMemoryManagerTracked
     {
         private readonly InvalidAccessHandler _invalidAccessHandler;
@@ -49,6 +54,14 @@ namespace Ryujinx.Cpu.Jit
         /// <param name="invalidAccessHandler">Optional function to handle invalid memory accesses</param>
         public MemoryManagerHostMapped(AddressSpace addressSpace, bool unsafeMode, InvalidAccessHandler invalidAccessHandler)
         {
+            if (!OperatingSystem.IsWindows() && 
+                !OperatingSystem.IsLinux() && 
+                !OperatingSystem.IsMacOS() && 
+                !OperatingSystem.IsAndroid())
+            {
+                throw new PlatformNotSupportedException("MemoryManagerHostMapped is only supported on Windows, Linux, macOS and Android");
+            }
+
             _addressSpace = addressSpace;
             _pageTable = new PageTable<ulong>();
             _invalidAccessHandler = invalidAccessHandler;
@@ -68,7 +81,13 @@ namespace Ryujinx.Cpu.Jit
 
             _pages = new ManagedPageFlags(AddressSpaceBits);
 
-            Tracking = new MemoryTracking(this, (int)MemoryBlock.GetPageSize(), invalidAccessHandler);
+            ulong pageSize = 0x1000;
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+            {
+                pageSize = MemoryBlock.GetPageSize();
+            }
+
+            Tracking = new MemoryTracking(this, (int)pageSize, invalidAccessHandler);
             _memoryEh = new MemoryEhMeilleure(_addressSpace.Base, _addressSpace.Mirror, Tracking);
         }
 
@@ -90,7 +109,10 @@ namespace Ryujinx.Cpu.Jit
         {
             AssertValidAddressAndSize(va, size);
 
-            _addressSpace.Map(va, pa, size, flags);
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+            {
+                _addressSpace.Map(va, pa, size, flags);
+            }
             _pages.AddMapping(va, size);
             PtMap(va, pa, size);
 
@@ -107,7 +129,10 @@ namespace Ryujinx.Cpu.Jit
 
             _pages.RemoveMapping(va, size);
             PtUnmap(va, size);
-            _addressSpace.Unmap(va, size);
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+            {
+                _addressSpace.Unmap(va, size);
+            }
         }
 
         private void PtMap(ulong va, ulong pa, ulong size)
@@ -139,7 +164,14 @@ namespace Ryujinx.Cpu.Jit
             {
                 AssertMapped(va, (ulong)Unsafe.SizeOf<T>());
 
-                return _addressSpace.Mirror.Read<T>(va);
+                if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+                {
+                    return _addressSpace.Mirror.Read<T>(va);
+                }
+                else
+                {
+                    return default;
+                }
             }
             catch (InvalidMemoryRegionException)
             {
@@ -175,7 +207,14 @@ namespace Ryujinx.Cpu.Jit
             {
                 AssertMapped(va, (ulong)data.Length);
 
-                _addressSpace.Mirror.Read(va, data);
+                if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+                {
+                    _addressSpace.Mirror.Read(va, data);
+                }
+                else
+                {
+                    // 对于不支持平台的回退处理
+                }
             }
             catch (InvalidMemoryRegionException)
             {
@@ -192,7 +231,10 @@ namespace Ryujinx.Cpu.Jit
             {
                 SignalMemoryTracking(va, (ulong)Unsafe.SizeOf<T>(), write: true);
 
-                _addressSpace.Mirror.Write(va, value);
+                if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+                {
+                    _addressSpace.Mirror.Write(va, value);
+                }
             }
             catch (InvalidMemoryRegionException)
             {
@@ -209,7 +251,10 @@ namespace Ryujinx.Cpu.Jit
             {
                 SignalMemoryTracking(va, (ulong)data.Length, write: true);
 
-                _addressSpace.Mirror.Write(va, data);
+                if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+                {
+                    _addressSpace.Mirror.Write(va, data);
+                }
             }
             catch (InvalidMemoryRegionException)
             {
@@ -226,7 +271,10 @@ namespace Ryujinx.Cpu.Jit
             {
                 AssertMapped(va, (ulong)data.Length);
 
-                _addressSpace.Mirror.Write(va, data);
+                if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+                {
+                    _addressSpace.Mirror.Write(va, data);
+                }
             }
             catch (InvalidMemoryRegionException)
             {
@@ -243,15 +291,22 @@ namespace Ryujinx.Cpu.Jit
             {
                 SignalMemoryTracking(va, (ulong)data.Length, false);
 
-                Span<byte> target = _addressSpace.Mirror.GetSpan(va, data.Length);
-                bool changed = !data.SequenceEqual(target);
-
-                if (changed)
+                if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
                 {
-                    data.CopyTo(target);
-                }
+                    Span<byte> target = _addressSpace.Mirror.GetSpan(va, data.Length);
+                    bool changed = !data.SequenceEqual(target);
 
-                return changed;
+                    if (changed)
+                    {
+                        data.CopyTo(target);
+                    }
+
+                    return changed;
+                }
+                else
+                {
+                    return true;
+                }
             }
             catch (InvalidMemoryRegionException)
             {
@@ -275,7 +330,14 @@ namespace Ryujinx.Cpu.Jit
                 AssertMapped(va, (ulong)size);
             }
 
-            return new ReadOnlySequence<byte>(_addressSpace.Mirror.GetMemory(va, size));
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+            {
+                return new ReadOnlySequence<byte>(_addressSpace.Mirror.GetMemory(va, size));
+            }
+            else
+            {
+                return ReadOnlySequence<byte>.Empty;
+            }
         }
 
         public override ReadOnlySpan<byte> GetSpan(ulong va, int size, bool tracked = false)
@@ -289,7 +351,14 @@ namespace Ryujinx.Cpu.Jit
                 AssertMapped(va, (ulong)size);
             }
 
-            return _addressSpace.Mirror.GetSpan(va, size);
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+            {
+                return _addressSpace.Mirror.GetSpan(va, size);
+            }
+            else
+            {
+                return ReadOnlySpan<byte>.Empty;
+            }
         }
 
         public override WritableRegion GetWritableRegion(ulong va, int size, bool tracked = false)
@@ -303,14 +372,28 @@ namespace Ryujinx.Cpu.Jit
                 AssertMapped(va, (ulong)size);
             }
 
-            return _addressSpace.Mirror.GetWritableRegion(va, size);
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+            {
+                return _addressSpace.Mirror.GetWritableRegion(va, size);
+            }
+            else
+            {
+                return new WritableRegion(null, va, Memory<byte>.Empty);
+            }
         }
 
         public ref T GetRef<T>(ulong va) where T : unmanaged
         {
             SignalMemoryTracking(va, (ulong)Unsafe.SizeOf<T>(), true);
 
-            return ref _addressSpace.Mirror.GetRef<T>(va);
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+            {
+                return ref _addressSpace.Mirror.GetRef<T>(va);
+            }
+            else
+            {
+                throw new PlatformNotSupportedException("Direct memory access not supported on this platform");
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -332,7 +415,14 @@ namespace Ryujinx.Cpu.Jit
         {
             AssertValidAddressAndSize(va, size);
 
-            return Enumerable.Repeat(new HostMemoryRange((nuint)(ulong)_addressSpace.Mirror.GetPointer(va, size), size), 1);
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+            {
+                return Enumerable.Repeat(new HostMemoryRange((nuint)(ulong)_addressSpace.Mirror.GetPointer(va, size), size), 1);
+            }
+            else
+            {
+                return Enumerable.Empty<HostMemoryRange>();
+            }
         }
 
         /// <inheritdoc/>
@@ -410,7 +500,8 @@ namespace Ryujinx.Cpu.Jit
         /// <inheritdoc/>
         public void TrackingReprotect(ulong va, ulong size, MemoryPermission protection, bool guest)
         {
-            if (guest)
+            if (guest && 
+                (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid()))
             {
                 _addressSpace.Base.Reprotect(va, size, protection, false);
             }
@@ -443,15 +534,36 @@ namespace Ryujinx.Cpu.Jit
         /// </summary>
         protected override void Destroy()
         {
-            _addressSpace.Dispose();
-            _memoryEh.Dispose();
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+            {
+                _addressSpace.Dispose();
+                _memoryEh.Dispose();
+            }
         }
 
         protected override Memory<byte> GetPhysicalAddressMemory(nuint pa, int size)
-            => _addressSpace.Mirror.GetMemory(pa, size);
+        {
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+            {
+                return _addressSpace.Mirror.GetMemory(pa, size);
+            }
+            else
+            {
+                return Memory<byte>.Empty;
+            }
+        }
 
         protected override Span<byte> GetPhysicalAddressSpan(nuint pa, int size)
-            => _addressSpace.Mirror.GetSpan(pa, size);
+        {
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+            {
+                return _addressSpace.Mirror.GetSpan(pa, size);
+            }
+            else
+            {
+                return Span<byte>.Empty;
+            }
+        }
 
         protected override nuint TranslateVirtualAddressChecked(ulong va)
             => (nuint)GetPhysicalAddressChecked(va);
