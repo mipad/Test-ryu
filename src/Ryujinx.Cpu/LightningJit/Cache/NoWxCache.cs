@@ -65,8 +65,9 @@ namespace Ryujinx.Cpu.LightningJit.Cache
             [SupportedOSPlatform("ios")]
             public void ReprotectAsRw(int offset, int size)
             {
-                Debug.Assert(offset >= 0 && (offset & (GetPageSize() - 1)) == 0);
-                Debug.Assert(size > 0 && (size & (GetPageSize() - 1)) == 0);
+                ulong pageSize = GetPageSize();
+                Debug.Assert(offset >= 0 && ((ulong)offset & (pageSize - 1)) == 0);
+                Debug.Assert(size > 0 && ((ulong)size & (pageSize - 1)) == 0);
 
                 _region.Block.MapAsRw((ulong)offset, (ulong)size);
             }
@@ -78,8 +79,9 @@ namespace Ryujinx.Cpu.LightningJit.Cache
             [SupportedOSPlatform("ios")]
             public void ReprotectAsRx(int offset, int size)
             {
-                Debug.Assert(offset >= 0 && (offset & (GetPageSize() - 1)) == 0);
-                Debug.Assert(size > 0 && (size & (GetPageSize() - 1)) == 0);
+                ulong pageSize = GetPageSize();
+                Debug.Assert(offset >= 0 && ((ulong)offset & (pageSize - 1)) == 0);
+                Debug.Assert(size > 0 && ((ulong)size & (pageSize - 1)) == 0);
 
                 _region.Block.MapAsRx((ulong)offset, (ulong)size);
 
@@ -195,10 +197,11 @@ namespace Ryujinx.Cpu.LightningJit.Cache
                 // Ensure we will get an aligned offset from the allocator.
                 _pendingMap.Pad(_sharedCache.Allocator);
 
-                int sizeAligned = BitUtils.AlignUp(code.Length, (int)GetPageSize());
+                ulong pageSize = GetPageSize();
+                int sizeAligned = BitUtils.AlignUp(code.Length, (int)pageSize);
                 int funcOffset = _sharedCache.Allocate(sizeAligned);
 
-                Debug.Assert((funcOffset & (GetPageSize() - 1)) == 0);
+                Debug.Assert(((ulong)funcOffset & (pageSize - 1)) == 0);
 
                 IntPtr funcPtr = _sharedCache.Pointer + funcOffset;
                 code.CopyTo(new Span<byte>((void*)funcPtr, code.Length));
@@ -286,13 +289,13 @@ namespace Ryujinx.Cpu.LightningJit.Cache
                 }
             }
 
-            int pageSize = (int)GetPageSize();
+            ulong pageSize = GetPageSize();
 
             foreach ((ulong address, ThreadLocalCacheEntry entry) in toDelete)
             {
                 _threadLocalCache.Remove(address);
 
-                int sizeAligned = BitUtils.AlignUp(entry.Size, pageSize);
+                int sizeAligned = BitUtils.AlignUp(entry.Size, (int)pageSize);
 
                 _localCache.Free(entry.Offset, sizeAligned);
                 _localCache.ReprotectAsRw(entry.Offset, sizeAligned);
@@ -313,11 +316,11 @@ namespace Ryujinx.Cpu.LightningJit.Cache
                 return;
             }
 
-            int pageSize = (int)GetPageSize();
+            ulong pageSize = GetPageSize();
 
             foreach ((_, ThreadLocalCacheEntry entry) in _threadLocalCache)
             {
-                int sizeAligned = BitUtils.AlignUp(entry.Size, pageSize);
+                int sizeAligned = BitUtils.AlignUp(entry.Size, (int)pageSize);
 
                 _localCache.Free(entry.Offset, sizeAligned);
                 _localCache.ReprotectAsRw(entry.Offset, sizeAligned);
@@ -334,10 +337,11 @@ namespace Ryujinx.Cpu.LightningJit.Cache
         [SupportedOSPlatform("ios")]
         private unsafe IntPtr AddThreadLocalFunction(ReadOnlySpan<byte> code, ulong guestAddress)
         {
-            int alignedSize = BitUtils.AlignUp(code.Length, (int)GetPageSize());
+            ulong pageSize = GetPageSize();
+            int alignedSize = BitUtils.AlignUp(code.Length, (int)pageSize);
             int funcOffset = _localCache.Allocate(alignedSize);
 
-            Debug.Assert((funcOffset & (GetPageSize() - 1)) == 0);
+            Debug.Assert(((ulong)funcOffset & (pageSize - 1)) == 0);
 
             IntPtr funcPtr = _localCache.Pointer + funcOffset;
             code.CopyTo(new Span<byte>((void*)funcPtr, code.Length));
