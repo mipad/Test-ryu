@@ -43,7 +43,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         private static readonly TimeSpan _shaderCompilationThreshold = TimeSpan.FromMilliseconds(50);
         private readonly Queue<SyncpointWaiterHandle> _waiterPool = new();
 
-        // 新增：GPU上下文引用
+        // GPU上下文引用
         private readonly GpuContext _gpuContext;
 
         public NvHostEvent(NvHostSyncpt syncpointManager, uint eventId, Horizon system, GpuContext gpuContext)
@@ -51,7 +51,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
             Fence.Id = 0;
             State = NvHostEventState.Available;
             
-            // 新增：事件0的特殊处理
+            // 事件0的特殊处理
             if (eventId == 0)
             {
                 Logger.Warning?.Print(LogClass.ServiceNv, 
@@ -67,7 +67,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
 
             _eventId = eventId;
             _syncpointManager = syncpointManager;
-            _gpuContext = gpuContext;  // 保存GPU上下文
+            _gpuContext = gpuContext;
 
             ResetFailingState();
         }
@@ -83,10 +83,10 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         {
             lock (Lock)
             {
-                // 新增：忽略无效事件的信号
+                // 忽略无效事件的信号
                 if (State == NvHostEventState.Invalid)
                 {
-                    Logger.Verbose?.Print(LogClass.ServiceNv, 
+                    Logger.Debug?.Print(LogClass.ServiceNv, 
                         $"Ignoring signal for invalid event {_eventId}");
                     return;
                 }
@@ -108,10 +108,10 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         {
             lock (Lock)
             {
-                // 新增：忽略无效事件的回调
+                // 忽略无效事件的回调
                 if (State == NvHostEventState.Invalid)
                 {
-                    Logger.Verbose?.Print(LogClass.ServiceNv,
+                    Logger.Debug?.Print(LogClass.ServiceNv,
                         $"Ignoring GPU signal for invalid event {_eventId}");
                     return;
                 }
@@ -147,10 +147,10 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         {
             lock (Lock)
             {
-                // 新增：忽略无效事件的取消
+                // 忽略无效事件的取消
                 if (State == NvHostEventState.Invalid)
                 {
-                    Logger.Verbose?.Print(LogClass.ServiceNv,
+                    Logger.Debug?.Print(LogClass.ServiceNv,
                         $"Ignoring cancel for invalid event {_eventId}");
                     return;
                 }
@@ -201,7 +201,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         {
             lock (Lock)
             {
-                // 新增：拒绝在无效事件上等待
+                // 拒绝在无效事件上等待
                 if (State == NvHostEventState.Invalid)
                 {
                     Logger.Error?.Print(LogClass.ServiceNv, 
@@ -265,7 +265,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         // 增量等待方法实现
         private bool IncrementalWait(GpuContext ctx, NvFence fence, int initialTimeout, int maxTimeout)
         {
-            // 新增：事件0的特殊超时处理
+            // 事件0的特殊超时处理
             int event0Multiplier = (_eventId == 0) ? 2 : 1;
             int adjustedMaxTimeout = maxTimeout * event0Multiplier;
             
@@ -317,7 +317,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         {
             lock (Lock)
             {
-                // 新增：标记事件为失效状态
+                // 标记事件为失效状态
                 State = NvHostEventState.Invalid;
                 Logger.Info?.Print(LogClass.ServiceNv, $"Marking event {_eventId} as invalid");
 
@@ -343,7 +343,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
             }
         }
         
-        // 新增性能监控方法
+        // 性能监控方法
         public PerformanceMetrics GetMetrics()
         {
             double lastResponseMs = -1;
@@ -363,7 +363,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         }
     }
 
-    // 新增结构体用于性能监控
+    // 结构体用于性能监控
     public struct PerformanceMetrics
     {
         public uint EventId;
