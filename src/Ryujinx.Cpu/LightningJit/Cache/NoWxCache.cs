@@ -13,6 +13,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
     [SupportedOSPlatform("macos")]
     [SupportedOSPlatform("android")]
     [SupportedOSPlatform("ios")]
+    [SupportedOSPlatform("maccatalyst")]
     class NoWxCache : IDisposable
     {
         private const int CodeAlignment = 4; // Bytes.
@@ -63,6 +64,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
             [SupportedOSPlatform("macos")]
             [SupportedOSPlatform("android")]
             [SupportedOSPlatform("ios")]
+            [SupportedOSPlatform("maccatalyst")]
             public void ReprotectAsRw(int offset, int size)
             {
                 ulong pageSize = GetPageSize();
@@ -77,6 +79,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
             [SupportedOSPlatform("macos")]
             [SupportedOSPlatform("android")]
             [SupportedOSPlatform("ios")]
+            [SupportedOSPlatform("maccatalyst")]
             public void ReprotectAsRx(int offset, int size)
             {
                 ulong pageSize = GetPageSize();
@@ -85,7 +88,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
 
                 _region.Block.MapAsRx((ulong)offset, (ulong)size);
 
-                if (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS())
+                if (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS() || OperatingSystem.IsMacCatalyst())
                 {
                     JitSupportDarwin.SysIcacheInvalidate(_region.Block.Pointer + offset, size);
                 }
@@ -190,6 +193,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
         [SupportedOSPlatform("macos")]
         [SupportedOSPlatform("android")]
         [SupportedOSPlatform("ios")]
+        [SupportedOSPlatform("maccatalyst")]
         public unsafe IntPtr MapPageAligned(ReadOnlySpan<byte> code)
         {
             lock (_lock)
@@ -243,6 +247,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
         [SupportedOSPlatform("macos")]
         [SupportedOSPlatform("android")]
         [SupportedOSPlatform("ios")]
+        [SupportedOSPlatform("maccatalyst")]
         private void ClearThreadLocalCache(IntPtr framePointer)
         {
             // Try to delete functions that are already on the shared cache
@@ -307,6 +312,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
         [SupportedOSPlatform("macos")]
         [SupportedOSPlatform("android")]
         [SupportedOSPlatform("ios")]
+        [SupportedOSPlatform("maccatalyst")]
         public void ClearEntireThreadLocalCache()
         {
             // Thread is exiting, delete everything.
@@ -335,6 +341,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
         [SupportedOSPlatform("macos")]
         [SupportedOSPlatform("android")]
         [SupportedOSPlatform("ios")]
+        [SupportedOSPlatform("maccatalyst")]
         private unsafe IntPtr AddThreadLocalFunction(ReadOnlySpan<byte> code, ulong guestAddress)
         {
             ulong pageSize = GetPageSize();
@@ -367,6 +374,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
         [SupportedOSPlatform("macos")]
         [SupportedOSPlatform("android")]
         [SupportedOSPlatform("ios")]
+        [SupportedOSPlatform("maccatalyst")]
         private static ulong GetPageSize()
         {
             return MemoryBlock.GetPageSize();
