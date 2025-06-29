@@ -23,10 +23,10 @@ namespace LibRyujinx
     {
         private static bool _isActive;
         private static bool _isStopped;
-        private static CancellationTokenSource _gpuCancellationTokenSource;
+        private static CancellationTokenSource? _gpuCancellationTokenSource;
         private static SwapBuffersCallback? _swapBuffersCallback;
         private static NativeGraphicsInterop _nativeGraphicsInterop;
-        private static ManualResetEvent _gpuDoneEvent;
+        private static ManualResetEvent? _gpuDoneEvent;
         private static bool _enableGraphicsLogging;
         
         // 添加线程同步和状态管理
@@ -127,12 +127,12 @@ namespace LibRyujinx
 
                 device.Gpu.Renderer.RunLoop(() =>
                 {
-                    _gpuDoneEvent.Reset();
+                    _gpuDoneEvent!.Reset();
                     device.Gpu.SetGpuThread();
                     
                     try
                     {
-                        device.Gpu.InitializeShaderCache(_gpuCancellationTokenSource.Token);
+                        device.Gpu.InitializeShaderCache(_gpuCancellationTokenSource!.Token);
                     }
                     catch (OperationCanceledException)
                     {
@@ -205,7 +205,7 @@ namespace LibRyujinx
                     }
                     finally
                     {
-                        _gpuDoneEvent.Set();
+                        _gpuDoneEvent?.Set();
                     }
                 });
             }
