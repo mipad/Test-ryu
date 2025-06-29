@@ -4,9 +4,15 @@ using Ryujinx.Memory;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.Versioning;
 
 namespace Ryujinx.Cpu.LightningJit.Cache
 {
+    [SupportedOSPlatform("windows")]
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("android")]
+    [SupportedOSPlatform("ios")]
     class NoWxCache : IDisposable
     {
         private const int CodeAlignment = 4; // Bytes.
@@ -52,18 +58,28 @@ namespace Ryujinx.Cpu.LightningJit.Cache
                 _cacheAllocator.Free(offset, size);
             }
 
+            [SupportedOSPlatform("windows")]
+            [SupportedOSPlatform("linux")]
+            [SupportedOSPlatform("macos")]
+            [SupportedOSPlatform("android")]
+            [SupportedOSPlatform("ios")]
             public void ReprotectAsRw(int offset, int size)
             {
-                Debug.Assert(offset >= 0 && (offset & (int)(MemoryBlock.GetPageSize() - 1)) == 0);
-                Debug.Assert(size > 0 && (size & (int)(MemoryBlock.GetPageSize() - 1)) == 0);
+                Debug.Assert(offset >= 0 && (offset & (GetPageSize() - 1)) == 0);
+                Debug.Assert(size > 0 && (size & (GetPageSize() - 1)) == 0);
 
                 _region.Block.MapAsRw((ulong)offset, (ulong)size);
             }
 
+            [SupportedOSPlatform("windows")]
+            [SupportedOSPlatform("linux")]
+            [SupportedOSPlatform("macos")]
+            [SupportedOSPlatform("android")]
+            [SupportedOSPlatform("ios")]
             public void ReprotectAsRx(int offset, int size)
             {
-                Debug.Assert(offset >= 0 && (offset & (int)(MemoryBlock.GetPageSize() - 1)) == 0);
-                Debug.Assert(size > 0 && (size & (int)(MemoryBlock.GetPageSize() - 1)) == 0);
+                Debug.Assert(offset >= 0 && (offset & (GetPageSize() - 1)) == 0);
+                Debug.Assert(size > 0 && (size & (GetPageSize() - 1)) == 0);
 
                 _region.Block.MapAsRx((ulong)offset, (ulong)size);
 
@@ -167,6 +183,11 @@ namespace Ryujinx.Cpu.LightningJit.Cache
             }
         }
 
+        [SupportedOSPlatform("windows")]
+        [SupportedOSPlatform("linux")]
+        [SupportedOSPlatform("macos")]
+        [SupportedOSPlatform("android")]
+        [SupportedOSPlatform("ios")]
         public unsafe IntPtr MapPageAligned(ReadOnlySpan<byte> code)
         {
             lock (_lock)
@@ -174,10 +195,10 @@ namespace Ryujinx.Cpu.LightningJit.Cache
                 // Ensure we will get an aligned offset from the allocator.
                 _pendingMap.Pad(_sharedCache.Allocator);
 
-                int sizeAligned = BitUtils.AlignUp(code.Length, (int)MemoryBlock.GetPageSize());
+                int sizeAligned = BitUtils.AlignUp(code.Length, (int)GetPageSize());
                 int funcOffset = _sharedCache.Allocate(sizeAligned);
 
-                Debug.Assert((funcOffset & ((int)MemoryBlock.GetPageSize() - 1)) == 0);
+                Debug.Assert((funcOffset & (GetPageSize() - 1)) == 0);
 
                 IntPtr funcPtr = _sharedCache.Pointer + funcOffset;
                 code.CopyTo(new Span<byte>((void*)funcPtr, code.Length));
@@ -214,6 +235,11 @@ namespace Ryujinx.Cpu.LightningJit.Cache
             return false;
         }
 
+        [SupportedOSPlatform("windows")]
+        [SupportedOSPlatform("linux")]
+        [SupportedOSPlatform("macos")]
+        [SupportedOSPlatform("android")]
+        [SupportedOSPlatform("ios")]
         private void ClearThreadLocalCache(IntPtr framePointer)
         {
             // Try to delete functions that are already on the shared cache
@@ -260,7 +286,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
                 }
             }
 
-            int pageSize = (int)MemoryBlock.GetPageSize();
+            int pageSize = (int)GetPageSize();
 
             foreach ((ulong address, ThreadLocalCacheEntry entry) in toDelete)
             {
@@ -273,6 +299,11 @@ namespace Ryujinx.Cpu.LightningJit.Cache
             }
         }
 
+        [SupportedOSPlatform("windows")]
+        [SupportedOSPlatform("linux")]
+        [SupportedOSPlatform("macos")]
+        [SupportedOSPlatform("android")]
+        [SupportedOSPlatform("ios")]
         public void ClearEntireThreadLocalCache()
         {
             // Thread is exiting, delete everything.
@@ -282,7 +313,7 @@ namespace Ryujinx.Cpu.LightningJit.Cache
                 return;
             }
 
-            int pageSize = (int)MemoryBlock.GetPageSize();
+            int pageSize = (int)GetPageSize();
 
             foreach ((_, ThreadLocalCacheEntry entry) in _threadLocalCache)
             {
@@ -296,12 +327,17 @@ namespace Ryujinx.Cpu.LightningJit.Cache
             _threadLocalCache = null;
         }
 
+        [SupportedOSPlatform("windows")]
+        [SupportedOSPlatform("linux")]
+        [SupportedOSPlatform("macos")]
+        [SupportedOSPlatform("android")]
+        [SupportedOSPlatform("ios")]
         private unsafe IntPtr AddThreadLocalFunction(ReadOnlySpan<byte> code, ulong guestAddress)
         {
-            int alignedSize = BitUtils.AlignUp(code.Length, (int)MemoryBlock.GetPageSize());
+            int alignedSize = BitUtils.AlignUp(code.Length, (int)GetPageSize());
             int funcOffset = _localCache.Allocate(alignedSize);
 
-            Debug.Assert((funcOffset & (int)(MemoryBlock.GetPageSize() - 1)) == 0);
+            Debug.Assert((funcOffset & (GetPageSize() - 1)) == 0);
 
             IntPtr funcPtr = _localCache.Pointer + funcOffset;
             code.CopyTo(new Span<byte>((void*)funcPtr, code.Length));
@@ -320,6 +356,16 @@ namespace Ryujinx.Cpu.LightningJit.Cache
             Debug.Assert(oldFunc == func);
 
             _translator.RegisterFunction(address, func);
+        }
+
+        [SupportedOSPlatform("windows")]
+        [SupportedOSPlatform("linux")]
+        [SupportedOSPlatform("macos")]
+        [SupportedOSPlatform("android")]
+        [SupportedOSPlatform("ios")]
+        private static ulong GetPageSize()
+        {
+            return MemoryBlock.GetPageSize();
         }
 
         protected virtual void Dispose(bool disposing)
