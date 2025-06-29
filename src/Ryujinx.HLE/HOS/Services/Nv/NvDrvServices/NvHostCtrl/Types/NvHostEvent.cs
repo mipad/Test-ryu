@@ -43,11 +43,20 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         private static readonly TimeSpan _shaderCompilationThreshold = TimeSpan.FromMilliseconds(50);
         private readonly Queue<SyncpointWaiterHandle> _waiterPool = new();
 
-        public NvHostEvent(NvHostSyncpt syncpointManager, uint eventId, Horizon system)
+        // 新增：GPU上下文引用
+        private readonly GpuContext _gpuContext;
+
+        public NvHostEvent(NvHostSyncpt syncpointManager, uint eventId, Horizon system, GpuContext gpuContext)
         {
             Fence.Id = 0;
-
             State = NvHostEventState.Available;
+            
+            // 新增：事件0的特殊处理
+            if (eventId == 0)
+            {
+                Logger.Warning?.Print(LogClass.ServiceNv, 
+                    $"Initializing system event {eventId} - special handling required");
+            }
 
             Event = new KEvent(system.KernelContext);
 
@@ -57,8 +66,8 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
             }
 
             _eventId = eventId;
-
             _syncpointManager = syncpointManager;
+            _gpuContext = gpuContext;  // 保存GPU上下文
 
             ResetFailingState();
         }
@@ -74,6 +83,14 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         {
             lock (Lock)
             {
+                // 新增：忽略无效事件的信号
+                if (State == NvHostEventState.Invalid)
+                {
+                    Logger.Verbose?.Print(LogClass.ServiceNv, 
+                        $"Ignoring signal for invalid event {_eventId}");
+                    return;
+                }
+
                 NvHostEventState oldState = State;
 
                 State = NvHostEventState.Signaling;
@@ -91,6 +108,14 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         {
             lock (Lock)
             {
+                // 新增：忽略无效事件的回调
+                if (State == NvHostEventState.Invalid)
+                {
+                    Logger.Verbose?.Print(LogClass.ServiceNv,
+                        $"Ignoring GPU signal for invalid event {_eventId}");
+                    return;
+                }
+
                 // If the signal does not match our current waiter,
                 // then it is from a past fence and we should just ignore it.
                 if (waiterInformation != null && waiterInformation != _waiterInformation)
@@ -122,6 +147,14 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         {
             lock (Lock)
             {
+                // 新增：忽略无效事件的取消
+                if (State == NvHostEventState.Invalid)
+                {
+                    Logger.Verbose?.Print(LogClass.ServiceNv,
+                        $"Ignoring cancel for invalid event {_eventId}");
+                    return;
+                }
+
                 NvHostEventState oldState = State;
 
                 State = NvHostEventState.Cancelling;
@@ -168,6 +201,14 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         {
             lock (Lock)
             {
+                // 新增：拒绝在无效事件上等待
+                if (State == NvHostEventState.Invalid)
+                {
+                    Logger.Error?.Print(LogClass.ServiceNv, 
+                        $"Rejecting wait on invalid event {_eventId}");
+                    return false;
+                }
+
                 // 使用动态阈值
                 _adaptiveThreshold = (int)FailingCountMax;
 
@@ -224,8 +265,12 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         // 增量等待方法实现
         private bool IncrementalWait(GpuContext ctx, NvFence fence, int initialTimeout, int maxTimeout)
         {
+            // 新增：事件0的特殊超时处理
+            int event0Multiplier = (_eventId == 0) ? 2 : 1;
+            int adjustedMaxTimeout = maxTimeout * event0Multiplier;
+            
             int currentTimeout = initialTimeout;
-            while (currentTimeout <= maxTimeout)
+            while (currentTimeout <= adjustedMaxTimeout)
             {
                 uint currentValue = ctx.Synchronization.GetSyncpointValue(fence.Id);
                 if (currentValue >= fence.Value)
@@ -270,17 +315,31 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
 
         public void CloseEvent(ServiceCtx context)
         {
-            if (EventHandle != 0)
+            lock (Lock)
             {
-                context.Process.HandleTable.CloseHandle(EventHandle);
-                EventHandle = 0;
-            }
-            
-            // 清理资源池
-            while (_waiterPool.Count > 0)
-            {
-                var waiter = _waiterPool.Dequeue();
-                // 如果waiter需要显式释放，在此添加
+                // 新增：标记事件为失效状态
+                State = NvHostEventState.Invalid;
+                Logger.Info?.Print(LogClass.ServiceNv, $"Marking event {_eventId} as invalid");
+
+                // 取消所有注册的回调
+                if (_waiterInformation != null)
+                {
+                    _gpuContext.Synchronization.UnregisterCallback(Fence.Id, _waiterInformation);
+                    _waiterInformation = null;
+                }
+
+                // 清理资源池
+                while (_waiterPool.Count > 0)
+                {
+                    var waiter = _waiterPool.Dequeue();
+                    _gpuContext.Synchronization.UnregisterCallback(Fence.Id, waiter);
+                }
+
+                if (EventHandle != 0)
+                {
+                    context.Process.HandleTable.CloseHandle(EventHandle);
+                    EventHandle = 0;
+                }
             }
         }
         
