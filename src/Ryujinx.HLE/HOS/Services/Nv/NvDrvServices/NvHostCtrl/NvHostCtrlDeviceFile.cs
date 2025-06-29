@@ -219,7 +219,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
 
                 if (result == NvInternalResult.Success)
                 {
-                    _events[userEventId] = new NvHostEvent(_device.System.HostSyncpoint, userEventId, _device.System);
+                    _events[userEventId] = new NvHostEvent(_device.System.HostSyncpoint, userEventId, _device.System, _device.GpuContext);
                 }
 
                 return result;
