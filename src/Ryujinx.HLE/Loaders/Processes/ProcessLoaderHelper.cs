@@ -1,4 +1,4 @@
-﻿using LibHac.Account;
+using LibHac.Account;
 using LibHac.Common;
 using LibHac.Fs;
 using LibHac.Fs.Fsa;
@@ -181,6 +181,7 @@ namespace Ryujinx.HLE.Loaders.Processes
 
             KProcess process = new(context);
 
+#pragma warning disable CA1416
             ArmProcessContextFactory processContextFactory = new(
                 context.Device.System.TickSource,
                 context.Device.Gpu,
@@ -189,6 +190,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 false,
                 codeAddress,
                 codeSize);
+#pragma warning restore CA1416
 
             result = process.InitializeKip(creationInfo, kip.Capabilities, pageList, context.ResourceLimit, memoryRegion, processContextFactory);
             if (result != Result.Success)
@@ -288,7 +290,9 @@ namespace Ryujinx.HLE.Loaders.Processes
 
                 bool for64Bit = ((ProcessCreationFlags)meta.Flags).HasFlag(ProcessCreationFlags.Is64Bit);
 
+#pragma warning disable CA1416
                 NceCpuCodePatch codePatch = ArmProcessContextFactory.CreateCodePatchForNce(context, for64Bit, nso.Text);
+#pragma warning restore CA1416
                 nsoPatch[index] = codePatch;
 
                 if (codePatch != null)
@@ -382,6 +386,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 displayVersion = device.System.ContentManager.GetCurrentFirmwareVersion()?.VersionString ?? string.Empty;
             }
 
+#pragma warning disable CA1416
             var processContextFactory = new ArmProcessContextFactory(
                 context.Device.System.TickSource,
                 context.Device.Gpu,
@@ -390,6 +395,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 diskCacheEnabled,
                 codeStart,
                 codeSize);
+#pragma warning restore CA1416
 
             result = process.Initialize(
                 creationInfo,
@@ -440,12 +446,16 @@ namespace Ryujinx.HLE.Loaders.Processes
             // Once everything is loaded, we can load cheats.
             device.Configuration.VirtualFileSystem.ModLoader.LoadCheats(programId, tamperInfo, device.TamperMachine);
 
+#pragma warning disable CA1416
+            var diskCacheLoadState = processContextFactory.DiskCacheLoadState;
+#pragma warning restore CA1416
+
             ProcessResult processResult = new(
                 metaLoader,
                 applicationControlProperties,
                 diskCacheEnabled,
                 allowCodeMemoryForJit,
-                processContextFactory.DiskCacheLoadState,
+                diskCacheLoadState,
                 process.Pid,
                 meta.MainThreadPriority,
                 meta.MainThreadStackSize,
