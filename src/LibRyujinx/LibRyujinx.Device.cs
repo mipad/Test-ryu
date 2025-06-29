@@ -64,26 +64,43 @@ namespace LibRyujinx
 
         public static bool LoadApplication(Stream stream, FileType type, Stream? updateStream = null)
         {
-            var emulationContext = SwitchDevice.EmulationContext;
+            var emulationContext = SwitchDevice?.EmulationContext;
+            if (emulationContext == null)
+            {
+                return false;
+            }
+            
             return type switch
             {
                 FileType.None => false,
-                FileType.Nsp => emulationContext?.LoadNsp(stream, 0, updateStream) ?? false,
-                FileType.Xci => emulationContext?.LoadXci(stream, 0, updateStream) ?? false,
-                FileType.Nro => emulationContext?.LoadProgram(stream, true, "") ?? false,
+                FileType.Nsp => emulationContext.LoadNsp(stream, 0, updateStream),
+                FileType.Xci => emulationContext.LoadXci(stream, 0, updateStream),
+                FileType.Nro => emulationContext.LoadProgram(stream, true, ""),
+                _ => false // 处理所有未覆盖的情况
             };
         }
 
         public static bool LaunchMiiEditApplet()
         {
-            string contentPath = SwitchDevice.ContentManager.GetInstalledContentPath(0x0100000000001009, StorageId.BuiltInSystem, NcaContentType.Program);
+            string contentPath = SwitchDevice?.ContentManager?.GetInstalledContentPath(0x0100000000001009, StorageId.BuiltInSystem, NcaContentType.Program) ?? string.Empty;
 
             return LoadApplication(contentPath);
         }
 
         public static bool LoadApplication(string? path)
         {
-            var emulationContext = SwitchDevice.EmulationContext;
+            if (path == null)
+            {
+                Logger.Warning?.Print(LogClass.Application, "Path is null");
+                return false;
+            }
+
+            var emulationContext = SwitchDevice?.EmulationContext;
+            if (emulationContext == null)
+            {
+                Logger.Warning?.Print(LogClass.Application, "Emulation context is null");
+                return false;
+            }
 
             if (Directory.Exists(path))
             {
@@ -100,8 +117,7 @@ namespace LibRyujinx
 
                     if (!emulationContext.LoadCart(path, romFsFiles[0]))
                     {
-                        SwitchDevice.DisposeContext();
-
+                        SwitchDevice?.DisposeContext();
                         return false;
                     }
                 }
@@ -111,8 +127,7 @@ namespace LibRyujinx
 
                     if (!emulationContext.LoadCart(path))
                     {
-                        SwitchDevice.DisposeContext();
-
+                        SwitchDevice?.DisposeContext();
                         return false;
                     }
                 }
@@ -126,8 +141,7 @@ namespace LibRyujinx
 
                         if (!emulationContext.LoadXci(path))
                         {
-                            SwitchDevice.DisposeContext();
-
+                            SwitchDevice?.DisposeContext();
                             return false;
                         }
                         break;
@@ -136,8 +150,7 @@ namespace LibRyujinx
 
                         if (!emulationContext.LoadNca(path))
                         {
-                            SwitchDevice.DisposeContext();
-
+                            SwitchDevice?.DisposeContext();
                             return false;
                         }
                         break;
@@ -147,8 +160,7 @@ namespace LibRyujinx
 
                         if (!emulationContext.LoadNsp(path))
                         {
-                            SwitchDevice.DisposeContext();
-
+                            SwitchDevice?.DisposeContext();
                             return false;
                         }
                         break;
@@ -158,17 +170,14 @@ namespace LibRyujinx
                         {
                             if (!emulationContext.LoadProgram(path))
                             {
-                                SwitchDevice.DisposeContext();
-
+                                SwitchDevice?.DisposeContext();
                                 return false;
                             }
                         }
                         catch (ArgumentOutOfRangeException)
                         {
                             Logger.Error?.Print(LogClass.Application, "The specified file is not supported by Ryujinx.");
-
-                            SwitchDevice.DisposeContext();
-
+                            SwitchDevice?.DisposeContext();
                             return false;
                         }
                         break;
@@ -177,9 +186,7 @@ namespace LibRyujinx
             else
             {
                 Logger.Warning?.Print(LogClass.Application, $"Couldn't load '{path}'. Please specify a valid XCI/NCA/NSP/PFS0/NRO file.");
-
-                SwitchDevice.DisposeContext();
-
+                SwitchDevice?.DisposeContext();
                 return false;
             }
 
@@ -203,15 +210,18 @@ namespace LibRyujinx
             _touchScreenManager?.Dispose();
             _touchScreenManager = null;
 
-            SwitchDevice!.InputManager?.Dispose();
-            SwitchDevice!.InputManager = null;
+            SwitchDevice.InputManager?.Dispose();
+            SwitchDevice.InputManager = null;
             _inputManager = null;
 
             if (Renderer != null)
             {
-                _gpuDoneEvent.WaitOne();
-                _gpuDoneEvent.Dispose();
-                _gpuDoneEvent = null;
+                if (_gpuDoneEvent != null)
+                {
+                    _gpuDoneEvent.WaitOne();
+                    _gpuDoneEvent.Dispose();
+                    _gpuDoneEvent = null;
+                }
                 SwitchDevice?.DisposeContext();
                 Renderer = null;
             }
@@ -220,7 +230,6 @@ namespace LibRyujinx
         private static FileStream OpenFile(int descriptor)
         {
             var safeHandle = new SafeFileHandle(descriptor, false);
-
             return new FileStream(safeHandle, FileAccess.ReadWrite);
         }
 
