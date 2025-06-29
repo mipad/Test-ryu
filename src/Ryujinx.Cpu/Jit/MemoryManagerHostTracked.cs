@@ -10,12 +10,17 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.Versioning;
 
 namespace Ryujinx.Cpu.Jit
 {
     /// <summary>
     /// Represents a CPU memory manager which maps guest virtual memory directly onto a host virtual region.
     /// </summary>
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("android")]
+    [SupportedOSPlatform("windows")]
+    [SupportedOSPlatform("macos")]
     public sealed class MemoryManagerHostTracked : VirtualMemoryManagerRefCountedBase, ICpuMemoryManager, IVirtualMemoryManagerTracked
     {
         private readonly InvalidAccessHandler _invalidAccessHandler;
@@ -37,9 +42,7 @@ namespace Ryujinx.Cpu.Jit
         /// <inheritdoc/>
         public bool UsesPrivateAllocations => true;
 
-#pragma warning disable CA1416 
         public IntPtr PageTablePointer => _nativePageTable.PageTablePointer;
-#pragma warning restore CA1416 
 
         public MemoryManagerType Type => _unsafeMode ? MemoryManagerType.HostTrackedUnsafe : MemoryManagerType.HostTracked;
 
@@ -54,9 +57,11 @@ namespace Ryujinx.Cpu.Jit
         /// <param name="invalidAccessHandler">Optional function to handle invalid memory accesses</param>
         public MemoryManagerHostTracked(MemoryBlock backingMemory, ulong addressSpaceSize, bool unsafeMode, InvalidAccessHandler invalidAccessHandler)
         {
-#pragma warning disable CA1416 
-            bool useProtectionMirrors = MemoryBlock.GetPageSize() > PageSize;
-#pragma warning restore CA1416 
+            bool useProtectionMirrors = false;
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+            {
+                useProtectionMirrors = MemoryBlock.GetPageSize() > PageSize;
+            }
 
             Tracking = new MemoryTracking(this, PageSize, invalidAccessHandler, useProtectionMirrors);
 
@@ -85,9 +90,7 @@ namespace Ryujinx.Cpu.Jit
             }
 
             _pages = new ManagedPageFlags(asBits);
-#pragma warning disable CA1416 
             _nativePageTable = new(asSize);
-#pragma warning restore CA1416 
             _addressSpace = new(Tracking, backingMemory, _nativePageTable, useProtectionMirrors);
         }
 
@@ -118,9 +121,18 @@ namespace Ryujinx.Cpu.Jit
                 {
                     (MemoryBlock memory, ulong rangeOffset, ulong copySize) = GetMemoryOffsetAndSize(va, (ulong)(size - offset));
 
-#pragma warning disable CA1416 
-                    Memory<byte> physicalMemory = memory.GetMemory(rangeOffset, (int)copySize);
-#pragma warning restore CA1416 
+                    Memory<byte> physicalMemory;
+                    if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+                    {
+                        physicalMemory = memory.GetMemory(rangeOffset, (int)copySize);
+                    }
+                    else
+                    {
+                        // Fallback for unsupported platforms
+                        byte[] buffer = new byte[copySize];
+                        memory.Read(rangeOffset, buffer);
+                        physicalMemory = buffer;
+                    }
 
                     if (first is null)
                     {
@@ -168,9 +180,10 @@ namespace Ryujinx.Cpu.Jit
             }
 
             _pages.AddMapping(va, size);
-#pragma warning disable CA1416 
-            _nativePageTable.Map(va, pa, size, _addressSpace, _backingMemory, flags.HasFlag(MemoryMapFlags.Private));
-#pragma warning restore CA1416 
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+            {
+                _nativePageTable.Map(va, pa, size, _addressSpace, _backingMemory, flags.HasFlag(MemoryMapFlags.Private));
+            }
 
             Tracking.Map(va, size);
         }
@@ -186,9 +199,10 @@ namespace Ryujinx.Cpu.Jit
             Tracking.Unmap(va, size);
 
             _pages.RemoveMapping(va, size);
-#pragma warning disable CA1416 
-            _nativePageTable.Unmap(va, size);
-#pragma warning restore CA1416 
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+            {
+                _nativePageTable.Unmap(va, size);
+            }
         }
 
         public override T ReadTracked<T>(ulong va)
@@ -226,9 +240,17 @@ namespace Ryujinx.Cpu.Jit
                 {
                     (MemoryBlock memory, ulong rangeOffset, ulong copySize) = GetMemoryOffsetAndSize(va, (ulong)(data.Length - offset));
 
-#pragma warning disable CA1416 
-                    memory.GetSpan(rangeOffset, (int)copySize).CopyTo(data.Slice(offset, (int)copySize);
-#pragma warning restore CA1416 
+                    if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+                    {
+                        memory.GetSpan(rangeOffset, (int)copySize).CopyTo(data.Slice(offset, (int)copySize);
+                    }
+                    else
+                    {
+                        // Fallback for unsupported platforms
+                        byte[] buffer = new byte[copySize];
+                        memory.Read(rangeOffset, buffer);
+                        buffer.CopyTo(data.Slice(offset, (int)copySize));
+                    }
 
                     va += copySize;
                     offset += (int)copySize;
@@ -254,15 +276,26 @@ namespace Ryujinx.Cpu.Jit
 
             if (TryGetVirtualContiguous(va, data.Length, out MemoryBlock memoryBlock, out ulong offset))
             {
-#pragma warning disable CA1416 
-                var target = memoryBlock.GetSpan(offset, data.Length);
-#pragma warning restore CA1416 
-
-                bool changed = !data.SequenceEqual(target);
-
-                if (changed)
+                bool changed;
+                if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
                 {
-                    data.CopyTo(target);
+                    var target = memoryBlock.GetSpan(offset, data.Length);
+                    changed = !data.SequenceEqual(target);
+                    if (changed)
+                    {
+                        data.CopyTo(target);
+                    }
+                }
+                else
+                {
+                    // Fallback for unsupported platforms
+                    byte[] buffer = new byte[data.Length];
+                    memoryBlock.Read(offset, buffer);
+                    changed = !data.SequenceEqual(buffer);
+                    if (changed)
+                    {
+                        memoryBlock.Write(offset, data);
+                    }
                 }
 
                 return changed;
@@ -270,7 +303,6 @@ namespace Ryujinx.Cpu.Jit
             else
             {
                 WriteImpl(va, data);
-
                 return true;
             }
         }
@@ -289,16 +321,22 @@ namespace Ryujinx.Cpu.Jit
 
             if (TryGetVirtualContiguous(va, size, out MemoryBlock memoryBlock, out ulong offset))
             {
-#pragma warning disable CA1416 
-                return memoryBlock.GetSpan(offset, size);
-#pragma warning restore CA1416 
+                if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+                {
+                    return memoryBlock.GetSpan(offset, size);
+                }
+                else
+                {
+                    // Fallback for unsupported platforms
+                    byte[] buffer = new byte[size];
+                    memoryBlock.Read(offset, buffer);
+                    return buffer;
+                }
             }
             else
             {
                 Span<byte> data = new byte[size];
-
                 Read(va, data);
-
                 return data;
             }
         }
@@ -317,21 +355,28 @@ namespace Ryujinx.Cpu.Jit
 
             if (TryGetVirtualContiguous(va, size, out MemoryBlock memoryBlock, out ulong offset))
             {
-#pragma warning disable CA1416 
-                return new WritableRegion(null, va, memoryBlock.GetMemory(offset, size));
-#pragma warning restore CA1416 
+                Memory<byte> memory;
+                if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+                {
+                    memory = memoryBlock.GetMemory(offset, size);
+                }
+                else
+                {
+                    // Fallback for unsupported platforms
+                    byte[] buffer = new byte[size];
+                    memoryBlock.Read(offset, buffer);
+                    memory = buffer;
+                }
+                return new WritableRegion(null, va, memory);
             }
             else
             {
                 MemoryOwner<byte> memoryOwner = MemoryOwner<byte>.Rent(size);
-
                 Read(va, memoryOwner.Span);
-
                 return new WritableRegion(this, va, memoryOwner);
             }
         }
 
-#pragma warning disable CA1416 
         public ref T GetRef<T>(ulong va) where T : unmanaged
         {
             if (!TryGetVirtualContiguous(va, Unsafe.SizeOf<T>(), out MemoryBlock memory, out ulong offset))
@@ -341,9 +386,15 @@ namespace Ryujinx.Cpu.Jit
 
             SignalMemoryTracking(va, (ulong)Unsafe.SizeOf<T>(), true);
 
-            return ref memory.GetRef<T>(offset);
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+            {
+                return ref memory.GetRef<T>(offset);
+            }
+            else
+            {
+                throw new PlatformNotSupportedException("Direct memory access not supported on this platform");
+            }
         }
-#pragma warning restore CA1416 
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override bool IsMapped(ulong va)
@@ -458,7 +509,6 @@ namespace Ryujinx.Cpu.Jit
             return (_backingMemory, GetPhysicalAddressChecked(va), physSize);
         }
 
-#pragma warning disable CA1416 
         public IEnumerable<HostMemoryRange> GetHostRegions(ulong va, ulong size)
         {
             if (!ValidateAddressAndSize(va, size))
@@ -475,7 +525,18 @@ namespace Ryujinx.Cpu.Jit
                 {
                     (MemoryBlock memory, ulong rangeOffset, ulong rangeSize) = GetMemoryOffsetAndSize(va, endVa - va);
 
-                    regions.Add(new((UIntPtr)memory.GetPointer(rangeOffset, rangeSize), rangeSize));
+                    IntPtr pointer;
+                    if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+                    {
+                        pointer = (IntPtr)memory.GetPointer(rangeOffset, rangeSize);
+                    }
+                    else
+                    {
+                        // Fallback for unsupported platforms
+                        pointer = IntPtr.Zero;
+                    }
+
+                    regions.Add(new HostMemoryRange(pointer, rangeSize));
 
                     va += rangeSize;
                 }
@@ -487,7 +548,6 @@ namespace Ryujinx.Cpu.Jit
 
             return regions;
         }
-#pragma warning restore CA1416 
 
         public IEnumerable<MemoryRange> GetPhysicalRegions(ulong va, ulong size)
         {
@@ -592,9 +652,14 @@ namespace Ryujinx.Cpu.Jit
                 return 0;
             }
 
-#pragma warning disable CA1416 
-            return _nativePageTable.GetPhysicalAddress(va);
-#pragma warning restore CA1416 
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+            {
+                return _nativePageTable.GetPhysicalAddress(va);
+            }
+            else
+            {
+                return 0; // Fallback for unsupported platforms
+            }
         }
 
         /// <inheritdoc/>
@@ -633,13 +698,35 @@ namespace Ryujinx.Cpu.Jit
             _nativePageTable.Dispose();
         }
 
-#pragma warning disable CA1416 
         protected override Memory<byte> GetPhysicalAddressMemory(nuint pa, int size)
-            => _backingMemory.GetMemory(pa, size);
-#pragma warning restore CA1416 
+        {
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+            {
+                return _backingMemory.GetMemory(pa, size);
+            }
+            else
+            {
+                // Fallback for unsupported platforms
+                byte[] buffer = new byte[size];
+                _backingMemory.Read(pa, buffer);
+                return buffer;
+            }
+        }
 
         protected override Span<byte> GetPhysicalAddressSpan(nuint pa, int size)
-            => _backingMemory.GetSpan(pa, size);
+        {
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+            {
+                return _backingMemory.GetSpan(pa, size);
+            }
+            else
+            {
+                // Fallback for unsupported platforms
+                byte[] buffer = new byte[size];
+                _backingMemory.Read(pa, buffer);
+                return buffer;
+            }
+        }
 
         protected override void WriteImpl(ulong va, ReadOnlySpan<byte> data)
         {
@@ -654,7 +741,15 @@ namespace Ryujinx.Cpu.Jit
                 {
                     (MemoryBlock memory, ulong rangeOffset, ulong copySize) = GetMemoryOffsetAndSize(va, (ulong)(data.Length - offset));
 
-                    data.Slice(offset, (int)copySize).CopyTo(memory.GetSpan(rangeOffset, (int)copySize));
+                    if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+                    {
+                        data.Slice(offset, (int)copySize).CopyTo(memory.GetSpan(rangeOffset, (int)copySize));
+                    }
+                    else
+                    {
+                        // Fallback for unsupported platforms
+                        memory.Write(rangeOffset, data.Slice(offset, (int)copySize).ToArray());
+                    }
 
                     va += copySize;
                     offset += (int)copySize;
