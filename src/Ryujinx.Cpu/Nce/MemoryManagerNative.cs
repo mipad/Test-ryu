@@ -28,7 +28,9 @@ namespace Ryujinx.Cpu.Nce
 
         public IntPtr PageTablePointer => IntPtr.Zero;
 
+#pragma warning disable CA1416
         public ulong ReservedSize => (ulong)_addressSpace.Pointer.ToInt64();
+#pragma warning restore CA1416
 
         public MemoryManagerType Type => MemoryManagerType.HostMappedUnsafe;
 
@@ -72,7 +74,9 @@ namespace Ryujinx.Cpu.Nce
             _addressSpace = addressSpace;
 
             Tracking = new MemoryTracking(this, PageSize, invalidAccessHandler);
+#pragma warning disable CA1416
             _memoryEh = new MemoryEhMeilleure(addressSpaceSize, Tracking);
+#pragma warning restore CA1416
         }
 
         /// <inheritdoc/>
@@ -80,7 +84,9 @@ namespace Ryujinx.Cpu.Nce
         {
             AssertValidAddressAndSize(va, size);
 
+#pragma warning disable CA1416
             _addressSpace.MapView(_backingMemory, pa, AddressToOffset(va), size);
+#pragma warning restore CA1416
             _pages.AddMapping(va, size);
             PtMap(va, pa, size);
 
@@ -109,7 +115,9 @@ namespace Ryujinx.Cpu.Nce
 
             _pages.RemoveMapping(va, size);
             PtUnmap(va, size);
+#pragma warning disable CA1416
             _addressSpace.UnmapView(_backingMemory, AddressToOffset(va), size);
+#pragma warning restore CA1416
         }
 
         private void PtUnmap(ulong va, ulong size)
@@ -126,7 +134,9 @@ namespace Ryujinx.Cpu.Nce
         /// <inheritdoc/>
         public void Reprotect(ulong va, ulong size, MemoryPermission permission)
         {
+#pragma warning disable CA1416
             _addressSpace.Reprotect(AddressToOffset(va), size, permission);
+#pragma warning restore CA1416
         }
 
 #pragma warning disable CA1416 
@@ -280,7 +290,9 @@ namespace Ryujinx.Cpu.Nce
 
             if (guest)
             {
+#pragma warning disable CA1416
                 _addressSpace.Reprotect(AddressToOffset(va), size, protection, false);
+#pragma warning restore CA1416
             }
             else
             {
@@ -329,8 +341,10 @@ namespace Ryujinx.Cpu.Nce
         /// </summary>
         protected override void Destroy()
         {
+#pragma warning disable CA1416
             _addressSpace.Dispose();
             _memoryEh.Dispose();
+#pragma warning restore CA1416
         }
 
 #pragma warning disable CA1416 
@@ -338,8 +352,10 @@ namespace Ryujinx.Cpu.Nce
             => _backingMemory.GetMemory(pa, size);
 #pragma warning restore CA1416 
 
+#pragma warning disable CA1416
         protected override Span<byte> GetPhysicalAddressSpan(nuint pa, int size)
             => _backingMemory.GetSpan(pa, size);
+#pragma warning restore CA1416
 
         protected override nuint TranslateVirtualAddressChecked(ulong va)
             => (nuint)GetPhysicalAddressChecked(va);
