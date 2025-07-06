@@ -3,12 +3,15 @@ using Ryujinx.Graphics.Vulkan.Queries;
 using Silk.NET.Vulkan;
 using System;
 using System.Collections.Generic;
+using System.Threading; // 新增命名空间
 
 namespace Ryujinx.Graphics.Vulkan
 {
     class PipelineFull : PipelineBase, IPipeline
     {
         private const ulong MinByteWeightForFlush = 256 * 1024 * 1024; // MiB
+        private const int MaxRetryCount = 3; // 新增：最大重试次数
+        private const int RetryDelayMs = 100; // 新增：重试延迟
 
         private readonly List<(QueryPool, bool)> _activeQueries;
         private CounterQueueEvent _activeConditionalRender;
@@ -260,7 +263,32 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             Gd.Barriers.Flush(Cbs, false, null, null);
-            CommandBuffer = (Cbs = Gd.CommandBufferPool.ReturnAndRent(Cbs)).CommandBuffer;
+            
+            // ===== 新增：显存分配重试机制 =====
+            int retryCount = 0;
+            bool retrySuccess = false;
+            
+            while (retryCount < MaxRetryCount)
+            {
+                try
+                {
+                    CommandBuffer = (Cbs = Gd.CommandBufferPool.ReturnAndRent(Cbs)).CommandBuffer;
+                    retrySuccess = true;
+                    break;
+                }
+                catch (VulkanException ex) when (ex.Result == Result.ErrorOutOfDeviceMemory)
+                {
+                    retryCount++;
+                    Thread.Sleep(RetryDelayMs); // 等待资源释放
+                }
+            }
+            
+            if (!retrySuccess)
+            {
+                throw new OutOfMemoryException("Failed to allocate command buffer after retries");
+            }
+            // ===== 结束新增 =====
+            
             Gd.RegisterFlush();
 
             // Restore per-command buffer state.
@@ -271,13 +299,19 @@ namespace Ryujinx.Graphics.Vulkan
 
             _activeBufferMirrors.Clear();
 
-            foreach ((var queryPool, var isOcclusion) in _activeQueries)
+            // ===== 修改：优化查询池重置逻辑 =====
+            // 仅在重试成功且非低内存状态时重置查询
+            if (retrySuccess && retryCount == 0) 
             {
-                bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
+                foreach ((var queryPool, var isOcclusion) in _activeQueries)
+                {
+                    bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
 
-                Gd.Api.CmdResetQueryPool(CommandBuffer, queryPool, 0, 1);
-                Gd.Api.CmdBeginQuery(CommandBuffer, queryPool, 0, isPrecise ? QueryControlFlags.PreciseBit : 0);
+                    Gd.Api.CmdResetQueryPool(CommandBuffer, queryPool, 0, 1);
+                    Gd.Api.CmdBeginQuery(CommandBuffer, queryPool, 0, isPrecise ? QueryControlFlags.PreciseBit : 0);
+                }
             }
+            // ===== 结束修改 =====
 
             Gd.ResetCounterPool();
 
