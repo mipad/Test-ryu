@@ -3037,31 +3037,42 @@ namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
         }
 
         [Svc(0x35)]
-        public Result SignalToAddress([PointerSized] ulong address, SignalType type, int value, int count)
-        {
-            if (IsPointingInsideKernel(address))
-            {
-                return KernelResult.InvalidMemState;
-            }
+public Result SignalToAddress([PointerSized] ulong address, SignalType type, int value, int count)
+{
+    // 基础校验
+    if (IsPointingInsideKernel(address))
+    {
+        return KernelResult.InvalidMemState;
+    }
 
-            if (IsAddressNotWordAligned(address))
-            {
-                return KernelResult.InvalidAddress;
-            }
+    if (IsAddressNotWordAligned(address))
+    {
+        return KernelResult.InvalidAddress;
+    }
 
-            KProcess currentProcess = KernelStatic.GetCurrentProcess();
+    if (count < 0)
+    {
+        return KernelResult.InvalidSize;
+    }
 
-            return type switch
-            {
-                SignalType.Signal
-                    => currentProcess.AddressArbiter.Signal(address, count),
-                SignalType.SignalAndIncrementIfEqual
-                    => currentProcess.AddressArbiter.SignalAndIncrementIfEqual(address, value, count),
-                SignalType.SignalAndModifyIfEqual
-                    => currentProcess.AddressArbiter.SignalAndModifyIfEqual(address, value, count),
-                _ => KernelResult.InvalidEnumValue,
-            };
-        }
+    // 核心逻辑
+    KProcess currentProcess = KernelStatic.GetCurrentProcess();
+    
+    return type switch
+    {
+        SignalType.Signal =>
+            currentProcess.AddressArbiter.Signal(address, count),
+        
+        SignalType.SignalAndIncrementIfEqual =>
+            currentProcess.AddressArbiter.SignalAndIncrementIfEqual(address, value, count),
+        
+        SignalType.SignalAndModifyIfEqual =>
+            currentProcess.AddressArbiter.SignalAndModifyIfEqual(address, value, count),
+        
+        _ =>
+            KernelResult.InvalidEnumValue
+    };
+}
 
         [Svc(0x36)]
         public Result SynchronizePreemptionState()
