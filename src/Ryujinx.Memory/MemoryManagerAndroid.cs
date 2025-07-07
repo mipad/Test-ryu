@@ -25,9 +25,9 @@ namespace Ryujinx.Memory
             
             // 添加 Android 特定的调试信息
             #if DEBUG
-            Logger.Debug?.Print(LogClass.Memory, 
+            Logger.Debug?.Print(LogClass.MemoryManager, 
                 $"🚫 Android 拦截无效内存访问: 0x{va:X16} - {reason}");
-            Logger.Debug?.Print(LogClass.Memory, 
+            Logger.Debug?.Print(LogClass.MemoryManager, 
                 $"调用堆栈:\n{Environment.StackTrace}");
             #endif
         }
