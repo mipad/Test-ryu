@@ -18,7 +18,6 @@ namespace Ryujinx.Cpu.Jit
     public sealed class MemoryManager : VirtualMemoryManagerRefCountedBase, ICpuMemoryManager, IVirtualMemoryManagerTracked
     {
         private const int PteSize = 8;
-
         private const int PointerTagBit = 62;
 
         private readonly MemoryBlock _backingMemory;
@@ -33,7 +32,6 @@ namespace Ryujinx.Cpu.Jit
         public int AddressSpaceBits { get; }
 
         private readonly MemoryBlock _pageTable;
-
         private readonly ManagedPageFlags _pages;
 
         /// <summary>
@@ -42,19 +40,13 @@ namespace Ryujinx.Cpu.Jit
         public IntPtr PageTablePointer => _pageTable.Pointer;
 
         public MemoryManagerType Type => MemoryManagerType.SoftwarePageTable;
-
         public MemoryTracking Tracking { get; }
-
         public event Action<ulong, ulong> UnmapEvent;
-
         protected override ulong AddressSpaceSize { get; }
 
         /// <summary>
         /// Creates a new instance of the memory manager.
         /// </summary>
-        /// <param name="backingMemory">Physical backing memory where virtual memory will be mapped to</param>
-        /// <param name="addressSpaceSize">Size of the address space</param>
-        /// <param name="invalidAccessHandler">Optional function to handle invalid memory accesses</param>
         public MemoryManager(MemoryBlock backingMemory, ulong addressSpaceSize, InvalidAccessHandler invalidAccessHandler = null)
         {
             _backingMemory = backingMemory;
@@ -72,10 +64,23 @@ namespace Ryujinx.Cpu.Jit
             AddressSpaceBits = asBits;
             AddressSpaceSize = asSize;
             _pageTable = new MemoryBlock((asSize / PageSize) * PteSize);
-
             _pages = new ManagedPageFlags(AddressSpaceBits);
-
             Tracking = new MemoryTracking(this, PageSize);
+        }
+
+        /// <summary>
+        /// Enhanced address validation with detailed logging.
+        /// </summary>
+        private bool ValidateAddressInternal(ulong va)
+        {
+            bool isValid = va < AddressSpaceSize;
+            
+            if (!isValid)
+            {
+                Logger.Warning?.Print(LogClass.Cpu, $"Invalid VA: 0x{va:X16} (AddressSpaceSize: 0x{AddressSpaceSize:X16})");
+            }
+            
+            return isValid;
         }
 
         /// <inheritdoc/>
@@ -88,10 +93,20 @@ namespace Ryujinx.Cpu.Jit
 
             if (address + size < address)
             {
-                return false; // Overflow check
+                Logger.Warning?.Print(LogClass.Cpu, $"Address overflow: 0x{address:X16} + 0x{size:X16}");
+                return false;
             }
 
-            return address + size <= AddressSpaceSize;
+            bool isValid = address + size <= AddressSpaceSize;
+            
+            if (!isValid)
+            {
+                Logger.Warning?.Print(LogClass.Cpu, 
+                    $"Address range invalid: 0x{address:X16}-0x{address + size:X16} " +
+                    $"(AddressSpaceSize: 0x{AddressSpaceSize:X16})");
+            }
+            
+            return isValid;
         }
 
         /// <inheritdoc/>
@@ -99,12 +114,17 @@ namespace Ryujinx.Cpu.Jit
         {
             AssertValidAddressAndSize(va, size);
 
+            if (!_backingMemory.IsValid(pa, size))
+            {
+                throw new ArgumentOutOfRangeException(nameof(pa), 
+                    $"Physical address 0x{pa:X16} with size 0x{size:X16} is invalid");
+            }
+
             ulong remainingSize = size;
             ulong oVa = va;
             while (remainingSize != 0)
             {
                 _pageTable.Write((va / PageSize) * PteSize, PaToPte(pa));
-
                 va += PageSize;
                 pa += PageSize;
                 remainingSize -= PageSize;
@@ -117,7 +137,6 @@ namespace Ryujinx.Cpu.Jit
         /// <inheritdoc/>
         public void Unmap(ulong va, ulong size)
         {
-            // If size is 0, there's nothing to unmap, just exit early.
             if (size == 0)
             {
                 return;
@@ -133,9 +152,39 @@ namespace Ryujinx.Cpu.Jit
             while (remainingSize != 0)
             {
                 _pageTable.Write((va / PageSize) * PteSize, 0UL);
-
                 va += PageSize;
                 remainingSize -= PageSize;
+            }
+        }
+
+        /// <summary>
+        /// Enhanced invalid access handler with recovery mechanism.
+        /// </summary>
+        private bool HandleInvalidAccess(ulong va)
+        {
+            if (_invalidAccessHandler == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                // Try to let the handler recover
+                bool recovered = _invalidAccessHandler(va);
+                
+                if (recovered)
+                {
+                    Logger.Warning?.Print(LogClass.Cpu, 
+                        $"Recovered from invalid access at VA: 0x{va:X16}");
+                }
+                
+                return recovered;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Cpu, 
+                    $"Error in invalid access handler for VA 0x{va:X16}: {ex}");
+                return false;
             }
         }
 
@@ -147,11 +196,10 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va))
+                if (!HandleInvalidAccess(va))
                 {
                     throw;
                 }
-
                 return default;
             }
         }
@@ -162,16 +210,14 @@ namespace Ryujinx.Cpu.Jit
             try
             {
                 SignalMemoryTrackingImpl(va, (ulong)Unsafe.SizeOf<T>(), false, true);
-
                 return Read<T>(va);
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va))
+                if (!HandleInvalidAccess(va))
                 {
                     throw;
                 }
-
                 return default;
             }
         }
@@ -185,7 +231,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va))
+                if (!HandleInvalidAccess(va))
                 {
                     throw;
                 }
@@ -200,7 +246,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va))
+                if (!HandleInvalidAccess(va))
                 {
                     throw;
                 }
@@ -211,9 +257,7 @@ namespace Ryujinx.Cpu.Jit
         public void WriteGuest<T>(ulong va, T value) where T : unmanaged
         {
             Span<byte> data = MemoryMarshal.Cast<T, byte>(MemoryMarshal.CreateSpan(ref value, 1));
-
             SignalMemoryTrackingImpl(va, (ulong)data.Length, true, true);
-
             Write(va, data);
         }
 
@@ -225,7 +269,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va))
+                if (!HandleInvalidAccess(va))
                 {
                     throw;
                 }
@@ -240,11 +284,10 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va))
+                if (!HandleInvalidAccess(va))
                 {
                     throw;
                 }
-
                 return ReadOnlySequence<byte>.Empty;
             }
         }
@@ -257,7 +300,6 @@ namespace Ryujinx.Cpu.Jit
             }
 
             SignalMemoryTracking(va, (ulong)Unsafe.SizeOf<T>(), true);
-
             return ref _backingMemory.GetRef<T>(GetPhysicalAddressInternal(va));
         }
 
@@ -276,7 +318,6 @@ namespace Ryujinx.Cpu.Jit
             }
 
             var regions = new HostMemoryRange[guestRegions.Count];
-
             for (int i = 0; i < regions.Length; i++)
             {
                 var guestRegion = guestRegions[i];
@@ -306,7 +347,6 @@ namespace Ryujinx.Cpu.Jit
             }
 
             int pages = GetPagesCount(va, (uint)size, out va);
-
             var regions = new List<MemoryRange>();
 
             ulong regionStart = GetPhysicalAddressInternal(va);
@@ -333,7 +373,6 @@ namespace Ryujinx.Cpu.Jit
             }
 
             regions.Add(new MemoryRange(regionStart, regionSize));
-
             return regions;
         }
 
@@ -351,14 +390,12 @@ namespace Ryujinx.Cpu.Jit
             }
 
             int pages = GetPagesCount(va, (uint)size, out va);
-
             for (int page = 0; page < pages; page++)
             {
                 if (!IsMapped(va))
                 {
                     return false;
                 }
-
                 va += PageSize;
             }
 
@@ -368,7 +405,7 @@ namespace Ryujinx.Cpu.Jit
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override bool IsMapped(ulong va)
         {
-            if (!ValidateAddress(va))
+            if (!ValidateAddressInternal(va))
             {
                 return false;
             }
@@ -378,13 +415,23 @@ namespace Ryujinx.Cpu.Jit
 
         private nuint GetPhysicalAddressInternal(ulong va)
         {
-            return (nuint)(PteToPa(_pageTable.Read<ulong>((va / PageSize) * PteSize) & ~(0xffffUL << 48)) + (va & PageMask));
+            ulong pte = _pageTable.Read<ulong>((va / PageSize) * PteSize) & ~(0xffffUL << 48);
+            ulong pa = PteToPa(pte) + (va & PageMask);
+            
+            if (!_backingMemory.IsValid((nuint)pa, 1))
+            {
+                Logger.Warning?.Print(LogClass.Cpu, 
+                    $"Invalid PA translation: VA=0x{va:X16} -> PA=0x{pa:X16}");
+                throw new InvalidMemoryRegionException();
+            }
+            
+            return (nuint)pa;
         }
 
         /// <inheritdoc/>
         public void Reprotect(ulong va, ulong size, MemoryPermission protection)
         {
-            // TODO
+            // TODO: Implement proper memory protection
         }
 
         /// <inheritdoc/>
@@ -394,9 +441,7 @@ namespace Ryujinx.Cpu.Jit
 
             if (guest)
             {
-                // Protection is inverted on software pages, since the default value is 0.
                 protection = (~protection) & MemoryPermission.ReadAndWrite;
-
                 long tag = protection switch
                 {
                     MemoryPermission.None => 0L,
@@ -411,7 +456,6 @@ namespace Ryujinx.Cpu.Jit
                 for (int page = 0; page < pages; page++)
                 {
                     ref long pageRef = ref _pageTable.GetRef<long>(pageStart * PteSize);
-
                     long pte;
 
                     do
@@ -457,24 +501,15 @@ namespace Ryujinx.Cpu.Jit
                 return;
             }
 
-            // If the memory tracking is coming from the guest, use the tag bits in the page table entry.
-            // Otherwise, use the managed page flags.
-
             if (guest)
             {
-                // We emulate guard pages for software memory access. This makes for an easy transition to
-                // tracking using host guard pages in future, but also supporting platforms where this is not possible.
-
-                // Write tag includes read protection, since we don't have any read actions that aren't performed before write too.
                 long tag = (write ? 3L : 1L) << PointerTagBit;
-
                 int pages = GetPagesCount(va, (uint)size, out _);
                 ulong pageStart = va >> PageBits;
 
                 for (int page = 0; page < pages; page++)
                 {
                     ref long pageRef = ref _pageTable.GetRef<long>(pageStart * PteSize);
-
                     long pte = Volatile.Read(ref pageRef);
 
                     if ((pte & tag) != 0)
@@ -500,29 +535,59 @@ namespace Ryujinx.Cpu.Jit
 
         private ulong PaToPte(ulong pa)
         {
+            if (!_backingMemory.IsValid((nuint)pa, 1))
+            {
+                throw new ArgumentOutOfRangeException(nameof(pa), $"Invalid physical address: 0x{pa:X16}");
+            }
             return (ulong)_backingMemory.GetPointer(pa, PageSize);
         }
 
         private ulong PteToPa(ulong pte)
         {
-            return (ulong)((long)pte - _backingMemory.Pointer.ToInt64());
+            ulong pa = (ulong)((long)pte - _backingMemory.Pointer.ToInt64());
+            
+            if (!_backingMemory.IsValid((nuint)pa, 1))
+            {
+                throw new InvalidOperationException($"Invalid PA from PTE: 0x{pa:X16}");
+            }
+            
+            return pa;
         }
 
         /// <summary>
         /// Disposes of resources used by the memory manager.
         /// </summary>
-        protected override void Destroy() => _pageTable.Dispose();
+        protected override void Destroy()
+        {
+            _pageTable.Dispose();
+        }
 
         protected override Memory<byte> GetPhysicalAddressMemory(nuint pa, int size)
-            => _backingMemory.GetMemory(pa, size);
+        {
+            if (!_backingMemory.IsValid(pa, size))
+            {
+                throw new ArgumentOutOfRangeException(nameof(pa), $"Invalid physical address range: 0x{pa:X16}-0x{pa + (ulong)size:X16}");
+            }
+            return _backingMemory.GetMemory(pa, size);
+        }
 
         protected override Span<byte> GetPhysicalAddressSpan(nuint pa, int size)
-            => _backingMemory.GetSpan(pa, size);
+        {
+            if (!_backingMemory.IsValid(pa, size))
+            {
+                throw new ArgumentOutOfRangeException(nameof(pa), $"Invalid physical address range: 0x{pa:X16}-0x{pa + (ulong)size:X16}");
+            }
+            return _backingMemory.GetSpan(pa, size);
+        }
 
         protected override nuint TranslateVirtualAddressChecked(ulong va)
-            => GetPhysicalAddressInternal(va);
+        {
+            return GetPhysicalAddressInternal(va);
+        }
 
         protected override nuint TranslateVirtualAddressUnchecked(ulong va)
-            => GetPhysicalAddressInternal(va);
+        {
+            return GetPhysicalAddressInternal(va);
+        }
     }
 }
