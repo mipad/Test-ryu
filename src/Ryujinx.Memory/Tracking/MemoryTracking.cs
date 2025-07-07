@@ -355,7 +355,7 @@ namespace Ryujinx.Memory.Tracking
 
                 // No longer throw exception, just log error and return
                 // This prevents the entire emulator from crashing
-                Logger.Error?.Print(LogClass.Memory, $"Invalid memory access at 0x{address:X16}, size={size}");
+               // Logger.Error?.Print(LogClass.Memory, $"Invalid memory access at 0x{address:X16}, size={size}");
                 return false;
             }
 
