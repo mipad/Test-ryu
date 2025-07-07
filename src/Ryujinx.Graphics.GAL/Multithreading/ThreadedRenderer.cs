@@ -6,8 +6,11 @@ using Ryujinx.Graphics.GAL.Multithreading.Commands.Renderer;
 using Ryujinx.Graphics.GAL.Multithreading.Model;
 using Ryujinx.Graphics.GAL.Multithreading.Resources;
 using Ryujinx.Graphics.GAL.Multithreading.Resources.Programs;
+using Ryujinx.Graphics.Vulkan;
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -57,6 +60,13 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         private Action _interruptAction;
         private readonly object _interruptLock = new();
+
+        // Load monitoring fields
+        private readonly Stopwatch _frameTimer = new();
+        private long _lastFrameTimeTicks;
+        private readonly ConcurrentQueue<long> _frameTimeHistory = new();
+        private const int FrameTimeHistorySize = 60;
+        private const long TargetFrameTimeTicks = TimeSpan.FromMilliseconds(16).Ticks;
 
         public event EventHandler<ScreenCaptureImageInfo> ScreenCaptured;
 
@@ -115,12 +125,29 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         public void RenderLoop()
         {
-            // Power through the render queue until the Gpu thread work is done.
-
+            _frameTimer.Start();
+            
             while (_running)
             {
                 _galWorkAvailable.Wait();
                 _galWorkAvailable.Reset();
+
+                // Frame time measurement
+                long currentFrameTime = _frameTimer.ElapsedTicks - _lastFrameTimeTicks;
+                _lastFrameTimeTicks = _frameTimer.ElapsedTicks;
+                
+                // Maintain frame time history
+                _frameTimeHistory.Enqueue(currentFrameTime);
+                while (_frameTimeHistory.Count > FrameTimeHistorySize)
+                {
+                    _frameTimeHistory.TryDequeue(out _);
+                }
+
+                // Dynamic load detection
+                if (ShouldThrottleCommands())
+                {
+                    Thread.Sleep(CalculateThrottleTime());
+                }
 
                 if (Volatile.Read(ref _interruptAction) != null)
                 {
@@ -130,16 +157,11 @@ namespace Ryujinx.Graphics.GAL.Multithreading
                     Interlocked.Exchange(ref _interruptAction, null);
                 }
 
-                // The other thread can only increase the command count.
-                // We can assume that if it is above 0, it will stay there or get higher.
-
                 while (Volatile.Read(ref _commandCount) > 0 && Volatile.Read(ref _interruptAction) == null)
                 {
                     int commandPtr = _consumerPtr;
 
                     Span<byte> command = new(_commandQueue, commandPtr * _elementSize, _elementSize);
-
-                    // Run the command.
 
                     CommandHelper.RunCommand(command, this, _baseRenderer);
 
@@ -153,6 +175,28 @@ namespace Ryujinx.Graphics.GAL.Multithreading
                     Interlocked.Decrement(ref _commandCount);
                 }
             }
+            
+            _frameTimer.Stop();
+        }
+
+        private bool ShouldThrottleCommands()
+        {
+            if (_frameTimeHistory.Count < FrameTimeHistorySize / 2)
+                return false;
+
+            long averageTicks = (long)_frameTimeHistory.Average();
+            return averageTicks > TargetFrameTimeTicks * 1.2;
+        }
+
+        private int CalculateThrottleTime()
+        {
+            if (_frameTimeHistory.Count < 10)
+                return 1;
+
+            long maxFrameTime = _frameTimeHistory.Max();
+            double overloadRatio = (double)maxFrameTime / TargetFrameTimeTicks;
+            
+            return Math.Clamp((int)(overloadRatio * 2), 1, 5);
         }
 
         internal SpanRef<T> CopySpan<T>(ReadOnlySpan<T> data) where T : unmanaged
@@ -165,13 +209,10 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             return new TableRef<T>(this, reference);
         }
 
-        internal ref T New<T>() where T : struct
+        internal ref T New<T>(CommandPriority priority = CommandPriority.Normal) where T : struct
         {
             while (_producerPtr == (Volatile.Read(ref _consumerPtr) + QueueCount - 1) % QueueCount)
             {
-                // If incrementing the producer pointer would overflow, we need to wait.
-                // _consumerPtr can only move forward, so there's no race to worry about here.
-
                 Thread.Sleep(1);
             }
 
@@ -183,15 +224,21 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             Span<byte> memory = new(_commandQueue, taken * _elementSize, _elementSize);
             ref T result = ref Unsafe.As<byte, T>(ref MemoryMarshal.GetReference(memory));
 
-            memory[^1] = (byte)((IGALCommand)result).CommandType;
-
+            if (_elementSize >= 2)
+            {
+                memory[^1] = (byte)((IGALCommand)result).CommandType;
+                memory[^2] = (byte)priority;
+            }
+            else
+            {
+                memory[0] = (byte)((IGALCommand)result).CommandType;
+            }
+            
             return ref result;
         }
 
         internal int AddTableRef(object obj)
         {
-            // The reference table is sized so that it will never overflow, so long as the references are taken after the command is allocated.
-
             int index = _refProducerPtr;
 
             _refQueue[index] = obj;
@@ -213,11 +260,16 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             return result;
         }
 
-        internal void QueueCommand()
+        internal void QueueCommand(CommandPriority priority = CommandPriority.Normal)
         {
+            if (priority == CommandPriority.High)
+            {
+                _galWorkAvailable.Set();
+            }
+
             int result = Interlocked.Increment(ref _commandCount);
 
-            if (result == 1)
+            if (result == 1 || priority == CommandPriority.High)
             {
                 _galWorkAvailable.Set();
             }
@@ -229,8 +281,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             _invokePtr = _lastProducedPtr;
 
             QueueCommand();
-
-            // Wait for the command to complete.
             _invokeRun.Wait();
         }
 
@@ -253,7 +303,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         {
             if (IsGpuThread() && !alwaysBackground)
             {
-                // The action must be performed on the render thread.
                 New<ActionCommand>().Set(Ref(action));
                 InvokeCommand();
             }
@@ -349,6 +398,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
                 return texture;
             }
         }
+
         public ITextureArray CreateTextureArray(int size, bool isBuffer)
         {
             var textureArray = new ThreadedTextureArray(this);
@@ -399,10 +449,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             return _baseRenderer.GetHardwareInfo();
         }
 
-        /// <summary>
-        /// Initialize the base renderer. Must be called on the render thread.
-        /// </summary>
-        /// <param name="logLevel">Log level to use</param>
         public void Initialize(GraphicsDebugLevel logLevel)
         {
             _baseRenderer.Initialize(logLevel);
@@ -468,17 +514,13 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         public void WaitSync(ulong id)
         {
             Sync.WaitSyncAvailability(id);
-
             _baseRenderer.WaitSync(id);
         }
 
         private void Interrupt(Action action)
         {
-            // Interrupt the backend thread from any external thread and invoke the given action.
-
             if (Thread.CurrentThread == _backendThread)
             {
-                // If this is called from the backend thread, the action can run immediately.
                 action();
             }
             else
@@ -490,7 +532,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
                     }
 
                     _galWorkAvailable.Set();
-
                     _interruptRun.WaitOne();
                 }
             }
@@ -498,7 +539,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         public void SetInterruptAction(Action<Action> interruptAction)
         {
-            // Threaded renderer ignores given interrupt action, as it provides its own to the child renderer.
+            // Threaded renderer ignores given interrupt action
         }
 
         public bool PrepareHostMapping(nint address, ulong size)
@@ -520,9 +561,11 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         {
             GC.SuppressFinalize(this);
 
-            // Dispose must happen from the render thread, after all commands have completed.
+            // Clean monitoring data
+            _frameTimeHistory.Clear();
+            _frameTimer.Reset();
 
-            // Stop the GPU thread.
+            // Stop GPU thread
             _running = false;
             _galWorkAvailable.Set();
 
@@ -531,16 +574,23 @@ namespace Ryujinx.Graphics.GAL.Multithreading
                 _gpuThread.Join();
             }
 
-            // Dispose the renderer.
+            // Dispose renderer
             _baseRenderer.Dispose();
 
-            // Dispose events.
+            // Dispose events
             _frameComplete.Dispose();
             _galWorkAvailable.Dispose();
             _invokeRun.Dispose();
             _interruptRun.Dispose();
 
             Sync.Dispose();
+        }
+
+        public enum CommandPriority
+        {
+            Low,
+            Normal,
+            High
         }
     }
 }
