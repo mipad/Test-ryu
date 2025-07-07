@@ -1,46 +1,55 @@
-public class MemoryManagerAndroid : MemoryManagerBase
-{
-    // 添加计数器用于统计验证情况
-    private int _totalValidations = 0;
-    private int _invalidAddressCount = 0;
+using Ryujinx.Memory; 
+using Ryujinx.Common.Logging;
 
-    protected override bool ValidateAddress(ulong address)
+namespace Ryujinx.Memory 
+{
+    /// <summary>
+    /// Android 平台专用的内存管理器，提供地址验证功能
+    /// </summary>
+    public class MemoryManagerAndroid : MemoryManagerBase
     {
-        _totalValidations++;
+        // 添加计数器用于调试
+        private int _validationCount = 0;
+        private int _invalidCount = 0;
         
-        // ARM64地址空间验证 (0x0000_0000_0000_0000 - 0x0000_FFFF_FFFF_FFFF)
-        if (address >> 48 != 0)
+        /// <summary>
+        /// 验证内存地址是否在合法范围内
+        /// </summary>
+        /// <param name="address">要验证的内存地址</param>
+        /// <returns>如果地址有效则返回 true，否则返回 false</returns>
+        protected override bool ValidateAddress(ulong address)
         {
-            _invalidAddressCount++;
+            _validationCount++;
             
-            Logger.Warning?.Print(LogClass.Memory, 
-                $"🔥 检测到无效地址访问: 0x{address:X16}");
-            Logger.Debug?.Print(LogClass.Memory,
-                $"验证统计: 总验证次数={_totalValidations}, 无效地址={_invalidAddressCount}");
+            // ARM64地址空间验证 (0x0000_0000_0000_0000 - 0x0000_FFFF_FFFF_FFFF)
+            if ((address >> 48) != 0)
+            {
+                _invalidCount++;
+                
+                // 记录警告日志（仅在启用日志时记录）
+                Logger.Warning?.Print(LogClass.Memory, 
+                    $"🚫 拦截无效内存地址访问: 0x{address:X16}" +
+                    $"\n验证统计: 总验证={_validationCount}, 无效={_invalidCount}");
+                
+                return false;
+            }
             
-            // 记录调用堆栈（仅调试模式）
-            #if DEBUG
-            Logger.Debug?.Print(LogClass.Memory, 
-                $"调用堆栈:\n{Environment.StackTrace}");
-            #endif
+            // 每1000次验证记录一次统计信息
+            if (_validationCount % 1000 == 0)
+            {
+                Logger.Info?.Print(LogClass.Memory, 
+                    $"✅ 地址验证统计: 总数={_validationCount}, 无效={_invalidCount}");
+            }
             
-            return false;
+            return base.ValidateAddress(address);
         }
         
-        // 定期输出验证统计
-        if (_totalValidations % 1000 == 0)
+        /// <summary>
+        /// 获取验证统计信息（用于调试）
+        /// </summary>
+        public (int Total, int Invalid) GetValidationStats()
         {
-            Logger.Info?.Print(LogClass.Memory, 
-                $"✅ 地址验证统计: 总数={_totalValidations}, 无效={_invalidAddressCount} " +
-                $"(无效率: {_invalidAddressCount * 100.0 / _totalValidations:F2}%)");
+            return (_validationCount, _invalidCount);
         }
-        
-        return base.ValidateAddress(address);
-    }
-    
-    // 添加方法获取验证统计
-    public (int Total, int Invalid) GetValidationStats()
-    {
-        return (_totalValidations, _invalidAddressCount);
     }
 }
