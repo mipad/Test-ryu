@@ -270,7 +270,6 @@ namespace Ryujinx.Memory
             if (!ValidateAddressAndSize(va, size))
             {
                 Interlocked.Increment(ref _invalidAddressCount);
-                LogInvalidAccess(va, "无效的地址范围");
                 throw new InvalidMemoryRegionException($"va=0x{va:X16}, size=0x{size:X16}");
             }
         }
@@ -379,28 +378,6 @@ namespace Ryujinx.Memory
             return endVa >= va && endVa >= size && endVa <= AddressSpaceSize;
         }
 
-        /// <summary>
-        /// 记录无效内存访问日志
-        /// </summary>
-        /// <param name="va">虚拟地址</param>
-        /// <param name="reason">失败原因</param>
-        private void LogInvalidAccess(ulong va, string reason)
-        {
-            long invalidCount = Interlocked.Read(ref _invalidAddressCount);
-            long validationCount = Interlocked.Read(ref _validationCount);
-
-            // 记录详细警告
-            Logger.Warning?.Print(LogClass.Memory, 
-                $"无效地址访问: 0x{va:X16} 原因: {reason}");
-
-            // 定期输出统计信息 (每1000次无效访问)
-            if (invalidCount % 1000 == 0)
-            {
-                Logger.Info?.Print(LogClass.Memory, 
-                    $"地址验证统计: 总数={validationCount}, 无效={invalidCount}");
-            }
-        }
-
         protected static void ThrowInvalidMemoryRegionException(string message)
             => throw new InvalidMemoryRegionException(message);
 
@@ -442,6 +419,5 @@ namespace Ryujinx.Memory
                 }
             }
         }
-
     }
 }
