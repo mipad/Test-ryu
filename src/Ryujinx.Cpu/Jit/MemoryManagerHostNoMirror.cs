@@ -75,6 +75,12 @@ namespace Ryujinx.Cpu.Jit
             _memoryEh = new MemoryEhMeilleure(addressSpace, null, Tracking);
         }
 
+        /// <inheritdoc/>
+        public bool ValidateAddressAndSize(ulong va, ulong size)
+        {
+            return base.ValidateAddressAndSize(va, size);
+        }
+
         /// <summary>
         /// Ensures the combination of virtual address and size is part of the addressable space and fully mapped.
         /// </summary>
