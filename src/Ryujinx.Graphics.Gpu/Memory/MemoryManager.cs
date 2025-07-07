@@ -576,21 +576,32 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="va">GPU virtual address to be translated</param>
         /// <returns>CPU virtual address, or <see cref="PteUnmapped"/> if unmapped</returns>
         public ulong Translate(ulong va)
-        {
-            if (!ValidateAddress(va))
-            {
-                return PteUnmapped;
-            }
+{
+    if (!ValidateAddress(va))
+    {
+        //Logger.Warning?.Print(LogClass.Gpu, $"Invalid GPU VA: 0x{va:X16}");
+        return PteUnmapped;
+    }
 
-            ulong pte = GetPte(va);
+    ulong pte = GetPte(va);
 
-            if (pte == PteUnmapped)
-            {
-                return PteUnmapped;
-            }
+    if (pte == PteUnmapped)
+    {
+        //Logger.Warning?.Print(LogClass.Gpu, $"Unmapped GPU VA: 0x{va:X16}");
+        return PteUnmapped;
+    }
 
-            return UnpackPaFromPte(pte) + (va & PageMask);
-        }
+    ulong pa = UnpackPaFromPte(pte) + (va & PageMask);
+    
+    // Additional check to ensure physical address is valid
+    if (pa >= _backingMemory.Size)
+    {
+       // Logger.Warning?.Print(LogClass.Gpu, $"Invalid GPU PA: 0x{pa:X16} for VA: 0x{va:X16}");
+        return PteUnmapped;
+    }
+
+    return pa;
+}
 
         /// <summary>
         /// Translates a GPU virtual address to a CPU virtual address on the first mapped page of memory
