@@ -3,7 +3,6 @@ using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading;
 
 namespace Ryujinx.Memory
 {
@@ -13,9 +12,6 @@ namespace Ryujinx.Memory
         public const int PageSize = 1 << PageBits;
         public const int PageMask = PageSize - 1;
         
-        private long _validationCount;
-        private long _invalidAddressCount;
-
         protected abstract ulong AddressSpaceSize { get; }
 
         public virtual ReadOnlySequence<byte> GetReadOnlySequence(ulong va, int size, bool tracked = false)
@@ -265,11 +261,8 @@ namespace Ryujinx.Memory
         /// <exception cref="InvalidMemoryRegionException">Throw when the memory region specified outside the addressable space</exception>
         protected void AssertValidAddressAndSize(ulong va, ulong size)
         {
-            Interlocked.Increment(ref _validationCount);
-            
             if (!ValidateAddressAndSize(va, size))
             {
-                Interlocked.Increment(ref _invalidAddressCount);
                 throw new InvalidMemoryRegionException($"va=0x{va:X16}, size=0x{size:X16}");
             }
         }
@@ -351,18 +344,19 @@ namespace Ryujinx.Memory
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         protected virtual bool ValidateAddress(ulong va)
         {
-            // 基本地址空间验证
-            if (va >= AddressSpaceSize)
+            // ARM64 地址空间验证：高16位必须为0或0xFFFF
+            ulong highBits = va >> 48;
+            if (highBits != 0 && highBits != 0xFFFF)
             {
                 return false;
             }
-            
-            // ARM64 地址空间验证 (Android/iOS)
-            if ((va >> 48) != 0)
+
+            // 用户空间地址必须小于AddressSpaceSize
+            if (highBits == 0 && va >= AddressSpaceSize)
             {
                 return false;
             }
-            
+
             return true;
         }
 
@@ -372,10 +366,32 @@ namespace Ryujinx.Memory
         /// <param name="va">Virtual address of the range</param>
         /// <param name="size">Size of the range in bytes</param>
         /// <returns>True if the combination of virtual address and size is part of the addressable space</returns>
-        protected bool ValidateAddressAndSize(ulong va, ulong size)
+        protected virtual bool ValidateAddressAndSize(ulong va, ulong size)
         {
+            // 计算结束地址
             ulong endVa = va + size;
-            return endVa >= va && endVa >= size && endVa <= AddressSpaceSize;
+            
+            // 检查地址是否回绕（wrap around）
+            if (endVa < va)
+            {
+                return false;
+            }
+            
+            // 检查地址范围是否在有效空间内
+            ulong highBits = va >> 48;
+            
+            if (highBits == 0)
+            {
+                // 用户空间地址范围
+                return endVa <= AddressSpaceSize;
+            }
+            else if (highBits == 0xFFFF)
+            {
+                // 内核空间地址范围 (0xFFFF000000000000 - 0xFFFFFFFFFFFFFFFF)
+                return va >= 0xFFFF000000000000;
+            }
+            
+            return false;
         }
 
         protected static void ThrowInvalidMemoryRegionException(string message)
