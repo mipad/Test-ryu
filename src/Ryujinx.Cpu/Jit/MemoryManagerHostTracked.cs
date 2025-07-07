@@ -94,6 +94,12 @@ namespace Ryujinx.Cpu.Jit
             _addressSpace = new(Tracking, backingMemory, _nativePageTable, useProtectionMirrors);
         }
 
+        /// <inheritdoc/>
+        public bool ValidateAddressAndSize(ulong va, ulong size)
+        {
+            return base.ValidateAddressAndSize(va, size);
+        }
+
         public override ReadOnlySequence<byte> GetReadOnlySequence(ulong va, int size, bool tracked = false)
         {
             if (size == 0)
@@ -242,14 +248,14 @@ namespace Ryujinx.Cpu.Jit
 
                     if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
                     {
-                        memory.GetSpan(rangeOffset, (int)copySize).CopyTo(data.Slice(offset, (int)copySize));
+                        memory.GetSpan(rangeOffset, (int)copySize).CopyTo(data.Slice(offset, (int)copySize);
                     }
                     else
                     {
                         // Fallback for unsupported platforms
                         byte[] buffer = new byte[copySize];
                         memory.Read(rangeOffset, buffer);
-                        buffer.CopyTo(data.Slice(offset, (int)copySize));
+                        buffer.CopyTo(data.Slice(offset, (int)copySize);
                     }
 
                     va += copySize;
@@ -510,45 +516,45 @@ namespace Ryujinx.Cpu.Jit
         }
 
         public IEnumerable<HostMemoryRange> GetHostRegions(ulong va, ulong size)
-{
-    if (!ValidateAddressAndSize(va, size))
-    {
-        return null;
-    }
-
-    var regions = new List<HostMemoryRange>();
-    ulong endVa = va + size;
-
-    try
-    {
-        while (va < endVa)
         {
-            (MemoryBlock memory, ulong rangeOffset, ulong rangeSize) = GetMemoryOffsetAndSize(va, endVa - va);
-
-            nuint pointer;
-            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+            if (!ValidateAddressAndSize(va, size))
             {
-                // 将 IntPtr 转换为 nuint
-                pointer = (nuint)memory.GetPointer(rangeOffset, rangeSize);
-            }
-            else
-            {
-                // Fallback for unsupported platforms
-                pointer = 0;
+                return null;
             }
 
-            regions.Add(new HostMemoryRange(pointer, rangeSize));
+            var regions = new List<HostMemoryRange>();
+            ulong endVa = va + size;
 
-            va += rangeSize;
+            try
+            {
+                while (va < endVa)
+                {
+                    (MemoryBlock memory, ulong rangeOffset, ulong rangeSize) = GetMemoryOffsetAndSize(va, endVa - va);
+
+                    nuint pointer;
+                    if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+                    {
+                        // 将 IntPtr 转换为 nuint
+                        pointer = (nuint)memory.GetPointer(rangeOffset, rangeSize);
+                    }
+                    else
+                    {
+                        // Fallback for unsupported platforms
+                        pointer = 0;
+                    }
+
+                    regions.Add(new HostMemoryRange(pointer, rangeSize));
+
+                    va += rangeSize;
+                }
+            }
+            catch (InvalidMemoryRegionException)
+            {
+                return null;
+            }
+
+            return regions;
         }
-    }
-    catch (InvalidMemoryRegionException)
-    {
-        return null;
-    }
-
-    return regions;
-}
 
         public IEnumerable<MemoryRange> GetPhysicalRegions(ulong va, ulong size)
         {
