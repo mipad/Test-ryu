@@ -14,6 +14,28 @@ namespace Ryujinx.Memory
         /// </summary>
         protected override ulong AddressSpaceSize => 1UL << 48; // ARM64 48位地址空间
 
+        /// <summary>
+        /// Android 特定的地址验证
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        protected override bool ValidateAddress(ulong va)
+        {
+            // ARM64 地址空间验证：高16位必须为0或0xFFFF
+            ulong highBits = va >> 48;
+            if (highBits != 0 && highBits != 0xFFFF)
+            {
+                return false;
+            }
+
+            // 用户空间地址必须小于AddressSpaceSize
+            if (highBits == 0 && va >= AddressSpaceSize)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
         // ===== 必须实现的抽象方法 =====
         
         protected override Memory<byte> GetPhysicalAddressMemory(nuint pa, int size)
