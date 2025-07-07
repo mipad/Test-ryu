@@ -1,4 +1,3 @@
-using Ryujinx.Common.Logging;
 using Ryujinx.Memory;
 using System;
 using System.Runtime.CompilerServices;
@@ -14,23 +13,6 @@ namespace Ryujinx.Memory
         /// 地址空间大小（根据 Android 设备特性设置）
         /// </summary>
         protected override ulong AddressSpaceSize => 1UL << 48; // ARM64 48位地址空间
-
-        /// <summary>
-        /// 重写日志方法以添加 Android 特定的调试信息
-        /// </summary>
-        protected override void LogInvalidAccess(ulong va, string reason)
-        {
-            // 调用基类实现进行基本日志记录
-            base.LogInvalidAccess(va, reason);
-            
-            // 添加 Android 特定的调试信息
-            #if DEBUG
-            Logger.Debug?.Print(LogClass.MemoryManager, 
-                $"🚫 Android 拦截无效内存访问: 0x{va:X16} - {reason}");
-            Logger.Debug?.Print(LogClass.MemoryManager, 
-                $"调用堆栈:\n{Environment.StackTrace}");
-            #endif
-        }
 
         // ===== 必须实现的抽象方法 =====
         
