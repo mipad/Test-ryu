@@ -594,7 +594,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
     ulong pa = UnpackPaFromPte(pte) + (va & PageMask);
     
     // Additional check to ensure physical address is valid
-    if (pa >= _backingMemory.Size)
+    if (!Physical.IsMapped(pa))
     {
        // Logger.Warning?.Print(LogClass.Gpu, $"Invalid GPU PA: 0x{pa:X16} for VA: 0x{va:X16}");
         return PteUnmapped;
