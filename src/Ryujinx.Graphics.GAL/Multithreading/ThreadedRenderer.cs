@@ -6,7 +6,6 @@ using Ryujinx.Graphics.GAL.Multithreading.Commands.Renderer;
 using Ryujinx.Graphics.GAL.Multithreading.Model;
 using Ryujinx.Graphics.GAL.Multithreading.Resources;
 using Ryujinx.Graphics.GAL.Multithreading.Resources.Programs;
-using Ryujinx.Graphics.Vulkan;
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -66,7 +65,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         private long _lastFrameTimeTicks;
         private readonly ConcurrentQueue<long> _frameTimeHistory = new();
         private const int FrameTimeHistorySize = 60;
-        private const long TargetFrameTimeTicks = TimeSpan.FromMilliseconds(16).Ticks;
+        private const long TargetFrameTimeTicks = 160000; // 16ms in ticks
 
         public event EventHandler<ScreenCaptureImageInfo> ScreenCaptured;
 
