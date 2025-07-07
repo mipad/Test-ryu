@@ -79,6 +79,22 @@ namespace Ryujinx.Cpu.Jit
         }
 
         /// <inheritdoc/>
+        public bool ValidateAddressAndSize(ulong address, ulong size)
+        {
+            if (size == 0)
+            {
+                return true;
+            }
+
+            if (address + size < address)
+            {
+                return false; // Overflow check
+            }
+
+            return address + size <= AddressSpaceSize;
+        }
+
+        /// <inheritdoc/>
         public void Map(ulong va, ulong pa, ulong size, MemoryMapFlags flags)
         {
             AssertValidAddressAndSize(va, size);
@@ -362,7 +378,7 @@ namespace Ryujinx.Cpu.Jit
 
         private nuint GetPhysicalAddressInternal(ulong va)
         {
-            return (nuint)(PteToPa(_pageTable.Read<ulong>((va / PageSize) * PteSize) & ~(0xffffUL << 48)) + (va & PageMask));
+            return (nuint)(PteToPa(_pageTable.Read<ulong>((va / PageSize) * PteSize) & ~(0xffffUL << 48)) + (va & PageMask);
         }
 
         /// <inheritdoc/>
