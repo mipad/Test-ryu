@@ -115,7 +115,8 @@ namespace Ryujinx.Cpu.Jit
         {
             AssertValidAddressAndSize(va, size);
 
-            if (!_backingMemory.IsValid(pa, size))
+            // Check if physical address is within backing memory bounds
+            if (pa + size > (ulong)_backingMemory.Size)
             {
                 throw new ArgumentOutOfRangeException(nameof(pa), 
                     $"Physical address 0x{pa:X16} with size 0x{size:X16} is invalid");
@@ -419,10 +420,11 @@ namespace Ryujinx.Cpu.Jit
             ulong pte = _pageTable.Read<ulong>((va / PageSize) * PteSize) & ~(0xffffUL << 48);
             ulong pa = PteToPa(pte) + (va & PageMask);
             
-            if (!_backingMemory.IsValid((nuint)pa, 1))
+            // Check if physical address is within backing memory bounds
+            if (pa >= (ulong)_backingMemory.Size)
             {
                 Logger.Warning?.Print(LogClass.Cpu, 
-                    $"Invalid PA translation: VA=0x{va:X16} -> PA=0x{pa:X16}");
+                    $"Invalid PA translation: VA=0x{va:X16} -> PA=0x{pa:X16} (BackingMemorySize: 0x{_backingMemory.Size:X16})");
                 throw new InvalidMemoryRegionException();
             }
             
@@ -536,7 +538,8 @@ namespace Ryujinx.Cpu.Jit
 
         private ulong PaToPte(ulong pa)
         {
-            if (!_backingMemory.IsValid((nuint)pa, 1))
+            // Check if physical address is within backing memory bounds
+            if (pa >= (ulong)_backingMemory.Size)
             {
                 throw new ArgumentOutOfRangeException(nameof(pa), $"Invalid physical address: 0x{pa:X16}");
             }
@@ -547,7 +550,8 @@ namespace Ryujinx.Cpu.Jit
         {
             ulong pa = (ulong)((long)pte - _backingMemory.Pointer.ToInt64());
             
-            if (!_backingMemory.IsValid((nuint)pa, 1))
+            // Check if physical address is within backing memory bounds
+            if (pa >= (ulong)_backingMemory.Size)
             {
                 throw new InvalidOperationException($"Invalid PA from PTE: 0x{pa:X16}");
             }
@@ -565,7 +569,8 @@ namespace Ryujinx.Cpu.Jit
 
         protected override Memory<byte> GetPhysicalAddressMemory(nuint pa, int size)
         {
-            if (!_backingMemory.IsValid(pa, size))
+            // Check if physical address range is within backing memory bounds
+            if ((ulong)pa + (ulong)size > (ulong)_backingMemory.Size)
             {
                 throw new ArgumentOutOfRangeException(nameof(pa), $"Invalid physical address range: 0x{pa:X16}-0x{pa + (ulong)size:X16}");
             }
@@ -574,7 +579,8 @@ namespace Ryujinx.Cpu.Jit
 
         protected override Span<byte> GetPhysicalAddressSpan(nuint pa, int size)
         {
-            if (!_backingMemory.IsValid(pa, size))
+            // Check if physical address range is within backing memory bounds
+            if ((ulong)pa + (ulong)size > (ulong)_backingMemory.Size)
             {
                 throw new ArgumentOutOfRangeException(nameof(pa), $"Invalid physical address range: 0x{pa:X16}-0x{pa + (ulong)size:X16}");
             }
