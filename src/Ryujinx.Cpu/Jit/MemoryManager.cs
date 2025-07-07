@@ -1,4 +1,5 @@
 using ARMeilleure.Memory;
+using Ryujinx.Common.Logging;
 using Ryujinx.Memory;
 using Ryujinx.Memory.Range;
 using Ryujinx.Memory.Tracking;
