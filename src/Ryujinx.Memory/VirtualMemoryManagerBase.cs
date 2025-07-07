@@ -11,7 +11,7 @@ namespace Ryujinx.Memory
         public const int PageBits = 12;
         public const int PageSize = 1 << PageBits;
         public const int PageMask = PageSize - 1;
-        
+
         protected abstract ulong AddressSpaceSize { get; }
 
         public virtual ReadOnlySequence<byte> GetReadOnlySequence(ulong va, int size, bool tracked = false)
@@ -342,22 +342,9 @@ namespace Ryujinx.Memory
         /// <param name="va">Virtual address</param>
         /// <returns>True if the virtual address is part of the addressable space</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        protected virtual bool ValidateAddress(ulong va)
+        protected bool ValidateAddress(ulong va)
         {
-            // ARM64 地址空间验证：高16位必须为0或0xFFFF
-            ulong highBits = va >> 48;
-            if (highBits != 0 && highBits != 0xFFFF)
-            {
-                return false;
-            }
-
-            // 用户空间地址必须小于AddressSpaceSize
-            if (highBits == 0 && va >= AddressSpaceSize)
-            {
-                return false;
-            }
-
-            return true;
+            return va < AddressSpaceSize;
         }
 
         /// <summary>
@@ -366,32 +353,10 @@ namespace Ryujinx.Memory
         /// <param name="va">Virtual address of the range</param>
         /// <param name="size">Size of the range in bytes</param>
         /// <returns>True if the combination of virtual address and size is part of the addressable space</returns>
-        protected virtual bool ValidateAddressAndSize(ulong va, ulong size)
+        protected bool ValidateAddressAndSize(ulong va, ulong size)
         {
-            // 计算结束地址
             ulong endVa = va + size;
-            
-            // 检查地址是否回绕（wrap around）
-            if (endVa < va)
-            {
-                return false;
-            }
-            
-            // 检查地址范围是否在有效空间内
-            ulong highBits = va >> 48;
-            
-            if (highBits == 0)
-            {
-                // 用户空间地址范围
-                return endVa <= AddressSpaceSize;
-            }
-            else if (highBits == 0xFFFF)
-            {
-                // 内核空间地址范围 (0xFFFF000000000000 - 0xFFFFFFFFFFFFFFFF)
-                return va >= 0xFFFF000000000000;
-            }
-            
-            return false;
+            return endVa >= va && endVa >= size && endVa <= AddressSpaceSize;
         }
 
         protected static void ThrowInvalidMemoryRegionException(string message)
@@ -435,5 +400,6 @@ namespace Ryujinx.Memory
                 }
             }
         }
+
     }
 }
