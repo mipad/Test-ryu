@@ -3,7 +3,6 @@ using Ryujinx.Common.Collections;
 using Ryujinx.Memory;
 using Ryujinx.Memory.Tracking;
 using System;
-using System.Runtime.Versioning;
 
 namespace Ryujinx.Cpu.Jit.HostTracked
 {
@@ -29,37 +28,21 @@ namespace Ryujinx.Cpu.Jit.HostTracked
             _allocation.Block.AddMapping(_allocation.Offset, _allocation.Size, va, endVa);
         }
 
-        [SupportedOSPlatform("linux")]
-        [SupportedOSPlatform("macos")]
-        [SupportedOSPlatform("windows")]
-        [SupportedOSPlatform("android")]
         public void MapView(MemoryBlock srcBlock, ulong srcOffset, ulong dstOffset, ulong size)
         {
             _allocation.Block.Memory.MapView(srcBlock, srcOffset, _allocation.Offset + dstOffset, size);
         }
 
-        [SupportedOSPlatform("linux")]
-        [SupportedOSPlatform("macos")]
-        [SupportedOSPlatform("windows")]
-        [SupportedOSPlatform("android")]
         public void UnmapView(MemoryBlock srcBlock, ulong offset, ulong size)
         {
             _allocation.Block.Memory.UnmapView(srcBlock, _allocation.Offset + offset, size);
         }
 
-        [SupportedOSPlatform("linux")]
-        [SupportedOSPlatform("macos")]
-        [SupportedOSPlatform("windows")]
-        [SupportedOSPlatform("android")]
         public void Reprotect(ulong offset, ulong size, MemoryPermission permission, bool throwOnFail)
         {
             _allocation.Block.Memory.Reprotect(_allocation.Offset + offset, size, permission, throwOnFail);
         }
 
-        [SupportedOSPlatform("linux")]
-        [SupportedOSPlatform("macos")]
-        [SupportedOSPlatform("windows")]
-        [SupportedOSPlatform("android")]
         public IntPtr GetPointer(ulong offset, ulong size)
         {
             return _allocation.Block.Memory.GetPointer(_allocation.Offset + offset, size);
@@ -150,11 +133,7 @@ namespace Ryujinx.Cpu.Jit.HostTracked
 
             public void RemoveMapping(ulong offset, ulong size)
             {
-                Mapping mapping = _mappingTree.GetNode(offset);
-                if (mapping != null)
-                {
-                    _mappingTree.Remove(mapping);
-                }
+                _mappingTree.Remove(_mappingTree.GetNode(offset));
             }
 
             private ulong VirtualMemoryEvent(ulong address, ulong size, bool write)
