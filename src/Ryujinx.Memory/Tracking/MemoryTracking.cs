@@ -1,12 +1,11 @@
 using Ryujinx.Common.Pools;
 using Ryujinx.Memory.Range;
-using System;
 using System.Collections.Generic;
 
 namespace Ryujinx.Memory.Tracking
 {
     /// <summary>
-    /// Manages memory tracking for a given virtual/physical memory block.
+    /// Manages memory tracking for a given virutal/physical memory block.
     /// </summary>
     public class MemoryTracking
     {
@@ -290,14 +289,6 @@ namespace Ryujinx.Memory.Tracking
         /// <returns>True if the event triggered any tracking regions, false otherwise</returns>
         public bool VirtualMemoryEvent(ulong address, ulong size, bool write, bool precise, int? exemptId = null, bool guest = false)
         {
-            // Add address validation protection
-            if (!_memoryManager.ValidateAddressAndSize(address, size))
-            {
-                // For invalid addresses, only call the invalid access handler, don't throw exception
-                _invalidAccessHandler?.Invoke(address);
-                return false;
-            }
-
             // Look up the virtual region using the region list.
             // Signal up the chain to relevant handles.
 
@@ -353,10 +344,9 @@ namespace Ryujinx.Memory.Tracking
             {
                 _invalidAccessHandler?.Invoke(address);
 
-                // No longer throw exception, just log error and return
-                // This prevents the entire emulator from crashing
-               // Logger.Error?.Print(LogClass.Memory, $"Invalid memory access at 0x{address:X16}, size={size}");
-                return false;
+                // We can't continue - it's impossible to remove protection from the page.
+                // Even if the access handler wants us to continue, we wouldn't be able to.
+                throw new InvalidMemoryRegionException();
             }
 
             return true;
