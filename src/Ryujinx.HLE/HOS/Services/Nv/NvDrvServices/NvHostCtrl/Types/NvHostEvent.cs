@@ -6,7 +6,6 @@ using Ryujinx.HLE.HOS.Kernel.Threading;
 using Ryujinx.HLE.HOS.Services.Nv.Types;
 using Ryujinx.Horizon.Common;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -21,9 +20,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         public int EventHandle;
 
         private readonly uint _eventId;
-#pragma warning disable IDE0052 // Remove unread private member
         private readonly NvHostSyncpt _syncpointManager;
-#pragma warning restore IDE0052
         private SyncpointWaiterHandle _waiterInformation;
 
         private NvFence _previousFailingFence;
@@ -31,13 +28,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
 
         public readonly object Lock = new();
 
-        /// <summary>
-        /// Max failing count until waiting on CPU.
-        /// FIXME: This seems enough for most of the cases, reduce if needed.
-        /// </summary>
         private const uint FailingCountMax = 2;
-
-        // 优化字段
         private long _lastGpuSignalTime;
         private int _adaptiveThreshold = (int)FailingCountMax;
         private static readonly TimeSpan _shaderCompilationThreshold = TimeSpan.FromMilliseconds(50);
@@ -46,9 +37,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         public NvHostEvent(NvHostSyncpt syncpointManager, uint eventId, Horizon system)
         {
             Fence.Id = 0;
-
             State = NvHostEventState.Available;
-
             Event = new KEvent(system.KernelContext);
 
             if (KernelStatic.GetCurrentProcess().HandleTable.GenerateHandle(Event.ReadableEvent, out EventHandle) != Result.Success)
@@ -57,9 +46,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
             }
 
             _eventId = eventId;
-
             _syncpointManager = syncpointManager;
-
             ResetFailingState();
         }
 
@@ -74,16 +61,12 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         {
             lock (Lock)
             {
-                NvHostEventState oldState = State;
-
-                State = NvHostEventState.Signaling;
-
-                if (oldState == NvHostEventState.Waiting)
+                if (State == NvHostEventState.Waiting || State == NvHostEventState.Signaling)
                 {
+                    State = NvHostEventState.Signaled;
                     Event.WritableEvent.Signal();
+                    Logger.Debug?.Print(LogClass.ServiceNv, $"Event {_eventId} signaled (State={State})");
                 }
-
-                State = NvHostEventState.Signaled;
             }
         }
 
@@ -91,25 +74,16 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         {
             lock (Lock)
             {
-                // If the signal does not match our current waiter,
-                // then it is from a past fence and we should just ignore it.
                 if (waiterInformation != null && waiterInformation != _waiterInformation)
                 {
-                    // 回收未使用的资源
-                    if (waiterInformation != null)
-                    {
-                        _waiterPool.Enqueue(waiterInformation);
-                    }
+                    _waiterPool.Enqueue(waiterInformation);
                     return;
                 }
 
-                // 记录GPU响应时间用于监控
                 _lastGpuSignalTime = Stopwatch.GetTimestamp();
-                
                 ResetFailingState();
                 Signal();
-                
-                // 回收当前资源
+
                 if (_waiterInformation != null)
                 {
                     _waiterPool.Enqueue(_waiterInformation);
@@ -123,18 +97,12 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
             lock (Lock)
             {
                 NvHostEventState oldState = State;
-
                 State = NvHostEventState.Cancelling;
 
                 if (oldState == NvHostEventState.Waiting && _waiterInformation != null)
                 {
                     gpuContext.Synchronization.UnregisterCallback(Fence.Id, _waiterInformation);
-                    
-                    // 回收资源前检查
-                    if (_waiterInformation != null)
-                    {
-                        _waiterPool.Enqueue(_waiterInformation);
-                    }
+                    _waiterPool.Enqueue(_waiterInformation);
                     _waiterInformation = null;
 
                     if (_previousFailingFence.Id == Fence.Id && _previousFailingFence.Value == Fence.Value)
@@ -144,21 +112,17 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
                     else
                     {
                         _failingCount = 1;
-
                         _previousFailingFence = Fence;
                     }
                 }
 
                 State = NvHostEventState.Cancelled;
-
                 Event.WritableEvent.Clear();
 
-                // 智能退避策略
-                var backoffTime = CalculateBackoffTime();
+                int backoffTime = CalculateBackoffTime();
                 if (backoffTime > 0)
                 {
-                    Logger.Info?.Print(LogClass.ServiceNv, 
-                        $"Smart backoff: {backoffTime}ms for event {_eventId}");
+                    Logger.Info?.Print(LogClass.ServiceNv, $"Smart backoff: {backoffTime}ms for event {_eventId}");
                     Thread.Sleep(backoffTime);
                 }
             }
@@ -168,18 +132,12 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         {
             lock (Lock)
             {
-                // 使用动态阈值
                 _adaptiveThreshold = (int)FailingCountMax;
 
                 if (_failingCount >= _adaptiveThreshold)
                 {
-                    Logger.Warning?.Print(LogClass.ServiceNv, 
-                        $"GPU processing slow (fails: {_failingCount}). Waiting on CPU...");
-
-                    // 使用增量等待策略
-                    bool waitResult = IncrementalWait(gpuContext, fence, 16, 100);
-                    
-                    if (waitResult)
+                    Logger.Warning?.Print(LogClass.ServiceNv, $"GPU processing slow (fails: {_failingCount}). Waiting on CPU...");
+                    if (IncrementalWait(gpuContext, fence, 16, 100))
                     {
                         ResetFailingState();
                         return false;
@@ -189,17 +147,9 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
                 Fence = fence;
                 State = NvHostEventState.Waiting;
 
-                // 尝试从资源池获取或创建新的waiter
-                if (_waiterPool.Count > 0)
-                {
-                    _waiterInformation = _waiterPool.Dequeue();
-                }
-                else
-                {
-                    _waiterInformation = null;
-                }
+                _waiterInformation = _waiterPool.Count > 0 ? _waiterPool.Dequeue() : null;
 
-                // 同步点快速检查
+                // Double-check syncpoint value to avoid race condition
                 uint currentValue = gpuContext.Synchronization.GetSyncpointValue(Fence.Id);
                 if (currentValue >= Fence.Value)
                 {
@@ -211,17 +161,17 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
                     return false;
                 }
 
-                // 注册回调
                 _waiterInformation = gpuContext.Synchronization.RegisterCallbackOnSyncpoint(
                     Fence.Id, 
                     Fence.Value, 
                     GpuSignaled);
 
+                Logger.Debug?.Print(LogClass.ServiceNv, 
+                    $"Event {_eventId} waiting (Current: {currentValue}, Threshold: {Fence.Value})");
                 return true;
             }
         }
-        
-        // 增量等待方法实现
+
         private bool IncrementalWait(GpuContext ctx, NvFence fence, int initialTimeout, int maxTimeout)
         {
             int currentTimeout = initialTimeout;
@@ -233,20 +183,14 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
                     return true;
                 }
                 Thread.Sleep(currentTimeout);
-                currentTimeout *= 2; // 指数退避
+                currentTimeout *= 2;
             }
-            
-            // 最终检查
-            uint finalValue = ctx.Synchronization.GetSyncpointValue(fence.Id);
-            return finalValue >= fence.Value;
+            return ctx.Synchronization.GetSyncpointValue(fence.Id) >= fence.Value;
         }
 
-        // 智能退避计算
         private int CalculateBackoffTime()
         {
-            // 指数退避算法，最大 100ms
-            return _failingCount > 0 ? 
-                Math.Min(100, (int)Math.Pow(2, _failingCount)) : 0;
+            return _failingCount > 0 ? Math.Min(100, (int)Math.Pow(2, _failingCount)) : 0;
         }
 
         public string DumpState(GpuContext gpuContext)
@@ -264,7 +208,6 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
                 res += $"\t\tCurrent Value : {gpuContext.Synchronization.GetSyncpointValue(Fence.Id)}\n";
                 res += $"\t\tWaiter Valid  : {_waiterInformation != null}\n";
             }
-
             return res;
         }
 
@@ -275,26 +218,21 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
                 context.Process.HandleTable.CloseHandle(EventHandle);
                 EventHandle = 0;
             }
-            
-            // 清理资源池
             while (_waiterPool.Count > 0)
             {
-                var waiter = _waiterPool.Dequeue();
-                // 如果waiter需要显式释放，在此添加
+                _waiterPool.Dequeue();
             }
         }
-        
-        // 新增性能监控方法
+
         public PerformanceMetrics GetMetrics()
         {
             double lastResponseMs = -1;
             if (_lastGpuSignalTime != 0)
             {
-                var elapsed = Stopwatch.GetElapsedTime(_lastGpuSignalTime);
-                lastResponseMs = elapsed.TotalMilliseconds;
+                lastResponseMs = Stopwatch.GetElapsedTime(_lastGpuSignalTime).TotalMilliseconds;
             }
-            
-            return new PerformanceMetrics {
+            return new PerformanceMetrics
+            {
                 EventId = _eventId,
                 FailingCount = _failingCount,
                 LastGpuResponseMs = lastResponseMs,
@@ -304,7 +242,6 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl
         }
     }
 
-    // 新增结构体用于性能监控
     public struct PerformanceMetrics
     {
         public uint EventId;
