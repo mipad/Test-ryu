@@ -200,14 +200,6 @@ namespace Ryujinx.Memory
         bool IsRangeMapped(ulong va, ulong size);
 
         /// <summary>
-        /// Validates if the specified address and size are within valid memory ranges.
-        /// </summary>
-        /// <param name="address">Virtual address to validate</param>
-        /// <param name="size">Size of the memory region to validate</param>
-        /// <returns>True if the address and size are valid, false otherwise</returns>
-        bool ValidateAddressAndSize(ulong address, ulong size);
-
-        /// <summary>
         /// Alerts the memory tracking that a given region has been read from or written to.
         /// This should be called before read/write is performed.
         /// </summary>
