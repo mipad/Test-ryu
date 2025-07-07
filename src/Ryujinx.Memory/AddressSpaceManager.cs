@@ -196,22 +196,6 @@ namespace Ryujinx.Memory
             return regions;
         }
 
-        /// <inheritdoc/>
-        public bool ValidateAddressAndSize(ulong address, ulong size)
-        {
-            if (size == 0)
-            {
-                return true;
-            }
-
-            if (address + size < address)
-            {
-                return false; // Overflow check
-            }
-
-            return address + size <= AddressSpaceSize;
-        }
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override bool IsMapped(ulong va)
         {
