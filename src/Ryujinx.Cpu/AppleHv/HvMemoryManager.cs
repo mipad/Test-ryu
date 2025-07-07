@@ -73,6 +73,12 @@ namespace Ryujinx.Cpu.AppleHv
         }
 
         /// <inheritdoc/>
+        public bool ValidateAddressAndSize(ulong va, ulong size)
+        {
+            return base.ValidateAddressAndSize(va, size);
+        }
+
+        /// <inheritdoc/>
         public void Map(ulong va, ulong pa, ulong size, MemoryMapFlags flags)
         {
             AssertValidAddressAndSize(va, size);
@@ -387,6 +393,5 @@ namespace Ryujinx.Cpu.AppleHv
 
         protected override nuint TranslateVirtualAddressUnchecked(ulong va)
             => GetPhysicalAddressInternal(va);
-
     }
 }
