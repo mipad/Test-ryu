@@ -9,7 +9,7 @@ namespace Ryujinx.Graphics.Vulkan
 {
     class CommandBufferPool : IDisposable
     {
-        public const int MaxCommandBuffers = 16;
+        public const int MaxCommandBuffers = 32;
 
         private readonly int _totalCommandBuffers;
         private readonly int _totalCommandBuffersMask;
@@ -86,7 +86,7 @@ namespace Ryujinx.Graphics.Vulkan
             api.CreateCommandPool(device, in commandPoolCreateInfo, null, out _pool).ThrowOnError();
 
             // We need at least 2 command buffers to get texture data in some cases.
-            _totalCommandBuffers = isLight ? 2 : MaxCommandBuffers;
+            _totalCommandBuffers = isLight ? 4 : MaxCommandBuffers;
             _totalCommandBuffersMask = _totalCommandBuffers - 1;
 
             _commandBuffers = new ReservedCommandBuffer[_totalCommandBuffers];
