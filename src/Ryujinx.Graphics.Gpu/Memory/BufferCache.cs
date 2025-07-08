@@ -91,12 +91,10 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="e">Event arguments</param>
         public void MemoryUnmappedHandler(object sender, UnmapEventArgs e)
         {
-            // 优化：使用ArrayPool减少临时数组分配
-            Buffer[] overlaps = ArrayPool<Buffer>.Shared.Rent(10);
+            Buffer[] overlaps = new Buffer[10]; // 直接分配新数组
             try
             {
                 int overlapCount;
-
                 MultiRange range = ((MemoryManager)sender).GetPhysicalRegions(e.Address, e.Size);
 
                 for (int index = 0; index < range.Count; index++)
@@ -116,7 +114,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             }
             finally
             {
-                ArrayPool<Buffer>.Shared.Return(overlaps);
+                // 无需归还到ArrayPool
             }
         }
 
