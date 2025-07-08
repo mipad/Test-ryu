@@ -36,7 +36,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
         private readonly GpuContext _context;
         private readonly PhysicalMemory _physicalMemory;
-        private Buffer _dummyBuffer;
+        
         
         /// <remarks>
         /// Only modified from the GPU thread. Must lock for add/remove.
@@ -72,14 +72,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             _multiRangeBuffers = new MultiRangeList<MultiRangeBuffer>();
 
             _bufferOverlaps = new Buffer[OverlapsBufferInitialCapacity];
-            _dummyBuffer = new Buffer(
-                context,
-                physicalMemory,
-                0,         // address
-                0x1,   // size
-                BufferStage.None,
-                false
-            );
+         
             _dirtyCache = new Dictionary<ulong, BufferCacheEntry>();
             _modifiedCache = new Dictionary<ulong, BufferCacheEntry>();
         }
@@ -955,55 +948,48 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="write">Whether the buffer will be written to by this use</param>
         /// <returns>The buffer where the range is fully contained</returns>
         private Buffer GetBuffer(ulong address, ulong size, BufferStage stage, bool write = false)
+{
+    Buffer buffer = null;
+
+    if (size != 0)
+    {
+        buffer = _buffers.FindFirstOverlap(address, size);
+        
+        if (buffer == null)
         {
-            if (address == ulong.MaxValue)
+            CreateBuffer(address, size, stage);
+            buffer = _buffers.FindFirstOverlap(address, size);
+            
+            if (buffer == null)
             {
-                return _dummyBuffer;
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Failed to create buffer for address 0x{address:X}, size 0x{size:X}");
+                throw new InvalidOperationException($"No buffer found for address 0x{address:X}, size 0x{size:X}");
             }
-
-            Buffer buffer = null;
-
-            if (size != 0)
-            {
-                buffer = _buffers.FindFirstOverlap(address, size);
-                
-                // 优化：添加空引用检查
-                if (buffer == null)
-                {
-                    CreateBuffer(address, size, stage);
-                    buffer = _buffers.FindFirstOverlap(address, size);
-                    
-                    if (buffer == null)
-                    {
-                        Logger.Warning?.Print(LogClass.Gpu, 
-                            $"Failed to create buffer for address 0x{address:X}, size 0x{size:X}");
-                        return _dummyBuffer;
-                    }
-                }
-                
-                // 优化：添加空引用检查
-                if (buffer != null)
-                {
-                    buffer.CopyFromDependantVirtualBuffers();
-                    buffer.SynchronizeMemory(address, size);
-                    
-                    if (write)
-                    {
-                        buffer.SignalModified(address, size, stage);
-                    }
-                }
-            }
-            else
-            {
-                buffer = _buffers.FindFirstOverlap(address, 1);
-                if (buffer == null)
-                {
-                    return _dummyBuffer;
-                }
-            }
-
-            return buffer ?? _dummyBuffer;
         }
+        
+        if (buffer != null)
+        {
+            buffer.CopyFromDependantVirtualBuffers();
+            buffer.SynchronizeMemory(address, size);
+            
+            if (write)
+            {
+                buffer.SignalModified(address, size, stage);
+            }
+        }
+    }
+    else
+    {
+        buffer = _buffers.FindFirstOverlap(address, 1);
+        if (buffer == null)
+        {
+            throw new InvalidOperationException($"No buffer found for address 0x{address:X}");
+        }
+    }
+
+    return buffer;
+}
 
         /// <summary>
         /// Performs guest to host memory synchronization of a given memory range.
