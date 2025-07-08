@@ -386,7 +386,7 @@ namespace Ryujinx.Audio.Renderer.Server.Voice
             // Sanity check in debug mode of the internal state
             if (!parameter.IsNew && !IsNew)
             {
-                for (int i = 1; i < ChannelsCount; i++)
+                for (int i = 1; i < ChannelsCount && i < voiceUpdateStates.Length; i++)
                 {
                     ref VoiceUpdateState stateA = ref voiceUpdateStates[i - 1].Span[0];
                     ref VoiceUpdateState stateB = ref voiceUpdateStates[i].Span[0];
@@ -439,7 +439,7 @@ namespace Ryujinx.Audio.Renderer.Server.Voice
             {
                 InitializeWaveBuffers();
 
-                for (int i = 0; i < parameter.ChannelCount; i++)
+                for (int i = 0; i < parameter.ChannelCount && i < voiceUpdateStates.Length; i++)
                 {
                     voiceUpdateStates[i].Span[0].IsWaveBufferValid.Clear();
                 }
@@ -534,7 +534,7 @@ namespace Ryujinx.Audio.Renderer.Server.Voice
         /// <param name="context">The voice context.</param>
         private void ResetResources(VoiceContext context)
         {
-            for (int i = 0; i < ChannelsCount; i++)
+            for (int i = 0; i < ChannelsCount && i < ChannelResourceIds.Length; i++)
             {
                 int channelResourceId = ChannelResourceIds[i];
 
@@ -560,17 +560,23 @@ namespace Ryujinx.Audio.Renderer.Server.Voice
         {
             uint waveBufferIndex = WaveBuffersIndex;
 
-            for (int i = 0; i < waveBufferCount; i++)
+            for (int i = 0; i < waveBufferCount && waveBufferIndex < WaveBuffers.Length; i++)
             {
                 WaveBuffers[(int)waveBufferIndex].IsSendToAudioProcessor = true;
 
-                for (int j = 0; j < channelCount; j++)
+                for (int j = 0; j < channelCount && j < voiceUpdateStates.Length; j++)
                 {
-                    ref VoiceUpdateState voiceUpdateState = ref voiceUpdateStates[j].Span[0];
+                    if (voiceUpdateStates[j].Length > 0)
+                    {
+                        ref VoiceUpdateState voiceUpdateState = ref voiceUpdateStates[j].Span[0];
 
-                    voiceUpdateState.WaveBufferIndex = (voiceUpdateState.WaveBufferIndex + 1) % Constants.VoiceWaveBufferCount;
-                    voiceUpdateState.WaveBufferConsumed++;
-                    voiceUpdateState.IsWaveBufferValid[(int)waveBufferIndex] = false;
+                        voiceUpdateState.WaveBufferIndex = (voiceUpdateState.WaveBufferIndex + 1) % Constants.VoiceWaveBufferCount;
+                        voiceUpdateState.WaveBufferConsumed++;
+                        if ((int)waveBufferIndex < voiceUpdateState.IsWaveBufferValid.Length)
+                        {
+                            voiceUpdateState.IsWaveBufferValid[(int)waveBufferIndex] = false;
+                        }
+                    }
                 }
 
                 waveBufferIndex = (waveBufferIndex + 1) % Constants.VoiceWaveBufferCount;
@@ -584,7 +590,7 @@ namespace Ryujinx.Audio.Renderer.Server.Voice
         /// <returns>Return true if this voice should be played.</returns>
         public bool UpdateParametersForCommandGeneration(Memory<VoiceUpdateState>[] voiceUpdateStates)
         {
-            if (FlushWaveBufferCount != 0)
+            if (FlushWaveBufferCount != 0 && voiceUpdateStates != null)
             {
                 FlushWaveBuffers(FlushWaveBufferCount, voiceUpdateStates, ChannelsCount);
 
@@ -600,11 +606,15 @@ namespace Ryujinx.Audio.Renderer.Server.Voice
 
                         if (!wavebuffer.IsSendToAudioProcessor)
                         {
-                            for (int y = 0; y < ChannelsCount; y++)
+                            for (int y = 0; y < ChannelsCount && y < voiceUpdateStates.Length; y++)
                             {
-                                Debug.Assert(!voiceUpdateStates[y].Span[0].IsWaveBufferValid[i]);
+                                if (voiceUpdateStates[y].Length > 0)
+                                {
+                                    ref VoiceUpdateState voiceUpdateState = ref voiceUpdateStates[y].Span[0];
+                                    Debug.Assert(!voiceUpdateState.IsWaveBufferValid[i]);
 
-                                voiceUpdateStates[y].Span[0].IsWaveBufferValid[i] = true;
+                                    voiceUpdateState.IsWaveBufferValid[i] = true;
+                                }
                             }
 
                             wavebuffer.IsSendToAudioProcessor = true;
@@ -613,13 +623,16 @@ namespace Ryujinx.Audio.Renderer.Server.Voice
 
                     WasPlaying = false;
 
-                    ref VoiceUpdateState primaryVoiceUpdateState = ref voiceUpdateStates[0].Span[0];
-
-                    for (int i = 0; i < primaryVoiceUpdateState.IsWaveBufferValid.Length; i++)
+                    if (voiceUpdateStates != null && voiceUpdateStates.Length > 0 && voiceUpdateStates[0].Length > 0)
                     {
-                        if (primaryVoiceUpdateState.IsWaveBufferValid[i])
+                        ref VoiceUpdateState primaryVoiceUpdateState = ref voiceUpdateStates[0].Span[0];
+
+                        for (int i = 0; i < primaryVoiceUpdateState.IsWaveBufferValid.Length; i++)
                         {
-                            return true;
+                            if (primaryVoiceUpdateState.IsWaveBufferValid[i])
+                            {
+                                return true;
+                            }
                         }
                     }
 
@@ -632,29 +645,35 @@ namespace Ryujinx.Audio.Renderer.Server.Voice
 
                         wavebuffer.IsSendToAudioProcessor = true;
 
-                        for (int j = 0; j < ChannelsCount; j++)
+                        for (int j = 0; j < ChannelsCount && j < voiceUpdateStates.Length; j++)
                         {
-                            ref VoiceUpdateState voiceUpdateState = ref voiceUpdateStates[j].Span[0];
-
-                            if (voiceUpdateState.IsWaveBufferValid[i])
+                            if (voiceUpdateStates[j].Length > 0)
                             {
-                                voiceUpdateState.WaveBufferIndex = (voiceUpdateState.WaveBufferIndex + 1) % Constants.VoiceWaveBufferCount;
-                                voiceUpdateState.WaveBufferConsumed++;
-                            }
+                                ref VoiceUpdateState voiceUpdateState = ref voiceUpdateStates[j].Span[0];
 
-                            voiceUpdateState.IsWaveBufferValid[i] = false;
+                                if (voiceUpdateState.IsWaveBufferValid[i])
+                                {
+                                    voiceUpdateState.WaveBufferIndex = (voiceUpdateState.WaveBufferIndex + 1) % Constants.VoiceWaveBufferCount;
+                                    voiceUpdateState.WaveBufferConsumed++;
+                                }
+
+                                voiceUpdateState.IsWaveBufferValid[i] = false;
+                            }
                         }
                     }
 
-                    for (int i = 0; i < ChannelsCount; i++)
+                    for (int i = 0; i < ChannelsCount && i < voiceUpdateStates.Length; i++)
                     {
-                        ref VoiceUpdateState voiceUpdateState = ref voiceUpdateStates[i].Span[0];
+                        if (voiceUpdateStates[i].Length > 0)
+                        {
+                            ref VoiceUpdateState voiceUpdateState = ref voiceUpdateStates[i].Span[0];
 
-                        voiceUpdateState.Offset = 0;
-                        voiceUpdateState.PlayedSampleCount = 0;
-                        voiceUpdateState.Pitch.AsSpan().Clear();
-                        voiceUpdateState.Fraction = 0;
-                        voiceUpdateState.LoopContext = new AdpcmLoopContext();
+                            voiceUpdateState.Offset = 0;
+                            voiceUpdateState.PlayedSampleCount = 0;
+                            voiceUpdateState.Pitch.AsSpan().Clear();
+                            voiceUpdateState.Fraction = 0;
+                            voiceUpdateState.LoopContext = new AdpcmLoopContext();
+                        }
                     }
 
                     PlayState = PlayState.Stopped;
@@ -700,9 +719,9 @@ namespace Ryujinx.Audio.Renderer.Server.Voice
                 IsNew = false;
             }
 
-            Memory<VoiceUpdateState>[] voiceUpdateStates = new Memory<VoiceUpdateState>[Constants.VoiceChannelCountMax];
+            Memory<VoiceUpdateState>[] voiceUpdateStates = new Memory<VoiceUpdateState>[Math.Min((int)ChannelsCount, Constants.VoiceChannelCountMax)];
 
-            for (int i = 0; i < ChannelsCount; i++)
+            for (int i = 0; i < voiceUpdateStates.Length; i++)
             {
                 voiceUpdateStates[i] = context.GetUpdateStateForDsp(ChannelResourceIds[i]);
             }
