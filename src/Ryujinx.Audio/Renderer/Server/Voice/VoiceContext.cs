@@ -40,8 +40,14 @@ namespace Ryujinx.Audio.Renderer.Server.Voice
         /// </summary>
         private uint _voiceCount;
 
-        public void Initialize(Memory<int> sortedVoices, Memory<VoiceState> voices, Memory<VoiceChannelResource> voiceChannelResources, Memory<VoiceUpdateState> voiceUpdateStatesCpu, Memory<VoiceUpdateState> voiceUpdateStatesDsp, uint voiceCount)
+        public void Initialize(Memory<int> sortedVoices, Memory<VoiceState> voices, Memory<VoiceChannelResource> voiceChannelResources, 
+                             Memory<VoiceUpdateState> voiceUpdateStatesCpu, Memory<VoiceUpdateState> voiceUpdateStatesDsp, uint voiceCount)
         {
+            if (voiceCount == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(voiceCount), "Voice count must be greater than 0");
+            }
+
             _sortedVoices = sortedVoices;
             _voices = voices;
             _voiceChannelResources = voiceChannelResources;
@@ -66,6 +72,11 @@ namespace Ryujinx.Audio.Renderer.Server.Voice
         /// <returns>A reference to a <see cref="VoiceChannelResource"/> at the given <paramref name="id"/>.</returns>
         public ref VoiceChannelResource GetChannelResource(int id)
         {
+            if (id < 0 || id >= _voiceCount)
+            {
+                throw new ArgumentOutOfRangeException(nameof(id), $"Index {id} is out of range (0-{_voiceCount - 1})");
+            }
+
             return ref SpanIOHelper.GetFromMemory(_voiceChannelResources, id, _voiceCount);
         }
 
@@ -77,6 +88,11 @@ namespace Ryujinx.Audio.Renderer.Server.Voice
         /// <remarks>The returned <see cref="Memory{VoiceUpdateState}"/> should only be used when updating the server state.</remarks>
         public Memory<VoiceUpdateState> GetUpdateStateForCpu(int id)
         {
+            if (id < 0 || id >= _voiceCount)
+            {
+                throw new ArgumentOutOfRangeException(nameof(id), $"Index {id} is out of range (0-{_voiceCount - 1})");
+            }
+
             return SpanIOHelper.GetMemory(_voiceUpdateStatesCpu, id, _voiceCount);
         }
 
@@ -88,6 +104,11 @@ namespace Ryujinx.Audio.Renderer.Server.Voice
         /// <remarks>The returned <see cref="Memory{VoiceUpdateState}"/> should only be used in the context of processing on the <see cref="Dsp.AudioProcessor"/>.</remarks>
         public Memory<VoiceUpdateState> GetUpdateStateForDsp(int id)
         {
+            if (id < 0 || id >= _voiceCount)
+            {
+                throw new ArgumentOutOfRangeException(nameof(id), $"Index {id} is out of range (0-{_voiceCount - 1})");
+            }
+
             return SpanIOHelper.GetMemory(_voiceUpdateStatesDsp, id, _voiceCount);
         }
 
@@ -98,12 +119,25 @@ namespace Ryujinx.Audio.Renderer.Server.Voice
         /// <returns>A reference to a <see cref="VoiceState"/> at the given <paramref name="id"/>.</returns>
         public ref VoiceState GetState(int id)
         {
+            if (id < 0 || id >= _voiceCount)
+            {
+                throw new ArgumentOutOfRangeException(nameof(id), $"Index {id} is out of range (0-{_voiceCount - 1})");
+            }
+
             return ref SpanIOHelper.GetFromMemory(_voices, id, _voiceCount);
         }
 
+        /// <summary>
+        /// Get a reference to a sorted <see cref="VoiceState"/> at the given <paramref name="id"/>.
+        /// </summary>
+        /// <param name="id">The sorted index to use.</param>
+        /// <returns>A reference to a sorted <see cref="VoiceState"/> at the given <paramref name="id"/>.</returns>
         public ref VoiceState GetSortedState(int id)
         {
-            Debug.Assert(id >= 0 && id < _voiceCount);
+            if (id < 0 || id >= _voiceCount)
+            {
+                throw new ArgumentOutOfRangeException(nameof(id), $"Index {id} is out of range (0-{_voiceCount - 1})");
+            }
 
             return ref GetState(_sortedVoices.Span[id]);
         }
@@ -113,6 +147,11 @@ namespace Ryujinx.Audio.Renderer.Server.Voice
         /// </summary>
         public void UpdateForCommandGeneration()
         {
+            if (_voiceUpdateStatesDsp.Length != _voiceUpdateStatesCpu.Length)
+            {
+                throw new InvalidOperationException("DSP and CPU voice update states have different lengths");
+            }
+
             _voiceUpdateStatesDsp.CopyTo(_voiceUpdateStatesCpu);
         }
 
@@ -121,14 +160,22 @@ namespace Ryujinx.Audio.Renderer.Server.Voice
         /// </summary>
         public void Sort()
         {
+            if (_sortedVoices.Length < _voiceCount || _voices.Length < _voiceCount)
+            {
+                throw new InvalidOperationException("Voice storage is not properly initialized");
+            }
+
+            // Initialize indices
             for (int i = 0; i < _voiceCount; i++)
             {
                 _sortedVoices.Span[i] = i;
             }
 
-            int[] sortedVoicesTemp = _sortedVoices[..(int)GetCount()].ToArray();
+            // Create span for sorting without additional allocation
+            var sortedSpan = _sortedVoices.Span[..(int)_voiceCount];
 
-            Array.Sort(sortedVoicesTemp, (a, b) =>
+            // Sort in-place using span
+            sortedSpan.Sort((a, b) =>
             {
                 ref VoiceState aState = ref GetState(a);
                 ref VoiceState bState = ref GetState(b);
@@ -142,8 +189,6 @@ namespace Ryujinx.Audio.Renderer.Server.Voice
 
                 return result;
             });
-
-            sortedVoicesTemp.AsSpan().CopyTo(_sortedVoices.Span);
         }
     }
 }
