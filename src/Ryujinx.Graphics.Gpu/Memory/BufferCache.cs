@@ -24,7 +24,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// </summary>
         public const int OverlapsBufferMaxCapacity = 10000;
 
-        private const ulong BufferAlignmentSize = 0x10000;
+        private const ulong BufferAlignmentSize = 0x1000;
         private const ulong BufferAlignmentMask = BufferAlignmentSize - 1;
 
         /// <summary>
