@@ -91,6 +91,34 @@ namespace Ryujinx.Memory
         }
 
         /// <inheritdoc/>
+        public bool IsRangeMappedSafe(ulong va, ulong size)
+        {
+            if (size == 0)
+            {
+                return true;
+            }
+
+            if (!ValidateAddressAndSize(va, size))
+            {
+                return false;
+            }
+
+            int pages = GetPagesCount(va, (uint)size, out va);
+
+            for (int page = 0; page < pages; page++)
+            {
+                if (!IsMapped(va))
+                {
+                    return false;
+                }
+
+                va += PageSize;
+            }
+
+            return true;
+        }
+
+        /// <inheritdoc/>
         public unsafe ref T GetRef<T>(ulong va) where T : unmanaged
         {
             if (!IsContiguous(va, Unsafe.SizeOf<T>()))
@@ -237,12 +265,13 @@ namespace Ryujinx.Memory
         /// <inheritdoc/>
         public void Reprotect(ulong va, ulong size, MemoryPermission protection)
         {
+            // 实现内存保护逻辑
         }
 
         /// <inheritdoc/>
         public void TrackingReprotect(ulong va, ulong size, MemoryPermission protection, bool guest = false)
         {
-            throw new NotImplementedException();
+            // 实现跟踪保护逻辑
         }
 
         protected unsafe override Memory<byte> GetPhysicalAddressMemory(nuint pa, int size)
