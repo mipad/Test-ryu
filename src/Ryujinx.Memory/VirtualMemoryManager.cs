@@ -137,7 +137,13 @@ namespace Ryujinx.Memory
                 _backingMemory.Dispose();
                 _currentProtections.Clear();
             }
-             base.Dispose(disposing); // 添加基类调用
+            base.Dispose(disposing);
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
         public void Fill(ulong va, ulong size, byte value)
