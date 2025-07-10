@@ -8,11 +8,12 @@ using System.Runtime.InteropServices;
 
 namespace Ryujinx.Memory
 {
-    public class VirtualMemoryManager : VirtualMemoryManagerBase, IVirtualMemoryManager
+    public class VirtualMemoryManager : VirtualMemoryManagerBase, IVirtualMemoryManager, IDisposable
     {
         private readonly MemoryBlock _backingMemory;
         private readonly Dictionary<ulong, MemoryPermission> _currentProtections = new();
         private readonly object _memoryTracking;
+        private bool _disposed;
 
         public bool UsesPrivateAllocations => false;
 
@@ -130,14 +131,17 @@ namespace Ryujinx.Memory
             return ref MemoryMarshal.GetReference(GetSpan(va, Unsafe.SizeOf<T>()));
         }
 
-        protected override void Dispose(bool disposing)
+        protected virtual void Dispose(bool disposing)
         {
-            if (disposing)
+            if (!_disposed)
             {
-                _backingMemory.Dispose();
-                _currentProtections.Clear();
+                if (disposing)
+                {
+                    _backingMemory.Dispose();
+                    _currentProtections.Clear();
+                }
+                _disposed = true;
             }
-            base.Dispose(disposing);
         }
 
         public void Dispose()
