@@ -200,6 +200,14 @@ namespace Ryujinx.Memory
         bool IsRangeMapped(ulong va, ulong size);
 
         /// <summary>
+        /// Checks if a memory range is mapped without triggering tracking or exceptions.
+        /// </summary>
+        /// <param name="va">Virtual address of the range</param>
+        /// <param name="size">Size of the range in bytes</param>
+        /// <returns>True if the entire range is mapped, false otherwise</returns>
+        bool IsRangeMappedSafe(ulong va, ulong size);
+
+        /// <summary>
         /// Alerts the memory tracking that a given region has been read from or written to.
         /// This should be called before read/write is performed.
         /// </summary>
@@ -208,7 +216,14 @@ namespace Ryujinx.Memory
         /// <param name="write">True if the region was written, false if read</param>
         /// <param name="precise">True if the access is precise, false otherwise</param>
         /// <param name="exemptId">Optional ID of the handles that should not be signalled</param>
-        void SignalMemoryTracking(ulong va, ulong size, bool write, bool precise = false, int? exemptId = null);
+        void SignalMemoryTracking(ulong va, ulong size, bool write, bool precise = false, int? exemptId = null)
+        {
+            if (!IsRangeMappedSafe(va, size))
+            {
+                return;
+            }
+            // 原有逻辑需要由具体实现完成
+        }
 
         /// <summary>
         /// Reprotect a region of virtual memory for guest access.
@@ -219,12 +234,26 @@ namespace Ryujinx.Memory
         void Reprotect(ulong va, ulong size, MemoryPermission protection);
 
         /// <summary>
+        /// Cached memory protection states to avoid redundant reprotections.
+        /// </summary>
+        Dictionary<ulong, MemoryPermission> _currentProtections { get; set; }
+
+        /// <summary>
         /// Reprotect a region of virtual memory for tracking.
         /// </summary>
         /// <param name="va">Virtual address base</param>
         /// <param name="size">Size of the region to protect</param>
         /// <param name="protection">Memory protection to set</param>
         /// <param name="guest">True if the protection is for guest access, false otherwise</param>
-        void TrackingReprotect(ulong va, ulong size, MemoryPermission protection, bool guest);
+        void TrackingReprotect(ulong va, ulong size, MemoryPermission protection, bool guest)
+        {
+            if (_currentProtections.TryGetValue(va, out var current) && 
+                current == protection)
+            {
+                return;
+            }
+            Reprotect(va, size, protection);
+            _currentProtections[va] = protection;
+        }
     }
 }
