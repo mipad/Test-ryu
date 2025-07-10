@@ -22,18 +22,10 @@ namespace Ryujinx.Cpu.Jit
         private readonly PageTable<ulong> _pageTable;
 
         private readonly MemoryEhMeilleure _memoryEh;
-
         private readonly ManagedPageFlags _pages;
-
-        /// <inheritdoc/>
-        public bool UsesPrivateAllocations => false;
 
         public int AddressSpaceBits { get; }
         protected override ulong AddressSpaceSize { get; }
-
-        private readonly MemoryEhMeilleure _memoryEh;
-
-        private readonly ManagedPageFlags _pages;
 
         /// <inheritdoc/>
         public bool UsesPrivateAllocations => false;
@@ -78,7 +70,6 @@ namespace Ryujinx.Cpu.Jit
             AddressSpaceBits = asBits;
 
             _pages = new ManagedPageFlags(asBits);
-
             Tracking = new MemoryTracking(this, (int)MemoryBlock.GetPageSize(), invalidAccessHandler);
             _memoryEh = new MemoryEhMeilleure(addressSpace, null, Tracking);
         }
