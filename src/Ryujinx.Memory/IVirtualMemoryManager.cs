@@ -216,14 +216,17 @@ namespace Ryujinx.Memory
         /// <param name="write">True if the region was written, false if read</param>
         /// <param name="precise">True if the access is precise, false otherwise</param>
         /// <param name="exemptId">Optional ID of the handles that should not be signalled</param>
-        void SignalMemoryTracking(ulong va, ulong size, bool write, bool precise = false, int? exemptId = null)
-        {
-            if (!IsRangeMappedSafe(va, size))
-            {
-                return;
-            }
-            // 原有逻辑需要由具体实现完成
-        }
+        public void SignalMemoryTracking(ulong va, ulong size, bool write, bool precise = false, int? exemptId = null)
+{
+    // 安全检查：如果内存未映射，直接返回
+    if (!IsRangeMappedSafe(va, size))
+    {
+        return;
+    }
+
+    // 调用内存跟踪模块，通知内存访问
+    _memoryTracking.SignalMemoryTracking(va, size, write, precise, exemptId);
+}
 
         /// <summary>
         /// Reprotect a region of virtual memory for guest access.
@@ -245,15 +248,32 @@ namespace Ryujinx.Memory
         /// <param name="size">Size of the region to protect</param>
         /// <param name="protection">Memory protection to set</param>
         /// <param name="guest">True if the protection is for guest access, false otherwise</param>
-        void TrackingReprotect(ulong va, ulong size, MemoryPermission protection, bool guest)
+        public void TrackingReprotect(ulong va, ulong size, MemoryPermission protection, bool guest)
+{
+    // 检查当前保护状态是否已匹配
+    if (_currentProtections.TryGetValue(va, out var current) && current == protection)
+    {
+        return; // 如果保护状态相同，无需重复操作
+    }
+
+    // 调用底层方法更新内存保护
+    Reprotect(va, size, protection);
+
+    // 更新缓存
+    _currentProtections[va] = protection;
+}
+
+public bool IsRangeMappedSafe(ulong va, ulong size)
+{
+    // 检查整个范围是否已映射（不触发跟踪或异常）
+    for (ulong offset = 0; offset < size; offset += 4096) // 假设页大小为 4KB
+    {
+        if (!IsMapped(va + offset))
         {
-            if (_currentProtections.TryGetValue(va, out var current) && 
-                current == protection)
-            {
-                return;
-            }
-            Reprotect(va, size, protection);
-            _currentProtections[va] = protection;
+            return false;
         }
+    }
+    return true;
+}
     }
 }
