@@ -15,9 +15,11 @@ namespace Ryujinx.Memory
         private readonly MemoryTracking _memoryTracking;
 
         public bool UsesPrivateAllocations => false;
+        public Dictionary<ulong, MemoryPermission> _currentProtections { get; set; } = new();
 
         public VirtualMemoryManager(ulong addressSpaceSize, MemoryTracking memoryTracking = null)
         {
+            AddressSpaceSize = addressSpaceSize;
             _backingMemory = new MemoryBlock(addressSpaceSize);
             _memoryTracking = memoryTracking;
         }
@@ -26,18 +28,20 @@ namespace Ryujinx.Memory
 
         public void Map(ulong va, ulong pa, ulong size, MemoryMapFlags flags)
         {
-            // Implementation for mapping virtual to physical memory
-            // Would typically involve page table manipulation
+            // In this simple implementation, we use identity mapping
+            _backingMemory.Map(va, size);
         }
 
         public void MapForeign(ulong va, nuint hostPointer, ulong size)
         {
-            throw new NotSupportedException("Foreign mapping not supported");
+            throw new NotSupportedException("Foreign mapping not supported in this implementation");
         }
 
         public void Unmap(ulong va, ulong size)
         {
-            // Implementation for unmapping memory
+            _backingMemory.Unmap(va, size);
+            // Clear protection cache for unmapped regions
+            _currentProtections.Remove(va);
         }
 
         protected override Memory<byte> GetPhysicalAddressMemory(nuint pa, int size)
@@ -56,24 +60,48 @@ namespace Ryujinx.Memory
             {
                 throw new InvalidMemoryRegionException($"Virtual address 0x{va:X} is not mapped");
             }
-            return TranslateVirtualAddressUnchecked(va);
+            return (nuint)va; // Simple identity mapping
         }
 
         protected override nuint TranslateVirtualAddressUnchecked(ulong va)
         {
-            // Simple identity mapping for this implementation
-            return (nuint)va;
+            return (nuint)va; // Simple identity mapping
+        }
+
+        public override bool IsMapped(ulong va)
+        {
+            return _backingMemory.IsMapped(va);
+        }
+
+        public bool IsRangeMapped(ulong va, ulong size)
+        {
+            return _backingMemory.IsRangeMapped(va, size);
+        }
+
+        public bool IsRangeMappedSafe(ulong va, ulong size)
+        {
+            for (ulong offset = 0; offset < size; offset += PageSize)
+            {
+                if (!IsMapped(va + offset))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         public override void SignalMemoryTracking(ulong va, ulong size, bool write, bool precise = false, int? exemptId = null)
         {
+            if (!IsRangeMappedSafe(va, size))
+            {
+                return;
+            }
             _memoryTracking?.SignalMemoryTracking(va, size, write, precise, exemptId);
         }
 
         public void Reprotect(ulong va, ulong size, MemoryPermission protection)
         {
-            // Actual protection change implementation
-            _backingMemory.Reprotect(va, size, protection.ToMemoryProtection());
+            _backingMemory.Reprotect(va, size, protection.ToMemoryBlockProtection());
         }
 
         public void TrackingReprotect(ulong va, ulong size, MemoryPermission protection, bool guest)
@@ -82,7 +110,6 @@ namespace Ryujinx.Memory
             {
                 return;
             }
-
             Reprotect(va, size, protection);
             _currentProtections[va] = protection;
         }
@@ -99,19 +126,11 @@ namespace Ryujinx.Memory
 
         public ref T GetRef<T>(ulong va) where T : unmanaged
         {
-            return ref MemoryMarshal.GetReference(GetSpan(va, Unsafe.SizeOf<T>()));
-        }
-
-        public bool IsRangeMappedSafe(ulong va, ulong size)
-        {
-            for (ulong offset = 0; offset < size; offset += PageSize)
+            if (!IsMapped(va))
             {
-                if (!IsMapped(va + offset))
-                {
-                    return false;
-                }
+                throw new InvalidMemoryRegionException();
             }
-            return true;
+            return ref MemoryMarshal.GetReference(GetSpan(va, Unsafe.SizeOf<T>()));
         }
 
         protected override void Dispose(bool disposing)
@@ -119,6 +138,53 @@ namespace Ryujinx.Memory
             if (disposing)
             {
                 _backingMemory.Dispose();
+                _currentProtections.Clear();
+            }
+            base.Dispose(disposing);
+        }
+
+        public void Fill(ulong va, ulong size, byte value)
+        {
+            const int MaxChunkSize = 1 << 24;
+
+            for (ulong subOffset = 0; subOffset < size; subOffset += MaxChunkSize)
+            {
+                int copySize = (int)Math.Min(MaxChunkSize, size - subOffset);
+
+                using var writableRegion = GetWritableRegion(va + subOffset, copySize);
+
+                writableRegion.Memory.Span.Fill(value);
+            }
+        }
+
+        public bool WriteWithRedundancyCheck(ulong va, ReadOnlySpan<byte> data)
+        {
+            if (data.Length == 0)
+            {
+                return false;
+            }
+
+            if (IsContiguousAndMapped(va, data.Length))
+            {
+                SignalMemoryTracking(va, (ulong)data.Length, false);
+
+                nuint pa = TranslateVirtualAddressChecked(va);
+
+                var target = GetPhysicalAddressSpan(pa, data.Length);
+
+                bool changed = !data.SequenceEqual(target);
+
+                if (changed)
+                {
+                    data.CopyTo(target);
+                }
+
+                return changed;
+            }
+            else
+            {
+                Write(va, data);
+                return true;
             }
         }
     }
