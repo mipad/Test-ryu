@@ -25,7 +25,6 @@ namespace Ryujinx.Graphics.Vulkan
         private Device _device;
         private WindowBase _window;
         private CommandBufferPool _computeCommandPool;
-        private bool _concurrentFenceWaitUnsupported; // 根据设备特性初始化
         private bool _initialized;
 
         internal KhrTimelineSemaphore TimelineSemaphoreApi { get; private set; }
@@ -41,6 +40,9 @@ namespace Ryujinx.Graphics.Vulkan
         internal ExtTransformFeedback TransformFeedbackApi { get; private set; }
         internal KhrDrawIndirectCount DrawIndirectCountApi { get; private set; }
         internal ExtAttachmentFeedbackLoopDynamicState DynamicFeedbackLoopApi { get; private set; }
+        
+        internal bool SupportsFragmentDensityMap { get; private set; }
+        internal bool SupportsFragmentDensityMap2 { get; private set; }
 
         internal uint QueueFamilyIndex { get; private set; }
         internal Queue Queue { get; private set; }
@@ -77,9 +79,6 @@ namespace Ryujinx.Graphics.Vulkan
         public IWindow Window => _window;
 
         public SurfaceTransformFlagsKHR CurrentTransform => _window.CurrentTransform;
-
-        public uint PhysicalDeviceVendorId { get; private set; } 
-        public bool IsArmGPU => PhysicalDeviceVendorId == 0x13B5; // ARM 的 Vulkan Vendor ID 是 0x13B5
 
         public Device Device => _device;
         
@@ -124,8 +123,6 @@ namespace Ryujinx.Graphics.Vulkan
             if (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS())
             {
                 MVKInitialization.Initialize();
-
-                // Any device running on Darwin is using MoltenVK, even Intel and AMD vendors.
                 IsMoltenVk = true;
             }
         }
@@ -134,36 +131,32 @@ namespace Ryujinx.Graphics.Vulkan
         {
             FormatCapabilities = new FormatCapabilities(Api, _physicalDevice.PhysicalDevice);
 
-            // 查找计算队列族
-    uint computeFamilyIndex = FindComputeQueueFamily();
+            uint computeFamilyIndex = FindComputeQueueFamily();
 
-    if (computeFamilyIndex != uint.MaxValue && computeFamilyIndex != queueFamilyIndex)
-    {
-        // 正确获取队列的unsafe方式
-        Queue computeQueue;
-        Api.GetDeviceQueue(_device, computeFamilyIndex, 0, &computeQueue);
+            if (computeFamilyIndex != uint.MaxValue && computeFamilyIndex != queueFamilyIndex)
+            {
+                Queue computeQueue;
+                Api.GetDeviceQueue(_device, computeFamilyIndex, 0, &computeQueue);
 
-        // 正确的构造函数调用
-        _computeCommandPool = new CommandBufferPool(
-       Api,
-       _device,
-       computeQueue,
-       new object(),
-       computeFamilyIndex,
-       IsQualcommProprietary,  // 第六个参数
-       false);
-    }
+                _computeCommandPool = new CommandBufferPool(
+                    Api,
+                    _device,
+                    computeQueue,
+                    new object(),
+                    computeFamilyIndex,
+                    IsQualcommProprietary,
+                    false);
+            }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtConditionalRendering conditionalRenderingApi))
             {
                 ConditionalRenderingApi = conditionalRenderingApi;
             }
 
-      //
-if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaphore timelineSemaphoreApi))
-{
-    TimelineSemaphoreApi = timelineSemaphoreApi;
-}
+            if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaphore timelineSemaphoreApi))
+            {
+                TimelineSemaphoreApi = timelineSemaphoreApi;
+            }
 
             if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtExtendedDynamicState extendedDynamicStateApi))
             {
@@ -189,6 +182,9 @@ if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaph
             {
                 DynamicFeedbackLoopApi = dynamicFeedbackLoopApi;
             }
+
+            SupportsFragmentDensityMap = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map");
+            SupportsFragmentDensityMap2 = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map2");
 
             if (maxQueueCount >= 2)
             {
@@ -394,7 +390,7 @@ if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaph
 
             GpuVendor = VendorUtils.GetNameFromId(properties.VendorID);
             GpuDriver = hasDriverProperties && !OperatingSystem.IsMacOS() ?
-                VendorUtils.GetFriendlyDriverName(driverProperties.DriverID) : GpuVendor; // Fallback to vendor name if driver is unavailable or on MacOS where vendor is preferred.
+                VendorUtils.GetFriendlyDriverName(driverProperties.DriverID) : GpuVendor;
 
             fixed (byte* deviceName = properties.DeviceName)
             {
@@ -453,7 +449,7 @@ if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaph
                 features2.Features.ShaderStorageImageMultisample,
                 _physicalDevice.IsDeviceExtensionPresent(ExtConditionalRendering.ExtensionName),
                 _physicalDevice.IsDeviceExtensionPresent(ExtExtendedDynamicState.ExtensionName),
-                features2.Features.MultiViewport && !(IsMoltenVk && Vendor == Vendor.Amd), // Workaround for AMD on MoltenVK issue
+                features2.Features.MultiViewport && !(IsMoltenVk && Vendor == Vendor.Amd),
                 featuresRobustness2.NullDescriptor || IsMoltenVk,
                 supportsPushDescriptors && !IsMoltenVk,
                 propertiesPushDescriptor.MaxPushDescriptors,
@@ -503,29 +499,33 @@ if (Api.TryGetDeviceExtension(_instance.Instance, _device, out KhrTimelineSemaph
             _counters = new Counters(this, _device, _pipeline);
         }
 
-        // +++ 新增方法：查找计算队列族 +++
-private uint FindComputeQueueFamily()
-{
-    // 正确代码（使用unsafe指针方式）
-unsafe 
-{
-    uint queueCount = 0;
-    // 第一次调用获取队列族数量
-    Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, &queueCount, null);
-    
-    // 分配数组空间
-    var queueFamilies = new QueueFamilyProperties[queueCount];
-    
-    // 第二次调用获取具体数据
-    fixed (QueueFamilyProperties* pQueueFamilies = queueFamilies)
-    {
-        Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, &queueCount, pQueueFamilies);
-    }
-}
-    
+        private uint FindComputeQueueFamily()
+        {
+            unsafe 
+            {
+                uint queueCount = 0;
+                Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, &queueCount, null);
+                
+                var queueFamilies = new QueueFamilyProperties[queueCount];
+                
+                fixed (QueueFamilyProperties* pQueueFamilies = queueFamilies)
+                {
+                    Api.GetPhysicalDeviceQueueFamilyProperties(_physicalDevice.PhysicalDevice, &queueCount, pQueueFamilies);
+                }
 
-    return uint.MaxValue;
-}
+                for (uint i = 0; i < queueCount; i++)
+                {
+                    ref var property = ref queueFamilies[i];
+                    if (property.QueueFlags.HasFlag(QueueFlags.ComputeBit) &&
+                        !property.QueueFlags.HasFlag(QueueFlags.GraphicsBit))
+                    {
+                        return i;
+                    }
+                }
+            }
+
+            return uint.MaxValue;
+        }
 
         private void SetupContext(GraphicsDebugLevel logLevel)
         {
@@ -564,8 +564,6 @@ unsafe
 
         internal int[] GetPushDescriptorReservedBindings(bool isOgl)
         {
-            // The first call of this method determines what push descriptor layout is used for all shaders on this renderer.
-            // This is chosen to minimize shaders that can't fit their uniforms on the device's max number of push descriptors.
             if (_pdReservedBindings == null)
             {
                 if (Capabilities.MaxPushDescriptors <= Constants.MaxUniformBuffersPerStage * 2)
@@ -640,20 +638,19 @@ unsafe
 
         internal TextureView CreateTextureView(TextureCreateInfo info)
         {
-            // This should be disposed when all views are destroyed.
             var storage = CreateTextureStorage(info);
             return storage.CreateView(info, 0, 0);
         }
 
         internal TextureStorage CreateTextureStorage(TextureCreateInfo info)
-{
-    if (info.Width == 0 || info.Height == 0 || info.Depth == 0)
-    {
-        Logger.Error?.Print(LogClass.Gpu, $"Invalid texture dimensions: {info.Width}x{info.Height}x{info.Depth}");
-        throw new ArgumentException("Invalid texture dimensions");
-    }
-    return new TextureStorage(this, _device, info);
-}
+        {
+            if (info.Width == 0 || info.Height == 0 || info.Depth == 0)
+            {
+                Logger.Error?.Print(LogClass.Gpu, $"Invalid texture dimensions: {info.Width}x{info.Height}x{info.Depth}");
+                throw new ArgumentException("Invalid texture dimensions");
+            }
+            return new TextureStorage(this, _device, info);
+        }
 
         public void DeleteBuffer(BufferHandle buffer)
         {
@@ -668,8 +665,6 @@ unsafe
         internal void RegisterFlush()
         {
             SyncManager.RegisterFlush();
-
-            // Periodically free unused regions of the staging buffer to avoid doing it all at once.
             BufferManager.StagingBuffer.FreeCompleted();
         }
 
@@ -785,6 +780,9 @@ unsafe
                     SystemMemoryType.DedicatedMemory;
             }
 
+            bool supportsFragmentDensityMap = SupportsFragmentDensityMap;
+            bool supportsFragmentDensityMap2 = SupportsFragmentDensityMap2;
+
             return new Capabilities(
                 api: TargetApi.Vulkan,
                 GpuVendor,
@@ -831,6 +829,8 @@ unsafe
                 supportsViewportSwizzle: false,
                 supportsIndirectParameters: true,
                 supportsDepthClipControl: Capabilities.SupportsDepthClipControl,
+                supportsFragmentDensityMap: supportsFragmentDensityMap,
+                supportsFragmentDensityMap2: supportsFragmentDensityMap2,
                 uniformBufferSetIndex: PipelineBase.UniformSetIndex,
                 storageBufferSetIndex: PipelineBase.StorageSetIndex,
                 textureSetIndex: PipelineBase.TextureSetIndex,
@@ -873,11 +873,6 @@ unsafe
             return new HardwareInfo(GpuVendor, GpuRenderer, GpuDriver);
         }
 
-        /// <summary>
-        /// Gets the available Vulkan devices using the default Vulkan API
-        /// object returned by <see cref="Vk.GetApi()"/>
-        /// </summary>
-        /// <returns></returns>
         public static DeviceInfo[] GetPhysicalDevices()
         {
             try
@@ -887,7 +882,6 @@ unsafe
             catch (Exception ex)
             {
                 Logger.Error?.PrintMsg(LogClass.Gpu, $"Error querying Vulkan devices: {ex.Message}");
-
                 return Array.Empty<DeviceInfo>();
             }
         }
@@ -900,7 +894,6 @@ unsafe
             }
             catch (Exception)
             {
-                // If we got an exception here, Vulkan is most likely not supported.
                 return Array.Empty<DeviceInfo>();
             }
         }
@@ -914,7 +907,6 @@ unsafe
         {
             uint driverVersionRaw = properties.DriverVersion;
 
-            // NVIDIA differ from the standard here and uses a different format.
             if (properties.VendorID == 0x10DE)
             {
                 return $"{(driverVersionRaw >> 22) & 0x3FF}.{(driverVersionRaw >> 14) & 0xFF}.{(driverVersionRaw >> 6) & 0xFF}.{driverVersionRaw & 0x3F}";
@@ -955,7 +947,6 @@ unsafe
         public void Initialize(GraphicsDebugLevel logLevel)
         {
             SetupContext(logLevel);
-
             PrintGpuInformation();
         }
 
@@ -964,22 +955,15 @@ unsafe
             if (Capabilities.VertexBufferAlignment > 1)
             {
                 alignment = (int)Capabilities.VertexBufferAlignment;
-
                 return true;
             }
             else if (Vendor != Vendor.Nvidia)
             {
-                // Vulkan requires that vertex attributes are globally aligned by their component size,
-                // so buffer strides that don't divide by the largest scalar element are invalid.
-                // Guest applications do this, NVIDIA GPUs are OK with it, others are not.
-
                 alignment = attrScalarAlignment;
-
                 return true;
             }
 
             alignment = 1;
-
             return false;
         }
 
@@ -1066,62 +1050,9 @@ unsafe
         internal unsafe void RecreateSurface()
         {
             SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
-
             _surface = _getSurface(_instance.Instance, Api);
-
             (_window as Window)?.SetSurface(_surface);
         }
-
-// VulkanRenderer.cs
-
-// +++ 新增方法：设备丢失恢复 +++
-public void RecreateVulkanDevice()
-{
-    DisposeVulkanResources();
-    InitializeVulkan();
-}
-
-private void DisposeVulkanResources()
-{
-    // 销毁所有 Vulkan 资源
-    Api.DestroyDevice(_device, null);
-    Api.DestroyInstance(_instance.Instance, null);
-
-    // 释放其他关联资源
-    CommandBufferPool?.Dispose();
-    _window?.Dispose();
-    MemoryAllocator?.Dispose();
-    HostMemoryAllocator?.Dispose();
-    PipelineLayoutCache?.Dispose();
-    _counters?.Dispose();
-}
-
-private unsafe void InitializeVulkan()
-{
-    // 重新创建实例、物理设备和逻辑设备
-    _instance = VulkanInitialization.CreateInstance(Api, GraphicsDebugLevel.None, _getRequiredExtensions());
-    _surface = _getSurface(_instance.Instance, Api);
-    _physicalDevice = VulkanInitialization.FindSuitablePhysicalDevice(Api, _instance, _surface, _preferredGpuId);
-
-    var queueFamilyIndex = VulkanInitialization.FindSuitableQueueFamily(Api, _physicalDevice, _surface, out uint maxQueueCount);
-    _device = VulkanInitialization.CreateDevice(Api, _physicalDevice, queueFamilyIndex, maxQueueCount);
-
-    // 重新初始化队列
-    Api.GetDeviceQueue(_device, queueFamilyIndex, 0, out var queue);
-    Queue = queue;
-    QueueLock = new object();
-
-    // 重新初始化核心模块
-    LoadFeatures(maxQueueCount, queueFamilyIndex); // 内部会重建 MemoryAllocator、CommandBufferPool 等
-    _window = new Window(this, _surface, _physicalDevice.PhysicalDevice, _device);
-
-    // 重建管线和其他渲染组件
-    _pipeline = new PipelineFull(this, _device);
-    _pipeline.Initialize();
-    HelperShader = new HelperShader(this, _device);
-    Barriers = new BarrierBatch(this);
-    SyncManager = new SyncManager(this, _device);
-}
 
         public unsafe void Dispose()
         {
@@ -1158,12 +1089,8 @@ private unsafe void InitializeVulkan()
             }
 
             SurfaceApi.DestroySurface(_instance.Instance, _surface, null);
-
             Api.DestroyDevice(_device, null);
-
             _debugMessenger.Dispose();
-
-            // Last step destroy the instance
             _instance.Dispose();
         }
 
