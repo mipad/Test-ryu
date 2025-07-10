@@ -105,18 +105,18 @@ namespace Ryujinx.Memory
         {
             // Convert MemoryPermission to MemoryBlock protection
            // MemoryBlockProtection blockProtection = ConvertToMemoryBlockProtection(protection);
-            _backingMemory.Reprotect(va, size, blockProtection, true);
+            _backingMemory.Reprotect(va, size, protection, true);
         }
 
         public void TrackingReprotect(ulong va, ulong size, MemoryPermission protection, bool guest)
-        {
-            if (_currentProtections.TryGetValue(va, out var current) && current == protection)
-            {
-                return;
-            }
-            Reprotect(va, size, protection);
-            _currentProtections[va] = protection;
-        }
+{
+    if (_currentProtections.TryGetValue(va, out var current) && current == protection)
+    {
+        return;
+    }
+    Reprotect(va, size, protection);
+    _currentProtections[va] = protection;
+}
 
         public IEnumerable<HostMemoryRange> GetHostRegions(ulong va, ulong size)
         {
