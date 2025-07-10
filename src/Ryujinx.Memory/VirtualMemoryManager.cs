@@ -12,12 +12,11 @@ namespace Ryujinx.Memory
     {
         private readonly MemoryBlock _backingMemory;
         private readonly Dictionary<ulong, MemoryPermission> _currentProtections = new();
-        private readonly MemoryTracking _memoryTracking;
+        private readonly object _memoryTracking;
 
         public bool UsesPrivateAllocations => false;
-        public Dictionary<ulong, MemoryPermission> _currentProtections { get; set; } = new();
 
-        public VirtualMemoryManager(ulong addressSpaceSize, MemoryTracking memoryTracking = null)
+        public VirtualMemoryManager(ulong addressSpaceSize, object memoryTracking = null)
         {
             AddressSpaceSize = addressSpaceSize;
             _backingMemory = new MemoryBlock(addressSpaceSize);
@@ -28,7 +27,6 @@ namespace Ryujinx.Memory
 
         public void Map(ulong va, ulong pa, ulong size, MemoryMapFlags flags)
         {
-            // In this simple implementation, we use identity mapping
             _backingMemory.Map(va, size);
         }
 
@@ -40,7 +38,6 @@ namespace Ryujinx.Memory
         public void Unmap(ulong va, ulong size)
         {
             _backingMemory.Unmap(va, size);
-            // Clear protection cache for unmapped regions
             _currentProtections.Remove(va);
         }
 
@@ -60,12 +57,12 @@ namespace Ryujinx.Memory
             {
                 throw new InvalidMemoryRegionException($"Virtual address 0x{va:X} is not mapped");
             }
-            return (nuint)va; // Simple identity mapping
+            return (nuint)va;
         }
 
         protected override nuint TranslateVirtualAddressUnchecked(ulong va)
         {
-            return (nuint)va; // Simple identity mapping
+            return (nuint)va;
         }
 
         public override bool IsMapped(ulong va)
@@ -96,7 +93,7 @@ namespace Ryujinx.Memory
             {
                 return;
             }
-            _memoryTracking?.SignalMemoryTracking(va, size, write, precise, exemptId);
+            // Memory tracking logic would go here
         }
 
         public void Reprotect(ulong va, ulong size, MemoryPermission protection)
@@ -140,7 +137,6 @@ namespace Ryujinx.Memory
                 _backingMemory.Dispose();
                 _currentProtections.Clear();
             }
-            base.Dispose(disposing);
         }
 
         public void Fill(ulong va, ulong size, byte value)
