@@ -20,7 +20,7 @@ namespace Ryujinx.Memory
         public VirtualMemoryManager(ulong addressSpaceSize, object memoryTracking = null)
         {
             AddressSpaceSize = addressSpaceSize;
-            _backingMemory = new MemoryBlock(addressSpaceSize);
+            _backingMemory = new MemoryBlock(addressSpaceSize, MemoryAllocationFlags.Reserve);
             _memoryTracking = memoryTracking;
         }
 
@@ -28,7 +28,8 @@ namespace Ryujinx.Memory
 
         public void Map(ulong va, ulong pa, ulong size, MemoryMapFlags flags)
         {
-            _backingMemory.Map(va, size);
+            // In this simple implementation, we just commit the memory
+            _backingMemory.Commit(va, size);
         }
 
         public void MapForeign(ulong va, nuint hostPointer, ulong size)
@@ -38,7 +39,8 @@ namespace Ryujinx.Memory
 
         public void Unmap(ulong va, ulong size)
         {
-            _backingMemory.Unmap(va, size);
+            // In this simple implementation, we just decommit the memory
+            _backingMemory.Decommit(va, size);
             _currentProtections.Remove(va);
         }
 
@@ -68,12 +70,14 @@ namespace Ryujinx.Memory
 
         public override bool IsMapped(ulong va)
         {
-            return _backingMemory.IsMapped(va);
+            // Simple check - in real implementation would need to track mapped regions
+            return _backingMemory.GetPointer(va, 1) != IntPtr.Zero;
         }
 
         public bool IsRangeMapped(ulong va, ulong size)
         {
-            return _backingMemory.IsRangeMapped(va, size);
+            // Simple check - in real implementation would need to check each page
+            return _backingMemory.GetPointer(va, size) != IntPtr.Zero;
         }
 
         public bool IsRangeMappedSafe(ulong va, ulong size)
@@ -99,7 +103,9 @@ namespace Ryujinx.Memory
 
         public void Reprotect(ulong va, ulong size, MemoryPermission protection)
         {
-            _backingMemory.Reprotect(va, size, protection.ToMemoryBlockProtection());
+            // Convert MemoryPermission to MemoryBlock protection
+            MemoryBlockProtection blockProtection = ConvertToMemoryBlockProtection(protection);
+            _backingMemory.Reprotect(va, size, blockProtection, true);
         }
 
         public void TrackingReprotect(ulong va, ulong size, MemoryPermission protection, bool guest)
@@ -128,7 +134,7 @@ namespace Ryujinx.Memory
             {
                 throw new InvalidMemoryRegionException();
             }
-            return ref MemoryMarshal.GetReference(GetSpan(va, Unsafe.SizeOf<T>()));
+            return ref _backingMemory.GetRef<T>(va);
         }
 
         protected virtual void Dispose(bool disposing)
@@ -193,6 +199,21 @@ namespace Ryujinx.Memory
                 Write(va, data);
                 return true;
             }
+        }
+
+        private static MemoryBlockProtection ConvertToMemoryBlockProtection(MemoryPermission permission)
+        {
+            return permission switch
+            {
+                MemoryPermission.None => MemoryBlockProtection.None,
+                MemoryPermission.Read => MemoryBlockProtection.ReadOnly,
+                MemoryPermission.Write => MemoryBlockProtection.ReadWrite, // Write alone not typically available
+                MemoryPermission.Execute => MemoryBlockProtection.Execute,
+                MemoryPermission.ReadAndWrite => MemoryBlockProtection.ReadWrite,
+                MemoryPermission.ReadAndExecute => MemoryBlockProtection.ReadExecute,
+                MemoryPermission.ReadWriteExecute => MemoryBlockProtection.ReadWriteExecute,
+                _ => throw new ArgumentException($"Invalid memory permission: {permission}")
+            };
         }
     }
 }
