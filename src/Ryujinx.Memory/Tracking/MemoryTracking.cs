@@ -1,4 +1,5 @@
 using Ryujinx.Common;
+using Ryujinx.Common.Logging;
 using Ryujinx.Common.Pools;
 using Ryujinx.Memory.Range;
 using System.Collections.Generic;
@@ -240,7 +241,7 @@ namespace Ryujinx.Memory.Tracking
                     }
                     else
                     {
-                       // Logger.Error?.Print(LogClass.Cpu, 
+                        Logger.Error?.Print(LogClass.Cpu, 
                             $"Invalid memory access at 0x{address:X}, size 0x{size:X}, write: {write}");
                         shouldThrow = true;
                     }
