@@ -104,7 +104,7 @@ namespace Ryujinx.Memory
         public void Reprotect(ulong va, ulong size, MemoryPermission protection)
         {
             // Convert MemoryPermission to MemoryBlock protection
-            MemoryBlockProtection blockProtection = ConvertToMemoryBlockProtection(protection);
+           // MemoryBlockProtection blockProtection = ConvertToMemoryBlockProtection(protection);
             _backingMemory.Reprotect(va, size, blockProtection, true);
         }
 
