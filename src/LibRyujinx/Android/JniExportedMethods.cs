@@ -82,7 +82,7 @@ namespace LibRyujinx
         {
             debug_break(4);
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            AudioDriver = new OpenALHardwareDeviceDriver();
+            //AudioDriver = new OpenALHardwareDeviceDriver();
 
             var timezone = Marshal.PtrToStringAnsi(timeZonePtr);
             return InitializeDevice(isHostMapped,
