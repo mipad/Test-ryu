@@ -72,7 +72,6 @@ namespace LibRyujinx
                 Logger.Notice.Print(LogClass.Application, $"Using base path: {AppDataManager.BaseDirPath}");
 
                 SwitchDevice = new SwitchDevice();
-                InitializeAudio();
             }
             catch (Exception ex)
             {
