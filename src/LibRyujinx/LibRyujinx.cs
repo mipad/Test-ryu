@@ -756,7 +756,7 @@ namespace LibRyujinx
                                                                   UserChannelPersistence,
                                                                   renderer,
                                                                   LibRyujinx.AudioDriver, //Audio
-                                                                  MemoryConfiguration.MemoryConfiguration4GiB,
+                                                                  MemoryConfiguration.MemoryConfiguration8GiB,
                                                                   HostUiHandler,
                                                                   systemLanguage,
                                                                   regionCode,
