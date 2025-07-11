@@ -79,7 +79,7 @@ namespace LibRyujinx
                 return false;
             }
             
-            NativeLibraryNamespace.OverridePath = "libsdl2.so";
+            OpenALLibraryNameContainer.OverridePath = "libopenal.so";
 
             return true;
         }
@@ -128,7 +128,7 @@ namespace LibRyujinx
             }
             GameInfo gameInfo = GetDefaultInfo(gameStream);
 
-            const Language TitleLanguage = Language.AmericanEnglish;
+            const Language TitleLanguage = Language.SimplifiedChinese;
 
             BlitStruct<ApplicationControlProperty> controlHolder = new(1);
 
