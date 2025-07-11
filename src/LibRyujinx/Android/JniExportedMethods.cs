@@ -1,6 +1,7 @@
 using LibRyujinx.Android;
 using LibRyujinx.Jni.Pointers;
-using Ryujinx.Audio.Backends.OpenAL;
+//using Ryujinx.Audio.Backends.OpenAL;
+using Ryujinx.Audio.Backends.SDL2;
 using Ryujinx.Common;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
@@ -83,7 +84,8 @@ namespace LibRyujinx
             debug_break(4);
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             //AudioDriver = new OpenALHardwareDeviceDriver();
-
+            AudioDriver = new SDL2HardwareDeviceDriver();
+            
             var timezone = Marshal.PtrToStringAnsi(timeZonePtr);
             return InitializeDevice(isHostMapped,
                                     useNce,
