@@ -128,7 +128,7 @@ namespace LibRyujinx
             }
             GameInfo gameInfo = GetDefaultInfo(gameStream);
 
-            const Language TitleLanguage = Language.TraditionalChinese;
+            const Language TitleLanguage = Language.SimplifiedChinese;
 
             BlitStruct<ApplicationControlProperty> controlHolder = new(1);
 
