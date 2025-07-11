@@ -79,7 +79,7 @@ namespace LibRyujinx
                 return false;
             }
             
-            OpenALLibraryNameContainer.OverridePath = "libsdl2.so";
+            SDL2LibraryNameContainer.OverridePath = "libsdl2.so";
 
             return true;
         }
