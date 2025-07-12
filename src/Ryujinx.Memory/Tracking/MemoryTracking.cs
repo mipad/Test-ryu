@@ -234,8 +234,8 @@ namespace Ryujinx.Memory.Tracking
             // 新增：跳过音频区域的内存事件处理
             if (_isAudioRegion != null && _isAudioRegion(address, size))
             {
-                Logger.Debug?.Print(LogClass.Memory, 
-                    $"Skipping audio region access: VA=0x{address:X}, Size={size}");
+                //Logger.Debug?.Print(LogClass.Memory, 
+                   // $"Skipping audio region access: VA=0x{address:X}, Size={size}");
                 return true;
             }
             
