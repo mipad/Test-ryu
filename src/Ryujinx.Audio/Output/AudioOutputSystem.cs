@@ -46,26 +46,24 @@ namespace Ryujinx.Audio.Output
         private readonly AudioOutputManager _manager;
 
         /// <summary>
-        /// THe lock of the parent.
-        /// </summary>
-        private readonly object _parentLock;
-
-        /// <summary>
         /// The dispose state.
         /// </summary>
         private int _disposeState;
 
         /// <summary>
+        /// 会话专用锁（每个实例独立）
+        /// </summary>
+        private readonly object _sessionLock = new object();
+
+        /// <summary>
         /// Create a new <see cref="AudioOutputSystem"/>.
         /// </summary>
         /// <param name="manager">The manager instance</param>
-        /// <param name="parentLock">The lock of the manager</param>
         /// <param name="deviceSession">The hardware device session</param>
         /// <param name="bufferEvent">The buffer release event of the audio output</param>
-        public AudioOutputSystem(AudioOutputManager manager, object parentLock, IHardwareDeviceSession deviceSession, IWritableEvent bufferEvent)
+        public AudioOutputSystem(AudioOutputManager manager, IHardwareDeviceSession deviceSession, IWritableEvent bufferEvent)
         {
             _manager = manager;
-            _parentLock = parentLock;
             _session = new AudioDeviceSession(deviceSession, bufferEvent);
         }
 
@@ -110,7 +108,7 @@ namespace Ryujinx.Audio.Output
         /// <returns>The released buffer event</returns>
         public IWritableEvent RegisterBufferEvent()
         {
-            lock (_parentLock)
+            lock (_sessionLock)
             {
                 return _session.GetBufferEvent();
             }
@@ -121,7 +119,7 @@ namespace Ryujinx.Audio.Output
         /// </summary>
         public void Update()
         {
-            lock (_parentLock)
+            lock (_sessionLock)
             {
                 _session.Update();
             }
@@ -185,7 +183,7 @@ namespace Ryujinx.Audio.Output
         /// <returns>A <see cref="ResultCode"/> reporting an error or a success.</returns>
         public ResultCode AppendBuffer(ulong bufferTag, ref AudioUserBuffer userBuffer)
         {
-            lock (_parentLock)
+            lock (_sessionLock)
             {
                 AudioBuffer buffer = new()
                 {
@@ -213,15 +211,19 @@ namespace Ryujinx.Audio.Output
         {
             releasedCount = 0;
 
-            // Ensure that the first entry is set to zero if no entries are returned.
+            // 确保如果没有返回任何条目，第一个条目设置为零
             if (releasedBuffers.Length > 0)
             {
                 releasedBuffers[0] = 0;
             }
 
-            lock (_parentLock)
+            lock (_sessionLock)
             {
-                for (int i = 0; i < releasedBuffers.Length; i++)
+                // 批处理优化：限制每次调用处理的最大缓冲区数量
+                const int maxBatchSize = 32;  // 根据性能测试调整此值
+                int batchSize = Math.Min(releasedBuffers.Length, maxBatchSize);
+                
+                for (int i = 0; i < batchSize; i++)
                 {
                     if (!_session.TryPopReleasedBuffer(out AudioBuffer buffer))
                     {
@@ -243,7 +245,7 @@ namespace Ryujinx.Audio.Output
         /// <returns></returns>
         public AudioDeviceState GetState()
         {
-            lock (_parentLock)
+            lock (_sessionLock)
             {
                 return _session.GetState();
             }
@@ -255,7 +257,7 @@ namespace Ryujinx.Audio.Output
         /// <returns>A <see cref="ResultCode"/> reporting an error or a success</returns>
         public ResultCode Start()
         {
-            lock (_parentLock)
+            lock (_sessionLock)
             {
                 return _session.Start();
             }
@@ -267,7 +269,7 @@ namespace Ryujinx.Audio.Output
         /// <returns>A <see cref="ResultCode"/> reporting an error or a success</returns>
         public ResultCode Stop()
         {
-            lock (_parentLock)
+            lock (_sessionLock)
             {
                 return _session.Stop();
             }
@@ -279,7 +281,7 @@ namespace Ryujinx.Audio.Output
         /// <returns>The volume of the session</returns>
         public float GetVolume()
         {
-            lock (_parentLock)
+            lock (_sessionLock)
             {
                 return _session.GetVolume();
             }
@@ -291,7 +293,7 @@ namespace Ryujinx.Audio.Output
         /// <param name="volume">The new volume to set</param>
         public void SetVolume(float volume)
         {
-            lock (_parentLock)
+            lock (_sessionLock)
             {
                 _session.SetVolume(volume);
             }
@@ -303,7 +305,7 @@ namespace Ryujinx.Audio.Output
         /// <returns>The count of buffer currently in use</returns>
         public uint GetBufferCount()
         {
-            lock (_parentLock)
+            lock (_sessionLock)
             {
                 return _session.GetBufferCount();
             }
@@ -316,7 +318,7 @@ namespace Ryujinx.Audio.Output
         /// <returns>Return true if a buffer is present</returns>
         public bool ContainsBuffer(ulong bufferTag)
         {
-            lock (_parentLock)
+            lock (_sessionLock)
             {
                 return _session.ContainsBuffer(bufferTag);
             }
@@ -328,7 +330,7 @@ namespace Ryujinx.Audio.Output
         /// <returns>The count of sample played in this session</returns>
         public ulong GetPlayedSampleCount()
         {
-            lock (_parentLock)
+            lock (_sessionLock)
             {
                 return _session.GetPlayedSampleCount();
             }
@@ -340,7 +342,7 @@ namespace Ryujinx.Audio.Output
         /// <returns>True if any buffers was flushed</returns>
         public bool FlushBuffers()
         {
-            lock (_parentLock)
+            lock (_sessionLock)
             {
                 return _session.FlushBuffers();
             }
@@ -360,7 +362,10 @@ namespace Ryujinx.Audio.Output
         {
             if (disposing)
             {
-                _session.Dispose();
+                lock (_sessionLock)
+                {
+                    _session.Dispose();
+                }
 
                 _manager.Unregister(this);
             }
