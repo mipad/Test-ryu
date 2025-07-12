@@ -201,9 +201,11 @@ namespace Ryujinx.Audio.Backends.CompatLayer
                 BufferTag = buffer.BufferTag,
                 DataPointer = buffer.DataPointer,
                 DataSize = (ulong)samples.Length,
+                Data = samples  // 设置 Data 属性
             };
 
-            bool result = _realSession.RegisterBuffer(fakeBuffer, samples);
+            // 调用单参数的 RegisterBuffer
+            bool result = _realSession.RegisterBuffer(fakeBuffer);
 
             if (result)
             {
