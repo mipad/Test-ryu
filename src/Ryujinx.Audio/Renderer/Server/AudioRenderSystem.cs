@@ -607,7 +607,6 @@ namespace Ryujinx.Audio.Renderer.Server
 
         // 新增：处理缓冲区欠载的方法
         private void HandleBufferUnderrun()
-        private void HandleBufferUnderrun()
 {
     // 动态扩大缓冲区 (最大扩容至8倍)
     uint newSize = Math.Min(_sampleCount * 2, Constants.MaxSampleCount * 8);
