@@ -2,21 +2,34 @@ using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
 using Ryujinx.Audio.Renderer.Dsp;
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 namespace Ryujinx.Audio.Backends.CompatLayer
 {
     class CompatLayerHardwareDeviceSession : HardwareDeviceSessionOutputBase
     {
-        private readonly HardwareDeviceSessionOutputBase _realSession;
+        private readonly IHardwareDeviceSession _realSession;
         private readonly SampleFormat _userSampleFormat;
         private readonly uint _userChannelCount;
+        private readonly SampleFormat _realSampleFormat;
+        private readonly uint _realChannelCount;
 
-        public CompatLayerHardwareDeviceSession(HardwareDeviceSessionOutputBase realSession, SampleFormat userSampleFormat, uint userChannelCount) : base(realSession.MemoryManager, realSession.RequestedSampleFormat, realSession.RequestedSampleRate, userChannelCount)
+        public CompatLayerHardwareDeviceSession(
+            IHardwareDeviceSession realSession,
+            IVirtualMemoryManager memoryManager,
+            SampleFormat userSampleFormat,
+            uint userChannelCount,
+            SampleFormat realSampleFormat,
+            uint realChannelCount,
+            uint realSampleRate) 
+            : base(memoryManager, realSampleFormat, realSampleRate, realChannelCount)
         {
             _realSession = realSession;
             _userSampleFormat = userSampleFormat;
             _userChannelCount = userChannelCount;
+            _realSampleFormat = realSampleFormat;
+            _realChannelCount = realChannelCount;
         }
 
         public override void Dispose()
@@ -41,9 +54,8 @@ namespace Ryujinx.Audio.Backends.CompatLayer
 
         public override void QueueBuffer(AudioBuffer buffer)
         {
-            SampleFormat realSampleFormat = _realSession.RequestedSampleFormat;
-
-            if (_userSampleFormat != realSampleFormat)
+            // 格式转换
+            if (_userSampleFormat != _realSampleFormat)
             {
                 if (_userSampleFormat != SampleFormat.PcmInt16)
                 {
@@ -53,9 +65,9 @@ namespace Ryujinx.Audio.Backends.CompatLayer
                 int userSampleCount = buffer.Data.Length / BackendHelper.GetSampleSize(_userSampleFormat);
 
                 ReadOnlySpan<short> samples = MemoryMarshal.Cast<byte, short>(buffer.Data);
-                byte[] convertedSamples = new byte[BackendHelper.GetSampleSize(realSampleFormat) * userSampleCount];
+                byte[] convertedSamples = new byte[BackendHelper.GetSampleSize(_realSampleFormat) * userSampleCount];
 
-                switch (realSampleFormat)
+                switch (_realSampleFormat)
                 {
                     case SampleFormat.PcmInt8:
                         PcmHelper.ConvertSampleToPcm8(MemoryMarshal.Cast<byte, sbyte>(convertedSamples), samples);
@@ -70,10 +82,41 @@ namespace Ryujinx.Audio.Backends.CompatLayer
                         PcmHelper.ConvertSampleToPcmFloat(MemoryMarshal.Cast<byte, float>(convertedSamples), samples);
                         break;
                     default:
-                        throw new NotImplementedException($"Sample format conversion from {_userSampleFormat} to {realSampleFormat} not implemented.");
+                        throw new NotImplementedException($"Sample format conversion from {_userSampleFormat} to {_realSampleFormat} not implemented.");
                 }
 
                 buffer.Data = convertedSamples;
+            }
+
+            // 声道转换
+            if (_userChannelCount != _realChannelCount)
+            {
+                if (_userSampleFormat != SampleFormat.PcmInt16)
+                {
+                    throw new NotImplementedException("Downmixing formats other than PCM16 is not supported.");
+                }
+
+                ReadOnlySpan<short> samplesPCM16 = MemoryMarshal.Cast<byte, short>(buffer.Data);
+
+                if (_userChannelCount == 6)
+                {
+                    samplesPCM16 = Downmixing.DownMixSurroundToStereo(samplesPCM16);
+
+                    if (_realChannelCount == 1)
+                    {
+                        samplesPCM16 = Downmixing.DownMixStereoToMono(samplesPCM16);
+                    }
+                }
+                else if (_userChannelCount == 2 && _realChannelCount == 1)
+                {
+                    samplesPCM16 = Downmixing.DownMixStereoToMono(samplesPCM16);
+                }
+                else
+                {
+                    throw new NotImplementedException($"Downmixing from {_userChannelCount} to {_realChannelCount} not implemented.");
+                }
+
+                buffer.Data = MemoryMarshal.Cast<short, byte>(samplesPCM16).ToArray();
             }
 
             _realSession.QueueBuffer(buffer);
@@ -86,7 +129,42 @@ namespace Ryujinx.Audio.Backends.CompatLayer
                 return false;
             }
 
-            if (_userChannelCount != _realSession.RequestedChannelCount)
+            // 格式转换
+            if (_userSampleFormat != _realSampleFormat)
+            {
+                if (_userSampleFormat != SampleFormat.PcmInt16)
+                {
+                    throw new NotImplementedException("Converting formats other than PCM16 is not supported.");
+                }
+
+                int userSampleCount = samples.Length / BackendHelper.GetSampleSize(_userSampleFormat);
+
+                ReadOnlySpan<short> samplesPCM16 = MemoryMarshal.Cast<byte, short>(samples);
+                byte[] convertedSamples = new byte[BackendHelper.GetSampleSize(_realSampleFormat) * userSampleCount];
+
+                switch (_realSampleFormat)
+                {
+                    case SampleFormat.PcmInt8:
+                        PcmHelper.ConvertSampleToPcm8(MemoryMarshal.Cast<byte, sbyte>(convertedSamples), samplesPCM16);
+                        break;
+                    case SampleFormat.PcmInt24:
+                        PcmHelper.ConvertSampleToPcm24(convertedSamples, samplesPCM16);
+                        break;
+                    case SampleFormat.PcmInt32:
+                        PcmHelper.ConvertSampleToPcm32(MemoryMarshal.Cast<byte, int>(convertedSamples), samplesPCM16);
+                        break;
+                    case SampleFormat.PcmFloat:
+                        PcmHelper.ConvertSampleToPcmFloat(MemoryMarshal.Cast<byte, float>(convertedSamples), samplesPCM16);
+                        break;
+                    default:
+                        throw new NotImplementedException($"Sample format conversion from {_userSampleFormat} to {_realSampleFormat} not implemented.");
+                }
+
+                samples = convertedSamples;
+            }
+
+            // 声道转换
+            if (_userChannelCount != _realChannelCount)
             {
                 if (_userSampleFormat != SampleFormat.PcmInt16)
                 {
@@ -99,18 +177,18 @@ namespace Ryujinx.Audio.Backends.CompatLayer
                 {
                     samplesPCM16 = Downmixing.DownMixSurroundToStereo(samplesPCM16);
 
-                    if (_realSession.RequestedChannelCount == 1)
+                    if (_realChannelCount == 1)
                     {
                         samplesPCM16 = Downmixing.DownMixStereoToMono(samplesPCM16);
                     }
                 }
-                else if (_userChannelCount == 2 && _realSession.RequestedChannelCount == 1)
+                else if (_userChannelCount == 2 && _realChannelCount == 1)
                 {
                     samplesPCM16 = Downmixing.DownMixStereoToMono(samplesPCM16);
                 }
                 else
                 {
-                    throw new NotImplementedException($"Downmixing from {_userChannelCount} to {_realSession.RequestedChannelCount} not implemented.");
+                    throw new NotImplementedException($"Downmixing from {_userChannelCount} to {_realChannelCount} not implemented.");
                 }
 
                 samples = MemoryMarshal.Cast<short, byte>(samplesPCM16).ToArray();
@@ -157,6 +235,20 @@ namespace Ryujinx.Audio.Backends.CompatLayer
         public override bool WasBufferFullyConsumed(AudioBuffer buffer)
         {
             return _realSession.WasBufferFullyConsumed(buffer);
+        }
+
+        // 实现缺失的抽象方法
+        public override void QueueBuffers(IList<AudioBuffer> buffers)
+        {
+            foreach (AudioBuffer buffer in buffers)
+            {
+                QueueBuffer(buffer);
+            }
+        }
+
+        public override IList<AudioBuffer> GetReleasedBuffers(int maxCount)
+        {
+            return _realSession.GetReleasedBuffers(maxCount);
         }
     }
 }
