@@ -81,6 +81,9 @@ namespace Ryujinx.Audio.Renderer.Server
 
         private int _disposeState;
 
+        // 添加工作缓冲区分配器
+        private WorkBufferAllocator _workBufferAllocator;
+
         public AudioRenderSystem(AudioRendererManager manager, IWritableEvent systemEvent)
         {
             _manager = manager;
@@ -143,31 +146,34 @@ namespace Ryujinx.Audio.Renderer.Server
                 rc.IncrementReferenceCount();
             }
 
-            WorkBufferAllocator workBufferAllocator;
-
             workBufferMemory.Span.Clear();
             _workBufferMemoryPin = workBufferMemory.Pin();
 
-            workBufferAllocator = new WorkBufferAllocator(workBufferMemory);
+            // 使用工作缓冲区分配器
+            _workBufferAllocator = new WorkBufferAllocator(workBufferMemory);
 
             PoolMapper poolMapper = new(processHandle, false);
             poolMapper.InitializeSystemPool(ref _dspMemoryPoolState, workBuffer, workBufferSize);
 
-            _mixBuffer = workBufferAllocator.Allocate<float>(_sampleCount * (_voiceChannelCountMax + _mixBufferCount), 0x10);
+            // 混音缓冲区初始分配（预留扩容空间）
+            ulong mixBufferSize = (ulong)_sampleCount * (_voiceChannelCountMax + _mixBufferCount);
+            ulong maxMixBufferSize = mixBufferSize * 8; // 最大扩容至8倍
+            _mixBuffer = _workBufferAllocator.Allocate<float>(maxMixBufferSize, 0x10);
+            _mixBuffer = _mixBuffer.Slice(0, (int)mixBufferSize);
 
             if (_mixBuffer.IsEmpty)
             {
                 return ResultCode.WorkBufferTooSmall;
             }
 
-            Memory<float> upSamplerWorkBuffer = workBufferAllocator.Allocate<float>(Constants.TargetSampleCount * (_voiceChannelCountMax + _mixBufferCount) * _upsamplerCount, 0x10);
+            Memory<float> upSamplerWorkBuffer = _workBufferAllocator.Allocate<float>(Constants.TargetSampleCount * (_voiceChannelCountMax + _mixBufferCount) * _upsamplerCount, 0x10);
 
             if (upSamplerWorkBuffer.IsEmpty)
             {
                 return ResultCode.WorkBufferTooSmall;
             }
 
-            _depopBuffer = workBufferAllocator.Allocate<float>(BitUtils.AlignUp<ulong>(parameter.MixBufferCount, Constants.BufferAlignment), Constants.BufferAlignment);
+            _depopBuffer = _workBufferAllocator.Allocate<float>(BitUtils.AlignUp<ulong>(parameter.MixBufferCount, Constants.BufferAlignment), Constants.BufferAlignment);
 
             if (_depopBuffer.IsEmpty)
             {
@@ -180,7 +186,7 @@ namespace Ryujinx.Audio.Renderer.Server
                 parameter.SplitterCount > 0 &&
                 parameter.SplitterDestinationCount > 0)
             {
-                splitterBqfStates = workBufferAllocator.Allocate<BiquadFilterState>(parameter.SplitterDestinationCount * SplitterContext.BqfStatesPerDestination, 0x10);
+                splitterBqfStates = _workBufferAllocator.Allocate<BiquadFilterState>(parameter.SplitterDestinationCount * SplitterContext.BqfStatesPerDestination, 0x10);
 
                 if (splitterBqfStates.IsEmpty)
                 {
@@ -191,11 +197,11 @@ namespace Ryujinx.Audio.Renderer.Server
             }
 
             // Invalidate DSP cache on what was currently allocated with workBuffer.
-            AudioProcessorMemoryManager.InvalidateDspCache(_dspMemoryPoolState.Translate(workBuffer, workBufferAllocator.Offset), workBufferAllocator.Offset);
+            AudioProcessorMemoryManager.InvalidateDspCache(_dspMemoryPoolState.Translate(workBuffer, _workBufferAllocator.Offset), _workBufferAllocator.Offset);
 
-            Debug.Assert((workBufferAllocator.Offset % Constants.BufferAlignment) == 0);
+            Debug.Assert((_workBufferAllocator.Offset % Constants.BufferAlignment) == 0);
 
-            Memory<VoiceState> voices = workBufferAllocator.Allocate<VoiceState>(parameter.VoiceCount, VoiceState.Alignment);
+            Memory<VoiceState> voices = _workBufferAllocator.Allocate<VoiceState>(parameter.VoiceCount, VoiceState.Alignment);
 
             if (voices.IsEmpty)
             {
@@ -208,7 +214,7 @@ namespace Ryujinx.Audio.Renderer.Server
             }
 
             // A pain to handle as we can't have VoiceState*, use indices to be a bit more safe
-            Memory<int> sortedVoices = workBufferAllocator.Allocate<int>(parameter.VoiceCount, 0x10);
+            Memory<int> sortedVoices = _workBufferAllocator.Allocate<int>(parameter.VoiceCount, 0x10);
 
             if (sortedVoices.IsEmpty)
             {
@@ -218,7 +224,7 @@ namespace Ryujinx.Audio.Renderer.Server
             // Clear memory (use -1 as it's an invalid index)
             sortedVoices.Span.Fill(-1);
 
-            Memory<VoiceChannelResource> voiceChannelResources = workBufferAllocator.Allocate<VoiceChannelResource>(parameter.VoiceCount, VoiceChannelResource.Alignment);
+            Memory<VoiceChannelResource> voiceChannelResources = _workBufferAllocator.Allocate<VoiceChannelResource>(parameter.VoiceCount, VoiceChannelResource.Alignment);
 
             if (voiceChannelResources.IsEmpty)
             {
@@ -233,7 +239,7 @@ namespace Ryujinx.Audio.Renderer.Server
                 voiceChannelResource.IsUsed = false;
             }
 
-            Memory<VoiceUpdateState> voiceUpdateStates = workBufferAllocator.Allocate<VoiceUpdateState>(parameter.VoiceCount, VoiceUpdateState.Align);
+            Memory<VoiceUpdateState> voiceUpdateStates = _workBufferAllocator.Allocate<VoiceUpdateState>(parameter.VoiceCount, VoiceUpdateState.Align);
 
             if (voiceUpdateStates.IsEmpty)
             {
@@ -242,7 +248,7 @@ namespace Ryujinx.Audio.Renderer.Server
 
             uint mixesCount = parameter.SubMixBufferCount + 1;
 
-            Memory<MixState> mixes = workBufferAllocator.Allocate<MixState>(mixesCount, MixState.Alignment);
+            Memory<MixState> mixes = _workBufferAllocator.Allocate<MixState>(mixesCount, MixState.Alignment);
 
             if (mixes.IsEmpty)
             {
@@ -258,7 +264,7 @@ namespace Ryujinx.Audio.Renderer.Server
             }
             else
             {
-                Memory<int> effectProcessingOrderArray = workBufferAllocator.Allocate<int>(parameter.EffectCount * mixesCount, 0x10);
+                Memory<int> effectProcessingOrderArray = _workBufferAllocator.Allocate<int>(parameter.EffectCount * mixesCount, 0x10);
 
                 foreach (ref MixState mix in mixes.Span)
                 {
@@ -271,7 +277,7 @@ namespace Ryujinx.Audio.Renderer.Server
             // Initialize the final mix id
             mixes.Span[0].MixId = Constants.FinalMixId;
 
-            Memory<int> sortedMixesState = workBufferAllocator.Allocate<int>(mixesCount, 0x10);
+            Memory<int> sortedMixesState = _workBufferAllocator.Allocate<int>(mixesCount, 0x10);
 
             if (sortedMixesState.IsEmpty)
             {
@@ -286,8 +292,8 @@ namespace Ryujinx.Audio.Renderer.Server
 
             if (_behaviourContext.IsSplitterSupported())
             {
-                nodeStatesWorkBuffer = workBufferAllocator.Allocate((uint)NodeStates.GetWorkBufferSize((int)mixesCount), 1);
-                edgeMatrixWorkBuffer = workBufferAllocator.Allocate((uint)EdgeMatrix.GetWorkBufferSize((int)mixesCount), 1);
+                nodeStatesWorkBuffer = _workBufferAllocator.Allocate((uint)NodeStates.GetWorkBufferSize((int)mixesCount), 1);
+                edgeMatrixWorkBuffer = _workBufferAllocator.Allocate((uint)EdgeMatrix.GetWorkBufferSize((int)mixesCount), 1);
 
                 if (nodeStatesWorkBuffer.IsEmpty || edgeMatrixWorkBuffer.IsEmpty)
                 {
@@ -297,7 +303,7 @@ namespace Ryujinx.Audio.Renderer.Server
 
             _mixContext.Initialize(sortedMixesState, mixes, nodeStatesWorkBuffer, edgeMatrixWorkBuffer);
 
-            _memoryPools = workBufferAllocator.Allocate<MemoryPoolState>(_memoryPoolCount, MemoryPoolState.Alignment);
+            _memoryPools = _workBufferAllocator.Allocate<MemoryPoolState>(_memoryPoolCount, MemoryPoolState.Alignment);
 
             if (_memoryPools.IsEmpty)
             {
@@ -309,7 +315,7 @@ namespace Ryujinx.Audio.Renderer.Server
                 state = MemoryPoolState.Create(MemoryPoolState.LocationType.Cpu);
             }
 
-            if (!_splitterContext.Initialize(ref _behaviourContext, ref parameter, workBufferAllocator, splitterBqfStates))
+            if (!_splitterContext.Initialize(ref _behaviourContext, ref parameter, _workBufferAllocator, splitterBqfStates))
             {
                 return ResultCode.WorkBufferTooSmall;
             }
@@ -321,7 +327,7 @@ namespace Ryujinx.Audio.Renderer.Server
             _effectContext.Initialize(parameter.EffectCount, _behaviourContext.IsEffectInfoVersion2Supported() ? parameter.EffectCount : 0);
             _sinkContext.Initialize(parameter.SinkCount);
 
-            Memory<VoiceUpdateState> voiceUpdateStatesDsp = workBufferAllocator.Allocate<VoiceUpdateState>(parameter.VoiceCount, VoiceUpdateState.Align);
+            Memory<VoiceUpdateState> voiceUpdateStatesDsp = _workBufferAllocator.Allocate<VoiceUpdateState>(parameter.VoiceCount, VoiceUpdateState.Align);
 
             if (voiceUpdateStatesDsp.IsEmpty)
             {
@@ -334,7 +340,7 @@ namespace Ryujinx.Audio.Renderer.Server
             {
                 ulong performanceBufferSize = PerformanceManager.GetRequiredBufferSizeForPerformanceMetricsPerFrame(ref parameter, ref _behaviourContext) * (parameter.PerformanceMetricFramesCount + 1) + 0xC;
 
-                _performanceBuffer = workBufferAllocator.Allocate(performanceBufferSize, Constants.BufferAlignment);
+                _performanceBuffer = _workBufferAllocator.Allocate(performanceBufferSize, Constants.BufferAlignment);
 
                 if (_performanceBuffer.IsEmpty)
                 {
@@ -495,318 +501,324 @@ namespace Ryujinx.Audio.Renderer.Server
                     result = stateUpdater.UpdateRendererInfo(_elapsedFrameCount);
 
                     if (result != ResultCode.Success)
+                    {
+                        return result;
+                    }
+                }
+
+                result = stateUpdater.CheckConsumedSize();
+
+                if (result != ResultCode.Success)
                 {
                     return result;
                 }
-            }
 
-            result = stateUpdater.CheckConsumedSize();
+                _systemEvent.Clear();
 
-            if (result != ResultCode.Success)
-            {
+                ulong updateEndTicks = GetSystemTicks();
+
+                _totalElapsedTicksUpdating += (updateEndTicks - updateStartTicks);
+
                 return result;
             }
-
-            _systemEvent.Clear();
-
-            ulong updateEndTicks = GetSystemTicks();
-
-            _totalElapsedTicksUpdating += (updateEndTicks - updateStartTicks);
-
-            return result;
-        }
-    }
-
-    private ulong GetSystemTicks()
-    {
-        return (ulong)(_manager.TickSource.ElapsedSeconds * Constants.TargetTimerFrequency);
-    }
-
-    private uint ComputeVoiceDrop(CommandBuffer commandBuffer, uint voicesEstimatedTime, long deltaTimeDsp)
-    {
-        int i;
-
-        for (i = 0; i < commandBuffer.CommandList.Commands.Count; i++)
-        {
-            ICommand command = commandBuffer.CommandList.Commands[i];
-
-            CommandType commandType = command.CommandType;
-
-            if (commandType == CommandType.AdpcmDataSourceVersion1 ||
-                commandType == CommandType.AdpcmDataSourceVersion2 ||
-                commandType == CommandType.PcmInt16DataSourceVersion1 ||
-                commandType == CommandType.PcmInt16DataSourceVersion2 ||
-                commandType == CommandType.PcmFloatDataSourceVersion1 ||
-                commandType == CommandType.PcmFloatDataSourceVersion2 ||
-                commandType == CommandType.Performance)
-            {
-                break;
-            }
         }
 
-        uint voiceDropped = 0;
-
-        for (; i < commandBuffer.CommandList.Commands.Count; i++)
+        private ulong GetSystemTicks()
         {
-            ICommand targetCommand = commandBuffer.CommandList.Commands[i];
+            return (ulong)(_manager.TickSource.ElapsedSeconds * Constants.TargetTimerFrequency);
+        }
 
-            int targetNodeId = targetCommand.NodeId;
+        private uint ComputeVoiceDrop(CommandBuffer commandBuffer, uint voicesEstimatedTime, long deltaTimeDsp)
+        {
+            int i;
 
-            if (voicesEstimatedTime <= deltaTimeDsp || NodeIdHelper.GetType(targetNodeId) != NodeIdType.Voice)
-            {
-                break;
-            }
-
-            ref VoiceState voice = ref _voiceContext.GetState(NodeIdHelper.GetBase(targetNodeId));
-
-            if (voice.Priority == Constants.VoiceHighestPriority)
-            {
-                break;
-            }
-
-            // We can safely drop this voice, disable all associated commands while activating depop preparation commands.
-            voiceDropped++;
-            voice.VoiceDropFlag = true;
-
-            Logger.Warning?.Print(LogClass.AudioRenderer, $"Dropping voice {voice.NodeId}");
-
-            for (; i < commandBuffer.CommandList.Commands.Count; i++)
+            for (i = 0; i < commandBuffer.CommandList.Commands.Count; i++)
             {
                 ICommand command = commandBuffer.CommandList.Commands[i];
 
-                if (command.NodeId != targetNodeId)
+                CommandType commandType = command.CommandType;
+
+                if (commandType == CommandType.AdpcmDataSourceVersion1 ||
+                    commandType == CommandType.AdpcmDataSourceVersion2 ||
+                    commandType == CommandType.PcmInt16DataSourceVersion1 ||
+                    commandType == CommandType.PcmInt16DataSourceVersion2 ||
+                    commandType == CommandType.PcmFloatDataSourceVersion1 ||
+                    commandType == CommandType.PcmFloatDataSourceVersion2 ||
+                    commandType == CommandType.Performance)
+                {
+                    break;
+                }
+            }
+
+            uint voiceDropped = 0;
+
+            for (; i < commandBuffer.CommandList.Commands.Count; i++)
+            {
+                ICommand targetCommand = commandBuffer.CommandList.Commands[i];
+
+                int targetNodeId = targetCommand.NodeId;
+
+                if (voicesEstimatedTime <= deltaTimeDsp || NodeIdHelper.GetType(targetNodeId) != NodeIdType.Voice)
                 {
                     break;
                 }
 
-                if (command.CommandType == CommandType.DepopPrepare)
-                {
-                    command.Enabled = true;
-                }
-                else if (command.CommandType == CommandType.Performance || !command.Enabled)
-                {
-                    continue;
-                }
-                else
-                {
-                    command.Enabled = false;
+                ref VoiceState voice = ref _voiceContext.GetState(NodeIdHelper.GetBase(targetNodeId));
 
-                    voicesEstimatedTime -= (uint)(_voiceDropParameter * command.EstimatedProcessingTime);
+                if (voice.Priority == Constants.VoiceHighestPriority)
+                {
+                    break;
+                }
+
+                // We can safely drop this voice, disable all associated commands while activating depop preparation commands.
+                voiceDropped++;
+                voice.VoiceDropFlag = true;
+
+                Logger.Warning?.Print(LogClass.AudioRenderer, $"Dropping voice {voice.NodeId}");
+
+                for (; i < commandBuffer.CommandList.Commands.Count; i++)
+                {
+                    ICommand command = commandBuffer.CommandList.Commands[i];
+
+                    if (command.NodeId != targetNodeId)
+                    {
+                        break;
+                    }
+
+                    if (command.CommandType == CommandType.DepopPrepare)
+                    {
+                        command.Enabled = true;
+                    }
+                    else if (command.CommandType == CommandType.Performance || !command.Enabled)
+                    {
+                        continue;
+                    }
+                    else
+                    {
+                        command.Enabled = false;
+
+                        voicesEstimatedTime -= (uint)(_voiceDropParameter * command.EstimatedProcessingTime);
+                    }
                 }
             }
+
+            return voiceDropped;
         }
 
-        return voiceDropped;
-    }
-
-    private void GenerateCommandList(out CommandList commandList)
-    {
-        Debug.Assert(_executionMode == AudioRendererExecutionMode.Auto);
-
-        PoolMapper.ClearUsageState(_memoryPools);
-
-        ulong startTicks = GetSystemTicks();
-
-        commandList = new CommandList(this);
-
-        if (_performanceManager != null)
+        // 新增：处理缓冲区欠载的方法
+        private void HandleBufferUnderrun()
         {
-            _performanceManager.TapFrame(_isDspRunningBehind, _voiceDropCount, _renderingStartTick);
-
-            _isDspRunningBehind = false;
-            _voiceDropCount = 0;
-            _renderingStartTick = 0;
-        }
-
-        CommandBuffer commandBuffer = new(commandList, _commandProcessingTimeEstimator);
-
-        CommandGenerator commandGenerator = new(commandBuffer, GetContext(), _voiceContext, _mixContext, _effectContext, _sinkContext, _splitterContext, _performanceManager);
-
-        _voiceContext.Sort();
-        commandGenerator.GenerateVoices();
-
-        uint voicesEstimatedTime = (uint)(_voiceDropParameter * commandBuffer.EstimatedProcessingTime);
-
-        commandGenerator.GenerateSubMixes();
-        commandGenerator.GenerateFinalMixes();
-        commandGenerator.GenerateSinks();
-
-        uint totalEstimatedTime = (uint)(_voiceDropParameter * commandBuffer.EstimatedProcessingTime);
-
-        if (_voiceDropEnabled)
-        {
-            long maxDspTime = GetMaxAllocatedTimeForDsp();
-
-            long restEstimateTime = totalEstimatedTime - voicesEstimatedTime;
-
-            long deltaTimeDsp = Math.Max(maxDspTime - restEstimateTime, 0);
-
-            _voiceDropCount = ComputeVoiceDrop(commandBuffer, voicesEstimatedTime, deltaTimeDsp);
-        }
-
-        _voiceContext.UpdateForCommandGeneration();
-
-        if (_behaviourContext.IsEffectInfoVersion2Supported())
-        {
-            _effectContext.UpdateResultStateForCommandGeneration();
-        }
-
-        // CRI ADX欠载补偿
-        if (_voiceDropCount > 0)
-        {
-            float compensation = 1.0f + (_voiceDropCount * 0.1f);
-            int channelCount = GetContext().ChannelCount;
-
-            // 创建一个增益命令，作用于最终混音的输出缓冲区（mix buffer index 0）
-            BufferMixCommand gainCommand = new BufferMixCommand();
-            gainCommand.SetBuffer(0, 0, _sampleCount, channelCount);
-            gainCommand.Gain = compensation;
-            commandBuffer.AddCommand(gainCommand);
-        }
-
-        ulong endTicks = GetSystemTicks();
-
-        _totalElapsedTicks = endTicks - startTicks;
-
-        _renderingStartTick = GetSystemTicks();
-        _elapsedFrameCount++;
-    }
-
-    private int GetMaxAllocatedTimeForDsp()
-    {
-        return (int)(Constants.AudioProcessorMaxUpdateTimePerSessions * _behaviourContext.GetAudioRendererProcessingTimeLimit() * (GetRenderingTimeLimit() / 100.0f));
-    }
-
-    public void SendCommands()
-    {
-        lock (_lock)
-        {
-            if (_isActive)
+            // 动态扩大缓冲区 (最大扩容至8倍)
+            uint newSize = Math.Min(_sampleCount * 2, Constants.MaxSampleCount * 8);
+            
+            if (newSize > _sampleCount)
             {
-                if (!_manager.Processor.HasRemainingCommands(_sessionId))
+                Logger.Warning?.Print(LogClass.AudioRenderer, 
+                    $"Buffer underrun! Resizing: {_sampleCount} -> {newSize}");
+                
+                // 重新分配混音缓冲区（使用预留空间）
+                uint newBufferSize = newSize * (_voiceChannelCountMax + _mixBufferCount);
+                _mixBuffer = _mixBuffer.Slice(0, (int)newBufferSize);
+                _sampleCount = newSize;
+            }
+        }
+
+        private void GenerateCommandList(out CommandList commandList)
+        {
+            Debug.Assert(_executionMode == AudioRendererExecutionMode.Auto);
+
+            PoolMapper.ClearUsageState(_memoryPools);
+
+            ulong startTicks = GetSystemTicks();
+
+            commandList = new CommandList(this);
+
+            if (_performanceManager != null)
+            {
+                _performanceManager.TapFrame(_isDspRunningBehind, _voiceDropCount, _renderingStartTick);
+
+                // 检测并处理缓冲区欠载
+                if (_performanceManager.LastBufferUnderrun)
                 {
-                    GenerateCommandList(out CommandList commands);
-
-                    _manager.Processor.Send(_sessionId,
-                                            commands,
-                                            GetMaxAllocatedTimeForDsp(),
-                                            _appletResourceId);
-
-                    _systemEvent.Signal();
+                    HandleBufferUnderrun();
                 }
-                else
+
+                _isDspRunningBehind = false;
+                _voiceDropCount = 0;
+                _renderingStartTick = 0;
+            }
+
+            CommandBuffer commandBuffer = new(commandList, _commandProcessingTimeEstimator);
+
+            CommandGenerator commandGenerator = new(commandBuffer, GetContext(), _voiceContext, _mixContext, _effectContext, _sinkContext, _splitterContext, _performanceManager);
+
+            _voiceContext.Sort();
+            commandGenerator.GenerateVoices();
+
+            uint voicesEstimatedTime = (uint)(_voiceDropParameter * commandBuffer.EstimatedProcessingTime);
+
+            commandGenerator.GenerateSubMixes();
+            commandGenerator.GenerateFinalMixes();
+            commandGenerator.GenerateSinks();
+
+            uint totalEstimatedTime = (uint)(_voiceDropParameter * commandBuffer.EstimatedProcessingTime);
+
+            if (_voiceDropEnabled)
+            {
+                long maxDspTime = GetMaxAllocatedTimeForDsp();
+
+                long restEstimateTime = totalEstimatedTime - voicesEstimatedTime;
+
+                long deltaTimeDsp = Math.Max(maxDspTime - restEstimateTime, 0);
+
+                _voiceDropCount = ComputeVoiceDrop(commandBuffer, voicesEstimatedTime, deltaTimeDsp);
+            }
+
+            _voiceContext.UpdateForCommandGeneration();
+
+            if (_behaviourContext.IsEffectInfoVersion2Supported())
+            {
+                _effectContext.UpdateResultStateForCommandGeneration();
+            }
+
+            ulong endTicks = GetSystemTicks();
+
+            _totalElapsedTicks = endTicks - startTicks;
+
+            _renderingStartTick = GetSystemTicks();
+            _elapsedFrameCount++;
+        }
+
+        private int GetMaxAllocatedTimeForDsp()
+        {
+            return (int)(Constants.AudioProcessorMaxUpdateTimePerSessions * _behaviourContext.GetAudioRendererProcessingTimeLimit() * (GetRenderingTimeLimit() / 100.0f));
+        }
+
+        public void SendCommands()
+        {
+            lock (_lock)
+            {
+                if (_isActive)
                 {
-                    _isDspRunningBehind = true;
+                    if (!_manager.Processor.HasRemainingCommands(_sessionId))
+                    {
+                        GenerateCommandList(out CommandList commands);
+
+                        _manager.Processor.Send(_sessionId,
+                                                commands,
+                                                GetMaxAllocatedTimeForDsp(),
+                                                _appletResourceId);
+
+                        _systemEvent.Signal();
+                    }
+                    else
+                    {
+                        _isDspRunningBehind = true;
+                    }
                 }
             }
         }
-    }
 
-    public uint GetMixBufferCount()
-    {
-        return _mixBufferCount;
-    }
-
-    public void SetRenderingTimeLimitPercent(uint percent)
-    {
-        Debug.Assert(percent <= 100);
-
-        _renderingTimeLimitPercent = percent;
-    }
-
-    public uint GetRenderingTimeLimit()
-    {
-        return _renderingTimeLimitPercent;
-    }
-
-    public Memory<float> GetMixBuffer()
-    {
-        return _mixBuffer;
-    }
-
-    public uint GetSampleCount()
-    {
-        return _sampleCount;
-    }
-
-    public uint GetSampleRate()
-    {
-        return _sampleRate;
-    }
-
-    public uint GetVoiceChannelCountMax()
-    {
-        return _voiceChannelCountMax;
-    }
-
-    public bool IsActive()
-    {
-        return _isActive;
-    }
-
-    private RendererSystemContext GetContext()
-    {
-        return new RendererSystemContext
+        public uint GetMixBufferCount()
         {
-            ChannelCount = _manager.Processor.OutputDevices[_sessionId].GetChannelCount(),
-            BehaviourContext = _behaviourContext,
-            DepopBuffer = _depopBuffer,
-            MixBufferCount = GetMixBufferCount(),
-            SessionId = _sessionId,
-            UpsamplerManager = _upsamplerManager,
-        };
-    }
+            return _mixBufferCount;
+        }
 
-    public int GetSessionId()
-    {
-        return _sessionId;
-    }
-
-    public static ulong GetWorkBufferSize(ref AudioRendererConfiguration parameter)
-    {
-        BehaviourContext behaviourContext = new();
-
-        behaviourContext.SetUserRevision(parameter.Revision);
-
-        uint mixesCount = parameter.SubMixBufferCount + 1;
-
-        // Effect 增加 20% (1.2 = 6/5)，Voice 增加 50% (1.5 = 3/2)
-        uint memoryPoolCount = (uint)((parameter.EffectCount * 6 / 5) + (parameter.VoiceCount * Constants.VoiceWaveBufferCount * 3 / 2));
-
-        ulong size = 0;
-
-        // Mix Bufferssize = WorkBufferAllocator.GetTargetSize<float>(
-        ulong mixBufferSize = (ulong)(
-         parameter.SampleCount * 
-         (Constants.VoiceChannelCountMax + parameter.MixBufferCount) * 
-          3 / 2  // 相当于乘以1.5
-         );
-
-         size = WorkBufferAllocator.GetTargetSize<float>(
-          size,
-           mixBufferSize,
-           0x10  // 16字节对齐
-         );
-        // Upsampler workbuffer
-        size = WorkBufferAllocator.GetTargetSize<float>(size, Constants.TargetSampleCount * (Constants.VoiceChannelCountMax + parameter.MixBufferCount) * (parameter.SinkCount + parameter.SubMixBufferCount), 0x10);
-
-        // Depop buffer
-        size = WorkBufferAllocator.GetTargetSize<float>(size, BitUtils.AlignUp<ulong>(parameter.MixBufferCount, Constants.BufferAlignment), Constants.BufferAlignment);
-
-        // Voice
-        size = WorkBufferAllocator.GetTargetSize<VoiceState>(size, parameter.VoiceCount, VoiceState.Alignment);
-        size = WorkBufferAllocator.GetTargetSize<int>(size, parameter.VoiceCount, 0x10);
-        size = WorkBufferAllocator.GetTargetSize<VoiceChannelResource>(size, parameter.VoiceCount, VoiceChannelResource.Alignment);
-        size = WorkBufferAllocator.GetTargetSize<VoiceUpdateState>(size, parameter.VoiceCount, VoiceUpdateState.Align);
-
-        // Mix
-        size = WorkBufferAllocator.GetTargetSize<MixState>(size, mixesCount, MixState.Alignment);
-        size = WorkBufferAllocator.GetTargetSize<int>(size, parameter.EffectCount * mixesCount, 0x10);
-        size = WorkBufferAllocator.GetTargetSize<int>(size, mixesCount, 0x10);
-
-        if (behaviourContext.IsSplitterSupported())
+        public void SetRenderingTimeLimitPercent(uint percent)
         {
-            // 
+            Debug.Assert(percent <= 100);
+
+            _renderingTimeLimitPercent = percent;
+        }
+
+        public uint GetRenderingTimeLimit()
+        {
+            return _renderingTimeLimitPercent;
+        }
+
+        public Memory<float> GetMixBuffer()
+        {
+            return _mixBuffer;
+        }
+
+        public uint GetSampleCount()
+        {
+            return _sampleCount;
+        }
+
+        public uint GetSampleRate()
+        {
+            return _sampleRate;
+        }
+
+        public uint GetVoiceChannelCountMax()
+        {
+            return _voiceChannelCountMax;
+        }
+
+        public bool IsActive()
+        {
+            return _isActive;
+        }
+
+        private RendererSystemContext GetContext()
+        {
+            return new RendererSystemContext
+            {
+                ChannelCount = _manager.Processor.OutputDevices[_sessionId].GetChannelCount(),
+                BehaviourContext = _behaviourContext,
+                DepopBuffer = _depopBuffer,
+                MixBufferCount = GetMixBufferCount(),
+                SessionId = _sessionId,
+                UpsamplerManager = _upsamplerManager,
+            };
+        }
+
+        public int GetSessionId()
+        {
+            return _sessionId;
+        }
+
+        public static ulong GetWorkBufferSize(ref AudioRendererConfiguration parameter)
+        {
+            BehaviourContext behaviourContext = new();
+
+            behaviourContext.SetUserRevision(parameter.Revision);
+
+            uint mixesCount = parameter.SubMixBufferCount + 1;
+
+            // Effect 增加 20% (1.2 = 6/5)，Voice 增加 50% (1.5 = 3/2)
+            uint memoryPoolCount = (uint)((parameter.EffectCount * 6 / 5) + (parameter.VoiceCount * Constants.VoiceWaveBufferCount * 3 / 2));
+
+            ulong size = 0;
+
+            // 混音缓冲区大小（预留8倍扩容空间）
+            ulong maxMixBufferSize = (ulong)parameter.SampleCount * 
+                                    (Constants.VoiceChannelCountMax + parameter.MixBufferCount) * 
+                                    8; // 最大扩容8倍
+
+            size = WorkBufferAllocator.GetTargetSize<float>(size, maxMixBufferSize, 0x10);
+
+            // Upsampler workbuffer
+            size = WorkBufferAllocator.GetTargetSize<float>(size, Constants.TargetSampleCount * (Constants.VoiceChannelCountMax + parameter.MixBufferCount) * (parameter.SinkCount + parameter.SubMixBufferCount), 0x10);
+
+            // Depop buffer
+            size = WorkBufferAllocator.GetTargetSize<float>(size, BitUtils.AlignUp<ulong>(parameter.MixBufferCount, Constants.BufferAlignment), Constants.BufferAlignment);
+
+            // Voice
+            size = WorkBufferAllocator.GetTargetSize<VoiceState>(size, parameter.VoiceCount, VoiceState.Alignment);
+            size = WorkBufferAllocator.GetTargetSize<int>(size, parameter.VoiceCount, 0x10);
+            size = WorkBufferAllocator.GetTargetSize<VoiceChannelResource>(size, parameter.VoiceCount, VoiceChannelResource.Alignment);
+            size = WorkBufferAllocator.GetTargetSize<VoiceUpdateState>(size, parameter.VoiceCount, VoiceUpdateState.Align);
+
+            // Mix
+            size = WorkBufferAllocator.GetTargetSize<MixState>(size, mixesCount, MixState.Alignment);
+            size = WorkBufferAllocator.GetTargetSize<int>(size, parameter.EffectCount * mixesCount, 0x10);
+            size = WorkBufferAllocator.GetTargetSize<int>(size, mixesCount, 0x10);
+
+            if (behaviourContext.IsSplitterSupported())
+            {
+                // 
 const int BaseAlignment = 0x10; // 16-byte alignment
 const int ScalingFactorNumerator = 12; // 1.2 = 12/10
 const int ScalingFactorDenominator = 10;
@@ -817,115 +829,115 @@ int scaledSize = rawSize * ScalingFactorNumerator / ScalingFactorDenominator;
 
 // 对齐处理
 size += (ulong)BitUtils.AlignUp(scaledSize, BaseAlignment);
-        }
-
-        // Memory Pool
-        size = WorkBufferAllocator.GetTargetSize<MemoryPoolState>(size, memoryPoolCount, MemoryPoolState.Alignment);
-
-        // Splitter
-        size = SplitterContext.GetWorkBufferSize(size, ref behaviourContext, ref parameter);
-
-        if (behaviourContext.IsBiquadFilterParameterForSplitterEnabled() &&
-            parameter.SplitterCount > 0 &&
-            parameter.SplitterDestinationCount > 0)
-        {
-            size = WorkBufferAllocator.GetTargetSize<BiquadFilterState>(size, parameter.SplitterDestinationCount * SplitterContext.BqfStatesPerDestination, 0x10);
-        }
-
-        // DSP Voice
-        size = WorkBufferAllocator.GetTargetSize<VoiceUpdateState>(size, parameter.VoiceCount, VoiceUpdateState.Align);
-
-        // Performance
-        ulong maxPerformanceBufferSize = size / 10;
-        if (parameter.PerformanceMetricFramesCount > 0)
-        {
-            ulong performanceMetricsPerFramesSize = PerformanceManager.GetRequiredBufferSizeForPerformanceMetricsPerFrame(ref parameter, ref behaviourContext) * (parameter.PerformanceMetricFramesCount + 1) + 0xC;
-
-            size += BitUtils.AlignUp<ulong>(performanceMetricsPerFramesSize, Constants.PerformanceMetricsPerFramesSizeAlignment);
-        }
-
-        return BitUtils.AlignUp<ulong>(size, Constants.WorkBufferAlignment);
-    }
-
-    public ResultCode QuerySystemEvent(out IWritableEvent systemEvent)
-    {
-        systemEvent = default;
-
-        if (_executionMode == AudioRendererExecutionMode.Manual)
-        {
-            return ResultCode.UnsupportedOperation;
-        }
-
-        systemEvent = _systemEvent;
-
-        return ResultCode.Success;
-    }
-
-    public void Dispose()
-    {
-        GC.SuppressFinalize(this);
-
-        if (Interlocked.CompareExchange(ref _disposeState, 1, 0) == 0)
-        {
-            Dispose(true);
-        }
-    }
-
-    protected virtual void Dispose(bool disposing)
-    {
-        if (disposing)
-        {
-            if (_isActive)
-            {
-                Stop();
             }
 
-            PoolMapper mapper = new(_processHandle, false);
-            mapper.Unmap(ref _dspMemoryPoolState);
+            // Memory Pool
+            size = WorkBufferAllocator.GetTargetSize<MemoryPoolState>(size, memoryPoolCount, MemoryPoolState.Alignment);
 
-            PoolMapper.ClearUsageState(_memoryPools);
+            // Splitter
+            size = SplitterContext.GetWorkBufferSize(size, ref behaviourContext, ref parameter);
 
-            for (int i = 0; i < _memoryPoolCount; i++)
+            if (behaviourContext.IsBiquadFilterParameterForSplitterEnabled() &&
+                parameter.SplitterCount > 0 &&
+                parameter.SplitterDestinationCount > 0)
             {
-                ref MemoryPoolState memoryPool = ref _memoryPools.Span[i];
+                size = WorkBufferAllocator.GetTargetSize<BiquadFilterState>(size, parameter.SplitterDestinationCount * SplitterContext.BqfStatesPerDestination, 0x10);
+            }
 
-                if (memoryPool.IsMapped())
+            // DSP Voice
+            size = WorkBufferAllocator.GetTargetSize<VoiceUpdateState>(size, parameter.VoiceCount, VoiceUpdateState.Align);
+
+            // Performance
+            ulong maxPerformanceBufferSize = size / 10;
+            if (parameter.PerformanceMetricFramesCount > 0)
+            {
+                ulong performanceMetricsPerFramesSize = PerformanceManager.GetRequiredBufferSizeForPerformanceMetricsPerFrame(ref parameter, ref behaviourContext) * (parameter.PerformanceMetricFramesCount + 1) + 0xC;
+
+                size += BitUtils.AlignUp<ulong>(performanceMetricsPerFramesSize, Constants.PerformanceMetricsPerFramesSizeAlignment);
+            }
+
+            return BitUtils.AlignUp<ulong>(size, Constants.WorkBufferAlignment);
+        }
+
+        public ResultCode QuerySystemEvent(out IWritableEvent systemEvent)
+        {
+            systemEvent = default;
+
+            if (_executionMode == AudioRendererExecutionMode.Manual)
+            {
+                return ResultCode.UnsupportedOperation;
+            }
+
+            systemEvent = _systemEvent;
+
+            return ResultCode.Success;
+        }
+
+        public void Dispose()
+        {
+            GC.SuppressFinalize(this);
+
+            if (Interlocked.CompareExchange(ref _disposeState, 1, 0) == 0)
+            {
+                Dispose(true);
+            }
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                if (_isActive)
                 {
-                    mapper.Unmap(ref memoryPool);
+                    Stop();
+                }
+
+                PoolMapper mapper = new(_processHandle, false);
+                mapper.Unmap(ref _dspMemoryPoolState);
+
+                PoolMapper.ClearUsageState(_memoryPools);
+
+                for (int i = 0; i < _memoryPoolCount; i++)
+                {
+                    ref MemoryPoolState memoryPool = ref _memoryPools.Span[i];
+
+                    if (memoryPool.IsMapped())
+                    {
+                        mapper.Unmap(ref memoryPool);
+                    }
+                }
+
+                _manager.Unregister(this);
+                _workBufferMemoryPin.Dispose();
+
+                if (MemoryManager is IRefCounted rc)
+                {
+                    rc.DecrementReferenceCount();
+
+                    MemoryManager = null;
                 }
             }
-
-            _manager.Unregister(this);
-            _workBufferMemoryPin.Dispose();
-
-            if (MemoryManager is IRefCounted rc)
-            {
-                rc.DecrementReferenceCount();
-
-                MemoryManager = null;
-            }
         }
-    }
 
-    public void SetVoiceDropParameter(float voiceDropParameter)
-    {
-        _voiceDropParameter = Math.Clamp(voiceDropParameter, 0.0f, 2.0f);
-    }
-
-    public float GetVoiceDropParameter()
-    {
-        return _voiceDropParameter;
-    }
-
-    public ResultCode ExecuteAudioRendererRendering()
-    {
-        if (_executionMode == AudioRendererExecutionMode.Manual && _renderingDevice == AudioRendererRenderingDevice.Cpu)
+        public void SetVoiceDropParameter(float voiceDropParameter)
         {
-            // NOTE: Here Nintendo aborts with this error code, we don't want that.
-            return ResultCode.InvalidExecutionContextOperation;
+            _voiceDropParameter = Math.Clamp(voiceDropParameter, 0.0f, 2.0f);
         }
 
-        return ResultCode.UnsupportedOperation;
+        public float GetVoiceDropParameter()
+        {
+            return _voiceDropParameter;
+        }
+
+        public ResultCode ExecuteAudioRendererRendering()
+        {
+            if (_executionMode == AudioRendererExecutionMode.Manual && _renderingDevice == AudioRendererRenderingDevice.Cpu)
+            {
+                // NOTE: Here Nintendo aborts with this error code, we don't want that.
+                return ResultCode.InvalidExecutionContextOperation;
+            }
+
+            return ResultCode.UnsupportedOperation;
+        }
     }
-}
 }
