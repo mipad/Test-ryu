@@ -118,7 +118,7 @@ namespace Ryujinx.Audio.Backends.CompatLayer
                 {
                     Logger.Warning?.Print(LogClass.Audio, "The selected audio backend doesn't support audio input, fallback to dummy...");
 
-                    return new DummyHardwareDeviceSessionInput(this, memoryManager);
+                    return new DummyHardwareDeviceSessionInput(this, memoryManager, sampleFormat, sampleRate, channelCount);
                 }
 
                 throw new NotImplementedException();
@@ -151,17 +151,18 @@ namespace Ryujinx.Audio.Backends.CompatLayer
                 // TODO: We currently don't support audio input upsampling/downsampling, implement this.
                 realSession.Dispose();
 
-                return new DummyHardwareDeviceSessionInput(this, memoryManager);
+                return new DummyHardwareDeviceSessionInput(this, memoryManager, sampleFormat, sampleRate, channelCount);
             }
 
-            // It must be a HardwareDeviceSessionOutputBase.
-            if (realSession is not HardwareDeviceSessionOutputBase realSessionOutputBase)
-            {
-                throw new InvalidOperationException($"Real driver session class type isn't based on {typeof(HardwareDeviceSessionOutputBase).Name}.");
-            }
-
-            // If we need to do post processing before sending to the hardware device, wrap around it.
-            return new CompatLayerHardwareDeviceSession(realSessionOutputBase, sampleFormat, channelCount);
+            // 修改创建 CompatLayerHardwareDeviceSession 的部分
+            return new CompatLayerHardwareDeviceSession(
+                realSession,                  // IHardwareDeviceSession
+                memoryManager,
+                sampleFormat,                 // 用户请求的格式
+                channelCount,                 // 用户请求的声道数
+                hardwareSampleFormat,         // 硬件实际使用的格式
+                hardwareChannelCount,         // 硬件实际使用的声道数
+                sampleRate);                  // 采样率
         }
 
         public bool SupportsChannelCount(uint channelCount)
