@@ -78,13 +78,13 @@ namespace Ryujinx.Audio.Common
         private readonly CancellationTokenSource _cts = new();
         private Thread _processingThread;
         
-        private AudioFormat _hardwareFormat;
+        // 使用单独的字段代替 AudioFormat
+        private uint _hardwareSampleRate;
+        private uint _hardwareBitDepth;
+        private uint _hardwareChannelCount;
+        private SampleFormat _hardwareSampleFormat;
+        
         private AudioBuffer _cachedSilenceBuffer;
-
-        /// <summary>
-        /// Hardware audio format
-        /// </summary>
-        public AudioFormat HardwareFormat => _hardwareFormat;
 
         /// <summary>
         /// Create a new <see cref="AudioDeviceSession"/>.
@@ -98,8 +98,11 @@ namespace Ryujinx.Audio.Common
             _hardwareDeviceSession = deviceSession;
             _bufferRegisteredLimit = bufferRegisteredLimit;
 
-            // 获取硬件支持的格式
-            _hardwareFormat = deviceSession.GetSupportedFormat();
+            // 获取硬件支持的参数
+            _hardwareSampleRate = deviceSession.GetSampleRate();
+            _hardwareBitDepth = deviceSession.GetBitDepth();
+            _hardwareChannelCount = deviceSession.GetChannelCount();
+            _hardwareSampleFormat = deviceSession.GetSampleFormat();
 
             _buffers = new AudioBuffer[Constants.AudioDeviceBufferCountMax];
             _serverBufferIndex = 0;
@@ -549,9 +552,9 @@ namespace Ryujinx.Audio.Common
                 return _cachedSilenceBuffer;
             }
             
-            int bytesPerSample = (int)_hardwareFormat.BitDepth / 8;
-            int samplesPerChannel = (int)(_hardwareFormat.SampleRate * 0.01); // 10ms
-            int size = samplesPerChannel * (int)_hardwareFormat.ChannelCount * bytesPerSample;
+            int bytesPerSample = (int)_hardwareBitDepth / 8;
+            int samplesPerChannel = (int)(_hardwareSampleRate * 0.01); // 10ms
+            int size = samplesPerChannel * (int)_hardwareChannelCount * bytesPerSample;
             byte[] silenceData = new byte[size];
             
             _cachedSilenceBuffer = new AudioBuffer
@@ -559,7 +562,7 @@ namespace Ryujinx.Audio.Common
                 BufferTag = 0,
                 DataPointer = silenceData,
                 DataSize = (ulong)size,
-                Format = _hardwareFormat
+                Format = _hardwareSampleFormat
             };
             
             return _cachedSilenceBuffer;
