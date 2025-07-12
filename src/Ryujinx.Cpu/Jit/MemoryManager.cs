@@ -10,6 +10,11 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 
+// 新增命名空间用于 Android 优先级调整
+#if ANDROID
+using Android.OS;
+#endif
+
 namespace Ryujinx.Cpu.Jit
 {
     /// <summary>
@@ -18,8 +23,14 @@ namespace Ryujinx.Cpu.Jit
     public sealed class MemoryManager : VirtualMemoryManagerRefCountedBase, ICpuMemoryManager, IVirtualMemoryManagerTracked
     {
         private const int PteSize = 8;
-
         private const int PointerTagBit = 62;
+        private const ulong LargePageSize = 2 * 1024 * 1024; // 2MB
+        private const ulong LargePageFlag = 1UL << 52; // 自定义大页标志位
+
+        // 音频缓冲区配置（需要根据游戏调整）
+        private const ulong AudioBufferBase = 0x20000000; // 典型音频缓冲区起始地址
+        private const ulong AudioBufferSize = 0x100000;   // 1MB 典型大小
+        private const int AudioThreadId = 18; // 根据日志中的 "Thread: CRI Server Manager"
 
         private readonly MemoryBlock _backingMemory;
         private readonly InvalidAccessHandler _invalidAccessHandler;
@@ -33,7 +44,6 @@ namespace Ryujinx.Cpu.Jit
         public int AddressSpaceBits { get; }
 
         private readonly MemoryBlock _pageTable;
-
         private readonly ManagedPageFlags _pages;
 
         /// <summary>
@@ -42,11 +52,8 @@ namespace Ryujinx.Cpu.Jit
         public IntPtr PageTablePointer => _pageTable.Pointer;
 
         public MemoryManagerType Type => MemoryManagerType.SoftwarePageTable;
-
         public MemoryTracking Tracking { get; }
-
         public event Action<ulong, ulong> UnmapEvent;
-
         protected override ulong AddressSpaceSize { get; }
 
         /// <summary>
@@ -74,8 +81,17 @@ namespace Ryujinx.Cpu.Jit
             _pageTable = new MemoryBlock((asSize / PageSize) * PteSize);
 
             _pages = new ManagedPageFlags(AddressSpaceBits);
+            
+            // ====== 关键修改在这里 ======
+            // 将音频检测函数传递给MemoryTracking构造函数
+            Tracking = new MemoryTracking(this, PageSize, null, false, IsAudioBuffer);
+        }
 
-            Tracking = new MemoryTracking(this, PageSize);
+        // 检测是否为音频缓冲区
+        private bool IsAudioBuffer(ulong va, ulong size)
+        {
+            return va >= AudioBufferBase && 
+                   (va + size) <= (AudioBufferBase + AudioBufferSize);
         }
 
         /// <inheritdoc/>
@@ -83,15 +99,46 @@ namespace Ryujinx.Cpu.Jit
         {
             AssertValidAddressAndSize(va, size);
 
-            ulong remainingSize = size;
             ulong oVa = va;
-            while (remainingSize != 0)
-            {
-                _pageTable.Write((va / PageSize) * PteSize, PaToPte(pa));
 
-                va += PageSize;
-                pa += PageSize;
-                remainingSize -= PageSize;
+            // 为音频缓冲区启用大页映射
+            if (IsAudioBuffer(va, size) && size >= LargePageSize)
+            {
+                // 使用2MB大页映射
+                ulong largePageCount = size / LargePageSize;
+                for (ulong i = 0; i < largePageCount; i++)
+                {
+                    _pageTable.Write(((va + i * LargePageSize) / PageSize) * PteSize, 
+                                    PaToPte(pa + i * LargePageSize) | LargePageFlag);
+                }
+                
+                // 处理剩余部分
+                ulong remaining = size % LargePageSize;
+                if (remaining > 0)
+                {
+                    va += largePageCount * LargePageSize;
+                    pa += largePageCount * LargePageSize;
+                    ulong remainingSize = remaining;
+                    while (remainingSize != 0)
+                    {
+                        _pageTable.Write((va / PageSize) * PteSize, PaToPte(pa));
+                        va += PageSize;
+                        pa += PageSize;
+                        remainingSize -= PageSize;
+                    }
+                }
+            }
+            else
+            {
+                // 标准小页映射
+                ulong remainingSize = size;
+                while (remainingSize != 0)
+                {
+                    _pageTable.Write((va / PageSize) * PteSize, PaToPte(pa));
+                    va += PageSize;
+                    pa += PageSize;
+                    remainingSize -= PageSize;
+                }
             }
 
             _pages.AddMapping(oVa, size);
@@ -284,6 +331,13 @@ namespace Ryujinx.Cpu.Jit
 
         private List<MemoryRange> GetPhysicalRegionsImpl(ulong va, ulong size)
         {
+            // 音频缓冲区直接返回连续物理区域
+            if (IsAudioBuffer(va, size))
+            {
+                ulong paStart = GetPhysicalAddressInternal(va);
+                return new List<MemoryRange> { new MemoryRange(paStart, size) };
+            }
+
             if (!ValidateAddress(va) || !ValidateAddressAndSize(va, size))
             {
                 return null;
@@ -402,6 +456,9 @@ namespace Ryujinx.Cpu.Jit
         /// <inheritdoc/>
         public void TrackingReprotect(ulong va, ulong size, MemoryPermission protection, bool guest)
         {
+            // 跳过音频缓冲区的保护操作
+            if (IsAudioBuffer(va, size)) return;
+            
             AssertValidAddressAndSize(va, size);
 
             if (guest)
@@ -444,6 +501,24 @@ namespace Ryujinx.Cpu.Jit
         /// <inheritdoc/>
         public RegionHandle BeginTracking(ulong address, ulong size, int id, RegionFlags flags = RegionFlags.None)
         {
+            // 提升音频线程优先级
+            if (id == AudioThreadId)
+            {
+                try
+                {
+#if ANDROID
+                    // Android 优先级调整
+                    Process.SetThreadPriority(Process.MyTid(), (int)ThreadPriority.Highest);
+#else
+                    // 其他平台的优先级调整
+                    Thread.CurrentThread.Priority = ThreadPriority.Highest;
+#endif
+                }
+                catch
+                {
+                    // 忽略权限错误
+                }
+            }
             return Tracking.BeginTracking(address, size, id, flags);
         }
 
@@ -461,6 +536,9 @@ namespace Ryujinx.Cpu.Jit
 
         private void SignalMemoryTrackingImpl(ulong va, ulong size, bool write, bool guest, bool precise = false, int? exemptId = null)
         {
+            // 跳过音频缓冲区的内存跟踪
+            if (IsAudioBuffer(va, size)) return;
+            
             AssertValidAddressAndSize(va, size);
 
             if (precise)
