@@ -185,32 +185,59 @@ namespace Ryujinx.Audio.Output
         /// <param name="userBuffer">The buffer informations.</param>
         /// <returns>A <see cref="ResultCode"/> reporting an error or a success.</returns>
         public ResultCode AppendBuffer(ulong bufferTag, ref AudioUserBuffer userBuffer)
+{
+    lock (_sessionLock)
+    {
+        // 1. 使用正确的缓冲区计数（仅未处理缓冲区）
+        uint pendingCount = _session.GetPendingBufferCount();
+        
+        // 2. 动态调整缓冲区大小
+        if (pendingCount > _dynamicBufferSize * 0.8)
         {
-            lock (_sessionLock)
-            {
-                // 动态调整缓冲区大小
-                uint pendingBufferCount = _session.GetBufferCount();
-                if (pendingBufferCount > _dynamicBufferSize * 0.8)
-                {
-                    _dynamicBufferSize = Math.Min(256, _dynamicBufferSize * 2);
-                    //Logger.Debug?.Print(LogClass.AudioRenderer, $"Increased dynamic buffer size to {_dynamicBufferSize} for session {_sessionId}");
-                }
-
-                AudioBuffer buffer = new()
-                {
-                    BufferTag = bufferTag,
-                    DataPointer = userBuffer.Data,
-                    DataSize = userBuffer.DataSize,
-                };
-
-                if (_session.AppendBuffer(buffer))
-                {
-                    return ResultCode.Success;
-                }
-
-                return ResultCode.BufferRingFull;
-            }
+            _dynamicBufferSize = Math.Min(256, _dynamicBufferSize * 2);
+            Logger.Debug?.Print(LogClass.Audio, $"Buffer size increased to {_dynamicBufferSize}");
         }
+        
+        // 3. 格式转换检查
+        if (!_session.IsFormatSupported(userBuffer.Format))
+        {
+            // 转换到硬件支持的格式
+            byte[] convertedData = ConvertAudioFormat(
+                userBuffer.Data,
+                userBuffer.Format,
+                _session.HardwareFormat
+            );
+            
+            userBuffer.Data = convertedData;
+            userBuffer.DataSize = (ulong)convertedData.Length;
+        }
+
+        // 4. 创建缓冲区对象
+        AudioBuffer buffer = new()
+        {
+            BufferTag = bufferTag,
+            DataPointer = userBuffer.Data,
+            DataSize = userBuffer.DataSize,
+            Format = userBuffer.Format // 携带格式信息
+        };
+
+        // 5. 添加欠载保护
+        if (pendingCount < 4) // 缓冲区不足时添加静音
+        {
+            _session.InsertSafetyBuffers(2); // 添加2个静音缓冲区
+        }
+
+        // 6. 提交缓冲区
+        if (_session.AppendBuffer(buffer))
+        {
+            return ResultCode.Success;
+        }
+        
+       // Logger.Warning?.Print(LogClass.Audio, 
+            //$"Buffer ring full! Pending: {pendingCount}/{_dynamicBufferSize}");
+        return ResultCode.BufferRingFull;
+    }
+}
 
         /// <summary>
         /// Get the release buffers.
