@@ -4,20 +4,17 @@ using Ryujinx.Memory;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using static Ryujinx.Audio.Integration.IHardwareDeviceDriver;
 
 namespace Ryujinx.Audio.Backends.Dummy
 {
     class DummyHardwareDeviceSessionInput : IHardwareDeviceSession
     {
-        public SessionDirection Direction => SessionDirection.Input;
+        // 使用完全限定名解决类型冲突
+        public IHardwareDeviceDriver.Direction Direction => IHardwareDeviceDriver.Direction.Input;
 
         public DummyHardwareDeviceSessionInput(
-            DummyHardwareDeviceDriver driver,
-            IVirtualMemoryManager memoryManager,
-            SampleFormat sampleFormat,
-            uint sampleRate,
-            uint channelCount)
+            IHardwareDeviceDriver driver, // 修改为接口类型
+            IVirtualMemoryManager memoryManager)
         {
             // 初始化逻辑保留但为空
         }
