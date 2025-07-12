@@ -6,7 +6,6 @@ using Ryujinx.Common.Logging;
 using Ryujinx.Memory;
 using System;
 using System.Threading;
-using static Ryujinx.Audio.Integration.IHardwareDeviceDriver;
 
 namespace Ryujinx.Audio.Backends.CompatLayer
 {
@@ -96,7 +95,12 @@ namespace Ryujinx.Audio.Backends.CompatLayer
             throw new ArgumentException("No valid sample format configuration found!");
         }
 
-        public IHardwareDeviceSession OpenDeviceSession(Direction direction, IVirtualMemoryManager memoryManager, SampleFormat sampleFormat, uint sampleRate, uint channelCount)
+        public IHardwareDeviceSession OpenDeviceSession(
+            IHardwareDeviceDriver.Direction direction, 
+            IVirtualMemoryManager memoryManager, 
+            SampleFormat sampleFormat, 
+            uint sampleRate, 
+            uint channelCount)
         {
             if (channelCount == 0)
             {
@@ -110,7 +114,7 @@ namespace Ryujinx.Audio.Backends.CompatLayer
 
             if (!_realDriver.SupportsDirection(direction))
             {
-                if (direction == Direction.Input)
+                if (direction == IHardwareDeviceDriver.Direction.Input)
                 {
                     Logger.Warning?.Print(LogClass.Audio, "The selected audio backend doesn't support audio input, fallback to dummy...");
 
@@ -140,7 +144,7 @@ namespace Ryujinx.Audio.Backends.CompatLayer
                 }
             }
 
-            if (direction == Direction.Input)
+            if (direction == IHardwareDeviceDriver.Direction.Input)
             {
                 Logger.Warning?.Print(LogClass.Audio, "The selected audio backend doesn't support the requested audio input configuration, fallback to dummy...");
 
@@ -182,9 +186,10 @@ namespace Ryujinx.Audio.Backends.CompatLayer
             return _realDriver;
         }
 
-        public bool SupportsDirection(Direction direction)
+        public bool SupportsDirection(IHardwareDeviceDriver.Direction direction)
         {
-            return direction == Direction.Input || direction == Direction.Output;
+            return direction == IHardwareDeviceDriver.Direction.Input || 
+                   direction == IHardwareDeviceDriver.Direction.Output;
         }
     }
 }
