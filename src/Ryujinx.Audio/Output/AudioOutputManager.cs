@@ -6,6 +6,7 @@ using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks; // 添加并行处理命名空间
 
 namespace Ryujinx.Audio.Output
 {
@@ -122,17 +123,32 @@ namespace Ryujinx.Audio.Output
         /// </summary>
         public void Update()
         {
-            // 先复制会话列表避免长时锁定
-            AudioOutputSystem[] sessions;
+            // 获取会话快照
+            AudioOutputSystem[] sessions = GetSessionSnapshot();
+            
+            // 并行处理
+            Parallel.ForEach(sessions, session =>
+            {
+                try
+                {
+                    session?.Update();
+                }
+                catch (Exception ex) 
+                { 
+                    // 记录错误但继续处理其他会话
+                    Logger.Error?.Print(LogClass.AudioRenderer, $"Audio session update failed: {ex.Message}");
+                }
+            });
+        }
+
+        /// <summary>
+        /// 获取当前会话的快照
+        /// </summary>
+        private AudioOutputSystem[] GetSessionSnapshot()
+        {
             lock (_sessionLock)
             {
-                sessions = _sessions.Where(s => s != null).ToArray();
-            }
-
-            // 并行更新各会话
-            foreach (var session in sessions)
-            {
-                session.Update(); // 内部使用会话级锁
+                return _sessions.Where(s => s != null).ToArray();
             }
         }
 
