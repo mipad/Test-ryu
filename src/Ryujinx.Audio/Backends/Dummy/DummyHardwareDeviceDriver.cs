@@ -24,7 +24,8 @@ namespace Ryujinx.Audio.Backends.Dummy
             Volume = 1f;
         }
 
-        public IHardwareDeviceSession OpenDeviceSession(Direction direction, IVirtualMemoryManager memoryManager, SampleFormat sampleFormat, uint sampleRate, uint channelCount)
+        // 修复1: 使用完全限定名解决 Direction 冲突
+        public IHardwareDeviceSession OpenDeviceSession(IHardwareDeviceDriver.Direction direction, IVirtualMemoryManager memoryManager, SampleFormat sampleFormat, uint sampleRate, uint channelCount)
         {
             if (sampleRate == 0)
             {
@@ -36,12 +37,15 @@ namespace Ryujinx.Audio.Backends.Dummy
                 channelCount = 2;
             }
 
-            if (direction == Direction.Output)
+            // 修复2: 使用完全限定名
+            if (direction == IHardwareDeviceDriver.Direction.Output)
             {
                 return new DummyHardwareDeviceSessionOutput(this, memoryManager, sampleFormat, sampleRate, channelCount);
             }
-
-            return new DummyHardwareDeviceSessionInput(this, memoryManager);
+            else
+            {
+                return new DummyHardwareDeviceSessionInput(this, memoryManager, sampleFormat, sampleRate, channelCount);
+            }
         }
 
         public ManualResetEvent GetUpdateRequiredEvent()
@@ -79,9 +83,11 @@ namespace Ryujinx.Audio.Backends.Dummy
             return true;
         }
 
-        public bool SupportsDirection(Direction direction)
+        // 修复3: 使用完全限定名解决 Direction 冲突
+        public bool SupportsDirection(IHardwareDeviceDriver.Direction direction)
         {
-            return direction == Direction.Output || direction == Direction.Input;
+            return direction == IHardwareDeviceDriver.Direction.Output || 
+                   direction == IHardwareDeviceDriver.Direction.Input;
         }
 
         public bool SupportsChannelCount(uint channelCount)
