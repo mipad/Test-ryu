@@ -178,3 +178,14 @@ namespace Ryujinx.Audio
         };
     }
 }
+
+namespace Ryujinx.Audio.Common
+{
+    public static class AudioConstants
+    {
+        /// <summary>
+        /// Default size for silence buffers.
+        /// </summary>
+        public const int DefaultSilenceBufferSize = 1024;
+    }
+}
