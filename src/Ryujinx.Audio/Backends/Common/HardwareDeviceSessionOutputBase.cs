@@ -1,9 +1,9 @@
 using Ryujinx.Audio.Common;
 using Ryujinx.Audio.Integration;
+using Ryujinx.Common; 
 using Ryujinx.Memory;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace Ryujinx.Audio.Backends.Common
@@ -15,7 +15,6 @@ namespace Ryujinx.Audio.Backends.Common
         public uint RequestedSampleRate { get; }
         public uint RequestedChannelCount { get; }
         
-        // 修改为使用完全限定名
         public IHardwareDeviceDriver.Direction Direction => IHardwareDeviceDriver.Direction.Output;
 
         public HardwareDeviceSessionOutputBase(IVirtualMemoryManager memoryManager, SampleFormat requestedSampleFormat, uint requestedSampleRate, uint requestedChannelCount)
@@ -62,7 +61,6 @@ namespace Ryujinx.Audio.Backends.Common
         public abstract void QueueBuffers(IList<AudioBuffer> buffers);
         public abstract IList<AudioBuffer> GetReleasedBuffers(int maxCount);
         
-        // 显式实现接口方法
         AudioBuffer IHardwareDeviceSession.CreateSilenceBuffer() => CreateSilenceBuffer();
 
         public virtual void QueueBuffer(AudioBuffer buffer)
@@ -94,9 +92,9 @@ namespace Ryujinx.Audio.Backends.Common
             return new AudioBuffer
             {
                 Data = new byte[Constants.DefaultSilenceBufferSize],
-                DataSize = Constants.DefaultSilenceBufferSize,
+                DataSize = (ulong)Constants.DefaultSilenceBufferSize,
                 BufferTag = 0,
-                PlayedTimestamp = (ulong)PerformanceCounter.ElapsedNanoseconds
+                PlayedTimestamp = (ulong)PerformanceCounter.ElapsedNanoseconds // 使用 PerformanceCounter
             };
         }
     }
