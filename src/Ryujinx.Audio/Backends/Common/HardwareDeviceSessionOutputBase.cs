@@ -15,8 +15,8 @@ namespace Ryujinx.Audio.Backends.Common
         public uint RequestedSampleRate { get; }
         public uint RequestedChannelCount { get; }
         
-        // 添加 Direction 属性实现
-        public Direction Direction => Direction.Output;
+        // 修改为使用完全限定名
+        public IHardwareDeviceDriver.Direction Direction => IHardwareDeviceDriver.Direction.Output;
 
         public HardwareDeviceSessionOutputBase(IVirtualMemoryManager memoryManager, SampleFormat requestedSampleFormat, uint requestedSampleRate, uint requestedChannelCount)
         {
