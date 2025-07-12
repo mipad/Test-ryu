@@ -607,21 +607,22 @@ namespace Ryujinx.Audio.Renderer.Server
 
         // 新增：处理缓冲区欠载的方法
         private void HandleBufferUnderrun()
-        {
-            // 动态扩大缓冲区 (最大扩容至8倍)
-            uint newSize = Math.Min(_sampleCount * 2, Constants.MaxSampleCount * 8);
-            
-            if (newSize > _sampleCount)
-            {
-                Logger.Warning?.Print(LogClass.AudioRenderer, 
-                    $"Buffer underrun! Resizing: {_sampleCount} -> {newSize}");
-                
-                // 重新分配混音缓冲区（使用预留空间）
-                uint newBufferSize = newSize * (_voiceChannelCountMax + _mixBufferCount);
-                _mixBuffer = _mixBuffer.Slice(0, (int)newBufferSize);
-                _sampleCount = newSize;
-            }
-        }
+        private void HandleBufferUnderrun()
+{
+    // 动态扩大缓冲区 (最大扩容至8倍)
+    uint newSize = Math.Min(_sampleCount * 2, Constants.MaxSampleCount * 8);
+    
+    if (newSize > _sampleCount)
+    {
+        Logger.Warning?.Print(LogClass.AudioRenderer, 
+            $"Buffer underrun! Resizing: {_sampleCount} -> {newSize}");
+        
+        // 重新分配混音缓冲区（使用预留空间）
+        uint newBufferSize = newSize * (_voiceChannelCountMax + _mixBufferCount);
+        _mixBuffer = _mixBuffer.Slice(0, (int)newBufferSize);
+        _sampleCount = newSize;
+    }
+}
 
         private void GenerateCommandList(out CommandList commandList)
         {
