@@ -6,6 +6,7 @@ using Ryujinx.Memory;
 using System;
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 
 using static SDL2.SDL;
@@ -27,6 +28,7 @@ namespace Ryujinx.Audio.Backends.SDL2
         private bool _started;
         private float _volume;
         private readonly ushort _nativeSampleFormat;
+        private readonly Queue<AudioBuffer> _releasedBuffers = new();
 
         public SDL2HardwareDeviceSession(SDL2HardwareDeviceDriver driver, IVirtualMemoryManager memoryManager, SampleFormat requestedSampleFormat, uint requestedSampleRate, uint requestedChannelCount) : base(memoryManager, requestedSampleFormat, requestedSampleRate, requestedChannelCount)
         {
@@ -122,7 +124,10 @@ namespace Ryujinx.Audio.Backends.SDL2
 
                 if (currentSamplePlayed == driverBuffer.SampleCount)
                 {
-                    _queuedBuffers.TryDequeue(out _);
+                    if (_queuedBuffers.TryDequeue(out var releasedBuffer))
+                    {
+                        _releasedBuffers.Enqueue(new AudioBuffer(releasedBuffer.DriverIdentifier, null, 0, 0));
+                    }
 
                     needUpdate = true;
                 }
@@ -167,6 +172,27 @@ namespace Ryujinx.Audio.Backends.SDL2
 
                 _updateRequiredEvent.Set();
             }
+        }
+
+        public override void QueueBuffers(IList<AudioBuffer> buffers)
+        {
+            foreach (AudioBuffer buffer in buffers)
+            {
+                QueueBuffer(buffer);
+            }
+        }
+
+        public override IList<AudioBuffer> GetReleasedBuffers(int maxCount)
+        {
+            List<AudioBuffer> result = new();
+
+            while (maxCount > 0 && _releasedBuffers.Count > 0)
+            {
+                result.Add(_releasedBuffers.Dequeue());
+                maxCount--;
+            }
+
+            return result;
         }
 
         public override void SetVolume(float volume)
