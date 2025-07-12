@@ -2,6 +2,8 @@ using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
 using Ryujinx.Audio.Integration;
 using Ryujinx.Memory;
+using System;
+using System.Collections.Generic;
 using System.Threading;
 
 namespace Ryujinx.Audio.Backends.Dummy
@@ -39,8 +41,22 @@ namespace Ryujinx.Audio.Backends.Dummy
         public override void QueueBuffer(AudioBuffer buffer)
         {
             Interlocked.Add(ref _playedSampleCount, GetSampleCount(buffer));
-
             _manager.GetUpdateRequiredEvent().Set();
+        }
+
+        public override void QueueBuffers(IList<AudioBuffer> buffers)
+        {
+            foreach (AudioBuffer buffer in buffers)
+            {
+                Interlocked.Add(ref _playedSampleCount, GetSampleCount(buffer));
+            }
+            _manager.GetUpdateRequiredEvent().Set();
+        }
+
+        public override IList<AudioBuffer> GetReleasedBuffers(int maxCount)
+        {
+            // 模拟设备总是立即释放缓冲区
+            return new List<AudioBuffer>();
         }
 
         public override void SetVolume(float volume)
