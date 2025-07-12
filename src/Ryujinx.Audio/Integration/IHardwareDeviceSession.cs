@@ -27,7 +27,7 @@ namespace Ryujinx.Audio.Integration
         /// <summary>
         /// The direction of the session.
         /// </summary>
-        Direction Direction { get; }
+        IHardwareDeviceDriver.Direction Direction { get; } // 修改为完全限定名
 
         /// <summary>
         /// Register a new buffer.
