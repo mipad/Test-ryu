@@ -14,6 +14,9 @@ namespace Ryujinx.Memory.Tracking
         private readonly IVirtualMemoryManager _memoryManager;
         private readonly InvalidAccessHandler _invalidAccessHandler;
 
+        // 新增：音频缓冲区检测委托
+        private readonly System.Func<ulong, ulong, bool> _isAudioRegion;
+
         // 以下字段需要在锁内访问
         private readonly NonOverlappingRangeList<VirtualRegion> _virtualRegions;
         private readonly NonOverlappingRangeList<VirtualRegion> _guestVirtualRegions;
@@ -33,12 +36,14 @@ namespace Ryujinx.Memory.Tracking
             IVirtualMemoryManager memoryManager,
             int pageSize,
             InvalidAccessHandler invalidAccessHandler = null,
-            bool singleByteGuestTracking = false)
+            bool singleByteGuestTracking = false,
+            System.Func<ulong, ulong, bool> isAudioRegion = null) // 新增音频检测参数
         {
             _memoryManager = memoryManager;
             _pageSize = pageSize;
             _invalidAccessHandler = invalidAccessHandler;
             _singleByteGuestTracking = singleByteGuestTracking;
+            _isAudioRegion = isAudioRegion; // 存储音频检测委托
 
             _virtualRegions = new NonOverlappingRangeList<VirtualRegion>();
             _guestVirtualRegions = new NonOverlappingRangeList<VirtualRegion>();
@@ -60,6 +65,9 @@ namespace Ryujinx.Memory.Tracking
         /// </summary>
         public void Map(ulong va, ulong size)
         {
+            // 新增：跳过音频区域的映射处理
+            if (_isAudioRegion != null && _isAudioRegion(va, size)) return;
+            
             lock (TrackingLock)
             {
                 ref var overlaps = ref ThreadStaticArray<VirtualRegion>.Get();
@@ -88,6 +96,9 @@ namespace Ryujinx.Memory.Tracking
         /// </summary>
         public void Unmap(ulong va, ulong size)
         {
+            // 新增：跳过音频区域的取消映射处理
+            if (_isAudioRegion != null && _isAudioRegion(va, size)) return;
+            
             lock (TrackingLock)
             {
                 ref var overlaps = ref ThreadStaticArray<VirtualRegion>.Get();
@@ -220,6 +231,14 @@ namespace Ryujinx.Memory.Tracking
             int? exemptId = null, 
             bool guest = false)
         {
+            // 新增：跳过音频区域的内存事件处理
+            if (_isAudioRegion != null && _isAudioRegion(address, size))
+            {
+                Logger.Debug?.Print(LogClass.Memory, 
+                    $"Skipping audio region access: VA=0x{address:X}, Size={size}");
+                return true;
+            }
+            
             bool shouldThrow = false;
 
             lock (TrackingLock)
