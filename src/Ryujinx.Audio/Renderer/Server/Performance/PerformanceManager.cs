@@ -94,5 +94,8 @@ namespace Ryujinx.Audio.Renderer.Server.Performance
                 _ => throw new NotImplementedException($"Unknown Performance metrics data format version {version}"),
             };
         }
+
+        // 添加缓冲区欠载状态属性
+        public abstract bool LastBufferUnderrun { get; protected set; }
     }
 }
