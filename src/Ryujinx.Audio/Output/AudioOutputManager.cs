@@ -14,8 +14,6 @@ namespace Ryujinx.Audio.Output
     /// </summary>
     public class AudioOutputManager : IDisposable
     {
-        private readonly object _lock = new();
-
         /// <summary>
         /// Lock used for session allocation.
         /// </summary>
@@ -124,12 +122,17 @@ namespace Ryujinx.Audio.Output
         /// </summary>
         public void Update()
         {
+            // 先复制会话列表避免长时锁定
+            AudioOutputSystem[] sessions;
             lock (_sessionLock)
             {
-                foreach (AudioOutputSystem output in _sessions)
-                {
-                    output?.Update();
-                }
+                sessions = _sessions.Where(s => s != null).ToArray();
+            }
+
+            // 并行更新各会话
+            foreach (var session in sessions)
+            {
+                session.Update(); // 内部使用会话级锁
             }
         }
 
@@ -195,7 +198,8 @@ namespace Ryujinx.Audio.Output
 
             IHardwareDeviceSession deviceSession = _deviceDriver.OpenDeviceSession(IHardwareDeviceDriver.Direction.Output, memoryManager, sampleFormat, parameter.SampleRate, parameter.ChannelCount);
 
-            AudioOutputSystem audioOut = new(this, _lock, deviceSession, _sessionsBufferEvents[sessionId]);
+            // 不再传递父级锁
+            AudioOutputSystem audioOut = new(this, deviceSession, _sessionsBufferEvents[sessionId]);
 
             ResultCode result = audioOut.Initialize(inputDeviceName, sampleFormat, ref parameter, sessionId);
 
@@ -240,7 +244,7 @@ namespace Ryujinx.Audio.Output
         {
             if (disposing)
             {
-                // Clone the sessions array to dispose them outside the lock.
+                // 克隆会话数组以便在锁外释放
                 AudioOutputSystem[] sessions;
 
                 lock (_sessionLock)
