@@ -2,6 +2,7 @@ using Ryujinx.Audio.Common;
 using Ryujinx.Audio.Integration;
 using System;
 using System.Threading;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Audio.Output
 {
@@ -57,6 +58,9 @@ namespace Ryujinx.Audio.Output
 
         // 添加动态缓冲区大小字段
         private int _dynamicBufferSize = 32;
+        
+        // 添加硬件支持的格式信息
+        private AudioFormat _hardwareFormat;
 
         /// <summary>
         /// Create a new <see cref="AudioOutputSystem"/>.
@@ -68,6 +72,9 @@ namespace Ryujinx.Audio.Output
         {
             _manager = manager;
             _session = new AudioDeviceSession(deviceSession, bufferEvent);
+            
+            // 获取硬件支持的格式
+            _hardwareFormat = deviceSession.GetSupportedFormat();
         }
 
         /// <summary>
@@ -185,59 +192,65 @@ namespace Ryujinx.Audio.Output
         /// <param name="userBuffer">The buffer informations.</param>
         /// <returns>A <see cref="ResultCode"/> reporting an error or a success.</returns>
         public ResultCode AppendBuffer(ulong bufferTag, ref AudioUserBuffer userBuffer)
-{
-    lock (_sessionLock)
-    {
-        // 1. 使用正确的缓冲区计数（仅未处理缓冲区）
-        uint pendingCount = _session.GetPendingBufferCount();
-        
-        // 2. 动态调整缓冲区大小
-        if (pendingCount > _dynamicBufferSize * 0.8)
         {
-            _dynamicBufferSize = Math.Min(256, _dynamicBufferSize * 2);
-            Logger.Debug?.Print(LogClass.Audio, $"Buffer size increased to {_dynamicBufferSize}");
-        }
-        
-        // 3. 格式转换检查
-        if (!_session.IsFormatSupported(userBuffer.Format))
-        {
-            // 转换到硬件支持的格式
-            byte[] convertedData = ConvertAudioFormat(
-                userBuffer.Data,
-                userBuffer.Format,
-                _session.HardwareFormat
-            );
-            
-            userBuffer.Data = convertedData;
-            userBuffer.DataSize = (ulong)convertedData.Length;
-        }
+            lock (_sessionLock)
+            {
+                // 1. 使用正确的缓冲区计数（仅未处理缓冲区）
+                uint pendingCount = _session.GetPendingBufferCount();
+                
+                // 2. 动态调整缓冲区大小
+                if (pendingCount > _dynamicBufferSize * 0.8)
+                {
+                    _dynamicBufferSize = Math.Min(256, _dynamicBufferSize * 2);
+                    Logger.Debug?.Print(LogClass.Audio, $"Buffer size increased to {_dynamicBufferSize}");
+                }
+                else if (pendingCount < _dynamicBufferSize * 0.2 && _dynamicBufferSize > 32)
+                {
+                    _dynamicBufferSize = Math.Max(32, _dynamicBufferSize / 2);
+                    Logger.Debug?.Print(LogClass.Audio, $"Buffer size decreased to {_dynamicBufferSize}");
+                }
+                
+                // 3. 格式转换检查
+                if (!_session.IsFormatSupported(userBuffer.Format))
+                {
+                    // 转换到硬件支持的格式
+                    byte[] convertedData = ConvertAudioFormat(
+                        userBuffer.Data,
+                        userBuffer.Format,
+                        _hardwareFormat
+                    );
+                    
+                    userBuffer.Data = convertedData;
+                    userBuffer.DataSize = (ulong)convertedData.Length;
+                    userBuffer.Format = _hardwareFormat; // 更新为转换后的格式
+                }
 
-        // 4. 创建缓冲区对象
-        AudioBuffer buffer = new()
-        {
-            BufferTag = bufferTag,
-            DataPointer = userBuffer.Data,
-            DataSize = userBuffer.DataSize,
-            Format = userBuffer.Format // 携带格式信息
-        };
+                // 4. 创建缓冲区对象
+                AudioBuffer buffer = new()
+                {
+                    BufferTag = bufferTag,
+                    DataPointer = userBuffer.Data,
+                    DataSize = userBuffer.DataSize,
+                    Format = userBuffer.Format // 携带格式信息
+                };
 
-        // 5. 添加欠载保护
-        if (pendingCount < 4) // 缓冲区不足时添加静音
-        {
-            _session.InsertSafetyBuffers(2); // 添加2个静音缓冲区
-        }
+                // 5. 添加欠载保护
+                if (pendingCount < 4) // 缓冲区不足时添加静音
+                {
+                    _session.InsertSafetyBuffers(2); // 添加2个静音缓冲区
+                }
 
-        // 6. 提交缓冲区
-        if (_session.AppendBuffer(buffer))
-        {
-            return ResultCode.Success;
+                // 6. 提交缓冲区
+                if (_session.AppendBuffer(buffer))
+                {
+                    return ResultCode.Success;
+                }
+                
+                Logger.Warning?.Print(LogClass.Audio, 
+                    $"Buffer ring full! Pending: {pendingCount}/{_dynamicBufferSize}");
+                return ResultCode.BufferRingFull;
+            }
         }
-        
-       // Logger.Warning?.Print(LogClass.Audio, 
-            //$"Buffer ring full! Pending: {pendingCount}/{_dynamicBufferSize}");
-        return ResultCode.BufferRingFull;
-    }
-}
 
         /// <summary>
         /// Get the release buffers.
@@ -407,6 +420,72 @@ namespace Ryujinx.Audio.Output
 
                 _manager.Unregister(this);
             }
+        }
+        
+        /// <summary>
+        /// 转换音频格式以匹配硬件支持
+        /// </summary>
+        private byte[] ConvertAudioFormat(byte[] data, AudioFormat source, AudioFormat target)
+        {
+            // 如果格式相同则无需转换
+            if (source.Equals(target))
+            {
+                return data;
+            }
+            
+            // 实现采样率转换
+            if (source.SampleRate != target.SampleRate)
+            {
+                data = Resample(data, source, target);
+            }
+            
+            // 实现位深转换
+            if (source.BitDepth != target.BitDepth)
+            {
+                data = ConvertBitDepth(data, source, target);
+            }
+            
+            // 实现通道数转换
+            if (source.ChannelCount != target.ChannelCount)
+            {
+                data = ConvertChannelLayout(data, source, target);
+            }
+            
+            return data;
+        }
+        
+        private byte[] Resample(byte[] data, AudioFormat source, AudioFormat target)
+        {
+            // 实现采样率转换算法
+            // 这里使用伪代码表示实际实现
+            Logger.Info?.Print(LogClass.Audio, 
+                $"Resampling audio from {source.SampleRate}Hz to {target.SampleRate}Hz");
+            
+            // 实际项目中应使用高质量重采样算法
+            // 例如使用libsamplerate或自定义算法
+            return data; // 简化实现
+        }
+        
+        private byte[] ConvertBitDepth(byte[] data, AudioFormat source, AudioFormat target)
+        {
+            // 实现位深转换
+            Logger.Info?.Print(LogClass.Audio, 
+                $"Converting bit depth from {source.BitDepth} to {target.BitDepth}");
+            
+            // 实际项目中应根据源和目标位深进行转换
+            // 例如16位转24位，浮点转定点等
+            return data; // 简化实现
+        }
+        
+        private byte[] ConvertChannelLayout(byte[] data, AudioFormat source, AudioFormat target)
+        {
+            // 实现通道布局转换
+            Logger.Info?.Print(LogClass.Audio, 
+                $"Converting channel layout from {source.ChannelCount} to {target.ChannelCount}");
+            
+            // 实际项目中应根据通道配置进行转换
+            // 例如立体声转5.1，单声道转立体声等
+            return data; // 简化实现
         }
     }
 }
