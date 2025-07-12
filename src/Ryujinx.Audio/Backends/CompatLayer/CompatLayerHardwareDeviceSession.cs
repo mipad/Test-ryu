@@ -2,6 +2,8 @@ using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
 using Ryujinx.Audio.Renderer.Dsp;
 using System;
+using Ryujinx.Audio.Integration; 
+using Ryujinx.Memory; 
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
