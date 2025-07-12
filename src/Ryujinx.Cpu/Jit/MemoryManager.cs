@@ -1,5 +1,5 @@
 using ARMeilleure.Memory;
-using Ryujinx.Common.System;  // 新增引用
+using Ryujinx.Common.SystemInterop;  // 新增引用
 using Ryujinx.Common.Utilities;  // 新增引用
 using Ryujinx.Memory;
 using Ryujinx.Memory.Range;
