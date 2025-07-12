@@ -19,6 +19,7 @@ namespace Ryujinx.Audio.Backends.OpenAL
         private float _volume;
 
         private readonly object _lock = new();
+        private readonly Queue<AudioBuffer> _releasedBuffers = new();
 
         public OpenALHardwareDeviceSession(OpenALHardwareDeviceDriver driver, IVirtualMemoryManager memoryManager, SampleFormat requestedSampleFormat, uint requestedSampleRate, uint requestedChannelCount) : base(memoryManager, requestedSampleFormat, requestedSampleRate, requestedChannelCount)
         {
@@ -81,6 +82,30 @@ namespace Ryujinx.Audio.Backends.OpenAL
                 {
                     StartIfNotPlaying();
                 }
+            }
+        }
+
+        public override void QueueBuffers(IList<AudioBuffer> buffers)
+        {
+            foreach (AudioBuffer buffer in buffers)
+            {
+                QueueBuffer(buffer);
+            }
+        }
+
+        public override IList<AudioBuffer> GetReleasedBuffers(int maxCount)
+        {
+            lock (_lock)
+            {
+                List<AudioBuffer> result = new();
+
+                while (maxCount > 0 && _releasedBuffers.Count > 0)
+                {
+                    result.Add(_releasedBuffers.Dequeue());
+                    maxCount--;
+                }
+
+                return result;
             }
         }
 
@@ -170,6 +195,7 @@ namespace Ryujinx.Audio.Backends.OpenAL
                             if (buffer.BufferId == bufferIds[i])
                             {
                                 _playedSampleCount += buffer.SampleCount;
+                                _releasedBuffers.Enqueue(new AudioBuffer(buffer.DriverIdentifier, null, 0, 0));
 
                                 _queuedBuffers.TryDequeue(out _);
 
