@@ -46,6 +46,9 @@ namespace Ryujinx.Audio.Renderer.Server.Performance
         private int _indexHistoryRead;
         private uint _historyFrameIndex;
 
+        // 添加缓冲区欠载状态
+        public override bool LastBufferUnderrun { get; protected set; }
+
         public PerformanceManagerGeneric(Memory<byte> buffer, ref AudioRendererConfiguration parameter)
         {
             _buffer = buffer;
@@ -55,6 +58,7 @@ namespace Ryujinx.Audio.Renderer.Server.Performance
             _availableFrameCount = buffer.Length / _frameSize - 1;
 
             _historyFrameIndex = 0;
+            LastBufferUnderrun = false;
 
             _historyBuffer = _buffer[_frameSize..];
 
@@ -274,6 +278,9 @@ namespace Ryujinx.Audio.Renderer.Server.Performance
 
         public override void TapFrame(bool dspRunningBehind, uint voiceDropCount, ulong startRenderingTicks)
         {
+            // 记录缓冲区欠载状态
+            LastBufferUnderrun = dspRunningBehind;
+            
             if (_availableFrameCount > 0)
             {
                 int targetIndexForHistory = _indexHistoryWrite;
