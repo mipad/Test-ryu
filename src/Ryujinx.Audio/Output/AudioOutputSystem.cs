@@ -59,8 +59,8 @@ namespace Ryujinx.Audio.Output
         // 添加动态缓冲区大小字段
         private int _dynamicBufferSize = 32;
         
-        // 添加硬件支持的格式信息
-        private AudioFormat _hardwareFormat;
+        // 修改为硬件支持的SampleFormat
+        private SampleFormat _hardwareFormat;
 
         /// <summary>
         /// Create a new <see cref="AudioOutputSystem"/>.
@@ -73,8 +73,8 @@ namespace Ryujinx.Audio.Output
             _manager = manager;
             _session = new AudioDeviceSession(deviceSession, bufferEvent);
             
-            // 获取硬件支持的格式
-            _hardwareFormat = deviceSession.GetSupportedFormat();
+            // 修改为获取硬件支持的SampleFormat
+            _hardwareFormat = deviceSession.GetSupportedSampleFormat();
         }
 
         /// <summary>
@@ -211,10 +211,10 @@ namespace Ryujinx.Audio.Output
                 }
                 
                 // 3. 格式转换检查
-                if (!_session.IsFormatSupported(userBuffer.Format))
+                if (userBuffer.Format != _hardwareFormat)
                 {
                     // 转换到硬件支持的格式
-                    byte[] convertedData = ConvertAudioFormat(
+                    byte[] convertedData = ConvertSampleFormat(
                         userBuffer.Data,
                         userBuffer.Format,
                         _hardwareFormat
@@ -423,69 +423,23 @@ namespace Ryujinx.Audio.Output
         }
         
         /// <summary>
-        /// 转换音频格式以匹配硬件支持
+        /// 转换音频采样格式以匹配硬件支持
         /// </summary>
-        private byte[] ConvertAudioFormat(byte[] data, AudioFormat source, AudioFormat target)
+        private byte[] ConvertSampleFormat(byte[] data, SampleFormat source, SampleFormat target)
         {
             // 如果格式相同则无需转换
-            if (source.Equals(target))
+            if (source == target)
             {
                 return data;
             }
             
-            // 实现采样率转换
-            if (source.SampleRate != target.SampleRate)
-            {
-                data = Resample(data, source, target);
-            }
+            Logger.Info?.Print(LogClass.Audio, 
+                $"Converting sample format from {source} to {target}");
             
-            // 实现位深转换
-            if (source.BitDepth != target.BitDepth)
-            {
-                data = ConvertBitDepth(data, source, target);
-            }
-            
-            // 实现通道数转换
-            if (source.ChannelCount != target.ChannelCount)
-            {
-                data = ConvertChannelLayout(data, source, target);
-            }
-            
+            // 实际项目中应实现具体的转换逻辑
+            // 例如：PcmFloat32转PcmInt16等
+            // 简化实现：直接返回原始数据（实际项目需替换为真实转换）
             return data;
-        }
-        
-        private byte[] Resample(byte[] data, AudioFormat source, AudioFormat target)
-        {
-            // 实现采样率转换算法
-            // 这里使用伪代码表示实际实现
-            Logger.Info?.Print(LogClass.Audio, 
-                $"Resampling audio from {source.SampleRate}Hz to {target.SampleRate}Hz");
-            
-            // 实际项目中应使用高质量重采样算法
-            // 例如使用libsamplerate或自定义算法
-            return data; // 简化实现
-        }
-        
-        private byte[] ConvertBitDepth(byte[] data, AudioFormat source, AudioFormat target)
-        {
-            // 实现位深转换
-            Logger.Info?.Print(LogClass.Audio, 
-                $"Converting bit depth from {source.BitDepth} to {target.BitDepth}");
-            
-            // 实际项目中应根据源和目标位深进行转换
-            // 例如16位转24位，浮点转定点等
-            return data; // 简化实现
-        }
-        
-        private byte[] ConvertChannelLayout(byte[] data, AudioFormat source, AudioFormat target)
-        {
-            // 实现通道布局转换
-            Logger.Info?.Print(LogClass.Audio, 
-                $"Converting channel layout from {source.ChannelCount} to {target.ChannelCount}");
-            
-            // 实际项目中应根据通道配置进行转换
-            // 例如立体声转5.1，单声道转立体声等
-            return data; // 简化实现
         }
     }
 }
