@@ -2,7 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 
-namespace Ryujinx.Common.System
+namespace Ryujinx.Common.SystemInterop
 {
     public static class Libc
     {
