@@ -8,21 +8,6 @@ using System.Threading;
 
 namespace Ryujinx.Audio.Common
 {
-    // 添加 AudioFormat 定义
-    public struct AudioFormat
-    {
-        public uint SampleRate { get; set; }
-        public uint BitDepth { get; set; }
-        public uint ChannelCount { get; set; }
-        
-        public bool Equals(AudioFormat other)
-        {
-            return SampleRate == other.SampleRate &&
-                   BitDepth == other.BitDepth &&
-                   ChannelCount == other.ChannelCount;
-        }
-    }
-
     /// <summary>
     /// An audio device session.
     /// </summary>
@@ -93,11 +78,13 @@ namespace Ryujinx.Audio.Common
         private readonly CancellationTokenSource _cts = new();
         private Thread _processingThread;
         
-        // 添加硬件支持的格式信息
         private AudioFormat _hardwareFormat;
-        
-        // 添加静音缓冲区缓存
         private AudioBuffer _cachedSilenceBuffer;
+
+        /// <summary>
+        /// Hardware audio format
+        /// </summary>
+        public AudioFormat HardwareFormat => _hardwareFormat;
 
         /// <summary>
         /// Create a new <see cref="AudioDeviceSession"/>.
@@ -110,7 +97,7 @@ namespace Ryujinx.Audio.Common
             _bufferEvent = bufferEvent;
             _hardwareDeviceSession = deviceSession;
             _bufferRegisteredLimit = bufferRegisteredLimit;
-            
+
             // 获取硬件支持的格式
             _hardwareFormat = deviceSession.GetSupportedFormat();
 
@@ -134,7 +121,6 @@ namespace Ryujinx.Audio.Common
             _processingThread.Start();
         }
 
-        // 添加缓冲区处理方法
         private void ProcessBuffers()
         {
             const int MaxBatchSize = 16;
@@ -147,31 +133,7 @@ namespace Ryujinx.Audio.Common
                     // 批量获取待提交缓冲区
                     while (batch.Count < MaxBatchSize && _submitQueue.TryDequeue(out var buffer))
                     {
-                        // 格式转换检查
-                        if (!IsFormatSupported(buffer.Format))
-                        {
-                            // 转换到硬件支持的格式
-                            byte[] convertedData = ConvertAudioFormat(
-                                buffer.DataPointer,
-                                buffer.Format,
-                                _hardwareFormat
-                            );
-                            
-                            // 创建新缓冲区对象
-                            AudioBuffer convertedBuffer = new()
-                            {
-                                BufferTag = buffer.BufferTag,
-                                DataPointer = convertedData,
-                                DataSize = (ulong)convertedData.Length,
-                                Format = _hardwareFormat
-                            };
-                            
-                            batch.Add(convertedBuffer);
-                        }
-                        else
-                        {
-                            batch.Add(buffer);
-                        }
+                        batch.Add(buffer);
                     }
                     
                     // 批量提交
@@ -183,9 +145,9 @@ namespace Ryujinx.Audio.Common
                     
                     Thread.Sleep(1); // 避免空转
                 }
-                catch (Exception ex)
-                {
-                    Logger.Error?.Print(LogClass.Audio, $"Audio processing error: {ex}");
+                catch 
+                { 
+                    // 安全处理
                 }
             }
         }
@@ -383,9 +345,6 @@ namespace Ryujinx.Audio.Common
 
         public static bool AppendUacBuffer(AudioBuffer buffer, uint handle)
         {
-            // NOTE: On hardware, there is another RegisterBuffer method taking a handle.
-            // This variant of the call always return false (stubbed?) as a result this logic will never succeed.
-
             return false;
         }
 
@@ -474,7 +433,7 @@ namespace Ryujinx.Audio.Common
 
             for (int i = 0; i < totalBufferCount; i++)
             {
-                if (_buffers[bufferIndex] != null && _buffers[bufferIndex].BufferTag == bufferTag)
+                if (_buffers[bufferIndex].BufferTag == bufferTag)
                 {
                     return true;
                 }
@@ -541,6 +500,14 @@ namespace Ryujinx.Audio.Common
         }
 
         /// <summary>
+        /// Get pending buffer count in submit queue
+        /// </summary>
+        public uint GetPendingBufferCount()
+        {
+            return (uint)_submitQueue.Count;
+        }
+
+        /// <summary>
         /// Update the session.
         /// </summary>
         public void Update()
@@ -559,17 +526,14 @@ namespace Ryujinx.Audio.Common
             // 欠载保护
             if (_submitQueue.Count < 8)
             {
-                InsertSafetyBuffers(2); // 添加2个静音缓冲区
+                InsertSafetyBuffers(2);
             }
         }
 
-        // 添加格式检查方法
-        public bool IsFormatSupported(AudioFormat format)
-        {
-            return format.Equals(_hardwareFormat);
-        }
-
-        // 添加欠载保护方法
+        /// <summary>
+        /// Insert safety buffers to prevent underrun
+        /// </summary>
+        /// <param name="count">Number of buffers to insert</param>
         public void InsertSafetyBuffers(int count)
         {
             for (int i = 0; i < count; i++)
@@ -580,21 +544,19 @@ namespace Ryujinx.Audio.Common
 
         private AudioBuffer CreateSilenceBuffer()
         {
-            // 复用缓存的静音缓冲区
             if (_cachedSilenceBuffer != null)
             {
                 return _cachedSilenceBuffer;
             }
             
-            // 创建静音缓冲区
             int bytesPerSample = (int)_hardwareFormat.BitDepth / 8;
             int samplesPerChannel = (int)(_hardwareFormat.SampleRate * 0.01); // 10ms
             int size = samplesPerChannel * (int)_hardwareFormat.ChannelCount * bytesPerSample;
-            byte[] silenceData = new byte[size]; // 自动初始化为0
+            byte[] silenceData = new byte[size];
             
             _cachedSilenceBuffer = new AudioBuffer
             {
-                BufferTag = 0, // 特殊标记表示静音缓冲区
+                BufferTag = 0,
                 DataPointer = silenceData,
                 DataSize = (ulong)size,
                 Format = _hardwareFormat
@@ -603,93 +565,20 @@ namespace Ryujinx.Audio.Common
             return _cachedSilenceBuffer;
         }
 
-        // 添加格式转换方法
-        private byte[] ConvertAudioFormat(byte[] data, AudioFormat source, AudioFormat target)
-        {
-            // 如果格式相同则无需转换
-            if (source.Equals(target))
-            {
-                return data;
-            }
-            
-            // 实现采样率转换
-            if (source.SampleRate != target.SampleRate)
-            {
-                data = Resample(data, source, target);
-            }
-            
-            // 实现位深转换
-            if (source.BitDepth != target.BitDepth)
-            {
-                data = ConvertBitDepth(data, source, target);
-            }
-            
-            // 实现通道数转换
-            if (source.ChannelCount != target.ChannelCount)
-            {
-                data = ConvertChannelLayout(data, source, target);
-            }
-            
-            return data;
-        }
-        
-        private byte[] Resample(byte[] data, AudioFormat source, AudioFormat target)
-        {
-            // 实现采样率转换算法
-            Logger.Info?.Print(LogClass.Audio, 
-                $"Resampling audio from {source.SampleRate}Hz to {target.SampleRate}Hz");
-            
-            // 简化实现 - 实际需要完整算法
-            return data;
-        }
-        
-        private byte[] ConvertBitDepth(byte[] data, AudioFormat source, AudioFormat target)
-        {
-            // 实现位深转换
-            Logger.Info?.Print(LogClass.Audio, 
-                $"Converting bit depth from {source.BitDepth} to {target.BitDepth}");
-            
-            // 简化实现
-            return data;
-        }
-        
-        private byte[] ConvertChannelLayout(byte[] data, AudioFormat source, AudioFormat target)
-        {
-            // 实现通道布局转换
-            Logger.Info?.Print(LogClass.Audio, 
-                $"Converting channel layout from {source.ChannelCount} to {target.ChannelCount}");
-            
-            // 简化实现
-            return data;
-        }
-
-        // 添加获取待处理缓冲区计数方法
-        public uint GetPendingBufferCount()
-        {
-            return (uint)_submitQueue.Count; // 仅未处理缓冲区
-        }
-
         public void Dispose()
         {
             Dispose(true);
-            GC.SuppressFinalize(this);
         }
 
         protected virtual void Dispose(bool disposing)
         {
             if (disposing)
             {
-                // 停止处理线程
                 _cts.Cancel();
-                if (!_processingThread.Join(50))
-                {
-                    Logger.Warning?.Print(LogClass.Audio, "Audio processing thread did not exit gracefully");
-                }
+                _processingThread.Join(50);
                 
-                // 清理硬件会话
                 _hardwareDeviceSession.PrepareToClose();
 
-                // 清空队列
                 while (_submitQueue.TryDequeue(out _)) { }
                 while (_releaseQueue.TryTake(out _)) { }
 
