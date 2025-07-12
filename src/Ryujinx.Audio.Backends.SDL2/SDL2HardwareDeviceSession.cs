@@ -126,7 +126,13 @@ namespace Ryujinx.Audio.Backends.SDL2
                 {
                     if (_queuedBuffers.TryDequeue(out var releasedBuffer))
                     {
-                        _releasedBuffers.Enqueue(new AudioBuffer(releasedBuffer.DriverIdentifier, null, 0, 0));
+                        _releasedBuffers.Enqueue(new AudioBuffer
+                        {
+                            DataPointer = releasedBuffer.DriverIdentifier,
+                            Data = null,
+                            DataSize = 0,
+                            PlayedTimestamp = 0
+                        });
                     }
 
                     needUpdate = true;
