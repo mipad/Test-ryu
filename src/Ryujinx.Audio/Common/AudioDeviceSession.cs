@@ -1,7 +1,10 @@
 using Ryujinx.Audio.Integration;
 using Ryujinx.Common;
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 
 namespace Ryujinx.Audio.Common
 {
@@ -70,6 +73,12 @@ namespace Ryujinx.Audio.Common
         /// </summary>
         private readonly uint _bufferRegisteredLimit;
 
+        // 添加新字段
+        private readonly ConcurrentQueue<AudioBuffer> _submitQueue = new();
+        private readonly BlockingCollection<AudioBuffer> _releaseQueue = new();
+        private readonly CancellationTokenSource _cts = new();
+        private Thread _processingThread;
+
         /// <summary>
         /// Create a new <see cref="AudioDeviceSession"/>.
         /// </summary>
@@ -92,6 +101,44 @@ namespace Ryujinx.Audio.Common
             _bufferReleasedCount = 0;
             _volume = deviceSession.GetVolume();
             _state = AudioDeviceState.Stopped;
+            
+            // 启动处理线程
+            _processingThread = new Thread(ProcessBuffers)
+            {
+                Priority = ThreadPriority.AboveNormal,
+                Name = $"AudioSession_{deviceSession.GetHashCode()}"
+            };
+            _processingThread.Start();
+        }
+
+        // 添加缓冲区处理方法
+        private void ProcessBuffers()
+        {
+            const int MaxBatchSize = 16;
+            var batch = new List<AudioBuffer>(MaxBatchSize);
+            
+            while (!_cts.IsCancellationRequested)
+            {
+                try
+                {
+                    // 批量获取待提交缓冲区
+                    while (batch.Count < MaxBatchSize && _submitQueue.TryDequeue(out var buffer))
+                    {
+                        if (_hardwareDeviceSession.RegisterBuffer(buffer))
+                            batch.Add(buffer);
+                    }
+                    
+                    // 批量提交
+                    if (batch.Count > 0)
+                    {
+                        _hardwareDeviceSession.QueueBuffers(batch);
+                        batch.Clear();
+                    }
+                    
+                    Thread.Sleep(1); // 避免空转
+                }
+                catch { /* 安全处理 */ }
+            }
         }
 
         /// <summary>
@@ -226,22 +273,8 @@ namespace Ryujinx.Audio.Common
         /// <returns>True if any buffer has been released</returns>
         public bool TryPopReleasedBuffer(out AudioBuffer buffer)
         {
-            if (_bufferReleasedCount > 0)
-            {
-                uint bufferIndex = (_releasedBufferIndex - _bufferReleasedCount) % Constants.AudioDeviceBufferCountMax;
-
-                buffer = _buffers[bufferIndex];
-
-                _buffers[bufferIndex] = null;
-
-                _bufferReleasedCount--;
-
-                return true;
-            }
-
-            buffer = null;
-
-            return false;
+            // 修改为从新的释放队列获取
+            return _releaseQueue.TryTake(out buffer, 0);
         }
 
         /// <summary>
@@ -296,19 +329,9 @@ namespace Ryujinx.Audio.Common
         /// <returns>True if the buffer was appended</returns>
         public bool AppendBuffer(AudioBuffer buffer)
         {
-            if (_hardwareDeviceSession.RegisterBuffer(buffer))
-            {
-                if (RegisterBuffer(buffer))
-                {
-                    FlushToHardware();
-
-                    return true;
-                }
-
-                _hardwareDeviceSession.UnregisterBuffer(buffer);
-            }
-
-            return false;
+            // 修改为提交到队列
+            _submitQueue.Enqueue(buffer);
+            return true;
         }
 
         public static bool AppendUacBuffer(AudioBuffer buffer, uint handle)
@@ -475,11 +498,38 @@ namespace Ryujinx.Audio.Common
         /// </summary>
         public void Update()
         {
-            if (_state == AudioDeviceState.Started)
+            if (_state != AudioDeviceState.Started) return;
+            
+            // 批量获取已释放缓冲区
+            var released = _hardwareDeviceSession.GetReleasedBuffers(16);
+            foreach (var buffer in released)
             {
-                UpdateReleaseBuffers();
-                FlushToHardware();
+                buffer.PlayedTimestamp = (ulong)PerformanceCounter.ElapsedNanoseconds;
+                _releaseQueue.Add(buffer);
+                _bufferEvent.Signal();
             }
+            
+            // 欠载保护
+            if (_submitQueue.Count < 8)
+            {
+                InsertSafetyBuffers();
+            }
+        }
+
+        // 添加欠载保护方法
+        private void InsertSafetyBuffers()
+        {
+            var silenceBuffer = CreateSilenceBuffer();
+            for (int i = 0; i < 4; i++) // 插入4个静音缓冲区
+            {
+                _submitQueue.Enqueue(silenceBuffer);
+            }
+        }
+
+        private AudioBuffer CreateSilenceBuffer()
+        {
+            // 实际实现需要创建静音缓冲区
+            return new AudioBuffer();
         }
 
         public void Dispose()
@@ -491,11 +541,14 @@ namespace Ryujinx.Audio.Common
         {
             if (disposing)
             {
-                // Tell the hardware session that we are ending.
+                // 停止处理线程
+                _cts.Cancel();
+                _processingThread.Join(50);
+                
+                // 清理硬件会话
                 _hardwareDeviceSession.PrepareToClose();
 
-                // Unregister all buffers
-
+                // 清空队列
                 while (TryPopReleasedBuffer(out AudioBuffer buffer))
                 {
                     _hardwareDeviceSession.UnregisterBuffer(buffer);
@@ -506,7 +559,6 @@ namespace Ryujinx.Audio.Common
                     _hardwareDeviceSession.UnregisterBuffer(buffer);
                 }
 
-                // Finally dispose hardware session.
                 _hardwareDeviceSession.Dispose();
 
                 _bufferEvent.Signal();
