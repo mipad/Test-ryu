@@ -14,6 +14,9 @@ namespace Ryujinx.Audio.Backends.Common
         public SampleFormat RequestedSampleFormat { get; }
         public uint RequestedSampleRate { get; }
         public uint RequestedChannelCount { get; }
+        
+        // 添加 Direction 属性实现
+        public Direction Direction => Direction.Output;
 
         public HardwareDeviceSessionOutputBase(IVirtualMemoryManager memoryManager, SampleFormat requestedSampleFormat, uint requestedSampleRate, uint requestedChannelCount)
         {
@@ -58,6 +61,9 @@ namespace Ryujinx.Audio.Backends.Common
         public abstract bool WasBufferFullyConsumed(AudioBuffer buffer);
         public abstract void QueueBuffers(IList<AudioBuffer> buffers);
         public abstract IList<AudioBuffer> GetReleasedBuffers(int maxCount);
+        
+        // 显式实现接口方法
+        AudioBuffer IHardwareDeviceSession.CreateSilenceBuffer() => CreateSilenceBuffer();
 
         public virtual void QueueBuffer(AudioBuffer buffer)
         {
