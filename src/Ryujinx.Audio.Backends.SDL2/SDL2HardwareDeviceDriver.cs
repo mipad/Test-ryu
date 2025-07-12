@@ -78,7 +78,7 @@ namespace Ryujinx.Audio.Backends.SDL2
             return _pauseEvent;
         }
 
-        public IHardwareDeviceSession OpenDeviceSession(Direction direction, IVirtualMemoryManager memoryManager, SampleFormat sampleFormat, uint sampleRate, uint channelCount)
+        public IHardwareDeviceSession OpenDeviceSession(IHardwareDeviceDriver.Direction direction, IVirtualMemoryManager memoryManager, SampleFormat sampleFormat, uint sampleRate, uint channelCount)
         {
             if (channelCount == 0)
             {
@@ -90,7 +90,7 @@ namespace Ryujinx.Audio.Backends.SDL2
                 sampleRate = Constants.TargetSampleRate;
             }
 
-            if (direction != Direction.Output)
+            if (direction != IHardwareDeviceDriver.Direction.Output)
             {
                 throw new NotImplementedException("Input direction is currently not implemented on SDL2 backend!");
             }
@@ -199,10 +199,10 @@ namespace Ryujinx.Audio.Backends.SDL2
             return true;
         }
 
-        public bool SupportsDirection(Direction direction)
+        public bool SupportsDirection(IHardwareDeviceDriver.Direction direction)
         {
             // TODO: add direction input when supported.
-            return direction == Direction.Output;
+            return direction == IHardwareDeviceDriver.Direction.Output;
         }
     }
 }
