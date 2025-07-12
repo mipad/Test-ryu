@@ -24,8 +24,7 @@ namespace Ryujinx.Audio.Backends.Dummy
             Volume = 1f;
         }
 
-        // 修复1: 使用完全限定名解决 Direction 冲突
-        public IHardwareDeviceSession OpenDeviceSession(IHardwareDeviceDriver.Direction direction, IVirtualMemoryManager memoryManager, SampleFormat sampleFormat, uint sampleRate, uint channelCount)
+        public IHardwareDeviceSession OpenDeviceSession(Direction direction, IVirtualMemoryManager memoryManager, SampleFormat sampleFormat, uint sampleRate, uint channelCount)
         {
             if (sampleRate == 0)
             {
@@ -37,14 +36,14 @@ namespace Ryujinx.Audio.Backends.Dummy
                 channelCount = 2;
             }
 
-            // 修复2: 使用完全限定名
-            if (direction == IHardwareDeviceDriver.Direction.Output)
+            if (direction == Direction.Output)
             {
                 return new DummyHardwareDeviceSessionOutput(this, memoryManager, sampleFormat, sampleRate, channelCount);
             }
             else
             {
-                return new DummyHardwareDeviceSessionInput(this, memoryManager, sampleFormat, sampleRate, channelCount);
+                // 修复：使用正确的4个参数构造函数
+                return new DummyHardwareDeviceSessionInput(memoryManager, sampleFormat, sampleRate, channelCount);
             }
         }
 
@@ -68,7 +67,6 @@ namespace Ryujinx.Audio.Backends.Dummy
         {
             if (disposing)
             {
-                // NOTE: The _updateRequiredEvent will be disposed somewhere else.
                 _pauseEvent.Dispose();
             }
         }
@@ -83,11 +81,10 @@ namespace Ryujinx.Audio.Backends.Dummy
             return true;
         }
 
-        // 修复3: 使用完全限定名解决 Direction 冲突
-        public bool SupportsDirection(IHardwareDeviceDriver.Direction direction)
+        public bool SupportsDirection(Direction direction)
         {
-            return direction == IHardwareDeviceDriver.Direction.Output || 
-                   direction == IHardwareDeviceDriver.Direction.Input;
+            return direction == Direction.Output || 
+                   direction == Direction.Input;
         }
 
         public bool SupportsChannelCount(uint channelCount)
