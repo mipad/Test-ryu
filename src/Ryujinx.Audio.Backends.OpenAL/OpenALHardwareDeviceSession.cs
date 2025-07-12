@@ -197,7 +197,7 @@ namespace Ryujinx.Audio.Backends.OpenAL
                                 _playedSampleCount += buffer.SampleCount;
                                 _releasedBuffers.Enqueue(new AudioBuffer(buffer.DriverIdentifier, null, 0, 0));
 
-                                _queuedBuffers.TryDequeue(out _);
+                                _queuedBuffers.Dequeue();
 
                                 i++;
                             }
