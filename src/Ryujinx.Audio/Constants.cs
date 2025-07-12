@@ -137,6 +137,11 @@ namespace Ryujinx.Audio
         public const int TargetSampleCount = 240;
 
         /// <summary>
+        /// The maximum sample count for audio buffers (equivalent to 500ms at 48kHz).
+        /// </summary>
+        public const int MaxSampleCount = 24000;
+
+        /// <summary>
         /// The size of an upsampler entry to process upsampling to <see cref="TargetSampleRate"/>.
         /// </summary>
         public const int UpSampleEntrySize = TargetSampleCount * VoiceChannelCountMax;
