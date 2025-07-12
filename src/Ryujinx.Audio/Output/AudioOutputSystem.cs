@@ -193,7 +193,7 @@ namespace Ryujinx.Audio.Output
                 if (pendingBufferCount > _dynamicBufferSize * 0.8)
                 {
                     _dynamicBufferSize = Math.Min(256, _dynamicBufferSize * 2);
-                    Logger.Debug?.Print(LogClass.AudioRenderer, $"Increased dynamic buffer size to {_dynamicBufferSize} for session {_sessionId}");
+                    //Logger.Debug?.Print(LogClass.AudioRenderer, $"Increased dynamic buffer size to {_dynamicBufferSize} for session {_sessionId}");
                 }
 
                 AudioBuffer buffer = new()
