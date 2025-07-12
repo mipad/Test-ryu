@@ -1,7 +1,24 @@
+using Ryujinx.Audio.Common; // 添加必要的命名空间引用
 using System.Collections.Generic;
 
 namespace Ryujinx.Audio.Integration
 {
+    /// <summary>
+    /// 音频设备方向
+    /// </summary>
+    public enum Direction
+    {
+        /// <summary>
+        /// 输出设备 (播放)
+        /// </summary>
+        Output,
+        
+        /// <summary>
+        /// 输入设备 (录音)
+        /// </summary>
+        Input
+    }
+
     /// <summary>
     /// Represent a hardware device session on the device driver.
     /// </summary>
