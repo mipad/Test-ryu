@@ -176,6 +176,11 @@ namespace Ryujinx.Audio
             0.251f,
             0.707f,
         };
+
+        /// <summary>
+        /// Default size for silence buffers.
+        /// </summary>
+        public const int DefaultSilenceBufferSize = 1024;
     }
 }
 
