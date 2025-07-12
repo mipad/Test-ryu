@@ -3,7 +3,6 @@ using Ryujinx.Audio.Integration;
 using Ryujinx.Memory;
 using System;
 using System.Threading;
-using static Ryujinx.Audio.Integration.IHardwareDeviceDriver;
 
 namespace Ryujinx.Audio.Backends.Dummy
 {
@@ -24,7 +23,13 @@ namespace Ryujinx.Audio.Backends.Dummy
             Volume = 1f;
         }
 
-        public IHardwareDeviceSession OpenDeviceSession(Direction direction, IVirtualMemoryManager memoryManager, SampleFormat sampleFormat, uint sampleRate, uint channelCount)
+        // 使用完全限定接口名称解决歧义
+        public IHardwareDeviceSession OpenDeviceSession(
+            IHardwareDeviceDriver.Direction direction, 
+            IVirtualMemoryManager memoryManager, 
+            SampleFormat sampleFormat, 
+            uint sampleRate, 
+            uint channelCount)
         {
             if (sampleRate == 0)
             {
@@ -36,13 +41,13 @@ namespace Ryujinx.Audio.Backends.Dummy
                 channelCount = 2;
             }
 
-            if (direction == Direction.Output)
+            // 使用完全限定接口名称解决歧义
+            if (direction == IHardwareDeviceDriver.Direction.Output)
             {
                 return new DummyHardwareDeviceSessionOutput(this, memoryManager, sampleFormat, sampleRate, channelCount);
             }
             else
             {
-                // 修复：使用正确的4个参数构造函数
                 return new DummyHardwareDeviceSessionInput(memoryManager, sampleFormat, sampleRate, channelCount);
             }
         }
@@ -81,10 +86,11 @@ namespace Ryujinx.Audio.Backends.Dummy
             return true;
         }
 
-        public bool SupportsDirection(Direction direction)
+        // 使用完全限定接口名称解决歧义
+        public bool SupportsDirection(IHardwareDeviceDriver.Direction direction)
         {
-            return direction == Direction.Output || 
-                   direction == Direction.Input;
+            return direction == IHardwareDeviceDriver.Direction.Output || 
+                   direction == IHardwareDeviceDriver.Direction.Input;
         }
 
         public bool SupportsChannelCount(uint channelCount)
