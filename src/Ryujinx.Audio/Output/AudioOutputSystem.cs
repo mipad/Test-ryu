@@ -55,6 +55,9 @@ namespace Ryujinx.Audio.Output
         /// </summary>
         private readonly object _sessionLock = new object();
 
+        // 添加动态缓冲区大小字段
+        private int _dynamicBufferSize = 32;
+
         /// <summary>
         /// Create a new <see cref="AudioOutputSystem"/>.
         /// </summary>
@@ -185,6 +188,14 @@ namespace Ryujinx.Audio.Output
         {
             lock (_sessionLock)
             {
+                // 动态调整缓冲区大小
+                uint pendingBufferCount = _session.GetBufferCount();
+                if (pendingBufferCount > _dynamicBufferSize * 0.8)
+                {
+                    _dynamicBufferSize = Math.Min(256, _dynamicBufferSize * 2);
+                    Logger.Debug?.Print(LogClass.AudioRenderer, $"Increased dynamic buffer size to {_dynamicBufferSize} for session {_sessionId}");
+                }
+
                 AudioBuffer buffer = new()
                 {
                     BufferTag = bufferTag,
