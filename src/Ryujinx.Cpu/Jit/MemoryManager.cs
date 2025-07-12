@@ -1,4 +1,6 @@
 using ARMeilleure.Memory;
+using Ryujinx.Common.System;  // 新增引用
+using Ryujinx.Common.Utilities;  // 新增引用
 using Ryujinx.Memory;
 using Ryujinx.Memory.Range;
 using Ryujinx.Memory.Tracking;
@@ -34,6 +36,7 @@ namespace Ryujinx.Cpu.Jit
 
         private readonly MemoryBlock _backingMemory;
         private readonly InvalidAccessHandler _invalidAccessHandler;
+        private readonly RateLimiter _audioRateLimiter; // 音频带宽限制器
 
         /// <inheritdoc/>
         public bool UsesPrivateAllocations => false;
@@ -82,9 +85,11 @@ namespace Ryujinx.Cpu.Jit
 
             _pages = new ManagedPageFlags(AddressSpaceBits);
             
-            // ====== 关键修改在这里 ======
             // 将音频检测函数传递给MemoryTracking构造函数
             Tracking = new MemoryTracking(this, PageSize, null, false, IsAudioBuffer);
+
+            // 初始化带宽限制器（300MB/s）
+            _audioRateLimiter = new RateLimiter(300 * 1024 * 1024);
         }
 
         // 检测是否为音频缓冲区
@@ -210,6 +215,12 @@ namespace Ryujinx.Cpu.Jit
         /// <inheritdoc/>
         public override void Read(ulong va, Span<byte> data)
         {
+            // 如果是音频缓冲区，则进行限速
+            if (IsAudioBuffer(va, (ulong)data.Length))
+            {
+                _audioRateLimiter.Wait(data.Length);
+            }
+
             try
             {
                 base.Read(va, data);
@@ -444,7 +455,7 @@ namespace Ryujinx.Cpu.Jit
 
         private nuint GetPhysicalAddressInternal(ulong va)
         {
-            return (nuint)(PteToPa(_pageTable.Read<ulong>((va / PageSize) * PteSize) & ~(0xffffUL << 48)) + (va & PageMask));
+            return (nuint)(PteToPa(_pageTable.Read<ulong>((va / PageSize) * PteSize) & ~(0xffffUL << 48)) + (va & PageMask);
         }
 
         /// <inheritdoc/>
