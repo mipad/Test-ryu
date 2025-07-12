@@ -4,6 +4,7 @@ using Ryujinx.Audio.Integration;
 using Ryujinx.Memory;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using static Ryujinx.Audio.Integration.IHardwareDeviceDriver;
@@ -73,7 +74,7 @@ namespace Ryujinx.Audio.Backends.OpenAL
             }
         }
 
-        public IHardwareDeviceSession OpenDeviceSession(Direction direction, IVirtualMemoryManager memoryManager, SampleFormat sampleFormat, uint sampleRate, uint channelCount)
+        public IHardwareDeviceSession OpenDeviceSession(IHardwareDeviceDriver.Direction direction, IVirtualMemoryManager memoryManager, SampleFormat sampleFormat, uint sampleRate, uint channelCount)
         {
             if (channelCount == 0)
             {
@@ -85,7 +86,7 @@ namespace Ryujinx.Audio.Backends.OpenAL
                 sampleRate = Constants.TargetSampleRate;
             }
 
-            if (direction != Direction.Output)
+            if (direction != IHardwareDeviceDriver.Direction.Output)
             {
                 throw new ArgumentException($"{direction}");
             }
@@ -181,9 +182,9 @@ namespace Ryujinx.Audio.Backends.OpenAL
             return channelCount == 1 || channelCount == 2 || channelCount == 6;
         }
 
-        public bool SupportsDirection(Direction direction)
+        public bool SupportsDirection(IHardwareDeviceDriver.Direction direction)
         {
-            return direction == Direction.Output;
+            return direction == IHardwareDeviceDriver.Direction.Output;
         }
     }
 }
