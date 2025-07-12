@@ -1,22 +1,31 @@
 using Ryujinx.Audio.Common;
 using Ryujinx.Audio.Integration;
+using Ryujinx.Common; 
 using Ryujinx.Memory;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 
 namespace Ryujinx.Audio.Backends.Dummy
 {
     class DummyHardwareDeviceSessionInput : IHardwareDeviceSession
     {
-        // 使用完全限定名解决类型冲突
         public IHardwareDeviceDriver.Direction Direction => IHardwareDeviceDriver.Direction.Input;
 
+        private readonly IVirtualMemoryManager _memoryManager;
+        private readonly SampleFormat _sampleFormat;
+        private readonly uint _sampleRate;
+        private readonly uint _channelCount;
+
         public DummyHardwareDeviceSessionInput(
-            IHardwareDeviceDriver driver, // 修改为接口类型
-            IVirtualMemoryManager memoryManager)
+            IVirtualMemoryManager memoryManager,
+            SampleFormat sampleFormat,
+            uint sampleRate,
+            uint channelCount)
         {
-            // 初始化逻辑保留但为空
+            _memoryManager = memoryManager;
+            _sampleFormat = sampleFormat;
+            _sampleRate = sampleRate;
+            _channelCount = channelCount;
         }
 
         public void Dispose()
@@ -71,7 +80,7 @@ namespace Ryujinx.Audio.Backends.Dummy
             return new AudioBuffer
             {
                 Data = new byte[Constants.DefaultSilenceBufferSize],
-                DataSize = Constants.DefaultSilenceBufferSize,
+                DataSize = (ulong)Constants.DefaultSilenceBufferSize,
                 BufferTag = 0,
                 PlayedTimestamp = (ulong)PerformanceCounter.ElapsedNanoseconds
             };
