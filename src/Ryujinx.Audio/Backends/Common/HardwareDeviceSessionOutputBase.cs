@@ -1,6 +1,9 @@
 using Ryujinx.Audio.Common;
 using Ryujinx.Audio.Integration;
 using Ryujinx.Memory;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace Ryujinx.Audio.Backends.Common
@@ -47,13 +50,20 @@ namespace Ryujinx.Audio.Backends.Common
 
         public abstract void Dispose();
         public abstract void PrepareToClose();
-        public abstract void QueueBuffer(AudioBuffer buffer);
         public abstract void SetVolume(float volume);
         public abstract float GetVolume();
         public abstract void Start();
         public abstract void Stop();
         public abstract ulong GetPlayedSampleCount();
         public abstract bool WasBufferFullyConsumed(AudioBuffer buffer);
+        public abstract void QueueBuffers(IList<AudioBuffer> buffers);
+        public abstract IList<AudioBuffer> GetReleasedBuffers(int maxCount);
+
+        public virtual void QueueBuffer(AudioBuffer buffer)
+        {
+            QueueBuffers(new List<AudioBuffer> { buffer });
+        }
+
         public virtual bool RegisterBuffer(AudioBuffer buffer)
         {
             return RegisterBuffer(buffer, GetBufferSamples(buffer));
@@ -72,5 +82,16 @@ namespace Ryujinx.Audio.Backends.Common
         }
 
         public virtual void UnregisterBuffer(AudioBuffer buffer) { }
+
+        public virtual AudioBuffer CreateSilenceBuffer()
+        {
+            return new AudioBuffer
+            {
+                Data = new byte[Constants.DefaultSilenceBufferSize],
+                DataSize = Constants.DefaultSilenceBufferSize,
+                BufferTag = 0,
+                PlayedTimestamp = (ulong)PerformanceCounter.ElapsedNanoseconds
+            };
+        }
     }
 }
