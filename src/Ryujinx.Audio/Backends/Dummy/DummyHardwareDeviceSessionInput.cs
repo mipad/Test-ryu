@@ -2,56 +2,61 @@ using Ryujinx.Audio.Common;
 using Ryujinx.Audio.Integration;
 using Ryujinx.Memory;
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using static Ryujinx.Audio.Integration.IHardwareDeviceDriver;
 
 namespace Ryujinx.Audio.Backends.Dummy
 {
     class DummyHardwareDeviceSessionInput : IHardwareDeviceSession
     {
-        private float _volume;
-        private readonly IHardwareDeviceDriver _manager;
-        private readonly IVirtualMemoryManager _memoryManager;
+        public SessionDirection Direction => SessionDirection.Input;
 
-        public DummyHardwareDeviceSessionInput(IHardwareDeviceDriver manager, IVirtualMemoryManager memoryManager)
+        public DummyHardwareDeviceSessionInput(
+            DummyHardwareDeviceDriver driver,
+            IVirtualMemoryManager memoryManager,
+            SampleFormat sampleFormat,
+            uint sampleRate,
+            uint channelCount)
         {
-            _volume = 1.0f;
-            _manager = manager;
-            _memoryManager = memoryManager;
+            // 初始化逻辑保留但为空
         }
 
         public void Dispose()
         {
-            // Nothing to do.
+            // 无资源需要释放
         }
 
         public ulong GetPlayedSampleCount()
         {
-            // Not implemented for input.
-            throw new NotSupportedException();
+            return 0;
         }
 
         public float GetVolume()
         {
-            return _volume;
+            return 1.0f;
         }
 
         public void PrepareToClose() { }
 
-        public void QueueBuffer(AudioBuffer buffer)
-        {
-            _memoryManager.Fill(buffer.DataPointer, buffer.DataSize, 0);
+        public void QueueBuffer(AudioBuffer buffer) { }
 
-            _manager.GetUpdateRequiredEvent().Set();
+        public void QueueBuffers(IList<AudioBuffer> buffers)
+        {
+            // 批量提交缓冲区的空实现
+        }
+
+        public IList<AudioBuffer> GetReleasedBuffers(int maxCount)
+        {
+            return new List<AudioBuffer>();
         }
 
         public bool RegisterBuffer(AudioBuffer buffer)
         {
-            return buffer.DataPointer != 0;
+            return true;
         }
 
-        public void SetVolume(float volume)
-        {
-            _volume = volume;
-        }
+        public void SetVolume(float volume) { }
 
         public void Start() { }
 
@@ -62,6 +67,17 @@ namespace Ryujinx.Audio.Backends.Dummy
         public bool WasBufferFullyConsumed(AudioBuffer buffer)
         {
             return true;
+        }
+
+        public AudioBuffer CreateSilenceBuffer()
+        {
+            return new AudioBuffer
+            {
+                Data = new byte[Constants.DefaultSilenceBufferSize],
+                DataSize = Constants.DefaultSilenceBufferSize,
+                BufferTag = 0,
+                PlayedTimestamp = (ulong)PerformanceCounter.ElapsedNanoseconds
+            };
         }
     }
 }
