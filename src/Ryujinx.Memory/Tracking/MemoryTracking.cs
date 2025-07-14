@@ -2,7 +2,10 @@ using Ryujinx.Common;
 using Ryujinx.Common.Logging;
 using Ryujinx.Common.Pools;
 using Ryujinx.Memory.Range;
+using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace Ryujinx.Memory.Tracking
 {
@@ -29,6 +32,12 @@ namespace Ryujinx.Memory.Tracking
         /// </summary>
         internal object TrackingLock = new();
 
+        // === 新增诊断字段 ===
+        private static readonly Stopwatch _diagnosticTimer = Stopwatch.StartNew();
+        private ulong _lastNullAccessTime;
+        private int _nullAccessCount;
+        // ===================
+        
         /// <summary>
         /// 为给定的"物理"内存块创建新的跟踪结构
         /// </summary>
@@ -231,11 +240,32 @@ namespace Ryujinx.Memory.Tracking
             int? exemptId = null, 
             bool guest = false)
         {
+            // === 新增：空指针访问诊断 ===
+            if (address == 0)
+            {
+                ulong currentTime = (ulong)_diagnosticTimer.ElapsedMilliseconds;
+                ulong timeSinceLast = currentTime - _lastNullAccessTime;
+                _lastNullAccessTime = currentTime;
+                _nullAccessCount++;
+                
+                Logger.Warning?.Print(LogClass.Memory, 
+                    $"[NULL ACCESS] Addr=0x0, Size=0x{size:X}, Write={write}, " +
+                    $"Precise={precise}, Guest={guest}, Count={_nullAccessCount}, " +
+                    $"TimeSinceLast={timeSinceLast}ms");
+                
+                #if DEBUG
+                Logger.Debug?.Print(LogClass.Memory, 
+                    $"Null Access Stack:\n{Environment.StackTrace}");
+                #endif
+            }
+            // ===========================
+            
             // 新增：跳过音频区域的内存事件处理
             if (_isAudioRegion != null && _isAudioRegion(address, size))
             {
-                //Logger.Debug?.Print(LogClass.Memory, 
-                   // $"Skipping audio region access: VA=0x{address:X}, Size={size}");
+                // 启用音频跳过日志（调试时取消注释）
+                // Logger.Trace?.Print(LogClass.Memory, 
+                //    $"Skipping audio region access: VA=0x{address:X}, Size={size}");
                 return true;
             }
             
@@ -260,8 +290,20 @@ namespace Ryujinx.Memory.Tracking
                     }
                     else
                     {
+                        // === 增强错误日志 ===
+                        string regionInfo = GetRegionInfoNearAddress(address);
                         Logger.Error?.Print(LogClass.Cpu, 
-                            $"Invalid memory access at 0x{address:X}, size 0x{size:X}, write: {write}");
+                            $"Invalid memory access at 0x{address:X}, size 0x{size:X}, write: {write}\n" +
+                            $"Nearby Regions:\n{regionInfo}");
+                        
+                        // 记录历史访问模式
+                        if (_nullAccessCount > 0)
+                        {
+                            Logger.Error?.Print(LogClass.Cpu, 
+                                $"Null access pattern: {_nullAccessCount} times in last {_diagnosticTimer.ElapsedMilliseconds}ms");
+                        }
+                        // ===================
+                        
                         shouldThrow = true;
                     }
                 }
@@ -289,11 +331,69 @@ namespace Ryujinx.Memory.Tracking
 
             if (shouldThrow)
             {
+                // === 空指针特殊处理 ===
+                if (address == 0)
+                {
+                    Logger.Error?.Print(LogClass.Cpu, 
+                        "CRITICAL: NULL pointer access detected! Forcing debugger attach.");
+                    
+                    #if DEBUG
+                    if (Debugger.IsAttached)
+                    {
+                        Debugger.Break();
+                    }
+                    else
+                    {
+                        Debugger.Launch();
+                    }
+                    #endif
+                }
+                // ======================
+                
                 _invalidAccessHandler?.Invoke(address);
                 throw new InvalidMemoryRegionException($"Access violation at 0x{address:X}");
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// 获取地址附近的区域信息（诊断用）
+        /// </summary>
+        private string GetRegionInfoNearAddress(ulong address)
+        {
+            const int range = 0x10000; // 搜索附近64KB范围
+            List<string> regionInfos = new();
+            
+            ulong start = address > range ? address - range : 0;
+            ulong end = address + range;
+            
+            lock (TrackingLock)
+            {
+                ref var overlaps = ref ThreadStaticArray<VirtualRegion>.Get();
+                
+                // 检查普通虚拟区域
+                int count = _virtualRegions.FindOverlapsNonOverlapping(start, end - start, ref overlaps);
+                for (int i = 0; i < count; i++)
+                {
+                    var region = overlaps[i];
+                    regionInfos.Add($"Virt: 0x{region.Address:X}-0x{region.EndAddress:X} " +
+                                     $"({region.Size / 1024}KB)");
+                }
+                
+                // 检查访客虚拟区域
+                count = _guestVirtualRegions.FindOverlapsNonOverlapping(start, end - start, ref overlaps);
+                for (int i = 0; i < count; i++)
+                {
+                    var region = overlaps[i];
+                    regionInfos.Add($"Guest: 0x{region.Address:X}-0x{region.EndAddress:X} " +
+                                    $"({region.Size / 1024}KB)");
+                }
+            }
+            
+            return regionInfos.Count > 0 
+                ? string.Join("\n", regionInfos) 
+                : "No mapped regions found near address";
         }
 
         /// <summary>
@@ -313,6 +413,17 @@ namespace Ryujinx.Memory.Tracking
             {
                 return _virtualRegions.Count;
             }
+        }
+        
+        // === 新增诊断方法 ===
+        
+        /// <summary>
+        /// 获取空指针访问统计信息（诊断用）
+        /// </summary>
+        public string GetNullAccessDiagnostics()
+        {
+            return $"Null accesses: {_nullAccessCount}, " +
+                   $"Last: {_diagnosticTimer.ElapsedMilliseconds - _lastNullAccessTime}ms ago";
         }
     }
 }
