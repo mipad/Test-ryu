@@ -91,27 +91,58 @@ namespace Ryujinx.HLE.Loaders.Executables
             return uncompressedSize;
         }
 
-        // === SDK热修复方法 ===
+        // === SDK热修复方法 (修改版) ===
         private bool ApplySdkWorkaround(string sdkVersion)
         {
-            // 针对特定游戏的热修复
-            if (Name == "PROGRESS ORDERS" && sdkVersion == "16.2.0")
+            // 扩展热修复条件：支持sdk模块和特定偏移修复
+            if (sdkVersion == "16.2.0")
             {
                 try
                 {
-                    // 查找问题函数模式 (示例)
-                    byte[] pattern = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-                    int index = SearchPattern(Text, pattern);
+                    bool patched = false;
                     
-                    if (index != -1)
+                    // 1. 特定偏移修复 (sdk模块的0x136910)
+                    if (Name == "sdk")
                     {
-                        // 应用修复：替换空指针访问指令
-                        Text[index] = 0x90; // NOP指令
-                        Text[index+1] = 0x90;
-                        Logger.Info?.Print(LogClass.Loader, 
-                            $"Patched null access at offset 0x{index:X}");
-                        return true;
+                        // 计算模块内偏移
+                        uint targetOffset = 0x136910;
+                        
+                        if (targetOffset < Text.Length - 1)
+                        {
+                            // 检查是否已修复 (避免重复修补)
+                            if (Text[(int)targetOffset] != 0x90)
+                            {
+                                Text[(int)targetOffset] = 0xD4; // BRK #0 指令
+                                Text[(int)targetOffset + 1] = 0x00;
+                                Logger.Info?.Print(LogClass.Loader, 
+                                    $"Patched critical null access at offset 0x{targetOffset:X} in sdk");
+                                patched = true;
+                            }
+                        }
+                        else
+                        {
+                            Logger.Warning?.Print(LogClass.Loader, 
+                                $"Target offset 0x{targetOffset:X} out of range in sdk module");
+                        }
                     }
+
+                    // 2. 模式匹配修复 (PROGRESS ORDERS游戏)
+                    if (Name == "PROGRESS ORDERS")
+                    {
+                        byte[] pattern = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+                        int index = SearchPattern(Text, pattern);
+                        
+                        if (index != -1)
+                        {
+                            Text[index] = 0x90; // NOP
+                            Text[index+1] = 0x90;
+                            Logger.Info?.Print(LogClass.Loader, 
+                                $"Patched pattern at offset 0x{index:X}");
+                            patched = true;
+                        }
+                    }
+
+                    return patched;
                 }
                 catch (Exception ex)
                 {
