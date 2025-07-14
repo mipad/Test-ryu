@@ -58,14 +58,14 @@ namespace Ryujinx.HLE.Loaders.Executables
             Name = name;
             BuildId = reader.Header.ModuleId;
 
-            // === 修复：构建ID日志 ===
-            // 正确转换Array32<byte>为十六进制字符串
-            StringBuilder buildIdBuilder = new StringBuilder(64);
-            foreach (byte b in BuildId.Items)
+            // === 修复：构建ID日志（安全访问Array32<byte>）===
+            byte[] buildIdBytes = new byte[32];
+            for (int i = 0; i < 32; i++)
             {
-                buildIdBuilder.Append(b.ToString("X2"));
+                buildIdBytes[i] = BuildId[i]; // 使用索引器直接访问
             }
-            string buildIdStr = buildIdBuilder.ToString();
+            
+            string buildIdStr = BitConverter.ToString(buildIdBytes).Replace("-", "");
             
             Logger.Info?.Print(LogClass.Loader, 
                 $"{Name} Build ID: {buildIdStr}");
@@ -91,7 +91,7 @@ namespace Ryujinx.HLE.Loaders.Executables
             return uncompressedSize;
         }
 
-        // === 新增：SDK热修复方法 ===
+        // === SDK热修复方法 ===
         private bool ApplySdkWorkaround(string sdkVersion)
         {
             // 针对特定游戏的热修复
@@ -122,7 +122,7 @@ namespace Ryujinx.HLE.Loaders.Executables
             return false;
         }
 
-        // === 新增：字节模式搜索方法 ===
+        // === 字节模式搜索方法 ===
         private int SearchPattern(Span<byte> data, byte[] pattern)
         {
             for (int i = 0; i <= data.Length - pattern.Length; i++)
@@ -168,7 +168,7 @@ namespace Ryujinx.HLE.Loaders.Executables
 
             stringBuilder.AppendLine($"    Module: {modulePath}");
 
-            // === 新增：精确SDK版本检测 ===
+            // === 精确SDK版本检测 ===
             string sdkVersion = null;
             Match fsSdkMatch = FsSdkRegex().Match(rawTextBuffer);
             if (fsSdkMatch.Success)
