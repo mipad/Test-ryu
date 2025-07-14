@@ -58,8 +58,15 @@ namespace Ryujinx.HLE.Loaders.Executables
             Name = name;
             BuildId = reader.Header.ModuleId;
 
-            // === 新增：构建ID日志 ===
-            string buildIdStr = BitConverter.ToString(BuildId.ToArray()).Replace("-", "");
+            // === 修复：构建ID日志 ===
+            // 正确转换Array32<byte>为十六进制字符串
+            StringBuilder buildIdBuilder = new StringBuilder(64);
+            foreach (byte b in BuildId.Items)
+            {
+                buildIdBuilder.Append(b.ToString("X2"));
+            }
+            string buildIdStr = buildIdBuilder.ToString();
+            
             Logger.Info?.Print(LogClass.Loader, 
                 $"{Name} Build ID: {buildIdStr}");
             
