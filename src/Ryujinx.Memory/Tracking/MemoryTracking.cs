@@ -34,7 +34,7 @@ namespace Ryujinx.Memory.Tracking
 
         // === 新增诊断字段 ===
         private static readonly Stopwatch _diagnosticTimer = Stopwatch.StartNew();
-        private ulong _lastNullAccessTime;
+        private long _lastNullAccessTime; // 修复：改为 long 类型
         private int _nullAccessCount;
         // ===================
         
@@ -243,18 +243,18 @@ namespace Ryujinx.Memory.Tracking
             // === 新增：空指针访问诊断 ===
             if (address == 0)
             {
-                ulong currentTime = (ulong)_diagnosticTimer.ElapsedMilliseconds;
-                ulong timeSinceLast = currentTime - _lastNullAccessTime;
+                long currentTime = _diagnosticTimer.ElapsedMilliseconds; // 修复：使用 long 类型
+                long timeSinceLast = currentTime - _lastNullAccessTime;
                 _lastNullAccessTime = currentTime;
                 _nullAccessCount++;
                 
-                Logger.Warning?.Print(LogClass.Memory, 
+                Logger.Warning?.Print(LogClass.Cpu, // 修复：使用 LogClass.Cpu
                     $"[NULL ACCESS] Addr=0x0, Size=0x{size:X}, Write={write}, " +
                     $"Precise={precise}, Guest={guest}, Count={_nullAccessCount}, " +
                     $"TimeSinceLast={timeSinceLast}ms");
                 
                 #if DEBUG
-                Logger.Debug?.Print(LogClass.Memory, 
+                Logger.Debug?.Print(LogClass.Cpu, // 修复：使用 LogClass.Cpu
                     $"Null Access Stack:\n{Environment.StackTrace}");
                 #endif
             }
@@ -264,7 +264,7 @@ namespace Ryujinx.Memory.Tracking
             if (_isAudioRegion != null && _isAudioRegion(address, size))
             {
                 // 启用音频跳过日志（调试时取消注释）
-                // Logger.Trace?.Print(LogClass.Memory, 
+                // Logger.Trace?.Print(LogClass.Cpu, 
                 //    $"Skipping audio region access: VA=0x{address:X}, Size={size}");
                 return true;
             }
