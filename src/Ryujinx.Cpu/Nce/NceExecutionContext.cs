@@ -115,12 +115,12 @@ namespace Ryujinx.Cpu.Nce
         
         public void SetV(int index, V128 value)
         {
-            // === 新增：空向量写入检测 ===
-            if (value.IsZero() && index == 0)
+            // === 修复：使用全零检查代替 IsZero() ===
+            if (value == V128.Zero && index == 0) // 检查是否为全零向量
             {
                 LogNullRegisterWrite(index, "V");
             }
-            // ===========================
+            // =====================================
             _context.GetStorage().V[index] = value;
         }
 
