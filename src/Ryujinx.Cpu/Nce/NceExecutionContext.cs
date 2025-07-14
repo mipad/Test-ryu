@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Cpu.Nce
 {
