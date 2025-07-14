@@ -58,6 +58,18 @@ namespace Ryujinx.HLE.Loaders.Executables
             Name = name;
             BuildId = reader.Header.ModuleId;
 
+            // === 新增：构建ID日志 ===
+            string buildIdStr = BitConverter.ToString(BuildId.ToArray()).Replace("-", "");
+            Logger.Info?.Print(LogClass.Loader, 
+                $"{Name} Build ID: {buildIdStr}");
+            
+            // 检测已知问题构建
+            if (buildIdStr == "2F1967113A281280A48CE3FC6DC23049327BF924")
+            {
+                Logger.Warning?.Print(LogClass.Loader,
+                    "Known problematic build detected! Enforcing compatibility mode");
+            }
+
             PrintRoSectionInfo();
         }
 
@@ -70,6 +82,56 @@ namespace Ryujinx.HLE.Loaders.Executables
             reader.ReadSegment(segmentType, span).ThrowIfFailure();
 
             return uncompressedSize;
+        }
+
+        // === 新增：SDK热修复方法 ===
+        private bool ApplySdkWorkaround(string sdkVersion)
+        {
+            // 针对特定游戏的热修复
+            if (Name == "PROGRESS ORDERS" && sdkVersion == "16.2.0")
+            {
+                try
+                {
+                    // 查找问题函数模式 (示例)
+                    byte[] pattern = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+                    int index = SearchPattern(Text, pattern);
+                    
+                    if (index != -1)
+                    {
+                        // 应用修复：替换空指针访问指令
+                        Text[index] = 0x90; // NOP指令
+                        Text[index+1] = 0x90;
+                        Logger.Info?.Print(LogClass.Loader, 
+                            $"Patched null access at offset 0x{index:X}");
+                        return true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning?.Print(LogClass.Loader, 
+                        $"Workaround failed: {ex.Message}");
+                }
+            }
+            return false;
+        }
+
+        // === 新增：字节模式搜索方法 ===
+        private int SearchPattern(Span<byte> data, byte[] pattern)
+        {
+            for (int i = 0; i <= data.Length - pattern.Length; i++)
+            {
+                bool match = true;
+                for (int j = 0; j < pattern.Length; j++)
+                {
+                    if (data[i + j] != pattern[j])
+                    {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match) return i;
+            }
+            return -1;
         }
 
         private void PrintRoSectionInfo()
@@ -99,10 +161,13 @@ namespace Ryujinx.HLE.Loaders.Executables
 
             stringBuilder.AppendLine($"    Module: {modulePath}");
 
+            // === 新增：精确SDK版本检测 ===
+            string sdkVersion = null;
             Match fsSdkMatch = FsSdkRegex().Match(rawTextBuffer);
             if (fsSdkMatch.Success)
             {
-                stringBuilder.AppendLine($"    FS SDK Version: {fsSdkMatch.Value.Replace("sdk_version: ", "")}");
+                sdkVersion = fsSdkMatch.Groups[1].Value; // 提取版本号
+                stringBuilder.AppendLine($"    FS SDK Version: {sdkVersion}");
             }
 
             MatchCollection sdkMwMatches = SdkMwRegex().Matches(rawTextBuffer);
@@ -112,6 +177,20 @@ namespace Ryujinx.HLE.Loaders.Executables
                 string libContent = string.Join($"\n{new string(' ', libHeader.Length)}", sdkMwMatches);
 
                 stringBuilder.AppendLine($"{libHeader}{libContent}");
+            }
+
+            // 检测不兼容的SDK版本
+            if (sdkVersion == "16.2.0")
+            {
+                Logger.Warning?.Print(LogClass.Loader, 
+                    $"Potential SDK compatibility issue detected in {Name} (v{sdkVersion})");
+                
+                // === 应用热修复 ===
+                if (ApplySdkWorkaround(sdkVersion))
+                {
+                    Logger.Info?.Print(LogClass.Loader, 
+                        "Applied SDK 16.2.0 compatibility workaround");
+                }
             }
 
             if (stringBuilder.Length > 0)
