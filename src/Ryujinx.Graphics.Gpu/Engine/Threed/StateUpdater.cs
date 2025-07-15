@@ -1000,45 +1000,32 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
                 }
 
                 uint packedFormat = vertexAttrib.UnpackFormat();
-                
-                // ==== 新增顶点格式验证逻辑 ====
-                if (!IsValidVertexFormat(packedFormat))
+                VertexAttribType type = vertexAttrib.UnpackType();
+                Format format;
+                bool isValid = true;
+
+                // ==== 改进的顶点格式处理 ====
+                if (!FormatTable.TryGetAttribFormat(packedFormat, out format))
                 {
-                    // 记录警告并替换为安全格式
-                    Logger.Warning?.Print(LogClass.Gpu, 
-                        $"强制替换无效顶点属性格式: 0x{packedFormat:X} " +
-                        $"(属性索引: {index}, 缓冲区: {bufferIndex}, 偏移: {vertexAttrib.UnpackOffset()}, " +
-                        $"类型: {vertexAttrib.UnpackType()})");
+                    isValid = false;
                     
-                    packedFormat = GetFallbackVertexFormat(vertexAttrib.UnpackType());
-                }
-                // ========================
-
-                if (!supportsScaledFormats)
-                {
-                    packedFormat = vertexAttrib.UnpackType() switch
+                    // 特殊处理RGBA32_SINT格式 (0x25E00000)
+                    if (packedFormat == 0x25E00000)
                     {
-                        VertexAttribType.Uscaled => ((uint)VertexAttribType.Uint << 27) | (packedFormat & (0x3f << 21)),
-                        VertexAttribType.Sscaled => ((uint)VertexAttribType.Sint << 27) | (packedFormat & (0x3f << 21)),
-                        _ => packedFormat,
-                    };
-                }
-
-                if (!FormatTable.TryGetAttribFormat(packedFormat, out Format format))
-                {
-                    // 增强日志信息
-                    Logger.Debug?.Print(LogClass.Gpu, 
-                        $"无效属性格式 0x{packedFormat:X}. " +
-                        $"类型: {vertexAttrib.UnpackType()}, " +
-                        $"缓冲区: {bufferIndex}, " +
-                        $"偏移: {vertexAttrib.UnpackOffset()}");
-
-                    format = vertexAttrib.UnpackType() switch
+                        format = Format.R32G32B32A32Sint;
+                        Logger.Warning?.Print(LogClass.Gpu, 
+                            $"强制使用RGBA32_SINT格式替代0x25E00000 " +
+                            $"(属性索引: {index}, 缓冲区: {bufferIndex})");
+                    }
+                    else
                     {
-                        VertexAttribType.Sint => Format.R32G32B32A32Sint,
-                        VertexAttribType.Uint => Format.R32G32B32A32Uint,
-                        _ => Format.R32G32B32A32Float,
-                    };
+                        // 根据类型选择安全的格式
+                        format = GetFallbackVertexFormat(type);
+                        Logger.Warning?.Print(LogClass.Gpu, 
+                            $"强制替换无效顶点属性格式: 0x{packedFormat:X} " +
+                            $"(属性索引: {index}, 缓冲区: {bufferIndex}, " +
+                            $"类型: {type}, 大小: {vertexAttrib.UnpackSize()})");
+                    }
                 }
 
                 vertexAttribs[index] = new VertexAttribDescriptor(
@@ -1053,39 +1040,21 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
             _currentSpecState.SetAttributeTypes(ref _state.State.VertexAttribState);
         }
 
-        // ==== 新增辅助方法 ====
-        
-        /// <summary>
-        /// 检查顶点格式是否有效
-        /// </summary>
-        /// <param name="packedFormat">压缩格式值</param>
-        /// <returns>如果格式有效返回true，否则false</returns>
-        private bool IsValidVertexFormat(uint packedFormat)
+        // 安全回退格式选择
+        private Format GetFallbackVertexFormat(VertexAttribType type)
         {
-            // 检查格式是否在白名单中
-            return _validVertexFormats.Contains(packedFormat);
+            return type switch
+            {
+                VertexAttribType.Sint   => Format.R32G32B32A32Sint,
+                VertexAttribType.Uint   => Format.R32G32B32A32Uint,
+                VertexAttribType.Snorm  => Format.R16G16B16A16Snorm,
+                VertexAttribType.Unorm  => Format.R16G16B16A16Unorm,
+                VertexAttribType.Uscaled => Format.R16G16B16A16Unorm,
+                VertexAttribType.Sscaled => Format.R16G16B16A16Snorm,
+                VertexAttribType.Float  => Format.R32G32B32A32Float,
+                _ => Format.R32G32B32A32Float // 默认回退
+            };
         }
-
-        /// <summary>
-        /// 获取安全的回退顶点格式
-        /// </summary>
-        /// <param name="type">顶点属性类型</param>
-        /// <returns>安全的格式值</returns>
-        private uint GetFallbackVertexFormat(VertexAttribType type)
-{
-    return type switch
-    {
-        VertexAttribType.Sint   => 0x25E00000, // RGBA32_SINT
-        VertexAttribType.Uint   => 0x25C00000, // RGBA32_UINT
-        VertexAttribType.Snorm  => 0x21800000, // RGBA16_SNORM
-        VertexAttribType.Unorm  => 0x21000000, // RGBA16_UNORM
-        VertexAttribType.Uscaled => 0x21000000, // 无符号缩放 -> RGBA16_UNORM
-        VertexAttribType.Sscaled => 0x21800000, // 有符号缩放 -> RGBA16_SNORM
-        _ => 0x20000000 // RGBA32_FLOAT (通用回退)
-    };
-}
-        
-        // =====================
 
         /// <summary>
         /// Updates host line width based on guest GPU state.
