@@ -7,6 +7,7 @@ using Ryujinx.Graphics.Gpu.Shader;
 using Ryujinx.Graphics.Shader;
 using Ryujinx.Graphics.Texture;
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
 namespace Ryujinx.Graphics.Gpu.Engine.Threed
@@ -57,6 +58,17 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         private bool _prevTfEnable;
 
         private uint _prevRtNoAlphaMask;
+
+        // 添加顶点格式白名单
+        private static readonly HashSet<uint> _validVertexFormats = new HashSet<uint>
+        {
+            0x20000000, // RGBA32_FLOAT
+            0x21000000, // RGBA16_UNORM
+            0x21800000, // RGBA16_SNORM
+            0x25C00000, // RGBA32_UINT
+            0x25E00000, // RGBA32_SINT
+            // 添加其他有效格式...
+        };
 
         /// <summary>
         /// Creates a new instance of the state updater.
@@ -983,6 +995,19 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
                 }
 
                 uint packedFormat = vertexAttrib.UnpackFormat();
+                
+                // ==== 新增顶点格式验证逻辑 ====
+                if (!IsValidVertexFormat(packedFormat))
+                {
+                    // 记录警告并替换为安全格式
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"强制替换无效顶点属性格式: 0x{packedFormat:X} " +
+                        $"(属性索引: {index}, 缓冲区: {bufferIndex}, 偏移: {vertexAttrib.UnpackOffset()}, " +
+                        $"类型: {vertexAttrib.UnpackType()})");
+                    
+                    packedFormat = GetFallbackVertexFormat(vertexAttrib.UnpackType());
+                }
+                // ========================
 
                 if (!supportsScaledFormats)
                 {
@@ -996,7 +1021,12 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
 
                 if (!FormatTable.TryGetAttribFormat(packedFormat, out Format format))
                 {
-                    Logger.Debug?.Print(LogClass.Gpu, $"Invalid attribute format 0x{vertexAttrib.UnpackFormat():X}.");
+                    // 增强日志信息
+                    Logger.Debug?.Print(LogClass.Gpu, 
+                        $"无效属性格式 0x{packedFormat:X}. " +
+                        $"类型: {vertexAttrib.UnpackType()}, " +
+                        $"缓冲区: {bufferIndex}, " +
+                        $"偏移: {vertexAttrib.UnpackOffset()}");
 
                     format = vertexAttrib.UnpackType() switch
                     {
@@ -1017,6 +1047,40 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
             _context.Renderer.Pipeline.SetVertexAttribs(vertexAttribs);
             _currentSpecState.SetAttributeTypes(ref _state.State.VertexAttribState);
         }
+
+        // ==== 新增辅助方法 ====
+        
+        /// <summary>
+        /// 检查顶点格式是否有效
+        /// </summary>
+        /// <param name="packedFormat">压缩格式值</param>
+        /// <returns>如果格式有效返回true，否则false</returns>
+        private bool IsValidVertexFormat(uint packedFormat)
+        {
+            // 检查格式是否在白名单中
+            return _validVertexFormats.Contains(packedFormat);
+        }
+
+        /// <summary>
+        /// 获取安全的回退顶点格式
+        /// </summary>
+        /// <param name="type">顶点属性类型</param>
+        /// <returns>安全的格式值</returns>
+        private uint GetFallbackVertexFormat(VertexAttribType type)
+        {
+            // 根据属性类型选择安全的默认格式
+            return type switch
+            {
+                VertexAttribType.Sint   => 0x25E00000, // RGBA32_SINT
+                VertexAttribType.Uint   => 0x25C00000, // RGBA32_UINT
+                VertexAttribType.Snorm  => 0x21800000, // RGBA16_SNORM
+                VertexAttribType.Unorm  => 0x21000000, // RGBA16_UNORM
+                VertexAttribType.Scaled => 0x21000000, // RGBA16_UNORM
+                _ => 0x20000000 // RGBA32_FLOAT (最安全的通用回退)
+            };
+        }
+        
+        // =====================
 
         /// <summary>
         /// Updates host line width based on guest GPU state.
