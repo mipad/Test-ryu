@@ -768,7 +768,8 @@ namespace LibRyujinx
                                                                   0,
                                                                   0,
                                                                   timeZone,
-                                                                  isHostMapped ? MemoryManagerMode.HostMappedUnsafe : MemoryManagerMode.SoftwarePageTable,
+                                                                 // isHostMapped ? MemoryManagerMode.HostMappedUnsafe : MemoryManagerMode.SoftwarePageTable,
+                                                                  MemoryManagerMode.HostMappedUnsafe; 
                                                                   ignoreMissingServices,
                                                                    LibRyujinx.GraphicsConfiguration.AspectRatio,
                                                                   100,
