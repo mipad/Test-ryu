@@ -17,7 +17,7 @@ namespace Ryujinx.HLE
     {
         private const ulong GiB = 1024 * 1024 * 1024;
 
-#pragma warning disable IDE0055 // Disable formatting
+#pragma warning disable IDE0055
         public static MemoryArrange ToKernelMemoryArrange(this MemoryConfiguration configuration)
         {
             return configuration switch
@@ -28,7 +28,7 @@ namespace Ryujinx.HLE
                 MemoryConfiguration.MemoryConfiguration6GiB          => MemoryArrange.MemoryArrange6GiB,
                 MemoryConfiguration.MemoryConfiguration6GiBAppletDev => MemoryArrange.MemoryArrange6GiBAppletDev,
                 MemoryConfiguration.MemoryConfiguration8GiB          => MemoryArrange.MemoryArrange8GiB,
-                _ => throw new AggregateException($"Invalid memory configuration \"{configuration}\"."),
+                _ => throw new ArgumentException($"Invalid memory configuration \"{configuration}\"."),
             };
         }
 
@@ -42,7 +42,7 @@ namespace Ryujinx.HLE
                 MemoryConfiguration.MemoryConfiguration6GiB or
                 MemoryConfiguration.MemoryConfiguration6GiBAppletDev => MemorySize.MemorySize6GiB,
                 MemoryConfiguration.MemoryConfiguration8GiB          => MemorySize.MemorySize8GiB,
-                _ => throw new AggregateException($"Invalid memory configuration \"{configuration}\"."),
+                _ => throw new ArgumentException($"Invalid memory configuration \"{configuration}\"."),
             };
         }
 
@@ -56,7 +56,23 @@ namespace Ryujinx.HLE
                 MemoryConfiguration.MemoryConfiguration6GiB or
                 MemoryConfiguration.MemoryConfiguration6GiBAppletDev => 6 * GiB,
                 MemoryConfiguration.MemoryConfiguration8GiB          => 8 * GiB,
-                _ => throw new AggregateException($"Invalid memory configuration \"{configuration}\"."),
+                _ => throw new ArgumentException($"Invalid memory configuration \"{configuration}\"."),
+            };
+        }
+        
+        // 新增方法：获取地址空间大小
+        public static ulong ToAddressSpaceSize(this MemoryConfiguration configuration)
+        {
+            return configuration switch
+            {
+                MemoryConfiguration.MemoryConfiguration4GiB or
+                MemoryConfiguration.MemoryConfiguration4GiBAppletDev or
+                MemoryConfiguration.MemoryConfiguration4GiBSystemDev => 4 * GiB,
+                MemoryConfiguration.MemoryConfiguration6GiB or
+                MemoryConfiguration.MemoryConfiguration6GiBAppletDev => 6 * GiB,
+                // 为8GB配置分配512GB地址空间
+                MemoryConfiguration.MemoryConfiguration8GiB => 512 * GiB, // 0x8000000000
+                _ => throw new ArgumentException($"Invalid memory configuration \"{configuration}\"."),
             };
         }
 #pragma warning restore IDE0055
