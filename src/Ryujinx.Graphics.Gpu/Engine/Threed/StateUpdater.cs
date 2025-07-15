@@ -1067,18 +1067,18 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="type">顶点属性类型</param>
         /// <returns>安全的格式值</returns>
         private uint GetFallbackVertexFormat(VertexAttribType type)
-        {
-            // 根据属性类型选择安全的默认格式
-            return type switch
-            {
-                VertexAttribType.Sint   => 0x25E00000, // RGBA32_SINT
-                VertexAttribType.Uint   => 0x25C00000, // RGBA32_UINT
-                VertexAttribType.Snorm  => 0x21800000, // RGBA16_SNORM
-                VertexAttribType.Unorm  => 0x21000000, // RGBA16_UNORM
-                VertexAttribType.Scaled => 0x21000000, // RGBA16_UNORM
-                _ => 0x20000000 // RGBA32_FLOAT (最安全的通用回退)
-            };
-        }
+{
+    return type switch
+    {
+        VertexAttribType.Sint   => 0x25E00000, // RGBA32_SINT
+        VertexAttribType.Uint   => 0x25C00000, // RGBA32_UINT
+        VertexAttribType.Snorm  => 0x21800000, // RGBA16_SNORM
+        VertexAttribType.Unorm  => 0x21000000, // RGBA16_UNORM
+        VertexAttribType.Uscaled => 0x21000000, // 无符号缩放 -> RGBA16_UNORM
+        VertexAttribType.Sscaled => 0x21800000, // 有符号缩放 -> RGBA16_SNORM
+        _ => 0x20000000 // RGBA32_FLOAT (通用回退)
+    };
+}
         
         // =====================
 
