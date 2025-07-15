@@ -62,11 +62,16 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         // 添加顶点格式白名单
         private static readonly HashSet<uint> _validVertexFormats = new HashSet<uint>
         {
-            0x20000000, // RGBA32_FLOAT
-            0x21000000, // RGBA16_UNORM
-            0x21800000, // RGBA16_SNORM
-            0x25C00000, // RGBA32_UINT
-            0x25E00000, // RGBA32_SINT
+            0x11400000, // RGBA8_UNORM (新增)
+    0x20000000, // RGBA32_FLOAT
+    0x21000000, // RGBA16_UNORM
+    0x21800000, // RGBA16_SNORM
+    0x25C00000, // RGBA32_UINT
+    0x25E00000, // RGBA32_SINT
+    0x38400000, // RG32_FLOAT (新增)
+    0x38800000, // RGBA16_FLOAT (新增)
+    0x30C00000, // RGB10_A2_UNORM (新增)
+    0x31C00000, // RG11B10_FLOAT (新增)
             // 添加其他有效格式...
         };
 
