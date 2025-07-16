@@ -254,6 +254,7 @@ namespace Ryujinx.Graphics.Vulkan
             holder = Create(gd, size, forConditionalRendering: false, sparseCompatible, baseType);
             if (holder == null)
             {
+                Logger.Error?.Print(LogClass.Gpu, $"Failed to create buffer with size 0x{size:X} and type \"{baseType}\"");
                 return BufferHandle.Null;
             }
 
@@ -281,6 +282,24 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 // Create a temporary buffer.
                 BufferHandle handle = CreateWithHandle(gd, size, out BufferHolder holder);
+                
+                if (holder == null)
+                {
+                    // 尝试使用最小尺寸作为回退
+                    const int fallbackSize = 1024;
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"Using fallback buffer (size=0x{fallbackSize:X}) for failed allocation (0x{size:X})");
+                    
+                    handle = CreateWithHandle(gd, fallbackSize, out holder);
+                    
+                    if (holder == null)
+                    {
+                        // 最终回退：使用占位符空缓冲区
+                        Logger.Error?.Print(LogClass.Gpu, 
+                            "Critical: Failed to create fallback buffer. Using placeholder.");
+                        return new ScopedTemporaryBuffer(this, null, BufferHandle.Null, 0, 0, false);
+                    }
+                }
 
                 return new ScopedTemporaryBuffer(this, holder, handle, 0, size, false);
             }
@@ -360,22 +379,44 @@ namespace Ryujinx.Graphics.Vulkan
                     _ => DefaultBufferMemoryFlags,
                 };
 
-                // If an allocation with this memory type fails, fall back to the previous one.
+                // 如果分配失败，尝试回退策略
                 try
                 {
                     allocation = gd.MemoryAllocator.AllocateDeviceMemory(requirements, allocateFlags, true);
                 }
-                catch (VulkanException)
+                catch (VulkanException e)
                 {
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"Memory allocation failed (type={type}, size=0x{size:X}): {e.Message}");
+                    
                     allocation = default;
                 }
             }
             while (allocation.Memory.Handle == 0 && (--type != fallbackType));
 
+            // 添加内存不足时的降级处理
             if (allocation.Memory.Handle == 0UL)
             {
-                gd.Api.DestroyBuffer(_device, buffer, null);
-                return default;
+                // 尝试使用无缓存内存作为最后手段
+                try
+                {
+                    allocation = gd.MemoryAllocator.AllocateDeviceMemory(
+                        requirements, 
+                        DefaultBufferMemoryNoCacheFlags, 
+                        false); // 不抛出异常
+                }
+                catch
+                {
+                    allocation = default;
+                }
+                
+                if (allocation.Memory.Handle == 0UL)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, 
+                        $"All backup memory allocations failed for size 0x{size:X}");
+                    gd.Api.DestroyBuffer(_device, buffer, null);
+                    return default;
+                }
             }
 
             gd.Api.BindBufferMemory(_device, buffer, allocation.Memory, allocation.Offset);
@@ -390,6 +431,14 @@ namespace Ryujinx.Graphics.Vulkan
             bool sparseCompatible = false,
             BufferAllocationType baseType = BufferAllocationType.HostMapped)
         {
+            // 添加小缓冲区优化
+            // 对于小于4KB的缓冲区，默认使用HostMapped类型
+            const int smallBufferThreshold = 4 * 1024;
+            if (size <= smallBufferThreshold && baseType == BufferAllocationType.Auto)
+            {
+                baseType = BufferAllocationType.HostMapped;
+            }
+
             BufferAllocationType type = baseType;
 
             if (baseType == BufferAllocationType.Auto)
@@ -403,12 +452,10 @@ namespace Ryujinx.Graphics.Vulkan
             if (buffer.Handle != 0)
             {
                 var holder = new BufferHolder(gd, _device, buffer, allocation, size, baseType, resultType);
-
                 return holder;
             }
 
-            Logger.Error?.Print(LogClass.Gpu, $"Failed to create buffer with size 0x{size:X} and type \"{baseType}\".");
-
+            Logger.Error?.Print(LogClass.Gpu, $"Failed to create buffer with size 0x{size:X} and type \"{baseType}\"");
             return null;
         }
 
@@ -648,6 +695,11 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 holder.Dispose();
                 _buffers.Remove((int)Unsafe.As<BufferHandle, ulong>(ref handle));
+            }
+            else
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Attempted to delete invalid buffer handle: {handle}");
             }
         }
 
