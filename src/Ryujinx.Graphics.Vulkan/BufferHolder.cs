@@ -7,7 +7,6 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using VkBuffer = Silk.NET.Vulkan.Buffer;
 using VkFormat = Silk.NET.Vulkan.Format;
-using Ryujinx.Graphics.Vulkan;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -719,56 +718,60 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         public static unsafe void Copy(
-            VulkanRenderer gd,
-            CommandBufferScoped cbs,
-            Auto<DisposableBuffer> src,
-            Auto<DisposableBuffer> dst,
-            int srcOffset,
-            int dstOffset,
-            int size,
-            bool registerSrcUsage = true)
-        {
-            // 添加安全校验
-            if (src == null || dst == null || src.IsNull || dst.IsNull)
-            {
-                throw new ArgumentNullException("Source or destination buffer is null.");
-            }
+    VulkanRenderer gd,
+    CommandBufferScoped cbs,
+    Auto<DisposableBuffer> src,
+    Auto<DisposableBuffer> dst,
+    int srcOffset,
+    int dstOffset,
+    int size,
+    bool registerSrcUsage = true)
+{
+    // 修改为使用 GetUnsafe().IsNull 检查
+    if (src == null || dst == null || 
+        src.GetUnsafe().IsNull || dst.GetUnsafe().IsNull)
+    {
+        throw new ArgumentNullException("Source or destination buffer is null.");
+    }
 
-            var srcBuffer = registerSrcUsage ? src.Get(cbs, srcOffset, size).Value : src.GetUnsafe().Value;
-            var dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
+    var srcBuffer = registerSrcUsage ? 
+        src.Get(cbs, srcOffset, size).Value : 
+        src.GetUnsafe().Value;
+        
+    var dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
 
-            // 检查缓冲区句柄有效性
-            if (srcBuffer.Handle == 0 || dstBuffer.Handle == 0)
-            {
-                throw new InvalidOperationException("Invalid buffer handle detected in copy operation.");
-            }
+    // 检查缓冲区句柄有效性
+    if (srcBuffer.Handle == 0 || dstBuffer.Handle == 0)
+    {
+        throw new InvalidOperationException("Invalid buffer handle detected in copy operation.");
+    }
 
-            InsertBufferBarrier(
-                gd,
-                cbs.CommandBuffer,
-                dstBuffer,
-                DefaultAccessFlags,
-                AccessFlags.TransferWriteBit,
-                PipelineStageFlags.AllCommandsBit,
-                PipelineStageFlags.TransferBit,
-                dstOffset,
-                size);
+    InsertBufferBarrier(
+        gd,
+        cbs.CommandBuffer,
+        dstBuffer,
+        DefaultAccessFlags,
+        AccessFlags.TransferWriteBit,
+        PipelineStageFlags.AllCommandsBit,
+        PipelineStageFlags.TransferBit,
+        dstOffset,
+        size);
 
-            var region = new BufferCopy((ulong)srcOffset, (ulong)dstOffset, (ulong)size);
+    var region = new BufferCopy((ulong)srcOffset, (ulong)dstOffset, (ulong)size);
 
-            gd.Api.CmdCopyBuffer(cbs.CommandBuffer, srcBuffer, dstBuffer, 1, &region);
+    gd.Api.CmdCopyBuffer(cbs.CommandBuffer, srcBuffer, dstBuffer, 1, &region);
 
-            InsertBufferBarrier(
-                gd,
-                cbs.CommandBuffer,
-                dstBuffer,
-                AccessFlags.TransferWriteBit,
-                DefaultAccessFlags,
-                PipelineStageFlags.TransferBit,
-                PipelineStageFlags.AllCommandsBit,
-                dstOffset,
-                size);
-        }
+    InsertBufferBarrier(
+        gd,
+        cbs.CommandBuffer,
+        dstBuffer,
+        AccessFlags.TransferWriteBit,
+        DefaultAccessFlags,
+        PipelineStageFlags.TransferBit,
+        PipelineStageFlags.AllCommandsBit,
+        dstOffset,
+        size);
+}
 
         public static unsafe void InsertBufferBarrier(
             VulkanRenderer gd,
