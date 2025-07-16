@@ -168,8 +168,13 @@ namespace Ryujinx.Graphics.Vulkan
                 SwizzleComponent.Blue,
                 SwizzleComponent.Alpha);
 
-            _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain).ThrowOnError();
-
+            //_gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain).ThrowOnError();
+            Result result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
+            if (result != Result.Success)
+            {
+                result.ThrowOnError();
+            }
+            
             _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, null);
 
             _swapchainImages = new Image[imageCount];
