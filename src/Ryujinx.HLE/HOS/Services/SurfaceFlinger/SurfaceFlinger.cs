@@ -15,12 +15,12 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 {
     class SurfaceFlinger : IConsumerListener, IDisposable
     {
-        // ==== 新增配置 ====
+        // ==== 优化后的配置 ====
         private const int MaxAcquiredBuffers = 1; // Android 允许的最大获取缓冲区数
-        private static readonly long StaleBufferThreshold = Stopwatch.Frequency; // 1秒 (修复为static readonly)
-        private const int MaxRetryCount = 3; // 最大重试次数
-        private const int RetryDelayMs = 50; // 重试延迟
-        private const int TargetFps = 60; // 添加目标FPS常量
+        private static readonly long StaleBufferThreshold = Stopwatch.Frequency; // 1秒
+        private const int MaxRetryCount = 5; // 增加重试次数
+        private const int RetryDelayMs = 10; // 减少重试延迟
+        private const int TargetFps = 60; // 目标FPS常量
         
         private readonly Switch _device;
 
@@ -42,7 +42,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
         private readonly object _lock = new();
 
-        // ==== 新增缓冲区状态跟踪 ====
+        // ==== 缓冲区状态跟踪 ====
         private class AcquiredBuffer
         {
             public long LayerId { get; }
@@ -259,7 +259,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
         private void CloseLayer(long layerId, Layer layer)
         {
-            // ==== 新增：释放层关联的缓冲区 ====
+            // ==== 释放层关联的缓冲区 ====
             ReleaseLayerBuffers(layerId);
             
             // If the layer was removed and the current in use, we need to change the current layer in use.
@@ -282,7 +282,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             }
         }
 
-        // ==== 新增方法：释放层关联的缓冲区 ====
+        // ==== 释放层关联的缓冲区 ====
         private void ReleaseLayerBuffers(long layerId)
         {
             for (int i = _acquiredBuffers.Count - 1; i >= 0; i--)
@@ -393,14 +393,41 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             }
         }
 
+        // ==== 优化后的缓冲区获取方法 ====
+        private Status TryAcquireBuffer(Layer layer, out BufferItem item)
+        {
+            item = null;
+            int retryCount = 0;
+            
+            while (retryCount++ < MaxRetryCount)
+            {
+                Status acquireStatus = layer.Consumer.AcquireBuffer(out item, 0);
+
+                if (acquireStatus == Status.Success)
+                {
+                    return Status.Success;
+                }
+                else if (acquireStatus == Status.NoBufferAvailaible)
+                {
+                    Thread.Sleep(RetryDelayMs);
+                }
+                else
+                {
+                    return acquireStatus;
+                }
+            }
+            
+            return Status.NoBufferAvailaible;
+        }
+
         public void Compose()
         {
             lock (_lock)
             {
-                // ==== 新增：释放过期缓冲区 ====
+                // ==== 释放过期缓冲区 ====
                 ReleaseStaleBuffers();
                 
-                // TODO: support multilayers (& multidisplay ?)
+                // 没有活动层时直接返回
                 if (RenderLayerId == 0)
                 {
                     return;
@@ -409,36 +436,21 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 Layer layer = GetLayerByIdLocked(RenderLayerId);
                 if (layer == null) return;
 
-                // ==== 新增：检查是否达到缓冲区获取限制 ====
-                if (_acquiredBuffers.Count >= MaxAcquiredBuffers)
+                Status acquireStatus;
+                BufferItem item = null;
+                
+                // 第一步：尝试直接获取缓冲区
+                acquireStatus = TryAcquireBuffer(layer, out item);
+                
+                // 第二步：如果获取失败且缓冲区已满，释放旧缓冲区后重试
+                if (acquireStatus != Status.Success && _acquiredBuffers.Count >= MaxAcquiredBuffers)
                 {
-                    Logger.Warning?.Print(LogClass.SurfaceFlinger, 
+                    Logger.Debug?.Print(LogClass.SurfaceFlinger, 
                         $"Max acquired buffers reached ({_acquiredBuffers.Count}). Releasing oldest.");
                     ReleaseOldestBuffer();
-                }
-
-                Status acquireStatus = Status.NoBufferAvailaible;
-                BufferItem item = null;
-                int retryCount = 0;
-                
-                // ==== 新增：带重试的缓冲区获取 ====
-                while (retryCount++ < MaxRetryCount)
-                {
-                    acquireStatus = layer.Consumer.AcquireBuffer(out item, 0);
-
-                    if (acquireStatus == Status.Success)
-                    {
-                        break;
-                    }
-                    else if (acquireStatus == Status.NoBufferAvailaible)
-                    {
-                        // 短暂等待后重试
-                        Thread.Sleep(RetryDelayMs);
-                    }
-                    else
-                    {
-                        break;
-                    }
+                    
+                    // 释放后再次尝试获取
+                    acquireStatus = TryAcquireBuffer(layer, out item);
                 }
 
                 if (acquireStatus == Status.Success)
@@ -446,7 +458,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                     // 记录获取的缓冲区
                     _acquiredBuffers.Add(new AcquiredBuffer(RenderLayerId, item));
                     
-                    // If device vsync is disabled, reflect the change.
+                    // 更新交换间隔
                     if (!_device.EnableDeviceVsync)
                     {
                         if (_swapInterval != 0)
@@ -468,7 +480,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             }
         }
 
-        // ==== 新增方法：释放过期缓冲区 ====
+        // ==== 释放过期缓冲区 ====
         private void ReleaseStaleBuffers()
         {
             long currentTime = Stopwatch.GetTimestamp();
@@ -476,10 +488,11 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             for (int i = _acquiredBuffers.Count - 1; i >= 0; i--)
             {
                 var buffer = _acquiredBuffers[i];
-                double ageSeconds = (double)(currentTime - buffer.AcquireTime) / Stopwatch.Frequency;
+                long ageTicks = currentTime - buffer.AcquireTime;
                 
-                if (ageSeconds > (double)StaleBufferThreshold / Stopwatch.Frequency)
+                if (ageTicks > StaleBufferThreshold)
                 {
+                    double ageSeconds = (double)ageTicks / Stopwatch.Frequency;
                     Logger.Warning?.Print(LogClass.SurfaceFlinger, 
                         $"Releasing stale buffer held for {ageSeconds:F2} seconds");
                     
@@ -489,7 +502,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             }
         }
         
-        // ==== 新增方法：释放最旧缓冲区 ====
+        // ==== 释放最旧缓冲区 ====
         private void ReleaseOldestBuffer()
         {
             if (_acquiredBuffers.Count > 0)
@@ -500,7 +513,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             }
         }
         
-        // ==== 新增方法：内部缓冲区释放 ====
+        // ==== 内部缓冲区释放 ====
         private void ReleaseBufferInternal(long layerId, BufferItem item)
         {
             var layer = GetLayerByIdLocked(layerId);
@@ -595,12 +608,12 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             else
             {
                 ReleaseBuffer(textureCallbackInformation);
-                // ==== 新增：从获取列表移除 ====
+                // ==== 从获取列表移除 ====
                 RemoveAcquiredBuffer(layer, item);
             }
         }
 
-        // ==== 新增方法：从获取列表移除缓冲区 ====
+        // ==== 从获取列表移除缓冲区 ====
         private void RemoveAcquiredBuffer(Layer layer, BufferItem item)
         {
             for (int i = 0; i < _acquiredBuffers.Count; i++)
@@ -624,7 +637,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             AndroidFence fence = AndroidFence.NoFence;
             information.Layer.Consumer.ReleaseBuffer(information.Item, ref fence);
             
-            // ==== 新增：从获取列表移除 ====
+            // ==== 从获取列表移除 ====
             RemoveAcquiredBuffer(information.Layer, information.Item);
         }
 
@@ -655,7 +668,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         {
             _isRunning = false;
 
-            // ==== 新增：释放所有获取的缓冲区 ====
+            // ==== 释放所有获取的缓冲区 ====
             foreach (var buffer in _acquiredBuffers)
             {
                 ReleaseBufferInternal(buffer.LayerId, buffer.Item);
