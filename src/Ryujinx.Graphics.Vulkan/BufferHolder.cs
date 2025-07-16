@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using VkBuffer = Silk.NET.Vulkan.Buffer;
 using VkFormat = Silk.NET.Vulkan.Format;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -60,12 +61,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, MemoryAllocation allocation, int size, BufferAllocationType type, BufferAllocationType currentType)
         {
-            // 添加缓冲区有效性检查
-            if (buffer.Handle == 0)
-            {
-                throw new InvalidOperationException("Buffer creation failed: handle is zero.");
-            }
-
             _gd = gd;
             _device = device;
             _allocation = allocation;
@@ -85,12 +80,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, Auto<MemoryAllocation> allocation, int size, BufferAllocationType type, BufferAllocationType currentType, int offset)
         {
-            // 添加缓冲区有效性检查
-            if (buffer.Handle == 0)
-            {
-                throw new InvalidOperationException("Buffer creation failed: handle is zero.");
-            }
-
             _gd = gd;
             _device = device;
             _allocation = allocation.GetUnsafe();
@@ -110,12 +99,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, int size, Auto<MemoryAllocation>[] storageAllocations)
         {
-            // 添加缓冲区有效性检查
-            if (buffer.Handle == 0)
-            {
-                throw new InvalidOperationException("Buffer creation failed: handle is zero.");
-            }
-
             _gd = gd;
             _device = device;
             _waitable = new MultiFenceHolder(size);
@@ -717,7 +700,7 @@ namespace Ryujinx.Graphics.Vulkan
             return true;
         }
 
-public static unsafe void Copy(
+        public static unsafe void Copy(
     VulkanRenderer gd,
     CommandBufferScoped cbs,
     Auto<DisposableBuffer> src,
@@ -727,47 +710,97 @@ public static unsafe void Copy(
     int size,
     bool registerSrcUsage = true)
 {
-    // 检查 Auto<DisposableBuffer> 对象是否为 null
-    if (src == null || dst == null)
+    // 参数验证
+    if (gd == null)
     {
-        throw new ArgumentNullException("Source or destination buffer is null.");
+        throw new ArgumentNullException(nameof(gd), "Graphics device is null.");
+    }
+    
+    if (cbs.CommandBuffer.Handle == 0)
+    {
+        throw new ArgumentException("Invalid command buffer.", nameof(cbs));
     }
 
-    var srcBuffer = registerSrcUsage ? src.Get(cbs, srcOffset, size).Value : src.GetUnsafe().Value;
-    var dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
-
-    // 检查缓冲区句柄有效性
-    if (srcBuffer.Handle == 0 || dstBuffer.Handle == 0)
+    if (src == null)
     {
-        throw new InvalidOperationException("Invalid buffer handle detected in copy operation.");
+        throw new ArgumentNullException(nameof(src), "Source buffer is null.");
     }
 
-    InsertBufferBarrier(
-        gd,
-        cbs.CommandBuffer,
-        dstBuffer,
-        DefaultAccessFlags,
-        AccessFlags.TransferWriteBit,
-        PipelineStageFlags.AllCommandsBit,
-        PipelineStageFlags.TransferBit,
-        dstOffset,
-        size);
+    if (dst == null)
+    {
+        throw new ArgumentNullException(nameof(dst), "Destination buffer is null.");
+    }
 
-    var region = new BufferCopy((ulong)srcOffset, (ulong)dstOffset, (ulong)size);
+    if (srcOffset < 0)
+    {
+        throw new ArgumentOutOfRangeException(nameof(srcOffset), "Source offset cannot be negative.");
+    }
 
-    gd.Api.CmdCopyBuffer(cbs.CommandBuffer, srcBuffer, dstBuffer, 1, &region);
+    if (dstOffset < 0)
+    {
+        throw new ArgumentOutOfRangeException(nameof(dstOffset), "Destination offset cannot be negative.");
+    }
 
-    InsertBufferBarrier(
-        gd,
-        cbs.CommandBuffer,
-        dstBuffer,
-        AccessFlags.TransferWriteBit,
-        DefaultAccessFlags,
-        PipelineStageFlags.TransferBit,
-        PipelineStageFlags.AllCommandsBit,
-        dstOffset,
-        size);
+    if (size <= 0)
+    {
+        throw new ArgumentOutOfRangeException(nameof(size), "Copy size must be greater than zero.");
+    }
+
+    try
+    {
+        // 获取缓冲区
+        var srcBuffer = registerSrcUsage ? 
+            src.Get(cbs, srcOffset, size).Value : 
+            src.GetUnsafe().Value;
+        
+        var dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
+
+        // 验证缓冲区句柄
+        if (srcBuffer.Handle == 0)
+        {
+            throw new InvalidOperationException("Invalid source buffer handle (VkBuffer is null).");
+        }
+
+        if (dstBuffer.Handle == 0)
+        {
+            throw new InvalidOperationException("Invalid destination buffer handle (VkBuffer is null).");
+        }
+
+        // 设置目标缓冲区屏障 (准备写入)
+        InsertBufferBarrier(
+            gd,
+            cbs.CommandBuffer,
+            dstBuffer,
+            DefaultAccessFlags,
+            AccessFlags.TransferWriteBit,
+            PipelineStageFlags.AllCommandsBit,
+            PipelineStageFlags.TransferBit,
+            dstOffset,
+            size);
+
+        // 执行缓冲区复制
+        var region = new BufferCopy((ulong)srcOffset, (ulong)dstOffset, (ulong)size);
+        
+        gd.Api.CmdCopyBuffer(cbs.CommandBuffer, srcBuffer, dstBuffer, 1, &region);
+
+        // 设置目标缓冲区屏障 (完成写入)
+        InsertBufferBarrier(
+            gd,
+            cbs.CommandBuffer,
+            dstBuffer,
+            AccessFlags.TransferWriteBit,
+            DefaultAccessFlags,
+            PipelineStageFlags.TransferBit,
+            PipelineStageFlags.AllCommandsBit,
+            dstOffset,
+            size);
+    }
+    catch (Exception ex) when (ex is ObjectDisposedException)
+    {
+        throw new InvalidOperationException("Attempted to use a disposed buffer.", ex);
+    }
 }
+
         public static unsafe void InsertBufferBarrier(
             VulkanRenderer gd,
             CommandBuffer commandBuffer,
