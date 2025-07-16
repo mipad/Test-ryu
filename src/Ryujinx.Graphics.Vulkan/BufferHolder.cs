@@ -60,6 +60,12 @@ namespace Ryujinx.Graphics.Vulkan
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, MemoryAllocation allocation, int size, BufferAllocationType type, BufferAllocationType currentType)
         {
+            // 添加缓冲区有效性检查
+            if (buffer.Handle == 0)
+            {
+                throw new InvalidOperationException("Buffer creation failed: handle is zero.");
+            }
+
             _gd = gd;
             _device = device;
             _allocation = allocation;
@@ -79,6 +85,12 @@ namespace Ryujinx.Graphics.Vulkan
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, Auto<MemoryAllocation> allocation, int size, BufferAllocationType type, BufferAllocationType currentType, int offset)
         {
+            // 添加缓冲区有效性检查
+            if (buffer.Handle == 0)
+            {
+                throw new InvalidOperationException("Buffer creation failed: handle is zero.");
+            }
+
             _gd = gd;
             _device = device;
             _allocation = allocation.GetUnsafe();
@@ -98,6 +110,12 @@ namespace Ryujinx.Graphics.Vulkan
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, int size, Auto<MemoryAllocation>[] storageAllocations)
         {
+            // 添加缓冲区有效性检查
+            if (buffer.Handle == 0)
+            {
+                throw new InvalidOperationException("Buffer creation failed: handle is zero.");
+            }
+
             _gd = gd;
             _device = device;
             _waitable = new MultiFenceHolder(size);
@@ -709,8 +727,20 @@ namespace Ryujinx.Graphics.Vulkan
             int size,
             bool registerSrcUsage = true)
         {
+            // 添加安全校验
+            if (src == null || dst == null || src.IsNull || dst.IsNull)
+            {
+                throw new ArgumentNullException("Source or destination buffer is null.");
+            }
+
             var srcBuffer = registerSrcUsage ? src.Get(cbs, srcOffset, size).Value : src.GetUnsafe().Value;
             var dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
+
+            // 检查缓冲区句柄有效性
+            if (srcBuffer.Handle == 0 || dstBuffer.Handle == 0)
+            {
+                throw new InvalidOperationException("Invalid buffer handle detected in copy operation.");
+            }
 
             InsertBufferBarrier(
                 gd,
