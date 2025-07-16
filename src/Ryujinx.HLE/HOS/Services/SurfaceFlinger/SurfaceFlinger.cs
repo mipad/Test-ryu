@@ -17,9 +17,10 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
     {
         // ==== 新增配置 ====
         private const int MaxAcquiredBuffers = 1; // Android 允许的最大获取缓冲区数
-        private static readonly long StaleBufferThreshold = Stopwatch.Frequency; // 1秒
+        private static readonly long StaleBufferThreshold = Stopwatch.Frequency; // 1秒 (修复为static readonly)
         private const int MaxRetryCount = 3; // 最大重试次数
         private const int RetryDelayMs = 50; // 重试延迟
+        private const int TargetFps = 60; // 添加目标FPS常量
         
         private readonly Switch _device;
 
@@ -477,7 +478,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 var buffer = _acquiredBuffers[i];
                 double ageSeconds = (double)(currentTime - buffer.AcquireTime) / Stopwatch.Frequency;
                 
-                if (ageSeconds > StaleBufferThreshold)
+                if (ageSeconds > (double)StaleBufferThreshold / Stopwatch.Frequency)
                 {
                     Logger.Warning?.Print(LogClass.SurfaceFlinger, 
                         $"Releasing stale buffer held for {ageSeconds:F2} seconds");
@@ -604,7 +605,8 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         {
             for (int i = 0; i < _acquiredBuffers.Count; i++)
             {
-                if (_acquiredBuffers[i].Layer == layer && _acquiredBuffers[i].Item == item)
+                if (_acquiredBuffers[i].LayerId == RenderLayerId && 
+                    ReferenceEquals(_acquiredBuffers[i].Item, item))
                 {
                     _acquiredBuffers.RemoveAt(i);
                     break;
