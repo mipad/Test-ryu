@@ -15,7 +15,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 {
     class SurfaceFlinger : IConsumerListener, IDisposable
     {
-        private const int TargetFps = 120;
+        private const int TargetFps = 60;
 
         private readonly Switch _device;
 
