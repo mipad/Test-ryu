@@ -15,8 +15,12 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 {
     class SurfaceFlinger : IConsumerListener, IDisposable
     {
-        private const int TargetFps = 60;
-
+        // ==== 新增配置 ====
+        private const int MaxAcquiredBuffers = 1; // Android 允许的最大获取缓冲区数
+        private const long StaleBufferThreshold = Stopwatch.Frequency; // 1秒
+        private const int MaxRetryCount = 3; // 最大重试次数
+        private const int RetryDelayMs = 50; // 重试延迟
+        
         private readonly Switch _device;
 
         private readonly Dictionary<long, Layer> _layers;
@@ -36,6 +40,23 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         private int _swapIntervalDelay;
 
         private readonly object _lock = new();
+
+        // ==== 新增缓冲区状态跟踪 ====
+        private class AcquiredBuffer
+        {
+            public long LayerId { get; }
+            public BufferItem Item { get; }
+            public long AcquireTime { get; }
+            
+            public AcquiredBuffer(long layerId, BufferItem item)
+            {
+                LayerId = layerId;
+                Item = item;
+                AcquireTime = Stopwatch.GetTimestamp();
+            }
+        }
+        
+        private readonly List<AcquiredBuffer> _acquiredBuffers = new List<AcquiredBuffer>();
 
         public long RenderLayerId { get; private set; }
 
@@ -237,6 +258,9 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
         private void CloseLayer(long layerId, Layer layer)
         {
+            // ==== 新增：释放层关联的缓冲区 ====
+            ReleaseLayerBuffers(layerId);
+            
             // If the layer was removed and the current in use, we need to change the current layer in use.
             if (RenderLayerId == layerId)
             {
@@ -254,6 +278,20 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             if (layer.State == LayerState.ManagedOpened)
             {
                 layer.State = LayerState.ManagedClosed;
+            }
+        }
+
+        // ==== 新增方法：释放层关联的缓冲区 ====
+        private void ReleaseLayerBuffers(long layerId)
+        {
+            for (int i = _acquiredBuffers.Count - 1; i >= 0; i--)
+            {
+                if (_acquiredBuffers[i].LayerId == layerId)
+                {
+                    Logger.Info?.Print(LogClass.SurfaceFlinger, $"Releasing buffer for closed layer {layerId}");
+                    ReleaseBufferInternal(_acquiredBuffers[i].LayerId, _acquiredBuffers[i].Item);
+                    _acquiredBuffers.RemoveAt(i);
+                }
             }
         }
 
@@ -358,6 +396,9 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         {
             lock (_lock)
             {
+                // ==== 新增：释放过期缓冲区 ====
+                ReleaseStaleBuffers();
+                
                 // TODO: support multilayers (& multidisplay ?)
                 if (RenderLayerId == 0)
                 {
@@ -365,11 +406,45 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 }
 
                 Layer layer = GetLayerByIdLocked(RenderLayerId);
+                if (layer == null) return;
 
-                Status acquireStatus = layer.Consumer.AcquireBuffer(out BufferItem item, 0);
+                // ==== 新增：检查是否达到缓冲区获取限制 ====
+                if (_acquiredBuffers.Count >= MaxAcquiredBuffers)
+                {
+                    Logger.Warning?.Print(LogClass.SurfaceFlinger, 
+                        $"Max acquired buffers reached ({_acquiredBuffers.Count}). Releasing oldest.");
+                    ReleaseOldestBuffer();
+                }
+
+                Status acquireStatus = Status.NoBufferAvailaible;
+                BufferItem item = null;
+                int retryCount = 0;
+                
+                // ==== 新增：带重试的缓冲区获取 ====
+                while (retryCount++ < MaxRetryCount)
+                {
+                    acquireStatus = layer.Consumer.AcquireBuffer(out item, 0);
+
+                    if (acquireStatus == Status.Success)
+                    {
+                        break;
+                    }
+                    else if (acquireStatus == Status.NoBufferAvailaible)
+                    {
+                        // 短暂等待后重试
+                        Thread.Sleep(RetryDelayMs);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
 
                 if (acquireStatus == Status.Success)
                 {
+                    // 记录获取的缓冲区
+                    _acquiredBuffers.Add(new AcquiredBuffer(RenderLayerId, item));
+                    
                     // If device vsync is disabled, reflect the change.
                     if (!_device.EnableDeviceVsync)
                     {
@@ -389,6 +464,49 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 {
                     throw new InvalidOperationException();
                 }
+            }
+        }
+
+        // ==== 新增方法：释放过期缓冲区 ====
+        private void ReleaseStaleBuffers()
+        {
+            long currentTime = Stopwatch.GetTimestamp();
+            
+            for (int i = _acquiredBuffers.Count - 1; i >= 0; i--)
+            {
+                var buffer = _acquiredBuffers[i];
+                double ageSeconds = (double)(currentTime - buffer.AcquireTime) / Stopwatch.Frequency;
+                
+                if (ageSeconds > StaleBufferThreshold)
+                {
+                    Logger.Warning?.Print(LogClass.SurfaceFlinger, 
+                        $"Releasing stale buffer held for {ageSeconds:F2} seconds");
+                    
+                    ReleaseBufferInternal(buffer.LayerId, buffer.Item);
+                    _acquiredBuffers.RemoveAt(i);
+                }
+            }
+        }
+        
+        // ==== 新增方法：释放最旧缓冲区 ====
+        private void ReleaseOldestBuffer()
+        {
+            if (_acquiredBuffers.Count > 0)
+            {
+                var oldest = _acquiredBuffers[0];
+                ReleaseBufferInternal(oldest.LayerId, oldest.Item);
+                _acquiredBuffers.RemoveAt(0);
+            }
+        }
+        
+        // ==== 新增方法：内部缓冲区释放 ====
+        private void ReleaseBufferInternal(long layerId, BufferItem item)
+        {
+            var layer = GetLayerByIdLocked(layerId);
+            if (layer != null)
+            {
+                AndroidFence fence = AndroidFence.NoFence;
+                layer.Consumer.ReleaseBuffer(item, ref fence);
             }
         }
 
@@ -476,6 +594,21 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             else
             {
                 ReleaseBuffer(textureCallbackInformation);
+                // ==== 新增：从获取列表移除 ====
+                RemoveAcquiredBuffer(layer, item);
+            }
+        }
+
+        // ==== 新增方法：从获取列表移除缓冲区 ====
+        private void RemoveAcquiredBuffer(Layer layer, BufferItem item)
+        {
+            for (int i = 0; i < _acquiredBuffers.Count; i++)
+            {
+                if (_acquiredBuffers[i].Layer == layer && _acquiredBuffers[i].Item == item)
+                {
+                    _acquiredBuffers.RemoveAt(i);
+                    break;
+                }
             }
         }
 
@@ -487,8 +620,10 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         private void ReleaseBuffer(TextureCallbackInformation information)
         {
             AndroidFence fence = AndroidFence.NoFence;
-
             information.Layer.Consumer.ReleaseBuffer(information.Item, ref fence);
+            
+            // ==== 新增：从获取列表移除 ====
+            RemoveAcquiredBuffer(information.Layer, information.Item);
         }
 
         private void AcquireBuffer(GpuContext ignored, object obj)
@@ -518,6 +653,13 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         {
             _isRunning = false;
 
+            // ==== 新增：释放所有获取的缓冲区 ====
+            foreach (var buffer in _acquiredBuffers)
+            {
+                ReleaseBufferInternal(buffer.LayerId, buffer.Item);
+            }
+            _acquiredBuffers.Clear();
+            
             foreach (Layer layer in _layers.Values)
             {
                 layer.Core.PrepareForExit();
