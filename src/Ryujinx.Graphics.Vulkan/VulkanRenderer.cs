@@ -1099,5 +1099,65 @@ namespace Ryujinx.Graphics.Vulkan
             return Capabilities.SupportsHostImportedMemory &&
                 HostMemoryAllocator.TryImport(BufferManager.HostImportedBufferMemoryRequirements, BufferManager.DefaultBufferMemoryFlags, address, size);
         }
+
+        // ==== 新增内存管理方法 ====
+        public void PerformCleanup()
+        {
+            Logger.Info?.Print(LogClass.Gpu, "Performing emergency memory cleanup");
+            
+            // 1. 释放暂存资源
+            BufferManager.StagingBuffer.Release();
+            
+            // 2. 强制垃圾回收
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            
+            // 3. 清理命令池
+            CommandBufferPool.Reset();
+            
+            // 4. 释放未使用的资源
+            foreach (var texture in Textures)
+            {
+                if (texture is TextureView view && view.IsUnused())
+                {
+                    view.Release();
+                }
+            }
+            
+            Logger.Info?.Print(LogClass.Gpu, 
+                $"Post-cleanup memory: {MemoryAllocator.GetFreeMemory() / 1024} KB free");
+        }
+        
+        // ==== 修改呈现方法 ====
+        public void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback)
+        {
+            try
+            {
+                // 原始呈现逻辑
+                _window.Present(texture, crop, swapBuffersCallback);
+            }
+            catch (Exception ex) when (ex is OutOfMemoryException || 
+                                      (ex is VulkanException vkEx && 
+                                       (vkEx.Result == Result.ErrorOutOfHostMemory || 
+                                        vkEx.Result == Result.ErrorOutOfDeviceMemory)))
+            {
+                // 内存不足时自动清理并重试
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Out of memory during present ({ex.Message}). Attempting recovery...");
+                
+                PerformCleanup();
+                
+                try
+                {
+                    // 重试一次
+                    _window.Present(texture, crop, swapBuffersCallback);
+                }
+                catch (Exception retryEx)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, 
+                        $"Failed to present after memory cleanup: {retryEx.Message}. Skipping frame.");
+                }
+            }
+        }
     }
 }
