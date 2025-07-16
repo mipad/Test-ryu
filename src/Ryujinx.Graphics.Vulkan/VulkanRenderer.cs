@@ -1102,31 +1102,31 @@ namespace Ryujinx.Graphics.Vulkan
 
         // ==== 新增内存管理方法 ====
         public void PerformCleanup()
+{
+    Logger.Info?.Print(LogClass.Gpu, "Performing emergency memory cleanup");
+    
+    // 1. 释放暂存资源
+    BufferManager.StagingBuffer.Release();
+    
+    // 2. 强制垃圾回收
+    GC.Collect();
+    GC.WaitForPendingFinalizers();
+    
+    // 3. 清理命令池
+    CommandBufferPool.Reset();
+    
+    // 4. 释放未使用的资源
+    foreach (var texture in Textures.ToArray()) // 使用副本遍历避免修改集合
+    {
+        if (texture is TextureView view && view.IsUnused())
         {
-            Logger.Info?.Print(LogClass.Gpu, "Performing emergency memory cleanup");
-            
-            // 1. 释放暂存资源
-            BufferManager.StagingBuffer.Release();
-            
-            // 2. 强制垃圾回收
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            
-            // 3. 清理命令池
-            CommandBufferPool.Reset();
-            
-            // 4. 释放未使用的资源
-            foreach (var texture in Textures)
-            {
-                if (texture is TextureView view && view.IsUnused())
-                {
-                    view.Release();
-                }
-            }
-            
-            Logger.Info?.Print(LogClass.Gpu, 
-                $"Post-cleanup memory: {MemoryAllocator.GetFreeMemory() / 1024} KB free");
+            view.Release();
         }
+    }
+    
+    Logger.Info?.Print(LogClass.Gpu, 
+        $"Post-cleanup memory: {MemoryAllocator.GetFreeMemory() / 1024} KB free");
+}
         
         // ==== 修改呈现方法 ====
         public void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback)
