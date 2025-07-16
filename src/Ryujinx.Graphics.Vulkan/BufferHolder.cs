@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using VkBuffer = Silk.NET.Vulkan.Buffer;
 using VkFormat = Silk.NET.Vulkan.Format;
+using Ryujinx.Graphics.Vulkan;
 
 namespace Ryujinx.Graphics.Vulkan
 {
