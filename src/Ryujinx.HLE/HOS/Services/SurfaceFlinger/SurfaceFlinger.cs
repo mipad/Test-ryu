@@ -16,11 +16,11 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
     class SurfaceFlinger : IConsumerListener, IDisposable
     {
         // ==== 优化后的配置 ====
-        private const int MaxAcquiredBuffers = 2; // Android 允许的最大获取缓冲区数
-        private static readonly long StaleBufferThreshold = Stopwatch.Frequency; // 1秒
-        private const int MaxRetryCount = 5; // 增加重试次数
-        private const int RetryDelayMs = 10; // 减少重试延迟
-        private const int TargetFps = 60; // 目标FPS常量
+        private const int MaxAcquiredBuffers = 3; // 从2增加到3
+        private static readonly long StaleBufferThreshold = Stopwatch.Frequency * 3; // 从1秒延长到3秒
+        private const int MaxRetryCount = 5;
+        private const int RetryDelayMs = 10;
+        private const int TargetFps = 60;
         
         private readonly Switch _device;
 
@@ -442,14 +442,22 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 // 第一步：尝试直接获取缓冲区
                 acquireStatus = TryAcquireBuffer(layer, out item);
                 
-                // 第二步：如果获取失败且缓冲区已满，释放旧缓冲区后重试
-                if (acquireStatus != Status.Success && _acquiredBuffers.Count >= MaxAcquiredBuffers)
+                // 第二步：仅在缓冲区满且获取失败时释放
+                if (acquireStatus == Status.NoBufferAvailaible && 
+                    _acquiredBuffers.Count >= MaxAcquiredBuffers)
                 {
-                    Logger.Debug?.Print(LogClass.SurfaceFlinger, 
-                        $"Max acquired buffers reached ({_acquiredBuffers.Count}). Releasing oldest.");
-                    ReleaseOldestBuffer();
+                    // 先尝试释放过期缓冲区
+                    ReleaseStaleBuffers();
                     
-                    // 释放后再次尝试获取
+                    // 如果仍然满，释放最旧缓冲区
+                    if (_acquiredBuffers.Count >= MaxAcquiredBuffers)
+                    {
+                        Logger.Debug?.Print(LogClass.SurfaceFlinger, 
+                            $"Max acquired buffers reached ({_acquiredBuffers.Count}). Releasing oldest.");
+                        ReleaseOldestBuffer();
+                    }
+                    
+                    // 重试获取
                     acquireStatus = TryAcquireBuffer(layer, out item);
                 }
 
@@ -475,7 +483,13 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 }
                 else if (acquireStatus != Status.NoBufferAvailaible && acquireStatus != Status.InvalidOperation)
                 {
+                    Logger.Error?.Print(LogClass.SurfaceFlinger, $"Unexpected buffer acquire status: {acquireStatus}");
                     throw new InvalidOperationException();
+                }
+                else if (acquireStatus == Status.NoBufferAvailaible)
+                {
+                    Logger.Debug?.Print(LogClass.SurfaceFlinger, 
+                        $"No buffer available. Acquired: {_acquiredBuffers.Count}/{MaxAcquiredBuffers}");
                 }
             }
         }
@@ -513,12 +527,15 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             }
         }
         
-        // ==== 内部缓冲区释放 ====
+        // ==== 内部缓冲区释放（关键修复：等待栅栏）====
         private void ReleaseBufferInternal(long layerId, BufferItem item)
         {
             var layer = GetLayerByIdLocked(layerId);
             if (layer != null)
             {
+                // 等待GPU操作完成
+                item.Fence.WaitForever(_device.Gpu);
+                
                 AndroidFence fence = AndroidFence.NoFence;
                 layer.Consumer.ReleaseBuffer(item, ref fence);
             }
