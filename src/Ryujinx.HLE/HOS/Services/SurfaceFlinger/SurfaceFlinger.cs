@@ -16,7 +16,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
     class SurfaceFlinger : IConsumerListener, IDisposable
     {
         // ==== 优化后的配置 ====
-        private const int MaxAcquiredBuffers = 1; // Android 允许的最大获取缓冲区数
+        private const int MaxAcquiredBuffers = 2; // Android 允许的最大获取缓冲区数
         private static readonly long StaleBufferThreshold = Stopwatch.Frequency; // 1秒
         private const int MaxRetryCount = 5; // 增加重试次数
         private const int RetryDelayMs = 10; // 减少重试延迟
