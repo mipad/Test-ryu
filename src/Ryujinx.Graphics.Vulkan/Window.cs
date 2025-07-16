@@ -234,7 +234,14 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         private static SurfaceFormatKHR ChooseSwapSurfaceFormat(SurfaceFormatKHR[] availableFormats, bool colorSpacePassthroughEnabled)
-        {
+        {  
+              // +++ 修复：添加空数组检查 +++
+    if (availableFormats.Length == 0)
+    {
+        // 返回安全默认值
+        return new SurfaceFormatKHR(VkFormat.B8G8R8A8Unorm, ColorSpaceKHR.PaceSrgbNonlinearKhr);
+    }
+    
             if (availableFormats.Length == 1 && availableFormats[0].Format == VkFormat.Undefined)
             {
                 return new SurfaceFormatKHR(VkFormat.B8G8R8A8Unorm, ColorSpaceKHR.PaceSrgbNonlinearKhr);
