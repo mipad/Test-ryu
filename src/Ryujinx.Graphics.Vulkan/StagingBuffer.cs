@@ -289,6 +289,11 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
+public void Release()
+{
+    Dispose();
+}
+
         public void Dispose()
         {
             Dispose(true);
