@@ -727,17 +727,13 @@ public static unsafe void Copy(
     int size,
     bool registerSrcUsage = true)
 {
-    // 修改为使用 GetUnsafe() 方法检查底层对象是否为 null
-    if (src == null || dst == null || 
-        src.GetUnsafe() == null || dst.GetUnsafe() == null)
+    // 检查 Auto<DisposableBuffer> 对象是否为 null
+    if (src == null || dst == null)
     {
         throw new ArgumentNullException("Source or destination buffer is null.");
     }
 
-    var srcBuffer = registerSrcUsage ? 
-        src.Get(cbs, srcOffset, size).Value : 
-        src.GetUnsafe().Value;
-        
+    var srcBuffer = registerSrcUsage ? src.Get(cbs, srcOffset, size).Value : src.GetUnsafe().Value;
     var dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
 
     // 检查缓冲区句柄有效性
@@ -772,7 +768,6 @@ public static unsafe void Copy(
         dstOffset,
         size);
 }
-
         public static unsafe void InsertBufferBarrier(
             VulkanRenderer gd,
             CommandBuffer commandBuffer,
