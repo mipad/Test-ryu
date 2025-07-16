@@ -717,48 +717,6 @@ namespace Ryujinx.Graphics.Vulkan
             return true;
         }
 
-        public static unsafe void Copy(
-    VulkanRenderer gd,
-    CommandBufferScoped cbs,
-    Auto<DisposableBuffer> src,
-    Auto<DisposableBuffer> dst,
-    int srcOffset,
-    int dstOffset,
-    int size,
-    bool registerSrcUsage = true)
-{
-    // 修改为使用 GetUnsafe().IsNull 检查
-    if (src == null || dst == null || 
-        src.GetUnsafe().IsNull || dst.GetUnsafe().IsNull)
-    {
-        throw new ArgumentNullException("Source or destination buffer is null.");
-    }
-
-    var srcBuffer = registerSrcUsage ? 
-        src.Get(cbs, srcOffset, size).Value : 
-        src.GetUnsafe().Value;
-        
-    var dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
-
-    // 检查缓冲区句柄有效性
-    if (srcBuffer.Handle == 0 || dstBuffer.Handle == 0)
-    {
-        throw new InvalidOperationException("Invalid buffer handle detected in copy operation.");
-    }
-
-    InsertBufferBarrier(
-        gd,
-        cbs.CommandBuffer,
-        dstBuffer,
-        DefaultAccessFlags,
-        AccessFlags.TransferWriteBit,
-        PipelineStageFlags.AllCommandsBit,
-        PipelineStageFlags.TransferBit,
-        dstOffset,
-        size);
-
-    var region = new BufferCopy((ulong)srcOffset, (ulong)dstOffset, (ulong)size);
-
 public static unsafe void Copy(
     VulkanRenderer gd,
     CommandBufferScoped cbs,
