@@ -299,6 +299,16 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
+public ulong GetFreeMemory()
+{
+    ulong freeMemory = 0;
+    foreach (var block in _blocks)
+    {
+        freeMemory += block.FreeMemory;
+    }
+    return freeMemory;
+}
+
         public void Dispose()
         {
             for (int i = 0; i < _blocks.Count; i++)
