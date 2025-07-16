@@ -14,6 +14,7 @@ using IndexType = Ryujinx.Graphics.GAL.IndexType;
 using PolygonMode = Ryujinx.Graphics.GAL.PolygonMode;
 using PrimitiveTopology = Ryujinx.Graphics.GAL.PrimitiveTopology;
 using Viewport = Ryujinx.Graphics.GAL.Viewport;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -267,14 +268,25 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         public void CopyBuffer(BufferHandle source, BufferHandle destination, int srcOffset, int dstOffset, int size)
-        {
-            EndRenderPass();
+{
+    EndRenderPass();
 
-            var src = Gd.BufferManager.GetBuffer(CommandBuffer, source, srcOffset, size, false);
-            var dst = Gd.BufferManager.GetBuffer(CommandBuffer, destination, dstOffset, size, true);
+    var src = Gd.BufferManager.GetBuffer(CommandBuffer, source, srcOffset, size, false);
+    var dst = Gd.BufferManager.GetBuffer(CommandBuffer, destination, dstOffset, size, true);
 
-            BufferHolder.Copy(Gd, Cbs, src, dst, srcOffset, dstOffset, size);
-        }
+    // ==== 新增空缓冲区检查 ====
+    if (src == null || dst == null)
+    {
+        Logger.Error?.Print(LogClass.Gpu, 
+            $"跳过缓冲区复制: 源={(src == null ? "null" : "有效")}, " +
+            $"目标={(dst == null ? "null" : "有效")}, " +
+            $"大小=0x{size:X}, 源偏移=0x{srcOffset:X}, 目标偏移=0x{dstOffset:X}");
+        return;
+    }
+    // ========================
+
+    BufferHolder.Copy(Gd, Cbs, src, dst, srcOffset, dstOffset, size);
+}
 
         public void DirtyVertexBuffer(Auto<DisposableBuffer> buffer)
         {
