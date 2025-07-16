@@ -17,7 +17,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
     {
         // ==== 新增配置 ====
         private const int MaxAcquiredBuffers = 1; // Android 允许的最大获取缓冲区数
-        private const long StaleBufferThreshold = Stopwatch.Frequency; // 1秒
+        private static readonly long StaleBufferThreshold = Stopwatch.Frequency; // 1秒
         private const int MaxRetryCount = 3; // 最大重试次数
         private const int RetryDelayMs = 50; // 重试延迟
         
