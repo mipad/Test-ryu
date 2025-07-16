@@ -299,12 +299,25 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
+        public ulong FreeMemory
+{
+    get
+    {
+        ulong free = 0;
+        foreach (var range in _freeRanges)
+        {
+            free += range.Size;
+        }
+        return free;
+    }
+}
+
 public ulong GetFreeMemory()
 {
     ulong freeMemory = 0;
     foreach (var block in _blocks)
     {
-        freeMemory += block.FreeMemory;
+        freeMemory += block.FreeMemory; // 使用属性而不是方法
     }
     return freeMemory;
 }
