@@ -1148,6 +1148,13 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
+        public bool IsUnused()
+{
+    // 当视图无效且没有外部引用时认为未使用
+    return !Valid && _hazardUses == 0;
+}
+
+
         public void Dispose()
         {
             Dispose(true);
