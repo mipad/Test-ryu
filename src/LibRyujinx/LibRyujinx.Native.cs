@@ -223,9 +223,9 @@ namespace LibRyujinx
         }
 
         [UnmanagedCallersOnly(EntryPoint = "input_set_gyro_data")]
-        public static void SetGryoDataNative(Vector3 gyro, int id)
+        public static void SetGyroDataNative(Vector3 gyro, int id)
         {
-            SetGryoData(gyro, id);
+            SetGyroData(gyro, id);
         }
 
         [UnmanagedCallersOnly(EntryPoint = "input_set_stick_axis")]
