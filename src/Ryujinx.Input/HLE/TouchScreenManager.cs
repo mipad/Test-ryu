@@ -10,9 +10,16 @@ namespace Ryujinx.Input.HLE
     {
         private readonly IMouse _mouse;
         private Switch _device;
-        private bool _isTouching = false;
         private Vector2 _lastPosition = Vector2.Zero;
-        private bool _shouldSendStartEvent = false;
+        private TouchState _touchState = TouchState.Released;
+        private bool _wasTouching = false;
+
+        public enum TouchState
+        {
+            Released,
+            Started,
+            Moving
+        }
 
         public TouchScreenManager(IMouse mouse)
         {
@@ -26,58 +33,73 @@ namespace Ryujinx.Input.HLE
 
         public void SetTouchPoint(int x, int y)
         {
-            _isTouching = true;
             _lastPosition = new Vector2(x, y);
-            _shouldSendStartEvent = true;
+            
+            if (_touchState == TouchState.Released)
+            {
+                _touchState = TouchState.Started;
+            }
+            else
+            {
+                _touchState = TouchState.Moving;
+            }
         }
 
         public void ReleaseTouch()
         {
-            _isTouching = false;
+            _touchState = TouchState.Released;
         }
 
         public void Update(float aspectRatio = 0)
         {
-            if (aspectRatio <= 0 || _device?.Hid?.Touchscreen == null)
+            if (_device?.Hid?.Touchscreen == null || _device.Hid.Touchscreen.IsInvalid)
                 return;
             
-            if (_isTouching)
+            // 确保宽高比有效
+            if (aspectRatio <= 0) aspectRatio = 1.0f;
+            
+            // 使用正确的坐标转换方法
+            var touchPosition = IMouse.GetScreenPosition(_lastPosition, _mouse.ClientSize, aspectRatio);
+            
+            // 检查触摸是否在有效区域内
+            bool isValidTouch = touchPosition.X > 0 || touchPosition.Y > 0;
+            
+            // 处理触摸状态转换
+            switch (_touchState)
             {
-                // 计算屏幕位置
-                var touchPosition = IMouse.GetScreenPosition(_lastPosition, _mouse.ClientSize, aspectRatio);
-                
-                // 根据 TouchPoint 的实际结构创建触摸点
-                TouchPoint point = new TouchPoint
-                {
-                    Attribute = _shouldSendStartEvent ? TouchAttribute.Start : TouchAttribute.None,
-                    X = (uint)touchPosition.X,
-                    Y = (uint)touchPosition.Y,
-                    DiameterX = 10,
-                    DiameterY = 10,
-                    Angle = 90
-                };
-                
-                _device.Hid.Touchscreen.Update(point);
-                _shouldSendStartEvent = false; // 已发送开始事件
-            }
-            else if (_shouldSendStartEvent)
-            {
-                // 发送结束触摸事件
-                TouchPoint endPoint = new TouchPoint
-                {
-                    Attribute = TouchAttribute.End,
-                    X = (uint)_lastPosition.X,
-                    Y = (uint)_lastPosition.Y,
-                    DiameterX = 10,
-                    DiameterY = 10,
-                    Angle = 90
-                };
-                
-                _device.Hid.Touchscreen.Update(endPoint);
-                _shouldSendStartEvent = false; // 已发送结束事件
+                case TouchState.Started when isValidTouch:
+                    UpdateTouchPoint(touchPosition, TouchAttribute.Start);
+                    _touchState = TouchState.Moving;
+                    _wasTouching = true;
+                    break;
+                    
+                case TouchState.Moving when isValidTouch:
+                    UpdateTouchPoint(touchPosition, TouchAttribute.None);
+                    break;
+                    
+                case TouchState.Released when _wasTouching:
+                    UpdateTouchPoint(touchPosition, TouchAttribute.End);
+                    _wasTouching = false;
+                    break;
             }
             
+            // 强制更新 HID 状态
             _device.Hid.Touchscreen.Update();
+        }
+
+        private void UpdateTouchPoint(Vector2 position, TouchAttribute attribute)
+        {
+            TouchPoint point = new TouchPoint
+            {
+                Attribute = attribute,
+                X = (uint)Math.Clamp(position.X, 0, 1280),
+                Y = (uint)Math.Clamp(position.Y, 0, 720),
+                DiameterX = 10,
+                DiameterY = 10,
+                Angle = 90
+            };
+            
+            _device.Hid.Touchscreen.Update(point);
         }
 
         public void Dispose()
