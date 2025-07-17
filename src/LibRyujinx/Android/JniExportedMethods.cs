@@ -417,8 +417,8 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "inputSetGyroData")]
         public static void JniSetGyroData(float x, float y, float z, int id)
         {
-            var gryo = new Vector3(x, y, z);
-            SetGryoData(gryo, id);
+            var gyro = new Vector3(x, y, z);
+            SetGyroData(gyro, id);
         }
 
         [UnmanagedCallersOnly(EntryPoint = "inputSetStickAxis")]
