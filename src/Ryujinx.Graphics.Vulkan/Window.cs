@@ -239,48 +239,61 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         private static SurfaceFormatKHR ChooseSwapSurfaceFormat(SurfaceFormatKHR[] availableFormats, bool colorSpacePassthroughEnabled)
-        {  
-              // +++ 修复：添加空数组检查 +++
-    if (availableFormats.Length == 0)
-    {
-        // 返回安全默认值
-        return new SurfaceFormatKHR(VkFormat.B8G8R8A8Unorm, ColorSpaceKHR.PaceSrgbNonlinearKhr);
-    }
-    
-            if (availableFormats.Length == 1 && availableFormats[0].Format == VkFormat.Undefined)
+        {
+            // 定义标准颜色空间常量
+            const ColorSpaceKHR StandardColorSpace = ColorSpaceKHR.SpaceSrgbNonlinearKhr;
+            const VkFormat PreferredFormat = VkFormat.B8G8R8A8Unorm;
+
+            // 空数组检查 - 返回安全默认值
+            if (availableFormats.Length == 0)
             {
-                return new SurfaceFormatKHR(VkFormat.B8G8R8A8Unorm, ColorSpaceKHR.PaceSrgbNonlinearKhr);
+                return new SurfaceFormatKHR(PreferredFormat, StandardColorSpace);
             }
 
-            var formatToReturn = availableFormats[0];
+            // 特殊格式处理
+            if (availableFormats.Length == 1 && availableFormats[0].Format == VkFormat.Undefined)
+            {
+                return new SurfaceFormatKHR(PreferredFormat, StandardColorSpace);
+            }
+
+            // 修复：使用正确的颜色空间枚举值
             if (colorSpacePassthroughEnabled)
             {
+                // 优先选择PassThrough格式
                 foreach (var format in availableFormats)
                 {
-                    if (format.Format == VkFormat.B8G8R8A8Unorm && format.ColorSpace == ColorSpaceKHR.SpacePassThroughExt)
+                    if (format.Format == PreferredFormat && 
+                        format.ColorSpace == ColorSpaceKHR.SpacePassThroughExt)
                     {
-                        formatToReturn = format;
-                        break;
+                        return format;
                     }
-                    else if (format.Format == VkFormat.B8G8R8A8Unorm && format.ColorSpace == ColorSpaceKHR.PaceSrgbNonlinearKhr)
+                }
+                
+                // 其次选择标准SRGB格式
+                foreach (var format in availableFormats)
+                {
+                    if (format.Format == PreferredFormat && 
+                        format.ColorSpace == StandardColorSpace)
                     {
-                        formatToReturn = format;
+                        return format;
                     }
                 }
             }
             else
             {
+                // 标准模式下优先选择SRGB格式
                 foreach (var format in availableFormats)
                 {
-                    if (format.Format == VkFormat.B8G8R8A8Unorm && format.ColorSpace == ColorSpaceKHR.PaceSrgbNonlinearKhr)
+                    if (format.Format == PreferredFormat && 
+                        format.ColorSpace == StandardColorSpace)
                     {
-                        formatToReturn = format;
-                        break;
+                        return format;
                     }
                 }
             }
 
-            return formatToReturn;
+            // 没有匹配时返回第一个可用格式
+            return availableFormats[0];
         }
 
         private static CompositeAlphaFlagsKHR ChooseCompositeAlpha(CompositeAlphaFlagsKHR supportedFlags)
@@ -302,10 +315,10 @@ namespace Ryujinx.Graphics.Vulkan
         private static PresentModeKHR ChooseSwapPresentMode(PresentModeKHR[] availablePresentModes, bool vsyncEnabled)
         {
             if (availablePresentModes.Length == 0)
-    {
-        return PresentModeKHR.FifoKhr; // 安全默认值
-    }
-    
+            {
+                return PresentModeKHR.FifoKhr; // 安全默认值
+            }
+            
             if (!vsyncEnabled && availablePresentModes.Contains(PresentModeKHR.ImmediateKhr))
             {
                 return PresentModeKHR.ImmediateKhr;
