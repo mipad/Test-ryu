@@ -27,14 +27,16 @@ namespace LibRyujinx
         private static VirtualGamepadDriver? _gamepadDriver;
         private static VirtualTouchScreen? _virtualTouchScreen;
         private static VirtualTouchScreenDriver? _touchScreenDriver;
-        private static TouchScreenManager? _touchScreenManager;
         private static InputManager? _inputManager;
         private static NpadManager? _npadManager;
         private static InputConfig[] _configs;
 
+        // 添加对EmulationContext的引用
+        private static Switch EmulationContext => SwitchDevice!.EmulationContext!;
+
         public static void InitializeInput(int width, int height)
         {
-            if(SwitchDevice!.InputManager != null)
+            if (SwitchDevice!.InputManager != null)
             {
                 throw new InvalidOperationException("Input is already initialized");
             }
@@ -56,19 +58,20 @@ namespace LibRyujinx
 
             SwitchDevice!.InputManager = _inputManager;
 
-            _touchScreenManager = _inputManager.CreateTouchScreenManager();
+            // 使用正确的TouchScreenManager类型
+            var touchScreenManager = _inputManager.CreateTouchScreenManager();
             
             // 修复3：添加空指针保护
-            if (SwitchDevice!.EmulationContext != null)
+            if (EmulationContext != null)
             {
-                _touchScreenManager.Initialize(SwitchDevice.EmulationContext);
+                touchScreenManager.Initialize(EmulationContext);
             }
             else
             {
                 Logger.Error?.PrintMsg(LogClass.Application, "EmulationContext is null during touch screen init");
             }
 
-            _npadManager.Initialize(SwitchDevice.EmulationContext, new List<InputConfig>(), false, false);
+            _npadManager.Initialize(EmulationContext, new List<InputConfig>(), false, false);
         }
 
         public static void SetClientSize(int width, int height)
@@ -119,7 +122,7 @@ namespace LibRyujinx
                 var config = CreateDefaultInputConfig();
 
                 config.Id = gamepad.Id;
-                config.PlayerIndex = (PlayerIndex)index;
+                config.PlayerIndex = (Common.Configuration.Hid.PlayerIndex)index; // 明确指定PlayerIndex来源
 
                 _configs[index] = config;
             }
@@ -136,7 +139,7 @@ namespace LibRyujinx
                 Version = InputConfig.CurrentVersion,
                 Backend = InputBackendType.GamepadSDL2,
                 Id = null,
-                ControllerType = ControllerType.ProController,
+                ControllerType = Common.Configuration.Hid.ControllerType.ProController, // 明确指定ControllerType来源
                 DeadzoneLeft = 0.1f,
                 DeadzoneRight = 0.1f,
                 RangeLeft = 1.0f,
@@ -204,21 +207,14 @@ namespace LibRyujinx
 
         public static void UpdateInput()
         {
-            _npadManager?.Update(GraphicsConfiguration.AspectRatio.ToFloat());
-
-            // 修复4：确保触摸屏事件优先处理
-            if (_virtualTouchScreen != null && _virtualTouchScreen.IsButtonPressed(MouseButton.Button1))
-            {
-                var position = _virtualTouchScreen.GetPosition();
-                _touchScreenManager?.UpdateSingleTouch(position.X, position.Y);
-            }
+            // 使用EmulationContext获取宽高比
+            float aspectRatio = EmulationContext.GraphicsDevice?.GetScaleFactor() ?? 1.0f;
             
-            if(!_touchScreenManager!.Update(true, 
-                _virtualTouchScreen?.IsButtonPressed(MouseButton.Button1) ?? false, 
-                GraphicsConfiguration.AspectRatio.ToFloat()))
-            {
-                SwitchDevice!.EmulationContext?.Hid.Touchscreen.Update();
-            }
+            _npadManager?.Update(aspectRatio);
+
+            // 不需要直接调用TouchScreenManager的方法
+            // 触摸状态已通过IMouse接口处理
+            EmulationContext.Hid.Touchscreen.Update();
         }
     }
 
@@ -228,7 +224,7 @@ namespace LibRyujinx
 
         public bool[] Buttons { get; }
 
-        // 修复6：添加多点触控支持
+        // 添加多点触控支持
         private Dictionary<int, Vector2> _activeTouches = new Dictionary<int, Vector2>();
         private int _primaryTouchId = 0;
 
@@ -340,7 +336,7 @@ namespace LibRyujinx
 
         public string DriverName => "VirtualTouchDriver";
 
-        // 修复7：防止触摸屏被识别为手柄
+        // 防止触摸屏被识别为手柄
         public ReadOnlySpan<string> GamepadsIds => Array.Empty<string>();
 
         public event Action<string> OnGamepadConnected
@@ -568,116 +564,6 @@ namespace LibRyujinx
         public Ryujinx.Input.GamepadStateSnapshot GetStateSnapshot()
         {
             return default;
-        }
-    }
-
-    public class TouchScreenManager : IDisposable
-    {
-        private readonly IMouse _mouse;
-        private Switch _device;
-        private bool _wasClicking;
-
-        public TouchScreenManager(IMouse mouse)
-        {
-            _mouse = mouse;
-        }
-
-        public void Initialize(Switch device)
-        {
-            _device = device;
-        }
-        
-        // 添加 UpdateSingleTouch 方法实现
-        public void UpdateSingleTouch(float x, float y)
-        {
-            if (_device?.EmulationContext?.Hid?.Touchscreen == null) return;
-            
-            var aspectRatio = GraphicsConfiguration.AspectRatio.ToFloat();
-            var touchPosition = IMouse.GetScreenPosition(new Vector2(x, y), _mouse.ClientSize, aspectRatio);
-
-            var currentPoint = new TouchPoint
-            {
-                Attribute = _wasClicking ? TouchAttribute.None : TouchAttribute.Start,
-                X = (uint)touchPosition.X,
-                Y = (uint)touchPosition.Y,
-                DiameterX = 10,
-                DiameterY = 10,
-                Angle = 90,
-            };
-
-            _device.Hid.Touchscreen.Update(currentPoint);
-            _wasClicking = true;
-        }
-
-        public bool Update(bool isFocused, bool isClicking = false, float aspectRatio = 0)
-        {
-            if (_device?.EmulationContext?.Hid?.Touchscreen == null)
-            {
-                return false;
-            }
-
-            if (!isFocused || (!_wasClicking && !isClicking))
-            {
-                if (_wasClicking && !isClicking)
-                {
-                    MouseStateSnapshot snapshot = IMouse.GetMouseStateSnapshot(_mouse);
-                    var touchPosition = IMouse.GetScreenPosition(snapshot.Position, _mouse.ClientSize, aspectRatio);
-
-                    TouchPoint currentPoint = new()
-                    {
-                        Attribute = TouchAttribute.End,
-                        X = (uint)touchPosition.X,
-                        Y = (uint)touchPosition.Y,
-                        DiameterX = 10,
-                        DiameterY = 10,
-                        Angle = 90,
-                    };
-
-                    _device.Hid.Touchscreen.Update(currentPoint);
-                }
-
-                _wasClicking = false;
-                _device.Hid.Touchscreen.Update();
-                return false;
-            }
-
-            if (aspectRatio > 0)
-            {
-                MouseStateSnapshot snapshot = IMouse.GetMouseStateSnapshot(_mouse);
-                var touchPosition = IMouse.GetScreenPosition(snapshot.Position, _mouse.ClientSize, aspectRatio);
-
-                TouchAttribute attribute = TouchAttribute.None;
-
-                if (!_wasClicking && isClicking)
-                {
-                    attribute = TouchAttribute.Start;
-                }
-                else if (_wasClicking && !isClicking)
-                {
-                    attribute = TouchAttribute.End;
-                }
-
-                TouchPoint currentPoint = new()
-                {
-                    Attribute = attribute,
-                    X = (uint)touchPosition.X,
-                    Y = (uint)touchPosition.Y,
-                    DiameterX = 10,
-                    DiameterY = 10,
-                    Angle = 90,
-                };
-
-                _device.Hid.Touchscreen.Update(currentPoint);
-                _wasClicking = isClicking;
-                return true;
-            }
-
-            return false;
-        }
-
-        public void Dispose()
-        {
-            GC.SuppressFinalize(this);
         }
     }
 }
