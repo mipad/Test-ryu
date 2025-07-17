@@ -414,34 +414,6 @@ namespace Ryujinx.Cpu.Jit
             return true;
         }
 
-        /// <inheritdoc/>
-        public bool IsRangeMappedSafe(ulong va, ulong size)
-        {
-            if (size == 0UL)
-            {
-                return true;
-            }
-
-            if (!ValidateAddressAndSize(va, size))
-            {
-                return false;
-            }
-
-            int pages = GetPagesCount(va, (uint)size, out va);
-
-            for (int page = 0; page < pages; page++)
-            {
-                if (!IsMapped(va))
-                {
-                    return false;
-                }
-
-                va += PageSize;
-            }
-
-            return true;
-        }
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override bool IsMapped(ulong va)
         {
