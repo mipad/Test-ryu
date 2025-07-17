@@ -2,6 +2,7 @@ using Ryujinx.HLE;
 using Ryujinx.HLE.HOS.Services.Hid;
 using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.TouchScreen;
 using System;
+using System.Numerics;
 
 namespace Ryujinx.Input.HLE
 {
@@ -9,7 +10,8 @@ namespace Ryujinx.Input.HLE
     {
         private readonly IMouse _mouse;
         private Switch _device;
-        private bool _wasClicking;
+        private bool _isTouching = false;
+        private Vector2 _lastPosition = Vector2.Zero;
 
         public TouchScreenManager(IMouse mouse)
         {
@@ -21,77 +23,61 @@ namespace Ryujinx.Input.HLE
             _device = device;
         }
 
-        public bool Update(bool isFocused, bool isClicking = false, float aspectRatio = 0)
+        // 添加设置触摸点的方法
+        public void SetTouchPoint(int x, int y)
         {
-            if (!isFocused || (!_wasClicking && !isClicking))
+            _isTouching = true;
+            _lastPosition = new Vector2(x, y);
+        }
+
+        // 添加释放触摸点的方法
+        public void ReleaseTouch()
+        {
+            _isTouching = false;
+        }
+
+        // 修改 Update 方法
+        public void Update(float aspectRatio = 0)
+        {
+            if (aspectRatio <= 0) 
+                return;
+            
+            if (_isTouching)
             {
-                // In case we lost focus, send the end touch.
-                if (_wasClicking && !isClicking)
+                // 计算屏幕位置
+                var touchPosition = IMouse.GetScreenPosition(_lastPosition, _mouse.ClientSize, aspectRatio);
+                
+                TouchPoint point = new()
                 {
-                    MouseStateSnapshot snapshot = IMouse.GetMouseStateSnapshot(_mouse);
-                    var touchPosition = IMouse.GetScreenPosition(snapshot.Position, _mouse.ClientSize, aspectRatio);
-
-                    TouchPoint currentPoint = new()
-                    {
-                        Attribute = TouchAttribute.End,
-
-                        X = (uint)touchPosition.X,
-                        Y = (uint)touchPosition.Y,
-
-                        // Placeholder values till more data is acquired
-                        DiameterX = 10,
-                        DiameterY = 10,
-                        Angle = 90,
-                    };
-
-                    _device.Hid.Touchscreen.Update(currentPoint);
-
-                }
-
-                _wasClicking = false;
-
-                _device.Hid.Touchscreen.Update();
-
-                return false;
-            }
-
-            if (aspectRatio > 0)
-            {
-                MouseStateSnapshot snapshot = IMouse.GetMouseStateSnapshot(_mouse);
-                var touchPosition = IMouse.GetScreenPosition(snapshot.Position, _mouse.ClientSize, aspectRatio);
-
-                TouchAttribute attribute = TouchAttribute.None;
-
-                if (!_wasClicking && isClicking)
-                {
-                    attribute = TouchAttribute.Start;
-                }
-                else if (_wasClicking && !isClicking)
-                {
-                    attribute = TouchAttribute.End;
-                }
-
-                TouchPoint currentPoint = new()
-                {
-                    Attribute = attribute,
-
+                    Attribute = TouchAttribute.None,
                     X = (uint)touchPosition.X,
                     Y = (uint)touchPosition.Y,
-
-                    // Placeholder values till more data is acquired
                     DiameterX = 10,
                     DiameterY = 10,
                     Angle = 90,
+                    FingerId = 0
                 };
-
-                _device.Hid.Touchscreen.Update(currentPoint);
-
-                _wasClicking = isClicking;
-
-                return true;
+                
+                _device.Hid.Touchscreen.Update(point);
             }
-
-            return false;
+            else
+            {
+                // 发送结束触摸事件
+                TouchPoint endPoint = new()
+                {
+                    Attribute = TouchAttribute.End,
+                    X = (uint)_lastPosition.X,
+                    Y = (uint)_lastPosition.Y,
+                    DiameterX = 10,
+                    DiameterY = 10,
+                    Angle = 90,
+                    FingerId = 0
+                };
+                
+                _device.Hid.Touchscreen.Update(endPoint);
+            }
+            
+            _device.Hid.Touchscreen.Update();
         }
 
         public void Dispose()
