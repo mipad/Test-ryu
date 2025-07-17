@@ -58,25 +58,6 @@ namespace Ryujinx.HLE.Loaders.Executables
             Name = name;
             BuildId = reader.Header.ModuleId;
 
-            // === 修复：构建ID日志（安全访问Array32<byte>）===
-            byte[] buildIdBytes = new byte[32];
-            for (int i = 0; i < 32; i++)
-            {
-                buildIdBytes[i] = BuildId[i]; // 使用索引器直接访问
-            }
-            
-            string buildIdStr = BitConverter.ToString(buildIdBytes).Replace("-", "");
-            
-            Logger.Info?.Print(LogClass.Loader, 
-                $"{Name} Build ID: {buildIdStr}");
-            
-            // 检测已知问题构建
-            if (buildIdStr == "2F1967113A281280A48CE3FC6DC23049327BF924")
-            {
-                Logger.Warning?.Print(LogClass.Loader,
-                    "Known problematic build detected! Enforcing compatibility mode");
-            }
-
             PrintRoSectionInfo();
         }
 
@@ -89,25 +70,6 @@ namespace Ryujinx.HLE.Loaders.Executables
             reader.ReadSegment(segmentType, span).ThrowIfFailure();
 
             return uncompressedSize;
-        }
-
-        // === 字节模式搜索方法 ===
-        private int SearchPattern(Span<byte> data, byte[] pattern)
-        {
-            for (int i = 0; i <= data.Length - pattern.Length; i++)
-            {
-                bool match = true;
-                for (int j = 0; j < pattern.Length; j++)
-                {
-                    if (data[i + j] != pattern[j])
-                    {
-                        match = false;
-                        break;
-                    }
-                }
-                if (match) return i;
-            }
-            return -1;
         }
 
         private void PrintRoSectionInfo()
@@ -137,13 +99,10 @@ namespace Ryujinx.HLE.Loaders.Executables
 
             stringBuilder.AppendLine($"    Module: {modulePath}");
 
-            // === 精确SDK版本检测 ===
-            string sdkVersion = null;
             Match fsSdkMatch = FsSdkRegex().Match(rawTextBuffer);
             if (fsSdkMatch.Success)
             {
-                sdkVersion = fsSdkMatch.Groups[1].Value; // 提取版本号
-                stringBuilder.AppendLine($"    FS SDK Version: {sdkVersion}");
+                stringBuilder.AppendLine($"    FS SDK Version: {fsSdkMatch.Value.Replace("sdk_version: ", "")}");
             }
 
             MatchCollection sdkMwMatches = SdkMwRegex().Matches(rawTextBuffer);
@@ -153,20 +112,6 @@ namespace Ryujinx.HLE.Loaders.Executables
                 string libContent = string.Join($"\n{new string(' ', libHeader.Length)}", sdkMwMatches);
 
                 stringBuilder.AppendLine($"{libHeader}{libContent}");
-            }
-
-            // 检测不兼容的SDK版本
-            if (sdkVersion == "16.2.0")
-            {
-                Logger.Warning?.Print(LogClass.Loader, 
-                    $"Potential SDK compatibility issue detected in {Name} (v{sdkVersion})");
-                
-                // === 应用热修复 ===
-                if (ApplySdkWorkaround(sdkVersion))
-                {
-                    Logger.Info?.Print(LogClass.Loader, 
-                        "Applied SDK 16.2.0 compatibility workaround");
-                }
             }
 
             if (stringBuilder.Length > 0)
