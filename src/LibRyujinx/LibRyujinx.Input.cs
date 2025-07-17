@@ -9,7 +9,7 @@ using Ryujinx.HLE;
 using Ryujinx.HLE.HOS.Services.Hid;
 using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.TouchScreen;
 using Ryujinx.Input;
-using Ryujinx.Input.HLE; // 添加缺失的命名空间
+using Ryujinx.Input.HLE;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -30,7 +30,7 @@ namespace LibRyujinx
         private static VirtualTouchScreenDriver? _touchScreenDriver;
         private static InputManager? _inputManager;
         private static NpadManager? _npadManager;
-        private static TouchScreenManager? _touchScreenManager; // 添加触摸屏管理器字段
+        private static TouchScreenManager? _touchScreenManager;
         private static InputConfig[] _configs;
         private static float _aspectRatio = 1.0f;
 
@@ -45,24 +45,24 @@ namespace LibRyujinx
             _configs = new InputConfig[4];
             _virtualTouchScreen = new VirtualTouchScreen();
             
-            // 计算并存储初始宽高比
             _aspectRatio = width > 0 && height > 0 ? (float)width / height : 1.0f;
             _virtualTouchScreen.ClientSize = new Size(width, height);
             
             _touchScreenDriver = new VirtualTouchScreenDriver(_virtualTouchScreen);
             _inputManager = new InputManager(null, _gamepadDriver);
             
-            // 明确设置触摸屏为鼠标设备
             _inputManager.SetMouseDriver(_touchScreenDriver);
             
             _npadManager = _inputManager.CreateNpadManager();
             SwitchDevice!.InputManager = _inputManager;
 
-            _touchScreenManager = _inputManager.CreateTouchScreenManager(); // 保存到字段
+            _touchScreenManager = _inputManager.CreateTouchScreenManager();
             
             if (SwitchDevice!.EmulationContext != null)
             {
                 _touchScreenManager.Initialize(SwitchDevice.EmulationContext);
+                // 设置触摸屏尺寸
+                _touchScreenManager.SetSize(width, height);
             }
             else
             {
@@ -78,17 +78,22 @@ namespace LibRyujinx
             {
                 _virtualTouchScreen.ClientSize = new Size(width, height);
                 _aspectRatio = width > 0 && height > 0 ? (float)width / height : 1.0f;
+                
+                // 更新触摸屏管理器尺寸
+                _touchScreenManager?.SetSize(width, height);
             }
         }
 
         public static void SetTouchPoint(int x, int y)
         {
             _virtualTouchScreen?.SetPosition(x, y);
+            _touchScreenManager?.SetTouch(x, y); // 通知触摸屏管理器
         }
 
         public static void ReleaseTouchPoint()
         {
             _virtualTouchScreen?.ReleaseTouch();
+            _touchScreenManager?.ReleaseTouch(); // 通知触摸屏管理器
         }
 
         public static void SetButtonPressed(GamepadButtonInputId button, int id)
@@ -106,7 +111,6 @@ namespace LibRyujinx
             _gamepadDriver?.SetAccelerometerData(accel, id);
         }
 
-        // 修正方法名拼写错误
         public static void SetGyroData(Vector3 gyro, int id)
         {
             _gamepadDriver?.SetGyroData(gyro, id);
@@ -127,7 +131,6 @@ namespace LibRyujinx
             {
                 var config = CreateDefaultInputConfig();
                 config.Id = gamepad.Id;
-                // 使用完整命名空间
                 config.PlayerIndex = (Ryujinx.Common.Configuration.Hid.PlayerIndex)index;
                 _configs[index] = config;
             }
@@ -143,7 +146,6 @@ namespace LibRyujinx
                 Version = InputConfig.CurrentVersion,
                 Backend = InputBackendType.GamepadSDL2,
                 Id = null,
-                // 使用完整命名空间
                 ControllerType = Ryujinx.Common.Configuration.Hid.ControllerType.ProController,
                 DeadzoneLeft = 0.1f,
                 DeadzoneRight = 0.1f,
@@ -209,6 +211,8 @@ namespace LibRyujinx
         public static void UpdateInput()
         {
             _npadManager?.Update(_aspectRatio);
+            _touchScreenManager?.Update(); // 更新触摸屏状态
+            
             if (SwitchDevice?.EmulationContext?.Hid != null)
             {
                 SwitchDevice.EmulationContext.Hid.Touchscreen.Update();
@@ -261,6 +265,11 @@ namespace LibRyujinx
                     CurrentPosition = _activeTouches[_primaryTouchId];
                 }
             }
+        }
+
+        public void SetSize(int width, int height)
+        {
+            ClientSize = new Size(width, height);
         }
 
         public Vector3 GetMotionData(MotionInputId inputId) => Vector3.Zero;
@@ -367,7 +376,6 @@ namespace LibRyujinx
             }
         }
 
-        // 修正方法名拼写错误
         public void SetGyroData(Vector3 gyro, int deviceId)
         {
             if (_gamePads.TryGetValue(deviceId, out var gamePad))
@@ -447,5 +455,16 @@ namespace LibRyujinx
         }
 
         public Ryujinx.Input.GamepadStateSnapshot GetStateSnapshot() => default;
+    }
+    
+    public static class TouchScreenManagerExtensions
+    {
+        public static void SetSize(this TouchScreenManager manager, int width, int height)
+        {
+            if (manager != null && manager._mouse is VirtualTouchScreen touchScreen)
+            {
+                touchScreen.SetSize(width, height);
+            }
+        }
     }
 }
