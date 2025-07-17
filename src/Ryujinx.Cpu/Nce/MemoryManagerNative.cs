@@ -1,4 +1,4 @@
-using ARMeilleure.Memory;
+﻿using ARMeilleure.Memory;
 using Ryujinx.Memory;
 using Ryujinx.Memory.Range;
 using Ryujinx.Memory.Tracking;
@@ -151,22 +151,6 @@ namespace Ryujinx.Cpu.Nce
         public bool IsRangeMapped(ulong va, ulong size)
         {
             AssertValidAddressAndSize(va, size);
-
-            return _pages.IsRangeMapped(va, size);
-        }
-
-        /// <inheritdoc/>
-        public bool IsRangeMappedSafe(ulong va, ulong size)
-        {
-            if (size == 0UL)
-            {
-                return true;
-            }
-
-            if (!ValidateAddressAndSize(va, size))
-            {
-                return false;
-            }
 
             return _pages.IsRangeMapped(va, size);
         }
