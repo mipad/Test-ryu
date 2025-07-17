@@ -87,7 +87,7 @@ namespace LibRyujinx
         public static void SetTouchPoint(int x, int y)
         {
             _virtualTouchScreen?.SetPosition(x, y);
-            _touchScreenManager?.SetTouch(x, y); // 通知触摸屏管理器
+            _touchScreenManager?.SetTouchPoint(x, y); // 通知触摸屏管理器
         }
 
         public static void ReleaseTouchPoint()
@@ -211,7 +211,7 @@ namespace LibRyujinx
         public static void UpdateInput()
         {
             _npadManager?.Update(_aspectRatio);
-            _touchScreenManager?.Update(); // 更新触摸屏状态
+            _touchScreenManager?.Update(_aspectRatio); // 更新触摸屏状态，传递宽高比
             
             if (SwitchDevice?.EmulationContext?.Hid != null)
             {
@@ -459,9 +459,9 @@ namespace LibRyujinx
     
     public static class TouchScreenManagerExtensions
     {
-        public static void SetSize(this TouchScreenManager manager, int width, int height)
+        public static void SetSize(this Ryujinx.Input.HLE.TouchScreenManager manager, int width, int height)
         {
-            if (manager != null && manager._mouse is VirtualTouchScreen touchScreen)
+            if (manager != null && manager.GetType().GetField("_mouse", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(manager) is VirtualTouchScreen touchScreen)
             {
                 touchScreen.SetSize(width, height);
             }
