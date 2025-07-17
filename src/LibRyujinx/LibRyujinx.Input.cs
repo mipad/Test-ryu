@@ -2,7 +2,7 @@ using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Configuration.Hid;
 using Ryujinx.Common.Configuration.Hid.Controller;
 using Ryujinx.Common.Configuration.Hid.Controller.Motion;
-using Ryujinx.Common.Logging; // 添加日志命名空间
+using Ryujinx.Common.Logging;
 using Ryujinx.Common.Memory;
 using Ryujinx.HLE;
 using Ryujinx.HLE.HOS.Services.Hid;
@@ -243,16 +243,16 @@ namespace LibRyujinx
         public string Name => "AvaloniaMouse";
 
         public bool IsConnected => true;
-        public GamepadFeaturesFlag Features => GamepadFeaturesFlag.None; // 修改为返回None
+        public GamepadFeaturesFlag Features => GamepadFeaturesFlag.None;
 
         public void Dispose()
         {
             // 清理资源
         }
 
-        public GamepadStateSnapshot GetMappedStateSnapshot()
+        public Ryujinx.Input.GamepadStateSnapshot GetMappedStateSnapshot()
         {
-            return new GamepadStateSnapshot();
+            return default;
         }
 
         public void SetPosition(int x, int y, int touchId = 0)
@@ -293,21 +293,9 @@ namespace LibRyujinx
             return Scroll;
         }
 
-        public GamepadStateSnapshot GetStateSnapshot()
+        public Ryujinx.Input.GamepadStateSnapshot GetStateSnapshot()
         {
-            var snapshot = new GamepadStateSnapshot();
-            
-            // 添加触摸状态到快照
-            if (Buttons[0]) 
-            {
-                snapshot.SetTouchState(0, CurrentPosition.X, CurrentPosition.Y);
-            }
-            else
-            {
-                snapshot.ClearTouchState();
-            }
-            
-            return snapshot;
+            return default;
         }
 
         public (float, float) GetStick(StickInputId inputId)
@@ -499,7 +487,7 @@ namespace LibRyujinx
             _driver = driver;
             Id = id.ToString();
             IdInt = id;
-            IsConnected = true; // 设置为已连接
+            IsConnected = true;
         }
 
         public void Dispose() { }
@@ -556,9 +544,9 @@ namespace LibRyujinx
             // 无需实现
         }
 
-        public GamepadStateSnapshot GetMappedStateSnapshot()
+        public Ryujinx.Input.GamepadStateSnapshot GetMappedStateSnapshot()
         {
-            GamepadStateSnapshot result = default;
+            Ryujinx.Input.GamepadStateSnapshot result = default;
 
             foreach (var button in Enum.GetValues<GamepadButtonInputId>())
             {
@@ -577,80 +565,10 @@ namespace LibRyujinx
             return result;
         }
 
-        public GamepadStateSnapshot GetStateSnapshot()
+        public Ryujinx.Input.GamepadStateSnapshot GetStateSnapshot()
         {
-            return new GamepadStateSnapshot();
+            return default;
         }
-    }
-    
-    /// <summary>
-    /// 扩展 GamepadStateSnapshot 以支持触摸状态
-    /// </summary>
-    public struct GamepadStateSnapshot
-    {
-        // 游戏手柄状态
-        private Array3<Array2<float>> _joysticksState;
-        private Array28<bool> _buttonsState;
-        
-        // 触摸状态 (最多支持10个触摸点)
-        private Array10<TouchPointState> _touchState;
-
-        /// <summary>
-        /// 设置触摸状态
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void SetTouchState(int index, float x, float y)
-        {
-            if (index >= 0 && index < 10)
-            {
-                _touchState[index] = new TouchPointState
-                {
-                    IsActive = true,
-                    X = x,
-                    Y = y
-                };
-            }
-        }
-
-        /// <summary>
-        /// 清除所有触摸状态
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void ClearTouchState()
-        {
-            for (int i = 0; i < 10; i++)
-            {
-                _touchState[i] = default;
-            }
-        }
-
-        // 其他现有方法保持不变...
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool IsPressed(GamepadButtonInputId inputId) => _buttonsState[(int)inputId];
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void SetPressed(GamepadButtonInputId inputId, bool value) => _buttonsState[(int)inputId] = value;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public (float, float) GetStick(StickInputId inputId)
-        {
-            var result = _joysticksState[(int)inputId];
-            return (result[0], result[1]);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void SetStick(StickInputId inputId, float x, float y)
-        {
-            _joysticksState[(int)inputId][0] = x;
-            _joysticksState[(int)inputId][1] = y;
-        }
-    }
-    
-    public struct TouchPointState
-    {
-        public bool IsActive { get; set; }
-        public float X { get; set; }
-        public float Y { get; set; }
     }
 
     public class TouchScreenManager : IDisposable
