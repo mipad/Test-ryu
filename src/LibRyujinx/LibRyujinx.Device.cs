@@ -1,3 +1,4 @@
+// LibRyujinx.Device.cs
 using LibHac.Ncm;
 using LibHac.Tools.FsSystem.NcaUtils;
 using Microsoft.Win32.SafeHandles;
@@ -200,6 +201,7 @@ namespace LibRyujinx
             _npadManager?.Dispose();
             _npadManager = null;
 
+            // 现在_touchScreenManager字段已在部分类中定义
             _touchScreenManager?.Dispose();
             _touchScreenManager = null;
 
