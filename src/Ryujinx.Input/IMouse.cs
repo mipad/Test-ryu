@@ -60,57 +60,16 @@ namespace Ryujinx.Input
         /// <param name="mousePosition">The position of the mouse in the client</param>
         /// <param name="clientSize">The size of the client</param>
         /// <param name="aspectRatio">The aspect ratio of the view</param>
-        /// <param name="isStretched">Whether the display is stretched to fill the screen</param>
-        /// <returns>The screen position adjusted for the display mode</returns>
-        public static Vector2 GetScreenPosition(Vector2 mousePosition, Size clientSize, float aspectRatio, bool isStretched)
+        /// <returns>A snaphost of the state of the mouse.</returns>
+        public static Vector2 GetScreenPosition(Vector2 mousePosition, Size clientSize, float aspectRatio)
         {
             float mouseX = mousePosition.X;
             float mouseY = mousePosition.Y;
-            
-            // 拉伸模式处理：直接按比例缩放
-            if (isStretched)
-            {
-                float scaleX = (float)SwitchPanelWidth / clientSize.Width;
-                float scaleY = (float)SwitchPanelHeight / clientSize.Height;
-                return new Vector2(mouseX * scaleX, mouseY * scaleY);
-            }
 
-            // 非拉伸模式处理：保持宽高比（带黑边）
-            float aspectWidth = SwitchPanelHeight * aspectRatio;
-
-            int screenWidth = clientSize.Width;
-            int screenHeight = clientSize.Height;
-
-            if (clientSize.Width > clientSize.Height * aspectWidth / SwitchPanelHeight)
-            {
-                screenWidth = (int)(clientSize.Height * aspectWidth) / SwitchPanelHeight;
-            }
-            else
-            {
-                screenHeight = (clientSize.Width * SwitchPanelHeight) / (int)aspectWidth;
-            }
-
-            int startX = (clientSize.Width - screenWidth) >> 1;
-            int startY = (clientSize.Height - screenHeight) >> 1;
-
-            int endX = startX + screenWidth;
-            int endY = startY + screenHeight;
-
-            if (mouseX >= startX &&
-                mouseY >= startY &&
-                mouseX < endX &&
-                mouseY < endY)
-            {
-                int screenMouseX = (int)mouseX - startX;
-                int screenMouseY = (int)mouseY - startY;
-
-                mouseX = (screenMouseX * (int)aspectWidth) / screenWidth;
-                mouseY = (screenMouseY * SwitchPanelHeight) / screenHeight;
-
-                return new Vector2(mouseX, mouseY);
-            }
-
-            return new Vector2();
+            // 强制拉伸模式：直接按比例缩放
+            float scaleX = (float)SwitchPanelWidth / clientSize.Width;
+            float scaleY = (float)SwitchPanelHeight / clientSize.Height;
+            return new Vector2(mouseX * scaleX, mouseY * scaleY);
         }
     }
 }
