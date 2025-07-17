@@ -104,9 +104,9 @@ namespace LibRyujinx
             _gamepadDriver?.SetAccelerometerData(accel, id);
         }
 
-        public static void SetGyroData(Vector3 gyro, int id)
+        public static void SetGryoData(Vector3 gyro, int id)
         {
-            _gamepadDriver?.SetGyroData(gyro, id);
+            _gamepadDriver?.SetGryoData(gyro, id);
         }
 
         public static void SetStickAxis(StickInputId stick, Vector2 axes, int deviceId)
@@ -362,7 +362,7 @@ namespace LibRyujinx
             }
         }
 
-        public void SetGyroData(Vector3 gyro, int deviceId)
+        public void SetGryoData(Vector3 gyro, int deviceId)
         {
             if (_gamePads.TryGetValue(deviceId, out var gamePad))
             {
