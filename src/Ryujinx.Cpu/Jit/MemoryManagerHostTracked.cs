@@ -336,21 +336,6 @@ namespace Ryujinx.Cpu.Jit
             return _pages.IsRangeMapped(va, size);
         }
 
-        public bool IsRangeMappedSafe(ulong va, ulong size)
-        {
-            if (size == 0UL)
-            {
-                return true;
-            }
-
-            if (!ValidateAddressAndSize(va, size))
-            {
-                return false;
-            }
-
-            return _pages.IsRangeMapped(va, size);
-        }
-
         private bool TryGetVirtualContiguous(ulong va, int size, out MemoryBlock memory, out ulong offset)
         {
             if (_addressSpace.HasAnyPrivateAllocation(va, (ulong)size, out PrivateRange range))
