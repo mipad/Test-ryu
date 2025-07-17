@@ -107,9 +107,9 @@ namespace LibRyujinx
         }
 
         // 修正方法名拼写错误
-        public static void SetGryoData(Vector3 gyro, int id)
+        public static void SetGyroData(Vector3 gyro, int id)
         {
-            _gamepadDriver?.SetGryoData(gyro, id);
+            _gamepadDriver?.SetGyroData(gyro, id);
         }
 
         public static void SetStickAxis(StickInputId stick, Vector2 axes, int deviceId)
@@ -368,7 +368,7 @@ namespace LibRyujinx
         }
 
         // 修正方法名拼写错误
-        public void SetGryoData(Vector3 gyro, int deviceId)
+        public void SetGyroData(Vector3 gyro, int deviceId)
         {
             if (_gamePads.TryGetValue(deviceId, out var gamePad))
             {
