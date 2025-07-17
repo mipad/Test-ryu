@@ -2,6 +2,7 @@ using Ryujinx.Input;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using System.Numerics;
 
 namespace LibRyujinx
@@ -53,7 +54,6 @@ namespace LibRyujinx
             }
         }
 
-        // 添加设置尺寸的方法
         public void SetSize(int width, int height)
         {
             ClientSize = new Size(width, height);
