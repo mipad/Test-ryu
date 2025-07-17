@@ -12,6 +12,7 @@ namespace Ryujinx.Input.HLE
         private Switch _device;
         private bool _isTouching = false;
         private Vector2 _lastPosition = Vector2.Zero;
+        private bool _shouldSendEndEvent = false;
 
         public TouchScreenManager(IMouse mouse)
         {
@@ -23,23 +24,21 @@ namespace Ryujinx.Input.HLE
             _device = device;
         }
 
-        // 添加设置触摸点的方法
         public void SetTouchPoint(int x, int y)
         {
             _isTouching = true;
             _lastPosition = new Vector2(x, y);
+            _shouldSendEndEvent = true; // 准备发送结束事件
         }
 
-        // 添加释放触摸点的方法
         public void ReleaseTouch()
         {
             _isTouching = false;
         }
 
-        // 修改 Update 方法
         public void Update(float aspectRatio = 0)
         {
-            if (aspectRatio <= 0) 
+            if (aspectRatio <= 0 || _device?.Hid?.Touchscreen == null)
                 return;
             
             if (_isTouching)
@@ -49,18 +48,18 @@ namespace Ryujinx.Input.HLE
                 
                 TouchPoint point = new()
                 {
-                    Attribute = TouchAttribute.None,
+                    Attribute = _shouldSendEndEvent ? TouchAttribute.Start : TouchAttribute.None,
                     X = (uint)touchPosition.X,
                     Y = (uint)touchPosition.Y,
                     DiameterX = 10,
                     DiameterY = 10,
-                    Angle = 90,
-                    FingerId = 0
+                    Angle = 90
                 };
                 
                 _device.Hid.Touchscreen.Update(point);
+                _shouldSendEndEvent = false; // 已发送开始事件
             }
-            else
+            else if (_shouldSendEndEvent)
             {
                 // 发送结束触摸事件
                 TouchPoint endPoint = new()
@@ -70,11 +69,11 @@ namespace Ryujinx.Input.HLE
                     Y = (uint)_lastPosition.Y,
                     DiameterX = 10,
                     DiameterY = 10,
-                    Angle = 90,
-                    FingerId = 0
+                    Angle = 90
                 };
                 
                 _device.Hid.Touchscreen.Update(endPoint);
+                _shouldSendEndEvent = false; // 已发送结束事件
             }
             
             _device.Hid.Touchscreen.Update();
