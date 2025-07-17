@@ -2,6 +2,11 @@ using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Configuration.Hid;
 using Ryujinx.Common.Configuration.Hid.Controller;
 using Ryujinx.Common.Configuration.Hid.Controller.Motion;
+using Ryujinx.Common.Logging; // 添加日志命名空间
+using Ryujinx.Common.Memory;
+using Ryujinx.HLE;
+using Ryujinx.HLE.HOS.Services.Hid;
+using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.TouchScreen;
 using Ryujinx.Input;
 using Ryujinx.Input.HLE;
 using System;
@@ -9,6 +14,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using ConfigGamepadInputId = Ryujinx.Common.Configuration.Hid.Controller.GamepadInputId;
 using ConfigStickInputId = Ryujinx.Common.Configuration.Hid.Controller.StickInputId;
@@ -237,16 +243,16 @@ namespace LibRyujinx
         public string Name => "AvaloniaMouse";
 
         public bool IsConnected => true;
-        public GamepadFeaturesFlag Features => throw new NotImplementedException();
+        public GamepadFeaturesFlag Features => GamepadFeaturesFlag.None; // 修改为返回None
 
         public void Dispose()
         {
-
+            // 清理资源
         }
 
         public GamepadStateSnapshot GetMappedStateSnapshot()
         {
-            throw new NotImplementedException();
+            return new GamepadStateSnapshot();
         }
 
         public void SetPosition(int x, int y, int touchId = 0)
@@ -274,7 +280,7 @@ namespace LibRyujinx
 
         public Vector3 GetMotionData(MotionInputId inputId)
         {
-            throw new NotImplementedException();
+            return Vector3.Zero;
         }
 
         public Vector2 GetPosition()
@@ -287,7 +293,6 @@ namespace LibRyujinx
             return Scroll;
         }
 
-        // 修复5：实现关键的状态快照方法
         public GamepadStateSnapshot GetStateSnapshot()
         {
             var snapshot = new GamepadStateSnapshot();
@@ -305,34 +310,34 @@ namespace LibRyujinx
             return snapshot;
         }
 
-        public (float, float) GetStick(Ryujinx.Input.StickInputId inputId)
+        public (float, float) GetStick(StickInputId inputId)
         {
-            throw new NotImplementedException();
+            return (0, 0);
         }
 
         public bool IsButtonPressed(MouseButton button)
         {
-            return Buttons[0];
+            return button == MouseButton.Button1 && Buttons[0];
         }
 
         public bool IsPressed(GamepadButtonInputId inputId)
         {
-            throw new NotImplementedException();
+            return false;
         }
 
         public void Rumble(float lowFrequency, float highFrequency, uint durationMs)
         {
-            throw new NotImplementedException();
+            // 无需实现
         }
 
         public void SetConfiguration(InputConfig configuration)
         {
-            throw new NotImplementedException();
+            // 无需实现
         }
 
         public void SetTriggerThreshold(float triggerThreshold)
         {
-            throw new NotImplementedException();
+            // 无需实现
         }
     }
 
@@ -364,7 +369,7 @@ namespace LibRyujinx
 
         public void Dispose()
         {
-
+            // 清理资源
         }
 
         public IGamepad GetGamepad(string id)
@@ -421,16 +426,21 @@ namespace LibRyujinx
         public void Dispose()
         {
             Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
         public IGamepad GetGamepad(string id)
         {
-            return _gamePads[int.Parse(id)];
+            if (int.TryParse(id, out int idInt))
+            {
+                return _gamePads.TryGetValue(idInt, out var gamePad) ? gamePad : null;
+            }
+            return null;
         }
 
         public IGamepad GetGamepad(int index)
         {
-            return _gamePads[index];
+            return _gamePads.TryGetValue(index, out var gamePad) ? gamePad : null;
         }
 
         public void SetStickAxis(StickInputId stick, Vector2 axes, int deviceId)
@@ -489,6 +499,7 @@ namespace LibRyujinx
             _driver = driver;
             Id = id.ToString();
             IdInt = id;
+            IsConnected = true; // 设置为已连接
         }
 
         public void Dispose() { }
@@ -498,8 +509,8 @@ namespace LibRyujinx
 
         internal readonly int IdInt;
 
-        public string Name => Id;
-        public bool IsConnected { get; }
+        public string Name => $"Virtual Gamepad {Id}";
+        public bool IsConnected { get; private set; } = true;
         public Vector2[] StickInputs { get => _stickInputs; set => _stickInputs = value; }
         public bool[] ButtonInputs { get => _buttonInputs; set => _buttonInputs = value; }
         public Vector3 Accelerometer { get; internal set; }
@@ -513,7 +524,6 @@ namespace LibRyujinx
         public (float, float) GetStick(StickInputId inputId)
         {
             var v = _stickInputs[(int)inputId];
-
             return (v.X, v.Y);
         }
 
@@ -523,7 +533,7 @@ namespace LibRyujinx
                 return Accelerometer;
             else if (inputId == MotionInputId.Gyroscope)
                 return RadToDegree(Gyro);
-            return new Vector3();
+            return Vector3.Zero;
         }
 
         private static Vector3 RadToDegree(Vector3 rad)
@@ -570,6 +580,186 @@ namespace LibRyujinx
         public GamepadStateSnapshot GetStateSnapshot()
         {
             return new GamepadStateSnapshot();
+        }
+    }
+    
+    /// <summary>
+    /// 扩展 GamepadStateSnapshot 以支持触摸状态
+    /// </summary>
+    public struct GamepadStateSnapshot
+    {
+        // 游戏手柄状态
+        private Array3<Array2<float>> _joysticksState;
+        private Array28<bool> _buttonsState;
+        
+        // 触摸状态 (最多支持10个触摸点)
+        private Array10<TouchPointState> _touchState;
+
+        /// <summary>
+        /// 设置触摸状态
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SetTouchState(int index, float x, float y)
+        {
+            if (index >= 0 && index < 10)
+            {
+                _touchState[index] = new TouchPointState
+                {
+                    IsActive = true,
+                    X = x,
+                    Y = y
+                };
+            }
+        }
+
+        /// <summary>
+        /// 清除所有触摸状态
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void ClearTouchState()
+        {
+            for (int i = 0; i < 10; i++)
+            {
+                _touchState[i] = default;
+            }
+        }
+
+        // 其他现有方法保持不变...
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool IsPressed(GamepadButtonInputId inputId) => _buttonsState[(int)inputId];
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SetPressed(GamepadButtonInputId inputId, bool value) => _buttonsState[(int)inputId] = value;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public (float, float) GetStick(StickInputId inputId)
+        {
+            var result = _joysticksState[(int)inputId];
+            return (result[0], result[1]);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SetStick(StickInputId inputId, float x, float y)
+        {
+            _joysticksState[(int)inputId][0] = x;
+            _joysticksState[(int)inputId][1] = y;
+        }
+    }
+    
+    public struct TouchPointState
+    {
+        public bool IsActive { get; set; }
+        public float X { get; set; }
+        public float Y { get; set; }
+    }
+
+    public class TouchScreenManager : IDisposable
+    {
+        private readonly IMouse _mouse;
+        private Switch _device;
+        private bool _wasClicking;
+
+        public TouchScreenManager(IMouse mouse)
+        {
+            _mouse = mouse;
+        }
+
+        public void Initialize(Switch device)
+        {
+            _device = device;
+        }
+        
+        // 添加 UpdateSingleTouch 方法实现
+        public void UpdateSingleTouch(float x, float y)
+        {
+            if (_device?.EmulationContext?.Hid?.Touchscreen == null) return;
+            
+            var aspectRatio = GraphicsConfiguration.AspectRatio.ToFloat();
+            var touchPosition = IMouse.GetScreenPosition(new Vector2(x, y), _mouse.ClientSize, aspectRatio);
+
+            var currentPoint = new TouchPoint
+            {
+                Attribute = _wasClicking ? TouchAttribute.None : TouchAttribute.Start,
+                X = (uint)touchPosition.X,
+                Y = (uint)touchPosition.Y,
+                DiameterX = 10,
+                DiameterY = 10,
+                Angle = 90,
+            };
+
+            _device.Hid.Touchscreen.Update(currentPoint);
+            _wasClicking = true;
+        }
+
+        public bool Update(bool isFocused, bool isClicking = false, float aspectRatio = 0)
+        {
+            if (_device?.EmulationContext?.Hid?.Touchscreen == null)
+            {
+                return false;
+            }
+
+            if (!isFocused || (!_wasClicking && !isClicking))
+            {
+                if (_wasClicking && !isClicking)
+                {
+                    MouseStateSnapshot snapshot = IMouse.GetMouseStateSnapshot(_mouse);
+                    var touchPosition = IMouse.GetScreenPosition(snapshot.Position, _mouse.ClientSize, aspectRatio);
+
+                    TouchPoint currentPoint = new()
+                    {
+                        Attribute = TouchAttribute.End,
+                        X = (uint)touchPosition.X,
+                        Y = (uint)touchPosition.Y,
+                        DiameterX = 10,
+                        DiameterY = 10,
+                        Angle = 90,
+                    };
+
+                    _device.Hid.Touchscreen.Update(currentPoint);
+                }
+
+                _wasClicking = false;
+                _device.Hid.Touchscreen.Update();
+                return false;
+            }
+
+            if (aspectRatio > 0)
+            {
+                MouseStateSnapshot snapshot = IMouse.GetMouseStateSnapshot(_mouse);
+                var touchPosition = IMouse.GetScreenPosition(snapshot.Position, _mouse.ClientSize, aspectRatio);
+
+                TouchAttribute attribute = TouchAttribute.None;
+
+                if (!_wasClicking && isClicking)
+                {
+                    attribute = TouchAttribute.Start;
+                }
+                else if (_wasClicking && !isClicking)
+                {
+                    attribute = TouchAttribute.End;
+                }
+
+                TouchPoint currentPoint = new()
+                {
+                    Attribute = attribute,
+                    X = (uint)touchPosition.X,
+                    Y = (uint)touchPosition.Y,
+                    DiameterX = 10,
+                    DiameterY = 10,
+                    Angle = 90,
+                };
+
+                _device.Hid.Touchscreen.Update(currentPoint);
+                _wasClicking = isClicking;
+                return true;
+            }
+
+            return false;
+        }
+
+        public void Dispose()
+        {
+            GC.SuppressFinalize(this);
         }
     }
 }
