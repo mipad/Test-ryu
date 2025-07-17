@@ -226,22 +226,6 @@ namespace Ryujinx.Cpu.AppleHv
         }
 
         /// <inheritdoc/>
-        public bool IsRangeMappedSafe(ulong va, ulong size)
-        {
-            if (size == 0UL)
-            {
-                return true;
-            }
-
-            if (!ValidateAddressAndSize(va, size))
-            {
-                return false;
-            }
-
-            return _pages.IsRangeMapped(va, size);
-        }
-
-        /// <inheritdoc/>
         public IEnumerable<HostMemoryRange> GetHostRegions(ulong va, ulong size)
         {
             if (size == 0)
@@ -403,5 +387,6 @@ namespace Ryujinx.Cpu.AppleHv
 
         protected override nuint TranslateVirtualAddressUnchecked(ulong va)
             => GetPhysicalAddressInternal(va);
+
     }
 }
