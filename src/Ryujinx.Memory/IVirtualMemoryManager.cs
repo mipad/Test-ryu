@@ -200,14 +200,6 @@ namespace Ryujinx.Memory
         bool IsRangeMapped(ulong va, ulong size);
 
         /// <summary>
-        /// Checks if a memory range is mapped without triggering tracking or exceptions.
-        /// </summary>
-        /// <param name="va">Virtual address of the range</param>
-        /// <param name="size">Size of the range in bytes</param>
-        /// <returns>True if the entire range is mapped, false otherwise</returns>
-        bool IsRangeMappedSafe(ulong va, ulong size);
-
-        /// <summary>
         /// Alerts the memory tracking that a given region has been read from or written to.
         /// This should be called before read/write is performed.
         /// </summary>
