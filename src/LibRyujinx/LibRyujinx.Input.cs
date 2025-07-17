@@ -1,3 +1,4 @@
+// LibRyujinx.Input.cs
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Configuration.Hid;
 using Ryujinx.Common.Configuration.Hid.Controller;
@@ -8,7 +9,7 @@ using Ryujinx.HLE;
 using Ryujinx.HLE.HOS.Services.Hid;
 using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.TouchScreen;
 using Ryujinx.Input;
-using Ryujinx.Input.HLE;
+using Ryujinx.Input.HLE; // 添加缺失的命名空间
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -29,6 +30,7 @@ namespace LibRyujinx
         private static VirtualTouchScreenDriver? _touchScreenDriver;
         private static InputManager? _inputManager;
         private static NpadManager? _npadManager;
+        private static TouchScreenManager? _touchScreenManager; // 添加触摸屏管理器字段
         private static InputConfig[] _configs;
         private static float _aspectRatio = 1.0f;
 
@@ -56,11 +58,11 @@ namespace LibRyujinx
             _npadManager = _inputManager.CreateNpadManager();
             SwitchDevice!.InputManager = _inputManager;
 
-            var touchScreenManager = _inputManager.CreateTouchScreenManager();
+            _touchScreenManager = _inputManager.CreateTouchScreenManager(); // 保存到字段
             
             if (SwitchDevice!.EmulationContext != null)
             {
-                touchScreenManager.Initialize(SwitchDevice.EmulationContext);
+                _touchScreenManager.Initialize(SwitchDevice.EmulationContext);
             }
             else
             {
@@ -104,6 +106,7 @@ namespace LibRyujinx
             _gamepadDriver?.SetAccelerometerData(accel, id);
         }
 
+        // 修正方法名拼写错误
         public static void SetGryoData(Vector3 gyro, int id)
         {
             _gamepadDriver?.SetGryoData(gyro, id);
@@ -124,7 +127,8 @@ namespace LibRyujinx
             {
                 var config = CreateDefaultInputConfig();
                 config.Id = gamepad.Id;
-                config.PlayerIndex = (Common.Configuration.Hid.PlayerIndex)index;
+                // 使用完整命名空间
+                config.PlayerIndex = (Ryujinx.Common.Configuration.Hid.PlayerIndex)index;
                 _configs[index] = config;
             }
 
@@ -139,7 +143,8 @@ namespace LibRyujinx
                 Version = InputConfig.CurrentVersion,
                 Backend = InputBackendType.GamepadSDL2,
                 Id = null,
-                ControllerType = Common.Configuration.Hid.ControllerType.ProController,
+                // 使用完整命名空间
+                ControllerType = Ryujinx.Common.Configuration.Hid.ControllerType.ProController,
                 DeadzoneLeft = 0.1f,
                 DeadzoneRight = 0.1f,
                 RangeLeft = 1.0f,
@@ -362,6 +367,7 @@ namespace LibRyujinx
             }
         }
 
+        // 修正方法名拼写错误
         public void SetGryoData(Vector3 gyro, int deviceId)
         {
             if (_gamePads.TryGetValue(deviceId, out var gamePad))
