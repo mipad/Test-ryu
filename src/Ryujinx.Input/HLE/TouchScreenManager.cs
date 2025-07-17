@@ -12,7 +12,7 @@ namespace Ryujinx.Input.HLE
         private Switch _device;
         private bool _isTouching = false;
         private Vector2 _lastPosition = Vector2.Zero;
-        private bool _shouldSendEndEvent = false;
+        private bool _shouldSendStartEvent = false;
 
         public TouchScreenManager(IMouse mouse)
         {
@@ -28,7 +28,7 @@ namespace Ryujinx.Input.HLE
         {
             _isTouching = true;
             _lastPosition = new Vector2(x, y);
-            _shouldSendEndEvent = true; // 准备发送结束事件
+            _shouldSendStartEvent = true;
         }
 
         public void ReleaseTouch()
@@ -46,9 +46,10 @@ namespace Ryujinx.Input.HLE
                 // 计算屏幕位置
                 var touchPosition = IMouse.GetScreenPosition(_lastPosition, _mouse.ClientSize, aspectRatio);
                 
-                TouchPoint point = new()
+                // 根据 TouchPoint 的实际结构创建触摸点
+                TouchPoint point = new TouchPoint
                 {
-                    Attribute = _shouldSendEndEvent ? TouchAttribute.Start : TouchAttribute.None,
+                    Attribute = _shouldSendStartEvent ? TouchAttribute.Start : TouchAttribute.None,
                     X = (uint)touchPosition.X,
                     Y = (uint)touchPosition.Y,
                     DiameterX = 10,
@@ -57,12 +58,12 @@ namespace Ryujinx.Input.HLE
                 };
                 
                 _device.Hid.Touchscreen.Update(point);
-                _shouldSendEndEvent = false; // 已发送开始事件
+                _shouldSendStartEvent = false; // 已发送开始事件
             }
-            else if (_shouldSendEndEvent)
+            else if (_shouldSendStartEvent)
             {
                 // 发送结束触摸事件
-                TouchPoint endPoint = new()
+                TouchPoint endPoint = new TouchPoint
                 {
                     Attribute = TouchAttribute.End,
                     X = (uint)_lastPosition.X,
@@ -73,7 +74,7 @@ namespace Ryujinx.Input.HLE
                 };
                 
                 _device.Hid.Touchscreen.Update(endPoint);
-                _shouldSendEndEvent = false; // 已发送结束事件
+                _shouldSendStartEvent = false; // 已发送结束事件
             }
             
             _device.Hid.Touchscreen.Update();
