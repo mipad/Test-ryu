@@ -86,8 +86,25 @@ namespace LibRyujinx
 
         public static void SetTouchPoint(int x, int y)
         {
-            _virtualTouchScreen?.SetPosition(x, y);
-            _touchScreenManager?.SetTouchPoint(x, y); // 通知触摸屏管理器
+            if (_virtualTouchScreen != null)
+            {
+                // 钳制坐标到屏幕范围内
+                x = Math.Clamp(x, 0, _virtualTouchScreen.ClientSize.Width);
+                y = Math.Clamp(y, 0, _virtualTouchScreen.ClientSize.Height);
+                
+                // 转换为游戏内坐标 (1280x720)
+                Vector2 screenPosition = IMouse.GetScreenPosition(
+                    new Vector2(x, y),
+                    _virtualTouchScreen.ClientSize,
+                    _aspectRatio
+                );
+                
+                int gameX = (int)screenPosition.X;
+                int gameY = (int)screenPosition.Y;
+                
+                _virtualTouchScreen.SetPosition(gameX, gameY);
+                _touchScreenManager?.SetTouchPoint(gameX, gameY);
+            }
         }
 
         public static void ReleaseTouchPoint()
@@ -213,15 +230,18 @@ namespace LibRyujinx
             _npadManager?.Update(_aspectRatio);
             _touchScreenManager?.Update(_aspectRatio); // 更新触摸屏状态，传递宽高比
             
-           // if (SwitchDevice?.EmulationContext?.Hid != null)
-           // {
-           //     SwitchDevice.EmulationContext.Hid.Touchscreen.Update();
-          //  }
+            if (SwitchDevice?.EmulationContext?.Hid != null)
+            {
+                SwitchDevice.EmulationContext.Hid.Touchscreen.Update();
+            }
         }
     }
 
     public class VirtualTouchScreen : IMouse
     {
+        private const int SwitchPanelWidth = 1280;
+        private const int SwitchPanelHeight = 720;
+        
         public Size ClientSize { get; set; }
         public bool[] Buttons { get; }
         private Dictionary<int, Vector2> _activeTouches = new Dictionary<int, Vector2>();
@@ -245,6 +265,10 @@ namespace LibRyujinx
 
         public void SetPosition(int x, int y, int touchId = 0)
         {
+            // 确保坐标在游戏画面范围内
+            x = Math.Clamp(x, 0, SwitchPanelWidth);
+            y = Math.Clamp(y, 0, SwitchPanelHeight);
+            
             _activeTouches[touchId] = new Vector2(x, y);
             _primaryTouchId = touchId;
             Buttons[0] = true;
