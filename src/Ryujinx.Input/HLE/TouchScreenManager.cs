@@ -52,7 +52,8 @@ namespace Ryujinx.Input.HLE
 
         public void Update(float aspectRatio = 0)
         {
-            if (_device?.Hid?.Touchscreen == null || _device.Hid.Touchscreen.IsInvalid)
+            // 修复：移除 IsInvalid 检查，只检查是否为 null
+            if (_device?.Hid?.Touchscreen == null)
                 return;
             
             // 确保宽高比有效
