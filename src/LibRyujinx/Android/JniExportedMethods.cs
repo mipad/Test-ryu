@@ -1,566 +1,445 @@
-using LibRyujinx.Android;
-using LibRyujinx.Jni.Pointers;
-using Ryujinx.Audio.Backends.OpenAL;
-using Ryujinx.Common;
 using Ryujinx.Common.Configuration;
+using Ryujinx.Common.Configuration.Hid;
+using Ryujinx.Common.Configuration.Hid.Controller;
+using Ryujinx.Common.Configuration.Hid.Controller.Motion;
 using Ryujinx.Common.Logging;
-using Ryujinx.Common.Logging.Targets;
-using Ryujinx.HLE.HOS.SystemState;
+using Ryujinx.Common.Memory;
+using Ryujinx.HLE;
+using Ryujinx.HLE.HOS.Services.Hid;
+using Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.TouchScreen;
 using Ryujinx.Input;
-using Silk.NET.Core.Loader;
-using Silk.NET.Vulkan;
-using Silk.NET.Vulkan.Extensions.KHR;
+using Ryujinx.Input.HLE;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading;
+using ConfigGamepadInputId = Ryujinx.Common.Configuration.Hid.Controller.GamepadInputId;
+using ConfigStickInputId = Ryujinx.Common.Configuration.Hid.Controller.StickInputId;
+using StickInputId = Ryujinx.Input.StickInputId;
 
 namespace LibRyujinx
 {
     public static partial class LibRyujinx
     {
-        private static long _surfacePtr;
-        private static long _window = 0;
+        private static VirtualGamepadDriver? _gamepadDriver;
+        private static VirtualTouchScreen? _virtualTouchScreen;
+        private static VirtualTouchScreenDriver? _touchScreenDriver;
+        private static InputManager? _inputManager;
+        private static NpadManager? _npadManager;
+        private static InputConfig[] _configs;
+        private static float _aspectRatio = 1.0f;
 
-        public static VulkanLoader? VulkanLoader { get; private set; }
-
-        [DllImport("libryujinxjni")]
-        internal extern static void setRenderingThread();
-
-        [DllImport("libryujinxjni")]
-        internal extern static void debug_break(int code);
-
-        [DllImport("libryujinxjni")]
-        internal extern static void setCurrentTransform(long native_window, int transform);
-
-        public delegate IntPtr JniCreateSurface(IntPtr native_surface, IntPtr instance);
-
-        [UnmanagedCallersOnly(EntryPoint = "javaInitialize")]
-        public unsafe static bool JniInitialize(IntPtr jpathId, IntPtr jniEnv)
+        public static void InitializeInput(int width, int height)
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            PlatformInfo.IsBionic = true;
-
-            Logger.AddTarget(
-                new AsyncLogTargetWrapper(
-                    new AndroidLogTarget("RyujinxLog"),
-                    1000,
-                    AsyncLogTargetOverflowAction.Block
-                ));
-
-            var path = Marshal.PtrToStringAnsi(jpathId);
-
-            var init = Initialize(path);
-
-            Interop.Initialize(new JEnvRef(jniEnv));
-
-            Interop.Test();
-
-            return init;
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "deviceReloadFilesystem")]
-        public static void JnaReloadFileSystem()
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            SwitchDevice?.ReloadFileSystem();
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "deviceInitialize")]
-        public static bool JnaDeviceInitialize(bool isHostMapped,
-                                                    bool useNce,
-                                                    int systemLanguage,
-                                                    int regionCode,
-                                                    bool enableVsync,
-                                                    bool enableDockedMode,
-                                                    bool enablePtc,
-                                                    bool enableInternetAccess,
-                                                    IntPtr timeZonePtr,
-                                                    bool ignoreMissingServices)
-        {
-            debug_break(4);
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            AudioDriver = new OpenALHardwareDeviceDriver();
-
-            var timezone = Marshal.PtrToStringAnsi(timeZonePtr);
-            return InitializeDevice(isHostMapped,
-                                    useNce,
-                                    (SystemLanguage)systemLanguage,
-                                    (RegionCode)regionCode,
-                                    enableVsync,
-                                    enableDockedMode,
-                                    enablePtc,
-                                    enableInternetAccess,
-                                    timezone,
-                                    ignoreMissingServices);
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "deviceGetGameFifo")]
-        public static double JnaGetGameFifo()
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            var stats = SwitchDevice?.EmulationContext?.Statistics.GetFifoPercent() ?? 0;
-
-            return stats;
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "deviceGetGameFrameTime")]
-        public static double JnaGetGameFrameTime()
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            var stats = SwitchDevice?.EmulationContext?.Statistics.GetGameFrameTime() ?? 0;
-
-            return stats;
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "deviceGetGameFrameRate")]
-        public static double JnaGetGameFrameRate()
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            var stats = SwitchDevice?.EmulationContext?.Statistics.GetGameFrameRate() ?? 0;
-
-            return stats;
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "deviceLaunchMiiEditor")]
-        public static bool JNALaunchMiiEditApplet()
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            if (SwitchDevice?.EmulationContext == null)
+            if (SwitchDevice!.InputManager != null)
             {
-                return false;
+                throw new InvalidOperationException("Input is already initialized");
             }
 
-            return LaunchMiiEditApplet();
-        }
+            _gamepadDriver = new VirtualGamepadDriver(4);
+            _configs = new InputConfig[4];
+            _virtualTouchScreen = new VirtualTouchScreen();
+            
+            // 计算并存储初始宽高比
+            _aspectRatio = width > 0 && height > 0 ? (float)width / height : 1.0f;
+            _virtualTouchScreen.ClientSize = new Size(width, height);
+            
+            _touchScreenDriver = new VirtualTouchScreenDriver(_virtualTouchScreen);
+            _inputManager = new InputManager(null, _gamepadDriver);
+            
+            // 明确设置触摸屏为鼠标设备
+            _inputManager.SetMouseDriver(_touchScreenDriver);
+            
+            _npadManager = _inputManager.CreateNpadManager();
+            SwitchDevice!.InputManager = _inputManager;
 
-        [UnmanagedCallersOnly(EntryPoint = "deviceGetDlcContentList")]
-        public static IntPtr JniGetDlcContentListNative(IntPtr pathPtr, long titleId)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            var list = GetDlcContentList(Marshal.PtrToStringAnsi(pathPtr) ?? "", (ulong)titleId);
-
-            return CreateStringArray(list);
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "deviceGetDlcTitleId")]
-        public static long JniGetDlcTitleIdNative(IntPtr pathPtr, IntPtr ncaPath)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            return Marshal.StringToHGlobalAnsi(GetDlcTitleId(Marshal.PtrToStringAnsi(pathPtr) ?? "", Marshal.PtrToStringAnsi(ncaPath) ?? ""));
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "deviceSignalEmulationClose")]
-        public static void JniSignalEmulationCloseNative()
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            SignalEmulationClose();
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "deviceCloseEmulation")]
-        public static void JniCloseEmulationNative()
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            CloseEmulation();
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "deviceLoadDescriptor")]
-        public static bool JnaLoadApplicationNative(int descriptor, int type, int updateDescriptor)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            if (SwitchDevice?.EmulationContext == null)
+            var touchScreenManager = _inputManager.CreateTouchScreenManager();
+            
+            if (SwitchDevice!.EmulationContext != null)
             {
-                return false;
+                touchScreenManager.Initialize(SwitchDevice.EmulationContext);
+            }
+            else
+            {
+                Logger.Error?.PrintMsg(LogClass.Application, "EmulationContext is null during touch screen init");
             }
 
-            var stream = OpenFile(descriptor);
-            var update = updateDescriptor == -1 ? null : OpenFile(updateDescriptor);
-
-            return LoadApplication(stream, (FileType)type, update);
+            _npadManager.Initialize(SwitchDevice.EmulationContext, new List<InputConfig>(), false, false);
         }
 
-        [UnmanagedCallersOnly(EntryPoint = "deviceVerifyFirmware")]
-        public static IntPtr JniVerifyFirmware(int descriptor, bool isXci)
+        public static void SetClientSize(int width, int height)
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-
-            var stream = OpenFile(descriptor);
-
-            IntPtr stringHandle = 0;
-            string? version = "0.0";
-
-            try
+            if (_virtualTouchScreen != null)
             {
-                version = VerifyFirmware(stream, isXci)?.VersionString;
+                _virtualTouchScreen.ClientSize = new Size(width, height);
+                _aspectRatio = width > 0 && height > 0 ? (float)width / height : 1.0f;
             }
-            catch (Exception _)
-            {
-                Logger.Error?.Print(LogClass.Service, $"Unable to verify firmware. Exception: {_}");
-            }
-
-            if (version != null)
-            {
-                stringHandle = Marshal.StringToHGlobalAnsi(version);
-            }
-
-            return stringHandle;
         }
 
-        [UnmanagedCallersOnly(EntryPoint = "deviceInstallFirmware")]
-        public static void JniInstallFirmware(int descriptor, bool isXci)
+        public static void SetTouchPoint(int x, int y)
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-
-            var stream = OpenFile(descriptor);
-
-            InstallFirmware(stream, isXci);
+            _virtualTouchScreen?.SetPosition(x, y);
         }
 
-        [UnmanagedCallersOnly(EntryPoint = "deviceGetInstalledFirmwareVersion")]
-        public static IntPtr JniGetInstalledFirmwareVersion()
+        public static void ReleaseTouchPoint()
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-
-            var version = GetInstalledFirmwareVersion() ?? "0.0";
-            return Marshal.StringToHGlobalAnsi(version);
+            _virtualTouchScreen?.ReleaseTouch();
         }
 
-        [UnmanagedCallersOnly(EntryPoint = "graphicsInitialize")]
-        public static bool JnaGraphicsInitialize(float resScale,
-                float maxAnisotropy,
-                bool fastGpuTime,
-                bool fast2DCopy,
-                bool enableMacroJit,
-                bool enableMacroHLE,
-                bool enableShaderCache,
-                bool enableTextureRecompression,
-                int backendThreading)
+        public static void SetButtonPressed(GamepadButtonInputId button, int id)
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            SearchPathContainer.Platform = UnderlyingPlatform.Android;
-            return InitializeGraphics(new GraphicsConfiguration()
-            {
-                ResScale = resScale,
-                MaxAnisotropy = maxAnisotropy,
-                FastGpuTime = fastGpuTime,
-                Fast2DCopy = fast2DCopy,
-                EnableMacroJit = enableMacroJit,
-                EnableMacroHLE = enableMacroHLE,
-                EnableShaderCache = enableShaderCache,
-                EnableTextureRecompression = enableTextureRecompression,
-                BackendThreading = (BackendThreading)backendThreading
-            });
+            _gamepadDriver?.SetButtonPressed(button, id);
         }
 
-        [UnmanagedCallersOnly(EntryPoint = "graphicsInitializeRenderer")]
-        public unsafe static bool JnaGraphicsInitializeRenderer(char** extensionsArray,
-                                                                          int extensionsLength,
-                                                                          long driverHandle)
+        public static void SetButtonReleased(GamepadButtonInputId button, int id)
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            if (Renderer != null)
+            _gamepadDriver?.SetButtonReleased(button, id);
+        }
+
+        public static void SetAccelerometerData(Vector3 accel, int id)
+        {
+            _gamepadDriver?.SetAccelerometerData(accel, id);
+        }
+
+        public static void SetGryoData(Vector3 gyro, int id)
+        {
+            _gamepadDriver?.SetGryoData(gyro, id);
+        }
+
+        public static void SetStickAxis(StickInputId stick, Vector2 axes, int deviceId)
+        {
+            _gamepadDriver?.SetStickAxis(stick, axes, deviceId);
+        }
+
+        public static int ConnectGamepad(int index)
+        {
+            if (index < 0 || index >= _configs.Length) 
+                return -1;
+
+            var gamepad = _gamepadDriver?.GetGamepad(index);
+            if (gamepad != null)
             {
-                return false;
+                var config = CreateDefaultInputConfig();
+                config.Id = gamepad.Id;
+                config.PlayerIndex = (Common.Configuration.Hid.PlayerIndex)index;
+                _configs[index] = config;
             }
 
-            List<string?> extensions = new();
+            _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
+            return int.TryParse(gamepad?.Id, out var idInt) ? idInt : -1;
+        }
 
-            for (int i = 0; i < extensionsLength; i++)
+        private static InputConfig CreateDefaultInputConfig()
+        {
+            return new StandardControllerInputConfig
             {
-                extensions.Add(Marshal.PtrToStringAnsi((IntPtr)extensionsArray[i]));
-            }
-
-            if (driverHandle != 0)
-            {
-                VulkanLoader = new VulkanLoader((IntPtr)driverHandle);
-            }
-
-            CreateSurface createSurfaceFunc = instance =>
-            {
-                _surfacePtr = Interop.GetSurfacePtr();
-                _window = Interop.GetWindowsHandle();
-
-                var api = VulkanLoader?.GetApi() ?? Vk.GetApi();
-                if (api.TryGetInstanceExtension(new Instance(instance), out KhrAndroidSurface surfaceExtension))
+                Version = InputConfig.CurrentVersion,
+                Backend = InputBackendType.GamepadSDL2,
+                Id = null,
+                ControllerType = Common.Configuration.Hid.ControllerType.ProController,
+                DeadzoneLeft = 0.1f,
+                DeadzoneRight = 0.1f,
+                RangeLeft = 1.0f,
+                RangeRight = 1.0f,
+                TriggerThreshold = 0.5f,
+                LeftJoycon = new LeftJoyconCommonConfig<ConfigGamepadInputId>
                 {
-                    var createInfo = new AndroidSurfaceCreateInfoKHR
-                    {
-                        SType = StructureType.AndroidSurfaceCreateInfoKhr,
-                        Window = (nint*)_surfacePtr,
-                    };
-
-                    var result = surfaceExtension.CreateAndroidSurface(new Instance(instance), createInfo, null, out var surface);
-
-                    return (nint)surface.Handle;
+                    DpadUp = ConfigGamepadInputId.DpadUp,
+                    DpadDown = ConfigGamepadInputId.DpadDown,
+                    DpadLeft = ConfigGamepadInputId.DpadLeft,
+                    DpadRight = ConfigGamepadInputId.DpadRight,
+                    ButtonMinus = ConfigGamepadInputId.Minus,
+                    ButtonL = ConfigGamepadInputId.LeftShoulder,
+                    ButtonZl = ConfigGamepadInputId.LeftTrigger,
+                    ButtonSl = ConfigGamepadInputId.Unbound,
+                    ButtonSr = ConfigGamepadInputId.Unbound,
+                },
+                LeftJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
+                {
+                    Joystick = ConfigStickInputId.Left,
+                    StickButton = ConfigGamepadInputId.LeftStick,
+                    InvertStickX = false,
+                    InvertStickY = false,
+                    Rotate90CW = false,
+                },
+                RightJoycon = new RightJoyconCommonConfig<ConfigGamepadInputId>
+                {
+                    ButtonA = ConfigGamepadInputId.A,
+                    ButtonB = ConfigGamepadInputId.B,
+                    ButtonX = ConfigGamepadInputId.X,
+                    ButtonY = ConfigGamepadInputId.Y,
+                    ButtonPlus = ConfigGamepadInputId.Plus,
+                    ButtonR = ConfigGamepadInputId.RightShoulder,
+                    ButtonZr = ConfigGamepadInputId.RightTrigger,
+                    ButtonSl = ConfigGamepadInputId.Unbound,
+                    ButtonSr = ConfigGamepadInputId.Unbound,
+                },
+                RightJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
+                {
+                    Joystick = ConfigStickInputId.Right,
+                    StickButton = ConfigGamepadInputId.RightStick,
+                    InvertStickX = false,
+                    InvertStickY = false,
+                    Rotate90CW = false,
+                },
+                Motion = new StandardMotionConfigController
+                {
+                    MotionBackend = MotionInputBackendType.GamepadDriver,
+                    EnableMotion = true,
+                    Sensitivity = 100,
+                    GyroDeadzone = 1,
+                },
+                Rumble = new RumbleConfigController
+                {
+                    StrongRumble = 1f,
+                    WeakRumble = 1f,
+                    EnableRumble = false
                 }
-
-                return IntPtr.Zero;
             };
-
-            return InitializeGraphicsRenderer(GraphicsBackend.Vulkan, createSurfaceFunc, extensions.ToArray());
         }
 
-        [UnmanagedCallersOnly(EntryPoint = "graphicsRendererSetSize")]
-        public static void JnaSetRendererSizeNative(int width, int height)
+        public static void UpdateInput()
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            Renderer?.Window?.SetSize(width, height);
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "graphicsRendererRunLoop")]
-        public static void JniRunLoopNative()
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            SetSwapBuffersCallback(() =>
+            _npadManager?.Update(_aspectRatio);
+            if (SwitchDevice?.EmulationContext?.Hid != null)
             {
-                var time = SwitchDevice.EmulationContext.Statistics.GetGameFrameTime();
-                Interop.FrameEnded(time);
-            });
-            RunLoop();
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "loggingSetEnabled")]
-        public static void JniSetLoggingEnabledNative(int logLevel, bool enabled)
-        {
-            Logger.SetEnable((LogLevel)logLevel, enabled);
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "loggingEnabledGraphicsLog")]
-        public static void JniSetLoggingEnabledGraphicsLog(bool enabled)
-        {
-            _enableGraphicsLogging = enabled;
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "deviceGetGameInfo")]
-        public unsafe static void JniGetGameInfo(int fileDescriptor, IntPtr extension, IntPtr infoPtr)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            using var stream = OpenFile(fileDescriptor);
-            var ext = Marshal.PtrToStringAnsi(extension);
-            var info = GetGameInfo(stream, ext.ToLower()) ?? GetDefaultInfo(stream);
-            var i = (GameInfoNative*)infoPtr;
-            var n = new GameInfoNative(info);
-            i->TitleId = n.TitleId;
-            i->TitleName = n.TitleName;
-            i->Version = n.Version;
-            i->FileSize = n.FileSize;
-            i->Icon = n.Icon;
-            i->Version = n.Version;
-            i->Developer = n.Developer;
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "graphicsRendererSetVsync")]
-        public static void JnaSetVsyncStateNative(bool enabled)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            SetVsyncState(enabled);
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "inputInitialize")]
-        public static void JnaInitializeInput(int width, int height)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            InitializeInput(width, height);
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "inputSetClientSize")]
-        public static void JnaSetClientSize(int width, int height)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            SetClientSize(width, height);
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "inputSetTouchPoint")]
-        public static void JnaSetTouchPoint(int x, int y)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            SetTouchPoint(x, y);
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "inputReleaseTouchPoint")]
-        public static void JnaReleaseTouchPoint()
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            ReleaseTouchPoint();
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "inputUpdate")]
-        public static void JniUpdateInput()
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            UpdateInput();
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "inputSetButtonPressed")]
-        public static void JnaSetButtonPressed(int button, int id)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            SetButtonPressed((GamepadButtonInputId)button, id);
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "inputSetButtonReleased")]
-        public static void JnaSetButtonReleased(int button, int id)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            SetButtonReleased((GamepadButtonInputId)button, id);
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "inputSetAccelerometerData")]
-        public static void JniSetAccelerometerData(float x, float y, float z, int id)
-        {
-            var accel = new Vector3(x, y, z);
-            SetAccelerometerData(accel, id);
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "inputSetGyroData")]
-        public static void JniSetGyroData(float x, float y, float z, int id)
-        {
-            var gryo = new Vector3(x, y, z);
-            SetGryoData(gryo, id);
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "inputSetStickAxis")]
-        public static void JnaSetStickAxis(int stick, float x, float y, int id)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            SetStickAxis((StickInputId)stick, new Vector2(float.IsNaN(x) ? 0 : x, float.IsNaN(y) ? 0 : y), id);
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "inputConnectGamepad")]
-        public static int JnaConnectGamepad(int index)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            return ConnectGamepad(index);
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "userGetOpenedUser")]
-        public static IntPtr JniGetOpenedUser()
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            var userId = GetOpenedUser();
-            var ptr = Marshal.StringToHGlobalAnsi(userId);
-
-            return ptr;
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "userGetUserPicture")]
-        public static IntPtr JniGetUserPicture(IntPtr userIdPtr)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            var userId = Marshal.PtrToStringAnsi(userIdPtr) ?? "";
-
-            return Marshal.StringToHGlobalAnsi(GetUserPicture(userId));
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "userSetUserPicture")]
-        public static void JniGetUserPicture(IntPtr userIdPtr, IntPtr picturePtr)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            var userId = Marshal.PtrToStringAnsi(userIdPtr) ?? "";
-            var picture = Marshal.PtrToStringAnsi(picturePtr) ?? "";
-
-            SetUserPicture(userId, picture);
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "userGetUserName")]
-        public static IntPtr JniGetUserName(IntPtr userIdPtr)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            var userId = Marshal.PtrToStringAnsi(userIdPtr) ?? "";
-
-            return Marshal.StringToHGlobalAnsi(GetUserName(userId));
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "userSetUserName")]
-        public static void JniSetUserName(IntPtr userIdPtr, IntPtr userNamePtr)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            var userId = Marshal.PtrToStringAnsi(userIdPtr) ?? "";
-            var userName = Marshal.PtrToStringAnsi(userNamePtr) ?? "";
-
-            SetUserName(userId, userName);
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "userGetAllUsers")]
-        public static IntPtr JniGetAllUsers()
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            var users = GetAllUsers();
-
-            return CreateStringArray(users.ToList());
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "userAddUser")]
-        public static void JniAddUser(IntPtr userNamePtr, IntPtr picturePtr)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            var userName = Marshal.PtrToStringAnsi(userNamePtr) ?? "";
-            var picture = Marshal.PtrToStringAnsi(picturePtr) ?? "";
-
-            AddUser(userName, picture);
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "userDeleteUser")]
-        public static void JniDeleteUser(IntPtr userIdPtr)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            var userId = Marshal.PtrToStringAnsi(userIdPtr) ?? "";
-
-            DeleteUser(userId);
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "uiHandlerSetup")]
-        public static void JniSetupUiHandler()
-        {
-            SetupUiHandler();
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "uiHandlerSetResponse")]
-        public static void JniSetUiHandlerResponse(bool isOkPressed, IntPtr input)
-        {
-            SetUiHandlerResponse(isOkPressed, Marshal.PtrToStringAnsi(input) ?? "");
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "userOpenUser")]
-        public static void JniOpenUser(IntPtr userIdPtr)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            var userId = Marshal.PtrToStringAnsi(userIdPtr) ?? "";
-
-            OpenUser(userId);
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "userCloseUser")]
-        public static void JniCloseUser(IntPtr userIdPtr)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            var userId = Marshal.PtrToStringAnsi(userIdPtr) ?? "";
-
-            CloseUser(userId);
+                SwitchDevice.EmulationContext.Hid.Touchscreen.Update();
+            }
         }
     }
 
-    internal static partial class Logcat
+    public class VirtualTouchScreen : IMouse
     {
-        [LibraryImport("liblog", StringMarshalling = StringMarshalling.Utf8)]
-        private static partial void __android_log_print(LogLevel level, string? tag, string format, string args, IntPtr ptr);
+        public Size ClientSize { get; set; }
+        public bool[] Buttons { get; }
+        private Dictionary<int, Vector2> _activeTouches = new Dictionary<int, Vector2>();
+        private int _primaryTouchId = 0;
 
-        internal static void AndroidLogPrint(LogLevel level, string? tag, string message) =>
-            __android_log_print(level, tag, "%s", message, IntPtr.Zero);
-
-        internal enum LogLevel
+        public VirtualTouchScreen()
         {
-            Unknown = 0x00,
-            Default = 0x01,
-            Verbose = 0x02,
-            Debug = 0x03,
-            Info = 0x04,
-            Warn = 0x05,
-            Error = 0x06,
-            Fatal = 0x07,
-            Silent = 0x08,
+            Buttons = new bool[2];
         }
+
+        public Vector2 CurrentPosition { get; private set; }
+        public Vector2 Scroll { get; private set; }
+        public string Id => "0";
+        public string Name => "AvaloniaMouse";
+        public bool IsConnected => true;
+        public GamepadFeaturesFlag Features => GamepadFeaturesFlag.None;
+
+        public void Dispose() { }
+
+        public Ryujinx.Input.GamepadStateSnapshot GetMappedStateSnapshot() => default;
+
+        public void SetPosition(int x, int y, int touchId = 0)
+        {
+            _activeTouches[touchId] = new Vector2(x, y);
+            _primaryTouchId = touchId;
+            Buttons[0] = true;
+            CurrentPosition = new Vector2(x, y);
+        }
+
+        public void ReleaseTouch(int touchId = 0)
+        {
+            if (_activeTouches.Remove(touchId))
+            {
+                if (_activeTouches.Count == 0)
+                {
+                    Buttons[0] = false;
+                }
+                else
+                {
+                    _primaryTouchId = _activeTouches.Keys.First();
+                    CurrentPosition = _activeTouches[_primaryTouchId];
+                }
+            }
+        }
+
+        public Vector3 GetMotionData(MotionInputId inputId) => Vector3.Zero;
+        public Vector2 GetPosition() => CurrentPosition;
+        public Vector2 GetScroll() => Scroll;
+        public Ryujinx.Input.GamepadStateSnapshot GetStateSnapshot() => default;
+
+        public (float, float) GetStick(StickInputId inputId) => (0, 0);
+
+        public bool IsButtonPressed(MouseButton button)
+            => button == MouseButton.Button1 && Buttons[0];
+
+        public bool IsPressed(GamepadButtonInputId inputId) => false;
+
+        public void Rumble(float lowFrequency, float highFrequency, uint durationMs) { }
+        public void SetConfiguration(InputConfig configuration) { }
+        public void SetTriggerThreshold(float triggerThreshold) { }
+    }
+
+    public class VirtualTouchScreenDriver : IGamepadDriver
+    {
+        private readonly VirtualTouchScreen _virtualTouchScreen;
+
+        public VirtualTouchScreenDriver(VirtualTouchScreen virtualTouchScreen)
+        {
+            _virtualTouchScreen = virtualTouchScreen;
+        }
+
+        public string DriverName => "VirtualTouchDriver";
+        public ReadOnlySpan<string> GamepadsIds => Array.Empty<string>();
+        public event Action<string> OnGamepadConnected { add { } remove { } }
+        public event Action<string> OnGamepadDisconnected { add { } remove { } }
+
+        public void Dispose() { }
+        public IGamepad GetGamepad(string id) => _virtualTouchScreen;
+    }
+
+    public class VirtualGamepadDriver : IGamepadDriver
+    {
+        private readonly int _controllerCount;
+        private Dictionary<int, VirtualGamepad> _gamePads;
+
+        public ReadOnlySpan<string> GamepadsIds => _gamePads.Keys.Select(x => x.ToString()).ToArray();
+        public string DriverName => "Virtual";
+        public event Action<string> OnGamepadConnected;
+        public event Action<string> OnGamepadDisconnected;
+
+        public VirtualGamepadDriver(int controllerCount)
+        {
+            _gamePads = new Dictionary<int, VirtualGamepad>();
+            for (int i = 0; i < controllerCount; i++)
+            {
+                _gamePads[i] = new VirtualGamepad(this, i);
+                OnGamepadConnected?.Invoke(i.ToString());
+            }
+            _controllerCount = controllerCount;
+        }
+
+        public void Dispose()
+        {
+            foreach (string id in GamepadsIds)
+            {
+                OnGamepadDisconnected?.Invoke(id);
+            }
+            _gamePads.Clear();
+            GC.SuppressFinalize(this);
+        }
+
+        public IGamepad GetGamepad(string id)
+            => int.TryParse(id, out int idInt) && _gamePads.TryGetValue(idInt, out var gamePad) ? gamePad : null;
+
+        public IGamepad GetGamepad(int index)
+            => _gamePads.TryGetValue(index, out var gamePad) ? gamePad : null;
+
+        public void SetStickAxis(StickInputId stick, Vector2 axes, int deviceId)
+        {
+            if (_gamePads.TryGetValue(deviceId, out var gamePad))
+            {
+                gamePad.StickInputs[(int)stick] = axes;
+            }
+        }
+
+        public void SetButtonPressed(GamepadButtonInputId button, int deviceId)
+        {
+            if (_gamePads.TryGetValue(deviceId, out var gamePad))
+            {
+                gamePad.ButtonInputs[(int)button] = true;
+            }
+        }
+
+        public void SetButtonReleased(GamepadButtonInputId button, int deviceId)
+        {
+            if (_gamePads.TryGetValue(deviceId, out var gamePad))
+            {
+                gamePad.ButtonInputs[(int)button] = false;
+            }
+        }
+
+        public void SetAccelerometerData(Vector3 accel, int deviceId)
+        {
+            if (_gamePads.TryGetValue(deviceId, out var gamePad))
+            {
+                gamePad.Accelerometer = accel;
+            }
+        }
+
+        public void SetGryoData(Vector3 gyro, int deviceId)
+        {
+            if (_gamePads.TryGetValue(deviceId, out var gamePad))
+            {
+                gamePad.Gyro = gyro;
+            }
+        }
+    }
+
+    public class VirtualGamepad : IGamepad
+    {
+        private readonly VirtualGamepadDriver _driver;
+
+        public bool[] ButtonInputs { get; set; }
+        public Vector2[] StickInputs { get; set; }
+        public Vector3 Accelerometer { get; internal set; }
+        public Vector3 Gyro { get; internal set; }
+
+        public string Id { get; }
+        public int IdInt { get; }
+        public string Name => $"Virtual Gamepad {Id}";
+        public bool IsConnected { get; private set; } = true;
+        public GamepadFeaturesFlag Features { get; } = GamepadFeaturesFlag.Motion;
+
+        public VirtualGamepad(VirtualGamepadDriver driver, int id)
+        {
+            _driver = driver;
+            ButtonInputs = new bool[(int)GamepadButtonInputId.Count];
+            StickInputs = new Vector2[(int)StickInputId.Count];
+            Id = id.ToString();
+            IdInt = id;
+        }
+
+        public void Dispose() { }
+        public bool IsPressed(GamepadButtonInputId inputId) => ButtonInputs[(int)inputId];
+
+        public (float, float) GetStick(StickInputId inputId)
+        {
+            var v = StickInputs[(int)inputId];
+            return (v.X, v.Y);
+        }
+
+        public Vector3 GetMotionData(MotionInputId inputId)
+        {
+            return inputId switch
+            {
+                MotionInputId.Accelerometer => Accelerometer,
+                MotionInputId.Gyroscope => RadToDegree(Gyro),
+                _ => Vector3.Zero
+            };
+        }
+
+        private static Vector3 RadToDegree(Vector3 rad) 
+            => rad * (180 / MathF.PI);
+
+        public void SetTriggerThreshold(float triggerThreshold) { }
+        public void SetConfiguration(InputConfig configuration) { }
+        public void Rumble(float lowFrequency, float highFrequency, uint durationMs) { }
+
+        public Ryujinx.Input.GamepadStateSnapshot GetMappedStateSnapshot()
+        {
+            var result = new Ryujinx.Input.GamepadStateSnapshot();
+            foreach (GamepadButtonInputId button in Enum.GetValues(typeof(GamepadButtonInputId)))
+            {
+                if (button != GamepadButtonInputId.Count)
+                {
+                    result.SetPressed(button, IsPressed(button));
+                }
+            }
+
+            (float lx, float ly) = GetStick(StickInputId.Left);
+            (float rx, float ry) = GetStick(StickInputId.Right);
+            result.SetStick(StickInputId.Left, lx, ly);
+            result.SetStick(StickInputId.Right, rx, ry);
+
+            return result;
+        }
+
+        public Ryujinx.Input.GamepadStateSnapshot GetStateSnapshot() => default;
     }
 }
