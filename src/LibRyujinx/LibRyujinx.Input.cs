@@ -213,10 +213,10 @@ namespace LibRyujinx
             _npadManager?.Update(_aspectRatio);
             _touchScreenManager?.Update(_aspectRatio); // 更新触摸屏状态，传递宽高比
             
-            if (SwitchDevice?.EmulationContext?.Hid != null)
-            {
-                SwitchDevice.EmulationContext.Hid.Touchscreen.Update();
-            }
+           // if (SwitchDevice?.EmulationContext?.Hid != null)
+           // {
+           //     SwitchDevice.EmulationContext.Hid.Touchscreen.Update();
+          //  }
         }
     }
 
