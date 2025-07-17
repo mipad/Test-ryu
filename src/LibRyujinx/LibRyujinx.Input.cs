@@ -36,19 +36,33 @@ namespace LibRyujinx
             _gamepadDriver = new VirtualGamepadDriver(4);
             _configs = new InputConfig[4];
             _virtualTouchScreen = new VirtualTouchScreen();
+            
+            // 修复1：立即设置触摸屏尺寸
+            _virtualTouchScreen.ClientSize = new Size(width, height);
+            
             _touchScreenDriver = new VirtualTouchScreenDriver(_virtualTouchScreen);
             _inputManager = new InputManager(null, _gamepadDriver);
+            
+            // 修复2：明确设置触摸屏为鼠标设备
             _inputManager.SetMouseDriver(_touchScreenDriver);
+            
             _npadManager = _inputManager.CreateNpadManager();
 
             SwitchDevice!.InputManager = _inputManager;
 
             _touchScreenManager = _inputManager.CreateTouchScreenManager();
-            _touchScreenManager.Initialize(SwitchDevice!.EmulationContext);
+            
+            // 修复3：添加空指针保护
+            if (SwitchDevice!.EmulationContext != null)
+            {
+                _touchScreenManager.Initialize(SwitchDevice.EmulationContext);
+            }
+            else
+            {
+                Logger.Error?.PrintMsg(LogClass.Application, "EmulationContext is null during touch screen init");
+            }
 
             _npadManager.Initialize(SwitchDevice.EmulationContext, new List<InputConfig>(), false, false);
-
-            _virtualTouchScreen.ClientSize = new Size(width, height);
         }
 
         public static void SetClientSize(int width, int height)
@@ -186,7 +200,16 @@ namespace LibRyujinx
         {
             _npadManager?.Update(GraphicsConfiguration.AspectRatio.ToFloat());
 
-            if(!_touchScreenManager!.Update(true, _virtualTouchScreen!.IsButtonPressed(MouseButton.Button1), GraphicsConfiguration.AspectRatio.ToFloat()))
+            // 修复4：确保触摸屏事件优先处理
+            if (_virtualTouchScreen != null && _virtualTouchScreen.IsButtonPressed(MouseButton.Button1))
+            {
+                var position = _virtualTouchScreen.GetPosition();
+                _touchScreenManager?.UpdateSingleTouch(position.X, position.Y);
+            }
+            
+            if(!_touchScreenManager!.Update(true, 
+                _virtualTouchScreen?.IsButtonPressed(MouseButton.Button1) ?? false, 
+                GraphicsConfiguration.AspectRatio.ToFloat()))
             {
                 SwitchDevice!.EmulationContext?.Hid.Touchscreen.Update();
             }
@@ -198,6 +221,10 @@ namespace LibRyujinx
         public Size ClientSize { get; set; }
 
         public bool[] Buttons { get; }
+
+        // 修复6：添加多点触控支持
+        private Dictionary<int, Vector2> _activeTouches = new Dictionary<int, Vector2>();
+        private int _primaryTouchId = 0;
 
         public VirtualTouchScreen()
         {
@@ -222,16 +249,27 @@ namespace LibRyujinx
             throw new NotImplementedException();
         }
 
-        public void SetPosition(int x, int y)
+        public void SetPosition(int x, int y, int touchId = 0)
         {
-            CurrentPosition = new Vector2(x, y);
-
+            _activeTouches[touchId] = new Vector2(x, y);
+            _primaryTouchId = touchId;
             Buttons[0] = true;
+            CurrentPosition = new Vector2(x, y);
         }
 
-        public void ReleaseTouch()
+        public void ReleaseTouch(int touchId = 0)
         {
-            Buttons[0] = false;
+            _activeTouches.Remove(touchId);
+            if (_activeTouches.Count == 0)
+            {
+                Buttons[0] = false;
+            }
+            else
+            {
+                // 切换到其他活动触摸点
+                _primaryTouchId = _activeTouches.Keys.First();
+                CurrentPosition = _activeTouches[_primaryTouchId];
+            }
         }
 
         public Vector3 GetMotionData(MotionInputId inputId)
@@ -249,9 +287,22 @@ namespace LibRyujinx
             return Scroll;
         }
 
+        // 修复5：实现关键的状态快照方法
         public GamepadStateSnapshot GetStateSnapshot()
         {
-            throw new NotImplementedException();
+            var snapshot = new GamepadStateSnapshot();
+            
+            // 添加触摸状态到快照
+            if (Buttons[0]) 
+            {
+                snapshot.SetTouchState(0, CurrentPosition.X, CurrentPosition.Y);
+            }
+            else
+            {
+                snapshot.ClearTouchState();
+            }
+            
+            return snapshot;
         }
 
         public (float, float) GetStick(Ryujinx.Input.StickInputId inputId)
@@ -296,8 +347,8 @@ namespace LibRyujinx
 
         public string DriverName => "VirtualTouchDriver";
 
-        public ReadOnlySpan<string> GamepadsIds => new[] { "0" };
-
+        // 修复7：防止触摸屏被识别为手柄
+        public ReadOnlySpan<string> GamepadsIds => Array.Empty<string>();
 
         public event Action<string> OnGamepadConnected
         {
@@ -356,7 +407,7 @@ namespace LibRyujinx
         {
             if (disposing)
             {
-                // Simulate a full disconnect when disposing
+                // 模拟断开所有连接
                 var ids = GamepadsIds;
                 foreach (string id in ids)
                 {
@@ -482,17 +533,17 @@ namespace LibRyujinx
 
         public void SetTriggerThreshold(float triggerThreshold)
         {
-            //throw new System.NotImplementedException();
+            // 无需实现
         }
 
         public void SetConfiguration(InputConfig configuration)
         {
-            //throw new System.NotImplementedException();
+            // 无需实现
         }
 
         public void Rumble(float lowFrequency, float highFrequency, uint durationMs)
         {
-            //throw new System.NotImplementedException();
+            // 无需实现
         }
 
         public GamepadStateSnapshot GetMappedStateSnapshot()
@@ -501,7 +552,6 @@ namespace LibRyujinx
 
             foreach (var button in Enum.GetValues<GamepadButtonInputId>())
             {
-                // Do not touch state of button already pressed
                 if (button != GamepadButtonInputId.Count && !result.IsPressed(button))
                 {
                     result.SetPressed(button, IsPressed(button));
