@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Numerics;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Input
 {
@@ -62,45 +63,68 @@ namespace Ryujinx.Input
         /// <param name="aspectRatio">The aspect ratio of the view</param>
         /// <returns>A snaphost of the state of the mouse.</returns>
         public static Vector2 GetScreenPosition(Vector2 mousePosition, Size clientSize, float aspectRatio)
-        {
-            float mouseX = mousePosition.X;
-            float mouseY = mousePosition.Y;
+{
+    float mouseX = mousePosition.X;
+    float mouseY = mousePosition.Y;
 
-            float aspectWidth = SwitchPanelHeight * aspectRatio;
+    float aspectWidth = SwitchPanelHeight * aspectRatio;
 
-            int screenWidth = clientSize.Width;
-            int screenHeight = clientSize.Height;
+    int screenWidth = clientSize.Width;
+    int screenHeight = clientSize.Height;
 
-            if (clientSize.Width > clientSize.Height * aspectWidth / SwitchPanelHeight)
-            {
-                screenWidth = (int)(clientSize.Height * aspectWidth) / SwitchPanelHeight;
-            }
-            else
-            {
-                screenHeight = (clientSize.Width * SwitchPanelHeight) / (int)aspectWidth;
-            }
+    if (clientSize.Width > clientSize.Height * aspectWidth / SwitchPanelHeight)
+    {
+        screenWidth = (int)(clientSize.Height * aspectWidth) / SwitchPanelHeight;
+    }
+    else
+    {
+        screenHeight = (clientSize.Width * SwitchPanelHeight) / (int)aspectWidth;
+    }
 
-            int startX = (clientSize.Width - screenWidth) >> 1;
-            int startY = (clientSize.Height - screenHeight) >> 1;
+    int startX = (clientSize.Width - screenWidth) >> 1;
+    int startY = (clientSize.Height - screenHeight) >> 1;
 
-            int endX = startX + screenWidth;
-            int endY = startY + screenHeight;
+    int endX = startX + screenWidth;
+    int endY = startY + screenHeight;
 
-            if (mouseX >= startX &&
-                mouseY >= startY &&
-                mouseX < endX &&
-                mouseY < endY)
-            {
-                int screenMouseX = (int)mouseX - startX;
-                int screenMouseY = (int)mouseY - startY;
+    // 添加详细的调试日志
+    #if DEBUG
+    string logMessage = $"[Touch] Input: ({mousePosition.X:F0}, {mousePosition.Y:F0}) | " +
+                        $"Client: {clientSize.Width}x{clientSize.Height} | " +
+                        $"AspectRatio: {aspectRatio:F2} | " +
+                        $"GameArea: {screenWidth}x{screenHeight} | " +
+                        $"Bounds: ({startX},{startY})-({endX},{endY})";
+    
+    Ryujinx.Common.Logging.Logger.Debug?.PrintMsg(Ryujinx.Common.Logging.LogClass.Application, logMessage);
+    #endif
 
-                mouseX = (screenMouseX * (int)aspectWidth) / screenWidth;
-                mouseY = (screenMouseY * SwitchPanelHeight) / screenHeight;
+    if (mouseX >= startX &&
+        mouseY >= startY &&
+        mouseX < endX &&
+        mouseY < endY)
+    {
+        int screenMouseX = (int)mouseX - startX;
+        int screenMouseY = (int)mouseY - startY;
 
-                return new Vector2(mouseX, mouseY);
-            }
+        mouseX = (screenMouseX * (int)aspectWidth) / screenWidth;
+        mouseY = (screenMouseY * SwitchPanelHeight) / screenHeight;
 
-            return new Vector2();
-        }
+        // 添加转换后坐标的日志
+        #if DEBUG
+        Logger.Debug?.PrintMsg(LogClass.Application, 
+            $"[Touch] Converted: ({mouseX:F0}, {mouseY:F0})");
+        #endif
+
+        return new Vector2(mouseX, mouseY);
+    }
+
+    // 添加无效触摸的日志
+    #if DEBUG
+    Logger.Debug?.PrintMsg(LogClass.Application, 
+        $"[Touch] Outside game area - ignored");
+    #endif
+
+    return new Vector2();
+}
     }
 }
