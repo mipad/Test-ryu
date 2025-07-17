@@ -1,3 +1,4 @@
+using System;
 using System.Drawing;
 using System.Numerics;
 
@@ -60,7 +61,7 @@ namespace Ryujinx.Input
         /// <param name="mousePosition">The position of the mouse in the client</param>
         /// <param name="clientSize">The size of the client</param>
         /// <param name="aspectRatio">The aspect ratio of the view</param>
-        /// <returns>A snaphost of the state of the mouse.</returns>
+        /// <returns>The screen position adjusted for the display mode</returns>
         public static Vector2 GetScreenPosition(Vector2 mousePosition, Size clientSize, float aspectRatio)
         {
             float mouseX = mousePosition.X;
@@ -69,7 +70,16 @@ namespace Ryujinx.Input
             // 强制拉伸模式：直接按比例缩放
             float scaleX = (float)SwitchPanelWidth / clientSize.Width;
             float scaleY = (float)SwitchPanelHeight / clientSize.Height;
-            return new Vector2(mouseX * scaleX, mouseY * scaleY);
+            
+            // 计算转换后坐标
+            float resultX = mouseX * scaleX;
+            float resultY = mouseY * scaleY;
+            
+            // 确保坐标在有效范围内
+            resultX = Math.Clamp(resultX, 0, SwitchPanelWidth);
+            resultY = Math.Clamp(resultY, 0, SwitchPanelHeight);
+            
+            return new Vector2(resultX, resultY);
         }
     }
 }
