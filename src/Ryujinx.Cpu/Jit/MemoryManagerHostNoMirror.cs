@@ -21,11 +21,12 @@ namespace Ryujinx.Cpu.Jit
         private readonly MemoryBlock _backingMemory;
         private readonly PageTable<ulong> _pageTable;
 
-        private readonly MemoryEhMeilleure _memoryEh;
-        private readonly ManagedPageFlags _pages;
-
         public int AddressSpaceBits { get; }
         protected override ulong AddressSpaceSize { get; }
+
+        private readonly MemoryEhMeilleure _memoryEh;
+
+        private readonly ManagedPageFlags _pages;
 
         /// <inheritdoc/>
         public bool UsesPrivateAllocations => false;
@@ -42,7 +43,6 @@ namespace Ryujinx.Cpu.Jit
         /// Creates a new instance of the host mapped memory manager.
         /// </summary>
         /// <param name="addressSpace">Address space instance to use</param>
-        /// <param name="backingMemory">Physical backing memory</param>
         /// <param name="unsafeMode">True if unmanaged access should not be masked (unsafe), false otherwise.</param>
         /// <param name="invalidAccessHandler">Optional function to handle invalid memory accesses</param>
         public MemoryManagerHostNoMirror(
@@ -70,6 +70,7 @@ namespace Ryujinx.Cpu.Jit
             AddressSpaceBits = asBits;
 
             _pages = new ManagedPageFlags(asBits);
+
             Tracking = new MemoryTracking(this, (int)MemoryBlock.GetPageSize(), invalidAccessHandler);
             _memoryEh = new MemoryEhMeilleure(addressSpace, null, Tracking);
         }
@@ -162,22 +163,6 @@ namespace Ryujinx.Cpu.Jit
         public bool IsRangeMapped(ulong va, ulong size)
         {
             AssertValidAddressAndSize(va, size);
-
-            return _pages.IsRangeMapped(va, size);
-        }
-
-        /// <inheritdoc/>
-        public bool IsRangeMappedSafe(ulong va, ulong size)
-        {
-            if (size == 0UL)
-            {
-                return true;
-            }
-
-            if (!ValidateAddressAndSize(va, size))
-            {
-                return false;
-            }
 
             return _pages.IsRangeMapped(va, size);
         }
