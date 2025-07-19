@@ -77,11 +77,6 @@ namespace Ryujinx.Audio.Renderer.Server
         private int _disposeState;
 
         /// <summary>
-        /// Event to signal when audio processing is complete.
-        /// </summary>
-        private readonly AutoResetEvent _processorEvent = new(false);
-
-        /// <summary>
         /// Create a new <see cref="AudioRendererManager"/>.
         /// </summary>
         /// <param name="tickSource">Tick source used to measure elapsed time.</param>
@@ -92,7 +87,6 @@ namespace Ryujinx.Audio.Renderer.Server
             _sessionIds = new int[Constants.AudioRendererSessionCountMax];
             _sessions = new AudioRenderSystem[Constants.AudioRendererSessionCountMax];
             _activeSessionCount = 0;
-            _processorEvent = new AutoResetEvent(false);
 
             for (int i = 0; i < _sessionIds.Length; i++)
             {
@@ -190,9 +184,6 @@ namespace Ryujinx.Audio.Renderer.Server
             // TODO: virtual device mapping (IAudioDevice)
             Processor.Start(_deviceDriver);
 
-            // 注册处理完成回调
-            Processor.SetCompletionCallback(() => _processorEvent.Set());
-
             _workerThread = new Thread(SendCommands)
             {
                 Name = "AudioRendererManager.Worker",
@@ -242,6 +233,7 @@ namespace Ryujinx.Audio.Renderer.Server
         private void SendCommands()
         {
             Logger.Info?.Print(LogClass.AudioRenderer, "Starting audio renderer");
+            Processor.Wait();
 
             while (_isRunning)
             {
@@ -254,7 +246,7 @@ namespace Ryujinx.Audio.Renderer.Server
                 }
 
                 Processor.Signal();
-                _processorEvent.WaitOne(5); // 非阻塞等待(5ms超时)
+                Processor.Wait();
             }
         }
 
@@ -393,7 +385,6 @@ namespace Ryujinx.Audio.Renderer.Server
                 }
 
                 Processor.Dispose();
-                _processorEvent.Dispose();
             }
         }
     }
