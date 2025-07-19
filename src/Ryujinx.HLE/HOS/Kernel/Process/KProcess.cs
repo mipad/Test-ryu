@@ -1066,13 +1066,12 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
 
             bool for64Bit = flags.HasFlag(ProcessCreationFlags.Is64Bit);
 
-           // Context = _contextFactory.Create(KernelContext, Pid, 1UL << addrSpaceBits, InvalidAccessHandler, for64Bit);
-            Context = _contextFactory.Create(KernelContext, Pid, 1UL << addrSpaceBits, HandleInvalidAccess, for64Bit);
+            Context = _contextFactory.Create(KernelContext, Pid, 1UL << addrSpaceBits, InvalidAccessHandler, for64Bit);
 
             MemoryManager = new KPageTable(KernelContext, CpuMemory, Context.AddressSpaceSize);
         }
 
-        private bool InvalidAccessHandler(ulong va)
+        private bool InvalidAccessHandler(ulong va, ulong size, bool write)
         {
             KernelStatic.GetCurrentThread()?.PrintGuestStackTrace();
             KernelStatic.GetCurrentThread()?.PrintGuestRegisterPrintout();
