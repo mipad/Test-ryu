@@ -27,6 +27,11 @@ namespace Ryujinx.Memory
         public IntPtr Pointer => _pointer;
 
         /// <summary>
+        /// Pointer to the RX mapping (for execution), or IntPtr.Zero if not dual-mapped.
+        /// </summary>
+        public IntPtr RxPointer => _rxPointer;
+        
+        /// <summary>
         /// Size of the memory block.
         /// </summary>
         public ulong Size { get; }
