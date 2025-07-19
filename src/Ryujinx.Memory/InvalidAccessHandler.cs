@@ -7,5 +7,5 @@ namespace Ryujinx.Memory
     /// <param name="size">Size of the access attempt</param>
     /// <param name="write">Whether the access was a write operation</param>
     /// <returns>True if the invalid access should be ignored, false otherwise</returns>
-    public delegate bool InvalidAccessHandler(ulong va,  bool write);
+    public delegate bool InvalidAccessHandler(ulong va, ulong size, bool write);
 }
