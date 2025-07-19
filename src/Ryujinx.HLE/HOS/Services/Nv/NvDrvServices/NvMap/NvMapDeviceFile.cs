@@ -134,17 +134,31 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
 
                 if (address == 0)
                 {
-                    // When the address is zero, we need to allocate
-                    // our own backing memory for the NvMap.
-                    // TODO: Is this allocation inside the transfer memory?
-                    result = NvInternalResult.OutOfMemory;
+                    // 当地址为零时，分配物理内存
+                    try 
+                    {
+                        address = Context.Device.MemoryManager.Allocate(size, (ulong)arguments.Align);
+                        Logger.Debug?.Print(LogClass.ServiceNv, 
+                            $"Allocated physical memory: 0x{address:X} for map {arguments.Handle}");
+                    }
+                    catch (OutOfMemoryException)
+                    {
+                        Logger.Error?.Print(LogClass.ServiceNv, 
+                            $"Failed to allocate physical memory for map {arguments.Handle}");
+                        return NvInternalResult.OutOfMemory;
+                    }
                 }
 
-                if (result == NvInternalResult.Success)
+                // 验证地址有效性
+                if (address == 0)
                 {
-                    map.Size = size;
-                    map.Address = address;
+                    Logger.Error?.Print(LogClass.ServiceNv, 
+                        "Rejected NULL physical address allocation!");
+                    return NvInternalResult.InvalidAddress;
                 }
+
+                map.Size = size;
+                map.Address = address; // 设置有效物理地址
             }
 
             return result;
@@ -206,8 +220,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
                     arguments.Result = 0;
                     break;
 
-                // Note: Base is not supported and returns an error.
-                // Any other value also returns an error.
+                // 注意：不支持Base参数
                 default:
                     return NvInternalResult.InvalidInput;
             }
@@ -233,8 +246,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
 
         public override void Close()
         {
-            // TODO: refcount NvMapDeviceFile instances and remove when closing
-            // _maps.TryRemove(GetOwner(), out _);
+            // TODO: 实现引用计数
         }
 
         private int CreateHandleFromMap(NvMapHandle map)
@@ -277,7 +289,17 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
 
         public static NvMapHandle GetMapFromHandle(ulong pid, int handle)
         {
-            return _maps.Get(handle);
+            NvMapHandle map = _maps.Get(handle);
+            
+            // 新增：验证映射地址有效性
+            if (map != null && map.Address == 0)
+            {
+                Logger.Error?.Print(LogClass.ServiceNv, 
+                    $"NvMap handle 0x{handle:X} has NULL physical address!");
+                return null;
+            }
+            
+            return map;
         }
     }
 }
