@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Threading;
 
@@ -20,6 +21,7 @@ namespace Ryujinx.Memory
         private readonly bool _forJit;
         private IntPtr _sharedMemory;
         private IntPtr _pointer;
+        private IntPtr _rxPointer; // 添加 RX 映射指针字段
 
         /// <summary>
         /// Pointer to the memory block data.
@@ -40,30 +42,32 @@ namespace Ryujinx.Memory
         /// Creates a new instance of the memory block class.
         /// </summary>
         public MemoryBlock(ulong size, MemoryAllocationFlags flags = MemoryAllocationFlags.None)
-{
-    if (flags.HasFlag(MemoryAllocationFlags.Mirrorable))
-    {
-        if (OperatingSystem.IsAndroid())
         {
-            // Android 使用 ASharedMemory_create
-            _sharedMemory = MemoryManagementUnix.CreateSharedMemory(size, flags.HasFlag(MemoryAllocationFlags.Reserve));
-        }
-        else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
-        {
-            // Linux/macOS 使用其他实现
-            _sharedMemory = MemoryManagement.CreateSharedMemory(size, flags.HasFlag(MemoryAllocationFlags.Reserve));
-        }
-        else
-        {
-            throw new PlatformNotSupportedException("Shared memory is not supported on this platform.");
-        }
+            _rxPointer = IntPtr.Zero; // 初始化为零
 
-        if (!flags.HasFlag(MemoryAllocationFlags.NoMap))
-        {
-            _pointer = MemoryManagement.MapSharedMemory(_sharedMemory, size);
-        }
-        _usesSharedMemory = true;
-    }
+            if (flags.HasFlag(MemoryAllocationFlags.Mirrorable))
+            {
+                if (OperatingSystem.IsAndroid())
+                {
+                    // Android 使用 ASharedMemory_create
+                    _sharedMemory = MemoryManagementUnix.CreateSharedMemory(size, flags.HasFlag(MemoryAllocationFlags.Reserve));
+                }
+                else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+                {
+                    // Linux/macOS 使用其他实现
+                    _sharedMemory = MemoryManagement.CreateSharedMemory(size, flags.HasFlag(MemoryAllocationFlags.Reserve));
+                }
+                else
+                {
+                    throw new PlatformNotSupportedException("Shared memory is not supported on this platform.");
+                }
+
+                if (!flags.HasFlag(MemoryAllocationFlags.NoMap))
+                {
+                    _pointer = MemoryManagement.MapSharedMemory(_sharedMemory, size);
+                }
+                _usesSharedMemory = true;
+            }
             else if (flags.HasFlag(MemoryAllocationFlags.Reserve))
             {
                 _viewCompatible = flags.HasFlag(MemoryAllocationFlags.ViewCompatible);
@@ -74,9 +78,127 @@ namespace Ryujinx.Memory
             {
                 _forJit = flags.HasFlag(MemoryAllocationFlags.Jit);
                 _pointer = MemoryManagement.Allocate(size, _forJit);
+                
+                // 仅当非共享内存且需要 JIT 时创建双映射
+                if (_forJit && !_usesSharedMemory)
+                {
+                    CreateDualMapping(size);
+                }
             }
 
             Size = size;
+        }
+
+        /// <summary>
+        /// 创建双映射（RW 和 RX 映射）
+        /// </summary>
+        private void CreateDualMapping(ulong size)
+        {
+            // 仅在某些平台支持双映射
+            if (!IsDualMappingSupported())
+                return;
+            
+            try
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    CreateDualMappingWindows(size);
+                }
+                else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+                {
+                    CreateDualMappingUnix(size);
+                }
+            }
+            catch (PlatformNotSupportedException)
+            {
+                // 平台不支持双映射
+                _rxPointer = IntPtr.Zero;
+            }
+        }
+
+        /// <summary>
+        /// Windows 平台的双映射实现
+        /// </summary>
+        private void CreateDualMappingWindows(ulong size)
+        {
+            const uint PAGE_EXECUTE_READ = 0x20;
+            const uint MEM_COMMIT = 0x1000;
+            const uint MEM_RESERVE = 0x2000;
+            
+            _rxPointer = VirtualAlloc(
+                IntPtr.Zero,
+                (UIntPtr)size,
+                MEM_RESERVE | MEM_COMMIT,
+                PAGE_EXECUTE_READ
+            );
+            
+            if (_rxPointer == IntPtr.Zero)
+            {
+                int error = Marshal.GetLastWin32Error();
+                throw new PlatformNotSupportedException($"Dual mapping failed with error 0x{error:X8}");
+            }
+            
+            // 复制数据到 RX 映射
+            unsafe
+            {
+                Buffer.MemoryCopy(
+                    (void*)_pointer,
+                    (void*)_rxPointer,
+                    (long)size,
+                    (long)size
+                );
+            }
+        }
+
+        /// <summary>
+        /// Unix 平台的双映射实现
+        /// </summary>
+        private void CreateDualMappingUnix(ulong size)
+        {
+            const int PROT_READ = 0x1;
+            const int PROT_EXEC = 0x4;
+            const int MAP_PRIVATE = 0x02;
+            const int MAP_ANONYMOUS = 0x20;
+            
+            _rxPointer = mmap(
+                IntPtr.Zero,
+                size,
+                PROT_READ | PROT_EXEC,
+                MAP_PRIVATE | MAP_ANONYMOUS,
+                -1,
+                0
+            );
+            
+            if (_rxPointer == new IntPtr(-1))
+            {
+                int errno = Marshal.GetLastWin32Error();
+                throw new PlatformNotSupportedException($"Dual mapping failed with errno {errno}");
+            }
+            
+            // 复制数据到 RX 映射
+            unsafe
+            {
+                Buffer.MemoryCopy(
+                    (void*)_pointer,
+                    (void*)_rxPointer,
+                    (long)size,
+                    (long)size
+                );
+            }
+        }
+
+        /// <summary>
+        /// 检查平台是否支持双映射
+        /// </summary>
+        private static bool IsDualMappingSupported()
+        {
+            // 移动平台通常不支持
+            if (OperatingSystem.IsAndroid() || OperatingSystem.IsIOS())
+                return false;
+            
+            return OperatingSystem.IsWindows() || 
+                   OperatingSystem.IsLinux() || 
+                   OperatingSystem.IsMacOS();
         }
 
         /// <summary>
@@ -84,6 +206,7 @@ namespace Ryujinx.Memory
         /// </summary>
         private MemoryBlock(ulong size, IntPtr sharedMemory)
         {
+            _rxPointer = IntPtr.Zero;
             _pointer = MemoryManagement.MapSharedMemory(sharedMemory, size);
             Size = size;
             _usesSharedMemory = true;
@@ -390,8 +513,22 @@ namespace Ryujinx.Memory
         private void FreeMemory()
         {
             IntPtr ptr = Interlocked.Exchange(ref _pointer, IntPtr.Zero);
+            IntPtr rxPtr = Interlocked.Exchange(ref _rxPointer, IntPtr.Zero);
 
-            // If pointer is null, the memory was already freed or never allocated.
+            // 释放 RX 映射
+            if (rxPtr != IntPtr.Zero)
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    VirtualFree(rxPtr, UIntPtr.Zero, MEM_RELEASE);
+                }
+                else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
+                {
+                    munmap(rxPtr, (IntPtr)Size);
+                }
+            }
+
+            // 如果指针是 null，内存已被释放或从未分配
             if (ptr != IntPtr.Zero)
             {
                 if (_usesSharedMemory)
@@ -441,5 +578,34 @@ namespace Ryujinx.Memory
         }
 
         private static void ThrowInvalidMemoryRegionException() => throw new InvalidMemoryRegionException();
+
+        // Windows P/Invoke
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr VirtualAlloc(
+            IntPtr lpAddress,
+            UIntPtr dwSize,
+            uint flAllocationType,
+            uint flProtect);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool VirtualFree(
+            IntPtr lpAddress,
+            UIntPtr dwSize,
+            uint dwFreeType);
+
+        private const uint MEM_RELEASE = 0x8000;
+
+        // Unix P/Invoke
+        [DllImport("libc", SetLastError = true)]
+        private static extern IntPtr mmap(
+            IntPtr addr,
+            ulong length,
+            int prot,
+            int flags,
+            int fd,
+            ulong offset);
+
+        [DllImport("libc", SetLastError = true)]
+        private static extern int munmap(IntPtr addr, IntPtr length);
     }
 }
