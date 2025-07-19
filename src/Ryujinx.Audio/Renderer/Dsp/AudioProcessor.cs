@@ -40,19 +40,9 @@ namespace Ryujinx.Audio.Renderer.Dsp
 
         private ManualResetEvent _pauseEvent;
 
-        private Action _completionCallback;
-
         public AudioProcessor()
         {
             _event = new ManualResetEvent(false);
-        }
-
-        /// <summary>
-        /// 设置处理完成时的回调函数
-        /// </summary>
-        public void SetCompletionCallback(Action callback)
-        {
-            _completionCallback = callback;
         }
 
         private static uint GetHardwareChannelCount(IHardwareDeviceDriver deviceDriver)
@@ -232,7 +222,6 @@ namespace Ryujinx.Audio.Renderer.Dsp
                     }
 
                     _mailbox.SendResponse(MailboxMessage.RenderEnd);
-                    _completionCallback?.Invoke(); // 触发处理完成回调
                 }
             }
 
