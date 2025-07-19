@@ -57,20 +57,21 @@ namespace Ryujinx.Memory.Tracking
             _virtualRegions = new NonOverlappingRangeList<VirtualRegion>();
             _guestVirtualRegions = new NonOverlappingRangeList<VirtualRegion>();
 
-            // === 新增：保护空指针区域 ===
+            // === 修改：保护空指针区域 ===
             const ulong protectSize = 0x1000;
             try
             {
                 if (!_memoryManager.IsRangeMapped(0, protectSize))
                 {
-                    _memoryManager.Map(0, protectSize);
+                    // 修复：使用正确的Map参数（添加物理地址和标志）
+                    _memoryManager.Map(0, 0, protectSize, MemoryMapFlags.Private);
                     _memoryManager.TrackingReprotect(0, protectSize, MemoryPermission.None, guest: true);
-                    Logger.Info?.Print(LogClass.Memory, "Null page protection initialized");
+                    Logger.Info?.Print(LogClass.Cpu, "Null page protection initialized"); // 修复：使用Cpu分类
                 }
             }
             catch (Exception ex)
             {
-                Logger.Warning?.Print(LogClass.Memory, 
+                Logger.Warning?.Print(LogClass.Cpu, // 修复：使用Cpu分类
                     $"Failed to initialize null page protection: {ex.Message}");
             }
         }
@@ -265,13 +266,13 @@ namespace Ryujinx.Memory.Tracking
                 _lastNullAccessTime = currentTime;
                 _nullAccessCount++;
                 
-                Logger.Warning?.Print(LogClass.Cpu, // 修复：使用 LogClass.Cpu
+                Logger.Warning?.Print(LogClass.Cpu, 
                     $"[NULL ACCESS] Addr=0x0, Size=0x{size:X}, Write={write}, " +
                     $"Precise={precise}, Guest={guest}, Count={_nullAccessCount}, " +
                     $"TimeSinceLast={timeSinceLast}ms");
                 
                 #if DEBUG
-                Logger.Debug?.Print(LogClass.Cpu, // 修复：使用 LogClass.Cpu
+                Logger.Debug?.Print(LogClass.Cpu, 
                     $"Null Access Stack:\n{Environment.StackTrace}");
                 #endif
 
