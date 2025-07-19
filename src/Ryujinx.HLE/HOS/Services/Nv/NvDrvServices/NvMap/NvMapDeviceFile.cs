@@ -99,7 +99,6 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
         private NvInternalResult Alloc(ref NvMapAlloc arguments)
 {
     NvMapHandle map = GetMapFromHandle(Owner, arguments.Handle);
-
     if (map == null)
     {
         Logger.Warning?.Print(LogClass.ServiceNv, $"Invalid handle 0x{arguments.Handle:x8}!");
@@ -112,10 +111,12 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
         return NvInternalResult.InvalidInput;
     }
 
-    // 修复点1
-    if ((uint)arguments.Align < MemoryConstants.PageSize)
+    // 修改前: if ((uint)arguments.Align < MemoryConstants.PageSize)
+    // 修改后 ↓
+    const uint PageSize = 0x1000; // 直接定义页大小常量
+    if ((uint)arguments.Align < PageSize)
     {
-        arguments.Align = (int)MemoryConstants.PageSize;
+        arguments.Align = (int)PageSize;
     }
 
     NvInternalResult result = NvInternalResult.Success;
@@ -126,8 +127,9 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
         map.Align = arguments.Align;
         map.Kind = (byte)arguments.Kind;
 
-        // 修复点2
-        uint size = BitUtils.AlignUp(map.Size, (uint)MemoryConstants.PageSize);
+        // 修改前: uint size = BitUtils.AlignUp(map.Size, (uint)MemoryConstants.PageSize);
+        // 修改后 ↓
+        uint size = BitUtils.AlignUp(map.Size, PageSize);
 
         ulong address = arguments.Address;
 
@@ -135,7 +137,10 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
         {
             try 
             {
-                address = Context.Device.MemoryManager.Allocate(size, (ulong)arguments.Align);
+                // 修改前: address = Context.Device.MemoryManager.Allocate(...)
+                // 修改后 ↓
+                address = Context.Device.Memory.Allocate(size, (ulong)arguments.Align);
+                
                 Logger.Debug?.Print(LogClass.ServiceNv, 
                     $"Allocated physical memory: 0x{address:X} for map {arguments.Handle}");
             }
