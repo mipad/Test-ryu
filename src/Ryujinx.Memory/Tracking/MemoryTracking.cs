@@ -17,10 +17,6 @@ namespace Ryujinx.Memory.Tracking
         private readonly IVirtualMemoryManager _memoryManager;
         private readonly InvalidAccessHandler _invalidAccessHandler;
 
-        // 新增：音频缓冲区检测委托
-        private readonly System.Func<ulong, ulong, bool> _isAudioRegion;
-
-        // 以下字段需要在锁内访问
         private readonly NonOverlappingRangeList<VirtualRegion> _virtualRegions;
         private readonly NonOverlappingRangeList<VirtualRegion> _guestVirtualRegions;
 
@@ -34,7 +30,7 @@ namespace Ryujinx.Memory.Tracking
 
         // === 新增诊断字段 ===
         private static readonly Stopwatch _diagnosticTimer = Stopwatch.StartNew();
-        private long _lastNullAccessTime; // 修复：改为 long 类型
+        private long _lastNullAccessTime;
         private int _nullAccessCount;
         // ===================
         
@@ -45,14 +41,12 @@ namespace Ryujinx.Memory.Tracking
             IVirtualMemoryManager memoryManager,
             int pageSize,
             InvalidAccessHandler invalidAccessHandler = null,
-            bool singleByteGuestTracking = false,
-            System.Func<ulong, ulong, bool> isAudioRegion = null) // 新增音频检测参数
+            bool singleByteGuestTracking = false)
         {
             _memoryManager = memoryManager;
             _pageSize = pageSize;
             _invalidAccessHandler = invalidAccessHandler;
             _singleByteGuestTracking = singleByteGuestTracking;
-            _isAudioRegion = isAudioRegion; // 存储音频检测委托
 
             _virtualRegions = new NonOverlappingRangeList<VirtualRegion>();
             _guestVirtualRegions = new NonOverlappingRangeList<VirtualRegion>();
@@ -74,9 +68,6 @@ namespace Ryujinx.Memory.Tracking
         /// </summary>
         public void Map(ulong va, ulong size)
         {
-            // 新增：跳过音频区域的映射处理
-            if (_isAudioRegion != null && _isAudioRegion(va, size)) return;
-            
             lock (TrackingLock)
             {
                 ref var overlaps = ref ThreadStaticArray<VirtualRegion>.Get();
@@ -105,9 +96,6 @@ namespace Ryujinx.Memory.Tracking
         /// </summary>
         public void Unmap(ulong va, ulong size)
         {
-            // 新增：跳过音频区域的取消映射处理
-            if (_isAudioRegion != null && _isAudioRegion(va, size)) return;
-            
             lock (TrackingLock)
             {
                 ref var overlaps = ref ThreadStaticArray<VirtualRegion>.Get();
@@ -240,33 +228,22 @@ namespace Ryujinx.Memory.Tracking
             int? exemptId = null, 
             bool guest = false)
         {
-            // === 新增：空指针访问诊断 ===
             if (address == 0)
             {
-                long currentTime = _diagnosticTimer.ElapsedMilliseconds; // 修复：使用 long 类型
+                long currentTime = _diagnosticTimer.ElapsedMilliseconds;
                 long timeSinceLast = currentTime - _lastNullAccessTime;
                 _lastNullAccessTime = currentTime;
                 _nullAccessCount++;
                 
-                Logger.Warning?.Print(LogClass.Cpu, // 修复：使用 LogClass.Cpu
+                Logger.Warning?.Print(LogClass.Cpu,
                     $"[NULL ACCESS] Addr=0x0, Size=0x{size:X}, Write={write}, " +
                     $"Precise={precise}, Guest={guest}, Count={_nullAccessCount}, " +
                     $"TimeSinceLast={timeSinceLast}ms");
                 
                 #if DEBUG
-                Logger.Debug?.Print(LogClass.Cpu, // 修复：使用 LogClass.Cpu
+                Logger.Debug?.Print(LogClass.Cpu,
                     $"Null Access Stack:\n{Environment.StackTrace}");
                 #endif
-            }
-            // ===========================
-            
-            // 新增：跳过音频区域的内存事件处理
-            if (_isAudioRegion != null && _isAudioRegion(address, size))
-            {
-                // 启用音频跳过日志（调试时取消注释）
-                // Logger.Trace?.Print(LogClass.Cpu, 
-                //    $"Skipping audio region access: VA=0x{address:X}, Size={size}");
-                return true;
             }
             
             bool shouldThrow = false;
@@ -290,19 +267,16 @@ namespace Ryujinx.Memory.Tracking
                     }
                     else
                     {
-                        // === 增强错误日志 ===
                         string regionInfo = GetRegionInfoNearAddress(address);
                         Logger.Error?.Print(LogClass.Cpu, 
                             $"Invalid memory access at 0x{address:X}, size 0x{size:X}, write: {write}\n" +
                             $"Nearby Regions:\n{regionInfo}");
                         
-                        // 记录历史访问模式
                         if (_nullAccessCount > 0)
                         {
                             Logger.Error?.Print(LogClass.Cpu, 
                                 $"Null access pattern: {_nullAccessCount} times in last {_diagnosticTimer.ElapsedMilliseconds}ms");
                         }
-                        // ===================
                         
                         shouldThrow = true;
                     }
@@ -331,7 +305,6 @@ namespace Ryujinx.Memory.Tracking
 
             if (shouldThrow)
             {
-                // === 空指针特殊处理 ===
                 if (address == 0)
                 {
                     Logger.Error?.Print(LogClass.Cpu, 
@@ -348,7 +321,6 @@ namespace Ryujinx.Memory.Tracking
                     }
                     #endif
                 }
-                // ======================
                 
                 _invalidAccessHandler?.Invoke(address);
                 throw new InvalidMemoryRegionException($"Access violation at 0x{address:X}");
@@ -362,7 +334,7 @@ namespace Ryujinx.Memory.Tracking
         /// </summary>
         private string GetRegionInfoNearAddress(ulong address)
         {
-            const int range = 0x10000; // 搜索附近64KB范围
+            const int range = 0x10000;
             List<string> regionInfos = new();
             
             ulong start = address > range ? address - range : 0;
@@ -372,7 +344,6 @@ namespace Ryujinx.Memory.Tracking
             {
                 ref var overlaps = ref ThreadStaticArray<VirtualRegion>.Get();
                 
-                // 检查普通虚拟区域
                 int count = _virtualRegions.FindOverlapsNonOverlapping(start, end - start, ref overlaps);
                 for (int i = 0; i < count; i++)
                 {
@@ -381,7 +352,6 @@ namespace Ryujinx.Memory.Tracking
                                      $"({region.Size / 1024}KB)");
                 }
                 
-                // 检查访客虚拟区域
                 count = _guestVirtualRegions.FindOverlapsNonOverlapping(start, end - start, ref overlaps);
                 for (int i = 0; i < count; i++)
                 {
@@ -414,8 +384,6 @@ namespace Ryujinx.Memory.Tracking
                 return _virtualRegions.Count;
             }
         }
-        
-        // === 新增诊断方法 ===
         
         /// <summary>
         /// 获取空指针访问统计信息（诊断用）
