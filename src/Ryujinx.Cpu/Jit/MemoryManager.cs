@@ -1,6 +1,6 @@
 using ARMeilleure.Memory;
-using Ryujinx.Common.SystemInterop;  // 新增引用
-using Ryujinx.Common.Utilities;  // 新增引用
+using Ryujinx.Common.SystemInterop;
+using Ryujinx.Common.Utilities;
 using Ryujinx.Memory;
 using Ryujinx.Memory.Range;
 using Ryujinx.Memory.Tracking;
@@ -11,7 +11,6 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
-
 
 #if ANDROID
 using Android.OS;
@@ -29,10 +28,10 @@ namespace Ryujinx.Cpu.Jit
         private const ulong LargePageSize = 2 * 1024 * 1024; // 2MB
         private const ulong LargePageFlag = 1UL << 52; // 自定义大页标志位
 
-        // 音频缓冲区配置（需要根据游戏调整）
+        // 音频缓冲区配置
         private const ulong AudioBufferBase = 0x20000000; // 典型音频缓冲区起始地址
         private const ulong AudioBufferSize = 0x100000;   // 1MB 典型大小
-        private const int AudioThreadId = 18; // 根据日志中的 "Thread: CRI Server Manager"
+        private const int AudioThreadId = 18; // CRI Server Manager 线程ID
 
         private readonly MemoryBlock _backingMemory;
         private readonly InvalidAccessHandler _invalidAccessHandler;
@@ -183,7 +182,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, (ulong)Unsafe.SizeOf<T>(), false))
                 {
                     throw;
                 }
@@ -203,7 +202,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, (ulong)Unsafe.SizeOf<T>(), false))
                 {
                     throw;
                 }
@@ -227,7 +226,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, (ulong)data.Length, false))
                 {
                     throw;
                 }
@@ -242,7 +241,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, (ulong)data.Length, true))
                 {
                     throw;
                 }
@@ -267,7 +266,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, (ulong)data.Length, true))
                 {
                     throw;
                 }
@@ -282,7 +281,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, (ulong)size, false))
                 {
                     throw;
                 }
