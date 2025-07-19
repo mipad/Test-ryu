@@ -97,72 +97,69 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
         }
 
         private NvInternalResult Alloc(ref NvMapAlloc arguments)
+{
+    NvMapHandle map = GetMapFromHandle(Owner, arguments.Handle);
+
+    if (map == null)
+    {
+        Logger.Warning?.Print(LogClass.ServiceNv, $"Invalid handle 0x{arguments.Handle:x8}!");
+        return NvInternalResult.InvalidInput;
+    }
+
+    if ((arguments.Align & (arguments.Align - 1)) != 0)
+    {
+        Logger.Warning?.Print(LogClass.ServiceNv, $"Invalid alignment 0x{arguments.Align:x8}!");
+        return NvInternalResult.InvalidInput;
+    }
+
+    // 修复点1
+    if ((uint)arguments.Align < MemoryConstants.PageSize)
+    {
+        arguments.Align = (int)MemoryConstants.PageSize;
+    }
+
+    NvInternalResult result = NvInternalResult.Success;
+
+    if (!map.Allocated)
+    {
+        map.Allocated = true;
+        map.Align = arguments.Align;
+        map.Kind = (byte)arguments.Kind;
+
+        // 修复点2
+        uint size = BitUtils.AlignUp(map.Size, (uint)MemoryConstants.PageSize);
+
+        ulong address = arguments.Address;
+
+        if (address == 0)
         {
-            NvMapHandle map = GetMapFromHandle(Owner, arguments.Handle);
-
-            if (map == null)
+            try 
             {
-                Logger.Warning?.Print(LogClass.ServiceNv, $"Invalid handle 0x{arguments.Handle:x8}!");
-
-                return NvInternalResult.InvalidInput;
+                address = Context.Device.MemoryManager.Allocate(size, (ulong)arguments.Align);
+                Logger.Debug?.Print(LogClass.ServiceNv, 
+                    $"Allocated physical memory: 0x{address:X} for map {arguments.Handle}");
             }
-
-            if ((arguments.Align & (arguments.Align - 1)) != 0)
+            catch (OutOfMemoryException)
             {
-                Logger.Warning?.Print(LogClass.ServiceNv, $"Invalid alignment 0x{arguments.Align:x8}!");
-
-                return NvInternalResult.InvalidInput;
+                Logger.Error?.Print(LogClass.ServiceNv, 
+                    $"Failed to allocate physical memory for map {arguments.Handle}");
+                return NvInternalResult.OutOfMemory;
             }
-
-            if ((uint)arguments.Align < MemoryManager.PageSize)
-            {
-                arguments.Align = (int)MemoryManager.PageSize;
-            }
-
-            NvInternalResult result = NvInternalResult.Success;
-
-            if (!map.Allocated)
-            {
-                map.Allocated = true;
-
-                map.Align = arguments.Align;
-                map.Kind = (byte)arguments.Kind;
-
-                uint size = BitUtils.AlignUp(map.Size, (uint)MemoryManager.PageSize);
-
-                ulong address = arguments.Address;
-
-                if (address == 0)
-                {
-                    // 当地址为零时，分配物理内存
-                    try 
-                    {
-                        address = Context.Device.MemoryManager.Allocate(size, (ulong)arguments.Align);
-                        Logger.Debug?.Print(LogClass.ServiceNv, 
-                            $"Allocated physical memory: 0x{address:X} for map {arguments.Handle}");
-                    }
-                    catch (OutOfMemoryException)
-                    {
-                        Logger.Error?.Print(LogClass.ServiceNv, 
-                            $"Failed to allocate physical memory for map {arguments.Handle}");
-                        return NvInternalResult.OutOfMemory;
-                    }
-                }
-
-                // 验证地址有效性
-                if (address == 0)
-                {
-                    Logger.Error?.Print(LogClass.ServiceNv, 
-                        "Rejected NULL physical address allocation!");
-                    return NvInternalResult.InvalidAddress;
-                }
-
-                map.Size = size;
-                map.Address = address; // 设置有效物理地址
-            }
-
-            return result;
         }
+
+        if (address == 0)
+        {
+            Logger.Error?.Print(LogClass.ServiceNv, 
+                "Rejected NULL physical address allocation!");
+            return NvInternalResult.InvalidAddress;
+        }
+
+        map.Size = size;
+        map.Address = address;
+    }
+
+    return NvInternalResult.Success;
+}
 
         private NvInternalResult Free(ref NvMapFree arguments)
         {
