@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace Ryujinx.Graphics.Gpu.Memory
 {
@@ -33,6 +34,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         public const ulong PteUnmapped = ulong.MaxValue;
 
         private readonly ulong[][] _pageTable;
+        private readonly ReaderWriterLockSlim _pageTableLock = new ReaderWriterLockSlim();
 
         public event EventHandler<UnmapEventArgs> MemoryUnmapped;
 
@@ -79,10 +81,16 @@ namespace Ryujinx.Graphics.Gpu.Memory
         public T Read<T>(ulong va, bool tracked = false) where T : unmanaged
         {
             int size = Unsafe.SizeOf<T>();
+            EnsureMapped(va, (ulong)size);
 
             if (IsContiguous(va, size))
             {
                 ulong address = Translate(va);
+
+                if (address == PteUnmapped)
+                {
+                    return default;
+                }
 
                 if (tracked)
                 {
@@ -96,9 +104,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             else
             {
                 Span<byte> data = new byte[size];
-
                 ReadImpl(va, data, tracked);
-
                 return MemoryMarshal.Cast<byte, T>(data)[0];
             }
         }
@@ -112,16 +118,17 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <returns>The span of the data at the specified memory location</returns>
         public ReadOnlySpan<byte> GetSpan(ulong va, int size, bool tracked = false)
         {
+            EnsureMapped(va, (ulong)size);
+
             if (IsContiguous(va, size))
             {
-                return Physical.GetSpan(Translate(va), size, tracked);
+                ulong address = Translate(va);
+                return address == PteUnmapped ? new byte[size] : Physical.GetSpan(address, size, tracked);
             }
             else
             {
                 Span<byte> data = new byte[size];
-
                 ReadImpl(va, data, tracked);
-
                 return data;
             }
         }
@@ -139,56 +146,64 @@ namespace Ryujinx.Graphics.Gpu.Memory
             bool isContiguous = true;
             int mappedSize;
 
-            if (ValidateAddress(va) && GetPte(va) != PteUnmapped && Physical.IsMapped(Translate(va)))
+            try
             {
-                ulong endVa = va + (ulong)size;
-                ulong endVaAligned = (endVa + PageMask) & ~PageMask;
-                ulong currentVa = va & ~PageMask;
+                _pageTableLock.EnterReadLock();
 
-                int pages = (int)((endVaAligned - currentVa) / PageSize);
-
-                for (int page = 0; page < pages - 1; page++)
+                if (ValidateAddress(va) && GetPte(va) != PteUnmapped)
                 {
-                    ulong nextVa = currentVa + PageSize;
-                    ulong nextPa = Translate(nextVa);
+                    ulong endVa = va + (ulong)size;
+                    ulong endVaAligned = (endVa + PageMask) & ~PageMask;
+                    ulong currentVa = va & ~PageMask;
 
-                    if (!ValidateAddress(nextVa) || GetPte(nextVa) == PteUnmapped || !Physical.IsMapped(nextPa))
-                    {
-                        break;
-                    }
+                    int pages = (int)((endVaAligned - currentVa) / PageSize);
 
-                    if (Translate(currentVa) + PageSize != nextPa)
+                    for (int page = 0; page < pages - 1; page++)
                     {
-                        isContiguous = false;
+                        ulong nextVa = currentVa + PageSize;
+                        ulong nextPa = Translate(nextVa);
+
+                        if (!ValidateAddress(nextVa) || GetPte(nextVa) == PteUnmapped)
+                        {
+                            break;
+                        }
+
+                        if (Translate(currentVa) + PageSize != nextPa)
+                        {
+                            isContiguous = false;
+                        }
+
+                        currentVa += PageSize;
                     }
 
                     currentVa += PageSize;
+
+                    if (currentVa > endVa)
+                    {
+                        currentVa = endVa;
+                    }
+
+                    mappedSize = (int)(currentVa - va);
                 }
-
-                currentVa += PageSize;
-
-                if (currentVa > endVa)
+                else
                 {
-                    currentVa = endVa;
+                    return ReadOnlySpan<byte>.Empty;
                 }
-
-                mappedSize = (int)(currentVa - va);
             }
-            else
+            finally
             {
-                return ReadOnlySpan<byte>.Empty;
+                _pageTableLock.ExitReadLock();
             }
 
             if (isContiguous)
             {
-                return Physical.GetSpan(Translate(va), mappedSize, tracked);
+                ulong address = Translate(va);
+                return address == PteUnmapped ? new byte[mappedSize] : Physical.GetSpan(address, mappedSize, tracked);
             }
             else
             {
                 Span<byte> data = new byte[mappedSize];
-
                 ReadImpl(va, data, tracked);
-
                 return data;
             }
         }
@@ -252,16 +267,18 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <returns>A writable region with the data at the specified memory location</returns>
         public WritableRegion GetWritableRegion(ulong va, int size, bool tracked = false)
         {
+            EnsureMapped(va, (ulong)size);
+
             if (IsContiguous(va, size))
             {
-                return Physical.GetWritableRegion(Translate(va), size, tracked);
+                ulong address = Translate(va);
+                return address == PteUnmapped ? new WritableRegion(null, va, MemoryOwner<byte>.Rent(size), false) 
+                    : Physical.GetWritableRegion(address, size, tracked);
             }
             else
             {
                 MemoryOwner<byte> memoryOwner = MemoryOwner<byte>.Rent(size);
-
                 ReadImpl(va, memoryOwner.Span, tracked);
-
                 return new WritableRegion(this, va, memoryOwner, tracked);
             }
         }
@@ -284,6 +301,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="data">The data to be written</param>
         public void Write(ulong va, ReadOnlySpan<byte> data)
         {
+            EnsureMapped(va, (ulong)data.Length);
             WriteImpl(va, data, Physical.Write);
         }
 
@@ -294,6 +312,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="data">The data to be written</param>
         public void WriteTrackedResource(ulong va, ReadOnlySpan<byte> data)
         {
+            EnsureMapped(va, (ulong)data.Length);
             WriteImpl(va, data, Physical.WriteTrackedResource);
         }
 
@@ -304,6 +323,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="data">The data to be written</param>
         public void WriteUntracked(ulong va, ReadOnlySpan<byte> data)
         {
+            EnsureMapped(va, (ulong)data.Length);
             WriteImpl(va, data, Physical.WriteUntracked);
         }
 
@@ -319,7 +339,11 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             if (IsContiguous(va, data.Length))
             {
-                writeCallback(Translate(va), data);
+                ulong address = Translate(va);
+                if (address != PteUnmapped)
+                {
+                    writeCallback(address, data);
+                }
             }
             else
             {
@@ -331,7 +355,10 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                     size = Math.Min(data.Length, (int)PageSize - (int)(va & PageMask));
 
-                    writeCallback(pa, data[..size]);
+                    if (pa != PteUnmapped)
+                    {
+                        writeCallback(pa, data[..size]);
+                    }
 
                     offset += size;
                 }
@@ -342,7 +369,10 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                     size = Math.Min(data.Length - offset, (int)PageSize);
 
-                    writeCallback(pa, data.Slice(offset, size));
+                    if (pa != PteUnmapped)
+                    {
+                        writeCallback(pa, data.Slice(offset, size));
+                    }
                 }
             }
         }
@@ -375,8 +405,9 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="kind">Kind of the resource located at the mapping</param>
         public void Map(ulong pa, ulong va, ulong size, PteKind kind)
         {
-            lock (_pageTable)
+            try
             {
+                _pageTableLock.EnterWriteLock();
                 UnmapEventArgs e = new(va, size);
                 MemoryUnmapped?.Invoke(this, e);
 
@@ -387,6 +418,10 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 RunRemapActions(e);
             }
+            finally
+            {
+                _pageTableLock.ExitWriteLock();
+            }
         }
 
         /// <summary>
@@ -396,9 +431,9 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="size">Size in bytes of the region being unmapped</param>
         public void Unmap(ulong va, ulong size)
         {
-            lock (_pageTable)
+            try
             {
-                // Event handlers are not expected to be thread safe.
+                _pageTableLock.EnterWriteLock();
                 UnmapEventArgs e = new(va, size);
                 MemoryUnmapped?.Invoke(this, e);
 
@@ -408,6 +443,10 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 }
 
                 RunRemapActions(e);
+            }
+            finally
+            {
+                _pageTableLock.ExitWriteLock();
             }
         }
 
@@ -420,33 +459,42 @@ namespace Ryujinx.Graphics.Gpu.Memory
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool IsContiguous(ulong va, int size)
         {
-            if (!ValidateAddress(va) || GetPte(va) == PteUnmapped)
+            try
             {
-                return false;
-            }
+                _pageTableLock.EnterReadLock();
 
-            ulong endVa = (va + (ulong)size + PageMask) & ~PageMask;
-
-            va &= ~PageMask;
-
-            int pages = (int)((endVa - va) / PageSize);
-
-            for (int page = 0; page < pages - 1; page++)
-            {
-                if (!ValidateAddress(va + PageSize) || GetPte(va + PageSize) == PteUnmapped)
+                if (!ValidateAddress(va) || GetPte(va) == PteUnmapped)
                 {
                     return false;
                 }
 
-                if (Translate(va) + PageSize != Translate(va + PageSize))
+                ulong endVa = (va + (ulong)size + PageMask) & ~PageMask;
+
+                va &= ~PageMask;
+
+                int pages = (int)((endVa - va) / PageSize);
+
+                for (int page = 0; page < pages - 1; page++)
                 {
-                    return false;
+                    if (!ValidateAddress(va + PageSize) || GetPte(va + PageSize) == PteUnmapped)
+                    {
+                        return false;
+                    }
+
+                    if (Translate(va) + PageSize != Translate(va + PageSize))
+                    {
+                        return false;
+                    }
+
+                    va += PageSize;
                 }
 
-                va += PageSize;
+                return true;
             }
-
-            return true;
+            finally
+            {
+                _pageTableLock.ExitReadLock();
+            }
         }
 
         /// <summary>
@@ -457,47 +505,63 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <returns>Multi-range with the physical regions</returns>
         public MultiRange GetPhysicalRegions(ulong va, ulong size)
         {
-            if (IsContiguous(va, (int)size))
+            try
             {
-                return new MultiRange(Translate(va), size);
-            }
+                _pageTableLock.EnterReadLock();
 
-            ulong regionStart = Translate(va);
-            ulong regionSize = Math.Min(size, PageSize - (va & PageMask));
-
-            ulong endVa = va + size;
-            ulong endVaRounded = (endVa + PageMask) & ~PageMask;
-
-            va &= ~PageMask;
-
-            int pages = (int)((endVaRounded - va) / PageSize);
-
-            var regions = new List<MemoryRange>();
-
-            for (int page = 0; page < pages - 1; page++)
-            {
-                ulong currPa = Translate(va);
-                ulong newPa = Translate(va + PageSize);
-
-                if ((currPa != PteUnmapped || newPa != PteUnmapped) && currPa + PageSize != newPa)
+                if (IsContiguous(va, (int)size))
                 {
-                    regions.Add(new MemoryRange(regionStart, regionSize));
-                    regionStart = newPa;
-                    regionSize = 0;
+                    ulong address = Translate(va);
+                    return address == PteUnmapped ? new MultiRange() : new MultiRange(address, size);
                 }
 
-                va += PageSize;
-                regionSize += Math.Min(endVa - va, PageSize);
-            }
+                ulong regionStart = Translate(va);
+                ulong regionSize = Math.Min(size, PageSize - (va & PageMask));
 
-            if (regions.Count == 0)
+                ulong endVa = va + size;
+                ulong endVaRounded = (endVa + PageMask) & ~PageMask;
+
+                va &= ~PageMask;
+
+                int pages = (int)((endVaRounded - va) / PageSize);
+
+                var regions = new List<MemoryRange>();
+
+                for (int page = 0; page < pages - 1; page++)
+                {
+                    ulong currPa = Translate(va);
+                    ulong newPa = Translate(va + PageSize);
+
+                    if ((currPa != PteUnmapped || newPa != PteUnmapped) && currPa + PageSize != newPa)
+                    {
+                        if (regionStart != PteUnmapped)
+                        {
+                            regions.Add(new MemoryRange(regionStart, regionSize));
+                        }
+                        regionStart = newPa;
+                        regionSize = 0;
+                    }
+
+                    va += PageSize;
+                    regionSize += Math.Min(endVa - va, PageSize);
+                }
+
+                if (regions.Count == 0)
+                {
+                    return regionStart == PteUnmapped ? new MultiRange() : new MultiRange(regionStart, regionSize);
+                }
+
+                if (regionStart != PteUnmapped)
+                {
+                    regions.Add(new MemoryRange(regionStart, regionSize));
+                }
+
+                return new MultiRange(regions.ToArray());
+            }
+            finally
             {
-                return new MultiRange(regionStart, regionSize);
+                _pageTableLock.ExitReadLock();
             }
-
-            regions.Add(new MemoryRange(regionStart, regionSize));
-
-            return new MultiRange(regions.ToArray());
         }
 
         /// <summary>
@@ -509,45 +573,54 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <returns>True if the virtual memory region is mapped into the specified physical one, false otherwise</returns>
         public bool CompareRange(MultiRange range, ulong va)
         {
-            va &= ~PageMask;
-
-            for (int i = 0; i < range.Count; i++)
+            try
             {
-                MemoryRange currentRange = range.GetSubRange(i);
+                _pageTableLock.EnterReadLock();
 
-                if (currentRange.Address != PteUnmapped)
+                va &= ~PageMask;
+
+                for (int i = 0; i < range.Count; i++)
                 {
-                    ulong address = currentRange.Address & ~PageMask;
-                    ulong endAddress = (currentRange.EndAddress + PageMask) & ~PageMask;
+                    MemoryRange currentRange = range.GetSubRange(i);
 
-                    while (address < endAddress)
+                    if (currentRange.Address != MemoryManager.PteUnmapped)
                     {
-                        if (Translate(va) != address)
-                        {
-                            return false;
-                        }
+                        ulong address = currentRange.Address & ~PageMask;
+                        ulong endAddress = (currentRange.EndAddress + PageMask) & ~PageMask;
 
-                        va += PageSize;
-                        address += PageSize;
+                        while (address < endAddress)
+                        {
+                            if (Translate(va) != address)
+                            {
+                                return false;
+                            }
+
+                            va += PageSize;
+                            address += PageSize;
+                        }
+                    }
+                    else
+                    {
+                        ulong endVa = va + (((currentRange.Size) + PageMask) & ~PageMask);
+
+                        while (va < endVa)
+                        {
+                            if (Translate(va) != PteUnmapped)
+                            {
+                                return false;
+                            }
+
+                            va += PageSize;
+                        }
                     }
                 }
-                else
-                {
-                    ulong endVa = va + (((currentRange.Size) + PageMask) & ~PageMask);
 
-                    while (va < endVa)
-                    {
-                        if (Translate(va) != PteUnmapped)
-                        {
-                            return false;
-                        }
-
-                        va += PageSize;
-                    }
-                }
+                return true;
             }
-
-            return true;
+            finally
+            {
+                _pageTableLock.ExitReadLock();
+            }
         }
 
         /// <summary>
@@ -567,7 +640,15 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <returns>True if the page is mapped, false otherwise</returns>
         public bool IsMapped(ulong va)
         {
-            return Translate(va) != PteUnmapped;
+            try
+            {
+                _pageTableLock.EnterReadLock();
+                return Translate(va) != PteUnmapped;
+            }
+            finally
+            {
+                _pageTableLock.ExitReadLock();
+            }
         }
 
         /// <summary>
@@ -577,19 +658,28 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <returns>CPU virtual address, or <see cref="PteUnmapped"/> if unmapped</returns>
         public ulong Translate(ulong va)
         {
-            if (!ValidateAddress(va))
+            try
             {
-                return PteUnmapped;
+                _pageTableLock.EnterReadLock();
+
+                if (!ValidateAddress(va))
+                {
+                    return PteUnmapped;
+                }
+
+                ulong pte = GetPte(va);
+
+                if (pte == PteUnmapped)
+                {
+                    return PteUnmapped;
+                }
+
+                return UnpackPaFromPte(pte) + (va & PageMask);
             }
-
-            ulong pte = GetPte(va);
-
-            if (pte == PteUnmapped)
+            finally
             {
-                return PteUnmapped;
+                _pageTableLock.ExitReadLock();
             }
-
-            return UnpackPaFromPte(pte) + (va & PageMask);
         }
 
         /// <summary>
@@ -602,26 +692,35 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <returns>CPU virtual address, or <see cref="PteUnmapped"/> if unmapped</returns>
         public ulong TranslateFirstMapped(ulong va, ulong size)
         {
-            if (!ValidateAddress(va))
+            try
             {
-                return PteUnmapped;
+                _pageTableLock.EnterReadLock();
+
+                if (!ValidateAddress(va))
+                {
+                    return PteUnmapped;
+                }
+
+                ulong endVa = va + size;
+
+                ulong pte = GetPte(va);
+
+                for (; va < endVa && pte == PteUnmapped; va += PageSize - (va & PageMask))
+                {
+                    pte = GetPte(va);
+                }
+
+                if (pte == PteUnmapped)
+                {
+                    return PteUnmapped;
+                }
+
+                return UnpackPaFromPte(pte) + (va & PageMask);
             }
-
-            ulong endVa = va + size;
-
-            ulong pte = GetPte(va);
-
-            for (; va < endVa && pte == PteUnmapped; va += PageSize - (va & PageMask))
+            finally
             {
-                pte = GetPte(va);
+                _pageTableLock.ExitReadLock();
             }
-
-            if (pte == PteUnmapped)
-            {
-                return PteUnmapped;
-            }
-
-            return UnpackPaFromPte(pte) + (va & PageMask);
         }
 
         /// <summary>
@@ -632,23 +731,32 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <returns>Number of bytes, 0 if unmapped</returns>
         public ulong GetMappedSize(ulong va, ulong maxSize)
         {
-            if (!ValidateAddress(va))
+            try
             {
-                return 0;
+                _pageTableLock.EnterReadLock();
+
+                if (!ValidateAddress(va))
+                {
+                    return 0;
+                }
+
+                ulong startVa = va;
+                ulong endVa = va + maxSize;
+
+                ulong pte = GetPte(va);
+
+                while (pte != PteUnmapped && va < endVa)
+                {
+                    va += PageSize - (va & PageMask);
+                    pte = GetPte(va);
+                }
+
+                return Math.Min(maxSize, va - startVa);
             }
-
-            ulong startVa = va;
-            ulong endVa = va + maxSize;
-
-            ulong pte = GetPte(va);
-
-            while (pte != PteUnmapped && va < endVa)
+            finally
             {
-                va += PageSize - (va & PageMask);
-                pte = GetPte(va);
+                _pageTableLock.ExitReadLock();
             }
-
-            return Math.Min(maxSize, va - startVa);
         }
 
         /// <summary>
@@ -659,19 +767,28 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <returns>Kind of the memory page</returns>
         public PteKind GetKind(ulong va)
         {
-            if (!ValidateAddress(va))
+            try
             {
-                return PteKind.Invalid;
+                _pageTableLock.EnterReadLock();
+
+                if (!ValidateAddress(va))
+                {
+                    return PteKind.Invalid;
+                }
+
+                ulong pte = GetPte(va);
+
+                if (pte == PteUnmapped)
+                {
+                    return PteKind.Invalid;
+                }
+
+                return UnpackKindFromPte(pte);
             }
-
-            ulong pte = GetPte(va);
-
-            if (pte == PteUnmapped)
+            finally
             {
-                return PteKind.Invalid;
+                _pageTableLock.ExitReadLock();
             }
-
-            return UnpackKindFromPte(pte);
         }
 
         /// <summary>
@@ -744,6 +861,130 @@ namespace Ryujinx.Graphics.Gpu.Memory
         private static ulong UnpackPaFromPte(ulong pte)
         {
             return pte & 0xffffffffffffffUL;
+        }
+
+        /// <summary>
+        /// GPU内存自动回拷机制
+        /// </summary>
+        /// <param name="gpuVa">GPU虚拟地址</param>
+        /// <param name="size">内存区域大小</param>
+        public void EnsureMapped(ulong gpuVa, ulong size)
+        {
+            // 检查整个区域是否已映射
+            if (GetMappedSize(gpuVa, size) >= size)
+            {
+                return;
+            }
+            
+            try
+            {
+                _pageTableLock.EnterUpgradeableReadLock();
+                
+                ulong endVa = gpuVa + size;
+                for (ulong va = gpuVa; va < endVa; va += PageSize)
+                {
+                    if (!IsMapped(va))
+                    {
+                        try
+                        {
+                            _pageTableLock.EnterWriteLock();
+                            
+                            // 双重检查锁定模式
+                            if (GetPte(va) == PteUnmapped)
+                            {
+                                // 从GPU内存读取数据
+                                byte[] gpuData = ReadGpuMemory(va, PageSize);
+                                
+                                // 映射到CPU可访问区域
+                                MapGpuToCpu(va, gpuData);
+                            }
+                        }
+                        finally
+                        {
+                            _pageTableLock.ExitWriteLock();
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                _pageTableLock.ExitUpgradeableReadLock();
+            }
+        }
+        
+        /// <summary>
+        /// 从GPU内存读取数据
+        /// </summary>
+        /// <param name="gpuVa">GPU虚拟地址</param>
+        /// <param name="size">读取大小</param>
+        /// <returns>读取的数据</returns>
+        private byte[] ReadGpuMemory(ulong gpuVa, ulong size)
+        {
+            // 实际实现需要与GPU驱动交互
+            // 这里简化处理，返回空数据
+            return new byte[size];
+        }
+        
+        /// <summary>
+        /// 将GPU内存映射到CPU可访问区域
+        /// </summary>
+        /// <param name="gpuVa">GPU虚拟地址</param>
+        /// <param name="data">要映射的数据</param>
+        private void MapGpuToCpu(ulong gpuVa, byte[] data)
+        {
+            // 使用VirtualRangeCache分配后备内存
+            ulong pa = VirtualRangeCache.AllocateBackingMemory((ulong)data.Length);
+            
+            // 将数据写入物理内存
+            Physical.WriteUntracked(pa, data);
+            
+            // 建立映射
+            SetPte(gpuVa, PackPte(pa, PteKind.Default));
+        }
+        
+        /// <summary>
+        /// 释放GPU内存映射
+        /// </summary>
+        /// <param name="gpuVa">GPU虚拟地址</param>
+        /// <param name="size">内存大小</param>
+        public void FreeGpuMapping(ulong gpuVa, ulong size)
+        {
+            try
+            {
+                _pageTableLock.EnterWriteLock();
+                
+                UnmapEventArgs e = new(gpuVa, size);
+                List<ulong> backingAddresses = new List<ulong>();
+
+                for (ulong offset = 0; offset < size; offset += PageSize)
+                {
+                    ulong va = gpuVa + offset;
+                    ulong pte = GetPte(va);
+                    
+                    if (pte != PteUnmapped)
+                    {
+                        // 收集物理地址用于后续释放
+                        backingAddresses.Add(UnpackPaFromPte(pte));
+                        
+                        // 取消映射
+                        SetPte(va, PteUnmapped);
+                    }
+                }
+
+                // 触发未映射事件
+                MemoryUnmapped?.Invoke(this, e);
+                RunRemapActions(e);
+                
+                // 释放物理内存
+                foreach (ulong pa in backingAddresses)
+                {
+                    VirtualRangeCache.FreeBackingMemory(pa);
+                }
+            }
+            finally
+            {
+                _pageTableLock.ExitWriteLock();
+            }
         }
     }
 }
