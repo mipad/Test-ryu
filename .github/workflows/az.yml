@@ -2,9 +2,9 @@ name: Android CI  Fix
 
 on:
   push:
-    branches: [ "触摸" ]
+    branches: [ "测试3" ]
   pull_request:
-    branches: [ "触摸" ]
+    branches: [ "测试3" ]
 
 jobs:
   build:
@@ -25,7 +25,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: 触摸
+        ref: 测试3
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
