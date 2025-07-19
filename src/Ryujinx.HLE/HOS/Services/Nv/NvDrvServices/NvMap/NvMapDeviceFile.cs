@@ -137,9 +137,8 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
                 {
                     try 
                     {
-                        // 使用MemoryManagement分配物理内存 - 修复参数类型
-                        IntPtr allocatedMemory = MemoryManagement.Allocate((IntPtr)(long)size);
-                        address = (ulong)allocatedMemory.ToInt64();
+                        // 修正后的Allocate调用 - 使用ulong参数
+                        address = MemoryManagement.Allocate((ulong)size, false);
                         
                         Logger.Debug?.Print(LogClass.ServiceNv, 
                             $"Allocated physical memory: 0x{address:X} for map {arguments.Handle}");
@@ -265,11 +264,10 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
             
             if (map != null)
             {
-                // 释放物理内存 - 修复参数类型
+                // 修正后的Free调用 - 使用ulong参数
                 if (map.Address != 0)
                 {
-                    IntPtr ptr = new IntPtr((long)map.Address);
-                    MemoryManagement.Free(ptr); // 使用无size参数的Free重载
+                    MemoryManagement.Free(map.Address, (ulong)map.Size);
                     Logger.Debug?.Print(LogClass.ServiceNv, $"Freed physical memory: 0x{map.Address:X} for map {handle}");
                 }
                 return true;
