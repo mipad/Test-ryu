@@ -56,6 +56,23 @@ namespace Ryujinx.Memory.Tracking
 
             _virtualRegions = new NonOverlappingRangeList<VirtualRegion>();
             _guestVirtualRegions = new NonOverlappingRangeList<VirtualRegion>();
+
+            // === 新增：保护空指针区域 ===
+            const ulong protectSize = 0x1000;
+            try
+            {
+                if (!_memoryManager.IsRangeMapped(0, protectSize))
+                {
+                    _memoryManager.Map(0, protectSize);
+                    _memoryManager.TrackingReprotect(0, protectSize, MemoryPermission.None, guest: true);
+                    Logger.Info?.Print(LogClass.Memory, "Null page protection initialized");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Memory, 
+                    $"Failed to initialize null page protection: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -257,8 +274,12 @@ namespace Ryujinx.Memory.Tracking
                 Logger.Debug?.Print(LogClass.Cpu, // 修复：使用 LogClass.Cpu
                     $"Null Access Stack:\n{Environment.StackTrace}");
                 #endif
+
+                // === 新增：提前拦截空指针访问 ===
+                Logger.Error?.Print(LogClass.Cpu, 
+                    $"Blocked NULL access: VA=0x0, Size=0x{size:X}, Write={write}");
+                return false;
             }
-            // ===========================
             
             // 新增：跳过音频区域的内存事件处理
             if (_isAudioRegion != null && _isAudioRegion(address, size))
@@ -279,6 +300,14 @@ namespace Ryujinx.Memory.Tracking
 
                 if (count == 0 && !precise)
                 {
+                    // 增强低地址访问检查
+                    if (address < 0x1000)
+                    {
+                        Logger.Error?.Print(LogClass.Cpu, 
+                            $"Blocked low address access: VA=0x{address:X}, Size=0x{size:X}");
+                        return false;
+                    }
+
                     if (_memoryManager.IsRangeMapped(address, size))
                     {
                         _memoryManager.TrackingReprotect(
@@ -350,8 +379,14 @@ namespace Ryujinx.Memory.Tracking
                 }
                 // ======================
                 
-                _invalidAccessHandler?.Invoke(address);
-                throw new InvalidMemoryRegionException($"Access violation at 0x{address:X}");
+                // 修改调用方式，传递额外参数
+                bool handled = _invalidAccessHandler?.Invoke(address, size, write) ?? false;
+                
+                if (!handled)
+                {
+                    throw new InvalidMemoryRegionException($"Access violation at 0x{address:X}");
+                }
+                return false; // 返回访问失败
             }
 
             return true;
