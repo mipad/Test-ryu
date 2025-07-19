@@ -1,7 +1,7 @@
 using Ryujinx.Common;
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.Gpu.Memory;
-using Ryujinx.Memory; // 添加了必要的命名空间引用
+using Ryujinx.Memory;
 using System;
 
 namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
@@ -137,8 +137,8 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
                 {
                     try 
                     {
-                        // 使用MemoryManagement分配物理内存
-                        IntPtr allocatedMemory = MemoryManagement.Allocate((IntPtr)size, false);
+                        // 使用MemoryManagement分配物理内存 - 修复参数类型
+                        IntPtr allocatedMemory = MemoryManagement.Allocate((IntPtr)(long)size);
                         address = (ulong)allocatedMemory.ToInt64();
                         
                         Logger.Debug?.Print(LogClass.ServiceNv, 
@@ -265,11 +265,11 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
             
             if (map != null)
             {
-                // 释放物理内存
+                // 释放物理内存 - 修复参数类型
                 if (map.Address != 0)
                 {
                     IntPtr ptr = new IntPtr((long)map.Address);
-                    MemoryManagement.Free(ptr, (IntPtr)map.Size);
+                    MemoryManagement.Free(ptr); // 使用无size参数的Free重载
                     Logger.Debug?.Print(LogClass.ServiceNv, $"Freed physical memory: 0x{map.Address:X} for map {handle}");
                 }
                 return true;
