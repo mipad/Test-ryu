@@ -49,6 +49,7 @@ namespace Ryujinx.Memory
         /// </summary>
         Jit = 1 << 5,
 
+        Nce = 1 << 5,
         /// <summary>
         /// Indicates that the memory will be used to store JIT generated code in both read and execute modes.
         /// On some platforms, this is required to allow the JIT to generate code that can be executed.
