@@ -3,6 +3,10 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Threading;
+using Android.OS;
+using Libcore.IO;
+using Android.Runtime;
+using Android;
 
 namespace Ryujinx.Memory
 {
@@ -19,9 +23,10 @@ namespace Ryujinx.Memory
         private readonly bool _isMirror;
         private readonly bool _viewCompatible;
         private readonly bool _forJit;
+        private readonly bool _forNce;  // 新增 NCE 标志字段
         private IntPtr _sharedMemory;
         private IntPtr _pointer;
-        private IntPtr _rxPointer; // 添加 RX 映射指针字段
+        private IntPtr _rxPointer;
 
         /// <summary>
         /// Pointer to the memory block data.
@@ -43,18 +48,18 @@ namespace Ryujinx.Memory
         /// </summary>
         public MemoryBlock(ulong size, MemoryAllocationFlags flags = MemoryAllocationFlags.None)
         {
-            _rxPointer = IntPtr.Zero; // 初始化为零
+            _rxPointer = IntPtr.Zero;
+            _forJit = flags.HasFlag(MemoryAllocationFlags.Jit);
+            _forNce = flags.HasFlag(MemoryAllocationFlags.Nce);  // 初始化 NCE 标志
 
             if (flags.HasFlag(MemoryAllocationFlags.Mirrorable))
             {
                 if (OperatingSystem.IsAndroid())
                 {
-                    // Android 使用 ASharedMemory_create
                     _sharedMemory = MemoryManagementUnix.CreateSharedMemory(size, flags.HasFlag(MemoryAllocationFlags.Reserve));
                 }
                 else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
                 {
-                    // Linux/macOS 使用其他实现
                     _sharedMemory = MemoryManagement.CreateSharedMemory(size, flags.HasFlag(MemoryAllocationFlags.Reserve));
                 }
                 else
@@ -71,22 +76,20 @@ namespace Ryujinx.Memory
             else if (flags.HasFlag(MemoryAllocationFlags.Reserve))
             {
                 _viewCompatible = flags.HasFlag(MemoryAllocationFlags.ViewCompatible);
-                _forJit = flags.HasFlag(MemoryAllocationFlags.Jit);
-                _pointer = MemoryManagement.Reserve(size, _forJit, _viewCompatible);
+                _pointer = MemoryManagement.Reserve(size, _forJit || _forNce, _viewCompatible);
             }
             else
             {
-                _forJit = flags.HasFlag(MemoryAllocationFlags.Jit);
-                _pointer = MemoryManagement.Allocate(size, _forJit);
-                
-                // 仅当非共享内存且需要 JIT 时创建双映射
-                if (_forJit && !_usesSharedMemory)
-                {
-                    CreateDualMapping(size);
-                }
+                _pointer = MemoryManagement.Allocate(size, _forJit || _forNce);
             }
 
             Size = size;
+            
+            // 为 JIT 或 NCE 创建双映射
+            if ((_forJit || _forNce) && !_usesSharedMemory)
+            {
+                CreateDualMapping(size);
+            }
         }
 
         /// <summary>
@@ -106,7 +109,15 @@ namespace Ryujinx.Memory
                 }
                 else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
                 {
-                    CreateDualMappingUnix(size);
+                    // 安卓平台特殊处理
+                    if (OperatingSystem.IsAndroid() && Build.VERSION.SdkInt >= BuildVersionCodes.R)
+                    {
+                        CreateAndroidNceMapping(size);
+                    }
+                    else
+                    {
+                        CreateDualMappingUnix(size);
+                    }
                 }
             }
             catch (PlatformNotSupportedException)
@@ -188,17 +199,42 @@ namespace Ryujinx.Memory
         }
 
         /// <summary>
+        /// Android 11+ 专用双映射实现
+        /// </summary>
+        private void CreateAndroidNceMapping(ulong size)
+        {
+            // 使用 Android SharedMemory API
+            var sharedMemory = SharedMemory.Create("nce_rx", (int)size);
+            if (sharedMemory == null)
+            {
+                throw new PlatformNotSupportedException("Android SharedMemory creation failed");
+            }
+            
+            IntPtr rwPtr = sharedMemory.Map(SharedMemoryProtection.Read | SharedMemoryProtection.Write);
+            IntPtr rxPtr = sharedMemory.Map(SharedMemoryProtection.Read);
+            
+            // 复制数据
+            unsafe
+            {
+                Buffer.MemoryCopy((void*)_pointer, (void*)rwPtr, (long)size, (long)size);
+            }
+            
+            // 设置执行权限
+            Os.Mprotect(rxPtr, (long)size, MmapProt.PROT_READ | MmapProt.PROT_EXEC);
+            
+            _rxPointer = rxPtr;
+        }
+
+        /// <summary>
         /// 检查平台是否支持双映射
         /// </summary>
         private static bool IsDualMappingSupported()
         {
-            // 移动平台通常不支持
-            if (OperatingSystem.IsAndroid() || OperatingSystem.IsIOS())
-                return false;
-            
+            // 允许安卓平台支持双映射
             return OperatingSystem.IsWindows() || 
                    OperatingSystem.IsLinux() || 
-                   OperatingSystem.IsMacOS();
+                   OperatingSystem.IsMacOS() ||
+                   OperatingSystem.IsAndroid();
         }
 
         /// <summary>
@@ -233,7 +269,7 @@ namespace Ryujinx.Memory
         [SupportedOSPlatform("android")]
         public void Commit(ulong offset, ulong size)
         {
-            MemoryManagement.Commit(GetPointerInternal(offset, size), size, _forJit);
+            MemoryManagement.Commit(GetPointerInternal(offset, size), size, _forJit || _forNce);
         }
 
         /// <summary>
@@ -518,7 +554,15 @@ namespace Ryujinx.Memory
             // 释放 RX 映射
             if (rxPtr != IntPtr.Zero)
             {
-                if (OperatingSystem.IsWindows())
+                // 安卓特殊释放逻辑
+                if (OperatingSystem.IsAndroid() && Build.VERSION.SdkInt >= BuildVersionCodes.R)
+                {
+                    // 使用 Android API 释放
+                    var sharedMemory = SharedMemory.FromFileDescriptor(
+                        ParcelFileDescriptor.FromFd((int)rxPtr.ToInt64()).FileDescriptor);
+                    sharedMemory.Dispose();
+                }
+                else if (OperatingSystem.IsWindows())
                 {
                     VirtualFree(rxPtr, UIntPtr.Zero, MEM_RELEASE);
                 }
