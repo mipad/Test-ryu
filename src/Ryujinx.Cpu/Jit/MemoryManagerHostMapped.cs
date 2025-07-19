@@ -143,7 +143,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, (ulong)Unsafe.SizeOf<T>(), false))
                 {
                     throw;
                 }
@@ -160,7 +160,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, (ulong)Unsafe.SizeOf<T>(), false))
                 {
                     throw;
                 }
@@ -179,7 +179,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, (ulong)data.Length, false))
                 {
                     throw;
                 }
@@ -196,7 +196,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, (ulong)Unsafe.SizeOf<T>(), true))
                 {
                     throw;
                 }
@@ -213,7 +213,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, (ulong)data.Length, true))
                 {
                     throw;
                 }
@@ -230,7 +230,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, (ulong)data.Length, true))
                 {
                     throw;
                 }
@@ -255,7 +255,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, (ulong)data.Length, true))
                 {
                     throw;
                 }
