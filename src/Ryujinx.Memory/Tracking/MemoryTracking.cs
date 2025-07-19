@@ -381,7 +381,7 @@ namespace Ryujinx.Memory.Tracking
                 // ======================
                 
                 // 修改调用方式，传递额外参数
-                bool handled = _invalidAccessHandler?.Invoke(address,  write) ?? false;
+                bool handled = _invalidAccessHandler?.Invoke(address, size, write) ?? false;
                 
                 if (!handled)
                 {
