@@ -12,7 +12,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 
-// 新增命名空间用于 Android 优先级调整
+
 #if ANDROID
 using Android.OS;
 #endif
@@ -183,7 +183,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
                 {
                     throw;
                 }
@@ -203,7 +203,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
                 {
                     throw;
                 }
@@ -227,7 +227,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
                 {
                     throw;
                 }
@@ -242,7 +242,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
                 {
                     throw;
                 }
@@ -267,7 +267,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
                 {
                     throw;
                 }
@@ -282,7 +282,7 @@ namespace Ryujinx.Cpu.Jit
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
                 {
                     throw;
                 }
