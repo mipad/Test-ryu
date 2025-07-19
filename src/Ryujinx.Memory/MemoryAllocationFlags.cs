@@ -48,5 +48,11 @@ namespace Ryujinx.Memory
         /// On some platforms, this requires special flags to be passed that will allow the memory to be executable.
         /// </summary>
         Jit = 1 << 5,
+
+        /// <summary>
+        /// Indicates that the memory will be used to store JIT generated code in both read and execute modes.
+        /// On some platforms, this is required to allow the JIT to generate code that can be executed.
+        /// </summary>
+        DualMapping = 1 << 6,
     }
 }
