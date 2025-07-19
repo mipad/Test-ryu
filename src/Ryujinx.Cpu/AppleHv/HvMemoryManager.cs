@@ -128,7 +128,7 @@ namespace Ryujinx.Cpu.AppleHv
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
                 {
                     throw;
                 }
@@ -145,7 +145,7 @@ namespace Ryujinx.Cpu.AppleHv
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
                 {
                     throw;
                 }
@@ -160,7 +160,7 @@ namespace Ryujinx.Cpu.AppleHv
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
                 {
                     throw;
                 }
@@ -175,7 +175,7 @@ namespace Ryujinx.Cpu.AppleHv
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
                 {
                     throw;
                 }
@@ -190,7 +190,7 @@ namespace Ryujinx.Cpu.AppleHv
             }
             catch (InvalidMemoryRegionException)
             {
-                if (_invalidAccessHandler == null || !_invalidAccessHandler(va))
+                if (_invalidAccessHandler == null || !_invalidAccessHandler(va, size, write))
                 {
                     throw;
                 }
