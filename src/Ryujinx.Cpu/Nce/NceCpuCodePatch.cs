@@ -93,10 +93,13 @@ namespace Ryujinx.Cpu.Nce
 
                 try
                 {
-                    // Verify target memory range
-                    memoryManager.ValidateAddress(instTextAddress, sizeof(uint));
-                    memoryManager.ValidateAddress(instPatchStartAddress, sizeof(uint));
-                    memoryManager.ValidateAddress(instPatchBranchAddress, sizeof(uint));
+                    // Verify target memory range using IsRangeMapped
+                    if (!memoryManager.IsRangeMapped(instTextAddress, sizeof(uint)) ||
+                        !memoryManager.IsRangeMapped(instPatchStartAddress, sizeof(uint)) ||
+                        !memoryManager.IsRangeMapped(instPatchBranchAddress, sizeof(uint)))
+                    {
+                        throw new InvalidMemoryRegionException($"Target address range is not mapped");
+                    }
 
                     uint prevInst = memoryManager.Read<uint>(instTextAddress);
 
