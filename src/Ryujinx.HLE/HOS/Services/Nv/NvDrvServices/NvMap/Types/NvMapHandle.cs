@@ -2,24 +2,30 @@ using System.Threading;
 
 namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
 {
-    class NvMapHandle
+    internal class NvMapHandle
     {
-#pragma warning disable CS0649 // Field is never assigned to
-        public int Handle;
-        public int Id;
-#pragma warning restore CS0649
-        public uint Size;
-        public int Align;
-        public int Kind;
-        public ulong Address;
-        public bool Allocated;
-        public ulong DmaMapAddress;
+        public int Handle { get; internal set; }
+        public int Id { get; internal set; }
+        public uint Size { get; set; }
+        public int Align { get; set; }
+        public int Kind { get; set; }
+        public ulong Address { get; set; }
+        public bool Allocated { get; set; }
+        public ulong DmaMapAddress { get; set; }
 
-        private long _dupes;
+        private long _referenceCount;
 
         public NvMapHandle()
         {
-            _dupes = 1;
+            _referenceCount = 1; // Default reference count
+            Handle = 0;
+            Id = 0;
+            Size = 0;
+            Align = 0;
+            Kind = 0;
+            Address = 0;
+            Allocated = false;
+            DmaMapAddress = 0;
         }
 
         public NvMapHandle(uint size) : this()
@@ -27,14 +33,29 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
             Size = size;
         }
 
+        /// <summary>
+        /// Increments the reference count for this handle in a thread-safe manner
+        /// </summary>
         public void IncrementRefCount()
         {
-            Interlocked.Increment(ref _dupes);
+            Interlocked.Increment(ref _referenceCount);
         }
 
+        /// <summary>
+        /// Decrements the reference count for this handle in a thread-safe manner
+        /// </summary>
+        /// <returns>The new reference count after decrementing</returns>
         public long DecrementRefCount()
         {
-            return Interlocked.Decrement(ref _dupes);
+            return Interlocked.Decrement(ref _referenceCount);
+        }
+
+        /// <summary>
+        /// Gets the current reference count in a thread-safe manner
+        /// </summary>
+        public long GetRefCount()
+        {
+            return Interlocked.Read(ref _referenceCount);
         }
     }
 }
