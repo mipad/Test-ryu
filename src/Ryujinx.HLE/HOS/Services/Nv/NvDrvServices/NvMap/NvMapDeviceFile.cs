@@ -9,7 +9,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
     internal class NvMapDeviceFile : NvDeviceFile
     {
         private const int FlagNotFreedYet = 1;
-        private const uint PageSize = 0x1000; // 4KB page size
+        private const uint PageSize = 0x1000; // 4KB 页大小常量
 
         private static readonly NvMapIdDictionary _maps = new();
 
@@ -43,7 +43,16 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
                     case 0x0e:
                         result = CallIoctlMethod<NvMapGetId>(GetId, arguments);
                         break;
-                    default:
+                    case 0x02:
+                    case 0x06:
+                    case 0x07:
+                    case 0x08:
+                    case 0x0a:
+                    case 0x0c:
+                    case 0x0d:
+                    case 0x0f:
+                    case 0x10:
+                    case 0x11:
                         result = NvInternalResult.NotSupported;
                         break;
                 }
@@ -57,13 +66,16 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
             if (arguments.Size == 0)
             {
                 Logger.Warning?.Print(LogClass.ServiceNv, $"Invalid size 0x{arguments.Size:x8}!");
+
                 return NvInternalResult.InvalidInput;
             }
 
-            uint size = BitUtils.AlignUp(arguments.Size, PageSize);
+            uint size = BitUtils.AlignUp(arguments.Size, PageSize); // 使用PageSize常量
+
             arguments.Handle = CreateHandleFromMap(new NvMapHandle(size));
 
             Logger.Debug?.Print(LogClass.ServiceNv, $"Created map {arguments.Handle} with size 0x{size:x8}!");
+
             return NvInternalResult.Success;
         }
 
@@ -74,75 +86,88 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
             if (map == null)
             {
                 Logger.Warning?.Print(LogClass.ServiceNv, $"Invalid handle 0x{arguments.Handle:x8}!");
+
                 return NvInternalResult.InvalidInput;
             }
 
             map.IncrementRefCount();
+
             arguments.Handle = arguments.Id;
+
             return NvInternalResult.Success;
         }
 
         private NvInternalResult Alloc(ref NvMapAlloc arguments)
+{
+    NvMapHandle map = GetMapFromHandle(Owner, arguments.Handle);
+
+    if (map == null)
+    {
+        Logger.Warning?.Print(LogClass.ServiceNv, $"Invalid handle 0x{arguments.Handle:x8}!");
+        return NvInternalResult.InvalidInput;
+    }
+
+    if ((arguments.Align & (arguments.Align - 1)) != 0)
+    {
+        Logger.Warning?.Print(LogClass.ServiceNv, $"Invalid alignment 0x{arguments.Align:x8}!");
+        return NvInternalResult.InvalidInput;
+    }
+
+    if ((uint)arguments.Align < PageSize)
+    {
+        arguments.Align = (int)PageSize;
+    }
+
+    if (!map.Allocated)
+    {
+        map.Allocated = true;
+        map.Align = arguments.Align;
+        map.Kind = (byte)arguments.Kind;
+
+        uint size = BitUtils.AlignUp(map.Size, PageSize);
+        ulong address = arguments.Address;
+
+        if (address == 0)
         {
-            NvMapHandle map = GetMapFromHandle(Owner, arguments.Handle);
-
-            if (map == null)
+            try 
             {
-                Logger.Warning?.Print(LogClass.ServiceNv, $"Invalid handle 0x{arguments.Handle:x8}!");
-                return NvInternalResult.InvalidInput;
-            }
-
-            if ((arguments.Align & (arguments.Align - 1)) != 0)
-            {
-                Logger.Warning?.Print(LogClass.ServiceNv, $"Invalid alignment 0x{arguments.Align:x8}!");
-                return NvInternalResult.InvalidInput;
-            }
-
-            if ((uint)arguments.Align < PageSize)
-            {
-                arguments.Align = (int)PageSize;
-            }
-
-            if (!map.Allocated)
-            {
-                map.Allocated = true;
-                map.Align = arguments.Align;
-                map.Kind = (byte)arguments.Kind;
-
-                uint size = BitUtils.AlignUp(map.Size, PageSize);
-                ulong address = arguments.Address;
-
-                if (address == 0)
+                // 安全的内存分配和类型转换
+                nint allocatedMemory = MemoryManagement.Allocate((nint)(long)size, false);
+                
+                // 正确处理nint到ulong的转换
+                if (allocatedMemory == nint.Zero)
                 {
-                    try 
-                    {
-                        // Safe pointer to ulong conversion
-                        IntPtr allocatedMemory = MemoryManagement.Allocate((IntPtr)(long)size, false);
-                        address = (ulong)allocatedMemory.ToInt64();
-                        
-                        Logger.Debug?.Print(LogClass.ServiceNv, 
-                            $"Allocated physical memory: 0x{address:X} for map {arguments.Handle}");
-                    }
-                    catch (OutOfMemoryException)
-                    {
-                        Logger.Error?.Print(LogClass.ServiceNv, 
-                            $"Failed to allocate physical memory for map {arguments.Handle}");
-                        return NvInternalResult.OutOfMemory;
-                    }
+                    Logger.Error?.Print(LogClass.ServiceNv, 
+                        "Memory allocation returned NULL pointer!");
+                    return NvInternalResult.OutOfMemory;
                 }
-
-                if (address == 0)
-                {
-                    Logger.Error?.Print(LogClass.ServiceNv, "Rejected NULL physical address allocation!");
-                    return NvInternalResult.InvalidAddress;
-                }
-
-                map.Size = size;
-                map.Address = address;
+                
+                // 安全转换：nint -> long -> ulong
+                address = unchecked((ulong)(long)allocatedMemory);
+                
+                Logger.Debug?.Print(LogClass.ServiceNv, 
+                    $"Allocated physical memory: 0x{address:X} for map {arguments.Handle}");
             }
-
-            return NvInternalResult.Success;
+            catch (OutOfMemoryException)
+            {
+                Logger.Error?.Print(LogClass.ServiceNv, 
+                    $"Failed to allocate physical memory for map {arguments.Handle}");
+                return NvInternalResult.OutOfMemory;
+            }
         }
+
+        if (address == 0)
+        {
+            Logger.Error?.Print(LogClass.ServiceNv, "Rejected NULL physical address allocation!");
+            return NvInternalResult.InvalidAddress;
+        }
+
+        map.Size = size;
+        map.Address = address;
+    }
+
+    return NvInternalResult.Success;
+}
 
         private NvInternalResult Free(ref NvMapFree arguments)
         {
@@ -151,19 +176,14 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
             if (map == null)
             {
                 Logger.Warning?.Print(LogClass.ServiceNv, $"Invalid handle 0x{arguments.Handle:x8}!");
+
                 return NvInternalResult.InvalidInput;
             }
 
-            if (DecrementMapRefCount(Owner, arguments.Handle))
+            bool freed = DecrementMapRefCount(Owner, arguments.Handle);
+            
+            if (freed)
             {
-                if (map.Address != 0)
-                {
-                    // Safe ulong to pointer conversion
-                    IntPtr ptr = new IntPtr((long)map.Address);
-                    MemoryManagement.Free(ptr, (ulong)map.Size);
-                    Logger.Debug?.Print(LogClass.ServiceNv, $"Freed physical memory: 0x{map.Address:X}");
-                }
-
                 arguments.Address = map.Address;
                 arguments.Flags = 0;
             }
@@ -174,6 +194,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
             }
 
             arguments.Size = map.Size;
+
             return NvInternalResult.Success;
         }
 
@@ -184,6 +205,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
             if (map == null)
             {
                 Logger.Warning?.Print(LogClass.ServiceNv, $"Invalid handle 0x{arguments.Handle:x8}!");
+
                 return NvInternalResult.InvalidInput;
             }
 
@@ -204,6 +226,8 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
                 case NvMapHandleParam.Compr:
                     arguments.Result = 0;
                     break;
+
+                // 注意：不支持Base参数
                 default:
                     return NvInternalResult.InvalidInput;
             }
@@ -218,16 +242,18 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
             if (map == null)
             {
                 Logger.Warning?.Print(LogClass.ServiceNv, $"Invalid handle 0x{arguments.Handle:x8}!");
+
                 return NvInternalResult.InvalidInput;
             }
 
             arguments.Id = arguments.Handle;
+
             return NvInternalResult.Success;
         }
 
         public override void Close()
         {
-            // TODO: Implement reference counting
+            // TODO: 实现引用计数
         }
 
         private int CreateHandleFromMap(NvMapHandle map)
@@ -239,11 +265,15 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
         {
             NvMapHandle map = _maps.Delete(handle);
             
-            if (map != null && map.Address != 0)
+            if (map != null)
             {
-                IntPtr ptr = new IntPtr((long)map.Address);
-                MemoryManagement.Free(ptr, (ulong)map.Size);
-                Logger.Debug?.Print(LogClass.ServiceNv, $"Freed physical memory: 0x{map.Address:X} for map {handle}");
+                // 释放物理内存
+                if (map.Address != 0)
+                {
+                    IntPtr ptr = new IntPtr((long)map.Address);
+                    MemoryManagement.Free(ptr, (ulong)map.Size);
+                    Logger.Debug?.Print(LogClass.ServiceNv, $"Freed physical memory: 0x{map.Address:X} for map {handle}");
+                }
                 return true;
             }
             
@@ -267,17 +297,22 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
             if (map.DecrementRefCount() <= 0)
             {
                 DeleteMapWithHandle(pid, handle);
+
                 Logger.Debug?.Print(LogClass.ServiceNv, $"Deleted map {handle}!");
+
                 return true;
             }
-
-            return false;
+            else
+            {
+                return false;
+            }
         }
 
         public static NvMapHandle GetMapFromHandle(ulong pid, int handle)
         {
             NvMapHandle map = _maps.Get(handle);
             
+            // 验证映射地址有效性
             if (map != null && map.Address == 0)
             {
                 Logger.Error?.Print(LogClass.ServiceNv, 
