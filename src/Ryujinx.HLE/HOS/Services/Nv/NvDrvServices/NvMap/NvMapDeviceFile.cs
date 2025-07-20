@@ -135,14 +135,16 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
                     {
                         try
                         {
-                            IntPtr allocatedMemory = MemoryManagement.Allocate((IntPtr)(long)size, false);
+                            ulong allocatedSize = size;
+                            IntPtr allocatedMemory = MemoryManagement.Allocate((IntPtr)(long)allocatedSize, false);
+                            
                             if (allocatedMemory == IntPtr.Zero)
                             {
                                 Logger.Error?.Print(LogClass.ServiceNv, $"Memory allocation failed for size 0x{size:X}");
                                 return NvInternalResult.OutOfMemory;
                             }
 
-                            address = (ulong)allocatedMemory.ToInt64();
+                            address = (ulong)(long)allocatedMemory;
                             Logger.Debug?.Print(LogClass.ServiceNv, 
                                 $"Allocated physical memory: 0x{address:X} for map {arguments.Handle}");
                         }
