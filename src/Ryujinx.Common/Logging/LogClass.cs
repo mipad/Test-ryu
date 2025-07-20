@@ -5,7 +5,7 @@ namespace Ryujinx.Common.Logging
 {
     [JsonConverter(typeof(TypedStringEnumConverter<LogClass>))]
     public enum LogClass
-    {
+    {   
         Application,
         Audio,
         AudioRenderer,
@@ -23,6 +23,7 @@ namespace Ryujinx.Common.Logging
         KernelSvc,
         Loader,
         ModLoader,
+        Memory,
         Nvdec,
         Ptc,
         Service,
