@@ -1,4 +1,5 @@
 using System;
+using Ryujinx.Common.Logging;
 using System.Runtime.Versioning;
 
 namespace Ryujinx.Memory
@@ -10,20 +11,36 @@ namespace Ryujinx.Memory
     public static class MemoryManagement
     {
         public static IntPtr Allocate(ulong size, bool forJit)
+{
+    if (size == 0)
+    {
+        throw new ArgumentException("Allocation size cannot be zero");
+    }
+
+    try
+    {
+        IntPtr result;
+        if (OperatingSystem.IsWindows())
         {
-            if (OperatingSystem.IsWindows())
-            {
-                return MemoryManagementWindows.Allocate((IntPtr)size);
-            }
-            else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
-            {
-                return MemoryManagementUnix.Allocate(size, forJit);
-            }
-            else
-            {
-                throw new PlatformNotSupportedException();
-            }
+            result = MemoryManagementWindows.Allocate((IntPtr)size);
         }
+        else
+        {
+            result = MemoryManagementUnix.Allocate(size, forJit);
+        }
+
+        if (result == IntPtr.Zero)
+        {
+            throw new OutOfMemoryException($"Failed to allocate 0x{size:X} bytes");
+        }
+        return result;
+    }
+    catch (Exception ex)
+    {
+        Logger.Error?.Print(LogClass.Memory, $"Allocate failed: {ex.Message}");
+        throw;
+    }
+}
 
         public static IntPtr Reserve(ulong size, bool forJit, bool viewCompatible)
         {
@@ -129,20 +146,28 @@ namespace Ryujinx.Memory
         }
 
         public static bool Free(IntPtr address, ulong size)
+{
+    if (address == IntPtr.Zero) return false;
+
+    try
+    {
+        if (OperatingSystem.IsWindows())
         {
-            if (OperatingSystem.IsWindows())
-            {
-                return MemoryManagementWindows.Free(address, (IntPtr)size);
-            }
-            else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsAndroid())
-            {
-                return MemoryManagementUnix.Free(address);
-            }
-            else
-            {
-                throw new PlatformNotSupportedException();
-            }
+            return MemoryManagementWindows.Free(address, (IntPtr)size);
         }
+        else
+        {
+            // Android/Linux: 异步释放
+            Task.Run(() => MemoryManagementUnix.Free(address));
+            return true;
+        }
+    }
+    catch (Exception ex)
+    {
+        Logger.Error?.Print(LogClass.Memory, $"Free failed: {ex.Message}");
+        return false;
+    }
+}
 
         public static IntPtr CreateSharedMemory(ulong size, bool reserve)
         {
