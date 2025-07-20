@@ -10,56 +10,59 @@ using System.Runtime.CompilerServices;
 namespace Ryujinx.Memory.Tracking
 {
     /// <summary>
-    /// 管理虚拟/物理内存块的内存跟踪
+    /// Manages memory tracking for virtual/physical memory blocks.
     /// </summary>
     public class MemoryTracking
     {
         private readonly IVirtualMemoryManager _memoryManager;
         private readonly InvalidAccessHandler _invalidAccessHandler;
 
-        // 新增：音频缓冲区检测委托
+        // New: Audio buffer detection delegate
         private readonly System.Func<ulong, ulong, bool> _isAudioRegion;
 
-        // 以下字段需要在锁内访问
+        // The following fields need to be accessed within a lock
         private readonly NonOverlappingRangeList<VirtualRegion> _virtualRegions;
         private readonly NonOverlappingRangeList<VirtualRegion> _guestVirtualRegions;
 
         private readonly int _pageSize;
         private readonly bool _singleByteGuestTracking;
+        private readonly bool _ignoreNullAccess; // New: NULL access ignore flag
 
         /// <summary>
-        /// 用于保护区域-句柄层次结构的锁
+        /// Lock used to protect the region-handle hierarchy.
         /// </summary>
         internal object TrackingLock = new();
 
-        // === 新增诊断字段 ===
+        // === Diagnostic fields ===
         private static readonly Stopwatch _diagnosticTimer = Stopwatch.StartNew();
-        private long _lastNullAccessTime; // 修复：改为 long 类型
+        private long _lastNullAccessTime;
         private int _nullAccessCount;
-        // ===================
-        
+        // ========================
+
         /// <summary>
-        /// 为给定的"物理"内存块创建新的跟踪结构
+        /// Creates a new tracking structure for the given "physical" memory block.
         /// </summary>
         public MemoryTracking(
             IVirtualMemoryManager memoryManager,
             int pageSize,
             InvalidAccessHandler invalidAccessHandler = null,
             bool singleByteGuestTracking = false,
-            System.Func<ulong, ulong, bool> isAudioRegion = null) // 新增音频检测参数
+            System.Func<ulong, ulong, bool> isAudioRegion = null,
+            bool ignoreNullAccess = false) // New parameter
         {
             _memoryManager = memoryManager;
             _pageSize = pageSize;
             _invalidAccessHandler = invalidAccessHandler;
             _singleByteGuestTracking = singleByteGuestTracking;
-            _isAudioRegion = isAudioRegion; // 存储音频检测委托
+            _isAudioRegion = isAudioRegion;
+            _ignoreNullAccess = ignoreNullAccess;
 
             _virtualRegions = new NonOverlappingRangeList<VirtualRegion>();
             _guestVirtualRegions = new NonOverlappingRangeList<VirtualRegion>();
         }
 
         /// <summary>
-        /// 将地址和大小按页大小对齐
+        /// Aligns an address and size to the page size.
         /// </summary>
         private (ulong address, ulong size) PageAlign(ulong address, ulong size)
         {
@@ -70,11 +73,11 @@ namespace Ryujinx.Memory.Tracking
         }
 
         /// <summary>
-        /// 通知虚拟区域已被映射
+        /// Indicates that a virtual region has been mapped.
         /// </summary>
         public void Map(ulong va, ulong size)
         {
-            // 新增：跳过音频区域的映射处理
+            // Skip mapping processing for audio regions
             if (_isAudioRegion != null && _isAudioRegion(va, size)) return;
             
             lock (TrackingLock)
@@ -101,11 +104,11 @@ namespace Ryujinx.Memory.Tracking
         }
 
         /// <summary>
-        /// 通知虚拟区域将被取消映射
+        /// Indicates that a virtual region is about to be unmapped.
         /// </summary>
         public void Unmap(ulong va, ulong size)
         {
-            // 新增：跳过音频区域的取消映射处理
+            // Skip unmapping processing for audio regions
             if (_isAudioRegion != null && _isAudioRegion(va, size)) return;
             
             lock (TrackingLock)
@@ -127,7 +130,7 @@ namespace Ryujinx.Memory.Tracking
         }
 
         /// <summary>
-        /// 获取安全的未对齐访问区域
+        /// Gets a safe unaligned access region.
         /// </summary>
         internal (ulong newAddress, ulong newSize) GetUnalignedSafeRegion(ulong address, ulong size)
         {
@@ -139,7 +142,7 @@ namespace Ryujinx.Memory.Tracking
         }
 
         /// <summary>
-        /// 获取句柄覆盖的虚拟区域列表
+        /// Gets a list of virtual regions that a handle covers.
         /// </summary>
         internal List<VirtualRegion> GetVirtualRegionsForHandle(ulong va, ulong size, bool guest)
         {
@@ -150,7 +153,7 @@ namespace Ryujinx.Memory.Tracking
         }
 
         /// <summary>
-        /// 从范围列表中移除虚拟区域
+        /// Remove a virtual region from the range list.
         /// </summary>
         internal void RemoveVirtual(VirtualRegion region)
         {
@@ -165,7 +168,7 @@ namespace Ryujinx.Memory.Tracking
         }
 
         /// <summary>
-        /// 开始粒度跟踪
+        /// Begin granular tracking for the given region.
         /// </summary>
         public MultiRegionHandle BeginGranularTracking(
             ulong address, 
@@ -179,7 +182,7 @@ namespace Ryujinx.Memory.Tracking
         }
 
         /// <summary>
-        /// 开始智能粒度跟踪
+        /// Begin smart granular tracking for the given region.
         /// </summary>
         public SmartMultiRegionHandle BeginSmartGranularTracking(ulong address, ulong size, ulong granularity, int id)
         {
@@ -188,7 +191,7 @@ namespace Ryujinx.Memory.Tracking
         }
 
         /// <summary>
-        /// 开始内存跟踪
+        /// Begin memory tracking for the given region.
         /// </summary>
         public RegionHandle BeginTracking(ulong address, ulong size, int id, RegionFlags flags = RegionFlags.None)
         {
@@ -202,7 +205,7 @@ namespace Ryujinx.Memory.Tracking
         }
 
         /// <summary>
-        /// 开始位图内存跟踪
+        /// Begin bitmap memory tracking for the given region.
         /// </summary>
         internal RegionHandle BeginTrackingBitmap(
             ulong address, 
@@ -222,7 +225,7 @@ namespace Ryujinx.Memory.Tracking
         }
 
         /// <summary>
-        /// 虚拟内存事件处理
+        /// Handle a virtual memory event (read/write).
         /// </summary>
         public bool VirtualMemoryEvent(ulong address, ulong size, bool write)
         {
@@ -230,7 +233,7 @@ namespace Ryujinx.Memory.Tracking
         }
 
         /// <summary>
-        /// 虚拟内存事件处理（精确版本）
+        /// Handle a virtual memory event (read/write) with precise information.
         /// </summary>
         public bool VirtualMemoryEvent(
             ulong address, 
@@ -240,30 +243,36 @@ namespace Ryujinx.Memory.Tracking
             int? exemptId = null, 
             bool guest = false)
         {
-            // === 新增：空指针访问诊断 ===
+            // NULL access diagnostics
             if (address == 0)
             {
-                long currentTime = _diagnosticTimer.ElapsedMilliseconds; // 修复：使用 long 类型
+                long currentTime = _diagnosticTimer.ElapsedMilliseconds;
                 long timeSinceLast = currentTime - _lastNullAccessTime;
                 _lastNullAccessTime = currentTime;
                 _nullAccessCount++;
                 
-                Logger.Warning?.Print(LogClass.Cpu, // 修复：使用 LogClass.Cpu
+                Logger.Warning?.Print(LogClass.Cpu,
                     $"[NULL ACCESS] Addr=0x0, Size=0x{size:X}, Write={write}, " +
                     $"Precise={precise}, Guest={guest}, Count={_nullAccessCount}, " +
                     $"TimeSinceLast={timeSinceLast}ms");
                 
                 #if DEBUG
-                Logger.Debug?.Print(LogClass.Cpu, // 修复：使用 LogClass.Cpu
+                Logger.Debug?.Print(LogClass.Cpu,
                     $"Null Access Stack:\n{Environment.StackTrace}");
                 #endif
+
+                // New: NULL access special handling
+                if (_ignoreNullAccess)
+                {
+                    Logger.Warning?.Print(LogClass.Cpu, "NULL access ignored by configuration");
+                    return true;
+                }
             }
-            // ===========================
             
-            // 新增：跳过音频区域的内存事件处理
+            // Skip audio region memory event processing
             if (_isAudioRegion != null && _isAudioRegion(address, size))
             {
-                // 启用音频跳过日志（调试时取消注释）
+                // Enable audio skip logging (uncomment for debugging)
                 // Logger.Trace?.Print(LogClass.Cpu, 
                 //    $"Skipping audio region access: VA=0x{address:X}, Size={size}");
                 return true;
@@ -290,19 +299,18 @@ namespace Ryujinx.Memory.Tracking
                     }
                     else
                     {
-                        // === 增强错误日志 ===
+                        // Enhanced error logging
                         string regionInfo = GetRegionInfoNearAddress(address);
                         Logger.Error?.Print(LogClass.Cpu, 
                             $"Invalid memory access at 0x{address:X}, size 0x{size:X}, write: {write}\n" +
                             $"Nearby Regions:\n{regionInfo}");
                         
-                        // 记录历史访问模式
+                        // Log access pattern history
                         if (_nullAccessCount > 0)
                         {
                             Logger.Error?.Print(LogClass.Cpu, 
                                 $"Null access pattern: {_nullAccessCount} times in last {_diagnosticTimer.ElapsedMilliseconds}ms");
                         }
-                        // ===================
                         
                         shouldThrow = true;
                     }
@@ -331,7 +339,7 @@ namespace Ryujinx.Memory.Tracking
 
             if (shouldThrow)
             {
-                // === 空指针特殊处理 ===
+                // NULL pointer special handling
                 if (address == 0)
                 {
                     Logger.Error?.Print(LogClass.Cpu, 
@@ -348,7 +356,6 @@ namespace Ryujinx.Memory.Tracking
                     }
                     #endif
                 }
-                // ======================
                 
                 _invalidAccessHandler?.Invoke(address);
                 throw new InvalidMemoryRegionException($"Access violation at 0x{address:X}");
@@ -358,11 +365,11 @@ namespace Ryujinx.Memory.Tracking
         }
 
         /// <summary>
-        /// 获取地址附近的区域信息（诊断用）
+        /// Gets information about regions near an address (for diagnostics).
         /// </summary>
         private string GetRegionInfoNearAddress(ulong address)
         {
-            const int range = 0x10000; // 搜索附近64KB范围
+            const int range = 0x10000; // Search nearby 64KB range
             List<string> regionInfos = new();
             
             ulong start = address > range ? address - range : 0;
@@ -372,7 +379,7 @@ namespace Ryujinx.Memory.Tracking
             {
                 ref var overlaps = ref ThreadStaticArray<VirtualRegion>.Get();
                 
-                // 检查普通虚拟区域
+                // Check normal virtual regions
                 int count = _virtualRegions.FindOverlapsNonOverlapping(start, end - start, ref overlaps);
                 for (int i = 0; i < count; i++)
                 {
@@ -381,7 +388,7 @@ namespace Ryujinx.Memory.Tracking
                                      $"({region.Size / 1024}KB)");
                 }
                 
-                // 检查访客虚拟区域
+                // Check guest virtual regions
                 count = _guestVirtualRegions.FindOverlapsNonOverlapping(start, end - start, ref overlaps);
                 for (int i = 0; i < count; i++)
                 {
@@ -397,7 +404,7 @@ namespace Ryujinx.Memory.Tracking
         }
 
         /// <summary>
-        /// 重新保护虚拟区域
+        /// Reprotect a virtual region.
         /// </summary>
         internal void ProtectVirtualRegion(VirtualRegion region, MemoryPermission permission, bool guest)
         {
@@ -405,7 +412,7 @@ namespace Ryujinx.Memory.Tracking
         }
 
         /// <summary>
-        /// 获取当前跟踪的虚拟区域数量
+        /// Gets the count of currently tracked virtual regions.
         /// </summary>
         public int GetRegionCount()
         {
@@ -415,10 +422,8 @@ namespace Ryujinx.Memory.Tracking
             }
         }
         
-        // === 新增诊断方法 ===
-        
         /// <summary>
-        /// 获取空指针访问统计信息（诊断用）
+        /// Gets NULL access diagnostics information.
         /// </summary>
         public string GetNullAccessDiagnostics()
         {
