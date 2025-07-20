@@ -136,7 +136,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
                         try
                         {
                             ulong allocatedSize = size;
-                            IntPtr allocatedMemory = MemoryManagement.Allocate((IntPtr)(long)allocatedSize, false);
+                            IntPtr allocatedMemory = MemoryManagement.Allocate(size, false);
                             
                             if (allocatedMemory == IntPtr.Zero)
                             {
