@@ -137,9 +137,9 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
                 {
                     try 
                     {
-                        // 分配内存并显式转换为 ulong
-                        nint allocatedMemory = MemoryManagement.Allocate((nint)(long)size, false);
-                        address = (ulong)allocatedMemory; // 显式转换
+                        // 使用IntPtr.ToUInt64()方法进行安全转换
+                        IntPtr allocatedMemory = MemoryManagement.Allocate((IntPtr)(long)size, false);
+                        address = (ulong)allocatedMemory.ToInt64(); // 正确转换为ulong
                         
                         Logger.Debug?.Print(LogClass.ServiceNv, 
                             $"Allocated physical memory: 0x{address:X} for map {arguments.Handle}");
@@ -268,7 +268,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
                 // 释放物理内存
                 if (map.Address != 0)
                 {
-                    nint ptr = (nint)(long)map.Address;
+                    IntPtr ptr = new IntPtr((long)map.Address);
                     MemoryManagement.Free(ptr, (ulong)map.Size);
                     Logger.Debug?.Print(LogClass.ServiceNv, $"Freed physical memory: 0x{map.Address:X} for map {handle}");
                 }
