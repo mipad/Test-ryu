@@ -263,6 +263,14 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
 
             physicalAddress = map.Address + arguments.BufferOffset;
 
+            // Add physical address validation before locking
+            if (physicalAddress == 0)
+            {
+                Logger.Error?.Print(LogClass.ServiceNv, 
+                    $"Rejected mapping with NULL physical address (NvMapHandle: 0x{arguments.NvMapHandle:X})");
+                return NvInternalResult.InvalidAddress;
+            }
+
             ulong size = arguments.MappingSize;
 
             if (size == 0)
@@ -274,14 +282,6 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
 
             lock (_asContext)
             {
-                // Add physical address validation
-                if (physicalAddress == 0)
-                {
-                    Logger.Error?.Print(LogClass.ServiceNv, 
-                        $"Invalid physical address: 0x{physicalAddress:X} for NvMap handle 0x{arguments.NvMapHandle:X}");
-                    return NvInternalResult.InvalidAddress;
-                }
-
                 // Note: When the fixed offset flag is not set,
                 // the Offset field holds the alignment size instead.
                 bool virtualAddressAllocated = (arguments.Flags & AddressSpaceFlags.FixedOffset) == 0;
@@ -311,14 +311,14 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
 
                     _asContext.Gmm.Map(physicalAddress, va, size, (PteKind)arguments.Kind);
                     arguments.Offset = va;
-                }
 
-                // Add virtual address validation
-                if (arguments.Offset == 0)
-                {
-                    Logger.Error?.Print(LogClass.ServiceNv, 
-                        "Rejected mapping to NULL virtual address!");
-                    return NvInternalResult.InvalidAddress;
+                    // Add virtual address validation after allocation
+                    if (arguments.Offset == 0)
+                    {
+                        Logger.Error?.Print(LogClass.ServiceNv, 
+                            "CRITICAL: Virtual address allocation returned 0x0");
+                        return NvInternalResult.InvalidAddress;
+                    }
                 }
 
                 if (arguments.Offset == NvMemoryAllocator.PteUnmapped)
