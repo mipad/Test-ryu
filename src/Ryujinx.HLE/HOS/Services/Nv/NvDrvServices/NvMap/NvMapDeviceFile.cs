@@ -2,61 +2,13 @@ using Ryujinx.Common;
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.Gpu.Memory;
 using Ryujinx.HLE.HOS.Kernel.Memory;
+using Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap.Types;
 using Ryujinx.Memory;
 using System;
 using System.Threading;
 
 namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
 {
-    internal class NvMapHandle
-    {
-        public uint Size { get; set; }
-        public ulong Address { get; set; }
-        public int Align { get; set; }
-        public byte Kind { get; set; }
-        public bool Allocated { get; set; }
-        private int _refCount;
-
-        public NvMapHandle(uint size)
-        {
-            Size = size;
-            _refCount = 1;
-        }
-
-        public void IncrementRefCount() => Interlocked.Increment(ref _refCount);
-        
-        public int DecrementRefCount() => Interlocked.Decrement(ref _refCount);
-    }
-
-    internal class NvMapIdDictionary
-    {
-        private int _nextId = 1;
-        private readonly Dictionary<int, NvMapHandle> _dictionary = new();
-
-        public int Add(NvMapHandle map)
-        {
-            int id = _nextId++;
-            _dictionary.Add(id, map);
-            return id;
-        }
-
-        public NvMapHandle Get(int id)
-        {
-            _dictionary.TryGetValue(id, out var map);
-            return map;
-        }
-
-        public NvMapHandle Delete(int id)
-        {
-            if (_dictionary.TryGetValue(id, out var map))
-            {
-                _dictionary.Remove(id);
-                return map;
-            }
-            return null;
-        }
-    }
-
     internal class NvMapDeviceFile : NvDeviceFile
     {
         private const int FlagNotFreedYet = 1;
