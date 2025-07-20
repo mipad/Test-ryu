@@ -142,7 +142,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
                                 return NvInternalResult.OutOfMemory;
                             }
 
-                            address = unchecked((ulong)allocatedMemory.ToInt64());
+                            address = (ulong)allocatedMemory.ToInt64();
                             Logger.Debug?.Print(LogClass.ServiceNv, 
                                 $"Allocated physical memory: 0x{address:X} for map {arguments.Handle}");
                         }
@@ -156,7 +156,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
                         {
                             Logger.Error?.Print(LogClass.ServiceNv, 
                                 $"Unexpected error during memory allocation: {ex}");
-                            return NvInternalResult.GenericError;
+                            return NvInternalResult.InvalidState;
                         }
                     }
 
