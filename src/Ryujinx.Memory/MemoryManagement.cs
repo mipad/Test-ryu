@@ -1,6 +1,7 @@
 using System;
 using Ryujinx.Common.Logging;
 using System.Runtime.Versioning;
+using System.Threading.Tasks
 
 namespace Ryujinx.Memory
 {
