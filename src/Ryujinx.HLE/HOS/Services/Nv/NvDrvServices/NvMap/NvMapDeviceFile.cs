@@ -2,144 +2,21 @@ using Ryujinx.Common;
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.Gpu.Memory;
 using Ryujinx.HLE.HOS.Kernel.Memory;
+using Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap.Types;
 using Ryujinx.Memory;
 using System;
 using System.Threading;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
 
 namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap
 {
-    // 将原来 Types.cs 中的定义移到这里
-    [StructLayout(LayoutKind.Sequential)]
-    public struct NvMapCreate
-    {
-        public uint Size;
-        public int Handle;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    public struct NvMapFromId
-    {
-        public int Id;
-        public int Handle;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    public struct NvMapAlloc
-    {
-        public int Handle;
-        public int Align;
-        public int Kind;
-        public ulong Address;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    public struct NvMapFree
-    {
-        public int Handle;
-        public uint Size;
-        public ulong Address;
-        public int Flags;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    public struct NvMapParam
-    {
-        public int Handle;
-        public NvMapHandleParam Param;
-        public int Result;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    public struct NvMapGetId
-    {
-        public int Handle;
-        public int Id;
-    }
-
-    public enum NvMapHandleParam
-    {
-        Size = 1,
-        Align = 2,
-        Heap = 3,
-        Kind = 4,
-        Compr = 5
-    }
-
-    public enum NvIoctl
-    {
-        NvMapCustomMagic = 0x42
-    }
-
-    public enum NvInternalResult
-    {
-        Success = 0,
-        NotImplemented = -1,
-        NotSupported = -2,
-        InvalidInput = -3,
-        InvalidAddress = -4,
-        OutOfMemory = -5,
-        GenericError = -6
-    }
-
-    internal class NvMapHandle
-    {
-        public uint Size { get; set; }
-        public ulong Address { get; set; }
-        public int Align { get; set; }
-        public byte Kind { get; set; }
-        public bool Allocated { get; set; }
-        private int _refCount;
-
-        public NvMapHandle(uint size)
-        {
-            Size = size;
-            _refCount = 1;
-        }
-
-        public void IncrementRefCount() => Interlocked.Increment(ref _refCount);
-        
-        public int DecrementRefCount() => Interlocked.Decrement(ref _refCount);
-    }
-
-    internal class NvMapIdDictionary
-    {
-        private int _nextId = 1;
-        private readonly Dictionary<int, NvMapHandle> _dictionary = new Dictionary<int, NvMapHandle>();
-
-        public int Add(NvMapHandle map)
-        {
-            int id = _nextId++;
-            _dictionary.Add(id, map);
-            return id;
-        }
-
-        public NvMapHandle Get(int id)
-        {
-            _dictionary.TryGetValue(id, out var map);
-            return map;
-        }
-
-        public NvMapHandle Delete(int id)
-        {
-            if (_dictionary.TryGetValue(id, out var map))
-            {
-                _dictionary.Remove(id);
-                return map;
-            }
-            return null;
-        }
-    }
-
     internal class NvMapDeviceFile : NvDeviceFile
     {
         private const int FlagNotFreedYet = 1;
         private const uint PageSize = 0x1000;
         private const ulong InvalidAddress = 0;
 
-        private static readonly NvMapIdDictionary _maps = new NvMapIdDictionary();
-        private static readonly object _lock = new object();
+        private static readonly NvMapIdDictionary _maps = new();
+        private static readonly object _lock = new();
 
         public NvMapDeviceFile(ServiceCtx context, IVirtualMemoryManager memory, ulong owner) : base(context, owner)
         {
