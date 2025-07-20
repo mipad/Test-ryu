@@ -2,6 +2,7 @@ using Ryujinx.Common;
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.Gpu.Memory;
 using Ryujinx.HLE.HOS.Kernel.Memory;
+using Ryujinx.HLE;
 using Ryujinx.Memory;
 using System;
 using System.Threading;
