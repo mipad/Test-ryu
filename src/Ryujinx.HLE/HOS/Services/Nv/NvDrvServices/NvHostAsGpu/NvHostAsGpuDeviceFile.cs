@@ -7,7 +7,6 @@ using Ryujinx.Memory;
 using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 
 namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
 {
@@ -43,7 +42,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
 
         public NvHostAsGpuDeviceFile(ServiceCtx context, IVirtualMemoryManager memory, ulong owner) : base(context, owner)
         {
-            _asContext = new AddressSpaceContext(context.Device.Gpu.CreateMemoryManager(owner, context.Device.Memory.Size));
+            _asContext = new AddressSpaceContext(context.Device.Gpu.CreateMemoryManager(owner));
             _memoryAllocator = new NvMemoryAllocator();
         }
 
@@ -77,7 +76,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
                         result = CallIoctlMethod<InitializeExArguments>(InitializeEx, arguments);
                         break;
                     case 0x14:
-                        result = RemapIoctl(arguments);
+                        result = CallIoctlMethod<RemapArguments>(Remap, arguments);
                         break;
                 }
             }
@@ -263,14 +262,6 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
 
             physicalAddress = map.Address + arguments.BufferOffset;
 
-            // Add physical address validation before locking
-            if (physicalAddress == 0)
-            {
-                Logger.Error?.Print(LogClass.ServiceNv, 
-                    $"Rejected mapping with NULL physical address (NvMapHandle: 0x{arguments.NvMapHandle:X})");
-                return NvInternalResult.InvalidAddress;
-            }
-
             ulong size = arguments.MappingSize;
 
             if (size == 0)
@@ -311,18 +302,12 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
 
                     _asContext.Gmm.Map(physicalAddress, va, size, (PteKind)arguments.Kind);
                     arguments.Offset = va;
-
-                    // Add virtual address validation after allocation
-                    if (arguments.Offset == 0)
-                    {
-                        Logger.Error?.Print(LogClass.ServiceNv, 
-                            "CRITICAL: Virtual address allocation returned 0x0");
-                        return NvInternalResult.InvalidAddress;
-                    }
                 }
 
                 if (arguments.Offset == NvMemoryAllocator.PteUnmapped)
                 {
+                    arguments.Offset = 0;
+
                     Logger.Warning?.Print(LogClass.ServiceNv, $"Failed to map size 0x{size:x16}!");
 
                     result = NvInternalResult.InvalidInput;
@@ -374,65 +359,36 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
             return NvInternalResult.Success;
         }
 
-        private NvInternalResult RemapIoctl(Span<byte> arguments)
-        {
-            int structSize = Unsafe.SizeOf<RemapArguments>();
-            if (arguments.Length == 0 || arguments.Length % structSize != 0)
-            {
-                return NvInternalResult.InvalidInput;
-            }
-
-            int count = arguments.Length / structSize;
-            Span<RemapArguments> remapArgs = MemoryMarshal.Cast<byte, RemapArguments>(arguments).Slice(0, count);
-            return Remap(remapArgs);
-        }
-
         private NvInternalResult Remap(Span<RemapArguments> arguments)
         {
-            lock (_asContext)
+            MemoryManager gmm = _asContext.Gmm;
+
+            for (int index = 0; index < arguments.Length; index++)
             {
-                MemoryManager gmm = _asContext.Gmm;
+                ref RemapArguments argument = ref arguments[index];
+                ulong gpuVa = (ulong)argument.GpuOffset << 16;
+                ulong size = (ulong)argument.Pages << 16;
+                int nvmapHandle = argument.NvMapHandle;
 
-                for (int index = 0; index < arguments.Length; index++)
+                if (nvmapHandle == 0)
                 {
-                    ref RemapArguments argument = ref arguments[index];
-                    ulong gpuVa = (ulong)argument.GpuOffset << 16;
-                    ulong size = (ulong)argument.Pages << 16;
-                    int nvmapHandle = argument.NvMapHandle;
+                    gmm.Unmap(gpuVa, size);
+                }
+                else
+                {
+                    ulong mapOffs = (ulong)argument.MapOffset << 16;
+                    PteKind kind = (PteKind)argument.Kind;
 
-                    if (nvmapHandle == 0)
+                    NvMapHandle map = NvMapDeviceFile.GetMapFromHandle(Owner, nvmapHandle);
+
+                    if (map == null)
                     {
-                        // 直接取消映射，不检查上下文
-                        gmm.Unmap(gpuVa, size);
+                        Logger.Warning?.Print(LogClass.ServiceNv, $"Invalid NvMap handle 0x{nvmapHandle:x8}!");
+
+                        return NvInternalResult.InvalidInput;
                     }
-                    else
-                    {
-                        ulong mapOffs = (ulong)argument.MapOffset << 16;
-                        PteKind kind = (PteKind)argument.Kind;
 
-                        NvMapHandle map = NvMapDeviceFile.GetMapFromHandle(Owner, nvmapHandle);
-
-                        if (map == null)
-                        {
-                            Logger.Warning?.Print(LogClass.ServiceNv, 
-                                $"Invalid NvMap handle 0x{nvmapHandle:x8}!");
-                            return NvInternalResult.InvalidInput;
-                        }
-
-                        ulong physicalAddress = mapOffs + map.Address;
-                        ulong mapEnd = map.Address + map.Size;
-                        
-                        if (physicalAddress < map.Address || (physicalAddress + size) > mapEnd)
-                        {
-                            Logger.Warning?.Print(LogClass.ServiceNv,
-                                $"Invalid physical range: 0x{physicalAddress:x16}-0x{physicalAddress + size:x16} " +
-                                $"(NvMap: 0x{map.Address:x16}-0x{mapEnd:x16})");
-                            return NvInternalResult.InvalidInput;
-                        }
-
-                        // 直接映射，覆盖该VA区域之前的映射（如果有）
-                        gmm.Map(physicalAddress, gpuVa, size, kind);
-                    }
+                    gmm.Map(mapOffs + map.Address, gpuVa, size, kind);
                 }
             }
 
