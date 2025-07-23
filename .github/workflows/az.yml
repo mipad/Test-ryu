@@ -70,11 +70,7 @@ jobs:
         echo "LIB_DIR=$LIB_DIR" >> $GITHUB_ENV
         echo "$LLVM_PATH/bin" >> $GITHUB_PATH
 
-        # 调试输出：验证路径是否存在
-        echo "检查 NDK 路径:"
-        ls -l $ANDROID_NDK_HOME
-        echo "检查 LLVM 工具链:"
-        ls -l $LLVM_PATH/bin/clang
+        
 
     - name: Install Ninja Build
       run: |
