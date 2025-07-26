@@ -74,7 +74,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         public VirtualRangeCache(MemoryManager memoryManager)
         {
             _memoryManager = memoryManager;
-            _virtualRanges = new RangeList<VirtualRange>();
+            _virtualRanges = [];
             _virtualRangeOverlaps = new RangeItem<VirtualRange>[BufferCache.OverlapsBufferInitialCapacity];
             _deferredUnmaps = new ConcurrentQueue<VirtualRange>();
         }
@@ -106,18 +106,17 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <returns>True if the range already existed, false if a new one was created and added</returns>
         public bool TryGetOrAddRange(ulong gpuVa, ulong size, out MultiRange range)
         {
-            RangeItem<VirtualRange>[] overlaps = _virtualRangeOverlaps;
-            int overlapsCount;
-
+            OverlapResult result;
+            
             if (Interlocked.Exchange(ref _hasDeferredUnmaps, 0) != 0)
             {
                 while (_deferredUnmaps.TryDequeue(out VirtualRange unmappedRange))
                 {
-                    overlapsCount = _virtualRanges.FindOverlapsNonOverlapping(unmappedRange.Address, unmappedRange.Size, ref overlaps);
+                    result = _virtualRanges.FindOverlapsNonOverlapping(unmappedRange.Address, unmappedRange.Size);
 
-                    for (int index = 0; index < overlapsCount; index++)
+                    if (result.StartIndex >= 0)
                     {
-                        _virtualRanges.Remove(overlaps[index].Value);
+                        _virtualRanges.RemoveRange(result);
                     }
                 }
             }
@@ -126,9 +125,10 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
             ulong originalVa = gpuVa;
 
-            overlapsCount = _virtualRanges.FindOverlapsNonOverlapping(gpuVa, size, ref overlaps);
-
-            if (overlapsCount != 0)
+            _virtualRanges.Lock.EnterWriteLock();
+            result = _virtualRanges.FindOverlapsNonOverlappingAsSpan(gpuVa, size, out ReadOnlySpan<RangeItem<VirtualRange>> overlaps);
+            
+            if (overlaps.Length != 0)
             {
                 // The virtual range already exists. We just need to check if our range fits inside
                 // the existing one, and if not, we must extend the existing one.
@@ -138,15 +138,10 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 if (overlap0.Address > gpuVa || overlap0.EndAddress < endAddress)
                 {
-                    for (int index = 0; index < overlapsCount; index++)
-                    {
-                        VirtualRange virtualRange = overlaps[index].Value;
-
-                        gpuVa = Math.Min(gpuVa, virtualRange.Address);
-                        endAddress = Math.Max(endAddress, virtualRange.EndAddress);
-
-                        _virtualRanges.Remove(virtualRange);
-                    }
+                    gpuVa = Math.Min(gpuVa, overlaps[0].Address);
+                    endAddress = Math.Max(endAddress, overlaps[^1].EndAddress);
+                    
+                    _virtualRanges.RemoveRange(result);
 
                     ulong newSize = endAddress - gpuVa;
                     MultiRange newRange = _memoryManager.GetPhysicalRegions(gpuVa, newSize);
@@ -170,6 +165,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                 _virtualRanges.Add(virtualRange);
             }
+            _virtualRanges.Lock.ExitWriteLock();
 
             ShrinkOverlapsBufferIfNeeded();
 
