@@ -19,16 +19,18 @@ namespace Ryujinx.Memory.Range
         /// <param name="address">Start address of the search region</param>
         /// <param name="size">Size of the search region</param>
         /// <param name="factory">Factory for creating new ranges</param>
-        public void GetOrAddRegions(List<T> list, ulong address, ulong size, Func<ulong, ulong, T> factory)
+        public void GetOrAddRegions(out List<T> list, ulong address, ulong size, Func<ulong, ulong, T> factory)
         {
             // (regarding the specific case this generalized function is used for)
             // A new region may be split into multiple parts if multiple virtual regions have mapped to it.
             // For instance, while a virtual mapping could cover 0-2 in physical space, the space 0-1 may have already been reserved...
             // So we need to return both the split 0-1 and 1-2 ranges.
 
-            var results = new T[1];
-            int count = FindOverlapsNonOverlapping(address, size, ref results);
-
+            RangeItem<T>[] results = new RangeItem<T>[1];
+            int count = FindOverlapsNonOverlapping(address, size, ref results).Count;
+            list = new List<T>(count);
+            Lock.EnterWriteLock();
+            
             if (count == 0)
             {
                 // The region is fully unmapped. Create and add it to the range list.
@@ -43,11 +45,12 @@ namespace Ryujinx.Memory.Range
 
                 for (int i = 0; i < count; i++)
                 {
-                    T region = results[i];
+                    T region = results[i].Value;
                     if (count == 1 && region.Address == address && region.Size == size)
                     {
                         // Exact match, no splitting required.
                         list.Add(region);
+                        Lock.ExitWriteLock();
                         return;
                     }
 
@@ -85,6 +88,8 @@ namespace Ryujinx.Memory.Range
                     Add(fillRegion);
                 }
             }
+            
+            Lock.ExitWriteLock();
         }
 
         /// <summary>
