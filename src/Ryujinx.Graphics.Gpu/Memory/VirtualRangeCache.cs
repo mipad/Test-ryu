@@ -63,7 +63,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         }
 
         private readonly RangeList<VirtualRange> _virtualRanges;
-        private VirtualRange[] _virtualRangeOverlaps;
+        private RangeItem<VirtualRange>[] _virtualRangeOverlaps;
         private readonly ConcurrentQueue<VirtualRange> _deferredUnmaps;
         private int _hasDeferredUnmaps;
 
@@ -75,7 +75,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         {
             _memoryManager = memoryManager;
             _virtualRanges = new RangeList<VirtualRange>();
-            _virtualRangeOverlaps = new VirtualRange[BufferCache.OverlapsBufferInitialCapacity];
+            _virtualRangeOverlaps = new RangeItem<VirtualRange>[BufferCache.OverlapsBufferInitialCapacity];
             _deferredUnmaps = new ConcurrentQueue<VirtualRange>();
         }
 
@@ -106,7 +106,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <returns>True if the range already existed, false if a new one was created and added</returns>
         public bool TryGetOrAddRange(ulong gpuVa, ulong size, out MultiRange range)
         {
-            VirtualRange[] overlaps = _virtualRangeOverlaps;
+            RangeItem<VirtualRange>[] overlaps = _virtualRangeOverlaps;
             int overlapsCount;
 
             if (Interlocked.Exchange(ref _hasDeferredUnmaps, 0) != 0)
@@ -117,7 +117,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
                     for (int index = 0; index < overlapsCount; index++)
                     {
-                        _virtualRanges.Remove(overlaps[index]);
+                        _virtualRanges.Remove(overlaps[index].Value);
                     }
                 }
             }
@@ -134,13 +134,13 @@ namespace Ryujinx.Graphics.Gpu.Memory
                 // the existing one, and if not, we must extend the existing one.
 
                 ulong endAddress = gpuVa + size;
-                VirtualRange overlap0 = overlaps[0];
+                VirtualRange overlap0 = overlaps[0].Value;
 
                 if (overlap0.Address > gpuVa || overlap0.EndAddress < endAddress)
                 {
                     for (int index = 0; index < overlapsCount; index++)
                     {
-                        VirtualRange virtualRange = overlaps[index];
+                        VirtualRange virtualRange = overlaps[index].Value;
 
                         gpuVa = Math.Min(gpuVa, virtualRange.Address);
                         endAddress = Math.Max(endAddress, virtualRange.EndAddress);
