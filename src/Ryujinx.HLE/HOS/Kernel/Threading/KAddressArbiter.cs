@@ -277,32 +277,37 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         public Result WaitForAddressIfEqual(ulong address, int value, long timeout)
         {
             KThread currentThread = KernelStatic.GetCurrentThread();
-
-            _context.CriticalSection.Enter();
-
-            if (currentThread.TerminationRequested)
+            
+            // 添加循环检查防止虚假唤醒
+            while (true)
             {
-                _context.CriticalSection.Leave();
+                _context.CriticalSection.Enter();
 
-                return KernelResult.ThreadTerminating;
-            }
+                if (currentThread.TerminationRequested)
+                {
+                    _context.CriticalSection.Leave();
+                    return KernelResult.ThreadTerminating;
+                }
 
-            currentThread.SignaledObj = null;
-            currentThread.ObjSyncResult = KernelResult.TimedOut;
+                currentThread.SignaledObj = null;
+                currentThread.ObjSyncResult = KernelResult.TimedOut;
 
-            if (!KernelTransfer.UserToKernel(out int currentValue, address))
-            {
-                _context.CriticalSection.Leave();
+                if (!KernelTransfer.UserToKernel(out int currentValue, address))
+                {
+                    _context.CriticalSection.Leave();
+                    return KernelResult.InvalidMemState;
+                }
 
-                return KernelResult.InvalidMemState;
-            }
+                // 检查条件是否满足
+                if (currentValue != value)
+                {
+                    _context.CriticalSection.Leave();
+                    return KernelResult.InvalidState;
+                }
 
-            if (currentValue == value)
-            {
                 if (timeout == 0)
                 {
                     _context.CriticalSection.Leave();
-
                     return KernelResult.TimedOut;
                 }
 
@@ -330,56 +335,67 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
                 if (currentThread.WaitingInArbitration)
                 {
                     _arbiterThreads.Remove(currentThread);
-
                     currentThread.WaitingInArbitration = false;
                 }
 
-                _context.CriticalSection.Leave();
-
-                return currentThread.ObjSyncResult;
+                // 检查唤醒原因
+                if (currentThread.ObjSyncResult == Result.Success)
+                {
+                    // 如果是被正常唤醒，重新检查条件
+                    _context.CriticalSection.Leave();
+                    continue;
+                }
+                else
+                {
+                    // 如果是超时或其他原因，直接返回
+                    Result result = currentThread.ObjSyncResult;
+                    _context.CriticalSection.Leave();
+                    return result;
+                }
             }
-
-            _context.CriticalSection.Leave();
-
-            return KernelResult.InvalidState;
         }
 
         public Result WaitForAddressIfLessThan(ulong address, int value, bool shouldDecrement, long timeout)
         {
             KThread currentThread = KernelStatic.GetCurrentThread();
-
-            _context.CriticalSection.Enter();
-
-            if (currentThread.TerminationRequested)
+            
+            // 添加循环检查防止虚假唤醒
+            while (true)
             {
-                _context.CriticalSection.Leave();
+                _context.CriticalSection.Enter();
 
-                return KernelResult.ThreadTerminating;
-            }
+                if (currentThread.TerminationRequested)
+                {
+                    _context.CriticalSection.Leave();
+                    return KernelResult.ThreadTerminating;
+                }
 
-            currentThread.SignaledObj = null;
-            currentThread.ObjSyncResult = KernelResult.TimedOut;
+                currentThread.SignaledObj = null;
+                currentThread.ObjSyncResult = KernelResult.TimedOut;
 
-            KProcess currentProcess = KernelStatic.GetCurrentProcess();
+                KProcess currentProcess = KernelStatic.GetCurrentProcess();
 
-            if (!KernelTransfer.UserToKernel(out int currentValue, address))
-            {
-                _context.CriticalSection.Leave();
+                if (!KernelTransfer.UserToKernel(out int currentValue, address))
+                {
+                    _context.CriticalSection.Leave();
+                    return KernelResult.InvalidMemState;
+                }
 
-                return KernelResult.InvalidMemState;
-            }
+                if (shouldDecrement)
+                {
+                    currentValue = Interlocked.Decrement(ref currentProcess.CpuMemory.GetRef<int>(address)) + 1;
+                }
 
-            if (shouldDecrement)
-            {
-                currentValue = Interlocked.Decrement(ref currentProcess.CpuMemory.GetRef<int>(address)) + 1;
-            }
+                // 检查条件是否满足
+                if (currentValue >= value)
+                {
+                    _context.CriticalSection.Leave();
+                    return KernelResult.InvalidState;
+                }
 
-            if (currentValue < value)
-            {
                 if (timeout == 0)
                 {
                     _context.CriticalSection.Leave();
-
                     return KernelResult.TimedOut;
                 }
 
@@ -407,18 +423,24 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
                 if (currentThread.WaitingInArbitration)
                 {
                     _arbiterThreads.Remove(currentThread);
-
                     currentThread.WaitingInArbitration = false;
                 }
 
-                _context.CriticalSection.Leave();
-
-                return currentThread.ObjSyncResult;
+                // 检查唤醒原因
+                if (currentThread.ObjSyncResult == Result.Success)
+                {
+                    // 如果是被正常唤醒，重新检查条件
+                    _context.CriticalSection.Leave();
+                    continue;
+                }
+                else
+                {
+                    // 如果是超时或其他原因，直接返回
+                    Result result = currentThread.ObjSyncResult;
+                    _context.CriticalSection.Leave();
+                    return result;
+                }
             }
-
-            _context.CriticalSection.Leave();
-
-            return KernelResult.InvalidState;
         }
 
         public Result Signal(ulong address, int count)
