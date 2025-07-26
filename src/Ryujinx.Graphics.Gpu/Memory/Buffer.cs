@@ -110,7 +110,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
             ulong size,
             BufferStage stage,
             bool sparseCompatible,
-            IEnumerable<Buffer> baseBuffers = null)
+            ReadOnlySpan<RangeItem<Buffer>> baseBuffers)
         {
             _context = context;
             _physicalMemory = physicalMemory;
@@ -126,21 +126,22 @@ namespace Ryujinx.Graphics.Gpu.Memory
 
             _useGranular = size > GranularBufferThreshold;
 
-            IEnumerable<IRegionHandle> baseHandles = null;
+            List<IRegionHandle> baseHandles = null;
 
-            if (baseBuffers != null)
+            if (!baseBuffers.IsEmpty)
             {
-                baseHandles = baseBuffers.SelectMany(buffer =>
+                baseHandles = new List<IRegionHandle>();
+                foreach (RangeItem<Buffer> buffer in baseBuffers)
                 {
-                    if (buffer._useGranular)
+                    if (buffer.Value._useGranular)
                     {
-                        return buffer._memoryTrackingGranular.GetHandles();
+                        baseHandles.AddRange((buffer.Value._memoryTrackingGranular.GetHandles()));
                     }
                     else
                     {
-                        return Enumerable.Repeat(buffer._memoryTracking, 1);
+                        baseHandles.Add(buffer.Value._memoryTracking);
                     }
-                });
+                }
             }
 
             if (_useGranular)
