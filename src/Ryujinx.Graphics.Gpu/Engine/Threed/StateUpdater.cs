@@ -1013,9 +1013,9 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
                     if (packedFormat == 0x25E00000)
                     {
                         format = Format.R32G32B32A32Sint;
-                        Logger.Warning?.Print(LogClass.Gpu, 
-                            $"强制使用RGBA32_SINT格式替代0x25E00000 " +
-                            $"(属性索引: {index}, 缓冲区: {bufferIndex})");
+                       // Logger.Warning?.Print(LogClass.Gpu, 
+                           // $"强制使用RGBA32_SINT格式替代0x25E00000 " +
+                           // $"(属性索引: {index}, 缓冲区: {bufferIndex})");
                     }
                     else
                     {
