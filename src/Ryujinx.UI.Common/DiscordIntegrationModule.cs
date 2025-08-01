@@ -206,6 +206,7 @@ namespace Ryujinx.UI.Common
                           // Pokémon Franchise
             "0100f4300bf2c000", // New Pokémon Snap
             "0100000011d90000", // Pokémon Brilliant Diamond
+            "010008c01e742000", // Pokémon Friends
             "01001f5010dfa000", // Pokémon Legends: Arceus
             "01003d200baa2000", // Pokémon Mystery Dungeon: Rescue Team DX
             "0100a3d008c5c000", // Pokémon Scarlet
