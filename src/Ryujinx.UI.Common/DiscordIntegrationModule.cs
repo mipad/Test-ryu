@@ -1,14 +1,21 @@
 using DiscordRPC;
+using Humanizer;
+using Humanizer.Localisation;
 using Ryujinx.Common;
+using Ryujinx.HLE.Loaders.Processes;
+using Ryujinx.UI.App.Common;
 using Ryujinx.UI.Common.Configuration;
+using System.Linq;
 using System.Text;
 
 namespace Ryujinx.UI.Common
 {
     public static class DiscordIntegrationModule
     {
+        public static Timestamps StartedAt { get; set; }
+        
         private const string Description = "A simple, experimental Nintendo Switch emulator.";
-        private const string ApplicationId = "1216775165866807456";
+        private const string ApplicationId = "1341170671497117746";
 
         private const int ApplicationByteLimit = 128;
         private const string Ellipsis = "…";
@@ -23,19 +30,11 @@ namespace Ryujinx.UI.Common
                 Assets = new Assets
                 {
                     LargeImageKey = "ryujinx",
-                    LargeImageText = Description,
+                    LargeImageText = TruncateToByteLength(Description)
                 },
                 Details = "Main Menu",
                 State = "Idling",
-                Timestamps = Timestamps.Now,
-                Buttons =
-                [
-                    new Button
-                    {
-                        Label = "Website",
-                        Url = "https://ryujinx.org/",
-                    },
-                ],
+                Timestamps = StartedAt
             };
 
             ConfigurationState.Instance.EnableDiscordIntegration.Event += Update;
@@ -64,45 +63,36 @@ namespace Ryujinx.UI.Common
             }
         }
 
-        public static void SwitchToPlayingState(string titleId, string applicationName)
+        public static void SwitchToPlayingState(ApplicationMetadata appMeta, ProcessResult procRes)
         {
             _discordClient?.SetPresence(new RichPresence
             {
                 Assets = new Assets
                 {
-                    LargeImageKey = "game",
-                    LargeImageText = TruncateToByteLength(applicationName, ApplicationByteLimit),
+                    LargeImageKey = _discordGameAssetKeys.Contains(procRes.ProgramIdText) ? procRes.ProgramIdText : "game",
+                    LargeImageText = TruncateToByteLength($"{appMeta.Title} (v{procRes.DisplayVersion})"),
                     SmallImageKey = "ryujinx",
-                    SmallImageText = Description,
+                    SmallImageText = TruncateToByteLength(Description)
                 },
-                Details = TruncateToByteLength($"Playing {applicationName}", ApplicationByteLimit),
-                State = (titleId == "0000000000000000") ? "Homebrew" : titleId.ToUpper(),
-                Timestamps = Timestamps.Now,
-                Buttons =
-                [
-                    new Button
-                    {
-                        Label = "Website",
-                        Url = "https://ryujinx.org/",
-                    },
-                ],
+                Details = TruncateToByteLength($"Playing {appMeta.Title}"),
+                State = appMeta.LastPlayed.HasValue && appMeta.TimePlayed.TotalSeconds > 5
+                    ? $"Total play time: {appMeta.TimePlayed.Humanize(2, false, maxUnit: TimeUnit.Hour)}"
+                    : "Never played",
+                Timestamps = Timestamps.Now
             });
         }
 
-        public static void SwitchToMainMenu()
-        {
-            _discordClient?.SetPresence(_discordPresenceMain);
-        }
+        public static void SwitchToMainState() => _discordClient?.SetPresence(_discordPresenceMain);
 
-        private static string TruncateToByteLength(string input, int byteLimit)
+        private static string TruncateToByteLength(string input)
         {
-            if (Encoding.UTF8.GetByteCount(input) <= byteLimit)
+            if (Encoding.UTF8.GetByteCount(input) <= ApplicationByteLimit)
             {
                 return input;
             }
 
             // Find the length to trim the string to guarantee we have space for the trailing ellipsis.
-            int trimLimit = byteLimit - Encoding.UTF8.GetByteCount(Ellipsis);
+            int trimLimit = ApplicationByteLimit - Encoding.UTF8.GetByteCount(Ellipsis);
 
             // Make sure the string is long enough to perform the basic trim.
             // Amount of bytes != Length of the string
@@ -125,7 +115,8 @@ namespace Ryujinx.UI.Common
         {
             _discordClient?.Dispose();
         }
-                private static readonly string[] _discordGameAssetKeys =
+
+        private static readonly string[] _discordGameAssetKeys =
         [
                 // All games are in Alphabetical order by Game name.
             
@@ -206,6 +197,7 @@ namespace Ryujinx.UI.Common
                           // Pokémon Franchise
             "0100f4300bf2c000", // New Pokémon Snap
             "0100000011d90000", // Pokémon Brilliant Diamond
+            "010008c01e742000", // Pokémon Friends
             "01001f5010dfa000", // Pokémon Legends: Arceus
             "01003d200baa2000", // Pokémon Mystery Dungeon: Rescue Team DX
             "0100a3d008c5c000", // Pokémon Scarlet
