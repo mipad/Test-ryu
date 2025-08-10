@@ -42,6 +42,7 @@ namespace ARMeilleure.Translation.PTC
         public static readonly Symbol PageTableSymbol = new(SymbolType.Special, 1);
         public static readonly Symbol CountTableSymbol = new(SymbolType.Special, 2);
         public static readonly Symbol DispatchStubSymbol = new(SymbolType.Special, 3);
+        public static readonly Symbol FunctionTableSymbol = new(SymbolType.Special, 4);
 
         private const byte FillingByte = 0x00;
         private const CompressionLevel SaveCompressionLevel = CompressionLevel.Fastest;
@@ -707,6 +708,11 @@ namespace ARMeilleure.Translation.PTC
                     imm = translator.Stubs.DispatchStub;
                 }
 
+                else if (symbol == FunctionTableSymbol)
+                {
+                    imm = translator.FunctionTable.Base;
+                }
+                
                 if (imm == null)
                 {
                     throw new Exception($"Unexpected reloc entry {relocEntry}.");
