@@ -351,49 +351,28 @@ class GameViews {
             val totalMem = remember {
                 mutableIntStateOf(0)
             }
-            val frequencies = remember {
-                mutableListOf<Double>()
-            }
 
-            Surface(
-                modifier = Modifier.padding(16.dp),
-                color = MaterialTheme.colorScheme.background.copy(0.4f)
+            // 完全透明的文字面板
+            CompositionLocalProvider(
+                LocalTextStyle provides TextStyle(
+                    fontSize = 10.sp,
+                    color = Color.White // 确保文字在游戏画面上可见
+                )
             ) {
-                CompositionLocalProvider(LocalTextStyle provides TextStyle(fontSize = 10.sp)) {
-                    Column {
-                        var gameTimeVal = 0.0
-                        if (!gameTime.value.isInfinite())
-                            gameTimeVal = gameTime.value
-                        Text(text = "${String.format("%.3f", fifo.value)} %")
-                        Text(text = "${String.format("%.3f", gameFps.value)} FPS")
-                        Text(text = "${String.format("%.3f", gameTimeVal)} ms")
-                        Box(modifier = Modifier.width(96.dp)) {
-                            Column {
-                                LazyColumn {
-                                    itemsIndexed(frequencies) { i, t ->
-                                        Row {
-                                            Text(
-                                                modifier = Modifier.padding(2.dp),
-                                                text = "CPU $i"
-                                            )
-                                            Spacer(Modifier.weight(1f))
-                                            Text(text = "$t MHz")
-                                        }
-                                    }
-                                }
-                                Row {
-                                    Text(modifier = Modifier.padding(2.dp), text = "Used")
-                                    Spacer(Modifier.weight(1f))
-                                    Text(text = "${usedMem.value} MB")
-                                }
-                                Row {
-                                    Text(modifier = Modifier.padding(2.dp), text = "Total")
-                                    Spacer(Modifier.weight(1f))
-                                    Text(text = "${totalMem.value} MB")
-                                }
-                            }
-                        }
-                    }
+                Column(
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .background(Color.Transparent) // 完全透明背景
+                ) {
+                    val gameTimeVal = if (!gameTime.value.isInfinite()) gameTime.value else 0.0
+                    
+                    // 核心性能指标
+                    Text(text = "${String.format("%.1f", fifo.value)}% FIFO")
+                    Text(text = "${String.format("%.1f", gameFps.value)} FPS")
+                    Text(text = "${String.format("%.1f", gameTimeVal)} ms")
+                    
+                    // 内存使用
+                    Text(text = "${usedMem.value}/${totalMem.value} MB")
                 }
             }
 
