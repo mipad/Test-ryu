@@ -62,7 +62,7 @@ namespace Ryujinx.HLE.HOS.Services.Ns.Aoc
 
             Logger.Debug?.PrintStub(LogClass.ServiceNs); // NOTE: Uses Debug to avoid spamming.
 
-            return ResultCode.Success;
+            return ResultCode.NoPurchasedProductInfoAvailable;
         }
     }
 }
