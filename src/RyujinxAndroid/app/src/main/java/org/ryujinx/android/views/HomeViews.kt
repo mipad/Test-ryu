@@ -377,7 +377,7 @@ class HomeViews {
                                     val size =
                                         GridImageSize / Resources.getSystem().displayMetrics.density
                                     LazyVerticalGrid(
-                                        columns = GridCells.Adaptive(minSize = (size + 4).dp),
+                                        columns = GridCells.Fixed(2),
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .padding(4.dp)
