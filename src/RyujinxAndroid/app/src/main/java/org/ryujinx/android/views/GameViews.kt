@@ -368,12 +368,12 @@ class GameViews {
                     val gameTimeVal = if (!gameTime.value.isInfinite()) gameTime.value else 0.0
                     
                     // 核心性能指标
-                    Text(text = "${String.format("%.1f", fifo.value)}% FIFO")
+                    Text(text = "${String.format("%.1f", fifo.value)}%")
                     Text(text = "${String.format("%.1f", gameFps.value)} FPS")
                     Text(text = "${String.format("%.1f", gameTimeVal)} ms")
                     
                     // 内存使用
-                    Text(text = "${usedMem.value}/${totalMem.value} MB")
+                    Text(text = "${totalMem.value}/${usedMem.value} MB")
                 }
             }
 
