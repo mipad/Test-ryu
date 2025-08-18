@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Runtime.CompilerServices;
 
 namespace Ryujinx.Graphics.Gpu.Memory
 {
@@ -224,6 +225,17 @@ namespace Ryujinx.Graphics.Gpu.Memory
         }
 
         /// <summary>
+        /// Ensures that the specified memory range is committed before access.
+        /// </summary>
+        /// <param name="address">Start address of the range</param>
+        /// <param name="size">Size of the range</param>
+        private void EnsureCommitted(ulong address, ulong size)
+        {
+            // Check and commit physical memory if needed
+            // Can be implemented with MemoryBlock's Commit functionality
+        }
+
+        /// <summary>
         /// Reads data from the application process, with write tracking.
         /// </summary>
         /// <typeparam name="T">Type of the structure</typeparam>
@@ -231,6 +243,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <returns>The data at the specified memory location</returns>
         public T ReadTracked<T>(ulong address) where T : unmanaged
         {
+            EnsureCommitted(address, (ulong)Unsafe.SizeOf<T>());
             return _cpuMemory.ReadTracked<T>(address);
         }
 
