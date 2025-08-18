@@ -65,8 +65,14 @@ fun RyujinxAndroidTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.primary.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = darkTheme
+            
+            // 设置状态栏为透明色
+            window.statusBarColor = Color.Transparent.toArgb()
+            
+            // 根据主题设置状态栏图标颜色：
+            // 深色主题：显示浅色图标（白色）
+            // 浅色主题：显示深色图标（黑色）
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
         }
     }
 
