@@ -728,8 +728,7 @@ class SettingViews {
                             shape = MaterialTheme.shapes.small
                         ),
                     colors = ButtonDefaults.textButtonColors(
-                        containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer 
-                                       else Color.Transparent,
+                        containerColor = Color.Transparent,
                         contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer 
                                      else MaterialTheme.colorScheme.onSurface
                     )
