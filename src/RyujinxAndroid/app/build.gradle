@@ -54,7 +54,7 @@ android {
     }
     kotlinOptions {
         jvmTarget = '21'
-        freeCompilerArgs += ["-Xopt-in=kotlin.RequiresOptIn", "-Xallow-jvm-ir-dependencies"]
+        freeCompilerArgs += ["-opt-in=kotlin.RequiresOptIn"]
     }
     buildFeatures {
         compose true
