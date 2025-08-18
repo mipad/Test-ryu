@@ -380,8 +380,8 @@ class HomeViews {
                                         columns = GridCells.Fixed(2),
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .padding(4.dp),
-                                            //.nestedScroll(nestedScrollConnection),
+                                            .padding(4.dp)
+                                            .nestedScroll(nestedScrollConnection),
                                         horizontalArrangement = Arrangement.SpaceEvenly
                                     ) {
                                         items(list) {
