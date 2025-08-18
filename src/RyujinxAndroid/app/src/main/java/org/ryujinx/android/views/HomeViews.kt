@@ -374,15 +374,14 @@ class HomeViews {
                                 }
                             } else {
                                 if (settings.isGrid) {
-                                    val size =
-                                        GridImageSize / Resources.getSystem().displayMetrics.density
                                     LazyVerticalGrid(
                                         columns = GridCells.Fixed(2),
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .padding(4.dp)
+                                            .padding(horizontal = 8.dp) // 减少水平间距
                                             .nestedScroll(nestedScrollConnection),
-                                        horizontalArrangement = Arrangement.SpaceEvenly
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp), // 减少列间距
+                                        verticalArrangement = Arrangement.spacedBy(8.dp) // 减少行间距
                                     ) {
                                         items(list) {
                                             it.titleName?.apply {
@@ -703,7 +702,7 @@ class HomeViews {
                 color = color,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(8.dp)
+                    .padding(4.dp) // 减少内边距使图标更大
                     .combinedClickable(
                         onClick = {
                             if (viewModel.mainViewModel?.selected != null) {
@@ -737,24 +736,70 @@ class HomeViews {
                             selectedModel.value = gameModel
                         })
             ) {
-                Column(modifier = Modifier.padding(4.dp)) {
+                Column(
+                    modifier = Modifier
+                        .padding(4.dp) // 减少内边距
+                        .fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
                         if (gameModel.icon?.isNotEmpty() == true) {
                             val pic = decoder.decode(gameModel.icon)
-                            val size = GridImageSize / Resources.getSystem().displayMetrics.density
-                            Image(
-                                bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
-                                    .asImageBitmap(),
-                                contentDescription = gameModel.titleName + " icon",
+                            Box(
                                 modifier = Modifier
-                                    .padding(0.dp)
+                                    .fillMaxWidth()
+                                    .aspectRatio(1f) // 保持1:1宽高比
                                     .clip(RoundedCornerShape(16.dp))
-                                    .align(Alignment.CenterHorizontally)
+                            ) {
+                                Image(
+                                    bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
+                                        .asImageBitmap(),
+                                    contentDescription = gameModel.titleName + " icon",
+                                    contentScale = ContentScale.Crop, // 裁剪填充
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                        } else if (gameModel.type == FileType.Nro) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(1f) // 保持1:1宽高比
+                                    .clip(RoundedCornerShape(16.dp))
+                            ) {
+                                NROIcon(
+                                    modifier = Modifier
+                                        .fillMaxSize(0.8f) // 使用80%的空间
+                                        .align(Alignment.Center)
+                                )
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(1f) // 保持1:1宽高比
+                                    .clip(RoundedCornerShape(16.dp))
+                            ) {
+                                NotAvailableIcon(
+                                    modifier = Modifier
+                                        .fillMaxSize(0.8f) // 使用80%的空间
+                                        .align(Alignment.Center)
+                                )
+                            }
+                        }
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1f) // 保持1:1宽高比
+                                .clip(RoundedCornerShape(16.dp))
+                        ) {
+                            NotAvailableIcon(
+                                modifier = Modifier
+                                    .fillMaxSize(0.8f) // 使用80%的空间
+                                    .align(Alignment.Center)
                             )
-                        } else if (gameModel.type == FileType.Nro)
-                            NROIcon()
-                        else NotAvailableIcon()
-                    } else NotAvailableIcon()
+                        }
+                    }
                     Text(
                         text = gameModel.titleName ?: "N/A",
                         maxLines = 1,
@@ -768,28 +813,20 @@ class HomeViews {
         }
 
         @Composable
-        fun NotAvailableIcon() {
-            val size = ListImageSize / Resources.getSystem().displayMetrics.density
+        fun NotAvailableIcon(modifier: Modifier = Modifier) {
             Icon(
                 Icons.Filled.Add,
                 contentDescription = "N/A",
-                modifier = Modifier
-                    .padding(end = 8.dp)
-                    .width(size.roundToInt().dp)
-                    .height(size.roundToInt().dp)
+                modifier = modifier
             )
         }
 
         @Composable
-        fun NROIcon() {
-            val size = ListImageSize / Resources.getSystem().displayMetrics.density
+        fun NROIcon(modifier: Modifier = Modifier) {
             Image(
                 painter = painterResource(id = R.drawable.icon_nro),
                 contentDescription = "NRO",
-                modifier = Modifier
-                    .padding(end = 8.dp)
-                    .width(size.roundToInt().dp)
-                    .height(size.roundToInt().dp)
+                modifier = modifier
             )
         }
 
