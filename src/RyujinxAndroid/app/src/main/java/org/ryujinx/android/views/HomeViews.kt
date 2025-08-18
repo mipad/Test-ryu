@@ -381,7 +381,7 @@ class HomeViews {
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .padding(4.dp)
-                                            .nestedScroll(nestedScrollConnection),
+                                            //.nestedScroll(nestedScrollConnection),
                                         horizontalArrangement = Arrangement.SpaceEvenly
                                     ) {
                                         items(list) {
