@@ -126,15 +126,24 @@ class HomeViews {
             var isFabVisible by remember {
                 mutableStateOf(true)
             }
+            
+            // 添加搜索框可见性状态
+            var isSearchBarVisible by remember {
+                mutableStateOf(true)
+            }
 
             val nestedScrollConnection = remember {
                 object : NestedScrollConnection {
                     override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                         if (available.y < -1) {
+                            // 上滑 - 隐藏FAB和搜索框
                             isFabVisible = false
+                            isSearchBarVisible = false
                         }
                         if (available.y > 1) {
+                            // 下滑 - 显示FAB和搜索框
                             isFabVisible = true
+                            isSearchBarVisible = true
                         }
                         return Offset.Zero
                     }
@@ -144,62 +153,69 @@ class HomeViews {
             Scaffold(
                 modifier = Modifier.fillMaxSize(),
                 topBar = {
-                    SearchBar(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp),
-                        shape = SearchBarDefaults.inputFieldShape,
-                        query = query.value,
-                        onQueryChange = {
-                            query.value = it
-                        },
-                        onSearch = {},
-                        active = false,
-                        onActiveChange = {},
-                        leadingIcon = {
-                            Icon(
-                                Icons.Filled.Search,
-                                contentDescription = "Search Games"
-                            )
-                        },
-                        placeholder = {
-                            Text(text = "Ryujinx")
-                        },
-                        trailingIcon = {
-                            IconButton(onClick = {
-                                openAppBarExtra = !openAppBarExtra
-                            }) {
-                                if (!refreshUser) {
-                                    refreshUser = true
-                                }
-                                if (refreshUser)
-                                    if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
-                                        val pic =
-                                            viewModel.mainViewModel.userViewModel.openedUser.userPicture
-                                        Image(
-                                            bitmap = BitmapFactory.decodeByteArray(
-                                                pic,
-                                                0,
-                                                pic?.size ?: 0
-                                            )
-                                                .asImageBitmap(),
-                                            contentDescription = "user image",
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier
-                                                .padding(4.dp)
-                                                .size(52.dp)
-                                                .clip(CircleShape)
-                                        )
-                                    } else {
-                                        Icon(
-                                            Icons.Filled.Person,
-                                            contentDescription = "user"
-                                        )
-                                    }
-                            }
-                        }
+                    // 用AnimatedVisibility包裹SearchBar以实现滑动显示/隐藏
+                    AnimatedVisibility(
+                        visible = isSearchBarVisible,
+                        enter = slideInVertically(initialOffsetY = { -it }),
+                        exit = slideOutVertically(targetOffsetY = { -it })
                     ) {
+                        SearchBar(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                            shape = SearchBarDefaults.inputFieldShape,
+                            query = query.value,
+                            onQueryChange = {
+                                query.value = it
+                            },
+                            onSearch = {},
+                            active = false,
+                            onActiveChange = {},
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.Search,
+                                    contentDescription = "Search Games"
+                                )
+                            },
+                            placeholder = {
+                                Text(text = "Ryujinx")
+                            },
+                            trailingIcon = {
+                                IconButton(onClick = {
+                                    openAppBarExtra = !openAppBarExtra
+                                }) {
+                                    if (!refreshUser) {
+                                        refreshUser = true
+                                    }
+                                    if (refreshUser)
+                                        if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
+                                            val pic =
+                                                viewModel.mainViewModel.userViewModel.openedUser.userPicture
+                                            Image(
+                                                bitmap = BitmapFactory.decodeByteArray(
+                                                    pic,
+                                                    0,
+                                                    pic?.size ?: 0
+                                                )
+                                                    .asImageBitmap(),
+                                                contentDescription = "user image",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .padding(4.dp)
+                                                    .size(52.dp)
+                                                    .clip(CircleShape)
+                                            )
+                                        } else {
+                                            Icon(
+                                                Icons.Filled.Person,
+                                                contentDescription = "user"
+                                            )
+                                        }
+                                }
+                            }
+                        ) {
 
+                        }
                     }
                 },
                 floatingActionButton = {
@@ -403,7 +419,11 @@ class HomeViews {
                                         }
                                     }
                                 } else {
-                                    LazyColumn(Modifier.fillMaxSize()) {
+                                    LazyColumn(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .nestedScroll(nestedScrollConnection)
+                                    ) {
                                         items(list) {
                                             it.titleName?.apply {
                                                 if (this.isNotEmpty() && (query.value.trim()
