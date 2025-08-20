@@ -264,7 +264,7 @@ namespace Ryujinx.Audio.Renderer.Server
                 return command.Parameter.ChannelCount switch
                 {
                     1 => (uint)120174.47f,
-                    2 => (uint)25262.22f,
+                    2 => (uint)125262.22f,
                     4 => (uint)135751.23f,
                     6 => (uint)141129.23f,
                     _ => throw new NotImplementedException($"{command.Parameter.ChannelCount}"),
