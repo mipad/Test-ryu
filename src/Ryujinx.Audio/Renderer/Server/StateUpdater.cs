@@ -412,119 +412,203 @@ namespace Ryujinx.Audio.Renderer.Server
         }
 
         private static bool CheckMixParametersValidity(MixContext mixContext, uint mixBufferCount, uint inputMixCount, SequenceReader<byte> parameters)
+{
+    uint maxMixStateCount = mixContext.GetCount();
+    uint totalRequiredMixBufferCount = 0;
+
+    Logger.Debug?.Print(LogClass.AudioRenderer, 
+        $"CheckMixParametersValidity: MaxMixStateCount={maxMixStateCount}, MixBufferCount={mixBufferCount}, InputMixCount={inputMixCount}");
+
+    for (int i = 0; i < inputMixCount; i++)
+    {
+        ref readonly MixParameter parameter = ref parameters.GetRefOrRefToCopy<MixParameter>(out _);
+
+        if (parameter.IsUsed)
         {
-            uint maxMixStateCount = mixContext.GetCount();
-            uint totalRequiredMixBufferCount = 0;
+            Logger.Debug?.Print(LogClass.AudioRenderer, 
+                $"CheckMixParametersValidity: Checking mix {i}, MixId={parameter.MixId}, DestinationMixId={parameter.DestinationMixId}, BufferCount={parameter.BufferCount}");
 
-            for (int i = 0; i < inputMixCount; i++)
+            if (parameter.DestinationMixId != Constants.UnusedMixId &&
+                parameter.DestinationMixId > maxMixStateCount &&
+                parameter.MixId != Constants.FinalMixId)
             {
-                ref readonly MixParameter parameter = ref parameters.GetRefOrRefToCopy<MixParameter>(out _);
-
-                if (parameter.IsUsed)
-                {
-                    if (parameter.DestinationMixId != Constants.UnusedMixId &&
-                        parameter.DestinationMixId > maxMixStateCount &&
-                        parameter.MixId != Constants.FinalMixId)
-                    {
-                        return true;
-                    }
-
-                    totalRequiredMixBufferCount += parameter.BufferCount;
-                }
+                Logger.Error?.Print(LogClass.AudioRenderer, 
+                    $"CheckMixParametersValidity: Invalid DestinationMixId! {parameter.DestinationMixId} > {maxMixStateCount} and MixId != FinalMixId");
+                return true;
             }
 
-            return totalRequiredMixBufferCount > mixBufferCount;
+            totalRequiredMixBufferCount += parameter.BufferCount;
+            Logger.Debug?.Print(LogClass.AudioRenderer, 
+                $"CheckMixParametersValidity: Total buffer count so far: {totalRequiredMixBufferCount}");
         }
+    }
+
+    bool bufferCountExceeded = totalRequiredMixBufferCount > mixBufferCount;
+    
+    if (bufferCountExceeded)
+    {
+        Logger.Error?.Print(LogClass.AudioRenderer, 
+            $"CheckMixParametersValidity: Buffer count exceeded! Required: {totalRequiredMixBufferCount}, Available: {mixBufferCount}");
+    }
+    else
+    {
+        Logger.Debug?.Print(LogClass.AudioRenderer, 
+            $"CheckMixParametersValidity: Buffer count check passed. Required: {totalRequiredMixBufferCount}, Available: {mixBufferCount}");
+    }
+
+    return bufferCountExceeded;
+}
 
         public ResultCode UpdateMixes(MixContext mixContext, uint mixBufferCount, EffectContext effectContext, SplitterContext splitterContext)
+{
+    // +++ 添加方法入口调试信息 +++
+    Logger.Debug?.Print(LogClass.AudioRenderer, 
+        $"UpdateMixes: Starting update. MixContextCount={mixContext.GetCount()}, MixBufferCount={mixBufferCount}");
+
+    uint mixCount;
+    uint inputMixSize;
+    uint inputSize = 0;
+
+    if (_behaviourContext.IsMixInParameterDirtyOnlyUpdateSupported())
+    {
+        ref readonly MixInParameterDirtyOnlyUpdate parameter = ref _inputReader.GetRefOrRefToCopy<MixInParameterDirtyOnlyUpdate>(out _);
+        mixCount = parameter.MixCount;
+        inputSize += (uint)Unsafe.SizeOf<MixInParameterDirtyOnlyUpdate>();
+        
+        // +++ 添加调试日志 +++
+        Logger.Debug?.Print(LogClass.AudioRenderer, 
+            $"UpdateMixes: Using dirty-only update mode. MixCount={mixCount}");
+    }
+    else
+    {
+        mixCount = mixContext.GetCount();
+        // +++ 添加调试日志 +++
+        Logger.Debug?.Print(LogClass.AudioRenderer, 
+            $"UpdateMixes: Using standard update mode. MixCount={mixCount}");
+    }
+
+    inputMixSize = mixCount * (uint)Unsafe.SizeOf<MixParameter>();
+    inputSize += inputMixSize;
+
+    // +++ 添加详细的调试信息 +++
+    Logger.Debug?.Print(LogClass.AudioRenderer, 
+        $"UpdateMixes: Calculated InputSize={inputSize}, HeaderMixesSize={_inputHeader.MixesSize}");
+
+    if (inputSize != _inputHeader.MixesSize)
+    {
+        Logger.Error?.Print(LogClass.AudioRenderer, 
+            $"UpdateMixes: Size mismatch! Expected {_inputHeader.MixesSize}, got {inputSize}. Difference: {Math.Abs((long)_inputHeader.MixesSize - inputSize)} bytes");
+        return ResultCode.InvalidUpdateInfo;
+    }
+
+    long initialInputConsumed = _inputReader.Consumed;
+    int parameterCount = (int)inputMixSize / Unsafe.SizeOf<MixParameter>();
+
+    // +++ 添加调试日志 +++
+    Logger.Debug?.Print(LogClass.AudioRenderer, 
+        $"UpdateMixes: About to check mix parameters validity. ParameterCount={parameterCount}");
+
+    if (CheckMixParametersValidity(mixContext, mixBufferCount, mixCount, _inputReader))
+    {
+        Logger.Error?.Print(LogClass.AudioRenderer, 
+            "UpdateMixes: CheckMixParametersValidity failed! Mix parameters are invalid.");
+        return ResultCode.InvalidUpdateInfo;
+    }
+
+    // +++ 添加调试日志 +++
+    Logger.Debug?.Print(LogClass.AudioRenderer, 
+        $"UpdateMixes: Starting to process {parameterCount} mix parameters");
+
+    bool isMixContextDirty = false;
+    int processedParameters = 0;
+
+    for (int i = 0; i < parameterCount; i++)
+    {
+        ref readonly MixParameter parameter = ref _inputReader.GetRefOrRefToCopy<MixParameter>(out _);
+
+        int mixId = i;
+
+        if (_behaviourContext.IsMixInParameterDirtyOnlyUpdateSupported())
         {
-            uint mixCount;
-            uint inputMixSize;
-            uint inputSize = 0;
-
-            if (_behaviourContext.IsMixInParameterDirtyOnlyUpdateSupported())
-            {
-                ref readonly MixInParameterDirtyOnlyUpdate parameter = ref _inputReader.GetRefOrRefToCopy<MixInParameterDirtyOnlyUpdate>(out _);
-
-                mixCount = parameter.MixCount;
-
-                inputSize += (uint)Unsafe.SizeOf<MixInParameterDirtyOnlyUpdate>();
-            }
-            else
-            {
-                mixCount = mixContext.GetCount();
-            }
-
-            inputMixSize = mixCount * (uint)Unsafe.SizeOf<MixParameter>();
-
-            inputSize += inputMixSize;
-
-            if (inputSize != _inputHeader.MixesSize)
-            {
-                return ResultCode.InvalidUpdateInfo;
-            }
-
-            long initialInputConsumed = _inputReader.Consumed;
-
-            int parameterCount = (int)inputMixSize / Unsafe.SizeOf<MixParameter>();
-
-            if (CheckMixParametersValidity(mixContext, mixBufferCount, mixCount, _inputReader))
-            {
-                return ResultCode.InvalidUpdateInfo;
-            }
-
-            bool isMixContextDirty = false;
-
-            for (int i = 0; i < parameterCount; i++)
-            {
-                ref readonly MixParameter parameter = ref _inputReader.GetRefOrRefToCopy<MixParameter>(out _);
-
-                int mixId = i;
-
-                if (_behaviourContext.IsMixInParameterDirtyOnlyUpdateSupported())
-                {
-                    mixId = parameter.MixId;
-                }
-
-                ref MixState mix = ref mixContext.GetState(mixId);
-
-                if (parameter.IsUsed != mix.IsUsed)
-                {
-                    mix.IsUsed = parameter.IsUsed;
-
-                    if (parameter.IsUsed)
-                    {
-                        mix.ClearEffectProcessingOrder();
-                    }
-
-                    isMixContextDirty = true;
-                }
-
-                if (mix.IsUsed)
-                {
-                    isMixContextDirty |= mix.Update(mixContext.EdgeMatrix, in parameter, effectContext, splitterContext, _behaviourContext);
-                }
-            }
-
-            if (isMixContextDirty)
-            {
-                if (_behaviourContext.IsSplitterSupported() && splitterContext.UsingSplitter())
-                {
-                    if (!mixContext.Sort(splitterContext))
-                    {
-                        return ResultCode.InvalidMixSorting;
-                    }
-                }
-                else
-                {
-                    mixContext.Sort();
-                }
-            }
-
-            _inputReader.SetConsumed(initialInputConsumed + inputMixSize);
-
-            return ResultCode.Success;
+            mixId = parameter.MixId;
         }
+
+        // +++ 添加参数级别的调试 +++
+        Logger.Debug?.Print(LogClass.AudioRenderer, 
+            $"UpdateMixes: Processing parameter {i}, MixId={mixId}, IsUsed={parameter.IsUsed}, BufferCount={parameter.BufferCount}");
+
+        ref MixState mix = ref mixContext.GetState(mixId);
+
+        if (parameter.IsUsed != mix.IsUsed)
+        {
+            Logger.Debug?.Print(LogClass.AudioRenderer, 
+                $"UpdateMixes: Mix {mixId} usage changed from {mix.IsUsed} to {parameter.IsUsed}");
+                
+            mix.IsUsed = parameter.IsUsed;
+
+            if (parameter.IsUsed)
+            {
+                mix.ClearEffectProcessingOrder();
+            }
+
+            isMixContextDirty = true;
+        }
+
+        if (mix.IsUsed)
+        {
+            bool wasUpdated = mix.Update(mixContext.EdgeMatrix, in parameter, effectContext, splitterContext, _behaviourContext);
+            isMixContextDirty |= wasUpdated;
+            
+            if (wasUpdated)
+            {
+                Logger.Debug?.Print(LogClass.AudioRenderer, 
+                    $"UpdateMixes: Mix {mixId} was updated and marked context as dirty");
+            }
+        }
+        
+        processedParameters++;
+    }
+
+    // +++ 添加调试日志 +++
+    Logger.Debug?.Print(LogClass.AudioRenderer, 
+        $"UpdateMixes: Processed {processedParameters} parameters. Context is dirty: {isMixContextDirty}");
+
+    if (isMixContextDirty)
+    {
+        Logger.Debug?.Print(LogClass.AudioRenderer, 
+            "UpdateMixes: Mix context is dirty, starting sort operation");
+            
+        if (_behaviourContext.IsSplitterSupported() && splitterContext.UsingSplitter())
+        {
+            Logger.Debug?.Print(LogClass.AudioRenderer, 
+                "UpdateMixes: Using splitter-aware sorting");
+                
+            if (!mixContext.Sort(splitterContext))
+            {
+                Logger.Error?.Print(LogClass.AudioRenderer, 
+                    "UpdateMixes: Mix context sorting with splitter failed!");
+                return ResultCode.InvalidMixSorting;
+            }
+        }
+        else
+        {
+            Logger.Debug?.Print(LogClass.AudioRenderer, 
+                "UpdateMixes: Using standard sorting");
+            mixContext.Sort();
+        }
+        
+        Logger.Debug?.Print(LogClass.AudioRenderer, 
+            "UpdateMixes: Sorting completed successfully");
+    }
+
+    _inputReader.SetConsumed(initialInputConsumed + inputMixSize);
+    
+    // +++ 添加方法完成调试信息 +++
+    Logger.Debug?.Print(LogClass.AudioRenderer, 
+        "UpdateMixes: Update completed successfully");
+        
+    return ResultCode.Success;
+}
 
         private static void ResetSink(ref BaseSink sink, in SinkInParameter parameter)
         {
