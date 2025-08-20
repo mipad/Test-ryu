@@ -449,12 +449,12 @@ namespace Ryujinx.Audio.Renderer.Server
         {
             if (CheckFeatureSupported(UserRevision, BaseRevisionMagic + Revision15))
             {
-                return 7; // REV15 使用版本 7
+                return 5; // REV15 使用版本 5 而不是 7
             }
             
             if (CheckFeatureSupported(UserRevision, BaseRevisionMagic + Revision14))
             {
-                return 6; // REV14 使用版本 6
+                return 5; // REV14 使用版本 5
             }
             
             if (CheckFeatureSupported(UserRevision, BaseRevisionMagic + Revision11))
