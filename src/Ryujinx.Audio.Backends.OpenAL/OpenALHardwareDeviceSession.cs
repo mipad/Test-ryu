@@ -153,39 +153,33 @@ namespace Ryujinx.Audio.Backends.OpenAL
         {
             lock (_lock)
             {
-                if (_isActive)
+                if (!_isActive) return false;
+
+                AL.GetSource(_sourceId, ALGetSourcei.BuffersProcessed, out int releasedCount);
+                if (releasedCount == 0) return false;
+
+                var bufferIds = new int[releasedCount];
+                AL.SourceUnqueueBuffers(_sourceId, releasedCount, bufferIds);
+
+                // ✅ 顺序无关处理
+                for (int j = 0; j < bufferIds.Length; j++)
                 {
-                    AL.GetSource(_sourceId, ALGetSourcei.BuffersProcessed, out int releasedCount);
-
-                    if (releasedCount > 0)
+                    bool found = false;
+                    foreach (var buffer in _queuedBuffers)
                     {
-                        int[] bufferIds = new int[releasedCount];
-
-                        AL.SourceUnqueueBuffers(_sourceId, releasedCount, bufferIds);
-
-                        int i = 0;
-
-                        while (_queuedBuffers.TryPeek(out OpenALAudioBuffer buffer) && i < bufferIds.Length)
+                        if (buffer.BufferId == bufferIds[j])
                         {
-                            if (buffer.BufferId == bufferIds[i])
-                            {
-                                _playedSampleCount += buffer.SampleCount;
-
-                                _queuedBuffers.TryDequeue(out _);
-
-                                i++;
-                            }
+                            _playedSampleCount += buffer.SampleCount;
+                            _queuedBuffers.Remove(buffer);
+                            found = true;
+                            break;
                         }
-
-                        Debug.Assert(i == bufferIds.Length, "Unknown buffer ids found!");
-
-                        AL.DeleteBuffers(bufferIds);
                     }
-
-                    return releasedCount > 0;
+                    Debug.Assert(found, "Unknown buffer id found!");
                 }
 
-                return false;
+                AL.DeleteBuffers(bufferIds);
+                return true;
             }
         }
 
