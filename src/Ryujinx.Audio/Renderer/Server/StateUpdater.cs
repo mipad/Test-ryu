@@ -127,89 +127,107 @@ namespace Ryujinx.Audio.Renderer.Server
         }
 
         public ResultCode UpdateVoices(VoiceContext context, PoolMapper mapper)
+{
+    int voiceInParameterSize = Unsafe.SizeOf<VoiceInParameter>();
+    int expectedSize = context.GetCount() * voiceInParameterSize;
+    
+    if (expectedSize != _inputHeader.VoicesSize)
+    {
+        Logger.Error?.Print(LogClass.AudioRenderer, 
+            $"Voice context count ({context.GetCount()}) * VoiceInParameter size ({voiceInParameterSize}) = {expectedSize}, " +
+            $"which does not match VoicesSize ({_inputHeader.VoicesSize}) in header");
+        
+        return ResultCode.InvalidUpdateInfo;
+    }
+
+    int initialOutputSize = _output.Length;
+    long initialInputConsumed = _inputReader.Consumed;
+
+    // 首先将所有语音标记为未使用
+    for (int i = 0; i < context.GetCount(); i++)
+    {
+        ref VoiceState state = ref context.GetState(i);
+        state.InUse = false;
+    }
+
+    Memory<VoiceUpdateState>[] voiceUpdateStatesArray = ArrayPool<Memory<VoiceUpdateState>>.Shared.Rent(Constants.VoiceChannelCountMax);
+    Span<Memory<VoiceUpdateState>> voiceUpdateStates = voiceUpdateStatesArray.AsSpan(0, Constants.VoiceChannelCountMax);
+
+    // 开始处理
+    for (int i = 0; i < context.GetCount(); i++)
+    {
+        // 检查是否有足够的数据读取
+        if (_inputReader.Remaining < voiceInParameterSize)
         {
-            if (context.GetCount() * Unsafe.SizeOf<VoiceInParameter>() != _inputHeader.VoicesSize)
+            Logger.Error?.Print(LogClass.AudioRenderer, 
+                $"Insufficient data for voice parameter {i}. Remaining: {_inputReader.Remaining}, Required: {voiceInParameterSize}");
+            
+            ArrayPool<Memory<VoiceUpdateState>>.Shared.Return(voiceUpdateStatesArray);
+            return ResultCode.InvalidUpdateInfo;
+        }
+
+        ref readonly VoiceInParameter parameter = ref _inputReader.GetRefOrRefToCopy<VoiceInParameter>(out _);
+        voiceUpdateStates.Fill(Memory<VoiceUpdateState>.Empty);
+
+        ref VoiceOutStatus outStatus = ref SpanIOHelper.GetWriteRef<VoiceOutStatus>(ref _output)[0];
+
+        if (parameter.InUse)
+        {
+            ref VoiceState currentVoiceState = ref context.GetState(i);
+
+            for (int channelResourceIndex = 0; channelResourceIndex < parameter.ChannelCount; channelResourceIndex++)
             {
-                return ResultCode.InvalidUpdateInfo;
-            }
+                int channelId = parameter.ChannelResourceIds[channelResourceIndex];
 
-            int initialOutputSize = _output.Length;
-
-            long initialInputConsumed = _inputReader.Consumed;
-
-            // First make everything not in use.
-            for (int i = 0; i < context.GetCount(); i++)
-            {
-                ref VoiceState state = ref context.GetState(i);
-
-                state.InUse = false;
-            }
-
-            Memory<VoiceUpdateState>[] voiceUpdateStatesArray = ArrayPool<Memory<VoiceUpdateState>>.Shared.Rent(Constants.VoiceChannelCountMax);
-
-            Span<Memory<VoiceUpdateState>> voiceUpdateStates = voiceUpdateStatesArray.AsSpan(0, Constants.VoiceChannelCountMax);
-
-            // Start processing
-            for (int i = 0; i < context.GetCount(); i++)
-            {
-                ref readonly VoiceInParameter parameter = ref _inputReader.GetRefOrRefToCopy<VoiceInParameter>(out _);
-
-                voiceUpdateStates.Fill(Memory<VoiceUpdateState>.Empty);
-
-                ref VoiceOutStatus outStatus = ref SpanIOHelper.GetWriteRef<VoiceOutStatus>(ref _output)[0];
-
-                if (parameter.InUse)
+                if (channelId < 0 || channelId >= context.GetCount())
                 {
-                    ref VoiceState currentVoiceState = ref context.GetState(i);
+                    Logger.Error?.Print(LogClass.AudioRenderer, 
+                        $"Invalid channel ID {channelId} for voice {i}, channel index {channelResourceIndex}");
+                    continue;
+                }
 
-                    for (int channelResourceIndex = 0; channelResourceIndex < parameter.ChannelCount; channelResourceIndex++)
-                    {
-                        int channelId = parameter.ChannelResourceIds[channelResourceIndex];
+                voiceUpdateStates[channelResourceIndex] = context.GetUpdateStateForCpu(channelId);
+            }
 
-                        Debug.Assert(channelId >= 0 && channelId < context.GetCount());
+            if (parameter.IsNew)
+            {
+                currentVoiceState.Initialize();
+            }
 
-                        voiceUpdateStates[channelResourceIndex] = context.GetUpdateStateForCpu(channelId);
-                    }
+            currentVoiceState.UpdateParameters(out ErrorInfo updateParameterError, in parameter, mapper, ref _behaviourContext);
 
-                    if (parameter.IsNew)
-                    {
-                        currentVoiceState.Initialize();
-                    }
+            if (updateParameterError.ErrorCode != ResultCode.Success)
+            {
+                _behaviourContext.AppendError(ref updateParameterError);
+            }
 
-                    currentVoiceState.UpdateParameters(out ErrorInfo updateParameterError, in parameter, mapper, ref _behaviourContext);
+            currentVoiceState.UpdateWaveBuffers(out ErrorInfo[] waveBufferUpdateErrorInfos, in parameter, voiceUpdateStates, mapper, ref _behaviourContext);
 
-                    if (updateParameterError.ErrorCode != ResultCode.Success)
-                    {
-                        _behaviourContext.AppendError(ref updateParameterError);
-                    }
-
-                    currentVoiceState.UpdateWaveBuffers(out ErrorInfo[] waveBufferUpdateErrorInfos, in parameter, voiceUpdateStates, mapper, ref _behaviourContext);
-
-                    foreach (ref ErrorInfo errorInfo in waveBufferUpdateErrorInfos.AsSpan())
-                    {
-                        if (errorInfo.ErrorCode != ResultCode.Success)
-                        {
-                            _behaviourContext.AppendError(ref errorInfo);
-                        }
-                    }
-
-                    currentVoiceState.WriteOutStatus(ref outStatus, in parameter, voiceUpdateStates);
+            foreach (ref ErrorInfo errorInfo in waveBufferUpdateErrorInfos.AsSpan())
+            {
+                if (errorInfo.ErrorCode != ResultCode.Success)
+                {
+                    _behaviourContext.AppendError(ref errorInfo);
                 }
             }
 
-            ArrayPool<Memory<VoiceUpdateState>>.Shared.Return(voiceUpdateStatesArray);
-
-            int currentOutputSize = _output.Length;
-
-            OutputHeader.VoicesSize = (uint)(Unsafe.SizeOf<VoiceOutStatus>() * context.GetCount());
-            OutputHeader.TotalSize += OutputHeader.VoicesSize;
-
-            Debug.Assert((initialOutputSize - currentOutputSize) == OutputHeader.VoicesSize);
-
-            _inputReader.SetConsumed(initialInputConsumed + _inputHeader.VoicesSize);
-
-            return ResultCode.Success;
+            currentVoiceState.WriteOutStatus(ref outStatus, in parameter, voiceUpdateStates);
         }
+    }
+
+    ArrayPool<Memory<VoiceUpdateState>>.Shared.Return(voiceUpdateStatesArray);
+
+    int currentOutputSize = _output.Length;
+
+    OutputHeader.VoicesSize = (uint)(Unsafe.SizeOf<VoiceOutStatus>() * context.GetCount());
+    OutputHeader.TotalSize += OutputHeader.VoicesSize;
+
+    Debug.Assert((initialOutputSize - currentOutputSize) == OutputHeader.VoicesSize);
+
+    _inputReader.SetConsumed(initialInputConsumed + _inputHeader.VoicesSize);
+
+    return ResultCode.Success;
+}
 
         private static void ResetEffect<T>(ref BaseEffect effect, in T parameter, PoolMapper mapper) where T : unmanaged, IEffectInParameter
         {
