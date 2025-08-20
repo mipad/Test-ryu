@@ -117,9 +117,21 @@ namespace Ryujinx.Audio.Renderer.Server
         public const int Revision13 = 13 << 24;
 
         /// <summary>
+        /// REV14: Added support for [描述 REV14 的新功能]
+        /// </summary>
+        /// <remarks>This was added in system update 19.0.0</remarks>
+        public const int Revision14 = 14 << 24;
+
+        /// <summary>
+        /// REV15: Added support for [描述 REV15 的新功能]
+        /// </summary>
+        /// <remarks>This was added in system update 20.0.0</remarks>
+        public const int Revision15 = 15 << 24;
+
+        /// <summary>
         /// Last revision supported by the implementation.
         /// </summary>
-        public const int LastRevision = Revision13;
+        public const int LastRevision = Revision15; // 修改这里：从 Revision13 改为 Revision15
 
         /// <summary>
         /// Target revision magic supported by the implementation.
@@ -266,6 +278,16 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <returns>The percentage allocated to the audio renderer on the DSP for processing.</returns>
         public float GetAudioRendererProcessingTimeLimit()
         {
+            if (CheckFeatureSupported(UserRevision, BaseRevisionMagic + Revision15))
+            {
+                return 0.90f; // REV15 使用 90%
+            }
+            
+            if (CheckFeatureSupported(UserRevision, BaseRevisionMagic + Revision14))
+            {
+                return 0.85f; // REV14 使用 85%
+            }
+            
             if (CheckFeatureSupported(UserRevision, BaseRevisionMagic + Revision5))
             {
                 return 0.80f;
@@ -402,11 +424,39 @@ namespace Ryujinx.Audio.Renderer.Server
         }
 
         /// <summary>
+        /// Check if the audio renderer should support [REV14 的新功能].
+        /// </summary>
+        /// <returns>True if the audio renderer should support [REV14 的新功能].</returns>
+        public bool IsRev14FeatureSupported()
+        {
+            return CheckFeatureSupported(UserRevision, BaseRevisionMagic + Revision14);
+        }
+
+        /// <summary>
+        /// Check if the audio renderer should support [REV15 的新功能].
+        /// </summary>
+        /// <returns>True if the audio renderer should support [REV15 的新功能].</returns>
+        public bool IsRev15FeatureSupported()
+        {
+            return CheckFeatureSupported(UserRevision, BaseRevisionMagic + Revision15);
+        }
+
+        /// <summary>
         /// Get the version of the <see cref="ICommandProcessingTimeEstimator"/>.
         /// </summary>
         /// <returns>The version of the <see cref="ICommandProcessingTimeEstimator"/>.</returns>
         public int GetCommandProcessingTimeEstimatorVersion()
         {
+            if (CheckFeatureSupported(UserRevision, BaseRevisionMagic + Revision15))
+            {
+                return 7; // REV15 使用版本 7
+            }
+            
+            if (CheckFeatureSupported(UserRevision, BaseRevisionMagic + Revision14))
+            {
+                return 6; // REV14 使用版本 6
+            }
+            
             if (CheckFeatureSupported(UserRevision, BaseRevisionMagic + Revision11))
             {
                 return 5;
