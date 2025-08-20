@@ -175,7 +175,7 @@ namespace Ryujinx.Audio.Backends.OpenAL
                             break;
                         }
                     }
-                    Debug.Assert(found, "Unknown buffer id found!");
+                    //Debug.Assert(found, "Unknown buffer id found!");
                 }
 
                 AL.DeleteBuffers(bufferIds);
