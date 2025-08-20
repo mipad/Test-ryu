@@ -128,8 +128,8 @@ namespace Ryujinx.Audio.Renderer.Server
 
         public ResultCode UpdateVoices(VoiceContext context, PoolMapper mapper)
 {
-    int voiceInParameterSize = Unsafe.SizeOf<VoiceInParameter>();
-    int expectedSize = context.GetCount() * voiceInParameterSize;
+    long voiceInParameterSize = Unsafe.SizeOf<VoiceInParameter>();
+    long expectedSize = context.GetCount() * voiceInParameterSize;
     
     if (expectedSize != _inputHeader.VoicesSize)
     {
