@@ -3,8 +3,6 @@ package org.ryujinx.android.views
 import android.content.res.Resources
 import android.graphics.BitmapFactory
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -26,7 +24,6 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -77,7 +74,6 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -92,7 +88,6 @@ import org.ryujinx.android.viewmodels.QuickSettings
 import java.util.Base64
 import java.util.Locale
 import kotlin.concurrent.thread
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class HomeViews {
@@ -128,49 +123,28 @@ class HomeViews {
                 mutableStateOf(true)
             }
 
-            // 使用动画值而不是简单的布尔值来控制可见性
-            var topBarOffset by remember { mutableStateOf(0f) }
-            var fabOffset by remember { mutableStateOf(0f) }
+            var isFabVisible by remember {
+                mutableStateOf(true)
+            }
             
-            // 使用密度转换
-            val density = LocalDensity.current
-            
-            // 计算动画偏移量
-            val animatedTopBarOffset by animateDpAsState(
-                targetValue = with(density) { topBarOffset.toDp() },
-                animationSpec = tween(durationMillis = 300),
-                label = "topBarAnimation"
-            )
-            
-            val animatedFabOffset by animateDpAsState(
-                targetValue = with(density) { fabOffset.toDp() },
-                animationSpec = tween(durationMillis = 300),
-                label = "fabAnimation"
-            )
+            // 添加搜索框和用户卡片可见性状态
+            var isTopBarVisible by remember {
+                mutableStateOf(true)
+            }
 
             val nestedScrollConnection = remember {
                 object : NestedScrollConnection {
-                    var accumulatedOffset = 0f
-                    val threshold = 50f // 滚动阈值，避免过于敏感
-                    
                     override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                        // 累积滚动距离
-                        accumulatedOffset += available.y
-                        
-                        // 只有当滚动超过阈值时才更新UI
-                        if (abs(accumulatedOffset) > threshold) {
-                            if (available.y < 0) {
-                                // 上滑 - 隐藏顶部栏和FAB
-                                topBarOffset = -150f // 完全隐藏
-                                fabOffset = 150f // 完全隐藏
-                            } else if (available.y > 0) {
-                                // 下滑 - 显示顶部栏和FAB
-                                topBarOffset = 0f
-                                fabOffset = 0f
-                            }
-                            accumulatedOffset = 0f // 重置累积值
+                        if (available.y < -1) {
+                            // 上滑 - 隐藏FAB和顶部栏
+                            isFabVisible = false
+                            isTopBarVisible = false
                         }
-                        
+                        if (available.y > 1) {
+                            // 下滑 - 显示FAB和顶部栏
+                            isFabVisible = true
+                            isTopBarVisible = true
+                        }
                         return Offset.Zero
                     }
                 }
@@ -182,7 +156,7 @@ class HomeViews {
                     // 为顶部栏预留空间
                     Spacer(
                         modifier = Modifier
-                            .height(if (openAppBarExtra) 180.dp else 80.dp)
+                            .height(if (isTopBarVisible) if (openAppBarExtra) 180.dp else 80.dp else 0.dp)
                             .fillMaxWidth()
                     )
                     
@@ -271,194 +245,197 @@ class HomeViews {
                 }
 
                 // 顶部栏层 (上层) - 包含搜索框和用户卡片
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .offset(y = animatedTopBarOffset)
+                AnimatedVisibility(
+                    visible = isTopBarVisible,
+                    enter = slideInVertically(initialOffsetY = { -it }),
+                    exit = slideOutVertically(targetOffsetY = { -it }),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    // 搜索框
-                    SearchBar(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp),
-                        shape = SearchBarDefaults.inputFieldShape,
-                        query = query.value,
-                        onQueryChange = {
-                            query.value = it
-                        },
-                        onSearch = {},
-                        active = false,
-                        onActiveChange = {},
-                        leadingIcon = {
-                            Icon(
-                                Icons.Filled.Search,
-                                contentDescription = "Search Games"
-                            )
-                        },
-                        placeholder = {
-                            Text(text = "Ryujinx")
-                        },
-                        trailingIcon = {
-                            IconButton(onClick = {
-                                openAppBarExtra = !openAppBarExtra
-                            }) {
-                                if (!refreshUser) {
-                                    refreshUser = true
-                                }
-                                if (refreshUser)
-                                    if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
-                                        val pic =
-                                            viewModel.mainViewModel.userViewModel.openedUser.userPicture
-                                        Image(
-                                            bitmap = BitmapFactory.decodeByteArray(
-                                                pic,
-                                                0,
-                                                pic?.size ?: 0
-                                            )
-                                                .asImageBitmap(),
-                                            contentDescription = "user image",
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier
-                                                .padding(4.dp)
-                                                .size(52.dp)
-                                                .clip(CircleShape)
-                                        )
-                                    } else {
-                                        Icon(
-                                            Icons.Filled.Person,
-                                            contentDescription = "user"
-                                        )
-                                    }
-                            }
-                        }
-                    ) {}
-
-                    // 用户卡片
-                    AnimatedVisibility(
-                        visible = openAppBarExtra,
-                    ) {
-                        val iconSize = 52.dp
-                        Card(
+                    Column {
+                        // 搜索框
+                        SearchBar(
                             modifier = Modifier
-                                .padding(vertical = 8.dp, horizontal = 16.dp)
-                                .fillMaxWidth(),
-                            shape = MaterialTheme.shapes.medium
-                        ) {
-                            Column(modifier = Modifier.padding(8.dp)) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    if (refreshUser) {
-                                        Box(
-                                            modifier = Modifier
-                                                .border(
-                                                    width = 2.dp,
-                                                    color = Color(0xFF14bf00),
-                                                    shape = CircleShape
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                            shape = SearchBarDefaults.inputFieldShape,
+                            query = query.value,
+                            onQueryChange = {
+                                query.value = it
+                            },
+                            onSearch = {},
+                            active = false,
+                            onActiveChange = {},
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.Search,
+                                    contentDescription = "Search Games"
+                                )
+                            },
+                            placeholder = {
+                                Text(text = "Ryujinx")
+                            },
+                            trailingIcon = {
+                                IconButton(onClick = {
+                                    openAppBarExtra = !openAppBarExtra
+                                }) {
+                                    if (!refreshUser) {
+                                        refreshUser = true
+                                    }
+                                    if (refreshUser)
+                                        if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
+                                            val pic =
+                                                viewModel.mainViewModel.userViewModel.openedUser.userPicture
+                                            Image(
+                                                bitmap = BitmapFactory.decodeByteArray(
+                                                    pic,
+                                                    0,
+                                                    pic?.size ?: 0
                                                 )
-                                                .size(iconSize)
-                                                .padding(2.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
-                                                val pic =
-                                                    viewModel.mainViewModel.userViewModel.openedUser.userPicture
-                                                Image(
-                                                    bitmap = BitmapFactory.decodeByteArray(
-                                                        pic,
-                                                        0,
-                                                        pic?.size ?: 0
-                                                    )
-                                                        .asImageBitmap(),
-                                                    contentDescription = "user image",
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier
-                                                        .padding(4.dp)
-                                                        .size(iconSize)
-                                                        .clip(CircleShape)
-                                                )
-                                            } else {
-                                                Icon(
-                                                    Icons.Filled.Person,
-                                                    contentDescription = "user"
-                                                )
-                                            }
+                                                    .asImageBitmap(),
+                                                contentDescription = "user image",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .padding(4.dp)
+                                                    .size(52.dp)
+                                                    .clip(CircleShape)
+                                            )
+                                        } else {
+                                            Icon(
+                                                Icons.Filled.Person,
+                                                contentDescription = "user"
+                                            )
                                         }
-                                        Card(
-                                            modifier = Modifier
-                                                .padding(horizontal = 4.dp)
-                                                .fillMaxWidth(0.7f),
-                                            shape = MaterialTheme.shapes.small,
-                                        ) {
-                                            LazyRow {
-                                                if (viewModel.mainViewModel?.userViewModel?.userList?.isNotEmpty() == true) {
-                                                    items(viewModel.mainViewModel.userViewModel.userList) { user ->
-                                                        if (user.id != viewModel.mainViewModel.userViewModel.openedUser.id) {
-                                                            Image(
-                                                                bitmap = BitmapFactory.decodeByteArray(
-                                                                    user.userPicture,
-                                                                    0,
-                                                                    user.userPicture?.size ?: 0
+                                }
+                            }
+                        ) {}
+
+                        // 用户卡片
+                        AnimatedVisibility(
+                            visible = openAppBarExtra,
+                        ) {
+                            val iconSize = 52.dp
+                            Card(
+                                modifier = Modifier
+                                    .padding(vertical = 8.dp, horizontal = 16.dp)
+                                    .fillMaxWidth(),
+                                shape = MaterialTheme.shapes.medium
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        if (refreshUser) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .border(
+                                                        width = 2.dp,
+                                                        color = Color(0xFF14bf00),
+                                                        shape = CircleShape
+                                                    )
+                                                    .size(iconSize)
+                                                    .padding(2.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
+                                                    val pic =
+                                                        viewModel.mainViewModel.userViewModel.openedUser.userPicture
+                                                    Image(
+                                                        bitmap = BitmapFactory.decodeByteArray(
+                                                            pic,
+                                                            0,
+                                                            pic?.size ?: 0
+                                                        )
+                                                            .asImageBitmap(),
+                                                        contentDescription = "user image",
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier
+                                                            .padding(4.dp)
+                                                            .size(iconSize)
+                                                            .clip(CircleShape)
+                                                    )
+                                                } else {
+                                                    Icon(
+                                                        Icons.Filled.Person,
+                                                        contentDescription = "user"
+                                                    )
+                                                }
+                                            }
+                                            Card(
+                                                modifier = Modifier
+                                                    .padding(horizontal = 4.dp)
+                                                    .fillMaxWidth(0.7f),
+                                                shape = MaterialTheme.shapes.small,
+                                            ) {
+                                                LazyRow {
+                                                    if (viewModel.mainViewModel?.userViewModel?.userList?.isNotEmpty() == true) {
+                                                        items(viewModel.mainViewModel.userViewModel.userList) { user ->
+                                                            if (user.id != viewModel.mainViewModel.userViewModel.openedUser.id) {
+                                                                Image(
+                                                                    bitmap = BitmapFactory.decodeByteArray(
+                                                                        user.userPicture,
+                                                                        0,
+                                                                        user.userPicture?.size ?: 0
+                                                                    )
+                                                                        .asImageBitmap(),
+                                                                    contentDescription = "selected image",
+                                                                    contentScale = ContentScale.Crop,
+                                                                    modifier = Modifier
+                                                                        .padding(4.dp)
+                                                                        .size(iconSize)
+                                                                        .clip(CircleShape)
+                                                                        .combinedClickable(
+                                                                            onClick = {
+                                                                                viewModel.mainViewModel.userViewModel.openUser(
+                                                                                    user
+                                                                                )
+                                                                                refreshUser =
+                                                                                    false
+                                                                            })
                                                                 )
-                                                                    .asImageBitmap(),
-                                                                contentDescription = "selected image",
-                                                                contentScale = ContentScale.Crop,
-                                                                modifier = Modifier
-                                                                    .padding(4.dp)
-                                                                    .size(iconSize)
-                                                                    .clip(CircleShape)
-                                                                    .combinedClickable(
-                                                                        onClick = {
-                                                                            viewModel.mainViewModel.userViewModel.openUser(
-                                                                                user
-                                                                            )
-                                                                            refreshUser =
-                                                                                false
-                                                                        })
-                                                            )
+                                                            }
                                                         }
                                                     }
                                                 }
                                             }
-                                        }
-                                        Box(
-                                            modifier = Modifier
-                                                .size(iconSize)
-                                        ) {
-                                            IconButton(
-                                                modifier = Modifier.fillMaxSize(),
-                                                onClick = {
-                                                    openAppBarExtra = false
-                                                    navController?.navigate("user")
-                                                }) {
-                                                Icon(
-                                                    Icons.Filled.Add,
-                                                    contentDescription = "N/A"
-                                                )
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(iconSize)
+                                            ) {
+                                                IconButton(
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    onClick = {
+                                                        openAppBarExtra = false
+                                                        navController?.navigate("user")
+                                                    }) {
+                                                    Icon(
+                                                        Icons.Filled.Add,
+                                                        contentDescription = "N/A"
+                                                    )
+                                                }
                                             }
                                         }
                                     }
-                                }
-                                TextButton(modifier = Modifier.fillMaxWidth(),
-                                    onClick = {
-                                        navController?.navigate("settings")
-                                    }
-                                ) {
-                                    Row(modifier = Modifier.fillMaxWidth()) {
-                                        Icon(
-                                            Icons.Filled.Settings,
-                                            contentDescription = "Settings"
-                                        )
-                                        Text(
-                                            text = "Settings",
-                                            modifier = Modifier
-                                                .align(Alignment.CenterVertically)
-                                                .padding(start = 8.dp)
-                                        )
+                                    TextButton(modifier = Modifier.fillMaxWidth(),
+                                        onClick = {
+                                            navController?.navigate("settings")
+                                        }
+                                    ) {
+                                        Row(modifier = Modifier.fillMaxWidth()) {
+                                            Icon(
+                                                Icons.Filled.Settings,
+                                                contentDescription = "Settings"
+                                            )
+                                            Text(
+                                                text = "Settings",
+                                                modifier = Modifier
+                                                    .align(Alignment.CenterVertically)
+                                                    .padding(start = 8.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -467,18 +444,23 @@ class HomeViews {
                 }
 
                 // FAB层 (最上层)
-                FloatingActionButton(
-                    onClick = {
-                        viewModel.requestReload()
-                        viewModel.ensureReloadIfNecessary()
-                    },
-                    shape = MaterialTheme.shapes.small,
+                AnimatedVisibility(
+                    visible = isFabVisible,
+                    enter = slideInVertically(initialOffsetY = { it * 2 }),
+                    exit = slideOutVertically(targetOffsetY = { it * 2 }),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(16.dp)
-                        .offset(y = animatedFabOffset)
                 ) {
-                    Icon(Icons.Default.Refresh, contentDescription = "refresh")
+                    FloatingActionButton(
+                        onClick = {
+                            viewModel.requestReload()
+                            viewModel.ensureReloadIfNecessary()
+                        },
+                        shape = MaterialTheme.shapes.small
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = "refresh")
+                    }
                 }
             }
 
