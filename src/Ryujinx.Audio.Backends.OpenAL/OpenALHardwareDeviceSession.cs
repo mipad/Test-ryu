@@ -161,21 +161,16 @@ namespace Ryujinx.Audio.Backends.OpenAL
                 var bufferIds = new int[releasedCount];
                 AL.SourceUnqueueBuffers(_sourceId, releasedCount, bufferIds);
 
-                // ✅ 顺序无关处理
-                for (int j = 0; j < bufferIds.Length; j++)
+                // Process buffers in order (FIFO)
+                for (int i = 0; i < releasedCount; i++)
                 {
-                    bool found = false;
-                    foreach (var buffer in _queuedBuffers)
+                    if (_queuedBuffers.Count == 0)
                     {
-                        if (buffer.BufferId == bufferIds[j])
-                        {
-                            _playedSampleCount += buffer.SampleCount;
-                            _queuedBuffers.Remove(buffer);
-                            found = true;
-                            break;
-                        }
+                        break;
                     }
-                    //Debug.Assert(found, "Unknown buffer id found!");
+
+                    OpenALAudioBuffer buffer = _queuedBuffers.Dequeue();
+                    _playedSampleCount += buffer.SampleCount;
                 }
 
                 AL.DeleteBuffers(bufferIds);
