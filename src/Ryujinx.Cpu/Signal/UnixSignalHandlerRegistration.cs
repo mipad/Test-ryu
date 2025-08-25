@@ -21,7 +21,6 @@ namespace Ryujinx.Cpu.Signal
             public IntPtr sa_restorer;
         }
 
-#if ANDROID
         [SupportedOSPlatform("android"), StructLayout(LayoutKind.Sequential, Pack = 8)]
         public struct SigActionBionic
         {
@@ -30,7 +29,6 @@ namespace Ryujinx.Cpu.Signal
             public SigSet sa_mask;
             public IntPtr sa_restorer;
         }
-#endif
 
         [StructLayout(LayoutKind.Sequential, Pack = 8)]
         public struct Stack
@@ -50,18 +48,14 @@ namespace Ryujinx.Cpu.Signal
         [LibraryImport("libc", SetLastError = true)]
         private static partial int sigaction(int signum, ref SigAction sigAction, out SigAction oldAction);
 
-#if ANDROID
         [SupportedOSPlatform("android"), LibraryImport("libc", SetLastError = true)]
         private static partial int sigaction(int signum, ref SigActionBionic sigAction, out SigActionBionic oldAction);
-#endif
 
         [LibraryImport("libc", SetLastError = true)]
         private static partial int sigaction(int signum, IntPtr sigAction, out SigAction oldAction);
 
-#if ANDROID
         [SupportedOSPlatform("android"), LibraryImport("libc", SetLastError = true)]
         private static partial int sigaction(int signum, IntPtr sigAction, out SigActionBionic oldAction);
-#endif
 
         [LibraryImport("libc", SetLastError = true)]
         private static partial int sigemptyset(ref SigSet set);
@@ -76,7 +70,6 @@ namespace Ryujinx.Cpu.Signal
 
             if (Ryujinx.Common.PlatformInfo.IsBionic)
             {
-#if ANDROID
                 result = sigaction(SIGSEGV, IntPtr.Zero, out SigActionBionic tmp);
 
                 old = new SigAction
@@ -86,9 +79,6 @@ namespace Ryujinx.Cpu.Signal
                     sa_flags = tmp.sa_flags,
                     sa_restorer = tmp.sa_restorer
                 };
-#else
-                throw new PlatformNotSupportedException("Bionic is only supported on Android");
-#endif
             }
             else
             {
@@ -110,7 +100,6 @@ namespace Ryujinx.Cpu.Signal
 
             if (Ryujinx.Common.PlatformInfo.IsBionic)
             {
-#if ANDROID
                 SigActionBionic sig = new()
                 {
                     sa_handler = action,
@@ -128,9 +117,6 @@ namespace Ryujinx.Cpu.Signal
                     sa_flags = tmp.sa_flags,
                     sa_restorer = tmp.sa_restorer
                 };
-#else
-                throw new PlatformNotSupportedException("Bionic is only supported on Android");
-#endif
             }
             else
             {
@@ -201,7 +187,6 @@ namespace Ryujinx.Cpu.Signal
 
             if (Ryujinx.Common.PlatformInfo.IsBionic)
             {
-#if ANDROID
                 SigActionBionic sig = new()
                 {
                     sa_handler = action,
@@ -221,9 +206,6 @@ namespace Ryujinx.Cpu.Signal
                 {
                     throw new SystemException($"Could not register SIG{sigNum} sigaction. Error: {Marshal.GetLastPInvokeErrorMessage()}");
                 }
-#else
-                throw new PlatformNotSupportedException("Bionic is only supported on Android");
-#endif
             }
             else
             {
@@ -253,7 +235,6 @@ namespace Ryujinx.Cpu.Signal
         {
             if (Ryujinx.Common.PlatformInfo.IsBionic)
             {
-#if ANDROID
                 SigActionBionic tmp = new SigActionBionic
                 {
                     sa_handler = oldAction.sa_handler,
@@ -263,9 +244,6 @@ namespace Ryujinx.Cpu.Signal
                 };
 
                 return sigaction(SIGSEGV, ref tmp, out SigActionBionic _) == 0;
-#else
-                throw new PlatformNotSupportedException("Bionic is only supported on Android");
-#endif
             }
             else
             {
