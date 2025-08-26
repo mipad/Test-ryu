@@ -353,30 +353,39 @@ fun GameStats(mainViewModel: MainViewModel) {
         mutableIntStateOf(0)
     }
 
-    Column(
-        modifier = Modifier
-            .padding(16.dp)
-            .background(Color.Transparent)
+    // 完全透明的文字面板
+    CompositionLocalProvider(
+        LocalTextStyle provides TextStyle(
+            fontSize = 10.sp,
+            color = Color.White // 确保文字在游戏画面上可见
+        )
     ) {
-        val gameTimeVal = if (!gameTime.value.isInfinite()) gameTime.value else 0.0
-        
-        // 使用固定宽度的Box确保每行文本左对齐
-        StatRow("${String.format("%.1f", fifo.value)}%")
-        
-        // 只为FPS添加圆角半透明背景
-        Box(
+        Column(
             modifier = Modifier
-                .background(
-                    color = Color.Black.copy(alpha = 0.25f),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-                )
-                .padding(horizontal = 4.dp, vertical = 2.dp)
+                .padding(16.dp)
+                .background(Color.Transparent) // 完全透明背景
         ) {
-            StatRow("${String.format("%.1f", gameFps.value)} FPS")
+            val gameTimeVal = if (!gameTime.value.isInfinite()) gameTime.value else 0.0
+            
+            // 核心性能指标
+            Text(text = "${String.format("%.1f", fifo.value)}%")
+            
+            // 只为FPS添加圆角半透明背景
+            Text(
+                text = "${String.format("%.1f", gameFps.value)} FPS",
+                modifier = Modifier
+                    .background(
+                        color = Color.Black.copy(alpha = 0.25f),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                    )
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+            )
+            
+            //Text(text = "${String.format("%.1f", gameTimeVal)} ms")
+            
+            // 内存使用
+            Text(text = "${totalMem.value}/${usedMem.value} MB")
         }
-        
-       // StatRow("${String.format("%.1f", gameTimeVal)} ms")
-        StatRow("${usedMem.value}/${totalMem.value} MB")
     }
 
     mainViewModel.setStatStates(fifo, gameFps, gameTime, usedMem, totalMem)
