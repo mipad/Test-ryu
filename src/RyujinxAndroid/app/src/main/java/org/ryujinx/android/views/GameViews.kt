@@ -381,7 +381,7 @@ fun GameStats(mainViewModel: MainViewModel) {
                             color = Color.Black.copy(alpha = 0.15f),
                             shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                         )
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                        //.padding(horizontal = 4.dp, vertical = 2.dp)
                 )
             }
             
