@@ -370,18 +370,20 @@ fun GameStats(mainViewModel: MainViewModel) {
             // 核心性能指标
             Text(text = "${String.format("%.1f", fifo.value)}%")
             
-            // 只为FPS添加圆角半透明背景
-            Text(
-                text = "${String.format("%.1f", gameFps.value)} FPS",
-                modifier = Modifier
-                    .background(
-                        color = Color.Black.copy(alpha = 0.25f),
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-                    )
-                    .padding(horizontal = 4.dp, vertical = 2.dp)
-            )
-            
-            //Text(text = "${String.format("%.1f", gameTimeVal)} ms")
+            // 使用Box包装FPS文本，确保对齐不受背景影响
+            Box(
+                modifier = Modifier.align(Alignment.Start) // 确保左对齐
+            ) {
+                Text(
+                    text = "${String.format("%.1f", gameFps.value)} FPS",
+                    modifier = Modifier
+                        .background(
+                            color = Color.Black.copy(alpha = 0.15f),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                        )
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                )
+            }
             
             // 内存使用
             Text(text = "${totalMem.value}/${usedMem.value} MB")
