@@ -353,37 +353,47 @@ fun GameStats(mainViewModel: MainViewModel) {
         mutableIntStateOf(0)
     }
 
-    // 完全透明的文字面板
-    CompositionLocalProvider(
-        LocalTextStyle provides TextStyle(
-            fontSize = 10.sp,
-            color = Color.White // 确保文字在游戏画面上可见
-        )
+    // 在屏幕顶部横向排列统计信息
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp)
+            .background(Color.Transparent),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(
-            modifier = Modifier
-                .padding(16.dp)
-                .background(Color.Transparent) // 完全透明背景
-        ) {
-            val gameTimeVal = if (!gameTime.value.isInfinite()) gameTime.value else 0.0
-            
-            // 核心性能指标
-            Text(text = "${String.format("%.1f", fifo.value)}%")
-            
-            // 只修改FPS数字为亮黄色
-            Text(
-                text = "${String.format("%.1f", gameFps.value)} FPS",
-                color = Color.Yellow
-            )
-            
-            Text(text = "${String.format("%.1f", gameTimeVal)} ms")
-            
-            // 内存使用
-            Text(text = "${totalMem.value}/${usedMem.value} MB")
-        }
+        val gameTimeVal = if (!gameTime.value.isInfinite()) gameTime.value else 0.0
+        
+        // 核心性能指标 - 横向排列
+        Text(
+            text = "${String.format("%.1f", fifo.value)}%",
+            fontSize = 12.sp,
+            color = Color.White
+        )
+        
+        // FPS使用更大的字体和醒目的颜色
+        Text(
+            text = "${String.format("%.1f", gameFps.value)} FPS",
+            fontSize = 16.sp, // 增大字体
+            color = Color.Cyan,
+            modifier = Modifier.padding(horizontal = 8.dp)
+        )
+        
+        Text(
+            text = "${String.format("%.1f", gameTimeVal)} ms",
+            fontSize = 12.sp,
+            color = Color.White
+        )
+        
+        // 内存使用
+        Text(
+            text = "${usedMem.value}/${totalMem.value} MB",
+            fontSize = 12.sp,
+            color = Color.White
+        )
     }
 
-       mainViewModel.setStatStates(fifo, gameFps, gameTime, usedMem, totalMem)
-      }
+    mainViewModel.setStatStates(fifo, gameFps, gameTime, usedMem, totalMem)
+}
     }
 }
