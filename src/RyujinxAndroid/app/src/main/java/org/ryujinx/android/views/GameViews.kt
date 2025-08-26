@@ -336,90 +336,54 @@ class GameViews {
         }
 
         @Composable
-        fun GameStats(mainViewModel: MainViewModel) {
-            val fifo = remember {
-                mutableDoubleStateOf(0.0)
-            }
-            val gameFps = remember {
-                mutableDoubleStateOf(0.0)
-            }
-            val gameTime = remember {
-                mutableDoubleStateOf(0.0)
-            }
-            val usedMem = remember {
-                mutableIntStateOf(0)
-            }
-            val totalMem = remember {
-                mutableIntStateOf(0)
-            }
+fun GameStats(mainViewModel: MainViewModel) {
+    val fifo = remember {
+        mutableDoubleStateOf(0.0)
+    }
+    val gameFps = remember {
+        mutableDoubleStateOf(0.0)
+    }
+    val gameTime = remember {
+        mutableDoubleStateOf(0.0)
+    }
+    val usedMem = remember {
+        mutableIntStateOf(0)
+    }
+    val totalMem = remember {
+        mutableIntStateOf(0)
+    }
 
-            // 完全透明的文字面板
-            CompositionLocalProvider(
-                LocalTextStyle provides TextStyle(
-                    fontSize = 10.sp,
-                    color = Color.White // 确保文字在游戏画面上可见
-                )
-            ) {
-                Column(
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .background(Color.Transparent) // 完全透明背景
-                ) {
-                    val gameTimeVal = if (!gameTime.value.isInfinite()) gameTime.value else 0.0
-                    
-                    // 核心性能指标
-                    Text(text = "${String.format("%.1f", fifo.value)}%")
-                    
-                    // 只对FPS数字进行描边
-                    FpsWithStroke(text = "${String.format("%.1f", gameFps.value)} FPS")
-                    
-                    Text(text = "${String.format("%.1f", gameTimeVal)} ms")
-                    
-                    // 内存使用
-                    Text(text = "${totalMem.value}/${usedMem.value} MB")
-                }
-            }
-
-            mainViewModel.setStatStates(fifo, gameFps, gameTime, usedMem, totalMem)
+    // 完全透明的文字面板
+    CompositionLocalProvider(
+        LocalTextStyle provides TextStyle(
+            fontSize = 10.sp,
+            color = Color.White // 确保文字在游戏画面上可见
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(16.dp)
+                .background(Color.Transparent) // 完全透明背景
+        ) {
+            val gameTimeVal = if (!gameTime.value.isInfinite()) gameTime.value else 0.0
+            
+            // 核心性能指标
+            Text(text = "${String.format("%.1f", fifo.value)}%")
+            
+            // 只修改FPS数字为亮黄色
+            Text(
+                text = "${String.format("%.1f", gameFps.value)} FPS",
+                color = Color.Yellow
+            )
+            
+            Text(text = "${String.format("%.1f", gameTimeVal)} ms")
+            
+            // 内存使用
+            Text(text = "${totalMem.value}/${usedMem.value} MB")
         }
+    }
 
-        // 只对FPS数字进行描边
-        @Composable
-        fun FpsWithStroke(text: String) {
-            Box {
-                // 绘制黑色描边（四个方向的偏移）
-                Text(
-                    text = text,
-                    color = Color.Black,
-                    fontSize = 10.sp,
-                    modifier = Modifier.padding(start = 1.dp, top = 1.dp)
-                )
-                Text(
-                    text = text,
-                    color = Color.Black,
-                    fontSize = 10.sp,
-                    modifier = Modifier.padding(start = (-1).dp, top = 1.dp)
-                )
-                Text(
-                    text = text,
-                    color = Color.Black,
-                    fontSize = 10.sp,
-                    modifier = Modifier.padding(start = 1.dp, top = (-1).dp)
-                )
-                Text(
-                    text = text,
-                    color = Color.Black,
-                    fontSize = 10.sp,
-                    modifier = Modifier.padding(start = (-1).dp, top = (-1).dp)
-                )
-                
-                // 绘制白色主文本
-                Text(
-                    text = text,
-                    color = Color.White,
-                    fontSize = 10.sp
-                )
-            }
-        }
+       mainViewModel.setStatStates(fifo, gameFps, gameTime, usedMem, totalMem)
+      }
     }
 }
