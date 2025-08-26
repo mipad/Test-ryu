@@ -6,5 +6,9 @@
   </PropertyGroup>
 
   <!-- 添加其他必要的配置和依赖 -->
+  <ItemGroup>
+    <!-- 添加对 Ryujinx.Common 的引用，因为 Logger 可能需要它 -->
+    <ProjectReference Include="..\Ryujinx.Common\Ryujinx.Common.csproj" />
+  </ItemGroup>
 
 </Project>
