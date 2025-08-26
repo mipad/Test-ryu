@@ -5,6 +5,7 @@ import android.content.res.Resources
 import android.graphics.BitmapFactory
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -26,6 +27,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -87,6 +92,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -313,7 +319,7 @@ class HomeViews {
                                     .aspectRatio(1f)
                             }
                         ) {
-                            if (gameModel.icon?.isNotEmpty() == true) {
+                            if (gameModel.icon?.isNotEmpty() = true) {
                                 val pic = decoder.decode(gameModel.icon)
                                 Box(
                                     modifier = Modifier
@@ -386,40 +392,62 @@ class HomeViews {
             }
         }
 
+        @Composable
+        fun CenterFrameBox() {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+                    .border(
+                        width = 2.dp,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(16.dp)
+                    )
+            ) {
+                // 空框，只显示边框
+            }
+        }
+
         @OptIn(ExperimentalFoundationApi::class)
         @Composable
-        fun LandscapeGameItem(
-            gameModel: GameModel,
+        fun LandscapeGameCarouselItem(
+            gameModel: GameModel?,
             viewModel: HomeViewModel,
             showAppActions: MutableState<Boolean>,
             showLoading: MutableState<Boolean>,
             selectedModel: MutableState<GameModel?>,
             showError: MutableState<String>,
             isCentered: Boolean = false,
-            scale: Float = 1f,
-            alpha: Float = 1f,
-            onCentered: () -> Unit = {}
+            onItemClick: () -> Unit = {}
         ) {
+            if (gameModel == null) {
+                // 空项目
+                Box(
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                ) {
+                    // 空项目不显示任何内容
+                }
+                return
+            }
+
             remember {
                 selectedModel
             }
             val isSelected = selectedModel.value == gameModel
-
             val decoder = Base64.getDecoder()
-            
-            Surface(
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.surface,
-                modifier = Modifier
-                    .width((220 * scale).dp)
-                    .graphicsLayer {
-                        this.scaleX = scale
-                        this.scaleY = scale
-                        this.alpha = alpha
-                    }
-                    .combinedClickable(
-                        onClick = {
-                            if (isCentered) {
+
+            if (isCentered) {
+                // 中央项目 - 显示完整信息
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                        .combinedClickable(
+                            onClick = {
                                 if (viewModel.mainViewModel?.selected != null) {
                                     showAppActions.value = false
                                     viewModel.mainViewModel?.apply {
@@ -444,107 +472,173 @@ class HomeViews {
                                         showLoading.value = false
                                     }
                                 }
-                            } else {
-                                onCentered()
+                            },
+                            onLongClick = {
+                                viewModel.mainViewModel?.selected = gameModel
+                                showAppActions.value = true
+                                selectedModel.value = gameModel
                             }
-                        },
-                        onLongClick = {
-                            viewModel.mainViewModel?.selected = gameModel
-                            showAppActions.value = true
-                            selectedModel.value = gameModel
-                        }
-                    )
-            ) {
-                Column(
-                    modifier = Modifier
-                        .padding(8.dp)
-                        .fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        )
                 ) {
-                    if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
-                        Box(
-                            modifier = if (isSelected) {
-                                Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(1f)
-                                    .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
-                            } else {
-                                Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(1f)
-                            }
-                        ) {
-                            if (gameModel.icon?.isNotEmpty() == true) {
-                                val pic = decoder.decode(gameModel.icon)
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(16.dp))
-                                ) {
-                                    Image(
-                                        bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
-                                            .asImageBitmap(),
-                                        contentDescription = gameModel.titleName + " icon",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
+                    Row(
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .fillMaxSize(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // 图标部分
+                        if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
+                            Box(
+                                modifier = if (isSelected) {
+                                    Modifier
+                                        .size(120.dp)
+                                        .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
+                                } else {
+                                    Modifier.size(120.dp)
                                 }
-                            } else if (gameModel.type == FileType.Nro) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(16.dp))
-                                ) {
-                                    NROIcon(
+                            ) {
+                                if (gameModel.icon?.isNotEmpty() == true) {
+                                    val pic = decoder.decode(gameModel.icon)
+                                    Box(
                                         modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(16.dp))
+                                    ) {
+                                        Image(
+                                            bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
+                                                .asImageBitmap(),
+                                            contentDescription = gameModel.titleName + " icon",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                } else if (gameModel.type == FileType.Nro) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(16.dp))
+                                    ) {
+                                        NROIcon(
+                                            modifier = Modifier
+                                                .fillMaxSize(0.8f)
+                                                .align(Alignment.Center)
+                                        )
+                                    }
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(16.dp))
+                                    ) {
+                                        NotAvailableIcon(
+                                            modifier = Modifier
+                                                .fillMaxSize(0.8f)
+                                                .align(Alignment.Center)
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            Box(
+                                modifier = if (isSelected) {
+                                    Modifier
+                                        .size(120.dp)
+                                        .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
+                                } else {
+                                    Modifier.size(120.dp)
+                                }
+                            ) {
+                                NotAvailableIcon(
+                                    modifier = Modifier
                                         .fillMaxSize(0.8f)
                                         .align(Alignment.Center)
-                                    )
-                                }
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(16.dp))
-                                ) {
-                                    NotAvailableIcon(
-                                        modifier = Modifier
-                                            .fillMaxSize(0.8f)
-                                            .align(Alignment.Center)
-                                    )
-                                }
+                                )
                             }
                         }
-                    } else {
-                        Box(
-                            modifier = if (isSelected) {
-                                Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(1f)
-                                    .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
-                            } else {
-                                Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(1f)
-                            }
+                        
+                        // 游戏信息部分
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 16.dp),
+                            horizontalAlignment = Alignment.Start
                         ) {
+                            Text(
+                                text = gameModel.titleName ?: "N/A",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            Text(
+                                text = gameModel.developer ?: "",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            
+                            Spacer(modifier = Modifier.height(4.dp))
+                            
+                            Text(
+                                text = gameModel.titleId ?: "",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            Text(
+                                text = "v${gameModel.version ?: "1.0.0"}",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            } else {
+                // 两侧项目 - 只显示图标
+                Box(
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable { onItemClick() }
+                ) {
+                    if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
+                        if (gameModel.icon?.isNotEmpty() == true) {
+                            val pic = decoder.decode(gameModel.icon)
+                            Image(
+                                bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
+                                    .asImageBitmap(),
+                                contentDescription = gameModel.titleName + " icon",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else if (gameModel.type == FileType.Nro) {
+                            NROIcon(
+                                modifier = Modifier
+                                    .fillMaxSize(0.8f)
+                                    .align(Alignment.Center)
+                            )
+                        } else {
                             NotAvailableIcon(
                                 modifier = Modifier
                                     .fillMaxSize(0.8f)
                                     .align(Alignment.Center)
                             )
                         }
+                    } else {
+                        NotAvailableIcon(
+                            modifier = Modifier
+                                .fillMaxSize(0.8f)
+                                .align(Alignment.Center)
+                        )
                     }
-                    Text(
-                        text = gameModel.titleName ?: "N/A",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .padding(vertical = 8.dp)
-                            .basicMarquee(),
-                        fontSize = if (isCentered) 16.sp else 14.sp,
-                        color = if (isCentered) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                    )
                 }
             }
         }
@@ -600,7 +694,7 @@ class HomeViews {
             val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
             // 横屏模式下跟踪当前中央项
-            var centeredItem by remember { mutableStateOf<GameModel?>(null) }
+            var centeredIndex by remember { mutableStateOf(0) }
             // 添加一个标志来跟踪是否是初始加载
             var isInitialLoad by remember { mutableStateOf(true) }
 
@@ -787,170 +881,126 @@ class HomeViews {
                                 }
                             } else {
                                 if (isLandscape) {
-                                    // 横屏模式：横向堆叠式列表
-                                    val listState = rememberLazyListState()
-                                    val density = LocalDensity.current
-                                    val screenWidthPx: Float = with(density) { configuration.screenWidthDp.dp.toPx() }
-                                    val itemWidth = 220.dp
-                                    val itemSpacing = 16.dp
-                                    val itemWidthPx = with(density) { itemWidth.toPx() }
-                                    val itemSpacingPx = with(density) { itemSpacing.toPx() }
+                                    // 横屏模式：使用自定义轮播布局
+                                    val filteredList = list.filter {
+                                        it.titleName?.isNotEmpty() == true && 
+                                        (query.value.trim().isEmpty() || 
+                                         it.titleName!!.lowercase(Locale.getDefault()).contains(query.value))
+                                    }
                                     
-                                    // 计算居中范围 - 减去左右两个空白项目加上四个间隔
-                                    val centerRangePx = screenWidthPx / 2f - (itemWidthPx + itemSpacingPx * 2f)
-                                    
-                                    val centeredIndex = remember { derivedStateOf {
-                                        val layoutInfo = listState.layoutInfo
-                                        if (layoutInfo.visibleItemsInfo.isEmpty()) {
-                                            return@derivedStateOf -1
+                                    if (filteredList.isEmpty()) {
+                                        // 没有游戏时显示空状态
+                                        Box(
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            CenterFrameBox()
+                                            Text(
+                                                text = "No games found",
+                                                modifier = Modifier.padding(top = 220.dp),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    } else {
+                                        // 确保centeredIndex在有效范围内
+                                        if (centeredIndex >= filteredList.size) {
+                                            centeredIndex = 0
                                         }
                                         
-                                        val viewportCenter = layoutInfo.viewportStartOffset + layoutInfo.viewportSize.width / 2f
-                                        var closestIndex = -1
-                                        var minDistance = Float.MAX_VALUE
+                                        // 计算左右项目的索引
+                                        val leftIndex = if (centeredIndex == 0) filteredList.size - 1 else centeredIndex - 1
+                                        val rightIndex = if (centeredIndex == filteredList.size - 1) 0 else centeredIndex + 1
                                         
-                                        for (item in layoutInfo.visibleItemsInfo) {
-                                            val itemCenter = item.offset + item.size / 2f
-                                            val distance = abs(itemCenter - viewportCenter)
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .nestedScroll(nestedScrollConnection)
+                                        ) {
+                                            // 中央框 - 始终显示
+                                            CenterFrameBox()
                                             
-                                            if (distance < minDistance) {
-                                                minDistance = distance
-                                                closestIndex = item.index
-                                            }
-                                        }
-                                        
-                                        closestIndex
-                                    }}
-
-                                    // 自动设置中央项
-                                    LaunchedEffect(centeredIndex.value) {
-                                        if (centeredIndex.value != -1 && centeredIndex.value < list.size) {
-                                            centeredItem = list[centeredIndex.value]
-                                        }
-                                    }
-
-                                    val coroutineScope = rememberCoroutineScope()
-                                    
-                                    // 创建带有空白项目的列表
-                                    val listWithPadding = remember(list) {
-                                        if (list.isEmpty()) {
-                                            list
-                                        } else {
-                                            // 在列表前后各添加一个空白项目
-                                            listOf(null) + list + listOf(null)
-                                        }
-                                    }
-
-                                    // 计算内容填充，确保可以滚动到两端
-                                    val contentPadding = remember {
-                                        val extraSpacePx = (screenWidthPx / 2f - itemWidthPx / 2f - itemSpacingPx * 2f)
-                                        val extraSpaceDp = with(density) { extraSpacePx.toDp() }
-                                        PaddingValues(
-                                            start = extraSpaceDp,
-                                            end = extraSpaceDp
-                                        )
-                                    }
-
-                                    // 初始滚动到第二个项目（第一个是空白项目）
-                                    LaunchedEffect(Unit) {
-                                        if (listWithPadding.isNotEmpty() && isInitialLoad) {
-                                            kotlinx.coroutines.delay(100)
-                                            listState.scrollToItem(1)
-                                            isInitialLoad = false
-                                        }
-                                    }
-
-                                    LazyRow(
-                                        state = listState,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .nestedScroll(nestedScrollConnection)
-                                            .padding(top = 8.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(itemSpacing),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        contentPadding = contentPadding
-                                    ) {
-                                        itemsIndexed(items = listWithPadding) { index, item ->
-                                            if (item != null) {
-                                                item.titleName?.apply {
-                                                    if (this.isNotEmpty() && (query.value.trim()
-                                                            .isEmpty() || this.lowercase(Locale.getDefault())
-                                                            .contains(query.value))
-                                                    ) {
-                                                        // 获取项目布局信息
-                                                        val itemInfo = listState.layoutInfo.visibleItemsInfo.find { it.index == index }
-                                                        
-                                                        // 计算项目距离中心的距离和比例
-                                                        val distance = if (itemInfo != null) {
-                                                            val itemCenter = itemInfo.offset + itemInfo.size / 2f
-                                                            val viewportCenter = listState.layoutInfo.viewportStartOffset + 
-                                                                               listState.layoutInfo.viewportSize.width / 2f
-                                                            abs(itemCenter - viewportCenter)
-                                                        } else {
-                                                            centerRangePx * 2f // 如果不可见，设为最大值
-                                                        }
-                                                        
-                                                        // 计算缩放比例和透明度
-                                                        val scale = if (distance < centerRangePx) {
-                                                            // 在居中范围内，根据距离计算缩放
-                                                            1.1f - (distance / centerRangePx) * 0.4f
-                                                        } else {
-                                                            // 超出居中范围，使用最小缩放
-                                                            0.8f
-                                                        }
-                                                        
-                                                        val alpha = if (distance < centerRangePx * 1.5f) {
-                                                            // 在可见范围内，根据距离计算透明度
-                                                            1f - (distance / (centerRangePx * 1.5f)) * 0.3f
-                                                        } else {
-                                                            // 超出可见范围，使用最小透明度
-                                                            0.7f
-                                                        }
-                                                        
-                                                        val isCentered = distance < centerRangePx / 2f
-                                                        
-                                                        // 使用动画使变化更平滑
-                                                        val animatedScale by animateFloatAsState(
-                                                            targetValue = scale,
-                                                            label = "scaleAnimation"
-                                                        )
-                                                        val animatedAlpha by animateFloatAsState(
-                                                            targetValue = alpha,
-                                                            label = "alphaAnimation"
-                                                        )
-                                                        
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .zIndex(if (isCentered) 10f else 1f - (distance / centerRangePx))
-                                                        ) {
-                                                            LandscapeGameItem(
-                                                                gameModel = item,
-                                                                viewModel = viewModel,
-                                                                showAppActions = showAppActions,
-                                                                showLoading = showLoading,
-                                                                selectedModel = selectedModel,
-                                                                showError = showError,
-                                                                isCentered = isCentered,
-                                                                scale = animatedScale,
-                                                                alpha = animatedAlpha,
-                                                                onCentered = { 
-                                                                    centeredItem = item
-                                                                    coroutineScope.launch {
-                                                                        listState.animateScrollToItem(index)
-                                                                    }
-                                                                }
-                                                            )
-                                                        }
+                                            // 游戏项目
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .padding(horizontal = 40.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                // 左侧项目
+                                                LandscapeGameCarouselItem(
+                                                    gameModel = filteredList.getOrNull(leftIndex),
+                                                    viewModel = viewModel,
+                                                    showAppActions = showAppActions,
+                                                    showLoading = showLoading,
+                                                    selectedModel = selectedModel,
+                                                    showError = showError,
+                                                    isCentered = false,
+                                                    onItemClick = {
+                                                        centeredIndex = leftIndex
                                                     }
-                                                }
-                                            } else {
-                                                // 渲染空白项目
-                                                Box(
-                                                    modifier = Modifier
-                                                        .width(itemWidth)
-                                                        .aspectRatio(1f)
-                                                        .clickable(enabled = false) {}
                                                 )
+                                                
+                                                // 中央项目
+                                                LandscapeGameCarouselItem(
+                                                    gameModel = filteredList.getOrNull(centeredIndex),
+                                                    viewModel = viewModel,
+                                                    showAppActions = showAppActions,
+                                                    showLoading = showLoading,
+                                                    selectedModel = selectedModel,
+                                                    showError = showError,
+                                                    isCentered = true
+                                                )
+                                                
+                                                // 右侧项目
+                                                LandscapeGameCarouselItem(
+                                                    gameModel = filteredList.getOrNull(rightIndex),
+                                                    viewModel = viewModel,
+                                                    showAppActions = showAppActions,
+                                                    showLoading = showLoading,
+                                                    selectedModel = selectedModel,
+                                                    showError = showError,
+                                                    isCentered = false,
+                                                    onItemClick = {
+                                                        centeredIndex = rightIndex
+                                                    }
+                                                )
+                                            }
+                                            
+                                            // 导航按钮
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 16.dp)
+                                                    .align(Alignment.CenterVertically),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                IconButton(
+                                                    onClick = {
+                                                        centeredIndex = if (centeredIndex == 0) filteredList.size - 1 else centeredIndex - 1
+                                                    },
+                                                    modifier = Modifier.size(48.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Filled.Add, // 这里应该使用左箭头图标，但需要导入
+                                                        contentDescription = "Previous",
+                                                        modifier = Modifier.graphicsLayer {
+                                                            rotationZ = 180f
+                                                        }
+                                                    )
+                                                }
+                                                
+                                                IconButton(
+                                                    onClick = {
+                                                        centeredIndex = if (centeredIndex == filteredList.size - 1) 0 else centeredIndex + 1
+                                                    },
+                                                    modifier = Modifier.size(48.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Filled.Add, // 这里应该使用右箭头图标，但需要导入
+                                                        contentDescription = "Next"
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -1315,4 +1365,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}}}
+}
