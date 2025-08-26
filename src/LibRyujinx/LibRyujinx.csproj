@@ -53,6 +53,7 @@
   </Target>
   <!-- End iOS Linking Fixes -->
   <ItemGroup>
+    <ProjectReference Include="..\Ryujinx.Core\Ryujinx.Core.csproj" />
     <ProjectReference Include="..\Ryujinx.Audio.Backends.OpenAL\Ryujinx.Audio.Backends.OpenAL.csproj" />
     <ProjectReference Include="..\Ryujinx.Audio.Backends.SDL2\Ryujinx.Audio.Backends.SDL2.csproj" />
     <ProjectReference Include="..\Ryujinx.Input\Ryujinx.Input.csproj" />
