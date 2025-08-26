@@ -375,13 +375,13 @@ fun GameStats(mainViewModel: MainViewModel) {
                 text = "${String.format("%.1f", gameFps.value)} FPS",
                 modifier = Modifier
                     .background(
-                        color = Color.Black.copy(alpha = 0.5f),
+                        color = Color.Black.copy(alpha = 0.25f),
                         shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                     )
                     .padding(horizontal = 4.dp, vertical = 2.dp)
             )
             
-            Text(text = "${String.format("%.1f", gameTimeVal)} ms")
+            //Text(text = "${String.format("%.1f", gameTimeVal)} ms")
             
             // 内存使用
             Text(text = "${totalMem.value}/${usedMem.value} MB")
