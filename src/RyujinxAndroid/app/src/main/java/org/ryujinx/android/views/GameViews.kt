@@ -1,6 +1,7 @@
 package org.ryujinx.android.views
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +38,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
@@ -44,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Popup
+import android.graphics.Typeface
 import compose.icons.CssGgIcons
 import compose.icons.cssggicons.ToolbarBottom
 import org.ryujinx.android.GameController
@@ -353,31 +357,74 @@ class GameViews {
                 mutableIntStateOf(0)
             }
 
-            // 完全透明的文字面板
-            CompositionLocalProvider(
-                LocalTextStyle provides TextStyle(
-                    fontSize = 10.sp,
-                    color = Color.White // 确保文字在游戏画面上可见
-                )
+            Column(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .background(Color.Transparent)
             ) {
-                Column(
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .background(Color.Transparent) // 完全透明背景
-                ) {
-                    val gameTimeVal = if (!gameTime.value.isInfinite()) gameTime.value else 0.0
-                    
-                    // 核心性能指标
-                    Text(text = "${String.format("%.1f", fifo.value)}%")
-                    Text(text = "${String.format("%.1f", gameFps.value)} FPS")
-                    Text(text = "${String.format("%.1f", gameTimeVal)} ms")
-                    
-                    // 内存使用
-                    Text(text = "${totalMem.value}/${usedMem.value} MB")
-                }
+                val gameTimeVal = if (!gameTime.value.isInfinite()) gameTime.value else 0.0
+                
+                // 使用自定义绘制实现文字描边效果
+                StrokedText(
+                    text = "${String.format("%.1f", fifo.value)}%",
+                    textColor = Color.White,
+                    strokeColor = Color.Black,
+                    strokeWidth = 1.5f
+                )
+                StrokedText(
+                    text = "${String.format("%.1f", gameFps.value)} FPS",
+                    textColor = Color.White,
+                    strokeColor = Color.Black,
+                    strokeWidth = 1.5f
+                )
+                StrokedText(
+                    text = "${String.format("%.1f", gameTimeVal)} ms",
+                    textColor = Color.White,
+                    strokeColor = Color.Black,
+                    strokeWidth = 1.5f
+                )
+                StrokedText(
+                    text = "${totalMem.value}/${usedMem.value} MB",
+                    textColor = Color.White,
+                    strokeColor = Color.Black,
+                    strokeWidth = 1.5f
+                )
             }
 
             mainViewModel.setStatStates(fifo, gameFps, gameTime, usedMem, totalMem)
+        }
+
+        // 自定义绘制函数，实现文字描边效果
+        @Composable
+        fun StrokedText(
+            text: String,
+            textColor: Color,
+            strokeColor: Color,
+            strokeWidth: Float,
+            modifier: Modifier = Modifier
+        ) {
+            Canvas(modifier = modifier.wrapContentSize()) {
+                val textPaint = Paint().asFrameworkPaint().apply {
+                    isAntiAlias = true
+                    textSize = 10.sp.toPx() // 与原始文本大小一致
+                    typeface = Typeface.DEFAULT
+                }
+                
+                // 先绘制黑色描边
+                textPaint.style = android.graphics.Paint.Style.STROKE
+                textPaint.strokeWidth = strokeWidth
+                textPaint.color = strokeColor.toArgb()
+                
+                // 绘制描边文本
+                drawContext.canvas.nativeCanvas.drawText(text, 0f, 10.sp.toPx(), textPaint)
+                
+                // 再绘制白色填充文本
+                textPaint.style = android.graphics.Paint.Style.FILL
+                textPaint.color = textColor.toArgb()
+                
+                // 绘制填充文本
+                drawContext.canvas.nativeCanvas.drawText(text, 0f, 10.sp.toPx(), textPaint)
+            }
         }
     }
 }
