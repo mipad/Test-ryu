@@ -80,6 +80,8 @@ interface RyujinxNativeJna : Library {
     fun userGetAllUsers(): Array<String>
     fun deviceGetDlcContentList(path: String, titleId: Long): Array<String>
     fun loggingEnabledGraphicsLog(enabled: Boolean)
+    // 添加跳过内存屏障的方法
+    fun setSkipMemoryBarriers(skip: Boolean)
 }
 
 class RyujinxNative {
