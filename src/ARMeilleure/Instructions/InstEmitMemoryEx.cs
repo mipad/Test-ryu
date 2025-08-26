@@ -2,6 +2,7 @@ using ARMeilleure.Decoders;
 using ARMeilleure.IntermediateRepresentation;
 using ARMeilleure.Translation;
 using System;
+using Ryujinx.Common.Logging;
 using System.Diagnostics;
 using static ARMeilleure.Instructions.InstEmitHelper;
 using static ARMeilleure.Instructions.InstEmitMemoryExHelper;
