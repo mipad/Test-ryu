@@ -1,3 +1,4 @@
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Core
 {
@@ -8,6 +9,7 @@ namespace Ryujinx.Core
         public static void SetSkipMemoryBarriers(bool skip)
         {
             _skipMemoryBarriers = skip;
+            Logger.Info?.Print(LogClass.Emulation, $"Memory barriers {(skip ? "disabled" : "enabled")}");
         }
 
         public static bool GetSkipMemoryBarriers()
