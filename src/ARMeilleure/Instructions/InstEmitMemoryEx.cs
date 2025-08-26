@@ -173,14 +173,17 @@ namespace ARMeilleure.Instructions
         }
 
         private static void EmitBarrier(ArmEmitterContext context)
-        {
-            // 检查是否应该跳过内存屏障
-            if (MemoryBarrierSettings.GetSkipMemoryBarriers())
-            {
-                return;
-            }
-            
-            context.MemoryBarrier();
+{
+    // 检查是否应该跳过内存屏障
+    if (MemoryBarrierSettings.GetSkipMemoryBarriers())
+    {
+        Logger.Info?.Print(LogClass.Emulation, "跳过内存屏障（已禁用）");
+        return;
+    }
+    
+    Logger.Info?.Print(LogClass.Emulation, "执行内存屏障（已启用）");
+    context.MemoryBarrier();
+
         }
     }
 }
