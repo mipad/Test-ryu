@@ -16,7 +16,7 @@ namespace LibRyujinx
 {
     public static partial class LibRyujinx
     {
-        // 移除静态字段 _skipMemoryBarriers，因为它已移动到核心项目中
+        
 
         private unsafe static IntPtr CreateStringArray(List<string> strings)
         {
@@ -40,7 +40,7 @@ namespace LibRyujinx
             Ryujinx.Core.MemoryBarrierSettings.SetSkipMemoryBarriers(skip);
         }
 
-        // 移除 GetSkipMemoryBarriers 方法，因为它已移动到核心项目中
+        
 
         [UnmanagedCallersOnly(EntryPoint = "device_initialize")]
         public static bool InitializeDeviceNative(bool isHostMapped,
@@ -456,7 +456,7 @@ namespace LibRyujinx
             OpenUser(userId);
         }
 
-        [UnmanagedCallersOnly(EntryPoint极狐 "user_close_user")]
+        [UnmanagedCallersOnly(EntryPoint = "user_close_user")]
         public static void CloseUserNative(IntPtr userIdPtr)
         {
             var userId = Marshal.PtrToStringAnsi(userIdPtr) ?? "";
