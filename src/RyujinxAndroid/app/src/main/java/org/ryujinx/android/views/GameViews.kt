@@ -1,7 +1,6 @@
 package org.ryujinx.android.views
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,8 +37,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Paint
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
@@ -47,7 +44,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Popup
-import android.graphics.Typeface
 import compose.icons.CssGgIcons
 import compose.icons.cssggicons.ToolbarBottom
 import org.ryujinx.android.GameController
@@ -368,62 +364,68 @@ class GameViews {
                 StrokedText(
                     text = "${String.format("%.1f", fifo.value)}%",
                     textColor = Color.White,
-                    strokeColor = Color.Black,
-                    strokeWidth = 1.5f
+                    strokeColor = Color.Black
                 )
                 StrokedText(
                     text = "${String.format("%.1f", gameFps.value)} FPS",
                     textColor = Color.White,
-                    strokeColor = Color.Black,
-                    strokeWidth = 1.5f
+                    strokeColor = Color.Black
                 )
                 StrokedText(
                     text = "${String.format("%.1f", gameTimeVal)} ms",
                     textColor = Color.White,
-                    strokeColor = Color.Black,
-                    strokeWidth = 1.5f
+                    strokeColor = Color.Black
                 )
                 StrokedText(
                     text = "${totalMem.value}/${usedMem.value} MB",
                     textColor = Color.White,
-                    strokeColor = Color.Black,
-                    strokeWidth = 1.5f
+                    strokeColor = Color.Black
                 )
             }
 
             mainViewModel.setStatStates(fifo, gameFps, gameTime, usedMem, totalMem)
         }
 
-        // 自定义绘制函数，实现文字描边效果
+        // 使用多个文本叠加实现描边效果
         @Composable
         fun StrokedText(
             text: String,
             textColor: Color,
-            strokeColor: Color,
-            strokeWidth: Float,
-            modifier: Modifier = Modifier
+            strokeColor: Color
         ) {
-            Canvas(modifier = modifier.wrapContentSize()) {
-                val textPaint = Paint().asFrameworkPaint().apply {
-                    isAntiAlias = true
-                    textSize = 10.sp.toPx() // 与原始文本大小一致
-                    typeface = Typeface.DEFAULT
-                }
+            Box {
+                // 绘制描边（四个方向的偏移）
+                Text(
+                    text = text,
+                    color = strokeColor,
+                    fontSize = 10.sp,
+                    modifier = Modifier.offset(x = (-1).dp, y = (-1).dp)
+                )
+                Text(
+                    text = text,
+                    color = strokeColor,
+                    fontSize = 10.sp,
+                    modifier = Modifier.offset(x = 1.dp, y = (-1).dp)
+                )
+                Text(
+                    text = text,
+                    color = strokeColor,
+                    fontSize = 10.sp,
+                    modifier = Modifier.offset(x = (-1).dp, y = 1.dp)
+                )
+                Text(
+                    text = text,
+                    color = strokeColor,
+                    fontSize = 10.sp,
+                    modifier = Modifier.offset(x = 1.dp, y = 1.dp)
+                )
                 
-                // 先绘制黑色描边
-                textPaint.style = android.graphics.Paint.Style.STROKE
-                textPaint.strokeWidth = strokeWidth
-                textPaint.color = strokeColor.toArgb()
-                
-                // 绘制描边文本
-                drawContext.canvas.nativeCanvas.drawText(text, 0f, 10.sp.toPx(), textPaint)
-                
-                // 再绘制白色填充文本
-                textPaint.style = android.graphics.Paint.Style.FILL
-                textPaint.color = textColor.toArgb()
-                
-                // 绘制填充文本
-                drawContext.canvas.nativeCanvas.drawText(text, 0f, 10.sp.toPx(), textPaint)
+                // 绘制主文本
+                Text(
+                    text = text,
+                    color = textColor,
+                    fontSize = 10.sp
+                )
             }
         }
     }
