@@ -375,22 +375,11 @@ fun GameStats(mainViewModel: MainViewModel) {
             StatRow("${String.format("%.1f", gameFps.value)} FPS")
         }
         
-        StatRow("${String.format("%.1f", gameTimeVal)} ms")
+       // StatRow("${String.format("%.1f", gameTimeVal)} ms")
         StatRow("${usedMem.value}/${totalMem.value} MB")
     }
 
     mainViewModel.setStatStates(fifo, gameFps, gameTime, usedMem, totalMem)
-}
-
-// 辅助函数：创建统一格式的统计行
-@Composable
-fun StatRow(text: String) {
-    Text(
-        text = text,
-        fontSize = 10.sp,
-        color = Color.White,
-        modifier = Modifier.fillMaxWidth()
-    )
 }
     }
 }
