@@ -378,7 +378,7 @@ fun GameStats(mainViewModel: MainViewModel) {
                     text = "${String.format("%.1f", gameFps.value)} FPS",
                     modifier = Modifier
                         .background(
-                            color = Color.Black.copy(alpha = 0.23f),
+                            color = Color.Black.copy(alpha = 0.26f),
                             shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                         )
                         //.padding(horizontal = 4.dp, vertical = 2.dp)
