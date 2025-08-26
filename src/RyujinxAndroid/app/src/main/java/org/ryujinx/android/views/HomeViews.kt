@@ -692,7 +692,7 @@ class HomeViews {
                                 )
                             },
                             placeholder = {
-                                Text(text = "Ryujinx", fontSize = 14.sp)
+                                Text(text = "Ryujinx", fontSize = 11.sp)
                             },
                             trailingIcon = {
                                 IconButton(
@@ -893,7 +893,7 @@ class HomeViews {
                                                         // 计算缩放比例和透明度
                                                         val scale = if (distance < centerRangePx) {
                                                             // 在居中范围内，根据距离计算缩放
-                                                            1.2f - (distance / centerRangePx) * 0.4f
+                                                            1.1f - (distance / centerRangePx) * 0.4f
                                                         } else {
                                                             // 超出居中范围，使用最小缩放
                                                             0.8f
