@@ -443,7 +443,7 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "user_delete_user")]
         public static void DeleteUserNative(IntPtr userIdPtr)
         {
-           极狐 userId = Marshal.PtrToStringAnsi(userIdPtr) ?? "";
+           var userId = Marshal.PtrToStringAnsi(userIdPtr) ?? "";
 
             DeleteUser(userId);
         }
