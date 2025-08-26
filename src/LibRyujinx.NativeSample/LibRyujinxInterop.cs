@@ -15,7 +15,6 @@ namespace LibRyujinx.Sample
         [DllImport(dll, EntryPoint = "initialize")]
         public extern static bool Initialize(IntPtr path);
 
-
         [DllImport(dll, EntryPoint = "graphics_initialize")]
         public extern static bool InitializeGraphics(GraphicsConfiguration graphicsConfiguration);
 
@@ -75,6 +74,10 @@ namespace LibRyujinx.Sample
 
         [DllImport(dll, EntryPoint = "input_connect_gamepad")]
         public extern static IntPtr ConnectGamepad(int index);
+
+        // 添加设置跳过内存屏障的方法
+        [DllImport(dll, EntryPoint = "setSkipMemoryBarriers")]
+        internal extern static void SetSkipMemoryBarriers(bool skip);
     }
 
     public enum GraphicsBackend
