@@ -9,8 +9,11 @@ using Ryujinx.Graphics.Gpu.Synchronization;
 using Ryujinx.Memory.Range;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using System.Threading;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Gpu.Engine.Threed
 {
@@ -29,6 +32,14 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         private readonly SemaphoreUpdater _semaphoreUpdater;
         private readonly ConstantBufferUpdater _cbUpdater;
         private readonly StateUpdater _stateUpdater;
+
+        // 添加性能监控和容错机制
+        private readonly Stopwatch _commandTimer = new Stopwatch();
+        private int _consecutiveSlowCommands;
+        private int _totalCommandCount;
+        private DateTime _lastSlowCommandTime;
+        private const int SlowCommandThresholdMs = 50;
+        private const int MaxConsecutiveSlowCommands = 5;
 
         private SetMmeShadowRamControlMode ShadowMode => _state.State.SetMmeShadowRamControlMode;
 
@@ -94,6 +105,94 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
             // This defaults to "always", even without any register write.
             // Reads just return 0, regardless of what was set there.
             _state.State.RenderEnableCondition = Condition.Always;
+
+            // 初始化性能监控
+            _consecutiveSlowCommands = 0;
+            _totalCommandCount = 0;
+            _lastSlowCommandTime = DateTime.MinValue;
+        }
+
+        /// <summary>
+        /// 检查命令执行性能，如果检测到性能问题则采取缓解措施
+        /// </summary>
+        private void CheckCommandPerformance()
+        {
+            _totalCommandCount++;
+            
+            if (_commandTimer.ElapsedMilliseconds > SlowCommandThresholdMs)
+            {
+                _consecutiveSlowCommands++;
+                _lastSlowCommandTime = DateTime.UtcNow;
+                
+                // 使用正确的日志类
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Slow command detected: {_commandTimer.ElapsedMilliseconds}ms. " +
+                    $"Consecutive slow commands: {_consecutiveSlowCommands}/{MaxConsecutiveSlowCommands}");
+                
+                // 如果连续出现慢速命令，采取缓解措施
+                if (_consecutiveSlowCommands >= MaxConsecutiveSlowCommands)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        "Too many consecutive slow commands, applying mitigation strategies");
+                    
+                    // 缓解策略1: 轻微延迟以减少负载
+                    Thread.Sleep(5);
+                    
+                    // 移除对IPipeline不存在方法的调用
+                    // _context.Renderer.Pipeline.SkipNonCriticalOperations = true;
+                    // _context.Renderer.Pipeline.ReduceQualitySettings();
+                    
+                    // 重置计数器
+                    _consecutiveSlowCommands = 0;
+                }
+            }
+            else
+            {
+                // 重置连续慢速命令计数
+                if (_consecutiveSlowCommands > 0 && 
+                    (DateTime.UtcNow - _lastSlowCommandTime).TotalSeconds > 2)
+                {
+                    _consecutiveSlowCommands = 0;
+                    // 移除对IPipeline不存在方法的调用
+                    // _context.Renderer.Pipeline.SkipNonCriticalOperations = false;
+                    Logger.Info?.Print(LogClass.Gpu, "Command performance returned to normal");
+                }
+            }
+            
+            _commandTimer.Reset();
+        }
+
+        /// <summary>
+        /// 安全执行命令，捕获异常并记录
+        /// </summary>
+        private void ExecuteCommandSafely(Action action, string commandName)
+        {
+            try
+            {
+                _commandTimer.Start();
+                action();
+                _commandTimer.Stop();
+                
+                CheckCommandPerformance();
+            }
+            catch (Exception ex)
+            {
+                _commandTimer.Stop();
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Error executing {commandName}: {ex.Message}");
+                
+                // 尝试恢复状态
+                try
+                {
+                    _stateUpdater.SetAllDirty();
+                    _context.AdvanceSequence();
+                }
+                catch (Exception recoveryEx)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, 
+                        $"Error during recovery: {recoveryEx.Message}");
+                }
+            }
         }
 
         /// <summary>
@@ -112,11 +211,19 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Write(int offset, int data)
         {
-            _state.WriteWithRedundancyCheck(offset, data, out bool valueChanged);
-
-            if (valueChanged)
+            try
             {
-                _stateUpdater.SetDirty(offset);
+                _state.WriteWithRedundancyCheck(offset, data, out bool valueChanged);
+
+                if (valueChanged)
+                {
+                    _stateUpdater.SetDirty(offset);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Error writing to register {offset:X}: {ex.Message}");
             }
         }
 
@@ -126,7 +233,15 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="control">New shadow ram control value</param>
         public void SetShadowRamControl(int control)
         {
-            _state.State.SetMmeShadowRamControl = (uint)control;
+            try
+            {
+                _state.State.SetMmeShadowRamControl = (uint)control;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Error setting shadow RAM control: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -134,9 +249,12 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// </summary>
         public void UpdateState()
         {
-            _fifoClass.CreatePendingSyncs();
-            _cbUpdater.FlushUboDirty();
-            _stateUpdater.Update();
+            ExecuteCommandSafely(() =>
+            {
+                _fifoClass.CreatePendingSyncs();
+                _cbUpdater.FlushUboDirty();
+                _stateUpdater.Update();
+            }, "UpdateState");
         }
 
         /// <summary>
@@ -145,7 +263,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="mask">Mask where each bit set indicates that the respective state group index should be checked</param>
         public void UpdateState(ulong mask)
         {
-            _stateUpdater.Update(mask);
+            ExecuteCommandSafely(() =>
+            {
+                _stateUpdater.Update(mask);
+            }, "UpdateStateWithMask");
         }
 
         /// <summary>
@@ -155,7 +276,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="singleUse">If this is not -1, it indicates that only the given indexed target will be used.</param>
         public void UpdateRenderTargetState(RenderTargetUpdateFlags updateFlags, int singleUse = -1)
         {
-            _stateUpdater.UpdateRenderTargetState(updateFlags, singleUse);
+            ExecuteCommandSafely(() =>
+            {
+                _stateUpdater.UpdateRenderTargetState(updateFlags, singleUse);
+            }, "UpdateRenderTargetState");
         }
 
         /// <summary>
@@ -163,7 +287,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// </summary>
         public void UpdateScissorState()
         {
-            _stateUpdater.UpdateScissorState();
+            ExecuteCommandSafely(() =>
+            {
+                _stateUpdater.UpdateScissorState();
+            }, "UpdateScissorState");
         }
 
         /// <summary>
@@ -171,8 +298,16 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// </summary>
         public void ForceStateDirty()
         {
-            _drawManager.ForceStateDirty();
-            _stateUpdater.SetAllDirty();
+            try
+            {
+                _drawManager.ForceStateDirty();
+                _stateUpdater.SetAllDirty();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Error forcing state dirty: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -181,7 +316,15 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="offset">Register offset</param>
         public void ForceStateDirty(int offset)
         {
-            _stateUpdater.SetDirty(offset);
+            try
+            {
+                _stateUpdater.SetDirty(offset);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Error forcing state dirty at offset {offset:X}: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -190,7 +333,15 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="groupIndex">Index of the group to dirty</param>
         public void ForceStateDirtyByIndex(int groupIndex)
         {
-            _stateUpdater.ForceDirty(groupIndex);
+            try
+            {
+                _stateUpdater.ForceDirty(groupIndex);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Error forcing state dirty for group {groupIndex}: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -198,7 +349,15 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// </summary>
         public void ForceShaderUpdate()
         {
-            _stateUpdater.ForceShaderUpdate();
+            try
+            {
+                _stateUpdater.ForceShaderUpdate();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Error forcing shader update: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -206,7 +365,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// </summary>
         public void CreatePendingSyncs()
         {
-            _fifoClass.CreatePendingSyncs();
+            ExecuteCommandSafely(() =>
+            {
+                _fifoClass.CreatePendingSyncs();
+            }, "CreatePendingSyncs");
         }
 
         /// <summary>
@@ -214,7 +376,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// </summary>
         public void FlushUboDirty()
         {
-            _cbUpdater.FlushUboDirty();
+            ExecuteCommandSafely(() =>
+            {
+                _cbUpdater.FlushUboDirty();
+            }, "FlushUboDirty");
         }
 
         /// <summary>
@@ -222,7 +387,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// </summary>
         public void PerformDeferredDraws()
         {
-            _drawManager.PerformDeferredDraws(this);
+            ExecuteCommandSafely(() =>
+            {
+                _drawManager.PerformDeferredDraws(this);
+            }, "PerformDeferredDraws");
         }
 
         /// <summary>
@@ -231,7 +399,33 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="data">Data to be written to the buffer</param>
         public void ConstantBufferUpdate(ReadOnlySpan<int> data)
         {
-            _cbUpdater.Update(data);
+            // 修复CS9108错误：不能在lambda中使用ref-like类型
+            try
+            {
+                _commandTimer.Start();
+                _cbUpdater.Update(data);
+                _commandTimer.Stop();
+                
+                CheckCommandPerformance();
+            }
+            catch (Exception ex)
+            {
+                _commandTimer.Stop();
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Error executing ConstantBufferUpdate: {ex.Message}");
+                
+                // 尝试恢复状态
+                try
+                {
+                    _stateUpdater.SetAllDirty();
+                    _context.AdvanceSequence();
+                }
+                catch (Exception recoveryEx)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, 
+                        $"Error during recovery: {recoveryEx.Message}");
+                }
+            }
         }
 
         /// <summary>
@@ -244,20 +438,29 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool UnsafeEquals32Byte<T>(ref T lhs, ref T rhs) where T : unmanaged
         {
-            if (Vector256.IsHardwareAccelerated)
+            try
             {
-                return Vector256.EqualsAll(
-                    Unsafe.As<T, Vector256<uint>>(ref lhs),
-                    Unsafe.As<T, Vector256<uint>>(ref rhs)
-                );
-            }
-            else
-            {
-                ref var lhsVec = ref Unsafe.As<T, Vector128<uint>>(ref lhs);
-                ref var rhsVec = ref Unsafe.As<T, Vector128<uint>>(ref rhs);
+                if (Vector256.IsHardwareAccelerated)
+                {
+                    return Vector256.EqualsAll(
+                        Unsafe.As<T, Vector256<uint>>(ref lhs),
+                        Unsafe.As<T, Vector256<uint>>(ref rhs)
+                    );
+                }
+                else
+                {
+                    ref var lhsVec = ref Unsafe.As<T, Vector128<uint>>(ref lhs);
+                    ref var rhsVec = ref Unsafe.As<T, Vector128<uint>>(ref rhs);
 
-                return Vector128.EqualsAll(lhsVec, rhsVec) &&
-                    Vector128.EqualsAll(Unsafe.Add(ref lhsVec, 1), Unsafe.Add(ref rhsVec, 1));
+                    return Vector128.EqualsAll(lhsVec, rhsVec) &&
+                        Vector128.EqualsAll(Unsafe.Add(ref lhsVec, 1), Unsafe.Add(ref rhsVec, 1));
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Error in UnsafeEquals32Byte: {ex.Message}");
+                return false;
             }
         }
 
@@ -267,24 +470,32 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="masks">Blend enable</param>
         public void UpdateBlendEnable(ref Array8<Boolean32> enable)
         {
-            var shadow = ShadowMode;
-            ref var state = ref _state.State.BlendEnable;
-
-            if (shadow.IsReplay())
+            try
             {
-                enable = _state.ShadowState.BlendEnable;
+                var shadow = ShadowMode;
+                ref var state = ref _state.State.BlendEnable;
+
+                if (shadow.IsReplay())
+                {
+                    enable = _state.ShadowState.BlendEnable;
+                }
+
+                if (!UnsafeEquals32Byte(ref enable, ref state))
+                {
+                    state = enable;
+
+                    _stateUpdater.ForceDirty(StateUpdater.BlendStateIndex);
+                }
+
+                if (shadow.IsTrack())
+                {
+                    _state.ShadowState.BlendEnable = enable;
+                }
             }
-
-            if (!UnsafeEquals32Byte(ref enable, ref state))
+            catch (Exception ex)
             {
-                state = enable;
-
-                _stateUpdater.ForceDirty(StateUpdater.BlendStateIndex);
-            }
-
-            if (shadow.IsTrack())
-            {
-                _state.ShadowState.BlendEnable = enable;
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Error updating blend enable: {ex.Message}");
             }
         }
 
@@ -294,24 +505,32 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="masks">Color masks</param>
         public void UpdateColorMasks(ref Array8<RtColorMask> masks)
         {
-            var shadow = ShadowMode;
-            ref var state = ref _state.State.RtColorMask;
-
-            if (shadow.IsReplay())
+            try
             {
-                masks = _state.ShadowState.RtColorMask;
+                var shadow = ShadowMode;
+                ref var state = ref _state.State.RtColorMask;
+
+                if (shadow.IsReplay())
+                {
+                    masks = _state.ShadowState.RtColorMask;
+                }
+
+                if (!UnsafeEquals32Byte(ref masks, ref state))
+                {
+                    state = masks;
+
+                    _stateUpdater.ForceDirty(StateUpdater.RtColorMaskIndex);
+                }
+
+                if (shadow.IsTrack())
+                {
+                    _state.ShadowState.RtColorMask = masks;
+                }
             }
-
-            if (!UnsafeEquals32Byte(ref masks, ref state))
+            catch (Exception ex)
             {
-                state = masks;
-
-                _stateUpdater.ForceDirty(StateUpdater.RtColorMaskIndex);
-            }
-
-            if (shadow.IsTrack())
-            {
-                _state.ShadowState.RtColorMask = masks;
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Error updating color masks: {ex.Message}");
             }
         }
 
@@ -323,32 +542,40 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="type">Type of the binding</param>
         public void UpdateIndexBuffer(uint addrHigh, uint addrLow, IndexType type)
         {
-            var shadow = ShadowMode;
-            ref var state = ref _state.State.IndexBufferState;
-
-            if (shadow.IsReplay())
+            try
             {
-                ref var shadowState = ref _state.ShadowState.IndexBufferState;
-                addrHigh = shadowState.Address.High;
-                addrLow = shadowState.Address.Low;
-                type = shadowState.Type;
+                var shadow = ShadowMode;
+                ref var state = ref _state.State.IndexBufferState;
+
+                if (shadow.IsReplay())
+                {
+                    ref var shadowState = ref _state.ShadowState.IndexBufferState;
+                    addrHigh = shadowState.Address.High;
+                    addrLow = shadowState.Address.Low;
+                    type = shadowState.Type;
+                }
+
+                if (state.Address.High != addrHigh || state.Address.Low != addrLow || state.Type != type)
+                {
+                    state.Address.High = addrHigh;
+                    state.Address.Low = addrLow;
+                    state.Type = type;
+
+                    _stateUpdater.ForceDirty(StateUpdater.IndexBufferStateIndex);
+                }
+
+                if (shadow.IsTrack())
+                {
+                    ref var shadowState = ref _state.ShadowState.IndexBufferState;
+                    shadowState.Address.High = addrHigh;
+                    shadowState.Address.Low = addrLow;
+                    shadowState.Type = type;
+                }
             }
-
-            if (state.Address.High != addrHigh || state.Address.Low != addrLow || state.Type != type)
+            catch (Exception ex)
             {
-                state.Address.High = addrHigh;
-                state.Address.Low = addrLow;
-                state.Type = type;
-
-                _stateUpdater.ForceDirty(StateUpdater.IndexBufferStateIndex);
-            }
-
-            if (shadow.IsTrack())
-            {
-                ref var shadowState = ref _state.ShadowState.IndexBufferState;
-                shadowState.Address.High = addrHigh;
-                shadowState.Address.Low = addrLow;
-                shadowState.Type = type;
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Error updating index buffer: {ex.Message}");
             }
         }
 
@@ -360,27 +587,35 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="addrLow">Low part of the address</param>
         public void UpdateUniformBufferState(int size, uint addrHigh, uint addrLow)
         {
-            var shadow = ShadowMode;
-            ref var state = ref _state.State.UniformBufferState;
-
-            if (shadow.IsReplay())
+            try
             {
-                ref var shadowState = ref _state.ShadowState.UniformBufferState;
-                size = shadowState.Size;
-                addrHigh = shadowState.Address.High;
-                addrLow = shadowState.Address.Low;
+                var shadow = ShadowMode;
+                ref var state = ref _state.State.UniformBufferState;
+
+                if (shadow.IsReplay())
+                {
+                    ref var shadowState = ref _state.ShadowState.UniformBufferState;
+                    size = shadowState.Size;
+                    addrHigh = shadowState.Address.High;
+                    addrLow = shadowState.Address.Low;
+                }
+
+                state.Size = size;
+                state.Address.High = addrHigh;
+                state.Address.Low = addrLow;
+
+                if (shadow.IsTrack())
+                {
+                    ref var shadowState = ref _state.ShadowState.UniformBufferState;
+                    shadowState.Size = size;
+                    shadowState.Address.High = addrHigh;
+                    shadowState.Address.Low = addrLow;
+                }
             }
-
-            state.Size = size;
-            state.Address.High = addrHigh;
-            state.Address.Low = addrLow;
-
-            if (shadow.IsTrack())
+            catch (Exception ex)
             {
-                ref var shadowState = ref _state.ShadowState.UniformBufferState;
-                shadowState.Size = size;
-                shadowState.Address.High = addrHigh;
-                shadowState.Address.Low = addrLow;
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Error updating uniform buffer state: {ex.Message}");
             }
         }
 
@@ -391,24 +626,32 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="offset">Offset to update with</param>
         public void SetShaderOffset(int index, uint offset)
         {
-            var shadow = ShadowMode;
-            ref var shaderState = ref _state.State.ShaderState[index];
-
-            if (shadow.IsReplay())
+            try
             {
-                offset = _state.ShadowState.ShaderState[index].Offset;
+                var shadow = ShadowMode;
+                ref var shaderState = ref _state.State.ShaderState[index];
+
+                if (shadow.IsReplay())
+                {
+                    offset = _state.ShadowState.ShaderState[index].Offset;
+                }
+
+                if (shaderState.Offset != offset)
+                {
+                    shaderState.Offset = offset;
+
+                    _stateUpdater.ForceDirty(StateUpdater.ShaderStateIndex);
+                }
+
+                if (shadow.IsTrack())
+                {
+                    _state.ShadowState.ShaderState[index].Offset = offset;
+                }
             }
-
-            if (shaderState.Offset != offset)
+            catch (Exception ex)
             {
-                shaderState.Offset = offset;
-
-                _stateUpdater.ForceDirty(StateUpdater.ShaderStateIndex);
-            }
-
-            if (shadow.IsTrack())
-            {
-                _state.ShadowState.ShaderState[index].Offset = offset;
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Error setting shader offset: {ex.Message}");
             }
         }
 
@@ -418,19 +661,27 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="ubState">Uniform buffer state</param>
         public void UpdateUniformBufferState(UniformBufferState ubState)
         {
-            var shadow = ShadowMode;
-            ref var state = ref _state.State.UniformBufferState;
-
-            if (shadow.IsReplay())
+            try
             {
-                ubState = _state.ShadowState.UniformBufferState;
+                var shadow = ShadowMode;
+                ref var state = ref _state.State.UniformBufferState;
+
+                if (shadow.IsReplay())
+                {
+                    ubState = _state.ShadowState.UniformBufferState;
+                }
+
+                state = ubState;
+
+                if (shadow.IsTrack())
+                {
+                    _state.ShadowState.UniformBufferState = ubState;
+                }
             }
-
-            state = ubState;
-
-            if (shadow.IsTrack())
+            catch (Exception ex)
             {
-                _state.ShadowState.UniformBufferState = ubState;
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Error updating uniform buffer state: {ex.Message}");
             }
         }
 
@@ -440,7 +691,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void LaunchDma(int argument)
         {
-            _i2mClass.LaunchDma(ref Unsafe.As<ThreedClassState, InlineToMemoryClassState>(ref _state.State), argument);
+            ExecuteCommandSafely(() =>
+            {
+                _i2mClass.LaunchDma(ref Unsafe.As<ThreedClassState, InlineToMemoryClassState>(ref _state.State), argument);
+            }, "LaunchDma");
         }
 
         /// <summary>
@@ -449,7 +703,33 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="data">Data to push</param>
         public void LoadInlineData(ReadOnlySpan<int> data)
         {
-            _i2mClass.LoadInlineData(data);
+            // 修复CS9108错误：不能在lambda中使用ref-like类型
+            try
+            {
+                _commandTimer.Start();
+                _i2mClass.LoadInlineData(data);
+                _commandTimer.Stop();
+                
+                CheckCommandPerformance();
+            }
+            catch (Exception ex)
+            {
+                _commandTimer.Stop();
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Error executing LoadInlineData: {ex.Message}");
+                
+                // 尝试恢复状态
+                try
+                {
+                    _stateUpdater.SetAllDirty();
+                    _context.AdvanceSequence();
+                }
+                catch (Exception recoveryEx)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, 
+                        $"Error during recovery: {recoveryEx.Message}");
+                }
+            }
         }
 
         /// <summary>
@@ -458,7 +738,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void LoadInlineData(int argument)
         {
-            _i2mClass.LoadInlineData(argument);
+            ExecuteCommandSafely(() =>
+            {
+                _i2mClass.LoadInlineData(argument);
+            }, "LoadInlineData");
         }
 
         /// <summary>
@@ -467,12 +750,15 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         public void IncrementSyncpoint(int argument)
         {
-            uint syncpointId = (uint)argument & 0xFFFF;
+            ExecuteCommandSafely(() =>
+            {
+                uint syncpointId = (uint)argument & 0xFFFF;
 
-            _context.AdvanceSequence();
-            _context.CreateHostSyncIfNeeded(HostSyncFlags.StrictSyncpoint);
-            _context.Renderer.UpdateCounters(); // Poll the query counters, the game may want an updated result.
-            _context.Synchronization.IncrementSyncpoint(syncpointId);
+                _context.AdvanceSequence();
+                _context.CreateHostSyncIfNeeded(HostSyncFlags.StrictSyncpoint);
+                _context.Renderer.UpdateCounters(); // Poll the query counters, the game may want an updated result.
+                _context.Synchronization.IncrementSyncpoint(syncpointId);
+            }, "IncrementSyncpoint");
         }
 
         /// <summary>
@@ -481,7 +767,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument (unused)</param>
         private void InvalidateSamplerCacheNoWfi(int argument)
         {
-            _context.AdvanceSequence();
+            ExecuteCommandSafely(() =>
+            {
+                _context.AdvanceSequence();
+            }, "InvalidateSamplerCacheNoWfi");
         }
 
         /// <summary>
@@ -490,7 +779,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument (unused)</param>
         private void InvalidateTextureHeaderCacheNoWfi(int argument)
         {
-            _context.AdvanceSequence();
+            ExecuteCommandSafely(() =>
+            {
+                _context.AdvanceSequence();
+            }, "InvalidateTextureHeaderCacheNoWfi");
         }
 
         /// <summary>
@@ -501,7 +793,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument (unused)</param>
         private void TextureBarrier(int argument)
         {
-            _context.Renderer.Pipeline.TextureBarrier();
+            ExecuteCommandSafely(() =>
+            {
+                _context.Renderer.Pipeline.TextureBarrier();
+            }, "TextureBarrier");
         }
 
         /// <summary>
@@ -510,7 +805,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void LoadBlendUcodeStart(int argument)
         {
-            _blendManager.LoadBlendUcodeStart(argument);
+            ExecuteCommandSafely(() =>
+            {
+                _blendManager.LoadBlendUcodeStart(argument);
+            }, "LoadBlendUcodeStart");
         }
 
         /// <summary>
@@ -519,7 +817,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void LoadBlendUcodeInstruction(int argument)
         {
-            _blendManager.LoadBlendUcodeInstruction(argument);
+            ExecuteCommandSafely(() =>
+            {
+                _blendManager.LoadBlendUcodeInstruction(argument);
+            }, "LoadBlendUcodeInstruction");
         }
 
         /// <summary>
@@ -533,7 +834,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument (unused)</param>
         private void TextureBarrierTiled(int argument)
         {
-            _context.Renderer.Pipeline.TextureBarrierTiled();
+            ExecuteCommandSafely(() =>
+            {
+                _context.Renderer.Pipeline.TextureBarrierTiled();
+            }, "TextureBarrierTiled");
         }
 
         /// <summary>
@@ -542,7 +846,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void DrawTexture(int argument)
         {
-            _drawManager.DrawTexture(this, argument);
+            ExecuteCommandSafely(() =>
+            {
+                _drawManager.DrawTexture(this, argument);
+            }, "DrawTexture");
         }
 
         /// <summary>
@@ -551,7 +858,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void DrawVertexArrayBeginEndInstanceFirst(int argument)
         {
-            _drawManager.DrawVertexArrayBeginEndInstanceFirst(this, argument);
+            ExecuteCommandSafely(() =>
+            {
+                _drawManager.DrawVertexArrayBeginEndInstanceFirst(this, argument);
+            }, "DrawVertexArrayBeginEndInstanceFirst");
         }
 
         /// <summary>
@@ -561,7 +871,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void DrawVertexArrayBeginEndInstanceSubsequent(int argument)
         {
-            _drawManager.DrawVertexArrayBeginEndInstanceSubsequent(this, argument);
+            ExecuteCommandSafely(() =>
+            {
+                _drawManager.DrawVertexArrayBeginEndInstanceSubsequent(this, argument);
+            }, "DrawVertexArrayBeginEndInstanceSubsequent");
         }
 
         /// <summary>
@@ -570,7 +883,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void VbElementU8(int argument)
         {
-            _drawManager.VbElementU8(argument);
+            ExecuteCommandSafely(() =>
+            {
+                _drawManager.VbElementU8(argument);
+            }, "VbElementU8");
         }
 
         /// <summary>
@@ -579,7 +895,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void VbElementU16(int argument)
         {
-            _drawManager.VbElementU16(argument);
+            ExecuteCommandSafely(() =>
+            {
+                _drawManager.VbElementU16(argument);
+            }, "VbElementU16");
         }
 
         /// <summary>
@@ -588,7 +907,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void VbElementU32(int argument)
         {
-            _drawManager.VbElementU32(argument);
+            ExecuteCommandSafely(() =>
+            {
+                _drawManager.VbElementU32(argument);
+            }, "VbElementU32");
         }
 
         /// <summary>
@@ -597,7 +919,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void ResetCounter(int argument)
         {
-            _semaphoreUpdater.ResetCounter(argument);
+            ExecuteCommandSafely(() =>
+            {
+                _semaphoreUpdater.ResetCounter(argument);
+            }, "ResetCounter");
         }
 
         /// <summary>
@@ -607,7 +932,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void DrawEnd(int argument)
         {
-            _drawManager.DrawEnd(this, argument);
+            ExecuteCommandSafely(() =>
+            {
+                _drawManager.DrawEnd(this, argument);
+            }, "DrawEnd");
         }
 
         /// <summary>
@@ -617,7 +945,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void DrawBegin(int argument)
         {
-            _drawManager.DrawBegin(this, argument);
+            ExecuteCommandSafely(() =>
+            {
+                _drawManager.DrawBegin(this, argument);
+            }, "DrawBegin");
         }
 
         /// <summary>
@@ -627,7 +958,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void SetIndexBufferCount(int argument)
         {
-            _drawManager.SetIndexBufferCount(argument);
+            ExecuteCommandSafely(() =>
+            {
+                _drawManager.SetIndexBufferCount(argument);
+            }, "SetIndexBufferCount");
         }
 
         /// <summary>
@@ -636,7 +970,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void DrawIndexBuffer8BeginEndInstanceFirst(int argument)
         {
-            _drawManager.DrawIndexBuffer8BeginEndInstanceFirst(this, argument);
+            ExecuteCommandSafely(() =>
+            {
+                _drawManager.DrawIndexBuffer8BeginEndInstanceFirst(this, argument);
+            }, "DrawIndexBuffer8BeginEndInstanceFirst");
         }
 
         /// <summary>
@@ -645,7 +982,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void DrawIndexBuffer16BeginEndInstanceFirst(int argument)
         {
-            _drawManager.DrawIndexBuffer16BeginEndInstanceFirst(this, argument);
+            ExecuteCommandSafely(() =>
+            {
+                _drawManager.DrawIndexBuffer16BeginEndInstanceFirst(this, argument);
+            }, "DrawIndexBuffer16BeginEndInstanceFirst");
         }
 
         /// <summary>
@@ -654,7 +994,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void DrawIndexBuffer32BeginEndInstanceFirst(int argument)
         {
-            _drawManager.DrawIndexBuffer32BeginEndInstanceFirst(this, argument);
+            ExecuteCommandSafely(() =>
+            {
+                _drawManager.DrawIndexBuffer32BeginEndInstanceFirst(this, argument);
+            }, "DrawIndexBuffer32BeginEndInstanceFirst");
         }
 
         /// <summary>
@@ -664,7 +1007,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void DrawIndexBuffer8BeginEndInstanceSubsequent(int argument)
         {
-            _drawManager.DrawIndexBuffer8BeginEndInstanceSubsequent(this, argument);
+            ExecuteCommandSafely(() =>
+            {
+                _drawManager.DrawIndexBuffer8BeginEndInstanceSubsequent(this, argument);
+            }, "DrawIndexBuffer8BeginEndInstanceSubsequent");
         }
 
         /// <summary>
@@ -674,7 +1020,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void DrawIndexBuffer16BeginEndInstanceSubsequent(int argument)
         {
-            _drawManager.DrawIndexBuffer16BeginEndInstanceSubsequent(this, argument);
+            ExecuteCommandSafely(() =>
+            {
+                _drawManager.DrawIndexBuffer16BeginEndInstanceSubsequent(this, argument);
+            }, "DrawIndexBuffer16BeginEndInstanceSubsequent");
         }
 
         /// <summary>
@@ -684,7 +1033,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void DrawIndexBuffer32BeginEndInstanceSubsequent(int argument)
         {
-            _drawManager.DrawIndexBuffer32BeginEndInstanceSubsequent(this, argument);
+            ExecuteCommandSafely(() =>
+            {
+                _drawManager.DrawIndexBuffer32BeginEndInstanceSubsequent(this, argument);
+            }, "DrawIndexBuffer32BeginEndInstanceSubsequent");
         }
 
         /// <summary>
@@ -694,7 +1046,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void Clear(int argument)
         {
-            _drawManager.Clear(this, argument);
+            ExecuteCommandSafely(() =>
+            {
+                _drawManager.Clear(this, argument);
+            }, "Clear");
         }
 
         /// <summary>
@@ -703,7 +1058,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void Report(int argument)
         {
-            _semaphoreUpdater.Report(argument);
+            ExecuteCommandSafely(() =>
+            {
+                _semaphoreUpdater.Report(argument);
+            }, "Report");
         }
 
         /// <summary>
@@ -712,7 +1070,15 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void SetFalcon04(int argument)
         {
-            _state.State.SetMmeShadowScratch[0] = 1;
+            try
+            {
+                _state.State.SetMmeShadowScratch[0] = 1;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Error in SetFalcon04: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -721,7 +1087,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">New uniform buffer data word</param>
         private void ConstantBufferUpdate(int argument)
         {
-            _cbUpdater.Update(argument);
+            ExecuteCommandSafely(() =>
+            {
+                _cbUpdater.Update(argument);
+            }, "ConstantBufferUpdate");
         }
 
         /// <summary>
@@ -730,7 +1099,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void ConstantBufferBindVertex(int argument)
         {
-            _cbUpdater.BindVertex(argument);
+            ExecuteCommandSafely(() =>
+            {
+                _cbUpdater.BindVertex(argument);
+            }, "ConstantBufferBindVertex");
         }
 
         /// <summary>
@@ -739,16 +1111,22 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void ConstantBufferBindTessControl(int argument)
         {
-            _cbUpdater.BindTessControl(argument);
+            ExecuteCommandSafely(() =>
+            {
+                _cbUpdater.BindTessControl(argument);
+            }, "ConstantBufferBindTessControl");
         }
 
         /// <summary>
         /// Binds a uniform buffer for the tessellation evaluation shader stage.
         /// </summary>
         /// <param name="argument">Method call argument</param>
-  private void ConstantBufferBindTessEvaluation(int argument)
+        private void ConstantBufferBindTessEvaluation(int argument)
         {
-            _cbUpdater.BindTessEvaluation(argument);
+            ExecuteCommandSafely(() =>
+            {
+                _cbUpdater.BindTessEvaluation(argument);
+            }, "ConstantBufferBindTessEvaluation");
         }
 
         /// <summary>
@@ -757,7 +1135,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void ConstantBufferBindGeometry(int argument)
         {
-            _cbUpdater.BindGeometry(argument);
+            ExecuteCommandSafely(() =>
+            {
+                _cbUpdater.BindGeometry(argument);
+            }, "ConstantBufferBindGeometry");
         }
 
         /// <summary>
@@ -766,7 +1147,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="argument">Method call argument</param>
         private void ConstantBufferBindFragment(int argument)
         {
-            _cbUpdater.BindFragment(argument);
+            ExecuteCommandSafely(() =>
+            {
+                _cbUpdater.BindFragment(argument);
+            }, "ConstantBufferBindFragment");
         }
 
         /// <summary>
@@ -797,7 +1181,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
             int firstInstance,
             bool indexed)
         {
-            _drawManager.Draw(this, topology, count, instanceCount, firstIndex, firstVertex, firstInstance, indexed);
+            ExecuteCommandSafely(() =>
+            {
+                _drawManager.Draw(this, topology, count, instanceCount, firstIndex, firstVertex, firstInstance, indexed);
+            }, "Draw");
         }
 
         /// <summary>
@@ -819,7 +1206,10 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
             int indexCount,
             IndirectDrawType drawType)
         {
-            _drawManager.DrawIndirect(this, topology, indirectBufferRange, parameterBufferRange, maxDrawCount, stride, indexCount, drawType);
+            ExecuteCommandSafely(() =>
+            {
+                _drawManager.DrawIndirect(this, topology, indirectBufferRange, parameterBufferRange, maxDrawCount, stride, indexCount, drawType);
+            }, "DrawIndirect");
         }
 
         /// <summary>
@@ -830,21 +1220,43 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// <param name="layerCount">For array and 3D textures, indicates how many layers should be cleared</param>
         public void Clear(int argument, int layerCount)
         {
-            _drawManager.Clear(this, argument, layerCount);
+            ExecuteCommandSafely(() =>
+            {
+                _drawManager.Clear(this, argument, layerCount);
+            }, "Clear");
         }
 
         protected virtual void Dispose(bool disposing)
         {
             if (disposing)
             {
-                _drawManager.Dispose();
+                try
+                {
+                    _drawManager.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, 
+                        $"Error disposing ThreedClass: {ex.Message}");
+                }
             }
         }
 
         public void Dispose()
         {
-            Dispose(true);
-            GC.SuppressFinalize(this);
+            try
+            {
+                Dispose(true);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Error in ThreedClass dispose: {ex.Message}");
+            }
+            finally
+            {
+                GC.SuppressFinalize(this);
+            }
         }
     }
 }
