@@ -994,7 +994,7 @@ class HomeViews {
                                                 modifier = Modifier
                                                     .fillMaxWidth()
                                                     .padding(horizontal = 16.dp)
-                                                    .align(Alignment.CenterVertically),
+                                                    .align(Alignment.Center),
                                                 horizontalArrangement = Arrangement.SpaceBetween
                                             ) {
                                                 IconButton(
