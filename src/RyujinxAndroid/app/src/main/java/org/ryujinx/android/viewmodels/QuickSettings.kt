@@ -20,6 +20,7 @@ class QuickSettings(val activity: Activity) {
     var enableMotion: Boolean
     var enablePerformanceMode: Boolean
     var controllerStickSensitivity: Float
+    var skipMemoryBarriers: Boolean // 新增：跳过内存屏障
 
     // Logs
     var enableDebugLogs: Boolean
@@ -51,6 +52,7 @@ class QuickSettings(val activity: Activity) {
         enableMotion = sharedPref.getBoolean("enableMotion", true)
         enablePerformanceMode = sharedPref.getBoolean("enablePerformanceMode", true)
         controllerStickSensitivity = sharedPref.getFloat("controllerStickSensitivity", 1.0f)
+        skipMemoryBarriers = sharedPref.getBoolean("skipMemoryBarriers", false) // 初始化
 
         enableDebugLogs = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs = sharedPref.getBoolean("enableStubLogs", false)
@@ -81,6 +83,7 @@ class QuickSettings(val activity: Activity) {
         editor.putBoolean("enableMotion", enableMotion)
         editor.putBoolean("enablePerformanceMode", enablePerformanceMode)
         editor.putFloat("controllerStickSensitivity", controllerStickSensitivity)
+        editor.putBoolean("skipMemoryBarriers", skipMemoryBarriers) // 保存
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs)
         editor.putBoolean("enableStubLogs", enableStubLogs)
