@@ -353,77 +353,70 @@ class GameViews {
                 mutableIntStateOf(0)
             }
 
-            Column(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .background(Color.Transparent)
+            // 完全透明的文字面板
+            CompositionLocalProvider(
+                LocalTextStyle provides TextStyle(
+                    fontSize = 10.sp,
+                    color = Color.White // 确保文字在游戏画面上可见
+                )
             ) {
-                val gameTimeVal = if (!gameTime.value.isInfinite()) gameTime.value else 0.0
-                
-                // 使用自定义绘制实现文字描边效果
-                StrokedText(
-                    text = "${String.format("%.1f", fifo.value)}%",
-                    textColor = Color.White,
-                    strokeColor = Color.Black
-                )
-                StrokedText(
-                    text = "${String.format("%.1f", gameFps.value)} FPS",
-                    textColor = Color.White,
-                    strokeColor = Color.Black
-                )
-                StrokedText(
-                    text = "${String.format("%.1f", gameTimeVal)} ms",
-                    textColor = Color.White,
-                    strokeColor = Color.Black
-                )
-                StrokedText(
-                    text = "${totalMem.value}/${usedMem.value} MB",
-                    textColor = Color.White,
-                    strokeColor = Color.Black
-                )
+                Column(
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .background(Color.Transparent) // 完全透明背景
+                ) {
+                    val gameTimeVal = if (!gameTime.value.isInfinite()) gameTime.value else 0.0
+                    
+                    // 核心性能指标
+                    Text(text = "${String.format("%.1f", fifo.value)}%")
+                    
+                    // 只对FPS数字进行描边
+                    FpsWithStroke(text = "${String.format("%.1f", gameFps.value)} FPS")
+                    
+                    Text(text = "${String.format("%.1f", gameTimeVal)} ms")
+                    
+                    // 内存使用
+                    Text(text = "${totalMem.value}/${usedMem.value} MB")
+                }
             }
 
             mainViewModel.setStatStates(fifo, gameFps, gameTime, usedMem, totalMem)
         }
 
-        // 使用多个文本叠加实现描边效果
+        // 只对FPS数字进行描边
         @Composable
-        fun StrokedText(
-            text: String,
-            textColor: Color,
-            strokeColor: Color
-        ) {
+        fun FpsWithStroke(text: String) {
             Box {
-                // 绘制描边（四个方向的偏移）
+                // 绘制黑色描边（四个方向的偏移）
                 Text(
                     text = text,
-                    color = strokeColor,
+                    color = Color.Black,
                     fontSize = 10.sp,
-                    modifier = Modifier.offset(x = (-1).dp, y = (-1).dp)
+                    modifier = Modifier.padding(start = 1.dp, top = 1.dp)
                 )
                 Text(
                     text = text,
-                    color = strokeColor,
+                    color = Color.Black,
                     fontSize = 10.sp,
-                    modifier = Modifier.offset(x = 1.dp, y = (-1).dp)
+                    modifier = Modifier.padding(start = (-1).dp, top = 1.dp)
                 )
                 Text(
                     text = text,
-                    color = strokeColor,
+                    color = Color.Black,
                     fontSize = 10.sp,
-                    modifier = Modifier.offset(x = (-1).dp, y = 1.dp)
+                    modifier = Modifier.padding(start = 1.dp, top = (-1).dp)
                 )
                 Text(
                     text = text,
-                    color = strokeColor,
+                    color = Color.Black,
                     fontSize = 10.sp,
-                    modifier = Modifier.offset(x = 1.dp, y = 1.dp)
+                    modifier = Modifier.padding(start = (-1).dp, top = (-1).dp)
                 )
                 
-                // 绘制主文本
+                // 绘制白色主文本
                 Text(
                     text = text,
-                    color = textColor,
+                    color = Color.White,
                     fontSize = 10.sp
                 )
             }
