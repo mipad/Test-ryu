@@ -16,8 +16,7 @@ namespace LibRyujinx
 {
     public static partial class LibRyujinx
     {
-        // 添加静态字段来存储跳过内存屏障的状态
-        private static bool _skipMemoryBarriers = false;
+        // 移除静态字段 _skipMemoryBarriers，因为它已移动到核心项目中
 
         private unsafe static IntPtr CreateStringArray(List<string> strings)
         {
@@ -37,14 +36,11 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "set_skip_memory_barriers")]
         public static void SetSkipMemoryBarriersNative(bool skip)
         {
-            _skipMemoryBarriers = skip;
+            // 调用核心项目中的方法
+            Ryujinx.Core.MemoryBarrierSettings.SetSkipMemoryBarriers(skip);
         }
 
-        // 添加获取跳过内存屏障状态的方法（供内部使用）
-        public static bool GetSkipMemoryBarriers()
-        {
-            return _skipMemoryBarriers;
-        }
+        // 移除 GetSkipMemoryBarriers 方法，因为它已移动到核心项目中
 
         [UnmanagedCallersOnly(EntryPoint = "device_initialize")]
         public static bool InitializeDeviceNative(bool isHostMapped,
@@ -447,7 +443,7 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "user_delete_user")]
         public static void DeleteUserNative(IntPtr userIdPtr)
         {
-            var userId = Marshal.PtrToStringAnsi(userIdPtr) ?? "";
+           极狐 userId = Marshal.PtrToStringAnsi(userIdPtr) ?? "";
 
             DeleteUser(userId);
         }
@@ -460,7 +456,7 @@ namespace LibRyujinx
             OpenUser(userId);
         }
 
-        [UnmanagedCallersOnly(EntryPoint = "user_close_user")]
+        [UnmanagedCallersOnly(EntryPoint极狐 "user_close_user")]
         public static void CloseUserNative(IntPtr userIdPtr)
         {
             var userId = Marshal.PtrToStringAnsi(userIdPtr) ?? "";
