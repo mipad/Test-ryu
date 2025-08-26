@@ -65,7 +65,8 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableGuestLogs: MutableState<Boolean>,
         enableAccessLogs: MutableState<Boolean>,
         enableTraceLogs: MutableState<Boolean>,
-        enableGraphicsLogs: MutableState<Boolean>
+        enableGraphicsLogs: MutableState<Boolean>,
+        skipMemoryBarriers: MutableState<Boolean> // 新增参数
     ) {
 
         isHostMapped.value = sharedPref.getBoolean("isHostMapped", true)
@@ -84,6 +85,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableMotion.value = sharedPref.getBoolean("enableMotion", true)
         enablePerformanceMode.value = sharedPref.getBoolean("enablePerformanceMode", false)
         controllerStickSensitivity.value = sharedPref.getFloat("controllerStickSensitivity", 1.0f)
+        skipMemoryBarriers.value = sharedPref.getBoolean("skipMemoryBarriers", false) // 初始化
 
         enableDebugLogs.value = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs.value = sharedPref.getBoolean("enableStubLogs", false)
@@ -120,7 +122,8 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableGuestLogs: MutableState<Boolean>,
         enableAccessLogs: MutableState<Boolean>,
         enableTraceLogs: MutableState<Boolean>,
-        enableGraphicsLogs: MutableState<Boolean>
+        enableGraphicsLogs: MutableState<Boolean>,
+        skipMemoryBarriers: MutableState<Boolean> // 新增参数
     ) {
         val editor = sharedPref.edit()
 
@@ -139,6 +142,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.putBoolean("enableMotion", enableMotion.value)
         editor.putBoolean("enablePerformanceMode", enablePerformanceMode.value)
         editor.putFloat("controllerStickSensitivity", controllerStickSensitivity.value)
+        editor.putBoolean("skipMemoryBarriers", skipMemoryBarriers.value) // 保存
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs.value)
         editor.putBoolean("enableStubLogs", enableStubLogs.value)
@@ -152,6 +156,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
 
         editor.apply()
         activity.storageHelper!!.onFolderSelected = previousFolderCallback
+
+        // 设置跳过内存屏障
+        RyujinxNative.jnaInstance.setSkipMemoryBarriers(skipMemoryBarriers.value)
 
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Debug.ordinal, enableDebugLogs.value)
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Info.ordinal, enableInfoLogs.value)
@@ -275,7 +282,6 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         installState.value = FirmwareInstallState.None
     }
 }
-
 
 enum class FirmwareInstallState {
     None,
