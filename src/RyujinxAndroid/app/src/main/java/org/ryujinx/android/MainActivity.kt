@@ -66,6 +66,10 @@ class MainActivity : BaseActivity() {
         val appPath: String = AppPath
 
         var quickSettings = QuickSettings(this)
+        
+        // 设置跳过内存屏障
+        RyujinxNative.jnaInstance.setSkipMemoryBarriers(quickSettings.skipMemoryBarriers)
+        
         RyujinxNative.jnaInstance.loggingSetEnabled(
             LogLevel.Debug.ordinal,
             quickSettings.enableDebugLogs
@@ -166,15 +170,15 @@ class MainActivity : BaseActivity() {
         val insets = WindowCompat.getInsetsController(window, window.decorView)
 
         insets.apply {
-            if (fullscreen) {
-                insets.hide(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
-                insets.systemBarsBehavior =
-                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            } else {
-                insets.show(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
-                insets.systemBarsBehavior =
-                    WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
-            }
+        if (fullscreen) {
+            insets.hide(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
+            insets.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        } else {
+            insets.show(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
+            insets.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
+        }
         }
     }
 
