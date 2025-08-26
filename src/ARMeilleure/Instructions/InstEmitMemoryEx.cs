@@ -7,8 +7,8 @@ using static ARMeilleure.Instructions.InstEmitHelper;
 using static ARMeilleure.Instructions.InstEmitMemoryExHelper;
 using static ARMeilleure.IntermediateRepresentation.Operand.Factory;
 
-// 添加命名空间引用
-using LibRyujinx;
+// 修改命名空间引用，使用核心项目而不是LibRyujinx
+using Ryujinx.Core;
 
 namespace ARMeilleure.Instructions
 {
@@ -175,7 +175,7 @@ namespace ARMeilleure.Instructions
         private static void EmitBarrier(ArmEmitterContext context)
         {
             // 检查是否应该跳过内存屏障
-            if (LibRyujinx.LibRyujinx.GetSkipMemoryBarriers())
+            if (MemoryBarrierSettings.GetSkipMemoryBarriers())
             {
                 return;
             }
