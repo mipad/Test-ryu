@@ -16,6 +16,9 @@ namespace LibRyujinx
 {
     public static partial class LibRyujinx
     {
+        // 添加静态字段来存储跳过内存屏障的状态
+        private static bool _skipMemoryBarriers = false;
+
         private unsafe static IntPtr CreateStringArray(List<string> strings)
         {
             uint size = (uint)(Marshal.SizeOf<IntPtr>() * (strings.Count + 1));
@@ -28,6 +31,19 @@ namespace LibRyujinx
             }
 
             return (nint)array;
+        }
+
+        // 添加设置跳过内存屏障的 JNI 方法
+        [UnmanagedCallersOnly(EntryPoint = "set_skip_memory_barriers")]
+        public static void SetSkipMemoryBarriersNative(bool skip)
+        {
+            _skipMemoryBarriers = skip;
+        }
+
+        // 添加获取跳过内存屏障状态的方法（供内部使用）
+        public static bool GetSkipMemoryBarriers()
+        {
+            return _skipMemoryBarriers;
         }
 
         [UnmanagedCallersOnly(EntryPoint = "device_initialize")]
