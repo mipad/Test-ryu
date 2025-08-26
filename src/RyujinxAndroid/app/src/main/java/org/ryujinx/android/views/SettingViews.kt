@@ -145,6 +145,7 @@ class SettingViews {
             val enableAccessLogs = remember { mutableStateOf(true) }
             val enableTraceLogs = remember { mutableStateOf(true) }
             val enableGraphicsLogs = remember { mutableStateOf(true) }
+            val skipMemoryBarriers = remember { mutableStateOf(false) } // 新增状态变量
 
             if (!loaded.value) {
                 settingsViewModel.initializeState(
@@ -168,7 +169,8 @@ class SettingViews {
                     enableGuestLogs,
                     enableAccessLogs,
                     enableTraceLogs,
-                    enableGraphicsLogs
+                    enableGraphicsLogs,
+                    skipMemoryBarriers // 新增参数
                 )
                 loaded.value = true
             }
@@ -204,7 +206,8 @@ class SettingViews {
                                     enableGuestLogs,
                                     enableAccessLogs,
                                     enableTraceLogs,
-                                    enableGraphicsLogs
+                                    enableGraphicsLogs,
+                                    skipMemoryBarriers // 新增参数
                                 )
                                 settingsViewModel.navController.popBackStack()
                             }) {
@@ -925,6 +928,30 @@ class SettingViews {
 
                         }
                     }
+                    ExpandableView(onCardArrowClick = { }, title = "Hack") {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Skip Memory Barriers",
+                                    modifier = Modifier.align(Alignment.CenterVertically)
+                                )
+                                Switch(checked = skipMemoryBarriers.value, onCheckedChange = {
+                                    skipMemoryBarriers.value = !skipMemoryBarriers.value
+                                })
+                            }
+                            Text(
+                                text = "Warning: This may improve performance but can cause instability in some games",
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+                    }
                     ExpandableView(onCardArrowClick = { }, title = "Input") {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             Row(
@@ -1192,7 +1219,8 @@ class SettingViews {
                         enableGuestLogs,
                         enableAccessLogs,
                         enableTraceLogs,
-                        enableGraphicsLogs
+                        enableGraphicsLogs,
+                        skipMemoryBarriers // 新增参数
                     )
                     settingsViewModel.navController.popBackStack()
                 }
@@ -1282,7 +1310,7 @@ class SettingViews {
         fun ExpandableContent(
             visible: Boolean = true,
             content: @Composable () -> Unit
-        ) {
+            ) {
             val enterTransition = remember {
                 expandVertically(
                     expandFrom = Alignment.Top,
