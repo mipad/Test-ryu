@@ -680,9 +680,9 @@ class HomeViews {
                                                 viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
                                             Image(
                                                 bitmap = BitmapFactory.decodeByteArray(
-                                                    pic,
+                                                    pic!!,
                                                     0,
-                                                    pic?.size ?: 0
+                                                    pic.size
                                                 )
                                                     .asImageBitmap(),
                                                 contentDescription = "user image",
@@ -749,9 +749,9 @@ class HomeViews {
                                                 viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
                                             Image(
                                                 bitmap = BitmapFactory.decodeByteArray(
-                                                    pic,
+                                                    pic!!,
                                                     0,
-                                                    pic?.size ?: 0
+                                                    pic.size
                                                 )
                                                     .asImageBitmap(),
                                                 contentDescription = "user image",
@@ -1018,7 +1018,7 @@ class HomeViews {
                                         if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
                                             val pic = viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
                                             Image(
-                                                bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
+                                                bitmap = BitmapFactory.decodeByteArray(pic!!, 0, pic.size)
                                                     .asImageBitmap(),
                                                 contentDescription = "user image",
                                                 contentScale = ContentScale.Crop,
@@ -1036,11 +1036,11 @@ class HomeViews {
                                         Spacer(modifier = Modifier.width(16.dp))
                                         Column {
                                             Text(
-                                                text = viewModel.mainViewModel?.userViewModel?.openedUser?.userName ?: "User",
+                                                text = viewModel.mainViewModel?.userViewModel?.openedUser?.name ?: "User",
                                                 fontWeight = FontWeight.Bold
                                             )
                                             Text(
-                                                text = viewModel.mainViewModel?.userViewModel?.openedUser?.userId ?: "No ID"
+                                                text = viewModel.mainViewModel?.userViewModel?.openedUser?.id ?: "No ID"
                                             )
                                         }
                                     }
