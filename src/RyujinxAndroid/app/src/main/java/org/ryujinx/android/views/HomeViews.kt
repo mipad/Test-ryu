@@ -425,7 +425,7 @@ class HomeViews {
                 // 中央项目 - 显示完整信息
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth(0.7f) // 限制中央项目宽度为70%
+                        .fillMaxWidth(0.6f) // 减少中央项目宽度为60%
                         .combinedClickable(
                             onClick = {
                                 if (viewModel.mainViewModel?.selected != null) {
@@ -461,17 +461,17 @@ class HomeViews {
                         ),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // 中央图标 - 调整为1.3:1比例
+                    // 中央图标 - 调整为1.5:1比例 (更宽的比例)
                     Box(
                         modifier = if (isSelected) {
                             Modifier
                                 .fillMaxWidth()
-                                .aspectRatio(1.3f)
+                                .aspectRatio(1.5f) // 调整为更宽的比例
                                 .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
                         } else {
                             Modifier
                                 .fillMaxWidth()
-                                .aspectRatio(1.3f)
+                                .aspectRatio(1.5f) // 调整为更宽的比例
                         }
                     ) {
                         if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
@@ -508,11 +508,11 @@ class HomeViews {
                         }
                     }
                     
-                    // 游戏名称和版本号
+                    // 游戏名称和版本号 - 增加顶部间距确保可见
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 8.dp),
+                            .padding(top = 12.dp), // 增加顶部间距
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
@@ -686,14 +686,24 @@ class HomeViews {
                                                 contentScale = ContentScale.Crop,
                                                 modifier = Modifier
                                                     .padding(4.dp)
-                                                    .size(52.dp)
-                                                    .clip(CircleShape)
+                                                    .size(40.dp) // 调整大小
+                                                    .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
+                                                    .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)) // 添加边框
                                             )
                                         } else {
-                                            Icon(
-                                                Icons.Filled.Person,
-                                                contentDescription = "user"
-                                            )
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(40.dp)
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    Icons.Filled.Person,
+                                                    contentDescription = "user",
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                            }
                                         }
                                 }
                             }
@@ -734,14 +744,23 @@ class HomeViews {
                                             contentScale = ContentScale.Crop,
                                             modifier = Modifier
                                                 .size(40.dp)
-                                                .clip(CircleShape)
+                                                .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
+                                                .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)) // 添加边框
                                         )
                                     } else {
-                                        Icon(
-                                            Icons.Filled.Person,
-                                            contentDescription = "user",
-                                            modifier = Modifier.size(32.dp)
-                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.Person,
+                                                contentDescription = "user",
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
                                     }
                             }
                         }
@@ -982,7 +1001,7 @@ class HomeViews {
                                                     .border(
                                                         width = 2.dp,
                                                         color = Color(0xFF14bf00),
-                                                        shape = CircleShape
+                                                        shape = RoundedCornerShape(12.dp) // 改为圆角方形
                                                     )
                                                     .size(iconSize)
                                                     .padding(2.dp),
@@ -1003,12 +1022,13 @@ class HomeViews {
                                                 modifier = Modifier
                                                     .padding(4.dp)
                                                     .size(iconSize)
-                                                    .clip(CircleShape)
+                                                    .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
                                             )
                                         } else {
                                             Icon(
                                                 Icons.Filled.Person,
-                                                contentDescription = "user"
+                                                contentDescription = "user",
+                                                modifier = Modifier.size(32.dp)
                                             )
                                         }
                                     }
@@ -1035,7 +1055,7 @@ class HomeViews {
                                                         modifier = Modifier
                                                             .padding(4.dp)
                                                             .size(iconSize)
-                                                            .clip(CircleShape)
+                                                            .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
                                                             .combinedClickable(
                                                                 onClick = {
                                                                     viewModel.mainViewModel!!.userViewModel.openUser(
@@ -1256,4 +1276,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}}}
+}
