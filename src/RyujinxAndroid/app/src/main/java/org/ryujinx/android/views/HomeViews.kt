@@ -435,7 +435,7 @@ class HomeViews {
                                         selected = null
                                     }
                                     selectedModel.value = null
-                                else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro) {
+                                } else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro) {
                                     thread {
                                         showLoading.value = true
                                         val success =
@@ -460,36 +460,78 @@ class HomeViews {
                                 selectedModel.value = gameModel
                             }
                         )
-                        .then(
-                            if (isSelected) {
-                                Modifier.border(
+                ) {
+                    if (isSelected) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .border(
                                     2.dp,
                                     MaterialTheme.colorScheme.primary,
                                     RoundedCornerShape(12.dp)
                                 )
+                        ) {
+                            // 内容
+                            if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
+                                if (gameModel.icon?.isNotEmpty() == true) {
+                                    val pic = decoder.decode(gameModel.icon)
+                                    Image(
+                                        bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
+                                            .asImageBitmap(),
+                                        contentDescription = gameModel.titleName + " icon",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(12.dp))
+                                    )
+                                } else if (gameModel.type == FileType.Nro) {
+                                    NROIcon(
+                                        modifier = Modifier
+                                            .fillMaxSize(0.8f)
+                                            .align(Alignment.Center)
+                                    )
+                                } else {
+                                    NotAvailableIcon(
+                                        modifier = Modifier
+                                            .fillMaxSize(0.8f)
+                                            .align(Alignment.Center)
+                                    )
+                                }
                             } else {
-                                Modifier
+                                NotAvailableIcon(
+                                    modifier = Modifier
+                                        .fillMaxSize(0.8f)
+                                        .align(Alignment.Center)
+                                )
                             }
-                        )
-                ) {
-                    if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
-                        if (gameModel.icon?.isNotEmpty() == true) {
-                            val pic = decoder.decode(gameModel.icon)
-                            Image(
-                                bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
-                                    .asImageBitmap(),
-                                contentDescription = gameModel.titleName + " icon",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(12.dp))
-                            )
-                        } else if (gameModel.type == FileType.Nro) {
-                            NROIcon(
-                                modifier = Modifier
-                                    .fillMaxSize(0.8f)
-                                    .align(Alignment.Center)
-                            )
+                        }
+                    } else {
+                        // 内容
+                        if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
+                            if (gameModel.icon?.isNotEmpty() == true) {
+                                val pic = decoder.decode(gameModel.icon)
+                                Image(
+                                    bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
+                                        .asImageBitmap(),
+                                    contentDescription = gameModel.titleName + " icon",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(RoundedCornerShape(12.dp))
+                                )
+                            } else if (gameModel.type == FileType.Nro) {
+                                NROIcon(
+                                    modifier = Modifier
+                                        .fillMaxSize(0.8f)
+                                        .align(Alignment.Center)
+                                )
+                            } else {
+                                NotAvailableIcon(
+                                    modifier = Modifier
+                                        .fillMaxSize(0.8f)
+                                        .align(Alignment.Center)
+                                )
+                            }
                         } else {
                             NotAvailableIcon(
                                 modifier = Modifier
@@ -497,12 +539,6 @@ class HomeViews {
                                     .align(Alignment.Center)
                             )
                         }
-                    } else {
-                        NotAvailableIcon(
-                            modifier = Modifier
-                                .fillMaxSize(0.8f)
-                                .align(Alignment.Center)
-                        )
                     }
                 }
             } else {
@@ -977,122 +1013,6 @@ class HomeViews {
                                 Column(modifier = Modifier.padding(8.dp)) {
                                     Row(
                                         modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        if (refreshUser) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .border(
-                                                        width = 2.dp,
-                                                        color = Color(0xFF14bf00),
-                                                        shape = RoundedCornerShape(12.dp) // 改为圆角方形
-                                                    )
-                                                    .size(iconSize)
-                                                    .padding(2.dp),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
-                                                    val pic =
-                                                        viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
-                                                    Image(
-                                                        bitmap = BitmapFactory.decodeByteArray(
-                                                            pic,
-                                                                                           0,
-                                                            pic?.size ?: 0
-                                                        )
-                                                            .asImageBitmap(),
-                                                        contentDescription = "user image",
-                                                        contentScale = ContentScale.Crop,
-                                                        modifier = Modifier
-                                                            .padding(4.dp)
-                                                            .size(iconSize)
-                                                            .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
-                                                    )
-                                                } else {
-                                                    Icon(
-                                                        Icons.Filled.Person,
-                                                        contentDescription = "user",
-                                                        modifier = Modifier.size(32.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        Card(
-                                            modifier = Modifier
-                                                .padding(horizontal = 4.dp)
-                                                .fillMaxWidth(0.7f),
-                                            shape = MaterialTheme.shapes.small,
-                                        ) {
-                                            LazyRow {
-                                                if (viewModel.mainViewModel?.userViewModel?.userList?.isNotEmpty() == true) {
-                                                    items(viewModel.mainViewModel!!.userViewModel.userList) { user ->
-                                                        if (user.id != viewModel.mainViewModel!!.userViewModel.openedUser.id) {
-                                                            Image(
-                                                                bitmap = BitmapFactory.decodeByteArray(
-                                                                    user.userPicture,
-                                                                    0,
-                                                                    user.userPicture?.size ?: 0
-                                                                )
-                                                                    .asImageBitmap(),
-                                                                contentDescription = "selected image",
-                                                                contentScale = ContentScale.Crop,
-                                                                modifier = Modifier
-                                                                    .padding(4.dp)
-                                                                    .size(iconSize)
-                                                                    .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
-                                                                    .combinedClickable(
-                                                                        onClick = {
-                                                                            viewModel.mainViewModel!!.userViewModel.openUser(
-                                                                                user
-                                                                            )
-                                                                            refreshUser =
-                                                                                false
-                                                                        })
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Box(
-                                            modifier = Modifier
-                                                .size(iconSize)
-                                        ) {
-                                            IconButton(
-                                                modifier = Modifier.fillMaxSize(),
-                                                onClick = {
-                                                    openAppBarExtra = false
-                                                    navController?.navigate("user")
-                                                }) {
-                                                Icon(
-                                                    Icons.Filled.Add,
-                                                    contentDescription = "N/A"
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                                TextButton(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    onClick = {
-                                        navController?.navigate("settings")
-                                    }
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.Settings,
-                                            contentDescription = "Settings"
-                                        )
-                                        Text(
-                                            text = "Settings",
-                                            modifier = Modifier.padding(start = 8.dp)
-                                        )
                                     }
                                 }
                             }
@@ -1188,7 +1108,6 @@ class HomeViews {
                                     Text(
                                         text = "v${game.version}",
                                         fontSize = 16.sp,
-                                        modifier = Modifier.align(Alignment.CenterHorizontally)
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(16.dp))
@@ -1228,50 +1147,6 @@ class HomeViews {
                                     IconButton(onClick = {
                                         showAppMenu.value = true
                                     }) {
-                                        Icon(
-                                            Icons.Filled.Menu,
-                                            contentDescription = "Menu"
-                                        )
-                                    }
-                                    DropdownMenu(
-                                        expanded = showAppMenu.value,
-                                        onDismissRequest = { showAppMenu.value = false }) {
-                                        DropdownMenuItem(text = {
-                                            Text(text = "Clear PPTC Cache")
-                                        }, onClick = {
-                                            showAppMenu.value = false
-                                            viewModel.mainViewModel?.clearPptcCache(
-                                                viewModel.mainViewModel?.selected?.titleId ?: ""
-                                            )
-                                        })
-                                        DropdownMenuItem(text = {
-                                            Text(text = "Purge Shader Cache")
-                                        }, onClick = {
-                                            showAppMenu.value = false
-                                            viewModel.mainViewModel?.purgeShaderCache(
-                                                viewModel.mainViewModel?.selected?.titleId ?: ""
-                                            )
-                                        })
-                                        DropdownMenuItem(text = {
-                                            Text(text = "Delete All Cache")
-                                        }, onClick = {
-                                            showAppMenu.value = false
-                                            viewModel.mainViewModel?.deleteCache(
-                                                viewModel.mainViewModel?.selected?.titleId ?: ""
-                                            )
-                                        })
-                                        DropdownMenuItem(text = {
-                                            Text(text = "Manage Updates")
-                                        }, onClick = {
-                                            showAppMenu.value = false
-                                            openTitleUpdateDialog.value = true
-                                        })
-                                        DropdownMenuItem(text = {
-                                            Text(text = "Manage DLC")
-                                        }, onClick = {
-                                            showAppMenu.value = false
-                                            openDlcDialog.value = true
-                                        })
                                     }
                                 }
                             }
