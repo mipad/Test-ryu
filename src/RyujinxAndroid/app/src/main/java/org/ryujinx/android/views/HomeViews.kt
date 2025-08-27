@@ -202,14 +202,14 @@ class HomeViews {
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row {
-                        if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "000000000000000极速加速器" || gameModel.type == FileType.Nro)) {
+                        if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
                             Box(
                                 modifier = if (isSelected) {
                                     Modifier
                                         .padding(end = 8.dp)
                                         .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
                                 } else {
-                                    Modifier.padding(end = 8极速加速器p)
+                                    Modifier.padding(end = 8.dp)
                                 }
                             ) {
                                 if (gameModel.icon?.isNotEmpty() == true) {
@@ -248,7 +248,7 @@ class HomeViews {
         fun GridGameItem(
             gameModel: GameModel,
             viewModel: HomeViewModel,
-            showAppActions: MutableState极速加速器<Boolean>,
+            showAppActions: MutableState<Boolean>,
             showLoading: MutableState<Boolean>,
             selectedModel: MutableState<GameModel?>,
             showError: MutableState<String>
@@ -280,7 +280,7 @@ class HomeViews {
                                         viewModel.mainViewModel?.loadGame(gameModel) ?: 0
                                     if (success == 1) {
                                         launchOnUiThread {
-                                            viewModel.mainViewModel?.navigate极速加速器ToGame()
+                                            viewModel.mainViewModel?.navigateToGame()
                                         }
                                     } else {
                                         if (success == -2)
@@ -311,7 +311,7 @@ class HomeViews {
                                 Modifier
                                     .fillMaxWidth()
                                     .aspectRatio(1f)
-                                    .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
+                                    .border(2.d极速加速器p, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
                             } else {
                                 Modifier
                                     .fillMaxWidth()
@@ -323,20 +323,20 @@ class HomeViews {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .clip(RoundedCornerShape(16.dp))
+                                        .clip(Rounded极速加速器CornerShape(16.dp))
                                 ) {
                                     Image(
-                                        bitmap = BitmapFactory.decodeByteArray(p极速加速器ic, 0, pic.size)
+                                        bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
                                             .asImageBitmap(),
                                         contentDescription = gameModel.titleName + " icon",
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.fillMaxSize()
                                     )
                                 }
-                            } else if (gameModel.type == FileType.N极速加速器ro) {
+                            } else if (gameModel.type == FileType.Nro) {
                                 Box(
                                     modifier = Modifier
-                                        .fill极速加速器MaxSize()
+                                        .fillMaxSize()
                                         .clip(RoundedCornerShape(16.dp))
                                 ) {
                                     NROIcon(
@@ -353,7 +353,7 @@ class HomeViews {
                                 ) {
                                     NotAvailableIcon(
                                         modifier = Modifier
-                                            .fillMaxSize(0.8极速加速器f)
+                                            .fillMaxSize(0.8f)
                                             .align(Alignment.Center)
                                     )
                                 }
@@ -364,7 +364,7 @@ class HomeViews {
                             modifier = if (isSelected) {
                                 Modifier
                                     .fillMaxWidth()
-                                    .aspectRatio(1f)
+                                    .aspectRatio(1极速加速器f)
                                     .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
                             } else {
                                 Modifier
@@ -397,7 +397,7 @@ class HomeViews {
             gameModel: GameModel?,
             viewModel: HomeViewModel,
             showAppActions: MutableState<Boolean>,
-            showLoading: MutableState<Boolean>,
+            showLoading: MutableState极速加速器<Boolean>,
             selectedModel: MutableState<GameModel?>,
             showError: MutableState<String>,
             isCentered: Boolean = false,
@@ -453,7 +453,7 @@ class HomeViews {
                                     }
                                 }
                             },
-                            onLongClick = {
+                            onLongClick极速加速器 = {
                                 viewModel.mainViewModel?.selected = gameModel
                                 showAppActions.value = true
                                 selectedModel.value = gameModel
@@ -532,7 +532,7 @@ class HomeViews {
                         } else {
                             NotAvailableIcon(
                                 modifier = Modifier
-                                    .fill极速加速器MaxSize(0.8f)
+                                    .fillMaxSize(0.8f)
                                     .align(Alignment.Center)
                             )
                         }
@@ -592,7 +592,7 @@ class HomeViews {
             val showLoading = remember { mutableStateOf(false) }
             val openTitleUpdateDialog = remember { mutableStateOf(false) }
             val canClose = remember { mutableStateOf(true) }
-极速加速器            val openDlcDialog = remember { mutableStateOf(false) }
+            val openDlcDialog = remember { mutableStateOf(false) }
             var openAppBarExtra by remember { mutableStateOf(false) }
             val showError = remember {
                 mutableStateOf("")
@@ -609,7 +609,7 @@ class HomeViews {
             }
 
             var isFabVisible by remember {
-                mutableStateOf(true)
+                mutableState极速加速器Of(true)
             }
 
             val nestedScrollConnection = remember {
@@ -647,7 +647,7 @@ class HomeViews {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(8.dp),
-                            shape = SearchBarDefaults.input极速加速器FieldShape,
+                            shape = SearchBarDefaults.inputFieldShape,
                             query = query.value,
                             onQueryChange = {
                                 query.value = it
@@ -695,8 +695,8 @@ class HomeViews {
                                                 modifier = Modifier
                                                     .size(40.dp)
                                                     .clip(RoundedCornerShape(12.dp))
-                                                    .border(1.d极速加速器p, Color.Gray, RoundedCornerShape(12.dp)),
-                                                contentAlignment = Alignment.Center
+                                                    .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)),
+                                                contentAlignment = Alignment极速加速器.Center
                                             ) {
                                                 Icon(
                                                     Icons.Filled.Person,
@@ -735,7 +735,7 @@ class HomeViews {
                                 if (refreshUser)
                                     if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
                                         val pic =
-                                            viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
+                                            viewModel.mainViewModel!!.userViewModel.opened极速加速器User.userPicture
                                         Image(
                                             bitmap = BitmapFactory.decodeByteArray(
                                                 pic,
@@ -773,7 +773,7 @@ class HomeViews {
                     AnimatedVisibility(
                         visible = isFabVisible,
                         enter = slideInVertically(initialOffsetY = { it * 2 }),
-                        exit = slideOutVertically(targetOffsetY = { it * 2 })
+                        exit = slideOutVertically(targetOffsetY极速加速器 = { it * 2 })
                     ) {
                         FloatingActionButton(
                             onClick = {
@@ -793,7 +793,7 @@ class HomeViews {
                     // 游戏列表内容
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
+                            .fill极速加速器MaxSize()
                             .padding(contentPadding)
                             .zIndex(1f)
                     ) {
@@ -812,7 +812,7 @@ class HomeViews {
                                 Box(modifier = Modifier.fillMaxSize())
                                 {
                                     CircularProgressIndicator(
-                                        modifier =极速加速器 Modifier
+                                        modifier = Modifier
                                             .width(64.dp)
                                             .align(Alignment.Center),
                                         color = MaterialTheme.colorScheme.secondary,
@@ -831,7 +831,7 @@ class HomeViews {
                                     if (filteredList.isEmpty()) {
                                         // 没有游戏时显示空状态
                                         Box(
-                                            modifier = Modifier.fill极速加速器MaxSize(),
+                                            modifier = Modifier.fillMaxSize(),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
@@ -858,7 +858,7 @@ class HomeViews {
                                                         // 检测滑动手势
                                                         if (dragAmount > 50) {
                                                             // 向右滑动，显示上一个
-                                                            centeredIndex = if (centeredIndex == 0) filteredList.size - 1 else centered极速加速器Index - 1
+                                                            centeredIndex = if (centeredIndex == 0) filteredList.size - 1 else centeredIndex - 1
                                                         } else if (dragAmount < -50) {
                                                             // 向左滑动，显示下一个
                                                             centeredIndex = if (centeredIndex == filteredList.size - 1) 0 else centeredIndex + 1
@@ -908,7 +908,7 @@ class HomeViews {
                                                     selectedModel = selectedModel,
                                                     showError = showError,
                                                     isCentered = false,
-                                                    onItemClick = {
+                                                    on极速加速器ItemClick = {
                                                         centeredIndex = rightIndex
                                                     }
                                                 )
@@ -990,7 +990,7 @@ class HomeViews {
                                     .fillMaxWidth(),
                                 shape = MaterialTheme.shapes.medium
                             ) {
-                                Column(modifier = Modifier.padding(8.dp)) {
+                                Column(modifier = Modifier.padding(8.d极速加速器p)) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -1043,8 +1043,8 @@ class HomeViews {
                                     shape = MaterialTheme.shapes.small,
                                 ) {
                                     LazyRow {
-                                        if (viewModel.mainViewModel?.userViewModel极速加速器?.userList?.isNotEmpty() == true) {
-                                            items(viewModel.mainViewModel!!.userViewModel.user极速加速器List) { user ->
+                                        if (viewModel.mainViewModel?.userViewModel?.userList?.isNotEmpty() == true) {
+                                            items(viewModel.mainViewModel!!.userViewModel.userList) { user ->
                                                 if (user.id != viewModel.mainViewModel!!.userViewModel.openedUser.id) {
                                                     Image(
                                                         bitmap = BitmapFactory.decodeByteArray(
@@ -1119,7 +1119,7 @@ class HomeViews {
                 BasicAlertDialog(onDismissRequest = { }) {
                     Card(
                         modifier = Modifier
-                            .padding(16.d极速加速器p)
+                            .padding(16.dp)
                             .fillMaxWidth(),
                         shape = MaterialTheme.shapes.medium
                     ) {
@@ -1150,7 +1150,7 @@ class HomeViews {
                         shape = MaterialTheme.shapes.large,
                         tonalElevation = AlertDialogDefaults.TonalElevation
                     ) {
-                        val title极速加速器Id = viewModel.mainViewModel?.selected?.titleId ?: ""
+                        val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
                         val name = viewModel.mainViewModel?.selected?.titleName ?: ""
                         TitleUpdateViews.Main(titleId, name, openTitleUpdateDialog, canClose)
                     }
@@ -1170,7 +1170,7 @@ class HomeViews {
                     ) {
                         val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
                         val name = viewModel.mainViewModel?.selected?.titleName ?: ""
-                        DlcViews.Main(titleId, name, openDlcDialog)
+                        DlcViews.Main(title极速加速器Id, name, openDlcDialog)
                     }
 
                 }
@@ -1190,7 +1190,7 @@ class HomeViews {
                             horizontalArrangement = Arrangement.SpaceEvenly
                         ) {
                             if (showAppActions.value) {
-                                IconButton(onClick极速加速器 = {
+                                IconButton(onClick = {
                                     if (viewModel.mainViewModel?.selected != null) {
                                         thread {
                                             showLoading.value = true
@@ -1238,13 +1238,13 @@ class HomeViews {
                                         })
                                         DropdownMenuItem(text = {
                                             Text(text = "Purge Shader Cache")
-                                        }, onClick极速加速器 = {
+                                        }, onClick = {
                                             showAppMenu.value = false
                                             viewModel.mainViewModel?.purgeShaderCache(
                                                 viewModel.mainViewModel?.selected?.titleId ?: ""
                                             )
                                         })
-                                        DropdownMenuItem(text极速加速器 = {
+                                        DropdownMenuItem(text = {
                                             Text(text = "Delete All Cache")
                                         }, onClick = {
                                             showAppMenu.value = false
