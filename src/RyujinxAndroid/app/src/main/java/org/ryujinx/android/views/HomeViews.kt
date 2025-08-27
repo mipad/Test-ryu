@@ -1076,7 +1076,7 @@ class HomeViews {
                                         modifier = Modifier.fillMaxSize(),
                                         onClick = {
                                             openAppBarExtra = false
-                                            navController?.navigate("user"
+                                            navController?.navigate("user")
                                         }) {
                                         Icon(
                                             Icons.Filled.Add,
@@ -1274,4 +1274,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}
+}}}
