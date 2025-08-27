@@ -311,7 +311,7 @@ class HomeViews {
                                 Modifier
                                     .fillMaxWidth()
                                     .aspectRatio(1f)
-                                    .border(2.d极速加速器p, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
+                                    .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
                             } else {
                                 Modifier
                                     .fillMaxWidth()
@@ -323,7 +323,7 @@ class HomeViews {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .clip(Rounded极速加速器CornerShape(16.dp))
+                                        .clip(RoundedCornerShape(16.dp))
                                 ) {
                                     Image(
                                         bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
@@ -364,7 +364,7 @@ class HomeViews {
                             modifier = if (isSelected) {
                                 Modifier
                                     .fillMaxWidth()
-                                    .aspectRatio(1极速加速器f)
+                                    .aspectRatio(1f)
                                     .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
                             } else {
                                 Modifier
@@ -397,7 +397,7 @@ class HomeViews {
             gameModel: GameModel?,
             viewModel: HomeViewModel,
             showAppActions: MutableState<Boolean>,
-            showLoading: MutableState极速加速器<Boolean>,
+            showLoading: MutableState<Boolean>,
             selectedModel: MutableState<GameModel?>,
             showError: MutableState<String>,
             isCentered: Boolean = false,
@@ -453,7 +453,7 @@ class HomeViews {
                                     }
                                 }
                             },
-                            onLongClick极速加速器 = {
+                            onLongClick = {
                                 viewModel.mainViewModel?.selected = gameModel
                                 showAppActions.value = true
                                 selectedModel.value = gameModel
@@ -609,7 +609,7 @@ class HomeViews {
             }
 
             var isFabVisible by remember {
-                mutableState极速加速器Of(true)
+                mutableStateOf(true)
             }
 
             val nestedScrollConnection = remember {
@@ -696,7 +696,7 @@ class HomeViews {
                                                     .size(40.dp)
                                                     .clip(RoundedCornerShape(12.dp))
                                                     .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)),
-                                                contentAlignment = Alignment极速加速器.Center
+                                                contentAlignment = Alignment.Center
                                             ) {
                                                 Icon(
                                                     Icons.Filled.Person,
@@ -735,7 +735,7 @@ class HomeViews {
                                 if (refreshUser)
                                     if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
                                         val pic =
-                                            viewModel.mainViewModel!!.userViewModel.opened极速加速器User.userPicture
+                                            viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
                                         Image(
                                             bitmap = BitmapFactory.decodeByteArray(
                                                 pic,
@@ -773,7 +773,7 @@ class HomeViews {
                     AnimatedVisibility(
                         visible = isFabVisible,
                         enter = slideInVertically(initialOffsetY = { it * 2 }),
-                        exit = slideOutVertically(targetOffsetY极速加速器 = { it * 2 })
+                        exit = slideOutVertically(targetOffsetY = { it * 2 })
                     ) {
                         FloatingActionButton(
                             onClick = {
@@ -793,7 +793,7 @@ class HomeViews {
                     // 游戏列表内容
                     Box(
                         modifier = Modifier
-                            .fill极速加速器MaxSize()
+                            .fillMaxSize()
                             .padding(contentPadding)
                             .zIndex(1f)
                     ) {
@@ -908,7 +908,7 @@ class HomeViews {
                                                     selectedModel = selectedModel,
                                                     showError = showError,
                                                     isCentered = false,
-                                                    on极速加速器ItemClick = {
+                                                    onItemClick = {
                                                         centeredIndex = rightIndex
                                                     }
                                                 )
@@ -990,7 +990,7 @@ class HomeViews {
                                     .fillMaxWidth(),
                                 shape = MaterialTheme.shapes.medium
                             ) {
-                                Column(modifier = Modifier.padding(8.d极速加速器p)) {
+                                Column(modifier = Modifier.padding(8.dp)) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -1170,7 +1170,7 @@ class HomeViews {
                     ) {
                         val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
                         val name = viewModel.mainViewModel?.selected?.titleName ?: ""
-                        DlcViews.Main(title极速加速器Id, name, openDlcDialog)
+                        DlcViews.Main(titleId, name, openDlcDialog)
                     }
 
                 }
@@ -1279,4 +1279,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}}}
+}
