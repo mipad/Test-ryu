@@ -440,9 +440,7 @@ class HomeViews {
 
             if (isCentered) {
                 // 中央项目 - 显示完整信息
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainer,
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(200.dp)
@@ -480,80 +478,45 @@ class HomeViews {
                             }
                         )
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .fillMaxSize()
-                    ) {
-                        // 上部：图标和版本信息
-                        Row(
+                    // 中央大图标
+                    if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
+                        Box(
                             modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                                .fillMaxSize()
+                                .padding(horizontal = 80.dp, vertical = 16.dp)
                         ) {
-                            // 图标部分
-                            if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
+                            if (gameModel.icon?.isNotEmpty() == true) {
+                                val pic = decoder.decode(gameModel.icon)
                                 Box(
-                                    modifier = if (isSelected) {
-                                        Modifier
-                                            .size(120.dp)
-                                            .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
-                                    } else {
-                                        Modifier.size(120.dp)
-                                    }
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(RoundedCornerShape(16.dp))
                                 ) {
-                                    if (gameModel.icon?.isNotEmpty() == true) {
-                                        val pic = decoder.decode(gameModel.icon)
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .clip(RoundedCornerShape(16.dp))
-                                        ) {
-                                            Image(
-                                                bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
-                                                    .asImageBitmap(),
-                                                contentDescription = gameModel.titleName + " icon",
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier.fillMaxSize()
-                                            )
-                                        }
-                                    } else if (gameModel.type == FileType.Nro) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .clip(RoundedCornerShape(16.dp))
-                                        ) {
-                                            NROIcon(
-                                                modifier = Modifier
-                                                    .fillMaxSize(0.8f)
-                                                    .align(Alignment.Center)
-                                            )
-                                        }
-                                    } else {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .clip(RoundedCornerShape(16.dp))
-                                        ) {
-                                            NotAvailableIcon(
-                                                modifier = Modifier
-                                                    .fillMaxSize(0.8f)
-                                                    .align(Alignment.Center)
-                                            )
-                                        }
-                                    }
+                                    Image(
+                                        bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
+                                            .asImageBitmap(),
+                                        contentDescription = gameModel.titleName + " icon",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                            } else if (gameModel.type == FileType.Nro) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(RoundedCornerShape(16.dp))
+                                ) {
+                                    NROIcon(
+                                        modifier = Modifier
+                                            .fillMaxSize(0.8f)
+                                            .align(Alignment.Center)
+                                    )
                                 }
                             } else {
                                 Box(
-                                    modifier = if (isSelected) {
-                                        Modifier
-                                            .size(120.dp)
-                                            .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
-                                    } else {
-                                        Modifier.size(120.dp)
-                                    }
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(RoundedCornerShape(16.dp))
                                 ) {
                                     NotAvailableIcon(
                                         modifier = Modifier
@@ -562,60 +525,76 @@ class HomeViews {
                                     )
                                 }
                             }
-                            
-                            // 版本信息部分 - 右侧横向显示
-                            Column(
-                                horizontalAlignment = Alignment.End,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Text(
-                                    text = "版本",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = gameModel.version ?: "1.0.0",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "开发者",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = gameModel.developer ?: "",
-                                    fontSize = 14.sp,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
                         }
-                        
-                        // 底部：游戏名称
-                        Text(
-                            text = gameModel.titleName ?: "N/A",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                    } else {
+                        Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp)
-                                .basicMarquee(),
-                            fontSize = 18.sp,
+                                .fillMaxSize()
+                                .padding(horizontal = 80.dp, vertical = 16.dp)
+                        ) {
+                            NotAvailableIcon(
+                                modifier = Modifier
+                                    .fillMaxSize(0.8f)
+                                    .align(Alignment.Center)
+                            )
+                        }
+                    }
+
+                    // 版本信息 - 右上角
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        Text(
+                            text = "版本",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = gameModel.version ?: "1.0.0",
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "开发者",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = gameModel.developer ?: "",
+                            fontSize = 14.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
                     }
+
+                    // 游戏名称 - 底部
+                    Text(
+                        text = gameModel.titleName ?: "N/A",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 16.dp)
+                            .fillMaxWidth(0.8f)
+                            .basicMarquee(),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
                 }
             } else {
-                // 两侧项目 - 只显示图标
+                // 两侧项目 - 只显示小图标
                 Box(
                     modifier = Modifier
-                        .size(120.dp)
+                        .size(80.dp)
                         .clip(RoundedCornerShape(16.dp))
                         .clickable { onItemClick() }
                 ) {
@@ -938,9 +917,6 @@ class HomeViews {
                                                     }
                                                 }
                                         ) {
-                                            // 中央框 - 始终显示
-                                            CenterFrameBox()
-                                            
                                             // 游戏项目
                                             Row(
                                                 modifier = Modifier
@@ -987,39 +963,6 @@ class HomeViews {
                                                         centeredIndex = rightIndex
                                                     }
                                                 )
-                                            }
-                                            
-                                            // 导航按钮
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(horizontal = 16.dp)
-                                                    .align(Alignment.Center),
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                IconButton(
-                                                    onClick = {
-                                                        centeredIndex = if (centeredIndex == 0) filteredList.size - 1 else centeredIndex - 1
-                                                    },
-                                                    modifier = Modifier.size(48.dp)
-                                                ) {
-                                                    Icon(
-                                                        Icons.Filled.ArrowBack,
-                                                        contentDescription = "Previous"
-                                                    )
-                                                }
-                                                
-                                                IconButton(
-                                                    onClick = {
-                                                        centeredIndex = if (centeredIndex == filteredList.size - 1) 0 else centeredIndex + 1
-                                                    },
-                                                    modifier = Modifier.size(48.dp)
-                                                ) {
-                                                    Icon(
-                                                        Icons.Filled.ArrowForward,
-                                                        contentDescription = "Next"
-                                                    )
-                                                }
                                             }
                                         }
                                     }
@@ -1198,21 +1141,23 @@ class HomeViews {
                                 }
                             }
                         }
-                        TextButton(modifier = Modifier.fillMaxWidth(),
+                        TextButton(
+                            modifier = Modifier.fillMaxWidth(),
                             onClick = {
                                 navController?.navigate("settings")
                             }
                         ) {
-                            Row(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Icon(
                                     Icons.Filled.Settings,
                                     contentDescription = "Settings"
                                 )
                                 Text(
                                     text = "Settings",
-                                    modifier = Modifier
-                                        .align(Alignment.CenterVertically)
-                                        .padding(start = 8.dp)
+                                    modifier = Modifier.padding(start = 8.dp)
                                 )
                             }
                         }
@@ -1384,4 +1329,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}}}
+}
