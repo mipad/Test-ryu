@@ -435,7 +435,7 @@ class HomeViews {
                                         selected = null
                                     }
                                     selectedModel.value = null
-                                } else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro) {
+                                else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro) {
                                     thread {
                                         showLoading.value = true
                                         val success =
@@ -678,83 +678,77 @@ class HomeViews {
 
                         }
                     } else {
-                        // 横屏模式下的搜索栏和用户头像组合
-                        Row(
+                        // 横屏模式下的搜索栏 - 用户头像内嵌在搜索框左侧
+                        Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(8.dp)
+                                .height(48.dp),
+                            shape = RoundedCornerShape(24.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
                         ) {
-                            // 搜索框
-                            SearchBar(
+                            Row(
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp),
-                                shape = SearchBarDefaults.inputFieldShape,
-                                query = query,
-                                onQueryChange = {
-                                    query = it
-                                },
-                                onSearch = {},
-                                active = false,
-                                onActiveChange = {},
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.Filled.Search,
-                                        contentDescription = "Search Games"
-                                    )
-                                },
-                                placeholder = {
-                                    Text(text = "Search Games")
-                                },
-                                trailingIcon = {}
-                            ) {}
-                            
-                            // 用户头像
-                            IconButton(
-                                onClick = {
-                                    openAppBarExtra = !openAppBarExtra
-                                },
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .padding(start = 8.dp)
+                                    .fillMaxSize()
+                                    .padding(horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                if (!refreshUser) {
-                                    refreshUser = true
-                                }
-                                if (refreshUser)
-                                    if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
-                                        val pic =
-                                            viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
-                                        Image(
-                                            bitmap = BitmapFactory.decodeByteArray(
-                                                pic,
-                                                0,
-                                                pic?.size ?: 0
+                                // 用户头像 - 内嵌在搜索框左侧
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .border(1.dp, Color.Gray, RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            openAppBarExtra = !openAppBarExtra
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (!refreshUser) {
+                                        refreshUser = true
+                                    }
+                                    if (refreshUser)
+                                        if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
+                                            val pic =
+                                                viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
+                                            Image(
+                                                bitmap = BitmapFactory.decodeByteArray(
+                                                    pic,
+                                                    0,
+                                                    pic?.size ?: 0
+                                                )
+                                                    .asImageBitmap(),
+                                                contentDescription = "user image",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .size(34.dp)
+                                                    .clip(RoundedCornerShape(10.dp))
                                             )
-                                                .asImageBitmap(),
-                                            contentDescription = "user image",
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier
-                                                .size(40.dp)
-                                                .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
-                                                .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)) // 添加边框
-                                        )
-                                    } else {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(40.dp)
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
+                                        } else {
                                             Icon(
                                                 Icons.Filled.Person,
                                                 contentDescription = "user",
-                                                modifier = Modifier.size(24.dp)
+                                                modifier = Modifier.size(20.dp)
                                             )
                                         }
-                                    }
+                                }
+                                
+                                // 搜索文本
+                                Text(
+                                    text = "Search Games",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .padding(start = 8.dp)
+                                        .weight(1f)
+                                )
+                                
+                                // 搜索图标（可选）
+                                Icon(
+                                    Icons.Filled.Search,
+                                    contentDescription = "Search",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
                         }
                     }
