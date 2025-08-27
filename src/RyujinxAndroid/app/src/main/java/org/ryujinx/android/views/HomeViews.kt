@@ -273,7 +273,7 @@ class HomeViews {
                                     selected = null
                                 }
                                 selectedModel.value = null
-                            } else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro) {
+                            else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro) {
                                 thread {
                                     showLoading.value = true
                                     val success =
@@ -422,10 +422,11 @@ class HomeViews {
             val decoder = Base64.getDecoder()
 
             if (isCentered) {
-                // 中央项目 - 显示完整信息
-                Column(
+                // 中央项目 - 只显示图标，不显示文字
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.6f) // 减少中央项目宽度为60%
+                        .fillMaxWidth(0.6f)
+                        .aspectRatio(1.3f)
                         .combinedClickable(
                             onClick = {
                                 if (viewModel.mainViewModel?.selected != null) {
@@ -458,81 +459,37 @@ class HomeViews {
                                 showAppActions.value = true
                                 selectedModel.value = gameModel
                             }
-                        ),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    // 游戏名称和版本号 - 放在图标上方
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp), // 增加底部间距
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = gameModel.titleName ?: "N/A",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .basicMarquee(),
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.Center
                         )
-                        if (!gameModel.version.isNullOrEmpty()) {
-                            Text(
-                                text = "v${gameModel.version}",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Normal,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        }
-                    }
-                    
-                    // 中央图标 - 调整为1.3:1比例，使用Fit保持完整显示
-                    Box(
-                        modifier = if (isSelected) {
-                            Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1.3f)
-                                .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
-                        } else {
-                            Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1.3f)
-                        }
-                    ) {
-                        if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
-                            if (gameModel.icon?.isNotEmpty() == true) {
-                                val pic = decoder.decode(gameModel.icon)
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(12.dp))
-                                ) {
-                                    Image(
-                                        bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
-                                            .asImageBitmap(),
-                                        contentDescription = gameModel.titleName + " icon",
-                                        contentScale = ContentScale.Crop, // 改回Crop以确保填充整个区域
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
-                            } else if (gameModel.type == FileType.Nro) {
-                                NROIcon(
-                                    modifier = Modifier
-                                        .fillMaxSize(0.8f)
-                                        .align(Alignment.Center)
+                        .then(
+                            if (isSelected) {
+                                Modifier.border(
+                                    2.dp,
+                                    MaterialTheme.colorScheme.primary,
+                                    RoundedCornerShape(12.dp)
                                 )
                             } else {
-                                NotAvailableIcon(
-                                    modifier = Modifier
-                                        .fillMaxSize(0.8f)
-                                        .align(Alignment.Center)
-                                )
+                                Modifier
                             }
+                        )
+                ) {
+                    if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
+                        if (gameModel.icon?.isNotEmpty() == true) {
+                            val pic = decoder.decode(gameModel.icon)
+                            Image(
+                                bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
+                                    .asImageBitmap(),
+                                contentDescription = gameModel.titleName + " icon",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(12.dp))
+                            )
+                        } else if (gameModel.type == FileType.Nro) {
+                            NROIcon(
+                                modifier = Modifier
+                                    .fillMaxSize(0.8f)
+                                    .align(Alignment.Center)
+                            )
                         } else {
                             NotAvailableIcon(
                                 modifier = Modifier
@@ -540,6 +497,12 @@ class HomeViews {
                                     .align(Alignment.Center)
                             )
                         }
+                    } else {
+                        NotAvailableIcon(
+                            modifier = Modifier
+                                .fillMaxSize(0.8f)
+                                .align(Alignment.Center)
+                        )
                     }
                 }
             } else {
@@ -715,23 +678,46 @@ class HomeViews {
 
                         }
                     } else {
-                        // 横屏模式下的紧凑搜索栏 - 只显示用户图标，并往左下移动
+                        // 横屏模式下的搜索栏和用户头像组合
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 8.dp, horizontal = 16.dp) // 增加内边距
-                                .height(48.dp),
-                            horizontalArrangement = Arrangement.End,
+                                .padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Spacer(modifier = Modifier.weight(1f)) // 添加弹性空间，将图标推向右侧
+                            // 搜索框
+                            SearchBar(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp),
+                                shape = SearchBarDefaults.inputFieldShape,
+                                query = query.value,
+                                onQueryChange = {
+                                    query.value = it
+                                },
+                                onSearch = {},
+                                active = false,
+                                onActiveChange = {},
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Filled.Search,
+                                        contentDescription = "Search Games"
+                                    )
+                                },
+                                placeholder = {
+                                    Text(text = "Search Games")
+                                },
+                                trailingIcon = {}
+                            ) {}
+                            
+                            // 用户头像
                             IconButton(
                                 onClick = {
                                     openAppBarExtra = !openAppBarExtra
                                 },
                                 modifier = Modifier
                                     .size(48.dp)
-                                    .padding(end = 8.dp, bottom = 4.dp) // 调整位置，更容易点击
+                                    .padding(start = 8.dp)
                             ) {
                                 if (!refreshUser) {
                                     refreshUser = true
@@ -1189,11 +1175,33 @@ class HomeViews {
                     sheetState = sheetState,
                     scrimColor = Color.Transparent,
                     content = {
-                        Row(
-                            modifier = Modifier.padding(8.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
                         ) {
-                            if (showAppActions.value) {
+                            // 显示游戏名和版本号
+                            selectedModel.value?.let { game ->
+                                Text(
+                                    text = game.titleName ?: "N/A",
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                                )
+                                if (!game.version.isNullOrEmpty()) {
+                                    Text(
+                                        text = "v${game.version}",
+                                        fontSize = 16.sp,
+                                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
                                 IconButton(onClick = {
                                     if (viewModel.mainViewModel?.selected != null) {
                                         thread {
@@ -1283,4 +1291,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}}}
+}
