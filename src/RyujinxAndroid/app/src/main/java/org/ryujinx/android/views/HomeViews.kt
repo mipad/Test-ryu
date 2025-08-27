@@ -272,7 +272,7 @@ class HomeViews {
                                     selected = null
                                 }
                                 selectedModel.value = null
-                            } else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro) {
+                            else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro) {
                                 thread {
                                     showLoading.value = true
                                     val success =
@@ -364,7 +364,7 @@ class HomeViews {
                                 Modifier
                                     .fillMaxWidth()
                                     .aspectRatio(1f)
-                                    .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
+                                    .border(2.dp, MaterialTheme.colorScheme.中央, RoundedCornerShape(16.dp))
                             } else {
                                 Modifier
                                     .fillMaxWidth()
@@ -390,22 +390,6 @@ class HomeViews {
             }
         }
 
-        @Composable
-        fun CenterFrameBox() {
-            Box(
-                modifier = Modifier
-                    .width(280.dp)
-                    .height(280.dp)
-                    .border(
-                        width = 2.dp,
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                        shape = RoundedCornerShape(16.dp)
-                    )
-            ) {
-                // 空框，只显示边框，背景透明
-            }
-        }
-
         @OptIn(ExperimentalFoundationApi::class)
         @Composable
         fun LandscapeGameCarouselItem(
@@ -422,7 +406,7 @@ class HomeViews {
                 // 空项目
                 Box(
                     modifier = Modifier
-                        .size(120.dp)
+                        .size(100.dp)
                         .clip(RoundedCornerShape(16.dp))
                 ) {
                     // 空项目不显示任何内容
@@ -440,26 +424,68 @@ class HomeViews {
                 // 中央项目 - 显示完整信息
                 Box(
                     modifier = Modifier
-                        .width(280.dp)
-                        .height(280.dp)
+                        .fillMaxWidth()
+                        .height(220.dp)
+                        .combinedClickable(
+                            onClick = {
+                                if (viewModel.mainViewModel?.selected != null) {
+                                    showAppActions.value = false
+                                    viewModel.mainViewModel?.apply {
+                                        selected = null
+                                    }
+                                    selectedModel.value = null
+                                } else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro) {
+                                    thread {
+                                        showLoading.value = true
+                                        val success =
+                                            viewModel.mainViewModel?.loadGame(gameModel) ?: 0
+                                        if (success == 1) {
+                                            launchOnUiThread {
+                                                viewModel.mainViewModel?.navigateToGame()
+                                            }
+                                        } else {
+                                            if (success == -2)
+                                                showError.value =
+                                                    "Error loading update. Please re-add update file"
+                                            gameModel.close()
+                                        }
+                                        showLoading.value = false
+                                    }
+                                }
+                            },
+                            onLongClick = {
+                                viewModel.mainViewModel?.selected = gameModel
+                                showAppActions.value = true
+                                selectedModel.value = gameModel
+                            }
+                        )
                 ) {
-                    // 中央框
-                    CenterFrameBox()
-                    
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(16.dp),
+                            .padding(horizontal = 16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.SpaceBetween
                     ) {
-                        // 图标部分 - 放大填满中央框
-                        if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
-                            Box(
-                                modifier = Modifier
-                                    .size(180.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                            ) {
+                        // 版本号 - 靠近顶部
+                        if (!gameModel.version.isNullOrEmpty()) {
+                            Text(
+                                text = "v${gameModel.version}",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                        }
+                        
+                        // 中央图标 - 1.3:1比例
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1.3f)
+                                .padding(vertical = 8.dp)
+                        ) {
+                            if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
                                 if (gameModel.icon?.isNotEmpty() == true) {
                                     val pic = decoder.decode(gameModel.icon)
                                     Image(
@@ -467,7 +493,9 @@ class HomeViews {
                                             .asImageBitmap(),
                                         contentDescription = gameModel.titleName + " icon",
                                         contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(12.dp))
                                     )
                                 } else if (gameModel.type == FileType.Nro) {
                                     NROIcon(
@@ -482,13 +510,7 @@ class HomeViews {
                                             .align(Alignment.Center)
                                     )
                                 }
-                            }
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .size(180.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                            ) {
+                            } else {
                                 NotAvailableIcon(
                                     modifier = Modifier
                                         .fillMaxSize(0.8f)
@@ -497,38 +519,28 @@ class HomeViews {
                             }
                         }
                         
-                        // 版本信息 - 贴着图标下方
+                        // 游戏名称 - 靠近底部
                         Text(
-                            text = "v${gameModel.version ?: "1.0.0"}",
+                            text = gameModel.titleName ?: "N/A",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp)
+                                .basicMarquee(),
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 8.dp)
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center
                         )
                     }
-                    
-                    // 游戏名称 - 贴着底部
-                    Text(
-                        text = gameModel.titleName ?: "N/A",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 16.dp)
-                            .fillMaxWidth()
-                            .basicMarquee(),
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.Center
-                    )
                 }
             } else {
                 // 两侧项目 - 只显示图标
                 Box(
                     modifier = Modifier
-                        .size(120.dp)
-                        .clip(RoundedCornerShape(16.dp))
+                        .size(80.dp)
+                        .clip(RoundedCornerShape(12.dp))
                         .clickable { onItemClick() }
                 ) {
                     if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
@@ -816,10 +828,8 @@ class HomeViews {
                                             modifier = Modifier.fillMaxSize(),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            CenterFrameBox()
                                             Text(
                                                 text = "No games found",
-                                                modifier = Modifier.padding(top = 220.dp),
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
@@ -854,7 +864,7 @@ class HomeViews {
                                             Row(
                                                 modifier = Modifier
                                                     .fillMaxSize()
-                                                    .padding(horizontal = 40.dp),
+                                                    .padding(horizontal = 16.dp),
                                                 horizontalArrangement = Arrangement.SpaceBetween,
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
