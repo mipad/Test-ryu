@@ -273,7 +273,7 @@ class HomeViews {
                                     selected = null
                                 }
                                 selectedModel.value = null
-                            else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro) {
+                            } else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro) {
                                 thread {
                                     showLoading.value = true
                                     val success =
@@ -1006,99 +1006,101 @@ class HomeViews {
                                                     Image(
                                                         bitmap = BitmapFactory.decodeByteArray(
                                                             pic,
-                                                    0,
-                                                    pic?.size ?: 0
-                                                )
-                                                    .asImageBitmap(),
-                                                contentDescription = "user image",
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier
-                                                    .padding(4.dp)
-                                                    .size(iconSize)
-                                                    .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
-                                            )
-                                        } else {
-                                            Icon(
-                                                Icons.Filled.Person,
-                                                contentDescription = "user",
-                                                modifier = Modifier.size(32.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                                Card(
-                                    modifier = Modifier
-                                        .padding(horizontal = 4.dp)
-                                        .fillMaxWidth(0.7f),
-                                    shape = MaterialTheme.shapes.small,
-                                ) {
-                                    LazyRow {
-                                        if (viewModel.mainViewModel?.userViewModel?.userList?.isNotEmpty() == true) {
-                                            items(viewModel.mainViewModel!!.userViewModel.userList) { user ->
-                                                if (user.id != viewModel.mainViewModel!!.userViewModel.openedUser.id) {
-                                                    Image(
-                                                        bitmap = BitmapFactory.decodeByteArray(
-                                                            user.userPicture,
                                                             0,
-                                                            user.userPicture?.size ?: 0
+                                                            pic?.size ?: 0
                                                         )
                                                             .asImageBitmap(),
-                                                        contentDescription = "selected image",
+                                                        contentDescription = "user image",
                                                         contentScale = ContentScale.Crop,
                                                         modifier = Modifier
                                                             .padding(4.dp)
                                                             .size(iconSize)
                                                             .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
-                                                            .combinedClickable(
-                                                                onClick = {
-                                                                    viewModel.mainViewModel!!.userViewModel.openUser(
-                                                                        user
-                                                                    )
-                                                                    refreshUser =
-                                                                        false
-                                                                })
+                                                    )
+                                                } else {
+                                                    Icon(
+                                                        Icons.Filled.Person,
+                                                        contentDescription = "user",
+                                                        modifier = Modifier.size(32.dp)
                                                     )
                                                 }
                                             }
                                         }
+                                        Card(
+                                            modifier = Modifier
+                                                .padding(horizontal = 4.dp)
+                                                .fillMaxWidth(0.7f),
+                                            shape = MaterialTheme.shapes.small,
+                                        ) {
+                                            LazyRow {
+                                                if (viewModel.mainViewModel?.userViewModel?.userList?.isNotEmpty() == true) {
+                                                    items(viewModel.mainViewModel!!.userViewModel.userList) { user ->
+                                                        if (user.id != viewModel.mainViewModel!!.userViewModel.openedUser.id) {
+                                                            Image(
+                                                                bitmap = BitmapFactory.decodeByteArray(
+                                                                    user.userPicture,
+                                                                    0,
+                                                                    user.userPicture?.size ?: 0
+                                                                )
+                                                                    .asImageBitmap(),
+                                                                contentDescription = "selected image",
+                                                                contentScale = ContentScale.Crop,
+                                                                modifier = Modifier
+                                                                    .padding(4.dp)
+                                                                    .size(iconSize)
+                                                                    .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
+                                                                    .combinedClickable(
+                                                                        onClick = {
+                                                                            viewModel.mainViewModel!!.userViewModel.openUser(
+                                                                                user
+                                                                            )
+                                                                            refreshUser =
+                                                                                false
+                                                                        })
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .size(iconSize)
+                                        ) {
+                                            IconButton(
+                                                modifier = Modifier.fillMaxSize(),
+                                                onClick = {
+                                                    openAppBarExtra = false
+                                                    navController?.navigate("user")
+                                                }) {
+                                                Icon(
+                                                    Icons.Filled.Add,
+                                                    contentDescription = "N/A"
+                                                )
+                                            }
+                                        }
                                     }
                                 }
-                                Box(
-                                    modifier = Modifier
-                                        .size(iconSize)
+                                TextButton(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    onClick = {
+                                        navController?.navigate("settings")
+                                    }
                                 ) {
-                                    IconButton(
-                                        modifier = Modifier.fillMaxSize(),
-                                        onClick = {
-                                            openAppBarExtra = false
-                                            navController?.navigate("user")
-                                        }) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
                                         Icon(
-                                            Icons.Filled.Add,
-                                            contentDescription = "N/A"
+                                            Icons.Filled.Settings,
+                                            contentDescription = "Settings"
+                                        )
+                                        Text(
+                                            text = "Settings",
+                                            modifier = Modifier.padding(start = 8.dp)
                                         )
                                     }
                                 }
-                            }
-                        }
-                        TextButton(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = {
-                                navController?.navigate("settings")
-                            }
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Filled.Settings,
-                                    contentDescription = "Settings"
-                                )
-                                Text(
-                                    text = "Settings",
-                                    modifier = Modifier.padding(start = 8.dp)
-                                )
                             }
                         }
                     }
