@@ -568,7 +568,7 @@ class HomeViews {
             val selectedModel = remember {
                 mutableStateOf(viewModel.mainViewModel?.selected)
             }
-            val query = remember {
+            var query by remember {
                 mutableStateOf("")
             }
             var refreshUser by remember {
@@ -615,9 +615,9 @@ class HomeViews {
                                 .fillMaxWidth()
                                 .padding(8.dp),
                             shape = SearchBarDefaults.inputFieldShape,
-                            query = query.value,
+                            query = query,
                             onQueryChange = {
-                                query.value = it
+                                query = it
                             },
                             onSearch = {},
                             active = false,
@@ -691,9 +691,9 @@ class HomeViews {
                                     .weight(1f)
                                     .height(48.dp),
                                 shape = SearchBarDefaults.inputFieldShape,
-                                query = query.value,
+                                query = query,
                                 onQueryChange = {
-                                    query.value = it
+                                    query = it
                                 },
                                 onSearch = {},
                                 active = false,
@@ -793,7 +793,7 @@ class HomeViews {
                         val isLoading = remember {
                             viewModel.isLoading
                         }
-                        viewModel.filter(query.value)
+                        viewModel.filter(query)
 
                         if (!isPreview) {
                             val settings = QuickSettings(viewModel.activity!!)
@@ -814,8 +814,8 @@ class HomeViews {
                                     // 横屏模式：使用自定义轮播布局
                                     val filteredList = list.filter {
                                         it.titleName?.isNotEmpty() == true && 
-                                        (query.value.trim().isEmpty() || 
-                                         it.titleName!!.lowercase(Locale.getDefault()).contains(query.value))
+                                        (query.trim().isEmpty() || 
+                                         it.titleName!!.lowercase(Locale.getDefault()).contains(query))
                                     }
                                     
                                     if (filteredList.isEmpty()) {
@@ -917,9 +917,9 @@ class HomeViews {
                                     ) {
                                         items(list) {
                                             it.titleName?.apply {
-                                                if (this.isNotEmpty() && (query.value.trim()
+                                                if (this.isNotEmpty() && (query.trim()
                                                         .isEmpty() || this.lowercase(Locale.getDefault())
-                                                        .contains(query.value))
+                                                        .contains(query))
                                                 ) {
                                                     GridGameItem(
                                                         gameModel = it,
@@ -939,11 +939,11 @@ class HomeViews {
                                     ) {
                                         items(list) {
                                             it.titleName?.apply {
-                                                if (this.isNotEmpty() && (query.value.trim()
+                                                if (this.isNotEmpty() && (query.trim()
                                                         .isEmpty() || this.lowercase(
                                                         Locale.getDefault()
                                                     )
-                                                        .contains(query.value))
+                                                        .contains(query))
                                                 ) {
                                                     Box(modifier = Modifier.animateItemPlacement()) {
                                                         ListGameItem(
@@ -1006,7 +1006,7 @@ class HomeViews {
                                                     Image(
                                                         bitmap = BitmapFactory.decodeByteArray(
                                                             pic,
-                                                            0,
+                                                                                           0,
                                                             pic?.size ?: 0
                                                         )
                                                             .asImageBitmap(),
@@ -1293,4 +1293,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}}}
+}
