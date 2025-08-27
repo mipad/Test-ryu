@@ -46,8 +46,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Card
@@ -396,15 +394,15 @@ class HomeViews {
         fun CenterFrameBox() {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp)
+                    .width(280.dp)
+                    .height(280.dp)
                     .border(
                         width = 2.dp,
                         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
                         shape = RoundedCornerShape(16.dp)
                     )
             ) {
-                // 空框，只显示边框
+                // 空框，只显示边框，背景透明
             }
         }
 
@@ -442,56 +440,28 @@ class HomeViews {
                 // 中央项目 - 显示完整信息
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp)
-                        .combinedClickable(
-                            onClick = {
-                                if (viewModel.mainViewModel?.selected != null) {
-                                    showAppActions.value = false
-                                    viewModel.mainViewModel?.apply {
-                                        selected = null
-                                    }
-                                    selectedModel.value = null
-                                } else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro) {
-                                    thread {
-                                        showLoading.value = true
-                                        val success =
-                                            viewModel.mainViewModel?.loadGame(gameModel) ?: 0
-                                        if (success == 1) {
-                                            launchOnUiThread {
-                                                viewModel.mainViewModel?.navigateToGame()
-                                            }
-                                        } else {
-                                            if (success == -2)
-                                                showError.value =
-                                                    "Error loading update. Please re-add update file"
-                                            gameModel.close()
-                                        }
-                                        showLoading.value = false
-                                    }
-                                }
-                            },
-                            onLongClick = {
-                                viewModel.mainViewModel?.selected = gameModel
-                                showAppActions.value = true
-                                selectedModel.value = gameModel
-                            }
-                        )
+                        .width(280.dp)
+                        .height(280.dp)
                 ) {
-                    // 中央大图标
-                    if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 80.dp, vertical = 16.dp)
-                        ) {
-                            if (gameModel.icon?.isNotEmpty() == true) {
-                                val pic = decoder.decode(gameModel.icon)
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(16.dp))
-                                ) {
+                    // 中央框
+                    CenterFrameBox()
+                    
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // 图标部分 - 放大填满中央框
+                        if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
+                            Box(
+                                modifier = Modifier
+                                    .size(180.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                            ) {
+                                if (gameModel.icon?.isNotEmpty() == true) {
+                                    val pic = decoder.decode(gameModel.icon)
                                     Image(
                                         bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
                                             .asImageBitmap(),
@@ -499,25 +469,13 @@ class HomeViews {
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.fillMaxSize()
                                     )
-                                }
-                            } else if (gameModel.type == FileType.Nro) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(16.dp))
-                                ) {
+                                } else if (gameModel.type == FileType.Nro) {
                                     NROIcon(
                                         modifier = Modifier
                                             .fillMaxSize(0.8f)
                                             .align(Alignment.Center)
                                     )
-                                }
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(16.dp))
-                                ) {
+                                } else {
                                     NotAvailableIcon(
                                         modifier = Modifier
                                             .fillMaxSize(0.8f)
@@ -525,56 +483,31 @@ class HomeViews {
                                     )
                                 }
                             }
-                        }
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 80.dp, vertical = 16.dp)
-                        ) {
-                            NotAvailableIcon(
+                        } else {
+                            Box(
                                 modifier = Modifier
-                                    .fillMaxSize(0.8f)
-                                    .align(Alignment.Center)
-                            )
+                                    .size(180.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                            ) {
+                                NotAvailableIcon(
+                                    modifier = Modifier
+                                        .fillMaxSize(0.8f)
+                                        .align(Alignment.Center)
+                                )
+                            }
                         }
-                    }
-
-                    // 版本信息 - 右上角
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(16.dp),
-                        horizontalAlignment = Alignment.End
-                    ) {
+                        
+                        // 版本信息 - 贴着图标下方
                         Text(
-                            text = "版本",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = gameModel.version ?: "1.0.0",
+                            text = "v${gameModel.version ?: "1.0.0"}",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "开发者",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = gameModel.developer ?: "",
-                            fontSize = 14.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 8.dp)
                         )
                     }
-
-                    // 游戏名称 - 底部
+                    
+                    // 游戏名称 - 贴着底部
                     Text(
                         text = gameModel.titleName ?: "N/A",
                         maxLines = 1,
@@ -582,19 +515,19 @@ class HomeViews {
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .padding(bottom = 16.dp)
-                            .fillMaxWidth(0.8f)
+                            .fillMaxWidth()
                             .basicMarquee(),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center
                     )
                 }
             } else {
-                // 两侧项目 - 只显示小图标
+                // 两侧项目 - 只显示图标
                 Box(
                     modifier = Modifier
-                        .size(80.dp)
+                        .size(120.dp)
                         .clip(RoundedCornerShape(16.dp))
                         .clickable { onItemClick() }
                 ) {
