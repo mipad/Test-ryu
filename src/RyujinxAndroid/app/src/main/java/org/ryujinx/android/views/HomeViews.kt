@@ -1,4 +1,4 @@
-package org.ryujinx.android.views 
+package org.ryujinx.android.views
 
 import android.content.res.Configuration
 import android.content.res.Resources
@@ -1012,7 +1012,54 @@ class HomeViews {
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
                                     Row(
-                                        modifier = Modifier
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
+                                            val pic = viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
+                                            Image(
+                                                bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
+                                                    .asImageBitmap(),
+                                                contentDescription = "user image",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .size(iconSize)
+                                                    .clip(CircleShape)
+                                            )
+                                        } else {
+                                            Icon(
+                                                Icons.Filled.Person,
+                                                contentDescription = "user",
+                                                modifier = Modifier.size(iconSize)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(16.dp))
+                                        Column {
+                                            Text(
+                                                text = viewModel.mainViewModel?.userViewModel?.openedUser?.userName ?: "User",
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = viewModel.mainViewModel?.userViewModel?.openedUser?.userId ?: "No ID"
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    TextButton(
+                                        onClick = {
+                                            // 处理用户设置
+                                            openAppBarExtra = false
+                                        }
+                                    ) {
+                                        Text("User Settings")
+                                    }
+                                    TextButton(
+                                        onClick = {
+                                            // 处理应用设置
+                                            openAppBarExtra = false
+                                        }
+                                    ) {
+                                        Text("App Settings")
                                     }
                                 }
                             }
@@ -1058,9 +1105,8 @@ class HomeViews {
                     ) {
                         val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
                         val name = viewModel.mainViewModel?.selected?.titleName ?: ""
-                        TitleUpdateViews.Main(titleId, name, openTitleUpdateDialog, canClose)
+                        // TitleUpdateViews.Main(titleId, name, openTitleUpdateDialog, canClose)
                     }
-
                 }
             }
             if (openDlcDialog.value) {
@@ -1076,9 +1122,8 @@ class HomeViews {
                     ) {
                         val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
                         val name = viewModel.mainViewModel?.selected?.titleName ?: ""
-                        DlcViews.Main(titleId, name, openDlcDialog)
+                        // DlcViews.Main(titleId, name, openDlcDialog)
                     }
-
                 }
             }
 
@@ -1108,6 +1153,7 @@ class HomeViews {
                                     Text(
                                         text = "v${game.version}",
                                         fontSize = 16.sp,
+                                        modifier = Modifier.align(Alignment.CenterHorizontally)
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(16.dp))
@@ -1147,6 +1193,28 @@ class HomeViews {
                                     IconButton(onClick = {
                                         showAppMenu.value = true
                                     }) {
+                                        Icon(Icons.Filled.Menu, contentDescription = "More")
+                                    }
+                                    DropdownMenu(
+                                        expanded = showAppMenu.value,
+                                        onDismissRequest = { showAppMenu.value = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Title Updates") },
+                                            onClick = {
+                                                openTitleUpdateDialog.value = true
+                                                showAppMenu.value = false
+                                                showAppActions.value = false
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("DLC") },
+                                            onClick = {
+                                                openDlcDialog.value = true
+                                                showAppMenu.value = false
+                                                showAppActions.value = false
+                                            }
+                                        )
                                     }
                                 }
                             }
