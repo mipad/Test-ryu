@@ -425,7 +425,7 @@ class HomeViews {
                 // 中央项目 - 显示完整信息
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .fillMaxWidth(0.7f) // 限制中央项目宽度为70%
                         .height(220.dp)
                         .combinedClickable(
                             onClick = {
@@ -468,22 +468,11 @@ class HomeViews {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.SpaceBetween
                     ) {
-                        // 版本号 - 靠近顶部
-                        if (!gameModel.version.isNullOrEmpty()) {
-                            Text(
-                                text = "v${gameModel.version}",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.padding(top = 8.dp)
-                            )
-                        }
-                        
-                        // 中央图标 - 1.3:1比例
+                        // 中央图标 - 调整为1:1比例
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1.3f)
+                                .fillMaxWidth(0.8f)
+                                .aspectRatio(1f)
                                 .padding(vertical = 8.dp)
                         ) {
                             if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
@@ -520,20 +509,32 @@ class HomeViews {
                             }
                         }
                         
-                        // 游戏名称 - 靠近底部
-                        Text(
-                            text = gameModel.titleName ?: "N/A",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 8.dp)
-                                .basicMarquee(),
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.Center
-                        )
+                        // 游戏名称和版本号
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = gameModel.titleName ?: "N/A",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .basicMarquee(),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.Center
+                            )
+                            if (!gameModel.version.isNullOrEmpty()) {
+                                Text(
+                                    text = "v${gameModel.version}",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Normal,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                        }
                     }
                 }
             } else {
@@ -861,12 +862,12 @@ class HomeViews {
                                                     }
                                                 }
                                         ) {
-                                            // 游戏项目
+                                            // 游戏项目 - 调整排列方式确保三个项目都能显示
                                             Row(
                                                 modifier = Modifier
                                                     .fillMaxSize()
-                                                    .padding(horizontal = 16.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                    .padding(horizontal = 8.dp), // 减少水平内边距
+                                                horizontalArrangement = Arrangement.SpaceEvenly, // 使用均匀分布
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 // 左侧项目
@@ -1075,7 +1076,7 @@ class HomeViews {
                                         modifier = Modifier.fillMaxSize(),
                                         onClick = {
                                             openAppBarExtra = false
-                                            navController?.navigate("user")
+                                            navController?.navigate("user"
                                         }) {
                                         Icon(
                                             Icons.Filled.Add,
@@ -1273,4 +1274,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}}}
+}
