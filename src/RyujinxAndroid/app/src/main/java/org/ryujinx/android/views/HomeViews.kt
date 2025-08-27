@@ -465,7 +465,7 @@ class HomeViews {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 8.dp), // 增加底部间距
+                            .padding(bottom = 12.dp), // 增加底部间距
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
@@ -507,15 +507,19 @@ class HomeViews {
                         if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
                             if (gameModel.icon?.isNotEmpty() == true) {
                                 val pic = decoder.decode(gameModel.icon)
-                                Image(
-                                    bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
-                                        .asImageBitmap(),
-                                    contentDescription = gameModel.titleName + " icon",
-                                    contentScale = ContentScale.Fit, // 改为Fit确保完整显示
+                                Box(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .clip(RoundedCornerShape(12.dp))
-                                )
+                                ) {
+                                    Image(
+                                        bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
+                                            .asImageBitmap(),
+                                        contentDescription = gameModel.titleName + " icon",
+                                        contentScale = ContentScale.Crop, // 改回Crop以确保填充整个区域
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
                             } else if (gameModel.type == FileType.Nro) {
                                 NROIcon(
                                     modifier = Modifier
@@ -715,7 +719,7 @@ class HomeViews {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 4.dp, horizontal = 8.dp)
+                                .padding(vertical = 8.dp, horizontal = 16.dp) // 增加内边距
                                 .height(48.dp),
                             horizontalArrangement = Arrangement.End,
                             verticalAlignment = Alignment.CenterVertically
@@ -727,7 +731,7 @@ class HomeViews {
                                 },
                                 modifier = Modifier
                                     .size(48.dp)
-                                    .padding(end = 16.dp, bottom = 8.dp) // 往左下移动
+                                    .padding(end = 8.dp, bottom = 4.dp) // 调整位置，更容易点击
                             ) {
                                 if (!refreshUser) {
                                     refreshUser = true
