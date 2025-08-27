@@ -423,10 +423,9 @@ class HomeViews {
 
             if (isCentered) {
                 // 中央项目 - 显示完整信息
-                Box(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth(0.7f) // 限制中央项目宽度为70%
-                        .height(220.dp)
                         .combinedClickable(
                             onClick = {
                                 if (viewModel.mainViewModel?.selected != null) {
@@ -459,47 +458,40 @@ class HomeViews {
                                 showAppActions.value = true
                                 selectedModel.value = gameModel
                             }
-                        )
+                        ),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.SpaceBetween
+                    // 中央图标 - 调整为1.3:1比例
+                    Box(
+                        modifier = if (isSelected) {
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1.3f)
+                                .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
+                        } else {
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1.3f)
+                        }
                     ) {
-                        // 中央图标 - 调整为1:1比例
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(0.8f)
-                                .aspectRatio(1f)
-                                .padding(vertical = 8.dp)
-                        ) {
-                            if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
-                                if (gameModel.icon?.isNotEmpty() == true) {
-                                    val pic = decoder.decode(gameModel.icon)
-                                    Image(
-                                        bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
-                                            .asImageBitmap(),
-                                        contentDescription = gameModel.titleName + " icon",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .clip(RoundedCornerShape(12.dp))
-                                    )
-                                } else if (gameModel.type == FileType.Nro) {
-                                    NROIcon(
-                                        modifier = Modifier
-                                            .fillMaxSize(0.8f)
-                                            .align(Alignment.Center)
-                                    )
-                                } else {
-                                    NotAvailableIcon(
-                                        modifier = Modifier
-                                            .fillMaxSize(0.8f)
-                                            .align(Alignment.Center)
-                                    )
-                                }
+                        if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
+                            if (gameModel.icon?.isNotEmpty() == true) {
+                                val pic = decoder.decode(gameModel.icon)
+                                Image(
+                                    bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
+                                        .asImageBitmap(),
+                                    contentDescription = gameModel.titleName + " icon",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(RoundedCornerShape(12.dp))
+                                )
+                            } else if (gameModel.type == FileType.Nro) {
+                                NROIcon(
+                                    modifier = Modifier
+                                        .fillMaxSize(0.8f)
+                                        .align(Alignment.Center)
+                                )
                             } else {
                                 NotAvailableIcon(
                                     modifier = Modifier
@@ -507,33 +499,42 @@ class HomeViews {
                                         .align(Alignment.Center)
                                 )
                             }
-                        }
-                        
-                        // 游戏名称和版本号
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = gameModel.titleName ?: "N/A",
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                        } else {
+                            NotAvailableIcon(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .basicMarquee(),
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                textAlign = TextAlign.Center
+                                    .fillMaxSize(0.8f)
+                                    .align(Alignment.Center)
                             )
-                            if (!gameModel.version.isNullOrEmpty()) {
-                                Text(
-                                    text = "v${gameModel.version}",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Normal,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(top = 4.dp)
-                                )
-                            }
+                        }
+                    }
+                    
+                    // 游戏名称和版本号
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = gameModel.titleName ?: "N/A",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .basicMarquee(),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center
+                        )
+                        if (!gameModel.version.isNullOrEmpty()) {
+                            Text(
+                                text = "v${gameModel.version}",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
                         }
                     }
                 }
@@ -700,68 +701,49 @@ class HomeViews {
 
                         }
                     } else {
-                        // 横屏模式下的紧凑搜索栏
-                        SearchBar(
+                        // 横屏模式下的紧凑搜索栏 - 只显示用户图标
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp, horizontal = 8.dp)
                                 .height(48.dp),
-                            shape = SearchBarDefaults.inputFieldShape,
-                            query = query.value,
-                            onQueryChange = {
-                                query.value = it
-                            },
-                            onSearch = {},
-                            active = false,
-                            onActiveChange = {},
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Filled.Search,
-                                    contentDescription = "Search Games",
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            },
-                            placeholder = {
-                                Text(text = "Ryujinx", fontSize = 11.sp)
-                            },
-                            trailingIcon = {
-                                IconButton(
-                                    onClick = {
-                                        openAppBarExtra = !openAppBarExtra
-                                    },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    if (!refreshUser) {
-                                        refreshUser = true
-                                    }
-                                    if (refreshUser)
-                                        if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
-                                            val pic =
-                                                viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
-                                            Image(
-                                                bitmap = BitmapFactory.decodeByteArray(
-                                                    pic,
-                                                    0,
-                                                    pic?.size ?: 0
-                                                )
-                                                    .asImageBitmap(),
-                                                contentDescription = "user image",
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier
-                                                    .size(32.dp)
-                                                    .clip(CircleShape)
-                                            )
-                                        } else {
-                                            Icon(
-                                                Icons.Filled.Person,
-                                                contentDescription = "user",
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
-                                }
-                            }
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-
+                            IconButton(
+                                onClick = {
+                                    openAppBarExtra = !openAppBarExtra
+                                },
+                                modifier = Modifier.size(48.dp)
+                            ) {
+                                if (!refreshUser) {
+                                    refreshUser = true
+                                }
+                                if (refreshUser)
+                                    if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
+                                        val pic =
+                                            viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
+                                        Image(
+                                            bitmap = BitmapFactory.decodeByteArray(
+                                                pic,
+                                                0,
+                                                pic?.size ?: 0
+                                            )
+                                                .asImageBitmap(),
+                                            contentDescription = "user image",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(CircleShape)
+                                        )
+                                    } else {
+                                        Icon(
+                                            Icons.Filled.Person,
+                                            contentDescription = "user",
+                                            modifier = Modifier.size(32.dp)
+                                        )
+                                    }
+                            }
                         }
                     }
                 },
