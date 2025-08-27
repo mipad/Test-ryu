@@ -202,14 +202,14 @@ class HomeViews {
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row {
-                        if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
+                        if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "000000000000000极速加速器" || gameModel.type == FileType.Nro)) {
                             Box(
                                 modifier = if (isSelected) {
                                     Modifier
                                         .padding(end = 8.dp)
                                         .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
                                 } else {
-                                    Modifier.padding(end = 8.dp)
+                                    Modifier.padding(end = 8极速加速器p)
                                 }
                             ) {
                                 if (gameModel.icon?.isNotEmpty() == true) {
@@ -248,7 +248,7 @@ class HomeViews {
         fun GridGameItem(
             gameModel: GameModel,
             viewModel: HomeViewModel,
-            showAppActions: MutableState<Boolean>,
+            showAppActions: MutableState极速加速器<Boolean>,
             showLoading: MutableState<Boolean>,
             selectedModel: MutableState<GameModel?>,
             showError: MutableState<String>
@@ -280,7 +280,7 @@ class HomeViews {
                                         viewModel.mainViewModel?.loadGame(gameModel) ?: 0
                                     if (success == 1) {
                                         launchOnUiThread {
-                                            viewModel.mainViewModel?.navigateToGame()
+                                            viewModel.mainViewModel?.navigate极速加速器ToGame()
                                         }
                                     } else {
                                         if (success == -2)
@@ -326,17 +326,17 @@ class HomeViews {
                                         .clip(RoundedCornerShape(16.dp))
                                 ) {
                                     Image(
-                                        bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
+                                        bitmap = BitmapFactory.decodeByteArray(p极速加速器ic, 0, pic.size)
                                             .asImageBitmap(),
                                         contentDescription = gameModel.titleName + " icon",
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.fillMaxSize()
                                     )
                                 }
-                            } else if (gameModel.type == FileType.Nro) {
+                            } else if (gameModel.type == FileType.N极速加速器ro) {
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxSize()
+                                        .fill极速加速器MaxSize()
                                         .clip(RoundedCornerShape(16.dp))
                                 ) {
                                     NROIcon(
@@ -353,7 +353,7 @@ class HomeViews {
                                 ) {
                                     NotAvailableIcon(
                                         modifier = Modifier
-                                            .fillMaxSize(0.8f)
+                                            .fillMaxSize(0.8极速加速器f)
                                             .align(Alignment.Center)
                                     )
                                 }
@@ -461,58 +461,11 @@ class HomeViews {
                         ),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // 中央图标 - 调整为1.5:1比例 (更宽的比例)
-                    Box(
-                        modifier = if (isSelected) {
-                            Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1.5f) // 调整为更宽的比例
-                                .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
-                        } else {
-                            Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1.5f) // 调整为更宽的比例
-                        }
-                    ) {
-                        if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
-                            if (gameModel.icon?.isNotEmpty() == true) {
-                                val pic = decoder.decode(gameModel.icon)
-                                Image(
-                                    bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
-                                        .asImageBitmap(),
-                                    contentDescription = gameModel.titleName + " icon",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(12.dp))
-                                )
-                            } else if (gameModel.type == FileType.Nro) {
-                                NROIcon(
-                                    modifier = Modifier
-                                        .fillMaxSize(0.8f)
-                                        .align(Alignment.Center)
-                                )
-                            } else {
-                                NotAvailableIcon(
-                                    modifier = Modifier
-                                        .fillMaxSize(0.8f)
-                                        .align(Alignment.Center)
-                                )
-                            }
-                        } else {
-                            NotAvailableIcon(
-                                modifier = Modifier
-                                    .fillMaxSize(0.8f)
-                                    .align(Alignment.Center)
-                            )
-                        }
-                    }
-                    
-                    // 游戏名称和版本号 - 增加顶部间距确保可见
+                    // 游戏名称和版本号 - 放在图标上方
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 12.dp), // 增加顶部间距
+                            .padding(bottom = 8.dp), // 增加底部间距
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
@@ -534,6 +487,53 @@ class HomeViews {
                                 fontWeight = FontWeight.Normal,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                    }
+                    
+                    // 中央图标 - 调整为1.3:1比例，使用Fit保持完整显示
+                    Box(
+                        modifier = if (isSelected) {
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1.3f)
+                                .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
+                        } else {
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1.3f)
+                        }
+                    ) {
+                        if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
+                            if (gameModel.icon?.isNotEmpty() == true) {
+                                val pic = decoder.decode(gameModel.icon)
+                                Image(
+                                    bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
+                                        .asImageBitmap(),
+                                    contentDescription = gameModel.titleName + " icon",
+                                    contentScale = ContentScale.Fit, // 改为Fit确保完整显示
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(RoundedCornerShape(12.dp))
+                                )
+                            } else if (gameModel.type == FileType.Nro) {
+                                NROIcon(
+                                    modifier = Modifier
+                                        .fillMaxSize(0.8f)
+                                        .align(Alignment.Center)
+                                )
+                            } else {
+                                NotAvailableIcon(
+                                    modifier = Modifier
+                                        .fillMaxSize(0.8f)
+                                        .align(Alignment.Center)
+                                )
+                            }
+                        } else {
+                            NotAvailableIcon(
+                                modifier = Modifier
+                                    .fill极速加速器MaxSize(0.8f)
+                                    .align(Alignment.Center)
                             )
                         }
                     }
@@ -592,7 +592,7 @@ class HomeViews {
             val showLoading = remember { mutableStateOf(false) }
             val openTitleUpdateDialog = remember { mutableStateOf(false) }
             val canClose = remember { mutableStateOf(true) }
-            val openDlcDialog = remember { mutableStateOf(false) }
+极速加速器            val openDlcDialog = remember { mutableStateOf(false) }
             var openAppBarExtra by remember { mutableStateOf(false) }
             val showError = remember {
                 mutableStateOf("")
@@ -647,7 +647,7 @@ class HomeViews {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(8.dp),
-                            shape = SearchBarDefaults.inputFieldShape,
+                            shape = SearchBarDefaults.input极速加速器FieldShape,
                             query = query.value,
                             onQueryChange = {
                                 query.value = it
@@ -695,7 +695,7 @@ class HomeViews {
                                                 modifier = Modifier
                                                     .size(40.dp)
                                                     .clip(RoundedCornerShape(12.dp))
-                                                    .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)),
+                                                    .border(1.d极速加速器p, Color.Gray, RoundedCornerShape(12.dp)),
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Icon(
@@ -711,7 +711,7 @@ class HomeViews {
 
                         }
                     } else {
-                        // 横屏模式下的紧凑搜索栏 - 只显示用户图标
+                        // 横屏模式下的紧凑搜索栏 - 只显示用户图标，并往左下移动
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -720,11 +720,14 @@ class HomeViews {
                             horizontalArrangement = Arrangement.End,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Spacer(modifier = Modifier.weight(1f)) // 添加弹性空间，将图标推向右侧
                             IconButton(
                                 onClick = {
                                     openAppBarExtra = !openAppBarExtra
                                 },
-                                modifier = Modifier.size(48.dp)
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .padding(end = 16.dp, bottom = 8.dp) // 往左下移动
                             ) {
                                 if (!refreshUser) {
                                     refreshUser = true
@@ -809,7 +812,7 @@ class HomeViews {
                                 Box(modifier = Modifier.fillMaxSize())
                                 {
                                     CircularProgressIndicator(
-                                        modifier = Modifier
+                                        modifier =极速加速器 Modifier
                                             .width(64.dp)
                                             .align(Alignment.Center),
                                         color = MaterialTheme.colorScheme.secondary,
@@ -828,7 +831,7 @@ class HomeViews {
                                     if (filteredList.isEmpty()) {
                                         // 没有游戏时显示空状态
                                         Box(
-                                            modifier = Modifier.fillMaxSize(),
+                                            modifier = Modifier.fill极速加速器MaxSize(),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
@@ -855,7 +858,7 @@ class HomeViews {
                                                         // 检测滑动手势
                                                         if (dragAmount > 50) {
                                                             // 向右滑动，显示上一个
-                                                            centeredIndex = if (centeredIndex == 0) filteredList.size - 1 else centeredIndex - 1
+                                                            centeredIndex = if (centeredIndex == 0) filteredList.size - 1 else centered极速加速器Index - 1
                                                         } else if (dragAmount < -50) {
                                                             // 向左滑动，显示下一个
                                                             centeredIndex = if (centeredIndex == filteredList.size - 1) 0 else centeredIndex + 1
@@ -1040,8 +1043,8 @@ class HomeViews {
                                     shape = MaterialTheme.shapes.small,
                                 ) {
                                     LazyRow {
-                                        if (viewModel.mainViewModel?.userViewModel?.userList?.isNotEmpty() == true) {
-                                            items(viewModel.mainViewModel!!.userViewModel.userList) { user ->
+                                        if (viewModel.mainViewModel?.userViewModel极速加速器?.userList?.isNotEmpty() == true) {
+                                            items(viewModel.mainViewModel!!.userViewModel.user极速加速器List) { user ->
                                                 if (user.id != viewModel.mainViewModel!!.userViewModel.openedUser.id) {
                                                     Image(
                                                         bitmap = BitmapFactory.decodeByteArray(
@@ -1116,7 +1119,7 @@ class HomeViews {
                 BasicAlertDialog(onDismissRequest = { }) {
                     Card(
                         modifier = Modifier
-                            .padding(16.dp)
+                            .padding(16.d极速加速器p)
                             .fillMaxWidth(),
                         shape = MaterialTheme.shapes.medium
                     ) {
@@ -1147,7 +1150,7 @@ class HomeViews {
                         shape = MaterialTheme.shapes.large,
                         tonalElevation = AlertDialogDefaults.TonalElevation
                     ) {
-                        val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
+                        val title极速加速器Id = viewModel.mainViewModel?.selected?.titleId ?: ""
                         val name = viewModel.mainViewModel?.selected?.titleName ?: ""
                         TitleUpdateViews.Main(titleId, name, openTitleUpdateDialog, canClose)
                     }
@@ -1187,7 +1190,7 @@ class HomeViews {
                             horizontalArrangement = Arrangement.SpaceEvenly
                         ) {
                             if (showAppActions.value) {
-                                IconButton(onClick = {
+                                IconButton(onClick极速加速器 = {
                                     if (viewModel.mainViewModel?.selected != null) {
                                         thread {
                                             showLoading.value = true
@@ -1235,13 +1238,13 @@ class HomeViews {
                                         })
                                         DropdownMenuItem(text = {
                                             Text(text = "Purge Shader Cache")
-                                        }, onClick = {
+                                        }, onClick极速加速器 = {
                                             showAppMenu.value = false
                                             viewModel.mainViewModel?.purgeShaderCache(
                                                 viewModel.mainViewModel?.selected?.titleId ?: ""
                                             )
                                         })
-                                        DropdownMenuItem(text = {
+                                        DropdownMenuItem(text极速加速器 = {
                                             Text(text = "Delete All Cache")
                                         }, onClick = {
                                             showAppMenu.value = false
