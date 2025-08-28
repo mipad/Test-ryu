@@ -1036,7 +1036,7 @@ class HomeViews {
                                         Spacer(modifier = Modifier.width(16.dp))
                                         Column {
     Text(
-        text = viewModel.mainViewModel?.userViewModel?.openedUser?.name ?: "User",
+        text = viewModel.mainViewModel?.userViewModel?.openedUser?.username ?: "User",
         fontWeight = FontWeight.Bold
     )
     Text(
