@@ -440,37 +440,37 @@ class HomeViews {
                                         showLoading.value = true
                                         val success =
                                             viewModel.mainViewModel?.loadGame(gameModel) ?: 0
-                                    if (success == 1) {
-                                        launchOnUiThread {
-                                            viewModel.mainViewModel?.navigateToGame()
+                                        if (success == 1) {
+                                            launchOnUiThread {
+                                                viewModel.mainViewModel?.navigateToGame()
+                                            }
+                                        } else {
+                                            if (success == -2)
+                                                showError.value =
+                                                    "Error loading update. Please re-add update file"
+                                            gameModel.close()
                                         }
-                                    } else {
-                                        if (success == -2)
-                                            showError.value =
-                                                "Error loading update. Please re-add update file"
-                                        gameModel.close()
+                                        showLoading.value = false
                                     }
-                                    showLoading.value = false
                                 }
+                            },
+                            onLongClick = {
+                                viewModel.mainViewModel?.selected = gameModel
+                                showAppActions.value = true
+                                selectedModel.value = gameModel
                             }
-                        },
-                        onLongClick = {
-                            viewModel.mainViewModel?.selected = gameModel
-                            showAppActions.value = true
-                            selectedModel.value = gameModel
-                        }
-                    )
-                    .then(
-                        if (isSelected) {
-                            Modifier.border(
-                                2.dp,
-                                MaterialTheme.colorScheme.primary,
-                                RoundedCornerShape(12.dp)
-                            )
-                        } else {
-                            Modifier
-                        }
-                    )
+                        )
+                        .then(
+                            if (isSelected) {
+                                Modifier.border(
+                                    2.dp,
+                                    MaterialTheme.colorScheme.primary,
+                                    RoundedCornerShape(12.dp)
+                                )
+                            } else {
+                                Modifier
+                            }
+                        )
                 ) {
                     if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
                         if (gameModel.icon?.isNotEmpty() == true) {
@@ -759,8 +759,7 @@ class HomeViews {
                             // 右侧Ryujinx文本 (不超过屏幕30%)
                             Box(
                                 modifier = Modifier
-                                    .weight(0.3f)
-                                    .fillMaxHeight(),
+                                    .weight(0.3f),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
@@ -1204,10 +1203,9 @@ class HomeViews {
                                 if (!game.version.isNullOrEmpty()) {
                                     Text(
                                         text = "v${game.version}",
-                                        fontSize = 16.sp,
-                                        modifier = Modifier.align(Alignment.CenterHorizontally)
-                                    )
-                                }
+                                    fontSize = 16.sp,
+                                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                                )
                                 Spacer(modifier = Modifier.height(16.dp))
                             }
                             
@@ -1304,4 +1302,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}
+}}}
