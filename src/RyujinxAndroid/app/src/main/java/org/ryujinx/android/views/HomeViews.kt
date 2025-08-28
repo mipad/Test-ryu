@@ -1313,7 +1313,7 @@ class HomeViews {
                     confirmButton = {
                         TextButton(
                             onClick = {
-                                selectedModel.value?.setCustomName(newGameName)
+                                selectedModel.value?.customName=newGameName
                                 showRenameDialog = false
                                 // 刷新列表以显示新名称
                                 viewModel.filter(query)
