@@ -55,9 +55,9 @@ class HomeViewModel(
     fun filter(query: String) {
         gameList.clear()
         gameList.addAll(loadedCache.filter {
-            it.titleName != null && it.titleName!!.isNotEmpty() && (query.trim()
-                .isEmpty() || it.titleName!!.lowercase(Locale.getDefault())
-                .contains(query))
+            val displayName = it.getDisplayName()
+            displayName.isNotEmpty() && (query.trim().isEmpty() || 
+                displayName.lowercase(Locale.getDefault()).contains(query))
         })
     }
 
@@ -85,7 +85,7 @@ class HomeViewModel(
                         activity.let {
                             val item = GameModel(file, it)
 
-                            if (item.titleId?.isNotEmpty() == true && item.titleName?.isNotEmpty() == true && item.titleName != "Unknown") {
+                            if (item.titleId?.isNotEmpty() == true && item.getDisplayName().isNotEmpty() && item.getDisplayName() != "Unknown") {
                                 loadedCache.add(item)
                             }
                         }
