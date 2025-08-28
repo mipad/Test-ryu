@@ -82,6 +82,9 @@ interface RyujinxNativeJna : Library {
     fun loggingEnabledGraphicsLog(enabled: Boolean)
     // 添加跳过内存屏障的方法
     fun setSkipMemoryBarriers(skip: Boolean)
+    
+    // 添加 DLC 加载方法
+    fun deviceLoadDlc(dlcDescriptors: IntArray, dlcCount: Int): Boolean
 }
 
 class RyujinxNative {
