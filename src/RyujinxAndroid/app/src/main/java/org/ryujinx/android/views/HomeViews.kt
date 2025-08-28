@@ -1292,7 +1292,7 @@ class HomeViews {
                             }
                         }
                     }
-                 }
+                ) }
             }
         }
 
@@ -1302,4 +1302,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}
+}}}
