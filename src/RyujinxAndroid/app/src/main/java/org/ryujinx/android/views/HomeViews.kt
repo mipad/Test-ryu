@@ -446,8 +446,8 @@ class HomeViews {
                                             }
                                         } else {
                                             if (success == -2)
-                                            showError.value =
-                                                "Error loading update. Please re-add update file"
+                                                showError.value =
+                                                    "Error loading update. Please re-add update file"
                                             gameModel.close()
                                         }
                                         showLoading.value = false
@@ -678,18 +678,18 @@ class HomeViews {
 
                         }
                     } else {
-                        // 横屏模式下的顶部栏布局
+                        // 横屏模式下的紧凑搜索栏 - 移到左上角，宽度缩短
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.Start // 改为靠左对齐
                         ) {
-                            // 左侧搜索框 (不超过屏幕30%)
+                            // 搜索框 - 缩短宽度，靠左显示
                             SearchBar(
                                 modifier = Modifier
-                                    .weight(0.3f)
+                                    .width(200.dp) // 固定宽度
                                     .height(48.dp),
                                 shape = SearchBarDefaults.inputFieldShape,
                                 query = query,
@@ -755,19 +755,6 @@ class HomeViews {
                                     }
                                 }
                             ) {}
-
-                            // 右侧Ryujinx文本 (不超过屏幕30%)
-                            Box(
-                                modifier = Modifier
-                                    .weight(0.3f),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "Ryujinx",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 20.sp
-                                )
-                            }
                         }
                     }
                 },
@@ -1203,9 +1190,10 @@ class HomeViews {
                                 if (!game.version.isNullOrEmpty()) {
                                     Text(
                                         text = "v${game.version}",
-                                    fontSize = 16.sp,
-                                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                                )
+                                        fontSize = 16.sp,
+                                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                                    )
+                                }
                                 Spacer(modifier = Modifier.height(16.dp))
                             }
                             
@@ -1292,7 +1280,7 @@ class HomeViews {
                             }
                         }
                     }
-                ) }
+                )
             }
         }
 
@@ -1302,4 +1290,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}}}
+}
