@@ -6,7 +6,8 @@ import android.os.ParcelFileDescriptor
 import androidx.documentfile.provider.DocumentFile
 import com.anggrayudi.storage.file.extension
 import org.ryujinx.android.RyujinxNative
-
+import android.content.SharedPreferences
+import androidx.preference.PreferenceManager
 
 class GameModel(var file: DocumentFile, val context: Context) {
     private var updateDescriptor: ParcelFileDescriptor? = null
@@ -19,6 +20,8 @@ class GameModel(var file: DocumentFile, val context: Context) {
     var developer: String? = null
     var version: String? = null
     var icon: String? = null
+    var customName: String? = null
+    private var sharedPref: SharedPreferences? = null
 
     init {
         fileName = file.name
@@ -43,11 +46,33 @@ class GameModel(var file: DocumentFile, val context: Context) {
         if (type == FileType.Nro && (titleName.isNullOrEmpty() || titleName == "Unknown")) {
             titleName = file.name
         }
+        
+        // 初始化SharedPreferences
+        sharedPref = PreferenceManager.getDefaultSharedPreferences(context)
+        
+        // 加载自定义名称
+        customName = sharedPref?.getString("custom_name_$titleId", null)
+    }
+
+    // 获取显示名称（优先使用自定义名称）
+    fun getDisplayName(): String {
+        return customName ?: titleName ?: fileName ?: "Unknown"
+    }
+    
+    // 设置自定义名称
+    fun setCustomName(name: String) {
+        customName = name
+        sharedPref?.edit()?.putString("custom_name_$titleId", name)?.apply()
+    }
+    
+    // 清除自定义名称
+    fun clearCustomName() {
+        customName = null
+        sharedPref?.edit()?.remove("custom_name_$titleId")?.apply()
     }
 
     fun open(): Int {
         descriptor = context.contentResolver.openFileDescriptor(file.uri, "rw")
-
         return descriptor?.fd ?: 0
     }
 
@@ -62,7 +87,6 @@ class GameModel(var file: DocumentFile, val context: Context) {
                     try {
                         updateDescriptor =
                             context.contentResolver.openFileDescriptor(file.uri, "rw")
-
                         return updateDescriptor?.fd ?: -1
                     } catch (e: Exception) {
                         return -2
@@ -70,7 +94,6 @@ class GameModel(var file: DocumentFile, val context: Context) {
                 }
             }
         }
-
         return -1
     }
 
