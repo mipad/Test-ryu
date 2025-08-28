@@ -82,9 +82,6 @@ class MainViewModel(val activity: MainActivity) {
             return -2
         }
 
-         // 添加 DLC 加载
-        val dlcFds = game.openDlc()
-    
         gameModel = game
         isMiiEditorLaunched = false
 
