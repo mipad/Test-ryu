@@ -21,6 +21,10 @@ class GameModel(var file: DocumentFile, val context: Context) {
     var version: String? = null
     var icon: String? = null
     var customName: String? = null
+        set(value) {
+            field = value
+            sharedPref?.edit()?.putString("custom_name_$titleId", value)?.apply()
+        }
     private var sharedPref: SharedPreferences? = null
 
     init {
@@ -57,12 +61,6 @@ class GameModel(var file: DocumentFile, val context: Context) {
     // 获取显示名称（优先使用自定义名称）
     fun getDisplayName(): String {
         return customName ?: titleName ?: fileName ?: "Unknown"
-    }
-    
-    // 设置自定义名称
-    fun setCustomName(name: String) {
-        customName = name
-        sharedPref?.edit()?.putString("custom_name_$titleId", name)?.apply()
     }
     
     // 清除自定义名称
