@@ -1035,14 +1035,14 @@ class HomeViews {
                                         }
                                         Spacer(modifier = Modifier.width(16.dp))
                                         Column {
-                                            Text(
-                                                text = viewModel.mainViewModel?.userViewModel?.openedUser?.userName ?: "User",
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                            Text(
-                                                text = viewModel.mainViewModel?.userViewModel?.openedUser?.userId ?: "No ID"
-                                            )
-                                        }
+    Text(
+        text = viewModel.mainViewModel?.userViewModel?.openedUser?.name ?: "User",
+        fontWeight = FontWeight.Bold
+    )
+    Text(
+        text = viewModel.mainViewModel?.userViewModel?.openedUser?.id ?: "No ID"
+    )
+}
                                     }
                                     Spacer(modifier = Modifier.height(16.dp))
                                     TextButton(
