@@ -115,6 +115,10 @@ import androidx.compose.foundation.clickable
 import java.io.File
 import android.content.Context
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 
 class HomeViews {
     companion object {
@@ -219,7 +223,7 @@ class HomeViews {
                                     Image(
                                         bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
                                             .asImageBitmap(),
-                                        contentDescription = gameModel.titleName + " icon",
+                                        contentDescription = gameModel.getDisplayName() + " icon",
                                         modifier = Modifier
                                             .width(size.roundToInt().dp)
                                             .height(size.roundToInt().dp)
@@ -230,7 +234,7 @@ class HomeViews {
                             }
                         } else NotAvailableIcon()
                         Column {
-                            Text(text = gameModel.titleName ?: "")
+                            Text(text = gameModel.getDisplayName())
                             Text(text = gameModel.developer ?: "")
                             Text(text = gameModel.titleId ?: "")
                         }
@@ -328,7 +332,7 @@ class HomeViews {
                                     Image(
                                         bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
                                             .asImageBitmap(),
-                                        contentDescription = gameModel.titleName + " icon",
+                                        contentDescription = gameModel.getDisplayName() + " icon",
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.fillMaxSize()
                                     )
@@ -353,8 +357,8 @@ class HomeViews {
                                 ) {
                                     NotAvailableIcon(
                                         modifier = Modifier
-                                            .fillMaxSize(0.8f)
-                                            .align(Alignment.Center)
+                                        .fillMaxSize(0.8f)
+                                        .align(Alignment.Center)
                                     )
                                 }
                             }
@@ -380,7 +384,7 @@ class HomeViews {
                         }
                     }
                     Text(
-                        text = gameModel.titleName ?: "N/A",
+                        text = gameModel.getDisplayName(),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
@@ -478,7 +482,7 @@ class HomeViews {
                             Image(
                                 bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
                                     .asImageBitmap(),
-                                contentDescription = gameModel.titleName + " icon",
+                                contentDescription = gameModel.getDisplayName() + " icon",
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -519,7 +523,7 @@ class HomeViews {
                             Image(
                                 bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
                                     .asImageBitmap(),
-                                contentDescription = gameModel.titleName + " icon",
+                                contentDescription = gameModel.getDisplayName() + " icon",
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
                             )
@@ -578,6 +582,11 @@ class HomeViews {
             var isFabVisible by remember {
                 mutableStateOf(true)
             }
+
+            // 添加重命名功能的状态变量
+            var showRenameDialog by remember { mutableStateOf(false) }
+            var newGameName by remember { mutableStateOf("") }
+            val focusRequester = remember { FocusRequester() }
 
             val nestedScrollConnection = remember {
                 object : NestedScrollConnection {
@@ -812,9 +821,9 @@ class HomeViews {
                                 if (isLandscape) {
                                     // 横屏模式：使用自定义轮播布局
                                     val filteredList = list.filter {
-                                        it.titleName?.isNotEmpty() == true && 
+                                        it.getDisplayName().isNotEmpty() && 
                                         (query.trim().isEmpty() || 
-                                         it.titleName!!.lowercase(Locale.getDefault()).contains(query))
+                                         it.getDisplayName().lowercase(Locale.getDefault()).contains(query))
                                     }
                                     
                                     if (filteredList.isEmpty()) {
@@ -915,20 +924,18 @@ class HomeViews {
                                         verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         items(list) {
-                                            it.titleName?.apply {
-                                                if (this.isNotEmpty() && (query.trim()
-                                                        .isEmpty() || this.lowercase(Locale.getDefault())
-                                                        .contains(query))
-                                                ) {
-                                                    GridGameItem(
-                                                        gameModel = it,
-                                                        viewModel = viewModel,
-                                                        showAppActions = showAppActions,
-                                                        showLoading = showLoading,
-                                                        selectedModel = selectedModel,
-                                                        showError = showError
-                                                    )
-                                                }
+                                            if (it.getDisplayName().isNotEmpty() && (query.trim()
+                                                    .isEmpty() || it.getDisplayName().lowercase(Locale.getDefault())
+                                                    .contains(query))
+                                            ) {
+                                                GridGameItem(
+                                                    gameModel = it,
+                                                    viewModel = viewModel,
+                                                    showAppActions = showAppActions,
+                                                    showLoading = showLoading,
+                                                    selectedModel = selectedModel,
+                                                    showError = showError
+                                                )
                                             }
                                         }
                                     }
@@ -937,23 +944,21 @@ class HomeViews {
                                         modifier = Modifier.fillMaxSize()
                                     ) {
                                         items(list) {
-                                            it.titleName?.apply {
-                                                if (this.isNotEmpty() && (query.trim()
-                                                        .isEmpty() || this.lowercase(
-                                                        Locale.getDefault()
+                                            if (it.getDisplayName().isNotEmpty() && (query.trim()
+                                                    .isEmpty() || it.getDisplayName().lowercase(
+                                                    Locale.getDefault()
+                                                )
+                                                    .contains(query))
+                                            ) {
+                                                Box(modifier = Modifier.animateItemPlacement()) {
+                                                    ListGameItem(
+                                                        gameModel = it,
+                                                        viewModel = viewModel,
+                                                        showAppActions = showAppActions,
+                                                        showLoading = showLoading,
+                                                        selectedModel = selectedModel,
+                                                        showError = showError
                                                     )
-                                                        .contains(query))
-                                                ) {
-                                                    Box(modifier = Modifier.animateItemPlacement()) {
-                                                        ListGameItem(
-                                                            gameModel = it,
-                                                            viewModel = viewModel,
-                                                            showAppActions = showAppActions,
-                                                            showLoading = showLoading,
-                                                            selectedModel = selectedModel,
-                                                            showError = showError
-                                                        )
-                                                    }
                                                 }
                                             }
                                         }
@@ -1140,7 +1145,7 @@ class HomeViews {
                         tonalElevation = AlertDialogDefaults.TonalElevation
                     ) {
                         val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
-                        val name = viewModel.mainViewModel?.selected?.titleName ?: ""
+                        val name = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
                         TitleUpdateViews.Main(titleId, name, openTitleUpdateDialog, canClose)
                     }
 
@@ -1158,7 +1163,7 @@ class HomeViews {
                         tonalElevation = AlertDialogDefaults.TonalElevation
                     ) {
                         val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
-                        val name = viewModel.mainViewModel?.selected?.titleName ?: ""
+                        val name = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
                         DlcViews.Main(titleId, name, openDlcDialog)
                     }
 
@@ -1182,7 +1187,7 @@ class HomeViews {
                             // 显示游戏名和版本号
                             selectedModel.value?.let { game ->
                                 Text(
-                                    text = game.titleName ?: "N/A",
+                                    text = game.getDisplayName(),
                                     fontSize = 20.sp,
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -1240,6 +1245,15 @@ class HomeViews {
                                         expanded = showAppMenu.value,
                                         onDismissRequest = { showAppMenu.value = false }) {
                                         DropdownMenuItem(text = {
+                                            Text(text = "Rename Game")
+                                        }, onClick = {
+                                            showAppMenu.value = false
+                                            selectedModel.value?.let { game ->
+                                                newGameName = game.getDisplayName()
+                                                showRenameDialog = true
+                                            }
+                                        })
+                                        DropdownMenuItem(text = {
                                             Text(text = "Clear PPTC Cache")
                                         }, onClick = {
                                             showAppMenu.value = false
@@ -1278,6 +1292,41 @@ class HomeViews {
                                     }
                                 }
                             }
+                        }
+                    }
+                )
+            }
+
+            // 添加重命名对话框
+            if (showRenameDialog) {
+                AlertDialog(
+                    onDismissRequest = { showRenameDialog = false },
+                    title = { Text(text = "Rename Game") },
+                    text = {
+                        OutlinedTextField(
+                            value = newGameName,
+                            onValueChange = { newGameName = it },
+                            label = { Text("Game Name") },
+                            modifier = Modifier.focusRequester(focusRequester)
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                selectedModel.value?.setCustomName(newGameName)
+                                showRenameDialog = false
+                                // 刷新列表以显示新名称
+                                viewModel.filter(query)
+                            }
+                        ) {
+                            Text("OK")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { showRenameDialog = false }
+                        ) {
+                            Text("Cancel")
                         }
                     }
                 )
