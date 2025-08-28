@@ -446,8 +446,8 @@ class HomeViews {
                                             }
                                         } else {
                                             if (success == -2)
-                                                showError.value =
-                                                    "Error loading update. Please re-add update file"
+                                            showError.value =
+                                                "Error loading update. Please re-add update file"
                                             gameModel.close()
                                         }
                                         showLoading.value = false
@@ -1293,7 +1293,7 @@ class HomeViews {
                         }
                     }
                 )
-            })
+            }
         }
 
         @Preview
@@ -1302,4 +1302,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}}}}
+}
