@@ -678,46 +678,21 @@ class HomeViews {
 
                         }
                     } else {
-                        // 横屏模式下的搜索栏和用户头像组合
+                        // 横屏模式下的紧凑搜索栏和用户头像组合
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // 搜索框
-                            SearchBar(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp),
-                                shape = SearchBarDefaults.inputFieldShape,
-                                query = query,
-                                onQueryChange = {
-                                    query = it
-                                },
-                                onSearch = {},
-                                active = false,
-                                onActiveChange = {},
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.Filled.Search,
-                                        contentDescription = "Search Games"
-                                    )
-                                },
-                                placeholder = {
-                                    Text(text = "Search Games")
-                                },
-                                trailingIcon = {}
-                            ) {}
-                            
-                            // 用户头像
+                            // 用户头像 - 移动到左侧
                             IconButton(
                                 onClick = {
                                     openAppBarExtra = !openAppBarExtra
                                 },
                                 modifier = Modifier
                                     .size(48.dp)
-                                    .padding(start = 8.dp)
+                                    .padding(end = 8.dp)
                             ) {
                                 if (!refreshUser) {
                                     refreshUser = true
@@ -737,8 +712,8 @@ class HomeViews {
                                             contentScale = ContentScale.Crop,
                                             modifier = Modifier
                                                 .size(40.dp)
-                                                .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
-                                                .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)) // 添加边框
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .border(1.dp, Color.Gray, RoundedCornerShape(12.dp))
                                         )
                                     } else {
                                         Box(
@@ -756,6 +731,33 @@ class HomeViews {
                                         }
                                     }
                             }
+                            
+                            // 搜索框 - 从左往右缩短
+                            SearchBar(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(vertical = 4.dp)
+                                    .height(48.dp),
+                                shape = SearchBarDefaults.inputFieldShape,
+                                query = query,
+                                onQueryChange = {
+                                    query = it
+                                },
+                                onSearch = {},
+                                active = false,
+                                onActiveChange = {},
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Filled.Search,
+                                        contentDescription = "Search Games",
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                },
+                                placeholder = {
+                                    Text(text = "Ryujinx", fontSize = 14.sp)
+                                },
+                                trailingIcon = {}
+                            ) {}
                         }
                     }
                 },
