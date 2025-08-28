@@ -440,37 +440,37 @@ class HomeViews {
                                         showLoading.value = true
                                         val success =
                                             viewModel.mainViewModel?.loadGame(gameModel) ?: 0
-                                        if (success == 1) {
-                                            launchOnUiThread {
-                                                viewModel.mainViewModel?.navigateToGame()
-                                            }
-                                        } else {
-                                            if (success == -2)
-                                                showError.value =
-                                                    "Error loading update. Please re-add update file"
-                                            gameModel.close()
+                                    if (success == 1) {
+                                        launchOnUiThread {
+                                            viewModel.mainViewModel?.navigateToGame()
                                         }
-                                        showLoading.value = false
+                                    } else {
+                                        if (success == -2)
+                                            showError.value =
+                                                "Error loading update. Please re-add update file"
+                                        gameModel.close()
                                     }
+                                    showLoading.value = false
                                 }
-                            },
-                            onLongClick = {
-                                viewModel.mainViewModel?.selected = gameModel
-                                showAppActions.value = true
-                                selectedModel.value = gameModel
                             }
-                        )
-                        .then(
-                            if (isSelected) {
-                                Modifier.border(
-                                    2.dp,
-                                    MaterialTheme.colorScheme.primary,
-                                    RoundedCornerShape(12.dp)
-                                )
-                            } else {
-                                Modifier
-                            }
-                        )
+                        },
+                        onLongClick = {
+                            viewModel.mainViewModel?.selected = gameModel
+                            showAppActions.value = true
+                            selectedModel.value = gameModel
+                        }
+                    )
+                    .then(
+                        if (isSelected) {
+                            Modifier.border(
+                                2.dp,
+                                MaterialTheme.colorScheme.primary,
+                                RoundedCornerShape(12.dp)
+                            )
+                        } else {
+                            Modifier
+                        }
+                    )
                 ) {
                     if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
                         if (gameModel.icon?.isNotEmpty() == true) {
@@ -678,18 +678,18 @@ class HomeViews {
 
                         }
                     } else {
-                        // 横屏模式下的紧凑搜索栏和用户头像组合
+                        // 横屏模式下的顶部栏布局
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            // 搜索框 - 不填满宽度，居中显示
+                            // 左侧搜索框 (不超过屏幕30%)
                             SearchBar(
                                 modifier = Modifier
-                                    .weight(1f)
+                                    .weight(0.3f)
                                     .height(48.dp),
                                 shape = SearchBarDefaults.inputFieldShape,
                                 query = query,
@@ -755,6 +755,20 @@ class HomeViews {
                                     }
                                 }
                             ) {}
+
+                            // 右侧Ryujinx文本 (不超过屏幕30%)
+                            Box(
+                                modifier = Modifier
+                                    .weight(0.3f)
+                                    .fillMaxHeight(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Ryujinx",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 20.sp
+                                )
+                            }
                         }
                     }
                 },
@@ -1290,4 +1304,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}}}
+}
