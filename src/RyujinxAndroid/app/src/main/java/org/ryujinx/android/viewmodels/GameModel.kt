@@ -23,7 +23,12 @@ class GameModel(var file: DocumentFile, val context: Context) {
     var customName: String? = null
         set(value) {
             field = value
-            sharedPref?.edit()?.putString("custom_name_$titleId", value)?.apply()
+            // 如果设置的是空字符串，则清除自定义名称
+            if (value.isNullOrEmpty()) {
+                sharedPref?.edit()?.remove("custom_name_$titleId")?.apply()
+            } else {
+                sharedPref?.edit()?.putString("custom_name_$titleId", value)?.apply()
+            }
         }
     private var sharedPref: SharedPreferences? = null
 
@@ -54,13 +59,18 @@ class GameModel(var file: DocumentFile, val context: Context) {
         // 初始化SharedPreferences
         sharedPref = PreferenceManager.getDefaultSharedPreferences(context)
         
-        // 加载自定义名称
-        customName = sharedPref?.getString("custom_name_$titleId", null)
+        // 加载自定义名称 - 如果是空字符串则视为未设置
+        val savedName = sharedPref?.getString("custom_name_$titleId", null)
+        customName = if (savedName.isNullOrEmpty()) null else savedName
     }
 
     // 获取显示名称（优先使用自定义名称）
     fun getDisplayName(): String {
-        return customName ?: titleName ?: fileName ?: "Unknown"
+        return if (customName.isNullOrEmpty()) {
+            titleName ?: fileName ?: "Unknown"
+        } else {
+            customName!!
+        }
     }
     
     // 清除自定义名称
