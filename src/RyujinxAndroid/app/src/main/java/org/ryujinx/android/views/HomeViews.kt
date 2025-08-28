@@ -1292,7 +1292,7 @@ class HomeViews {
                             }
                         }
                     }
-                )
+                 }
             }
         }
 
