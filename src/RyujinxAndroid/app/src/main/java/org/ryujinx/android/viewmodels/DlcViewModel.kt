@@ -85,9 +85,9 @@ class DlcViewModel(val titleId: String) {
     private fun processSelectedFiles(files: List<com.anggrayudi.storage.file.File>) {
         val file = files.firstOrNull()
         file?.apply {
-            if (file.extension == "nsp" || file.extension == "xci") {
+            if (extension == "nsp" || extension == "xci") {
                 storageHelper.storage.context.contentResolver.takePersistableUriPermission(
-                    file.uri,
+                    uri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
 
@@ -108,7 +108,7 @@ class DlcViewModel(val titleId: String) {
                         )
 
                         for (baseDir in baseDirectories) {
-                            val potentialFile = File(baseDir, rootRelativePath)
+                            val potentialFile = java.io.File(baseDir, rootRelativePath)
                             if (potentialFile.exists()) {
                                 filePath = potentialFile.absolutePath
                                 break
@@ -124,7 +124,7 @@ class DlcViewModel(val titleId: String) {
                         )
 
                         for (baseDir in baseDirectories) {
-                            val potentialFile = File(baseDir, rootRelativePath)
+                            val potentialFile = java.io.File(baseDir, rootRelativePath)
                             if (potentialFile.exists()) {
                                 filePath = potentialFile.absolutePath
                                 break
@@ -204,7 +204,7 @@ class DlcViewModel(val titleId: String) {
                                 )
 
                                 for (baseDir in baseDirectories) {
-                                    val potentialFile = File(baseDir, rootRelativePath)
+                                    val potentialFile = java.io.File(baseDir, rootRelativePath)
                                     if (potentialFile.exists()) {
                                         filePath = potentialFile.absolutePath
                                         break
@@ -220,7 +220,7 @@ class DlcViewModel(val titleId: String) {
                                 )
 
                                 for (baseDir in baseDirectories) {
-                                    val potentialFile = File(baseDir, rootRelativePath)
+                                    val potentialFile = java.io.File(baseDir, rootRelativePath)
                                     if (potentialFile.exists()) {
                                         filePath = potentialFile.absolutePath
                                         break
@@ -299,14 +299,14 @@ class DlcViewModel(val titleId: String) {
             for (container in this) {
                 val containerPath = container.path
 
-                if (!File(containerPath).exists())
+                if (!java.io.File(containerPath).exists())
                     continue
 
                 for (dlc in container.dlc_nca_list) {
                     val enabled = mutableStateOf(dlc.enabled)
                     items.add(
                         DlcItem(
-                            File(containerPath).name,
+                            java.io.File(containerPath).name,
                             enabled,
                             containerPath,
                             dlc.fullPath,
@@ -345,8 +345,8 @@ class DlcViewModel(val titleId: String) {
             val gson = Gson()
             val json = gson.toJson(this)
             val savePath = MainActivity.AppPath + "/games/" + titleId.toLowerCase(Locale.current)
-            File(savePath).mkdirs()
-            File("$savePath/dlc.json").writeText(json)
+            java.io.File(savePath).mkdirs()
+            java.io.File("$savePath/dlc.json").writeText(json)
         }
     }
 
@@ -363,11 +363,10 @@ class DlcViewModel(val titleId: String) {
 
     private fun reloadFromDisk() {
         data = mutableListOf()
-        if (File(jsonPath).exists()) {
+        if (java.io.File(jsonPath).exists()) {
             val gson = Gson()
             val typeToken = object : TypeToken<MutableList<DlcContainerList>>() {}.type
-            data =
-                gson.fromJson<MutableList<DlcContainerList>>(File(jsonPath).readText(), typeToken)
+            data = gson.fromJson<MutableList<DlcContainerList>>(java.io.File(jsonPath).readText(), typeToken)
         }
     }
 }
