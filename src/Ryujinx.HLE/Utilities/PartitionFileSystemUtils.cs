@@ -10,11 +10,10 @@ namespace Ryujinx.HLE.Utilities
 {
     public static class PartitionFileSystemUtils
     {
-        public static IFileSystem OpenApplicationFileSystem(string path, VirtualFileSystem fileSystem, bool throwOnFailure = true)
+        public static IFileSystem OpenApplicationFileSystem(string path, bool isXci, VirtualFileSystem fileSystem, bool throwOnFailure = true)
         {
             FileStream file = File.OpenRead(path);
-
-            return OpenApplicationFileSystem(file, Path.GetExtension(path).ToLower() == ".xci", fileSystem, throwOnFailure);
+            return OpenApplicationFileSystem(file, isXci, fileSystem, throwOnFailure);
         }
 
         public static IFileSystem OpenApplicationFileSystem(Stream stream, bool isXci, VirtualFileSystem fileSystem, bool throwOnFailure = true)
