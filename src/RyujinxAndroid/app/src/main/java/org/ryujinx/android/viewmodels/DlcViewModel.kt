@@ -11,7 +11,6 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.text.toLowerCase
 import com.anggrayudi.storage.SimpleStorageHelper
-import com.anggrayudi.storage.file.FileUtils
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import org.ryujinx.android.MainActivity
@@ -87,8 +86,14 @@ class DlcViewModel(val titleId: String) {
     private fun processSelectedFiles(files: List<com.anggrayudi.storage.file.File>) {
         val file = files.firstOrNull()
         file?.apply {
-            // 使用 FileUtils 获取文件扩展名
-            val fileExtension = FileUtils.getExtension(name)
+            // 使用 Kotlin 标准库获取文件扩展名
+            val fileName = name ?: ""
+            val fileExtension = if (fileName.contains(".")) {
+                fileName.substringAfterLast(".", "").lowercase()
+            } else {
+                ""
+            }
+            
             if (fileExtension == "nsp" || fileExtension == "xci") {
                 storageHelper.storage.context.contentResolver.takePersistableUriPermission(
                     uri,
@@ -185,8 +190,14 @@ class DlcViewModel(val titleId: String) {
             
             files.forEach { file ->
                 try {
-                    // 使用 FileUtils 获取文件扩展名
-                    val fileExtension = FileUtils.getExtension(file.name)
+                    // 使用 Kotlin 标准库获取文件扩展名
+                    val fileName = file.name ?: ""
+                    val fileExtension = if (fileName.contains(".")) {
+                        fileName.substringAfterLast(".", "").lowercase()
+                    } else {
+                        ""
+                    }
+                    
                     if (fileExtension == "nsp" || fileExtension == "xci") {
                         storageHelper.storage.context.contentResolver.takePersistableUriPermission(
                             file.uri,
