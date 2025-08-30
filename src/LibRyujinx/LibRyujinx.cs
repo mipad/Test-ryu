@@ -694,7 +694,8 @@ private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, Integri
         public InputManager? InputManager { get; set; }
         public Switch? EmulationContext { get; set; }
         public IHostUIHandler? HostUiHandler { get; set; }
-
+        public bool EnableFsIntegrityChecks { get; set; }
+        
         public void Dispose()
         {
             GC.SuppressFinalize(this);
@@ -717,7 +718,9 @@ private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, Integri
             ContentManager = new ContentManager(VirtualFileSystem);
             AccountManager = new AccountManager(LibHacHorizonManager.RyujinxClient);
             UserChannelPersistence = new UserChannelPersistence();
-
+            
+            EnableFsIntegrityChecks = false;
+            
             _firmwareVersion = ContentManager.GetCurrentFirmwareVersion();
 
             if (_firmwareVersion != null)
