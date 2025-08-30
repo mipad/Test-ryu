@@ -20,9 +20,11 @@ class DlcViewModel(val titleId: String) {
     private var canClose: MutableState<Boolean>? = null
     private var storageHelper: SimpleStorageHelper
     private var dlcItemsState: SnapshotStateList<DlcItem>? = null
+    var batchInstallProgress: MutableState<BatchInstallProgress> = mutableStateOf(BatchInstallProgress.IDLE)
 
     companion object {
         const val UpdateRequestCode = 1002
+        const val BatchUpdateRequestCode = 1003
     }
 
     fun remove(item: DlcItem) {
@@ -38,6 +40,17 @@ class DlcViewModel(val titleId: String) {
         }
     }
 
+    fun removeAll() {
+        data?.clear()
+        refreshDlcItems()
+        saveChanges()
+        
+        canClose?.let {
+            it.value = false
+            it.value = true
+        }
+    }
+
     fun add() {
         val callBack = storageHelper.onFileSelected
 
@@ -45,99 +58,227 @@ class DlcViewModel(val titleId: String) {
             run {
                 storageHelper.onFileSelected = callBack
                 if (requestCode == UpdateRequestCode) {
-                    val file = files.firstOrNull()
-                    file?.apply {
-                        if (file.extension == "nsp" || file.extension == "xci") {
-                            storageHelper.storage.context.contentResolver.takePersistableUriPermission(
-                                file.uri,
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION
-                            )
+                    processSelectedFiles(files)
+                }
+            }
+        }
 
-                            val uri = file.uri
+        storageHelper.openFilePicker(UpdateRequestCode)
+    }
 
-                            var filePath: String? = null
+    fun addBatch() {
+        val callBack = storageHelper.onFileSelected
 
-                            var path = uri.pathSegments.joinToString("/")
+        storageHelper.onFileSelected = { requestCode, files ->
+            run {
+                storageHelper.onFileSelected = callBack
+                if (requestCode == BatchUpdateRequestCode) {
+                    processBatchFiles(files)
+                }
+            }
+        }
 
-                            if (path.startsWith("document/")) {
-                                val relativePath = Uri.decode(path.substring("document/".length))
+        // 设置多选模式
+        storageHelper.openFilePicker(BatchUpdateRequestCode, allowMultiple = true)
+    }
 
-                                if (relativePath.startsWith("root/")) {
-                                    val rootRelativePath = relativePath.substring("root/".length)
+    private fun processSelectedFiles(files: List<com.anggrayudi.storage.file.File>) {
+        val file = files.firstOrNull()
+        file?.apply {
+            if (file.extension == "nsp" || file.extension == "xci") {
+                storageHelper.storage.context.contentResolver.takePersistableUriPermission(
+                    file.uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
 
-                                    val baseDirectories = listOf(
-                                        storageHelper.storage.context.filesDir,
-                                        storageHelper.storage.context.getExternalFilesDir(null),
-                                        Environment.getExternalStorageDirectory()
-                                    )
+                val uri = file.uri
+                var filePath: String? = null
+                var path = uri.pathSegments.joinToString("/")
 
-                                    for (baseDir in baseDirectories) {
-                                        val potentialFile = File(baseDir, rootRelativePath)
-                                        if (potentialFile.exists()) {
-                                            filePath = potentialFile.absolutePath
-                                            break
-                                        }
+                if (path.startsWith("document/")) {
+                    val relativePath = Uri.decode(path.substring("document/".length))
+
+                    if (relativePath.startsWith("root/")) {
+                        val rootRelativePath = relativePath.substring("root/".length)
+
+                        val baseDirectories = listOf(
+                            storageHelper.storage.context.filesDir,
+                            storageHelper.storage.context.getExternalFilesDir(null),
+                            Environment.getExternalStorageDirectory()
+                        )
+
+                        for (baseDir in baseDirectories) {
+                            val potentialFile = File(baseDir, rootRelativePath)
+                            if (potentialFile.exists()) {
+                                filePath = potentialFile.absolutePath
+                                break
+                            }
+                        }
+                    } else if (relativePath.startsWith("primary:")) {
+                        val rootRelativePath = relativePath.substring("primary:".length)
+
+                        val baseDirectories = listOf(
+                            storageHelper.storage.context.filesDir,
+                            storageHelper.storage.context.getExternalFilesDir(null),
+                            Environment.getExternalStorageDirectory()
+                        )
+
+                        for (baseDir in baseDirectories) {
+                            val potentialFile = File(baseDir, rootRelativePath)
+                            if (potentialFile.exists()) {
+                                filePath = potentialFile.absolutePath
+                                break
+                            }
+                        }
+                    }
+                }
+
+                if (filePath != null) {
+                    path = filePath
+                    if (path.isNotEmpty()) {
+                        data?.apply {
+                            val isDuplicate = this.any { it.path == path }
+
+                            if (!isDuplicate) {
+                                val contents = RyujinxNative.jnaInstance.deviceGetDlcContentList(
+                                    path,
+                                    titleId.toLong(16)
+                                )
+
+                                if (contents.isNotEmpty()) {
+                                    val contentPath = path
+                                    val container = DlcContainerList(contentPath)
+
+                                    for (content in contents)
+                                        container.dlc_nca_list.add(
+                                            DlcContainer(
+                                                true,
+                                                titleId,
+                                                content
+                                            )
+                                        )
+
+                                    this.add(container)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        refreshDlcItems()
+        saveChanges()
+    }
+
+    private fun processBatchFiles(files: List<com.anggrayudi.storage.file.File>) {
+        batchInstallProgress.value = BatchInstallProgress.RUNNING(0, files.size)
+        
+        // 在后台线程处理批量文件
+        Thread {
+            var processedCount = 0
+            var successCount = 0
+            
+            files.forEach { file ->
+                try {
+                    if (file.extension == "nsp" || file.extension == "xci") {
+                        storageHelper.storage.context.contentResolver.takePersistableUriPermission(
+                            file.uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+
+                        val uri = file.uri
+                        var filePath: String? = null
+                        var path = uri.pathSegments.joinToString("/")
+
+                        if (path.startsWith("document/")) {
+                            val relativePath = Uri.decode(path.substring("document/".length))
+
+                            if (relativePath.startsWith("root/")) {
+                                val rootRelativePath = relativePath.substring("root/".length)
+
+                                val baseDirectories = listOf(
+                                    storageHelper.storage.context.filesDir,
+                                    storageHelper.storage.context.getExternalFilesDir(null),
+                                    Environment.getExternalStorageDirectory()
+                                )
+
+                                for (baseDir in baseDirectories) {
+                                    val potentialFile = File(baseDir, rootRelativePath)
+                                    if (potentialFile.exists()) {
+                                        filePath = potentialFile.absolutePath
+                                        break
                                     }
-                                } else if (relativePath.startsWith("primary:")) {
-                                    val rootRelativePath = relativePath.substring("primary:".length)
+                                }
+                            } else if (relativePath.startsWith("primary:")) {
+                                val rootRelativePath = relativePath.substring("primary:".length)
 
-                                    val baseDirectories = listOf(
-                                        storageHelper.storage.context.filesDir,
-                                        storageHelper.storage.context.getExternalFilesDir(null),
-                                        Environment.getExternalStorageDirectory()
-                                    )
+                                val baseDirectories = listOf(
+                                    storageHelper.storage.context.filesDir,
+                                    storageHelper.storage.context.getExternalFilesDir(null),
+                                    Environment.getExternalStorageDirectory()
+                                )
 
-                                    for (baseDir in baseDirectories) {
-                                        val potentialFile = File(baseDir, rootRelativePath)
-                                        if (potentialFile.exists()) {
-                                            filePath = potentialFile.absolutePath
-                                            break
-                                        }
+                                for (baseDir in baseDirectories) {
+                                    val potentialFile = File(baseDir, rootRelativePath)
+                                    if (potentialFile.exists()) {
+                                        filePath = potentialFile.absolutePath
+                                        break
                                     }
                                 }
                             }
+                        }
 
-                            if (filePath != null) {
-                                path = filePath
-                                if (path.isNotEmpty()) {
-                                    data?.apply {
-                                        val isDuplicate = this.any { it.path == path }
+                        if (filePath != null) {
+                            path = filePath
+                            if (path.isNotEmpty()) {
+                                data?.apply {
+                                    val isDuplicate = this.any { it.path == path }
 
-                                        if (!isDuplicate) {
-                                            val contents = RyujinxNative.jnaInstance.deviceGetDlcContentList(
-                                                path,
-                                                titleId.toLong(16)
-                                            )
+                                    if (!isDuplicate) {
+                                        val contents = RyujinxNative.jnaInstance.deviceGetDlcContentList(
+                                            path,
+                                            titleId.toLong(16)
+                                        )
 
-                                            if (contents.isNotEmpty()) {
-                                                val contentPath = path
-                                                val container = DlcContainerList(contentPath)
+                                        if (contents.isNotEmpty()) {
+                                            val contentPath = path
+                                            val container = DlcContainerList(contentPath)
 
-                                                for (content in contents)
-                                                    container.dlc_nca_list.add(
-                                                        DlcContainer(
-                                                            true,
-                                                            titleId,
-                                                            content
-                                                        )
+                                            for (content in contents)
+                                                container.dlc_nca_list.add(
+                                                    DlcContainer(
+                                                        true,
+                                                        titleId,
+                                                        content
                                                     )
+                                                )
 
-                                                this.add(container)
-                                            }
+                                            this.add(container)
+                                            successCount++
                                         }
                                     }
                                 }
                             }
                         }
                     }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                } finally {
+                    processedCount++
+                    batchInstallProgress.value = BatchInstallProgress.RUNNING(processedCount, files.size)
                 }
-
+            }
+            
+            // 更新进度到完成状态
+            batchInstallProgress.value = BatchInstallProgress.COMPLETED(successCount, files.size)
+            
+            // 在主线程刷新UI
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
                 refreshDlcItems()
                 saveChanges()
             }
-        }
-
-        storageHelper.openFilePicker(UpdateRequestCode)
+        }.start()
     }
 
     fun save(openDialog: MutableState<Boolean>) {
@@ -249,3 +390,9 @@ data class DlcItem(
     var fullPath: String = "",
     var titleId: String = ""
 )
+
+sealed class BatchInstallProgress {
+    object IDLE : BatchInstallProgress()
+    data class RUNNING(val processed: Int, val total: Int) : BatchInstallProgress()
+    data class COMPLETED(val success: Int, val total: Int) : BatchInstallProgress()
+}
