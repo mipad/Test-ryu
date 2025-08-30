@@ -91,7 +91,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableErrorLogs.value = sharedPref.getBoolean("enableErrorLogs", true)
         enableGuestLogs.value = sharedPref.getBoolean("enableGuestLogs", true)
         enableAccessLogs.value = sharedPref.getBoolean("enableAccessLogs", false)
-        enableTraceLogs.value = sharedPref.getBoolean("enableStubLogs", false)
+        enableTraceLogs.value = sharedPref.getBoolean("enableTraceLogs", false)
         enableGraphicsLogs.value = sharedPref.getBoolean("enableGraphicsLogs", false)
     }
 
@@ -179,9 +179,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
 
         activity.storageHelper!!.onFolderSelected = { _, folder ->
             val p = folder.getAbsolutePath(activity)
-            sharedPref.edit {
-                putString("gameFolder", p)
-            }
+            val editor = sharedPref.edit()
+            editor.putString("gameFolder", p)
+            editor.apply()
             activity.storageHelper!!.onFolderSelected = previousFolderCallback
         }
 
