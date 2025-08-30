@@ -104,7 +104,7 @@ class DlcViewModel(val titleId: String) {
 
                                     if (!isDuplicate) {
                                         val contents =
-                                            RyujinxNative.deviceGetDlcContentList(
+                                            RyujinxNative.jnaInstance.deviceGetDlcContentList(
                                                 path,
                                                 titleId.toLong(16)
                                             )
@@ -117,7 +117,7 @@ class DlcViewModel(val titleId: String) {
                                                 container.dlc_nca_list.add(
                                                     DlcContainer(
                                                         true,
-                                                        RyujinxNative.deviceGetDlcTitleId(
+                                                        RyujinxNative.jnaInstance.deviceGetDlcTitleId(
                                                             contentPath,
                                                             content
                                                         ).toLong(16),
@@ -171,7 +171,7 @@ class DlcViewModel(val titleId: String) {
                             enabled,
                             containerPath,
                             dlc.path,
-                            RyujinxNative.deviceGetDlcTitleId(
+                            RyujinxNative.jnaInstance.deviceGetDlcTitleId(
                                 containerPath,
                                 dlc.path
                             )
