@@ -314,8 +314,7 @@ class SettingViews {
                                 }
 
                                 Button(onClick = {
-                                    // 这里需要修改为新的密钥安装方法
-                                    // settingsViewModel.importProdKeys()
+                                    settingsViewModel.importProdKeys()
                                 }) {
                                     Text(text = "Import prod Keys")
                                 }
@@ -480,7 +479,7 @@ class SettingViews {
                             ) {
                                 Text(
                                     text = "Enable VSync",
-                                    modifier =alifier.align(Alignment.CenterVertically)
+                                    modifier = Modifier.align(Alignment.CenterVertically)
                                 )
                                 Switch(checked = enableVsync.value, onCheckedChange = {
                                     enableVsync.value = !enableVsync.value
@@ -503,7 +502,7 @@ class SettingViews {
                             }
                             Row(
                                 modifier = Modifier
-                                   .fillMaxWidth()
+                                    .fillMaxWidth()
                                     .padding(8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
@@ -536,7 +535,7 @@ class SettingViews {
                                     .fillMaxWidth()
                                     .padding(8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CterVertically
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(
                                     modifier = Modifier.align(Alignment.CenterVertically)
@@ -597,7 +596,7 @@ class SettingViews {
                             }
 
                             if (showImportWarning.value) {
-                                BasicAlertDialog(onissRequest = {
+                                BasicAlertDialog(onDismissRequest = {
                                     showImportWarning.value = false
                                     importFile.value = null
                                 }) {
@@ -610,7 +609,7 @@ class SettingViews {
                                         Column(
                                             modifier = Modifier
                                                 .padding(16.dp)
-                                                .fillWidth()
+                                                .fillMaxWidth()
                                         ) {
                                             Text(text = "Importing app data will delete your current profile. Do you still want to continue?")
                                             Row(
@@ -665,7 +664,7 @@ class SettingViews {
                             }
 
                             if (isImporting.value) {
-                                Text(text = "ImportFiles")
+                                Text(text = "Importing Files")
 
                                 LinearProgressIndicator(
                                     modifier = Modifier
@@ -680,7 +679,7 @@ class SettingViews {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(8.d),
+                                    .padding(8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -707,7 +706,7 @@ class SettingViews {
         }
         
         // 预设按钮组 (替换滑块)
-        val resolutionPresets = listOf(0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.85f, 0.9f, 0.95f, 1f, .5f, 2f, 3f, 4f)
+        val resolutionPresets = listOf(0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.85f, 0.9f, 0.95f, 1f, 1.5f, 2f, 3f, 4f)
         
         Row(
             modifier = Modifier
@@ -765,7 +764,7 @@ class SettingViews {
                             }
                             Row(
                                 modifier = Modifier
-                                    .fillWidth()
+                                    .fillMaxWidth()
                                     .padding(8.dp),
                                 horizontalArrangement = Arrangement.Start,
                                 verticalAlignment = Alignment.CenterVertically
@@ -787,7 +786,8 @@ class SettingViews {
                                 }
 
                                 if (refresh.value) {
-                                    isChanged.value =                                    refresh.value = false
+                                    isChanged.value = true
+                                    refresh.value = false
                                 }
 
                                 if (isDriverSelectorOpen.value) {
@@ -918,7 +918,7 @@ class SettingViews {
                                 TextButton(
                                     {
                                         isChanged.value = false
-                                        isDriverSelector.value = !isDriverSelectorOpen.value
+                                        isDriverSelectorOpen.value = !isDriverSelectorOpen.value
                                     },
                                     modifier = Modifier.align(Alignment.CenterVertically)
                                 ) {
@@ -972,7 +972,7 @@ class SettingViews {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .ading(8.dp),
+                                    .padding(8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -992,7 +992,7 @@ class SettingViews {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text"Use Switch Controller Layout",
+                                    text = "Use Switch Controller Layout",
                                     modifier = Modifier.align(Alignment.CenterVertically)
                                 )
                                 Switch(checked = useSwitchLayout.value, onCheckedChange = {
@@ -1114,11 +1114,11 @@ class SettingViews {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "Enable Error Log",
+                                    text = "Enable Error Logs",
                                     modifier = Modifier.align(Alignment.CenterVertically)
                                 )
                                 Switch(checked = enableErrorLogs.value, onCheckedChange = {
-                                    enableErrorLogs.value = !enablerrorLogs.value
+                                    enableErrorLogs.value = !enableErrorLogs.value
                                 })
                             }
                             Row(
@@ -1163,7 +1163,7 @@ class SettingViews {
                                     modifier = Modifier.align(Alignment.CenterVertically)
                                 )
                                 Switch(checked = enableTraceLogs.value, onCheckedChange = {
-                                    enableTraceLogs.value = it
+                                    enableTraceLogs.value = !enableTraceLogs.value
                                 })
                             }
                             Row(
@@ -1245,7 +1245,7 @@ class SettingViews {
                 }
             }
             val transition = updateTransition(transitionState, label = "transition")
-            arrowRotationDegree by transition.animateFloat({
+            val arrowRotationDegree by transition.animateFloat({
                 tween(durationMillis = EXPANSTION_TRANSITION_DURATION)
             }, label = "rotationDegreeTransition") {
                 if (mutableExpanded.value) 0f else 180f
@@ -1314,7 +1314,7 @@ class SettingViews {
             val enterTransition = remember {
                 expandVertically(
                     expandFrom = Alignment.Top,
-                    animationSpec = tween(EXPANSTION_TRANSITIONURATION)
+                    animationSpec = tween(EXPANSTION_TRANSITION_DURATION)
                 ) + fadeIn(
                     initialAlpha = 0.3f,
                     animationSpec = tween(EXPANSTION_TRANSITION_DURATION)
