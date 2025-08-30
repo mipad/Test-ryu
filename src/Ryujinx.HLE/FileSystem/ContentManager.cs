@@ -187,10 +187,10 @@ namespace Ryujinx.HLE.FileSystem
             }
         }
 
-        public void AddAocItem(ulong titleId, Stream containerStream, string ncaPath, string extension, bool mergedToContainer = false)
+        ublic void AddAocItem(ulong titleId, string containerPath, string ncaPath, bool mergedToContainer = false)
         {
             // TODO: Check Aoc version.
-            if (!AocData.TryAdd(titleId, new AocItem(containerStream, ncaPath, extension)))
+            if (!AocData.TryAdd(titleId, new AocItem(containerPath, ncaPath)))
             {
                 Logger.Warning?.Print(LogClass.Application, $"Duplicate AddOnContent detected. TitleId {titleId:X16}");
             }
@@ -200,7 +200,7 @@ namespace Ryujinx.HLE.FileSystem
 
                 if (!mergedToContainer)
                 {
-                    using var pfs = PartitionFileSystemUtils.OpenApplicationFileSystem(containerStream, extension == ".xci", _virtualFileSystem);
+                    using var pfs = PartitionFileSystemUtils.OpenApplicationFileSystem(containerPath, _virtualFileSystem);
                 }
             }
         }
