@@ -1,5 +1,5 @@
 package org.ryujinx.android.viewmodels
-
+ 
 import android.content.SharedPreferences
 import androidx.compose.runtime.MutableState
 import androidx.documentfile.provider.DocumentFile
