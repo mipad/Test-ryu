@@ -3,6 +3,8 @@ package org.ryujinx.android.viewmodels
 import android.content.Intent
 import android.net.Uri
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
@@ -85,13 +87,15 @@ class DlcViewModel(val titleId: String) {
     private fun processSelectedFiles(files: List<com.anggrayudi.storage.file.File>) {
         val file = files.firstOrNull()
         file?.apply {
-            if (extension == "nsp" || extension == "xci") {
+            // 使用正确的扩展名获取方式
+            val fileExtension = this.extension()
+            if (fileExtension == "nsp" || fileExtension == "xci") {
                 storageHelper.storage.context.contentResolver.takePersistableUriPermission(
-                    uri,
+                    this.uri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
 
-                val uri = file.uri
+                val uri = this.uri
                 var filePath: String? = null
                 var path = uri.pathSegments.joinToString("/")
 
@@ -108,7 +112,7 @@ class DlcViewModel(val titleId: String) {
                         )
 
                         for (baseDir in baseDirectories) {
-                            val potentialFile = java.io.File(baseDir, rootRelativePath)
+                            val potentialFile = File(baseDir, rootRelativePath)
                             if (potentialFile.exists()) {
                                 filePath = potentialFile.absolutePath
                                 break
@@ -124,7 +128,7 @@ class DlcViewModel(val titleId: String) {
                         )
 
                         for (baseDir in baseDirectories) {
-                            val potentialFile = java.io.File(baseDir, rootRelativePath)
+                            val potentialFile = File(baseDir, rootRelativePath)
                             if (potentialFile.exists()) {
                                 filePath = potentialFile.absolutePath
                                 break
@@ -181,7 +185,9 @@ class DlcViewModel(val titleId: String) {
             
             files.forEach { file ->
                 try {
-                    if (file.extension == "nsp" || file.extension == "xci") {
+                    // 使用正确的扩展名获取方式
+                    val fileExtension = file.extension()
+                    if (fileExtension == "nsp" || fileExtension == "xci") {
                         storageHelper.storage.context.contentResolver.takePersistableUriPermission(
                             file.uri,
                             Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -204,7 +210,7 @@ class DlcViewModel(val titleId: String) {
                                 )
 
                                 for (baseDir in baseDirectories) {
-                                    val potentialFile = java.io.File(baseDir, rootRelativePath)
+                                    val potentialFile = File(baseDir, rootRelativePath)
                                     if (potentialFile.exists()) {
                                         filePath = potentialFile.absolutePath
                                         break
@@ -220,7 +226,7 @@ class DlcViewModel(val titleId: String) {
                                 )
 
                                 for (baseDir in baseDirectories) {
-                                    val potentialFile = java.io.File(baseDir, rootRelativePath)
+                                    val potentialFile = File(baseDir, rootRelativePath)
                                     if (potentialFile.exists()) {
                                         filePath = potentialFile.absolutePath
                                         break
@@ -274,7 +280,7 @@ class DlcViewModel(val titleId: String) {
             batchInstallProgress.value = BatchInstallProgress.COMPLETED(successCount, files.size)
             
             // 在主线程刷新UI
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
+            Handler(Looper.getMainLooper()).post {
                 refreshDlcItems()
                 saveChanges()
             }
@@ -299,14 +305,14 @@ class DlcViewModel(val titleId: String) {
             for (container in this) {
                 val containerPath = container.path
 
-                if (!java.io.File(containerPath).exists())
+                if (!File(containerPath).exists())
                     continue
 
                 for (dlc in container.dlc_nca_list) {
                     val enabled = mutableStateOf(dlc.enabled)
                     items.add(
                         DlcItem(
-                            java.io.File(containerPath).name,
+                            File(containerPath).name,
                             enabled,
                             containerPath,
                             dlc.fullPath,
@@ -345,8 +351,8 @@ class DlcViewModel(val titleId: String) {
             val gson = Gson()
             val json = gson.toJson(this)
             val savePath = MainActivity.AppPath + "/games/" + titleId.toLowerCase(Locale.current)
-            java.io.File(savePath).mkdirs()
-            java.io.File("$savePath/dlc.json").writeText(json)
+            File(savePath).mkdirs()
+            File("$savePath/dlc.json").writeText(json)
         }
     }
 
@@ -363,10 +369,10 @@ class DlcViewModel(val titleId: String) {
 
     private fun reloadFromDisk() {
         data = mutableListOf()
-        if (java.io.File(jsonPath).exists()) {
+        if (File(jsonPath).exists()) {
             val gson = Gson()
             val typeToken = object : TypeToken<MutableList<DlcContainerList>>() {}.type
-            data = gson.fromJson<MutableList<DlcContainerList>>(java.io.File(jsonPath).readText(), typeToken)
+            data = gson.fromJson<MutableList<DlcContainerList>>(File(jsonPath).readText(), typeToken)
         }
     }
 }
