@@ -13,7 +13,7 @@ import com.anggrayudi.storage.file.extension
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import org.ryujinx.android.MainActivity
-import org.ryujinx.android.KenjinxNative
+import org.ryujinx.android.RyujinxNative
 import java.io.File
 
 class DlcViewModel(val titleId: String) {
@@ -104,7 +104,7 @@ class DlcViewModel(val titleId: String) {
 
                                     if (!isDuplicate) {
                                         val contents =
-                                            KenjinxNative.deviceGetDlcContentList(
+                                            RyujinxNative.deviceGetDlcContentList(
                                                 path,
                                                 titleId.toLong(16)
                                             )
@@ -117,7 +117,7 @@ class DlcViewModel(val titleId: String) {
                                                 container.dlc_nca_list.add(
                                                     DlcContainer(
                                                         true,
-                                                        KenjinxNative.deviceGetDlcTitleId(
+                                                        RyujinxNative.deviceGetDlcTitleId(
                                                             contentPath,
                                                             content
                                                         ).toLong(16),
@@ -171,7 +171,7 @@ class DlcViewModel(val titleId: String) {
                             enabled,
                             containerPath,
                             dlc.path,
-                            KenjinxNative.deviceGetDlcTitleId(
+                            RyujinxNative.deviceGetDlcTitleId(
                                 containerPath,
                                 dlc.path
                             )
