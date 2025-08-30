@@ -175,14 +175,11 @@ namespace Ryujinx.HLE.Loaders.Processes.Extensions
                             if (downloadableContentNca.Enabled)
                             {
                                 // 关键修改：使用文件路径而不是 stream
-                                using (var dlcStream = new FileStream(downloadableContentContainer.ContainerPath, FileMode.Open, FileAccess.Read))
-                                {
-                                    device.Configuration.ContentManager.AddAocItem(
-                                        downloadableContentNca.TitleId, 
-                                        dlcStream, 
-                                        downloadableContentNca.FullPath, 
-                                        System.IO.Path.GetExtension(downloadableContentContainer.ContainerPath));
-                                }
+                                device.Configuration.ContentManager.AddAocItem(
+                                    downloadableContentNca.TitleId, 
+                                    downloadableContentContainer.ContainerPath, 
+                                    downloadableContentNca.FullPath, 
+                                    System.IO.Path.GetExtension(downloadableContentContainer.ContainerPath));
                             }
                         }
                         else
