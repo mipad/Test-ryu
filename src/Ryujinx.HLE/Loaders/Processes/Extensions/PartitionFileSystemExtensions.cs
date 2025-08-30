@@ -52,157 +52,106 @@ namespace Ryujinx.HLE.Loaders.Processes.Extensions
             return programs;
         }
 
-        internal static (bool, ProcessResult) TryLoad<TMetaData, TFormat, THeader, TEntry>(
-    this PartitionFileSystemCore<TMetaData, TFormat, THeader, TEntry> partitionFileSystem, 
-    Switch device, 
-    Stream stream, 
-    ulong applicationId, 
-    out string errorMessage, 
-    string extension, 
-    Stream updateStream = null)
-    where TMetaData : PartitionFileSystemMetaCore<TFormat, THeader, TEntry>, new()
-    where TFormat : IPartitionFileSystemFormat
-    where THeader : unmanaged, IPartitionFileSystemHeader
-    where TEntry : unmanaged, IPartitionFileSystemEntry
-{
-    errorMessage = null;
-
-    // Load required NCAs.
-    Nca mainNca = null;
-    Nca patchNca = null;
-    Nca controlNca = null;
-
-    try
-    {
-        Dictionary<ulong, ContentMetaData> applications = partitionFileSystem.GetContentData(
-            ContentMetaType.Application, 
-            device.FileSystem, 
-            device.System.FsIntegrityCheckLevel);
-
-        if (applicationId == 0)
+        internal static (bool, ProcessResult) TryLoad<TMetaData, TFormat, THeader, TEntry>(this PartitionFileSystemCore<TMetaData, TFormat, THeader, TEntry> partitionFileSystem, Switch device, Stream stream, ulong applicationId, out string errorMessage)
+            where TMetaData : PartitionFileSystemMetaCore<TFormat, THeader, TEntry>, new()
+            where TFormat : IPartitionFileSystemFormat
+            where THeader : unmanaged, IPartitionFileSystemHeader
+            where TEntry : unmanaged, IPartitionFileSystemEntry
         {
-            foreach ((ulong _, ContentMetaData content) in applications)
-            {
-                mainNca = content.GetNcaByType(
-                    device.FileSystem.KeySet, 
-                    ContentType.Program, 
-                    device.Configuration.UserChannelPersistence.Index);
-                controlNca = content.GetNcaByType(
-                    device.FileSystem.KeySet, 
-                    ContentType.Control, 
-                    device.Configuration.UserChannelPersistence.Index);
-                break;
-            }
-        }
-        else if (applications.TryGetValue(applicationId, out ContentMetaData content))
-        {
-            mainNca = content.GetNcaByType(
-                device.FileSystem.KeySet, 
-                ContentType.Program, 
-                device.Configuration.UserChannelPersistence.Index);
-            controlNca = content.GetNcaByType(
-                device.FileSystem.KeySet, 
-                ContentType.Control, 
-                device.Configuration.UserChannelPersistence.Index);
-        }
+            errorMessage = null;
 
-        ProcessLoaderHelper.RegisterProgramMapInfo(device, partitionFileSystem).ThrowIfFailure();
-    }
-    catch (Exception ex)
-    {
-        errorMessage = $"Unable to load: {ex.Message}";
-        Logger.Error?.Print(LogClass.Loader, errorMessage);
+            // Load required NCAs.
+            Nca mainNca = null;
+            Nca patchNca = null;
+            Nca controlNca = null;
 
-        return (false, ProcessResult.Failed);
-    }
-
-    if (mainNca != null)
-    {
-        if (mainNca.Header.ContentType != NcaContentType.Program)
-        {
-            errorMessage = "Selected NCA file is not a \"Program\" NCA";
-            Logger.Error?.Print(LogClass.Loader, errorMessage);
-
-            return (false, ProcessResult.Failed);
-        }
-
-        (Nca updatePatchNca, Nca updateControlNca) = mainNca.GetUpdateData(
-            device.FileSystem, 
-            device.System.FsIntegrityCheckLevel, 
-            device.Configuration.UserChannelPersistence.Index, 
-            out string updateError, 
-            updateStream);
-
-        if (updatePatchNca != null)
-        {
-            patchNca = updatePatchNca;
-        }
-
-        if (updateControlNca != null)
-        {
-            controlNca = updateControlNca;
-        }
-
-        // TODO: If we want to support multi-processes in future, we shouldn't clear AddOnContent data here.
-        device.Configuration.ContentManager.ClearAocData();
-
-        // Load DownloadableContents.
-        string addOnContentMetadataPath = System.IO.Path.Combine(
-            AppDataManager.GamesDirPath, 
-            mainNca.GetProgramIdBase().ToString("x16"), 
-            "dlc.json");
-            
-        if (File.Exists(addOnContentMetadataPath))
-        {
-            Logger.Info?.Print(LogClass.Loader, $"DLC Found : {addOnContentMetadataPath}");
-            
             try
             {
-                List<DownloadableContentContainer> dlcContainerList = JsonHelper.DeserializeFromFile(
-                    addOnContentMetadataPath, 
-                    _contentSerializerContext.ListDownloadableContentContainer);
-                    
-                Logger.Info?.Print(LogClass.Loader, $"DLC Found : {addOnContentMetadataPath}. Available: {dlcContainerList.Count}");
+                Dictionary<ulong, ContentMetaData> applications = partitionFileSystem.GetContentData(ContentMetaType.Application, device.FileSystem, device.System.FsIntegrityCheckLevel);
 
-                foreach (DownloadableContentContainer downloadableContentContainer in dlcContainerList)
+                if (applicationId == 0)
                 {
-                    Logger.Info?.Print(LogClass.Loader, $"DLC Contents Available: {downloadableContentContainer.DownloadableContentNcaList.Count}");
-                    
-                    foreach (DownloadableContentNca downloadableContentNca in downloadableContentContainer.DownloadableContentNcaList)
+                    foreach ((ulong _, ContentMetaData content) in applications)
                     {
-                        if (File.Exists(downloadableContentContainer.ContainerPath))
-                        {
-                            if (downloadableContentNca.Enabled)
-                            {
-                                // 关键修改：使用文件路径而不是 stream
-                                device.Configuration.ContentManager.AddAocItem(
-                                    downloadableContentNca.TitleId, 
-                                    downloadableContentContainer.ContainerPath, 
-                                    downloadableContentNca.FullPath, 
-                                    System.IO.Path.GetExtension(downloadableContentContainer.ContainerPath));
-                            }
-                        }
-                        else
-                        {
-                            Logger.Warning?.Print(LogClass.Application, $"Cannot find AddOnContent file {downloadableContentContainer.ContainerPath}. It may have been moved or renamed.");
-                        }
+                        mainNca = content.GetNcaByType(device.FileSystem.KeySet, ContentType.Program, device.Configuration.UserChannelPersistence.Index);
+                        controlNca = content.GetNcaByType(device.FileSystem.KeySet, ContentType.Control, device.Configuration.UserChannelPersistence.Index);
+                        break;
                     }
                 }
+                else if (applications.TryGetValue(applicationId, out ContentMetaData content))
+                {
+                    mainNca = content.GetNcaByType(device.FileSystem.KeySet, ContentType.Program, device.Configuration.UserChannelPersistence.Index);
+                    controlNca = content.GetNcaByType(device.FileSystem.KeySet, ContentType.Control, device.Configuration.UserChannelPersistence.Index);
+                }
+
+                ProcessLoaderHelper.RegisterProgramMapInfo(device, partitionFileSystem).ThrowIfFailure();
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Loader, $"Error loading DLC metadata: {ex.Message}");
+                errorMessage = $"Unable to load: {ex.Message}";
+
+                return (false, ProcessResult.Failed);
             }
+
+            if (mainNca != null)
+            {
+                if (mainNca.Header.ContentType != NcaContentType.Program)
+                {
+                    errorMessage = "Selected NCA file is not a \"Program\" NCA";
+
+                    return (false, ProcessResult.Failed);
+                }
+
+                (Nca updatePatchNca, Nca updateControlNca) = mainNca.GetUpdateData(device.FileSystem, device.System.FsIntegrityCheckLevel, device.Configuration.UserChannelPersistence.Index, out string _, updateStream);
+
+                if (updatePatchNca != null)
+                {
+                    patchNca = updatePatchNca;
+                }
+
+                if (updateControlNca != null)
+                {
+                    controlNca = updateControlNca;
+                }
+
+                // TODO: If we want to support multi-processes in future, we shouldn't clear AddOnContent data here.
+                device.Configuration.ContentManager.ClearAocData();
+
+                // Load DownloadableContents.
+                string addOnContentMetadataPath = System.IO.Path.Combine(AppDataManager.GamesDirPath, mainNca.GetProgramIdBase().ToString("x16"), "dlc.json");
+                if (File.Exists(addOnContentMetadataPath))
+                {
+                    Logger.Info?.Print(LogClass.Loader, $"DLC Found : {addOnContentMetadataPath}");
+                    List<DownloadableContentContainer> dlcContainerList = JsonHelper.DeserializeFromFile(addOnContentMetadataPath, _contentSerializerContext.ListDownloadableContentContainer);
+                    Logger.Info?.Print(LogClass.Loader, $"DLC Found : {addOnContentMetadataPath}. Available: {dlcContainerList.Count}");
+
+                    foreach (DownloadableContentContainer downloadableContentContainer in dlcContainerList)
+                    {
+                        Logger.Info?.Print(LogClass.Loader, $"DLC Contents Available: {downloadableContentContainer.DownloadableContentNcaList.Count}");
+                        foreach (DownloadableContentNca downloadableContentNca in downloadableContentContainer.DownloadableContentNcaList)
+                        {
+                            if (File.Exists(downloadableContentContainer.ContainerPath))
+                            {
+                                if (downloadableContentNca.Enabled)
+                                {
+                                    device.Configuration.ContentManager.AddAocItem(downloadableContentNca.TitleId, stream, downloadableContentNca.FullPath, System.IO.Path.GetExtension(downloadableContentContainer.ContainerPath));
+                                }
+                            }
+                            else
+                            {
+                                Logger.Warning?.Print(LogClass.Application, $"Cannot find AddOnContent file {downloadableContentContainer.ContainerPath}. It may have been moved or renamed.");
+                            }
+                        }
+                    }
+                }
+
+                return (true, mainNca.Load(device, patchNca, controlNca));
+            }
+
+            errorMessage = $"Unable to load: Could not find Main NCA for title \"{applicationId:X16}\"";
+
+            return (false, ProcessResult.Failed);
         }
-
-        return (true, mainNca.Load(device, patchNca, controlNca));
-    }
-
-    errorMessage = $"Unable to load: Could not find Main NCA for title \"{applicationId:X16}\"";
-    Logger.Error?.Print(LogClass.Loader, errorMessage);
-
-    return (false, ProcessResult.Failed);
-}
 
         public static Nca GetNca(this IFileSystem fileSystem, KeySet keySet, string path)
         {
