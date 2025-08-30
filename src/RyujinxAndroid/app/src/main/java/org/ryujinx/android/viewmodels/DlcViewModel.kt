@@ -3,37 +3,42 @@ package org.ryujinx.android.viewmodels
 import android.content.Intent
 import android.net.Uri
 import android.os.Environment
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.text.toLowerCase
 import com.anggrayudi.storage.SimpleStorageHelper
 import com.anggrayudi.storage.file.extension
-import com.anggrayudi.storage.file.getAbsolutePath
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import org.ryujinx.android.MainActivity
-import org.ryujinx.android.RyujinxNative
+import org.ryujinx.android.KenjinxNative
 import java.io.File
 
 class DlcViewModel(val titleId: String) {
+    private var canClose: MutableState<Boolean>? = null
     private var storageHelper: SimpleStorageHelper
+    private var dlcItemsState: SnapshotStateList<DlcItem>? = null
 
     companion object {
         const val UpdateRequestCode = 1002
     }
 
-    // 添加了refresh参数
-    fun remove(item: DlcItem, refresh: MutableState<Boolean>) {
+    fun remove(item: DlcItem) {
         data?.apply {
             this.removeAll { it.path == item.containerPath }
-            refresh.value = true // 触发刷新
+            refreshDlcItems()
+            saveChanges()
+
+            canClose?.let {
+                it.value = false
+                it.value = true
+            }
         }
     }
 
-    fun add(refresh: MutableState<Boolean>) {
+    fun add() {
         val callBack = storageHelper.onFileSelected
 
         storageHelper.onFileSelected = { requestCode, files ->
@@ -49,7 +54,9 @@ class DlcViewModel(val titleId: String) {
                             )
 
                             val uri = file.uri
+
                             var filePath: String? = null
+
                             var path = uri.pathSegments.joinToString("/")
 
                             if (path.startsWith("document/")) {
@@ -90,38 +97,33 @@ class DlcViewModel(val titleId: String) {
                                 }
                             }
 
-                            // 回退到getAbsolutePath
-                            if (filePath == null) {
-                                filePath = file.getAbsolutePath(storageHelper.storage.context)
-                            }
-                            
-                            if (filePath.isNotEmpty()) {
+                            path = filePath!!
+                            if (path.isNotEmpty()) {
                                 data?.apply {
-                                    val isDuplicate = this.any { it.path == filePath }
+                                    val isDuplicate = this.any { it.path == path }
 
                                     if (!isDuplicate) {
-                                        val contents = RyujinxNative.jnaInstance.deviceGetDlcContentList(
-                                            filePath,
-                                            titleId.toLong(16)
-                                        )
+                                        val contents =
+                                            KenjinxNative.deviceGetDlcContentList(
+                                                path,
+                                                titleId.toLong(16)
+                                            )
 
                                         if (contents.isNotEmpty()) {
-                                            val contentPath = filePath
+                                            val contentPath = path
                                             val container = DlcContainerList(contentPath)
 
-                                            for (content in contents) {
-                                                val dlcTitleId = RyujinxNative.jnaInstance.deviceGetDlcTitleId(
-                                                    contentPath,
-                                                    content
-                                                )
+                                            for (content in contents)
                                                 container.dlc_nca_list.add(
                                                     DlcContainer(
                                                         true,
-                                                        dlcTitleId,
+                                                        KenjinxNative.deviceGetDlcTitleId(
+                                                            contentPath,
+                                                            content
+                                                        ).toLong(16),
                                                         content
                                                     )
                                                 )
-                                            }
 
                                             this.add(container)
                                         }
@@ -130,40 +132,29 @@ class DlcViewModel(val titleId: String) {
                             }
                         }
                     }
-                    refresh.value = true
                 }
+
+                refreshDlcItems()
+                saveChanges()
             }
         }
+
         storageHelper.openFilePicker(UpdateRequestCode)
     }
 
-    fun save(items: List<DlcItem>) {
-        data?.apply {
-            // 更新启用状态
-            items.forEach { item ->
-                for (container in this) {
-                    if (container.path == item.containerPath) {
-                        for (dlc in container.dlc_nca_list) {
-                            if (dlc.fullPath == item.fullPath) {
-                                dlc.enabled = item.isEnabled.value
-                                break
-                            }
-                        }
-                    }
-                }
-            }
-
-            val gson = Gson()
-            val json = gson.toJson(this)
-            jsonPath = MainActivity.AppPath + "/games/" + titleId.toLowerCase(Locale.current)
-            File(jsonPath).mkdirs()
-            File("$jsonPath/dlc.json").writeText(json)
-        }
+    fun save(openDialog: MutableState<Boolean>) {
+        saveChanges()
+        openDialog.value = false
     }
 
-    @Composable
-    fun getDlc(): List<DlcItem> {
-        var items = mutableListOf<DlcItem>()
+    fun setDlcItems(items: SnapshotStateList<DlcItem>, canClose: MutableState<Boolean>) {
+        dlcItemsState = items
+        this.canClose = canClose
+        refreshDlcItems()
+    }
+
+    private fun refreshDlcItems() {
+        val items = mutableListOf<DlcItem>()
 
         data?.apply {
             for (container in this) {
@@ -173,23 +164,51 @@ class DlcViewModel(val titleId: String) {
                     continue
 
                 for (dlc in container.dlc_nca_list) {
-                    val enabled = remember {
-                        mutableStateOf(dlc.enabled)
-                    }
+                    val enabled = mutableStateOf(dlc.is_enabled)
                     items.add(
                         DlcItem(
                             File(containerPath).name,
                             enabled,
                             containerPath,
-                            dlc.fullPath,
-                            dlc.titleId
+                            dlc.path,
+                            KenjinxNative.deviceGetDlcTitleId(
+                                containerPath,
+                                dlc.path
+                            )
                         )
                     )
                 }
             }
         }
 
-        return items.toList()
+        dlcItemsState?.clear()
+        dlcItemsState?.addAll(items)
+        canClose?.apply {
+            value = true
+        }
+    }
+
+    private fun saveChanges() {
+        data?.apply {
+            dlcItemsState?.forEach { item ->
+                for (container in this) {
+                    if (container.path == item.containerPath) {
+                        for (dlc in container.dlc_nca_list) {
+                            if (dlc.path == item.fullPath) {
+                                dlc.is_enabled = item.isEnabled.value
+                                break
+                            }
+                        }
+                    }
+                }
+            }
+
+            val gson = Gson()
+            val json = gson.toJson(this)
+            val savePath = MainActivity.AppPath + "/games/" + titleId.toLowerCase(Locale.current)
+            File(savePath).mkdirs()
+            File("$savePath/dlc.json").writeText(json)
+        }
     }
 
     var data: MutableList<DlcContainerList>? = null
@@ -220,9 +239,9 @@ data class DlcContainerList(
 )
 
 data class DlcContainer(
-    var enabled: Boolean = false,
-    var titleId: String = "",
-    var fullPath: String = ""
+    var is_enabled: Boolean = false,
+    var title_id: Long = 0,
+    var path: String = ""
 )
 
 data class DlcItem(
