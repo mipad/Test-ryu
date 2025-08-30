@@ -3,14 +3,16 @@ package org.ryujinx.android.viewmodels
 import android.content.Intent
 import android.net.Uri
 import android.os.Environment
-import android.os.Handler
-import android.os.Looper
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.text.toLowerCase
 import com.anggrayudi.storage.SimpleStorageHelper
+import com.anggrayudi.storage.file.extension
+import com.anggrayudi.storage.file.getAbsolutePath
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import org.ryujinx.android.MainActivity
@@ -21,14 +23,12 @@ class DlcViewModel(val titleId: String) {
     private var canClose: MutableState<Boolean>? = null
     private var storageHelper: SimpleStorageHelper
     private var dlcItemsState: SnapshotStateList<DlcItem>? = null
-    var batchInstallProgress: MutableState<BatchInstallProgress> = mutableStateOf(BatchInstallProgress.IDLE)
 
     companion object {
         const val UpdateRequestCode = 1002
-        const val BatchUpdateRequestCode = 1003
     }
 
-    fun remove(item: DlcItem) {
+    fun remove(item: DlcItem, refresh: MutableState<Boolean>) {
         data?.apply {
             this.removeAll { it.path == item.containerPath }
             refreshDlcItems()
@@ -38,269 +38,123 @@ class DlcViewModel(val titleId: String) {
                 it.value = false
                 it.value = true
             }
+            
+            refresh.value = true
         }
     }
 
-    fun removeAll() {
-        data?.clear()
-        refreshDlcItems()
-        saveChanges()
-        
-        canClose?.let {
-            it.value = false
-            it.value = true
-        }
-    }
-
-    fun add() {
+    fun add(refresh: MutableState<Boolean>) {
         val callBack = storageHelper.onFileSelected
 
         storageHelper.onFileSelected = { requestCode, files ->
             run {
                 storageHelper.onFileSelected = callBack
                 if (requestCode == UpdateRequestCode) {
-                    processSelectedFiles(files)
-                }
-            }
-        }
+                    val file = files.firstOrNull()
+                    file?.apply {
+                        if (file.extension == "nsp" || file.extension == "xci") {
+                            storageHelper.storage.context.contentResolver.takePersistableUriPermission(
+                                file.uri,
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            )
 
-        storageHelper.openFilePicker(UpdateRequestCode)
-    }
+                            val uri = file.uri
 
-    fun addBatch() {
-        val callBack = storageHelper.onFileSelected
+                            var filePath: String? = null
 
-        storageHelper.onFileSelected = { requestCode, files ->
-            run {
-                storageHelper.onFileSelected = callBack
-                if (requestCode == BatchUpdateRequestCode) {
-                    processBatchFiles(files)
-                }
-            }
-        }
+                            var path = uri.pathSegments.joinToString("/")
 
-        // 设置多选模式
-        storageHelper.openFilePicker(BatchUpdateRequestCode, allowMultiple = true)
-    }
+                            if (path.startsWith("document/")) {
+                                val relativePath = Uri.decode(path.substring("document/".length))
 
-    private fun processSelectedFiles(files: List<com.anggrayudi.storage.file.File>) {
-        val file = files.firstOrNull()
-        file?.apply {
-            // 使用 Kotlin 标准库获取文件扩展名
-            val fileName = name ?: ""
-            val fileExtension = if (fileName.contains(".")) {
-                fileName.substringAfterLast(".", "").lowercase()
-            } else {
-                ""
-            }
-            
-            if (fileExtension == "nsp" || fileExtension == "xci") {
-                storageHelper.storage.context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
+                                if (relativePath.startsWith("root/")) {
+                                    val rootRelativePath = relativePath.substring("root/".length)
 
-                val uri = file.uri
-                var filePath: String? = null
-                var path = uri.pathSegments.joinToString("/")
+                                    val baseDirectories = listOf(
+                                        storageHelper.storage.context.filesDir,
+                                        storageHelper.storage.context.getExternalFilesDir(null),
+                                        Environment.getExternalStorageDirectory()
+                                    )
 
-                if (path.startsWith("document/")) {
-                    val relativePath = Uri.decode(path.substring("document/".length))
-
-                    if (relativePath.startsWith("root/")) {
-                        val rootRelativePath = relativePath.substring("root/".length)
-
-                        val baseDirectories = listOf(
-                            storageHelper.storage.context.filesDir,
-                            storageHelper.storage.context.getExternalFilesDir(null),
-                            Environment.getExternalStorageDirectory()
-                        )
-
-                        for (baseDir in baseDirectories) {
-                            val potentialFile = File(baseDir, rootRelativePath)
-                            if (potentialFile.exists()) {
-                                filePath = potentialFile.absolutePath
-                                break
-                            }
-                        }
-                    } else if (relativePath.startsWith("primary:")) {
-                        val rootRelativePath = relativePath.substring("primary:".length)
-
-                        val baseDirectories = listOf(
-                            storageHelper.storage.context.filesDir,
-                            storageHelper.storage.context.getExternalFilesDir(null),
-                            Environment.getExternalStorageDirectory()
-                        )
-
-                        for (baseDir in baseDirectories) {
-                            val potentialFile = File(baseDir, rootRelativePath)
-                            if (potentialFile.exists()) {
-                                filePath = potentialFile.absolutePath
-                                break
-                            }
-                        }
-                    }
-                }
-
-                if (filePath != null) {
-                    path = filePath
-                    if (path.isNotEmpty()) {
-                        data?.apply {
-                            val isDuplicate = this.any { it.path == path }
-
-                            if (!isDuplicate) {
-                                val contents = RyujinxNative.jnaInstance.deviceGetDlcContentList(
-                                    path,
-                                    titleId.toLong(16)
-                                )
-
-                                if (contents.isNotEmpty()) {
-                                    val contentPath = path
-                                    val container = DlcContainerList(contentPath)
-
-                                    for (content in contents)
-                                        container.dlc_nca_list.add(
-                                            DlcContainer(
-                                                true,
-                                                titleId,
-                                                content
-                                            )
-                                        )
-
-                                    this.add(container)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        refreshDlcItems()
-        saveChanges()
-    }
-
-    private fun processBatchFiles(files: List<com.anggrayudi.storage.file.File>) {
-        batchInstallProgress.value = BatchInstallProgress.RUNNING(0, files.size)
-        
-        // 在后台线程处理批量文件
-        Thread {
-            var processedCount = 0
-            var successCount = 0
-            
-            files.forEach { file ->
-                try {
-                    // 使用 Kotlin 标准库获取文件扩展名
-                    val fileName = file.name ?: ""
-                    val fileExtension = if (fileName.contains(".")) {
-                        fileName.substringAfterLast(".", "").lowercase()
-                    } else {
-                        ""
-                    }
-                    
-                    if (fileExtension == "nsp" || fileExtension == "xci") {
-                        storageHelper.storage.context.contentResolver.takePersistableUriPermission(
-                            file.uri,
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        )
-
-                        val uri = file.uri
-                        var filePath: String? = null
-                        var path = uri.pathSegments.joinToString("/")
-
-                        if (path.startsWith("document/")) {
-                            val relativePath = Uri.decode(path.substring("document/".length))
-
-                            if (relativePath.startsWith("root/")) {
-                                val rootRelativePath = relativePath.substring("root/".length)
-
-                                val baseDirectories = listOf(
-                                    storageHelper.storage.context.filesDir,
-                                    storageHelper.storage.context.getExternalFilesDir(null),
-                                    Environment.getExternalStorageDirectory()
-                                )
-
-                                for (baseDir in baseDirectories) {
-                                    val potentialFile = File(baseDir, rootRelativePath)
-                                    if (potentialFile.exists()) {
-                                        filePath = potentialFile.absolutePath
-                                        break
+                                    for (baseDir in baseDirectories) {
+                                        val potentialFile = File(baseDir, rootRelativePath)
+                                        if (potentialFile.exists()) {
+                                            filePath = potentialFile.absolutePath
+                                            break
+                                        }
                                     }
-                                }
-                            } else if (relativePath.startsWith("primary:")) {
-                                val rootRelativePath = relativePath.substring("primary:".length)
+                                } else if (relativePath.startsWith("primary:")) {
+                                    val rootRelativePath = relativePath.substring("primary:".length)
 
-                                val baseDirectories = listOf(
-                                    storageHelper.storage.context.filesDir,
-                                    storageHelper.storage.context.getExternalFilesDir(null),
-                                    Environment.getExternalStorageDirectory()
-                                )
+                                    val baseDirectories = listOf(
+                                        storageHelper.storage.context.filesDir,
+                                        storageHelper.storage.context.getExternalFilesDir(null),
+                                        Environment.getExternalStorageDirectory()
+                                    )
 
-                                for (baseDir in baseDirectories) {
-                                    val potentialFile = File(baseDir, rootRelativePath)
-                                    if (potentialFile.exists()) {
-                                        filePath = potentialFile.absolutePath
-                                        break
+                                    for (baseDir in baseDirectories) {
+                                        val potentialFile = File(baseDir, rootRelativePath)
+                                        if (potentialFile.exists()) {
+                                            filePath = potentialFile.absolutePath
+                                            break
+                                        }
                                     }
                                 }
                             }
-                        }
 
-                        if (filePath != null) {
-                            path = filePath
-                            if (path.isNotEmpty()) {
+                            // Fallback to getAbsolutePath if filePath is still null
+                            if (filePath == null) {
+                                filePath = file.getAbsolutePath(storageHelper.storage.context)
+                            }
+                            
+                            if (filePath.isNotEmpty()) {
                                 data?.apply {
-                                    val isDuplicate = this.any { it.path == path }
+                                    val isDuplicate = this.any { it.path == filePath }
 
                                     if (!isDuplicate) {
                                         val contents = RyujinxNative.jnaInstance.deviceGetDlcContentList(
-                                            path,
+                                            filePath,
                                             titleId.toLong(16)
                                         )
 
                                         if (contents.isNotEmpty()) {
-                                            val contentPath = path
+                                            val contentPath = filePath
                                             val container = DlcContainerList(contentPath)
 
-                                            for (content in contents)
+                                            for (content in contents) {
+                                                val dlcTitleId = RyujinxNative.jnaInstance.deviceGetDlcTitleId(
+                                                    contentPath,
+                                                    content
+                                                )
                                                 container.dlc_nca_list.add(
                                                     DlcContainer(
                                                         true,
-                                                        titleId,
+                                                        dlcTitleId,
                                                         content
                                                     )
                                                 )
+                                            }
 
                                             this.add(container)
-                                            successCount++
                                         }
                                     }
                                 }
                             }
                         }
                     }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                } finally {
-                    processedCount++
-                    batchInstallProgress.value = BatchInstallProgress.RUNNING(processedCount, files.size)
+                    
+                    refreshDlcItems()
+                    saveChanges()
+                    refresh.value = true
                 }
             }
-            
-            // 更新进度到完成状态
-            batchInstallProgress.value = BatchInstallProgress.COMPLETED(successCount, files.size)
-            
-            // 在主线程刷新UI
-            Handler(Looper.getMainLooper()).post {
-                refreshDlcItems()
-                saveChanges()
-            }
-        }.start()
+        }
+        storageHelper.openFilePicker(UpdateRequestCode)
     }
 
-    fun save(openDialog: MutableState<Boolean>) {
-        saveChanges()
-        openDialog.value = false
+    fun save(items: List<DlcItem>, openDialog: MutableState<Boolean>? = null) {
+        saveChanges(items)
+        openDialog?.value = false
     }
 
     fun setDlcItems(items: SnapshotStateList<DlcItem>, canClose: MutableState<Boolean>) {
@@ -327,10 +181,7 @@ class DlcViewModel(val titleId: String) {
                             enabled,
                             containerPath,
                             dlc.fullPath,
-                            RyujinxNative.jnaInstance.deviceGetDlcTitleId(
-                                containerPath,
-                                dlc.fullPath
-                            )
+                            dlc.titleId
                         )
                     )
                 }
@@ -344,9 +195,10 @@ class DlcViewModel(val titleId: String) {
         }
     }
 
-    private fun saveChanges() {
+    private fun saveChanges(items: List<DlcItem>? = null) {
         data?.apply {
-            dlcItemsState?.forEach { item ->
+            // Update enabled states from UI if items are provided
+            items?.forEach { item ->
                 for (container in this) {
                     if (container.path == item.containerPath) {
                         for (dlc in container.dlc_nca_list) {
@@ -367,6 +219,37 @@ class DlcViewModel(val titleId: String) {
         }
     }
 
+    @Composable
+    fun getDlc(): List<DlcItem> {
+        var items = mutableListOf<DlcItem>()
+
+        data?.apply {
+            for (container in this) {
+                val containerPath = container.path
+
+                if (!File(containerPath).exists())
+                    continue
+
+                for (dlc in container.dlc_nca_list) {
+                    val enabled = remember {
+                        mutableStateOf(dlc.enabled)
+                    }
+                    items.add(
+                        DlcItem(
+                            File(containerPath).name,
+                            enabled,
+                            containerPath,
+                            dlc.fullPath,
+                            dlc.titleId
+                        )
+                    )
+                }
+            }
+        }
+
+        return items.toList()
+    }
+
     var data: MutableList<DlcContainerList>? = null
     private var jsonPath: String
 
@@ -383,7 +266,8 @@ class DlcViewModel(val titleId: String) {
         if (File(jsonPath).exists()) {
             val gson = Gson()
             val typeToken = object : TypeToken<MutableList<DlcContainerList>>() {}.type
-            data = gson.fromJson(File(jsonPath).readText(), typeToken) as MutableList<DlcContainerList>
+            data =
+                gson.fromJson<MutableList<DlcContainerList>>(File(jsonPath).readText(), typeToken)
         }
     }
 }
@@ -406,9 +290,3 @@ data class DlcItem(
     var fullPath: String = "",
     var titleId: String = ""
 )
-
-sealed class BatchInstallProgress {
-    object IDLE : BatchInstallProgress()
-    data class RUNNING(val processed: Int, val total: Int) : BatchInstallProgress()
-    data class COMPLETED(val success: Int, val total: Int) : BatchInstallProgress()
-}
