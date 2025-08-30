@@ -215,36 +215,106 @@ namespace Ryujinx.HLE.FileSystem
         public IList<ulong> GetAocTitleIds() => AocData.Select(e => e.Key).ToList();
 
         public bool GetAocDataStorage(ulong aocTitleId, out IStorage aocStorage, IntegrityCheckLevel integrityCheckLevel)
+{
+    aocStorage = null;
+
+    if (AocData.TryGetValue(aocTitleId, out AocItem aoc))
+    {
+        // 创建文件流，但不使用 using 语句
+        var fileStream = new FileStream(aoc.ContainerPath, FileMode.Open, FileAccess.Read);
+        using var ncaFile = new UniqueRef<IFile>();
+
+        try
         {
-            aocStorage = null;
+            IFileSystem fileSystem = null;
 
-            if (AocData.TryGetValue(aocTitleId, out AocItem aoc))
+            switch (aoc.Extension)
             {
-                using var fileStream = new FileStream(aoc.ContainerPath, FileMode.Open, FileAccess.Read);
-                using var ncaFile = new UniqueRef<IFile>();
-
-                switch (aoc.Extension)
-                {
-                    case ".xci":
-                        var xci = new Xci(_virtualFileSystem.KeySet, fileStream.AsStorage()).OpenPartition(XciPartitionType.Secure);
-                        xci.OpenFile(ref ncaFile.Ref, aoc.NcaPath.ToU8Span(), OpenMode.Read);
-                        break;
-                    case ".nsp":
-                        var pfs = new PartitionFileSystem();
-                        pfs.Initialize(fileStream.AsStorage());
-                        pfs.OpenFile(ref ncaFile.Ref, aoc.NcaPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
-                        break;
-                    default:
-                        return false; // Print error?
-                }
-
-                aocStorage = new Nca(_virtualFileSystem.KeySet, ncaFile.Get.AsStorage()).OpenStorage(NcaSectionType.Data, integrityCheckLevel);
-
-                return true;
+                case ".xci":
+                    var xci = new Xci(_virtualFileSystem.KeySet, fileStream.AsStorage());
+                    fileSystem = xci.OpenPartition(XciPartitionType.Secure);
+                    fileSystem.OpenFile(ref ncaFile.Ref, aoc.NcaPath.ToU8Span(), OpenMode.Read);
+                    break;
+                case ".nsp":
+                    var pfs = new PartitionFileSystem();
+                    pfs.Initialize(fileStream.AsStorage());
+                    pfs.OpenFile(ref ncaFile.Ref, aoc.NcaPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
+                    break;
+                default:
+                    fileStream.Close();
+                    return false;
             }
 
-            return false;
+            // 创建 NCA 并打开存储
+            var nca = new Nca(_virtualFileSystem.KeySet, ncaFile.Get.AsStorage());
+            var baseStorage = nca.OpenStorage(NcaSectionType.Data, integrityCheckLevel);
+            
+            // 创建一个包装器，将文件流与存储关联起来
+            aocStorage = new StreamBackedStorage(baseStorage, fileStream, fileSystem);
+            
+            return true;
         }
+        catch
+        {
+            fileStream.Close();
+            throw;
+        }
+    }
+
+    return false;
+}
+
+// 创建一个包装器类，将 IStorage 与文件流和文件系统关联起来
+private class StreamBackedStorage : IStorage
+{
+    private readonly IStorage _baseStorage;
+    private readonly Stream _stream;
+    private readonly IFileSystem _fileSystem;
+    
+    public StreamBackedStorage(IStorage baseStorage, Stream stream, IFileSystem fileSystem)
+    {
+        _baseStorage = baseStorage;
+        _stream = stream;
+        _fileSystem = fileSystem;
+    }
+    
+    public Result Read(long offset, Span<byte> destination)
+    {
+        return _baseStorage.Read(offset, destination);
+    }
+    
+    public Result Write(long offset, ReadOnlySpan<byte> source)
+    {
+        return _baseStorage.Write(offset, source);
+    }
+    
+    public Result Flush()
+    {
+        return _baseStorage.Flush();
+    }
+    
+    public Result SetSize(long size)
+    {
+        return _baseStorage.SetSize(size);
+    }
+    
+    public Result GetSize(out long size)
+    {
+        return _baseStorage.GetSize(out size);
+    }
+    
+    public Result OperateRange(Span<byte> outBuffer, OperationId operationId, long offset, long size, ReadOnlySpan<byte> inBuffer)
+    {
+        return _baseStorage.OperateRange(outBuffer, operationId, offset, size, inBuffer);
+    }
+    
+    public void Dispose()
+    {
+        _baseStorage?.Dispose();
+        _fileSystem?.Dispose();
+        _stream?.Close();
+    }
+}
 
         public void ClearEntry(ulong titleId, NcaContentType contentType, StorageId storageId)
         {
