@@ -11,7 +11,7 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.text.toLowerCase
 import com.anggrayudi.storage.SimpleStorageHelper
-import com.anggrayudi.storage.file.extension
+import com.anggrayudi.storage.file.FileUtils
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import org.ryujinx.android.MainActivity
@@ -87,15 +87,15 @@ class DlcViewModel(val titleId: String) {
     private fun processSelectedFiles(files: List<com.anggrayudi.storage.file.File>) {
         val file = files.firstOrNull()
         file?.apply {
-            // 使用正确的扩展名获取方式
-            val fileExtension = this.extension()
+            // 使用 FileUtils 获取文件扩展名
+            val fileExtension = FileUtils.getExtension(name)
             if (fileExtension == "nsp" || fileExtension == "xci") {
                 storageHelper.storage.context.contentResolver.takePersistableUriPermission(
-                    this.uri,
+                    uri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
 
-                val uri = this.uri
+                val uri = file.uri
                 var filePath: String? = null
                 var path = uri.pathSegments.joinToString("/")
 
@@ -185,8 +185,8 @@ class DlcViewModel(val titleId: String) {
             
             files.forEach { file ->
                 try {
-                    // 使用正确的扩展名获取方式
-                    val fileExtension = file.extension()
+                    // 使用 FileUtils 获取文件扩展名
+                    val fileExtension = FileUtils.getExtension(file.name)
                     if (fileExtension == "nsp" || fileExtension == "xci") {
                         storageHelper.storage.context.contentResolver.takePersistableUriPermission(
                             file.uri,
@@ -372,7 +372,7 @@ class DlcViewModel(val titleId: String) {
         if (File(jsonPath).exists()) {
             val gson = Gson()
             val typeToken = object : TypeToken<MutableList<DlcContainerList>>() {}.type
-            data = gson.fromJson<MutableList<DlcContainerList>>(File(jsonPath).readText(), typeToken)
+            data = gson.fromJson(File(jsonPath).readText(), typeToken) as MutableList<DlcContainerList>
         }
     }
 }
