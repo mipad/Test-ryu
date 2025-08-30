@@ -1164,7 +1164,7 @@ class HomeViews {
                     ) {
                         val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
                         val name = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
-                        DlcViews.Main(titleId, name, openDlcDialog)
+                        DlcViews.Main(titleId, name, openDlcDialog, canClose)
                     }
 
                 }
