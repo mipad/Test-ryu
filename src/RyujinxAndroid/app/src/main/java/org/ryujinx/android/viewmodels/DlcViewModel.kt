@@ -120,7 +120,7 @@ class DlcViewModel(val titleId: String) {
                                                         RyujinxNative.jnaInstance.deviceGetDlcTitleId(
                                                             contentPath,
                                                             content
-                                                        ).toLong(16),
+                                                        ),
                                                         content
                                                     )
                                                 )
@@ -171,10 +171,7 @@ class DlcViewModel(val titleId: String) {
                             enabled,
                             containerPath,
                             dlc.path,
-                            RyujinxNative.jnaInstance.deviceGetDlcTitleId(
-                                containerPath,
-                                dlc.path
-                            )
+                            dlc.titleId
                         )
                     )
                 }
@@ -240,7 +237,7 @@ data class DlcContainerList(
 
 data class DlcContainer(
     var is_enabled: Boolean = false,
-    var title_id: Long = 0,
+    var titleId: String = "",  // 修改为字符串类型
     var path: String = ""
 )
 
