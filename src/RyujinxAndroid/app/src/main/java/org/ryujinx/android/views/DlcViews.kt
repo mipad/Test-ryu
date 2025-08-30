@@ -100,7 +100,7 @@ class DlcViews {
                                         )
                                         IconButton(
                                             onClick = {
-                                                viewModel.remove(dlcItem)
+                                                viewModel.remove(dlcItem, refresh) // 添加了refresh参数
                                                 refresh.value = true
                                             }) {
                                             Icon(
