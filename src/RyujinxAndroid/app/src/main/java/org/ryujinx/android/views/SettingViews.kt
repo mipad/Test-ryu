@@ -73,7 +73,10 @@ import com.anggrayudi.storage.file.extension
 import org.ryujinx.android.Helpers
 import org.ryujinx.android.MainActivity
 import org.ryujinx.android.providers.DocumentProvider
+import org.ryujinx.android.viewmodels.DataImportState
+import org.ryujinx.android.viewmodels.DataResetState
 import org.ryujinx.android.viewmodels.FirmwareInstallState
+import org.ryujinx.android.viewmodels.KeyInstallState
 import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.SettingsViewModel
 import org.ryujinx.android.viewmodels.VulkanDriverViewModel
@@ -121,15 +124,22 @@ class SettingViews {
             val useVirtualController = remember {
                 mutableStateOf(true)
             }
+            val showKeyDialog = remember { mutableStateOf(false) }
+            val keyInstallState = remember { mutableStateOf(KeyInstallState.File) }
             val showFirwmareDialog = remember {
                 mutableStateOf(false)
             }
             val firmwareInstallState = remember {
-                mutableStateOf(FirmwareInstallState.None)
+                mutableStateOf(FirmwareInstallState.File)
             }
             val firmwareVersion = remember {
                 mutableStateOf(mainViewModel.firmwareVersion)
             }
+            val showDataResetDialog = remember { mutableStateOf(false) }
+            val showDataImportDialog = remember { mutableStateOf(false) }
+            val dataResetState = remember { mutableStateOf(DataResetState.Query) }
+            val dataImportState = remember { mutableStateOf(DataImportState.File) }
+            var dataFile = remember { mutableStateOf<DocumentFile?>(null) }
             val isGrid = remember { mutableStateOf(true) }
             val useSwitchLayout = remember { mutableStateOf(true) }
             val enableMotion = remember { mutableStateOf(true) }
@@ -145,7 +155,7 @@ class SettingViews {
             val enableAccessLogs = remember { mutableStateOf(true) }
             val enableTraceLogs = remember { mutableStateOf(true) }
             val enableGraphicsLogs = remember { mutableStateOf(true) }
-            val skipMemoryBarriers = remember { mutableStateOf(false) } // 新增状态变量
+            val skipMemoryBarriers = remember { mutableStateOf(false) }
 
             if (!loaded.value) {
                 settingsViewModel.initializeState(
@@ -170,7 +180,7 @@ class SettingViews {
                     enableAccessLogs,
                     enableTraceLogs,
                     enableGraphicsLogs,
-                    skipMemoryBarriers // 新增参数
+                    skipMemoryBarriers
                 )
                 loaded.value = true
             }
@@ -207,7 +217,7 @@ class SettingViews {
                                     enableAccessLogs,
                                     enableTraceLogs,
                                     enableGraphicsLogs,
-                                    skipMemoryBarriers // 新增参数
+                                    skipMemoryBarriers
                                 )
                                 settingsViewModel.navController.popBackStack()
                             }) {
@@ -314,9 +324,9 @@ class SettingViews {
                                 }
 
                                 Button(onClick = {
-                                    settingsViewModel.importProdKeys()
+                                    showKeyDialog.value = true
                                 }) {
-                                    Text(text = "Import prod Keys")
+                                    Text(text = "Install Keys")
                                 }
 
                                 Button(onClick = {
@@ -328,11 +338,13 @@ class SettingViews {
                         }
                     }
 
-                    if (showFirwmareDialog.value) {
+                    // Key Installation Dialog
+                    if (showKeyDialog.value) {
                         BasicAlertDialog(onDismissRequest = {
-                            if (firmwareInstallState.value != FirmwareInstallState.Install) {
-                                showFirwmareDialog.value = false
-                                settingsViewModel.clearFirmwareSelection(firmwareInstallState)
+                            if (keyInstallState.value != KeyInstallState.Install) {
+                                showKeyDialog.value = false
+                                settingsViewModel.clearKeySelection(keyInstallState)
+                                keyInstallState.value = KeyInstallState.File
                             }
                         }) {
                             Card(
@@ -348,96 +360,237 @@ class SettingViews {
                                         .align(Alignment.CenterHorizontally),
                                     verticalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    if (firmwareInstallState.value == FirmwareInstallState.None) {
-                                        Text(text = "Select a zip or XCI file to install from.")
-                                        Row(
-                                            horizontalArrangement = Arrangement.End,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(top = 4.dp)
-                                        ) {
-                                            Button(onClick = {
-                                                settingsViewModel.selectFirmware(
-                                                    firmwareInstallState
-                                                )
-                                            }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                                                Text(text = "Select File")
-                                            }
-                                            Button(onClick = {
-                                                showFirwmareDialog.value = false
-                                                settingsViewModel.clearFirmwareSelection(
-                                                    firmwareInstallState
-                                                )
-                                            }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                                                Text(text = "Cancel")
-                                            }
-                                        }
-                                    } else if (firmwareInstallState.value == FirmwareInstallState.Query) {
-                                        Text(text = "Firmware ${settingsViewModel.selectedFirmwareVersion} will be installed. Do you want to continue?")
-                                        Row(
-                                            horizontalArrangement = Arrangement.End,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(top = 4.dp)
-                                        ) {
-                                            Button(onClick = {
-                                                settingsViewModel.installFirmware(
-                                                    firmwareInstallState
-                                                )
-
-                                                if (firmwareInstallState.value == FirmwareInstallState.None) {
-                                                    showFirwmareDialog.value = false
-                                                    settingsViewModel.clearFirmwareSelection(
-                                                        firmwareInstallState
-                                                    )
+                                    when (keyInstallState.value) {
+                                        KeyInstallState.File -> {
+                                            Text(text = "Select a key file to install key from.")
+                                            Row(
+                                                horizontalArrangement = Arrangement.End,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(top = 4.dp)
+                                            ) {
+                                                Button(onClick = {
+                                                    settingsViewModel.selectKey(keyInstallState)
+                                                }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                                                    Text(text = "Select File")
                                                 }
-                                            }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                                                Text(text = "Yes")
-                                            }
-                                            Button(onClick = {
-                                                showFirwmareDialog.value = false
-                                                settingsViewModel.clearFirmwareSelection(
-                                                    firmwareInstallState
-                                                )
-                                            }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                                                Text(text = "No")
+                                                Button(onClick = {
+                                                    showKeyDialog.value = false
+                                                    settingsViewModel.clearKeySelection(keyInstallState)
+                                                }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                                                    Text(text = "Cancel")
+                                                }
                                             }
                                         }
-                                    } else if (firmwareInstallState.value == FirmwareInstallState.Install) {
-                                        Text(text = "Installing Firmware ${settingsViewModel.selectedFirmwareVersion}...")
-                                        LinearProgressIndicator(
-                                            modifier = Modifier
-                                                .padding(top = 4.dp)
-                                        )
-                                    } else if (firmwareInstallState.value == FirmwareInstallState.Verifying) {
-                                        Text(text = "Verifying selected file...")
-                                        LinearProgressIndicator(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                        )
-                                    } else if (firmwareInstallState.value == FirmwareInstallState.Done) {
-                                        Text(text = "Installed Firmware ${settingsViewModel.selectedFirmwareVersion}")
-                                        firmwareVersion.value = mainViewModel.firmwareVersion
-                                    } else if (firmwareInstallState.value == FirmwareInstallState.Cancelled) {
-                                        val file = settingsViewModel.selectedFirmwareFile
-                                        if (file != null) {
-                                            if (file.extension == "xci" || file.extension == "zip") {
-                                                if (settingsViewModel.selectedFirmwareVersion.isEmpty()) {
-                                                    Text(text = "Unable to find version in selected file")
+                                        KeyInstallState.Query -> {
+                                            Text(text = "Key file will be installed. Do you want to continue?")
+                                            Row(
+                                                horizontalArrangement = Arrangement.End,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(top = 4.dp)
+                                            ) {
+                                                Button(onClick = {
+                                                    settingsViewModel.installKey(keyInstallState)
+                                                }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                                                    Text(text = "Yes")
+                                                }
+                                                Button(onClick = {
+                                                    showKeyDialog.value = false
+                                                    settingsViewModel.clearKeySelection(keyInstallState)
+                                                }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                                                    Text(text = "No")
+                                                }
+                                            }
+                                        }
+                                        KeyInstallState.Install -> {
+                                            Text(text = "Installing key file...")
+                                            LinearProgressIndicator(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(top = 4.dp)
+                                            )
+                                        }
+                                        KeyInstallState.Done -> {
+                                            Text(text = "Key file installed.")
+                                            Row(
+                                                horizontalArrangement = Arrangement.End,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(top = 4.dp)
+                                            ) {
+                                                Button(onClick = {
+                                                    showKeyDialog.value = false
+                                                    settingsViewModel.clearKeySelection(keyInstallState)
+                                                }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                                                    Text(text = "Close")
+                                                }
+                                            }
+                                        }
+                                        KeyInstallState.Cancelled -> {
+                                            val file = settingsViewModel.selectedKeyFile
+                                            if (file != null) {
+                                                if (file.extension == "key") {
+                                                    Text(text = "Unknown Error has occurred. Please check logs.")
                                                 } else {
-                                                    Text(text = "Unknown Error has occurred. Please check logs")
+                                                    Text(text = "File type is not supported.")
                                                 }
                                             } else {
-                                                Text(text = "File type is not supported")
+                                                Text(text = "File type is not supported.")
                                             }
-                                        } else {
-                                            Text(text = "File type is not supported")
+                                            Row(
+                                                horizontalArrangement = Arrangement.End,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(top = 4.dp)
+                                            ) {
+                                                Button(onClick = {
+                                                    showKeyDialog.value = false
+                                                    settingsViewModel.clearKeySelection(keyInstallState)
+                                                }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                                                    Text(text = "Close")
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
+
+                    // Firmware Installation Dialog
+                    if (showFirwmareDialog.value) {
+                        BasicAlertDialog(onDismissRequest = {
+                            if (firmwareInstallState.value != FirmwareInstallState.Install) {
+                                showFirwmareDialog.value = false
+                                settingsViewModel.clearFirmwareSelection(firmwareInstallState)
+                                firmwareInstallState.value = FirmwareInstallState.File
+                            }
+                        }) {
+                            Card(
+                                modifier = Modifier
+                                    .padding(16.dp)
+                                    .fillMaxWidth(),
+                                shape = MaterialTheme.shapes.medium
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .padding(16.dp)
+                                        .fillMaxWidth()
+                                        .align(Alignment.CenterHorizontally),
+                                    verticalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    when (firmwareInstallState.value) {
+                                        FirmwareInstallState.File -> {
+                                            Text(text = "Select a zip or xci file to install firmware from.")
+                                            Row(
+                                                horizontalArrangement = Arrangement.End,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(top = 4.dp)
+                                            ) {
+                                                Button(onClick = {
+                                                    settingsViewModel.selectFirmware(firmwareInstallState)
+                                                }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                                                    Text(text = "Select File")
+                                                }
+                                                Button(onClick = {
+                                                    showFirwmareDialog.value = false
+                                                    settingsViewModel.clearFirmwareSelection(firmwareInstallState)
+                                                }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                                                    Text(text = "Cancel")
+                                                }
+                                            }
+                                        }
+                                        FirmwareInstallState.Query -> {
+                                            Text(text = "Firmware ${settingsViewModel.selectedFirmwareVersion} will be installed. Do you want to continue?")
+                                            Row(
+                                                horizontalArrangement = Arrangement.End,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(top = 4.dp)
+                                            ) {
+                                                Button(onClick = {
+                                                    settingsViewModel.installFirmware(firmwareInstallState)
+                                                }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                                                    Text(text = "Yes")
+                                                }
+                                                Button(onClick = {
+                                                    showFirwmareDialog.value = false
+                                                    settingsViewModel.clearFirmwareSelection(firmwareInstallState)
+                                                }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                                                    Text(text = "No")
+                                                }
+                                            }
+                                        }
+                                        FirmwareInstallState.Verifying -> {
+                                            Text(text = "Verifying selected file...")
+                                            LinearProgressIndicator(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(top = 4.dp)
+                                            )
+                                        }
+                                        FirmwareInstallState.Install -> {
+                                            Text(text = "Installing firmware ${settingsViewModel.selectedFirmwareVersion}...")
+                                            LinearProgressIndicator(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(top = 4.dp)
+                                            )
+                                        }
+                                        FirmwareInstallState.Done -> {
+                                            Text(text = "Firmware ${settingsViewModel.selectedFirmwareVersion} installed.")
+                                            firmwareVersion.value = mainViewModel.firmwareVersion
+                                            Row(
+                                                horizontalArrangement = Arrangement.End,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(top = 4.dp)
+                                            ) {
+                                                Button(onClick = {
+                                                    showFirwmareDialog.value = false
+                                                    settingsViewModel.clearFirmwareSelection(firmwareInstallState)
+                                                }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                                                    Text(text = "Close")
+                                                }
+                                            }
+                                        }
+                                        FirmwareInstallState.Cancelled -> {
+                                            val file = settingsViewModel.selectedFirmwareFile
+                                            if (file != null) {
+                                                if (file.extension == "xci" || file.extension == "zip") {
+                                                    if (settingsViewModel.selectedFirmwareVersion.isEmpty()) {
+                                                        Text(text = "Unable to find version in selected file.")
+                                                    } else {
+                                                        Text(text = "Unknown Error has occurred. Please check logs.")
+                                                    }
+                                                } else {
+                                                    Text(text = "File type is not supported.")
+                                                }
+                                            } else {
+                                                Text(text = "File type is not supported.")
+                                            }
+                                            Row(
+                                                horizontalArrangement = Arrangement.End,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(top = 4.dp)
+                                            ) {
+                                                Button(onClick = {
+                                                    showFirwmareDialog.value = false
+                                                    settingsViewModel.clearFirmwareSelection(firmwareInstallState)
+                                                }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                                                    Text(text = "Close")
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     ExpandableView(onCardArrowClick = { }, title = "System") {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             Row(
@@ -556,122 +709,6 @@ class SettingViews {
                                     enablePerformanceMode.value = !enablePerformanceMode.value
                                 })
                             }
-                            val isImporting = remember {
-                                mutableStateOf(false)
-                            }
-                            val showImportWarning = remember {
-                                mutableStateOf(false)
-                            }
-                            val showImportCompletion = remember {
-                                mutableStateOf(false)
-                            }
-                            var importFile = remember {
-                                mutableStateOf<DocumentFile?>(null)
-                            }
-                            Button(onClick = {
-                                val storage = MainActivity.StorageHelper
-                                storage?.apply {
-                                    val callBack = this.onFileSelected
-                                    onFileSelected = { requestCode, files ->
-                                        run {
-                                            onFileSelected = callBack
-                                            if (requestCode == IMPORT_CODE) {
-                                                val file = files.firstOrNull()
-                                                file?.apply {
-                                                    if (this.extension == "zip") {
-                                                        importFile.value = this
-                                                        showImportWarning.value = true
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    openFilePicker(
-                                        IMPORT_CODE,
-                                        filterMimeTypes = arrayOf("application/zip")
-                                    )
-                                }
-                            }) {
-                                Text(text = "Import App Data")
-                            }
-
-                            if (showImportWarning.value) {
-                                BasicAlertDialog(onDismissRequest = {
-                                    showImportWarning.value = false
-                                    importFile.value = null
-                                }) {
-                                    Card(
-                                        modifier = Modifier
-                                            .padding(16.dp)
-                                            .fillMaxWidth(),
-                                        shape = MaterialTheme.shapes.medium
-                                    ) {
-                                        Column(
-                                            modifier = Modifier
-                                                .padding(16.dp)
-                                                .fillMaxWidth()
-                                        ) {
-                                            Text(text = "Importing app data will delete your current profile. Do you still want to continue?")
-                                            Row(
-                                                horizontalArrangement = Arrangement.End,
-                                                modifier = Modifier.fillMaxWidth()
-                                            ) {
-                                                Button(onClick = {
-                                                    val file = importFile.value
-                                                    showImportWarning.value = false
-                                                    importFile.value = null
-                                                    file?.apply {
-                                                        thread {
-                                                            Helpers.importAppData(this, isImporting)
-                                                            showImportCompletion.value = true
-                                                            mainViewModel.userViewModel.refreshUsers()
-                                                        }
-                                                    }
-                                                }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                                                    Text(text = "Yes")
-                                                }
-                                                Button(onClick = {
-                                                    showImportWarning.value = false
-                                                    importFile.value = null
-                                                }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                                                    Text(text = "No")
-                                                }
-                                            }
-                                        }
-
-                                    }
-                                }
-                            }
-
-                            if (showImportCompletion.value) {
-                                BasicAlertDialog(onDismissRequest = {
-                                    showImportCompletion.value = false
-                                    importFile.value = null
-                                    mainViewModel.userViewModel.refreshUsers()
-                                    mainViewModel.homeViewModel.requestReload()
-                                }) {
-                                    Card(
-                                        modifier = Modifier,
-                                        shape = MaterialTheme.shapes.medium
-                                    ) {
-                                        Text(
-                                            modifier = Modifier
-                                                .padding(24.dp),
-                                            text = "App Data import completed."
-                                        )
-                                    }
-                                }
-                            }
-
-                            if (isImporting.value) {
-                                Text(text = "Importing Files")
-
-                                LinearProgressIndicator(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(8.dp)
-                                )
-                            }
                         }
                     }
                     ExpandableView(onCardArrowClick = { }, title = "Graphics") {
@@ -706,7 +743,7 @@ class SettingViews {
         }
         
         // 预设按钮组 (替换滑块)
-        val resolutionPresets = listOf(0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.85f, 0.9f, 0.95f, 1f, 1.5f, 2f, 3f, 4f)
+        val resolutionPresets = listOf(0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.85f, 0.9f, 0.95f, 1f, 1.25f, 1.5f, 1.75f, 2f, 3f, 4f)
         
         Row(
             modifier = Modifier
@@ -1162,7 +1199,7 @@ class SettingViews {
                                     text = "Enable Trace Logs",
                                     modifier = Modifier.align(Alignment.CenterVertically)
                                 )
-                                Switch(checked = enableTraceLogs.value, onCheckedChange = {
+                                Switch(checked = enableTraceLogs.value, onCallbackChange = {
                                     enableTraceLogs.value = !enableTraceLogs.value
                                 })
                             }
@@ -1220,7 +1257,7 @@ class SettingViews {
                         enableAccessLogs,
                         enableTraceLogs,
                         enableGraphicsLogs,
-                        skipMemoryBarriers // 新增参数
+                        skipMemoryBarriers
                     )
                     settingsViewModel.navController.popBackStack()
                 }
