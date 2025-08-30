@@ -7,7 +7,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.text.toLowerCase
 import com.anggrayudi.storage.SimpleStorageHelper
@@ -20,26 +19,17 @@ import org.ryujinx.android.RyujinxNative
 import java.io.File
 
 class DlcViewModel(val titleId: String) {
-    private var canClose: MutableState<Boolean>? = null
     private var storageHelper: SimpleStorageHelper
-    private var dlcItemsState: SnapshotStateList<DlcItem>? = null
 
     companion object {
         const val UpdateRequestCode = 1002
     }
 
+    // 添加了refresh参数
     fun remove(item: DlcItem, refresh: MutableState<Boolean>) {
         data?.apply {
             this.removeAll { it.path == item.containerPath }
-            refreshDlcItems()
-            saveChanges()
-
-            canClose?.let {
-                it.value = false
-                it.value = true
-            }
-            
-            refresh.value = true
+            refresh.value = true // 触发刷新
         }
     }
 
@@ -59,9 +49,7 @@ class DlcViewModel(val titleId: String) {
                             )
 
                             val uri = file.uri
-
                             var filePath: String? = null
-
                             var path = uri.pathSegments.joinToString("/")
 
                             if (path.startsWith("document/")) {
@@ -102,7 +90,7 @@ class DlcViewModel(val titleId: String) {
                                 }
                             }
 
-                            // Fallback to getAbsolutePath if filePath is still null
+                            // 回退到getAbsolutePath
                             if (filePath == null) {
                                 filePath = file.getAbsolutePath(storageHelper.storage.context)
                             }
@@ -142,9 +130,6 @@ class DlcViewModel(val titleId: String) {
                             }
                         }
                     }
-                    
-                    refreshDlcItems()
-                    saveChanges()
                     refresh.value = true
                 }
             }
@@ -152,53 +137,10 @@ class DlcViewModel(val titleId: String) {
         storageHelper.openFilePicker(UpdateRequestCode)
     }
 
-    fun save(items: List<DlcItem>, openDialog: MutableState<Boolean>? = null) {
-        saveChanges(items)
-        openDialog?.value = false
-    }
-
-    fun setDlcItems(items: SnapshotStateList<DlcItem>, canClose: MutableState<Boolean>) {
-        dlcItemsState = items
-        this.canClose = canClose
-        refreshDlcItems()
-    }
-
-    private fun refreshDlcItems() {
-        val items = mutableListOf<DlcItem>()
-
+    fun save(items: List<DlcItem>) {
         data?.apply {
-            for (container in this) {
-                val containerPath = container.path
-
-                if (!File(containerPath).exists())
-                    continue
-
-                for (dlc in container.dlc_nca_list) {
-                    val enabled = mutableStateOf(dlc.enabled)
-                    items.add(
-                        DlcItem(
-                            File(containerPath).name,
-                            enabled,
-                            containerPath,
-                            dlc.fullPath,
-                            dlc.titleId
-                        )
-                    )
-                }
-            }
-        }
-
-        dlcItemsState?.clear()
-        dlcItemsState?.addAll(items)
-        canClose?.apply {
-            value = true
-        }
-    }
-
-    private fun saveChanges(items: List<DlcItem>? = null) {
-        data?.apply {
-            // Update enabled states from UI if items are provided
-            items?.forEach { item ->
+            // 更新启用状态
+            items.forEach { item ->
                 for (container in this) {
                     if (container.path == item.containerPath) {
                         for (dlc in container.dlc_nca_list) {
@@ -213,9 +155,9 @@ class DlcViewModel(val titleId: String) {
 
             val gson = Gson()
             val json = gson.toJson(this)
-            val savePath = MainActivity.AppPath + "/games/" + titleId.toLowerCase(Locale.current)
-            File(savePath).mkdirs()
-            File("$savePath/dlc.json").writeText(json)
+            jsonPath = MainActivity.AppPath + "/games/" + titleId.toLowerCase(Locale.current)
+            File(jsonPath).mkdirs()
+            File("$jsonPath/dlc.json").writeText(json)
         }
     }
 
