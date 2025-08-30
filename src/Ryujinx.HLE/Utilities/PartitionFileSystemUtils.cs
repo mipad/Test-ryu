@@ -12,8 +12,22 @@ namespace Ryujinx.HLE.Utilities
     {
         public static IFileSystem OpenApplicationFileSystem(string path, bool isXci, VirtualFileSystem fileSystem, bool throwOnFailure = true)
         {
-            FileStream file = File.OpenRead(path);
-            return OpenApplicationFileSystem(file, isXci, fileSystem, throwOnFailure);
+            // 不要在这里创建 FileStream，而是在内部方法中处理
+            return OpenApplicationFileSystem(path, isXci, fileSystem, throwOnFailure, true);
+        }
+
+        private static IFileSystem OpenApplicationFileSystem(string path, bool isXci, VirtualFileSystem fileSystem, bool throwOnFailure, bool openFile)
+        {
+            if (openFile)
+            {
+                using FileStream file = File.OpenRead(path);
+                return OpenApplicationFileSystem(file, isXci, fileSystem, throwOnFailure);
+            }
+            else
+            {
+                // 这个路径不应该被调用，只是为了保持方法签名一致
+                return null;
+            }
         }
 
         public static IFileSystem OpenApplicationFileSystem(Stream stream, bool isXci, VirtualFileSystem fileSystem, bool throwOnFailure = true)
@@ -22,7 +36,9 @@ namespace Ryujinx.HLE.Utilities
 
             if (isXci)
             {
-                partitionFileSystem = new Xci(fileSystem.KeySet, stream.AsStorage()).OpenPartition(XciPartitionType.Secure);
+                // 创建 Xci 对象，但不让它在析构时关闭流
+                var xci = new Xci(fileSystem.KeySet, stream.AsStorage(), false);
+                partitionFileSystem = xci.OpenPartition(XciPartitionType.Secure);
             }
             else
             {
