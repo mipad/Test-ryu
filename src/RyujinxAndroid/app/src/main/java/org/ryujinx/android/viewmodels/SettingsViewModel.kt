@@ -10,14 +10,10 @@ import com.anggrayudi.storage.file.FileFullPath
 import com.anggrayudi.storage.file.copyFileTo
 import com.anggrayudi.storage.file.extension
 import com.anggrayudi.storage.file.getAbsolutePath
-import com.anggrayudi.storage.file.openInputStream
-import net.lingala.zip4j.io.inputstream.ZipInputStream
 import org.ryujinx.android.LogLevel
 import org.ryujinx.android.MainActivity
 import org.ryujinx.android.RyujinxNative
-import java.io.BufferedOutputStream
 import java.io.File
-import java.io.FileOutputStream
 import kotlin.concurrent.thread
 
 class SettingsViewModel(var navController: NavHostController, val activity: MainActivity) {
@@ -25,13 +21,20 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
     private var previousFileCallback: ((requestCode: Int, files: List<DocumentFile>) -> Unit)?
     private var previousFolderCallback: ((requestCode: Int, folder: DocumentFile) -> Unit)?
     private var sharedPref: SharedPreferences
-    var selectedKeyFile: DocumentFile? = null
     var selectedFirmwareFile: DocumentFile? = null
 
     init {
         sharedPref = getPreferences()
         previousFolderCallback = activity.storageHelper!!.onFolderSelected
         previousFileCallback = activity.storageHelper!!.onFileSelected
+        activity.storageHelper!!.onFolderSelected = { _, folder ->
+            run {
+                val p = folder.getAbsolutePath(activity)
+                val editor = sharedPref.edit()
+                editor?.putString("gameFolder", p)
+                editor?.apply()
+            }
+        }
     }
 
     private fun getPreferences(): SharedPreferences {
@@ -63,7 +66,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableAccessLogs: MutableState<Boolean>,
         enableTraceLogs: MutableState<Boolean>,
         enableGraphicsLogs: MutableState<Boolean>,
-        skipMemoryBarriers: MutableState<Boolean>
+        skipMemoryBarriers: MutableState<Boolean> // 新增参数
     ) {
 
         isHostMapped.value = sharedPref.getBoolean("isHostMapped", true)
@@ -82,7 +85,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableMotion.value = sharedPref.getBoolean("enableMotion", true)
         enablePerformanceMode.value = sharedPref.getBoolean("enablePerformanceMode", false)
         controllerStickSensitivity.value = sharedPref.getFloat("controllerStickSensitivity", 1.0f)
-        skipMemoryBarriers.value = sharedPref.getBoolean("skipMemoryBarriers", false)
+        skipMemoryBarriers.value = sharedPref.getBoolean("skipMemoryBarriers", false) // 初始化
 
         enableDebugLogs.value = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs.value = sharedPref.getBoolean("enableStubLogs", false)
@@ -91,7 +94,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableErrorLogs.value = sharedPref.getBoolean("enableErrorLogs", true)
         enableGuestLogs.value = sharedPref.getBoolean("enableGuestLogs", true)
         enableAccessLogs.value = sharedPref.getBoolean("enableAccessLogs", false)
-        enableTraceLogs.value = sharedPref.getBoolean("enableTraceLogs", false)
+        enableTraceLogs.value = sharedPref.getBoolean("enableStubLogs", false)
         enableGraphicsLogs.value = sharedPref.getBoolean("enableGraphicsLogs", false)
     }
 
@@ -120,7 +123,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableAccessLogs: MutableState<Boolean>,
         enableTraceLogs: MutableState<Boolean>,
         enableGraphicsLogs: MutableState<Boolean>,
-        skipMemoryBarriers: MutableState<Boolean>
+        skipMemoryBarriers: MutableState<Boolean> // 新增参数
     ) {
         val editor = sharedPref.edit()
 
@@ -139,7 +142,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.putBoolean("enableMotion", enableMotion.value)
         editor.putBoolean("enablePerformanceMode", enablePerformanceMode.value)
         editor.putFloat("controllerStickSensitivity", controllerStickSensitivity.value)
-        editor.putBoolean("skipMemoryBarriers", skipMemoryBarriers.value)
+        editor.putBoolean("skipMemoryBarriers", skipMemoryBarriers.value) // 保存
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs.value)
         editor.putBoolean("enableStubLogs", enableStubLogs.value)
@@ -177,14 +180,6 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
     fun openGameFolder() {
         val path = sharedPref.getString("gameFolder", "") ?: ""
 
-        activity.storageHelper!!.onFolderSelected = { _, folder ->
-            val p = folder.getAbsolutePath(activity)
-            val editor = sharedPref.edit()
-            editor.putString("gameFolder", p)
-            editor.apply()
-            activity.storageHelper!!.onFolderSelected = previousFolderCallback
-        }
-
         if (path.isEmpty())
             activity.storageHelper?.storage?.openFolderPicker()
         else
@@ -194,87 +189,62 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
             )
     }
 
-    fun selectKey(installState: MutableState<KeyInstallState>) {
-        if (installState.value != KeyInstallState.File)
-            return
-
+    fun importProdKeys() {
         activity.storageHelper!!.onFileSelected = { _, files ->
-            val file = files.firstOrNull()
-            file?.apply {
-                if (name == "prod.keys") {
-                    selectedKeyFile = file
-                    installState.value = KeyInstallState.Query
-                } else {
-                    installState.value = KeyInstallState.Cancelled
+            run {
+                activity.storageHelper!!.onFileSelected = previousFileCallback
+                val file = files.firstOrNull()
+                file?.apply {
+                    if (name == "prod.keys") {
+                        val outputFile = File(MainActivity.AppPath + "/system")
+                        outputFile.delete()
+
+                        thread {
+                            file.copyFileTo(
+                                activity,
+                                outputFile,
+                                callback = object : FileCallback() {
+                                })
+                        }
+                    }
                 }
             }
-            activity.storageHelper!!.onFileSelected = previousFileCallback
         }
         activity.storageHelper?.storage?.openFilePicker()
     }
 
-    fun installKey(installState: MutableState<KeyInstallState>) {
-        if (installState.value != KeyInstallState.Query)
-            return
-        if (selectedKeyFile == null) {
-            installState.value = KeyInstallState.File
-            return
-        }
-        selectedKeyFile?.apply {
-            val outputFolder = File(MainActivity.AppPath + "/system")
-            val outputFile = File(MainActivity.AppPath + "/system/" + name)
-            outputFile.delete()
-            installState.value = KeyInstallState.Install
-            thread {
-                Thread.sleep(1000)
-                this.copyFileTo(
-                    activity,
-                    outputFolder,
-                    callback = object : FileCallback() {
-                        override fun onCompleted(result: Any) {
-                            RyujinxNative.jnaInstance.deviceReloadFilesystem()
-                            installState.value = KeyInstallState.Done
-                        }
-                    }
-                )
-            }
-        }
-    }
-
-    fun clearKeySelection(installState: MutableState<KeyInstallState>) {
-        selectedKeyFile = null
-        installState.value = KeyInstallState.File
-    }
-
     fun selectFirmware(installState: MutableState<FirmwareInstallState>) {
-        if (installState.value != FirmwareInstallState.File)
+        if (installState.value != FirmwareInstallState.None)
             return
-
         activity.storageHelper!!.onFileSelected = { _, files ->
-            val file = files.firstOrNull()
-            file?.apply {
-                if (extension == "xci" || extension == "zip") {
-                    installState.value = FirmwareInstallState.Verifying
-                    thread {
-                        val descriptor = activity.contentResolver.openFileDescriptor(file.uri, "rw")
-                        descriptor?.use { d ->
-                            selectedFirmwareVersion = RyujinxNative.jnaInstance.deviceVerifyFirmware(
-                                d.fd,
-                                extension == "xci"
-                            )
-                            selectedFirmwareFile = file
-                            if (!selectedFirmwareVersion.isEmpty()) {
-                                installState.value = FirmwareInstallState.Query
-                            } else {
-                                installState.value = FirmwareInstallState.Cancelled
+            run {
+                activity.storageHelper!!.onFileSelected = previousFileCallback
+                val file = files.firstOrNull()
+                file?.apply {
+                    if (extension == "xci" || extension == "zip") {
+                        installState.value = FirmwareInstallState.Verifying
+                        thread {
+                            val descriptor =
+                                activity.contentResolver.openFileDescriptor(file.uri, "rw")
+                            descriptor?.use { d ->
+                                selectedFirmwareVersion =
+                                    RyujinxNative.jnaInstance.deviceVerifyFirmware(
+                                        d.fd,
+                                        extension == "xci"
+                                    )
+                                selectedFirmwareFile = file
+                                if (!selectedFirmwareVersion.isEmpty()) {
+                                    installState.value = FirmwareInstallState.Query
+                                } else {
+                                    installState.value = FirmwareInstallState.Cancelled
+                                }
                             }
                         }
+                    } else {
+                        installState.value = FirmwareInstallState.Cancelled
                     }
-                } else {
-                    installState.value = FirmwareInstallState.Cancelled
                 }
             }
-            activity.storageHelper!!.onFileSelected = previousFileCallback
         }
         activity.storageHelper?.storage?.openFilePicker()
     }
@@ -283,7 +253,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         if (installState.value != FirmwareInstallState.Query)
             return
         if (selectedFirmwareFile == null) {
-            installState.value = FirmwareInstallState.File
+            installState.value = FirmwareInstallState.None
             return
         }
         selectedFirmwareFile?.apply {
@@ -296,7 +266,10 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
                     Thread.sleep(1000)
 
                     try {
-                        RyujinxNative.jnaInstance.deviceInstallFirmware(descriptor.fd, extension == "xci")
+                        RyujinxNative.jnaInstance.deviceInstallFirmware(
+                            descriptor.fd,
+                            extension == "xci"
+                        )
                     } finally {
                         MainActivity.mainViewModel?.refreshFirmwareVersion()
                         installState.value = FirmwareInstallState.Done
@@ -309,118 +282,15 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
     fun clearFirmwareSelection(installState: MutableState<FirmwareInstallState>) {
         selectedFirmwareFile = null
         selectedFirmwareVersion = ""
-        installState.value = FirmwareInstallState.File
+        installState.value = FirmwareInstallState.None
     }
-
-    fun resetAppData(
-        dataResetState: MutableState<DataResetState>
-    ) {
-        dataResetState.value = DataResetState.Reset
-        thread {
-            Thread.sleep(1000)
-
-            try {
-                MainActivity.StorageHelper?.apply {
-                    val folders = listOf("bis", "games", "profiles", "system")
-                    for (f in folders) {
-                        val dir = File(MainActivity.AppPath + "${File.separator}${f}")
-                        if (dir.exists()) {
-                            dir.deleteRecursively()
-                        }
-
-                        dir.mkdirs()
-                    }
-                }
-            } finally {
-                dataResetState.value = DataResetState.Done
-                RyujinxNative.jnaInstance.deviceReloadFilesystem()
-                MainActivity.mainViewModel?.refreshFirmwareVersion()
-            }
-        }
-    }
-
-    fun importAppData(
-        file: DocumentFile,
-        dataImportState: MutableState<DataImportState>
-    ) {
-        dataImportState.value = DataImportState.Import
-        thread {
-            Thread.sleep(1000)
-
-            try {
-                MainActivity.StorageHelper?.apply {
-                    val stream = file.openInputStream(storage.context)
-                    stream?.apply {
-                        val folders = listOf("bis", "games", "profiles", "system")
-                        for (f in folders) {
-                            val dir = File(MainActivity.AppPath + "${File.separator}${f}")
-                            if (dir.exists()) {
-                                dir.deleteRecursively()
-                            }
-
-                            dir.mkdirs()
-                        }
-                        ZipInputStream(stream).use { zip ->
-                            while (true) {
-                                val header = zip.nextEntry ?: break
-                                if (!folders.any { header.fileName.startsWith(it) }) {
-                                    continue
-                                }
-                                val filePath =
-                                    MainActivity.AppPath + File.separator + header.fileName
-
-                                if (!header.isDirectory) {
-                                    val bos = BufferedOutputStream(FileOutputStream(filePath))
-                                    val bytesIn = ByteArray(4096)
-                                    var read: Int = 0
-                                    while (zip.read(bytesIn).also { read = it } > 0) {
-                                        bos.write(bytesIn, 0, read)
-                                    }
-                                    bos.close()
-                                } else {
-                                    val dir = File(filePath)
-                                    dir.mkdir()
-                                }
-                            }
-                        }
-                        stream.close()
-                    }
-                }
-            } finally {
-                dataImportState.value = DataImportState.Done
-                RyujinxNative.jnaInstance.deviceReloadFilesystem()
-                MainActivity.mainViewModel?.refreshFirmwareVersion()
-            }
-        }
-    }
-}
-
-enum class KeyInstallState {
-    File,
-    Cancelled,
-    Query,
-    Install,
-    Done
 }
 
 enum class FirmwareInstallState {
-    File,
+    None,
     Cancelled,
     Verifying,
     Query,
     Install,
-    Done
-}
-
-enum class DataResetState {
-    Query,
-    Reset,
-    Done
-}
-
-enum class DataImportState {
-    File,
-    Query,
-    Import,
     Done
 }
