@@ -272,6 +272,11 @@ namespace ARMeilleure.Translation
             }
 
             ControlFlowGraph cfg = EmitAndGetCFG(context, blocks, out Range funcRange, out Counter<uint> counter, pptcTranslation);
+            
+            if (cfg == null)
+            {
+                return null;
+            }
 
             ulong funcSize = funcRange.End - funcRange.Start;
 
