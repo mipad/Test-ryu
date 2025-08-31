@@ -15,7 +15,8 @@ namespace Ryujinx.Cpu.LightningJit.Cache
 
         private const int CodeAlignment = 4; // Bytes.
         private const int CacheSize = 2047 * 1024 * 1024;
-
+        private const int LocalCacheSize = 256 * 1024 * 1024;
+        
         private static ReservedRegion _jitRegion;
         private static JitCacheInvalidation _jitCacheInvalidator;
 
