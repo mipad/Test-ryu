@@ -76,6 +76,7 @@ namespace LibRyujinx
                                                     bool enableVsync,
                                                     bool enableDockedMode,
                                                     bool enablePtc,
+                                                    bool enableJitCacheEviction,
                                                     bool enableInternetAccess,
                                                     IntPtr timeZonePtr,
                                                     bool ignoreMissingServices)
@@ -92,6 +93,7 @@ namespace LibRyujinx
                                     enableVsync,
                                     enableDockedMode,
                                     enablePtc,
+                                    enableJitCacheEviction,
                                     enableInternetAccess,
                                     timezone,
                                     ignoreMissingServices);
