@@ -94,6 +94,9 @@ namespace LibRyujinx
             {
                 return;
             }
+            
+            ARMeilleure.Optimizations.CacheEviction = SwitchDevice!.EnableJitCacheEviction;
+            
             var device = SwitchDevice!.EmulationContext!;
             _gpuDoneEvent = new ManualResetEvent(true);
 
