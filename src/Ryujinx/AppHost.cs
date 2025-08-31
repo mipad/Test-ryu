@@ -405,7 +405,10 @@ namespace Ryujinx.Ava
         }
 
         public void Start()
-        {
+        {   
+        
+           ARMeilleure.Optimizations.CacheEviction = ConfigurationState.Instance.System.EnableJitCacheEviction;
+           
             if (OperatingSystem.IsWindows())
             {
                 _windowsMultimediaTimerResolution = new WindowsMultimediaTimerResolution(1);
