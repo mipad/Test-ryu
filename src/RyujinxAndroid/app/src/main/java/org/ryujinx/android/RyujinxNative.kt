@@ -14,6 +14,7 @@ interface RyujinxNativeJna : Library {
         enableVsync: Boolean,
         enableDockedMode: Boolean,
         enablePtc: Boolean,
+        enableJitCacheEviction: Boolean,
         enableInternetAccess: Boolean,
         timeZone: String,
         ignoreMissingServices: Boolean
