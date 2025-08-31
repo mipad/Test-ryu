@@ -47,6 +47,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableVsync: MutableState<Boolean>,
         enableDocked: MutableState<Boolean>,
         enablePtc: MutableState<Boolean>,
+        enableJitCacheEviction: MutableState<Boolean>,
         ignoreMissingServices: MutableState<Boolean>,
         enableShaderCache: MutableState<Boolean>,
         enableTextureRecompression: MutableState<Boolean>,
@@ -74,6 +75,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableVsync.value = sharedPref.getBoolean("enableVsync", true)
         enableDocked.value = sharedPref.getBoolean("enableDocked", true)
         enablePtc.value = sharedPref.getBoolean("enablePtc", true)
+        enableJitCacheEviction.value = sharedPref.getBoolean("enableJitCacheEviction", false)
         ignoreMissingServices.value = sharedPref.getBoolean("ignoreMissingServices", false)
         enableShaderCache.value = sharedPref.getBoolean("enableShaderCache", true)
         enableTextureRecompression.value =
@@ -104,6 +106,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableVsync: MutableState<Boolean>,
         enableDocked: MutableState<Boolean>,
         enablePtc: MutableState<Boolean>,
+        enableJitCacheEviction: MutableState<Boolean>,
         ignoreMissingServices: MutableState<Boolean>,
         enableShaderCache: MutableState<Boolean>,
         enableTextureRecompression: MutableState<Boolean>,
@@ -132,6 +135,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.putBoolean("enableVsync", enableVsync.value)
         editor.putBoolean("enableDocked", enableDocked.value)
         editor.putBoolean("enablePtc", enablePtc.value)
+        editor.putBoolean("enableJitCacheEviction", enableJitCacheEviction.value)
         editor.putBoolean("ignoreMissingServices", ignoreMissingServices.value)
         editor.putBoolean("enableShaderCache", enableShaderCache.value)
         editor.putBoolean("enableTextureRecompression", enableTextureRecompression.value)
