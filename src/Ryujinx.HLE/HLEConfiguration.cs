@@ -99,6 +99,11 @@ namespace Ryujinx.HLE
         internal readonly bool EnablePtc;
 
         /// <summary>
+        /// Control if the JIT cache eviction should be enabled.
+        /// </summary>
+        internal readonly bool EnableJitCacheEviction;
+
+        /// <summary>
         /// Control if the guest application should be told that there is a Internet connection available.
         /// </summary>
         public bool EnableInternetAccess { internal get; set; }
@@ -183,6 +188,7 @@ namespace Ryujinx.HLE
                                 bool enableVsync,
                                 bool enableDockedMode,
                                 bool enablePtc,
+                                bool enableJitCacheEviction,
                                 bool enableInternetAccess,
                                 IntegrityCheckLevel fsIntegrityCheckLevel,
                                 int fsGlobalAccessLogMode,
@@ -210,6 +216,7 @@ namespace Ryujinx.HLE
             EnableVsync = enableVsync;
             EnableDockedMode = enableDockedMode;
             EnablePtc = enablePtc;
+            EnableJitCacheEviction = enableJitCacheEviction;
             EnableInternetAccess = enableInternetAccess;
             FsIntegrityCheckLevel = fsIntegrityCheckLevel;
             FsGlobalAccessLogMode = fsGlobalAccessLogMode;
