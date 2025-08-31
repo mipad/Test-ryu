@@ -1,4 +1,3 @@
-// LibRyujinx.Device.cs
 using LibHac.Ncm;
 using LibHac.Tools.FsSystem.NcaUtils;
 using Microsoft.Win32.SafeHandles;
@@ -20,6 +19,7 @@ namespace LibRyujinx
                                             bool enableVsync,
                                             bool enableDockedMode,
                                             bool enablePtc,
+                                            bool enableJitCacheEviction,
                                             bool enableInternetAccess,
                                             string? timeZone,
                                             bool ignoreMissingServices)
@@ -36,6 +36,7 @@ namespace LibRyujinx
                                                   enableVsync,
                                                   enableDockedMode,
                                                   enablePtc,
+                                                  enableJitCacheEviction,
                                                   enableInternetAccess,
                                                   timeZone,
                                                   ignoreMissingServices);
