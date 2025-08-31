@@ -1,4 +1,3 @@
-// State class for the library
 using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE.HOS.Services.Account.Acc;
 using Ryujinx.HLE.HOS;
@@ -694,6 +693,7 @@ private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, Integri
         public InputManager? InputManager { get; set; }
         public Switch? EmulationContext { get; set; }
         public IHostUIHandler? HostUiHandler { get; set; }
+        public bool EnableJitCacheEviction { get; set; }
         public bool EnableFsIntegrityChecks { get; set; }
         
         public void Dispose()
@@ -740,6 +740,7 @@ private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, Integri
                                       bool enableVsync,
                                       bool enableDockedMode,
                                       bool enablePtc,
+                                      bool enableJitCacheEviction,
                                       bool enableInternetAccess,
                                       string? timeZone,
                                       bool ignoreMissingServices)
@@ -773,6 +774,7 @@ private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, Integri
                                                                   enableVsync,
                                                                   enableDockedMode,
                                                                   enablePtc,
+                                                                  enableJitCacheEviction,
                                                                   enableInternetAccess,
                                                                   IntegrityCheckLevel.None,
                                                                   0,
