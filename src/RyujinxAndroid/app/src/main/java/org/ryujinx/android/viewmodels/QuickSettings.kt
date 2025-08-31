@@ -7,6 +7,7 @@ import androidx.preference.PreferenceManager
 class QuickSettings(val activity: Activity) {
     var ignoreMissingServices: Boolean
     var enablePtc: Boolean
+    var enableJitCacheEviction: Boolean
     var enableDocked: Boolean
     var enableVsync: Boolean
     var useNce: Boolean
@@ -42,6 +43,7 @@ class QuickSettings(val activity: Activity) {
         enableVsync = sharedPref.getBoolean("enableVsync", true)
         enableDocked = sharedPref.getBoolean("enableDocked", true)
         enablePtc = sharedPref.getBoolean("enablePtc", true)
+        enableJitCacheEviction = sharedPref.getBoolean("enableJitCacheEviction", true)
         ignoreMissingServices = sharedPref.getBoolean("ignoreMissingServices", false)
         enableShaderCache = sharedPref.getBoolean("enableShaderCache", true)
         enableTextureRecompression = sharedPref.getBoolean("enableTextureRecompression", false)
@@ -73,6 +75,7 @@ class QuickSettings(val activity: Activity) {
         editor.putBoolean("enableVsync", enableVsync)
         editor.putBoolean("enableDocked", enableDocked)
         editor.putBoolean("enablePtc", enablePtc)
+        editor.putBoolean("enableJitCacheEviction", enableJitCacheEviction)
         editor.putBoolean("ignoreMissingServices", ignoreMissingServices)
         editor.putBoolean("enableShaderCache", enableShaderCache)
         editor.putBoolean("enableTextureRecompression", enableTextureRecompression)
