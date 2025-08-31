@@ -39,18 +39,18 @@ namespace Ryujinx.HLE.FileSystem
         private SortedDictionary<(ulong titleId, NcaContentType type), string> _contentDictionary;
 
         private readonly struct AocItem
-        {
-            public readonly Stream ContainerStream;
-            public readonly string NcaPath;
-            public readonly string Extension;
+{
+    public readonly string ContainerPath;  // 改为存储文件路径
+    public readonly string NcaPath;
+    public readonly string Extension;
 
-            public AocItem(Stream containerStream, string ncaPath, string extension)
-            {
-                ContainerStream = containerStream;
-                Extension = extension;
-                NcaPath = ncaPath;
-            }
-        }
+    public AocItem(string containerPath, string ncaPath, string extension)
+    {
+        ContainerPath = containerPath;
+        Extension = extension;
+        NcaPath = ncaPath;
+    }
+}
 
         private SortedList<ulong, AocItem> AocData { get; }
 
@@ -187,68 +187,94 @@ namespace Ryujinx.HLE.FileSystem
             }
         }
 
-        public void AddAocItem(ulong titleId, Stream containerStream, string ncaPath, string extension, bool mergedToContainer = false)
-        {
-            // TODO: Check Aoc version.
-            if (!AocData.TryAdd(titleId, new AocItem(containerStream, ncaPath, extension)))
-            {
-                Logger.Warning?.Print(LogClass.Application, $"Duplicate AddOnContent detected. TitleId {titleId:X16}");
-            }
-            else
-            {
-                Logger.Info?.Print(LogClass.Application, $"Found AddOnContent with TitleId {titleId:X16}");
-
-                if (!mergedToContainer)
-                {
-                    using var pfs = PartitionFileSystemUtils.OpenApplicationFileSystem(containerStream, extension == ".xci", _virtualFileSystem);
-                }
-            }
-        }
+        public void AddAocItem(ulong titleId, string containerPath, string ncaPath, string extension)
+{
+    // TODO: Check Aoc version.
+    if (!AocData.TryAdd(titleId, new AocItem(containerPath, ncaPath, extension)))
+    {
+        Logger.Warning?.Print(LogClass.Application, $"Duplicate AddOnContent detected. TitleId {titleId:X16}");
+    }
+    else
+    {
+        Logger.Info?.Print(LogClass.Application, $"Found AddOnContent with TitleId {titleId:X16}");
+    }
+}
 
         public void ClearAocData()
-        {
-            foreach (var aoc in AocData)
-            {
-                aoc.Value.ContainerStream?.Dispose();
-            }
-
-            AocData.Clear();
-        }
+{
+    AocData.Clear();
+}
 
         public int GetAocCount() => AocData.Count;
 
         public IList<ulong> GetAocTitleIds() => AocData.Select(e => e.Key).ToList();
 
         public bool GetAocDataStorage(ulong aocTitleId, out IStorage aocStorage, IntegrityCheckLevel integrityCheckLevel)
+{
+    aocStorage = null;
+
+    if (AocData.TryGetValue(aocTitleId, out AocItem aoc))
+    {
+        try
         {
-            aocStorage = null;
+            // 每次使用都重新打开文件流
+            using var containerStream = new FileStream(aoc.ContainerPath, FileMode.Open, FileAccess.Read);
+            using var ncaFile = new UniqueRef<IFile>();
 
-            if (AocData.TryGetValue(aocTitleId, out AocItem aoc))
+            Logger.Info?.Print(LogClass.Application, $"Getting AOC data storage for TitleId: {aocTitleId:X16}");
+            Logger.Info?.Print(LogClass.Application, $"AOC Extension: {aoc.Extension}, NCA Path: {aoc.NcaPath}, Container: {aoc.ContainerPath}");
+
+            switch (aoc.Extension)
             {
-                using var ncaFile = new UniqueRef<IFile>();
-
-                switch (aoc.Extension)
-                {
-                    case ".xci":
-                        var xci = new Xci(_virtualFileSystem.KeySet, aoc.ContainerStream.AsStorage()).OpenPartition(XciPartitionType.Secure);
-                        xci.OpenFile(ref ncaFile.Ref, aoc.NcaPath.ToU8Span(), OpenMode.Read);
-                        break;
-                    case ".nsp":
-                        var pfs = new PartitionFileSystem();
-                        pfs.Initialize(aoc.ContainerStream.AsStorage());
-                        pfs.OpenFile(ref ncaFile.Ref, aoc.NcaPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
-                        break;
-                    default:
-                        return false; // Print error?
-                }
-
-                aocStorage = new Nca(_virtualFileSystem.KeySet, ncaFile.Get.AsStorage()).OpenStorage(NcaSectionType.Data, integrityCheckLevel);
-
-                return true;
+                case ".xci":
+                    Logger.Info?.Print(LogClass.Application, "Processing XCI container");
+                    var xci = new Xci(_virtualFileSystem.KeySet, containerStream.AsStorage()).OpenPartition(XciPartitionType.Secure);
+                    
+                    // 检查文件是否存在
+                    var existsResult = xci.FileExists(aoc.NcaPath.ToU8Span());
+                    if (existsResult.IsFailure())
+                    {
+                        Logger.Error?.Print(LogClass.Application, $"NCA file not found in XCI: {aoc.NcaPath}");
+                        return false;
+                    }
+                    
+                    xci.OpenFile(ref ncaFile.Ref, aoc.NcaPath.ToU8Span(), OpenMode.Read);
+                    break;
+                case ".nsp":
+                    Logger.Info?.Print(LogClass.Application, "Processing NSP container");
+                    var pfs = new PartitionFileSystem();
+                    pfs.Initialize(containerStream.AsStorage());
+                    
+                    // 检查文件是否存在
+                    existsResult = pfs.FileExists(aoc.NcaPath.ToU8Span());
+                    if (existsResult.IsFailure())
+                    {
+                        Logger.Error?.Print(LogClass.Application, $"NCA file not found in NSP: {aoc.NcaPath}");
+                        return false;
+                    }
+                    
+                    pfs.OpenFile(ref ncaFile.Ref, aoc.NcaPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
+                    break;
+                default:
+                    Logger.Error?.Print(LogClass.Application, $"Unknown container extension: {aoc.Extension}");
+                    return false;
             }
 
+            aocStorage = new Nca(_virtualFileSystem.KeySet, ncaFile.Get.AsStorage()).OpenStorage(NcaSectionType.Data, integrityCheckLevel);
+            Logger.Info?.Print(LogClass.Application, $"Successfully opened AOC storage for TitleId: {aocTitleId:X16}");
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error?.Print(LogClass.Application, $"Error getting AOC data storage for TitleId {aocTitleId:X16}: {ex.Message}");
             return false;
         }
+    }
+
+    Logger.Warning?.Print(LogClass.Application, $"AOC data not found for TitleId: {aocTitleId:X16}");
+    return false;
+}
 
         public void ClearEntry(ulong titleId, NcaContentType contentType, StorageId storageId)
         {
@@ -695,9 +721,9 @@ namespace Ryujinx.HLE.FileSystem
                     {
                         updateNcasItem.Add((nca.Header.ContentType, entry.FullName));
                     }
-                    else
-                    {
-                        updateNcas.Add(nca.Header.TitleId, new List<(NcaContentType, string)>());
+                    
+                    else if (updateNcas.TryAdd(nca.Header.TitleId, new List<(NcaContentType, string)>()))
+                    {                       
                         updateNcas[nca.Header.TitleId].Add((nca.Header.ContentType, entry.FullName));
                     }
                 }
@@ -885,9 +911,10 @@ namespace Ryujinx.HLE.FileSystem
                 {
                     updateNcasItem.Add((nca.Header.ContentType, entry.FullPath));
                 }
-                else
+                
+                else if (updateNcas.TryAdd(nca.Header.TitleId, new List<(NcaContentType, string)>()))
                 {
-                    updateNcas.Add(nca.Header.TitleId, new List<(NcaContentType, string)>());
+                    
                     updateNcas[nca.Header.TitleId].Add((nca.Header.ContentType, entry.FullPath));
                 }
 
