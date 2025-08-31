@@ -106,6 +106,9 @@ class SettingViews {
             val enablePtc = remember {
                 mutableStateOf(false)
             }
+            val enableJitCacheEviction = remember { 
+                mutableStateOf(false)
+             }
             val ignoreMissingServices = remember {
                 mutableStateOf(false)
             }
@@ -151,7 +154,7 @@ class SettingViews {
                 settingsViewModel.initializeState(
                     isHostMapped,
                     useNce,
-                    enableVsync, enableDocked, enablePtc, ignoreMissingServices,
+                    enableVsync, enableDocked, enablePtc, enableJitCacheEviction, ignoreMissingServices,
                     enableShaderCache,
                     enableTextureRecompression,
                     resScale,
@@ -188,6 +191,7 @@ class SettingViews {
                                     enableVsync,
                                     enableDocked,
                                     enablePtc,
+                                    enableJitCacheEviction,
                                     ignoreMissingServices,
                                     enableShaderCache,
                                     enableTextureRecompression,
@@ -676,6 +680,21 @@ class SettingViews {
                     }
                     ExpandableView(onCardArrowClick = { }, title = "Graphics") {
                         Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Enable Jit Cache Eviction",
+                                    modifier = Modifier.align(Alignment.CenterVertically)
+                                )
+                                Switch(checked = enableJitCacheEviction.value, onCheckedChange = {
+                                    enableJitCacheEviction.value = !enableJitCacheEviction.value
+                                })
+                            }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1201,7 +1220,7 @@ class SettingViews {
                 BackHandler {
                     settingsViewModel.save(
                         isHostMapped,
-                        useNce, enableVsync, enableDocked, enablePtc, ignoreMissingServices,
+                        useNce, enableVsync, enableDocked, enablePtc, enableJitCacheEviction, ignoreMissingServices,
                         enableShaderCache,
                         enableTextureRecompression,
                         resScale,
