@@ -164,6 +164,7 @@ class MainViewModel(val activity: MainActivity) {
                     settings.enableVsync,
                     settings.enableDocked,
                     settings.enablePtc,
+                    settings.enableJitCacheEviction,
                     false,
                     "UTC",
                     settings.ignoreMissingServices
@@ -267,6 +268,7 @@ class MainViewModel(val activity: MainActivity) {
                     settings.enableVsync,
                     settings.enableDocked,
                     settings.enablePtc,
+                    settings.enableJitCacheEviction,
                     false,
                     "UTC",
                     settings.ignoreMissingServices
