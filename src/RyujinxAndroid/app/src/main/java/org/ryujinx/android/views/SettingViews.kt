@@ -459,6 +459,35 @@ class SettingViews {
                                     useNce.value = !useNce.value
                                 })
                             }
+                            
+                            // 只在NCE关闭时显示Jit Cache Eviction选项
+                            AnimatedVisibility(visible = !useNce.value) {
+                                Column {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.align(Alignment.CenterVertically)) {
+                                            Text(
+                                                text = "Enable Jit Cache Eviction",
+                                                modifier = Modifier.align(Alignment.CenterVertically)
+                                            )
+                                            Text(
+                                                text = "Used with JIT mode",
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                            )
+                                        }
+                                        Switch(checked = enableJitCacheEviction.value, onCheckedChange = {
+                                            enableJitCacheEviction.value = !enableJitCacheEviction.value
+                                        })
+                                    }
+                                }
+                            }
+                            
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -680,21 +709,6 @@ class SettingViews {
                     }
                     ExpandableView(onCardArrowClick = { }, title = "Graphics") {
                         Column(modifier = Modifier.fillMaxWidth()) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Enable Jit Cache Eviction",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
-                                Switch(checked = enableJitCacheEviction.value, onCheckedChange = {
-                                    enableJitCacheEviction.value = !enableJitCacheEviction.value
-                                })
-                            }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1070,7 +1084,7 @@ class SettingViews {
                                     .fillMaxWidth()
                                     .padding(8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVerticaly
                             ) {
                                 Text(
                                     text = "Enable Debug Logs",
