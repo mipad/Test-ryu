@@ -177,6 +177,16 @@ class SettingViews {
                 )
                 loaded.value = true
             }
+            
+            // 当NCE状态改变时，自动设置JIT Cache Eviction的状态
+            if (useNce.value) {
+                // 如果NCE开启，则关闭JIT Cache Eviction
+                enableJitCacheEviction.value = false
+            } else {
+                // 如果NCE关闭，则开启JIT Cache Eviction
+                enableJitCacheEviction.value = true
+            }
+            
             Scaffold(modifier = Modifier.fillMaxSize(),
                 topBar = {
                     TopAppBar(title = {
@@ -441,7 +451,9 @@ class SettingViews {
                             ) {
                                 Text(text = "Use NCE")
                                 Switch(checked = useNce.value, onCheckedChange = {
-                                    useNce.value = !useNce.value
+                                    useNce.value = it
+                                    // 当NCE状态改变时，自动设置JIT Cache Eviction的状态
+                                    enableJitCacheEviction.value = !it
                                 })
                             }
                             
@@ -463,9 +475,12 @@ class SettingViews {
                                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                                             )
                                         }
-                                        Switch(checked = enableJitCacheEviction.value, onCheckedChange = {
-                                            enableJitCacheEviction.value = !enableJitCacheEviction.value
-                                        })
+                                        Switch(
+                                            checked = enableJitCacheEviction.value, 
+                                            onCheckedChange = {
+                                                enableJitCacheEviction.value = it
+                                            }
+                                        )
                                     }
                                 }
                             }
