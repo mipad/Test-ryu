@@ -233,10 +233,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Use Grid",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Use Grid")
                                 Switch(checked = isGrid.value, onCheckedChange = {
                                     isGrid.value = !isGrid.value
                                 })
@@ -248,10 +245,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Game Folder",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Game Folder")
                                 Button(onClick = {
                                     settingsViewModel.openGameFolder()
                                 }) {
@@ -266,14 +260,8 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "System Firmware",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
-                                Text(
-                                    text = firmwareVersion.value,
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "System Firmware")
+                                Text(text = firmwareVersion.value)
                             }
 
                             FlowRow(
@@ -451,10 +439,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Use NCE",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Use NCE")
                                 Switch(checked = useNce.value, onCheckedChange = {
                                     useNce.value = !useNce.value
                                 })
@@ -470,11 +455,8 @@ class SettingViews {
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Column(modifier = Modifier.align(Alignment.CenterVertically)) {
-                                            Text(
-                                                text = "Enable Jit Cache Eviction",
-                                                modifier = Modifier.align(Alignment.CenterVertically)
-                                            )
+                                        Column {
+                                            Text(text = "Enable Jit Cache Eviction")
                                             Text(
                                                 text = "Used with JIT mode",
                                                 fontSize = 12.sp,
@@ -495,10 +477,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Is Host Mapped",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Is Host Mapped")
                                 Switch(checked = isHostMapped.value, onCheckedChange = {
                                     isHostMapped.value = !isHostMapped.value
                                 })
@@ -510,10 +489,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Enable VSync",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Enable VSync")
                                 Switch(checked = enableVsync.value, onCheckedChange = {
                                     enableVsync.value = !enableVsync.value
                                 })
@@ -525,10 +501,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Enable PTC",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Enable PTC")
                                 Switch(checked = enablePtc.value, onCheckedChange = {
                                     enablePtc.value = !enablePtc.value
                                 })
@@ -540,10 +513,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Enable Docked Mode",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Enable Docked Mode")
                                 Switch(checked = enableDocked.value, onCheckedChange = {
                                     enableDocked.value = !enableDocked.value
                                 })
@@ -555,10 +525,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Ignore Missing Services",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Ignore Missing Services")
                                 Switch(checked = ignoreMissingServices.value, onCheckedChange = {
                                     ignoreMissingServices.value = !ignoreMissingServices.value
                                 })
@@ -570,12 +537,8 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.Start,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                ) {
-                                    Text(
-                                        text = "Enable Performance Mode",
-                                    )
+                                Column {
+                                    Text(text = "Enable Performance Mode")
                                     Text(
                                         text = "Forces CPU and GPU to run at max clocks if available.",
                                         fontSize = 12.sp
@@ -716,10 +679,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Enable Shader Cache",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Enable Shader Cache")
                                 Switch(checked = enableShaderCache.value, onCheckedChange = {
                                     enableShaderCache.value = !enableShaderCache.value
                                 })
@@ -731,10 +691,7 @@ class SettingViews {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Resolution Scale",
-                modifier = Modifier.align(Alignment.CenterVertically)
-            )
+            Text(text = "Resolution Scale")
             Text(text = "%.2fx".format(resScale.value))
         }
         
@@ -784,10 +741,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Enable Texture Recompression",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Enable Texture Recompression")
                                 Switch(
                                     checked = enableTextureRecompression.value,
                                     onCheckedChange = {
@@ -970,10 +924,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Skip Memory Barriers",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Skip Memory Barriers")
                                 Switch(checked = skipMemoryBarriers.value, onCheckedChange = {
                                     skipMemoryBarriers.value = !skipMemoryBarriers.value
                                 })
@@ -994,10 +945,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Show virtual controller",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Show virtual controller")
                                 Switch(checked = useVirtualController.value, onCheckedChange = {
                                     useVirtualController.value = !useVirtualController.value
                                 })
@@ -1009,10 +957,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Enable Motion",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Enable Motion")
                                 Switch(checked = enableMotion.value, onCheckedChange = {
                                     enableMotion.value = !enableMotion.value
                                 })
@@ -1024,10 +969,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Use Switch Controller Layout",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Use Switch Controller Layout")
                                 Switch(checked = useSwitchLayout.value, onCheckedChange = {
                                     useSwitchLayout.value = !useSwitchLayout.value
                                 })
@@ -1042,10 +984,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Controller Stick Sensitivity",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Controller Stick Sensitivity")
                                 Slider(modifier = Modifier.width(250.dp), value = controllerStickSensitivity.value, onValueChange = {
                                     controllerStickSensitivity.value = it
                                 }, valueRange = 0.1f..2f,
