@@ -29,7 +29,8 @@ interface RyujinxNativeJna : Library {
         enableMacroHLE: Boolean = true,
         enableShaderCache: Boolean = true,
         enableTextureRecompression: Boolean = false,
-        backendThreading: Int = BackendThreading.Auto.ordinal
+        backendThreading: Int = BackendThreading.Auto.ordinal,
+        aspectRatio: Int = 0 // 新增参数：画面比例
     ): Boolean
 
     fun graphicsInitializeRenderer(
