@@ -230,31 +230,33 @@ namespace LibRyujinx
         }
 
         [UnmanagedCallersOnly(EntryPoint = "graphicsInitialize")]
-        public static bool JnaGraphicsInitialize(float resScale,
-                float maxAnisotropy,
-                bool fastGpuTime,
-                bool fast2DCopy,
-                bool enableMacroJit,
-                bool enableMacroHLE,
-                bool enableShaderCache,
-                bool enableTextureRecompression,
-                int backendThreading)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            SearchPathContainer.Platform = UnderlyingPlatform.Android;
-            return InitializeGraphics(new GraphicsConfiguration()
-            {
-                ResScale = resScale,
-                MaxAnisotropy = maxAnisotropy,
-                FastGpuTime = fastGpuTime,
-                Fast2DCopy = fast2DCopy,
-                EnableMacroJit = enableMacroJit,
-                EnableMacroHLE = enableMacroHLE,
-                EnableShaderCache = enableShaderCache,
-                EnableTextureRecompression = enableTextureRecompression,
-                BackendThreading = (BackendThreading)backendThreading
-            });
-        }
+public static bool JnaGraphicsInitialize(float resScale,
+        float maxAnisotropy,
+        bool fastGpuTime,
+        bool fast2DCopy,
+        bool enableMacroJit,
+        bool enableMacroHLE,
+        bool enableShaderCache,
+        bool enableTextureRecompression,
+        int backendThreading,
+        int aspectRatio)  // 新增参数
+{
+    Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
+    SearchPathContainer.Platform = UnderlyingPlatform.Android;
+    return InitializeGraphics(new GraphicsConfiguration()
+    {
+        ResScale = resScale,
+        MaxAnisotropy = maxAnisotropy,
+        FastGpuTime = fastGpuTime,
+        Fast2DCopy = fast2DCopy,
+        EnableMacroJit = enableMacroJit,
+        EnableMacroHLE = enableMacroHLE,
+        EnableShaderCache = enableShaderCache,
+        EnableTextureRecompression = enableTextureRecompression,
+        BackendThreading = (BackendThreading)backendThreading,
+        AspectRatio = (AspectRatio)aspectRatio  // 设置画面比例
+    });
+}
 
         [UnmanagedCallersOnly(EntryPoint = "graphicsInitializeRenderer")]
         public unsafe static bool JnaGraphicsInitializeRenderer(char** extensionsArray,
