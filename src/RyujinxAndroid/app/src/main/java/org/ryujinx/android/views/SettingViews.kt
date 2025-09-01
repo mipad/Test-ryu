@@ -121,6 +121,7 @@ class SettingViews {
             val resScale = remember {
                 mutableStateOf(1f)
             }
+            val aspectRatio = remember { mutableStateOf(0) } // 新增状态变量：画面比例
             val useVirtualController = remember {
                 mutableStateOf(true)
             }
@@ -158,6 +159,7 @@ class SettingViews {
                     enableShaderCache,
                     enableTextureRecompression,
                     resScale,
+                    aspectRatio, // 新增参数
                     useVirtualController,
                     isGrid,
                     useSwitchLayout,
@@ -206,6 +208,7 @@ class SettingViews {
                                     enableShaderCache,
                                     enableTextureRecompression,
                                     resScale,
+                                    aspectRatio, // 新增参数
                                     useVirtualController,
                                     isGrid,
                                     useSwitchLayout,
@@ -749,6 +752,27 @@ class SettingViews {
             }
             }
         
+                            // 新增：画面比例选择器
+                            Text(text = "Aspect Ratio", modifier = Modifier.padding(8.dp))
+                            val aspectRatioOptions = listOf("Stretched", "16:9", "4:3", "21:9", "32:9", "16:10", "32:10")
+                            aspectRatioOptions.forEachIndexed { index, option ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = aspectRatio.value == index,
+                                        onClick = { aspectRatio.value = index }
+                                    )
+                                    Text(
+                                        text = option,
+                                        modifier = Modifier.clickable { aspectRatio.value = index }
+                                    )
+                                }
+                            }
+        
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1165,6 +1189,7 @@ class SettingViews {
                         enableShaderCache,
                         enableTextureRecompression,
                         resScale,
+                        aspectRatio, // 新增参数
                         useVirtualController,
                         isGrid,
                         useSwitchLayout,
