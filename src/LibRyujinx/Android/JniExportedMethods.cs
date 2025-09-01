@@ -545,12 +545,11 @@ public static bool JnaGraphicsInitialize(float resScale,
             CloseUser(userId);
         }
 
-        // 添加设置画面比例的方法
         [UnmanagedCallersOnly(EntryPoint = "setAspectRatio")]
         public static void JnaSetAspectRatio(int aspectRatio)
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            SetAspectRatio((AspectRatio)aspectRatio);
+            SetAspectRatioNative(aspectRatio); // 改为调用 SetAspectRatioNative
         }
     }
 
