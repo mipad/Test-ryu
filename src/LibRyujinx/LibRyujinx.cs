@@ -91,12 +91,6 @@ namespace LibRyujinx
         {
             _currentAspectRatio = aspectRatio;
             Logger.Info?.Print(LogClass.Emulation, $"Aspect ratio set to: {_currentAspectRatio}");
-            
-            // 更新渲染器的画面比例设置
-            if (Renderer != null && Renderer.Window != null)
-            {
-                Renderer.Window.SetAspectRatio(_currentAspectRatio);
-            }
         }
 
         // 添加获取画面比例的方法
