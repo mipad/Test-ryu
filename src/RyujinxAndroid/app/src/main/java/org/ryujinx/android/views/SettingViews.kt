@@ -752,25 +752,45 @@ class SettingViews {
             }
             }
         
-                            // 新增：画面比例选择器
+                            // 修改：画面比例选择器 - 改为横向方块按钮
                             Text(text = "Aspect Ratio", modifier = Modifier.padding(8.dp))
-                            // 重新排列选项：4:3, 16:9, 16:10, 21:9, 32:9, Stretched
                             val aspectRatioOptions = listOf("4:3", "16:9", "16:10", "21:9", "32:9", "Stretched")
-                            aspectRatioOptions.forEachIndexed { index, option ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    RadioButton(
-                                        selected = aspectRatio.value == index,
-                                        onClick = { aspectRatio.value = index }
-                                    )
-                                    Text(
-                                        text = option,
-                                        modifier = Modifier.clickable { aspectRatio.value = index }
-                                    )
+                            
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                aspectRatioOptions.forEachIndexed { index, option ->
+                                    val isSelected = aspectRatio.value == index
+                                    
+                                    TextButton(
+                                        onClick = {
+                                            aspectRatio.value = index
+                                        },
+                                        modifier = Modifier
+                                            .size(60.dp) // 方形按钮
+                                            .border(
+                                                width = 1.dp,
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary 
+                                                       else MaterialTheme.colorScheme.outline,
+                                                shape = MaterialTheme.shapes.small
+                                            ),
+                                        colors = ButtonDefaults.textButtonColors(
+                                            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer 
+                                                           else Color.Transparent,
+                                            contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer 
+                                                         else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    ) {
+                                        Text(
+                                            text = option,
+                                            fontSize = 12.sp,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
                                 }
                             }
         
@@ -881,12 +901,12 @@ class SettingViews {
                                                             ) {
                                                                 RadioButton(
                                                                     selected = selectedDriver.value == ind,
-                                                                    onClick = {
-                                                                        selectedDriver.value = ind
-                                                                        isChanged.value = true
-                                                                        driverViewModel.selected =
-                                                                            driver.driverPath
-                                                                    })
+                                                                onClick = {
+                                                                    selectedDriver.value = ind
+                                                                    isChanged.value = true
+                                                                    driverViewModel.selected =
+                                                                        driver.driverPath
+                                                                })
                                                                 Column(modifier = Modifier.clickable {
                                                                     selectedDriver.value =
                                                                         ind
