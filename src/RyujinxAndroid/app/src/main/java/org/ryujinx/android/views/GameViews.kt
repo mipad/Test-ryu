@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -172,7 +173,7 @@ class GameViews {
                             showAspectRatioMenu.value = true
                         }) {
                             Icon(
-                                imageVector = Icons.aspectRatio(),
+                                imageVector = Icons.videoGame(),
                                 contentDescription = "Aspect Ratio"
                             )
                         }
