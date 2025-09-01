@@ -45,6 +45,9 @@ namespace LibRyujinx
         private static readonly TitleUpdateMetadataJsonSerializerContext _titleSerializerContext = new(JsonHelper.GetDefaultSerializerOptions());
         public static SwitchDevice? SwitchDevice { get; set; }
 
+        // 添加静态字段来存储画面比例
+        private static AspectRatio _currentAspectRatio = AspectRatio.Stretched;
+
         public static bool Initialize(string? basePath)
         {
             if (SwitchDevice != null)
@@ -81,6 +84,25 @@ namespace LibRyujinx
             OpenALLibraryNameContainer.OverridePath = "libopenal.so";
 
             return true;
+        }
+
+        // 添加设置画面比例的方法
+        public static void SetAspectRatio(AspectRatio aspectRatio)
+        {
+            _currentAspectRatio = aspectRatio;
+            Logger.Info?.Print(LogClass.Emulation, $"Aspect ratio set to: {_currentAspectRatio}");
+            
+            // 更新渲染器的画面比例设置
+            if (Renderer != null && Renderer.Window != null)
+            {
+                Renderer.Window.SetAspectRatio(_currentAspectRatio);
+            }
+        }
+
+        // 添加获取画面比例的方法
+        public static AspectRatio GetAspectRatio()
+        {
+            return _currentAspectRatio;
         }
 
         public static void InitializeAudio()
@@ -783,7 +805,7 @@ private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, Integri
                                                                  // isHostMapped ? MemoryManagerMode.HostMappedUnsafe : MemoryManagerMode.SoftwarePageTable,
                                                                   MemoryManagerMode.HostMappedUnsafe,
                                                                   ignoreMissingServices,
-                                                                   LibRyujinx.GraphicsConfiguration.AspectRatio,
+                                                                   LibRyujinx.GetAspectRatio(),  // 使用 GetAspectRatio 方法获取当前画面比例
                                                                   100,
                                                                   useHypervisor,
                                                                   "",
