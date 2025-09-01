@@ -52,6 +52,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableShaderCache: MutableState<Boolean>,
         enableTextureRecompression: MutableState<Boolean>,
         resScale: MutableState<Float>,
+        aspectRatio: MutableState<Int>, // 新增参数：画面比例
         useVirtualController: MutableState<Boolean>,
         isGrid: MutableState<Boolean>,
         useSwitchLayout: MutableState<Boolean>,
@@ -81,6 +82,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableTextureRecompression.value =
             sharedPref.getBoolean("enableTextureRecompression", false)
         resScale.value = sharedPref.getFloat("resScale", 1f)
+        aspectRatio.value = sharedPref.getInt("aspect_ratio", 0) // 从SharedPreferences中读取画面比例设置
         useVirtualController.value = sharedPref.getBoolean("useVirtualController", true)
         isGrid.value = sharedPref.getBoolean("isGrid", true)
         useSwitchLayout.value = sharedPref.getBoolean("useSwitchLayout", true)
@@ -111,6 +113,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableShaderCache: MutableState<Boolean>,
         enableTextureRecompression: MutableState<Boolean>,
         resScale: MutableState<Float>,
+        aspectRatio: MutableState<Int>, // 新增参数：画面比例
         useVirtualController: MutableState<Boolean>,
         isGrid: MutableState<Boolean>,
         useSwitchLayout: MutableState<Boolean>,
@@ -140,6 +143,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.putBoolean("enableShaderCache", enableShaderCache.value)
         editor.putBoolean("enableTextureRecompression", enableTextureRecompression.value)
         editor.putFloat("resScale", resScale.value)
+        editor.putInt("aspect_ratio", aspectRatio.value) // 保存画面比例设置
         editor.putBoolean("useVirtualController", useVirtualController.value)
         editor.putBoolean("isGrid", isGrid.value)
         editor.putBoolean("useSwitchLayout", useSwitchLayout.value)
@@ -163,6 +167,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
 
         // 设置跳过内存屏障
         RyujinxNative.jnaInstance.setSkipMemoryBarriers(skipMemoryBarriers.value)
+
+        // 设置画面比例
+        RyujinxNative.jnaInstance.setAspectRatio(aspectRatio.value)
 
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Debug.ordinal, enableDebugLogs.value)
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Info.ordinal, enableInfoLogs.value)
