@@ -18,7 +18,9 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         public void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback)
         {
-            // 原有的 Present 方法实现
+            // If there's already a frame in the pipeline, wait for it to be presented first.
+            // This is a multithread rate limit - we can't be more than one frame behind the command queue.
+
             _renderer.WaitForFrame();
             _renderer.New<WindowPresentCommand>().Set(new TableRef<ThreadedTexture>(_renderer, texture as ThreadedTexture), crop, new TableRef<Action>(_renderer, swapBuffersCallback));
             _renderer.QueueCommand();
@@ -38,15 +40,5 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         public void SetScalingFilterLevel(float level) { }
 
         public void SetColorSpacePassthrough(bool colorSpacePassthroughEnabled) { }
-
-        // 新增的 SetAspectRatio 方法实现
-        public void SetAspectRatio(AspectRatio aspectRatio)
-        {
-            // 如果底层实现支持设置画面比例，可以调用：
-            // _impl.Window.SetAspectRatio(aspectRatio);
-            // 或者根据你的实际需求实现相应的逻辑
-            
-            // 暂时留空或添加适当的实现
-        }
     }
 }
