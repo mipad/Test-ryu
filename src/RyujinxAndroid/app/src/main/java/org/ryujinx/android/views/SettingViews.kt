@@ -567,7 +567,7 @@ class SettingViews {
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
+                                horizontalArrangement = Arrangement.Start,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(
@@ -635,78 +635,78 @@ class SettingViews {
                                 }) {
                                     Card(
                                         modifier = Modifier
-                                            .padding(16.dp)
-                                            .fillMaxWidth(),
-                                        shape = MaterialTheme.shapes.medium
+                                    .padding(16.dp)
+                                    .fillMaxWidth(),
+                                shape = MaterialTheme.shapes.medium
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .padding(16.dp)
+                                        .fillMaxWidth()
+                                ) {
+                                    Text(text = "Importing app data will delete your current profile. Do you still want to continue?")
+                                    Row(
+                                        horizontalArrangement = Arrangement.End,
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Column(
-                                            modifier = Modifier
-                                                .padding(16.dp)
-                                                .fillMaxWidth()
-                                        ) {
-                                            Text(text = "Importing app data will delete your current profile. Do you still want to continue?")
-                                            Row(
-                                                horizontalArrangement = Arrangement.End,
-                                                modifier = Modifier.fillMaxWidth()
-                                            ) {
-                                                Button(onClick = {
-                                                    val file = importFile.value
-                                                    showImportWarning.value = false
-                                                    importFile.value = null
-                                                    file?.apply {
-                                                        thread {
-                                                            Helpers.importAppData(this, isImporting)
-                                                            showImportCompletion.value = true
-                                                            mainViewModel.userViewModel.refreshUsers()
-                                                        }
-                                                    }
-                                                }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                                                    Text(text = "Yes")
-                                                }
-                                                Button(onClick = {
-                                                    showImportWarning.value = false
-                                                    importFile.value = null
-                                                }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                                                    Text(text = "No")
+                                        Button(onClick = {
+                                            val file = importFile.value
+                                            showImportWarning.value = false
+                                            importFile.value = null
+                                            file?.apply {
+                                                thread {
+                                                    Helpers.importAppData(this, isImporting)
+                                                    showImportCompletion.value = true
+                                                    mainViewModel.userViewModel.refreshUsers()
                                                 }
                                             }
+                                        }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                                            Text(text = "Yes")
                                         }
-
+                                        Button(onClick = {
+                                            showImportWarning.value = false
+                                            importFile.value = null
+                                        }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                                            Text(text = "No")
+                                        }
                                     }
                                 }
+
                             }
+                        }
+                    }
 
-                            if (showImportCompletion.value) {
-                                BasicAlertDialog(onDismissRequest = {
-                                    showImportCompletion.value = false
-                                    importFile.value = null
-                                    mainViewModel.userViewModel.refreshUsers()
-                                    mainViewModel.homeViewModel.requestReload()
-                                }) {
-                                    Card(
-                                        modifier = Modifier,
-                                        shape = MaterialTheme.shapes.medium
-                                    ) {
-                                        Text(
-                                            modifier = Modifier
-                                                .padding(24.dp),
-                                            text = "App Data import completed."
-                                        )
-                                    }
-                                }
-                            }
-
-                            if (isImporting.value) {
-                                Text(text = "Importing Files")
-
-                                LinearProgressIndicator(
+                    if (showImportCompletion.value) {
+                        BasicAlertDialog(onDismissRequest = {
+                            showImportCompletion.value = false
+                            importFile.value = null
+                            mainViewModel.userViewModel.refreshUsers()
+                            mainViewModel.homeViewModel.requestReload()
+                        }) {
+                            Card(
+                                modifier = Modifier,
+                                shape = MaterialTheme.shapes.medium
+                            ) {
+                                Text(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(8.dp)
+                                        .padding(24.dp),
+                                    text = "App Data import completed."
                                 )
                             }
                         }
                     }
+
+                    if (isImporting.value) {
+                        Text(text = "Importing Files")
+
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp)
+                        )
+                    }
+                }
+            }
                     ExpandableView(onCardArrowClick = { }, title = "Graphics") {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             Row(
@@ -1084,12 +1084,9 @@ class SettingViews {
                                     .fillMaxWidth()
                                     .padding(8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVerticaly
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Enable Debug Logs",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Enable Debug Logs")
                                 Switch(checked = enableDebugLogs.value, onCheckedChange = {
                                     enableDebugLogs.value = !enableDebugLogs.value
                                 })
@@ -1101,10 +1098,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Enable Stub Logs",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Enable Stub Logs")
                                 Switch(checked = enableStubLogs.value, onCheckedChange = {
                                     enableStubLogs.value = !enableStubLogs.value
                                 })
@@ -1116,10 +1110,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Enable Info Logs",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Enable Info Logs")
                                 Switch(checked = enableInfoLogs.value, onCheckedChange = {
                                     enableInfoLogs.value = !enableInfoLogs.value
                                 })
@@ -1131,10 +1122,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Enable Warning Logs",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Enable Warning Logs")
                                 Switch(checked = enableWarningLogs.value, onCheckedChange = {
                                     enableWarningLogs.value = !enableWarningLogs.value
                                 })
@@ -1146,10 +1134,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Enable Error Logs",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Enable Error Logs")
                                 Switch(checked = enableErrorLogs.value, onCheckedChange = {
                                     enableErrorLogs.value = !enableErrorLogs.value
                                 })
@@ -1161,10 +1146,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Enable Guest Logs",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Enable Guest Logs")
                                 Switch(checked = enableGuestLogs.value, onCheckedChange = {
                                     enableGuestLogs.value = !enableGuestLogs.value
                                 })
@@ -1176,10 +1158,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Enable Access Logs",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Enable Access Logs")
                                 Switch(checked = enableAccessLogs.value, onCheckedChange = {
                                     enableAccessLogs.value = !enableAccessLogs.value
                                 })
@@ -1191,10 +1170,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Enable Trace Logs",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Enable Trace Logs")
                                 Switch(checked = enableTraceLogs.value, onCheckedChange = {
                                     enableTraceLogs.value = !enableTraceLogs.value
                                 })
@@ -1206,10 +1182,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Enable Graphics Debug Logs",
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
+                                Text(text = "Enable Graphics Debug Logs")
                                 Switch(checked = enableGraphicsLogs.value, onCheckedChange = {
                                     enableGraphicsLogs.value = !enableGraphicsLogs.value
                                 })
