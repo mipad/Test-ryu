@@ -20,6 +20,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -64,7 +65,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -558,7 +561,7 @@ class SettingViews {
                                 Column {
                                     Text(text = "Enable Performance Mode")
                                     Text(
-                                        text = "Forces CPU and GPU to run at max clocks if available.",
+                                        text = "For forces CPU and GPU to run at max clocks if available.",
                                         fontSize = 12.sp
                                     )
                                     Text(
@@ -766,29 +769,31 @@ class SettingViews {
                                 aspectRatioOptions.forEachIndexed { index, option ->
                                     val isSelected = aspectRatio.value == index
                                     
-                                    TextButton(
-                                        onClick = {
-                                            aspectRatio.value = index
-                                        },
+                                    // 使用Box来确保点击区域匹配方块大小
+                                    Box(
                                         modifier = Modifier
-                                            .size(60.dp) // 方形按钮
+                                            .size(60.dp)
+                                            .clip(MaterialTheme.shapes.small)
+                                            .clickable { aspectRatio.value = index }
                                             .border(
                                                 width = 1.dp,
+                                                // 使用outlineVariant确保在亮色和暗色模式下都可见
                                                 color = if (isSelected) MaterialTheme.colorScheme.primary 
-                                                       else MaterialTheme.colorScheme.outline,
+                                                       else MaterialTheme.colorScheme.outlineVariant,
                                                 shape = MaterialTheme.shapes.small
+                                            )
+                                            .then(
+                                                if (isSelected) Modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
+                                                else Modifier
                                             ),
-                                        colors = ButtonDefaults.textButtonColors(
-                                            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer 
-                                                           else Color.Transparent,
-                                            contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer 
-                                                         else MaterialTheme.colorScheme.onSurface
-                                        )
+                                        contentAlignment = Alignment.Center
                                     ) {
                                         Text(
                                             text = option,
                                             fontSize = 12.sp,
-                                            textAlign = TextAlign.Center
+                                            textAlign = TextAlign.Center,
+                                            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer 
+                                                   else MaterialTheme.colorScheme.onSurface
                                         )
                                     }
                                 }
