@@ -19,6 +19,9 @@ namespace LibRyujinx
         // 添加静态字段来存储跳过内存屏障的状态
         private static bool _skipMemoryBarriers = false;
 
+        // 添加静态字段来存储画面比例
+        private static AspectRatio _currentAspectRatio = AspectRatio.Stretched;
+
         private unsafe static IntPtr CreateStringArray(List<string> strings)
         {
             uint size = (uint)(Marshal.SizeOf<IntPtr>() * (strings.Count + 1));
@@ -41,10 +44,30 @@ namespace LibRyujinx
             Logger.Info?.Print(LogClass.Emulation, $"Memory barriers {(skip ? "disabled" : "enabled")}");
         }
 
+        // 添加设置画面比例的 JNI 方法
+        [UnmanagedCallersOnly(EntryPoint = "setAspectRatio")]
+        public static void SetAspectRatioNative(int aspectRatio)
+        {
+            _currentAspectRatio = (AspectRatio)aspectRatio;
+            Logger.Info?.Print(LogClass.Emulation, $"Aspect ratio set to: {_currentAspectRatio}");
+            
+            // 更新渲染器的画面比例设置
+            if (Renderer != null && Renderer.Window != null)
+            {
+                Renderer.Window.SetAspectRatio(_currentAspectRatio);
+            }
+        }
+
         // 添加获取跳过内存屏障状态的方法（供内部使用）
         public static bool GetSkipMemoryBarriers()
         {
             return _skipMemoryBarriers;
+        }
+
+        // 添加获取画面比例的方法（供内部使用）
+        public static AspectRatio GetAspectRatio()
+        {
+            return _currentAspectRatio;
         }
 
         [UnmanagedCallersOnly(EntryPoint = "device_initialize")]
@@ -120,36 +143,39 @@ namespace LibRyujinx
         }
 
         [UnmanagedCallersOnly(EntryPoint = "graphics_initialize")]
-public static bool InitializeGraphicsNative(float resScale,
-    float maxAnisotropy,
-    bool fastGpuTime,
-    bool fast2DCopy,
-    bool enableMacroJit,
-    bool enableMacroHLE,
-    bool enableShaderCache,
-    bool enableTextureRecompression,
-    int backendThreading,
-    int aspectRatio)  // 新增参数：画面比例
-{
-    if (OperatingSystem.IsIOS())
-    {
-        Silk.NET.Core.Loader.SearchPathContainer.Platform = Silk.NET.Core.Loader.UnderlyingPlatform.MacOS;
-    }
-    
-    return InitializeGraphics(new GraphicsConfiguration()
-    {
-        ResScale = resScale,
-        MaxAnisotropy = maxAnisotropy,
-        FastGpuTime = fastGpuTime,
-        Fast2DCopy = fast2DCopy,
-        EnableMacroJit = enableMacroJit,
-        EnableMacroHLE = enableMacroHLE,
-        EnableShaderCache = enableShaderCache,
-        EnableTextureRecompression = enableTextureRecompression,
-        BackendThreading = (BackendThreading)backendThreading,
-        AspectRatio = (AspectRatio)aspectRatio  // 设置画面比例
-    });
-}
+        public static bool InitializeGraphicsNative(float resScale,
+            float maxAnisotropy,
+            bool fastGpuTime,
+            bool fast2DCopy,
+            bool enableMacroJit,
+            bool enableMacroHLE,
+            bool enableShaderCache,
+            bool enableTextureRecompression,
+            int backendThreading,
+            int aspectRatio)  // 新增参数：画面比例
+        {
+            if (OperatingSystem.IsIOS())
+            {
+                Silk.NET.Core.Loader.SearchPathContainer.Platform = Silk.NET.Core.Loader.UnderlyingPlatform.MacOS;
+            }
+            
+            // 保存画面比例设置
+            _currentAspectRatio = (AspectRatio)aspectRatio;
+            
+            return InitializeGraphics(new GraphicsConfiguration()
+            {
+                ResScale = resScale,
+                MaxAnisotropy = maxAnisotropy,
+                FastGpuTime = fastGpuTime,
+                Fast2DCopy = fast2DCopy,
+                EnableMacroJit = enableMacroJit,
+                EnableMacroHLE = enableMacroHLE,
+                EnableShaderCache = enableShaderCache,
+                EnableTextureRecompression = enableTextureRecompression,
+                BackendThreading = (BackendThreading)backendThreading,
+                AspectRatio = _currentAspectRatio  // 设置画面比例
+            });
+        }
 
         [UnmanagedCallersOnly(EntryPoint = "graphics_initialize_renderer")]
         public unsafe static bool InitializeGraphicsRendererNative(GraphicsBackend graphicsBackend, NativeGraphicsInterop nativeGraphicsInterop)
