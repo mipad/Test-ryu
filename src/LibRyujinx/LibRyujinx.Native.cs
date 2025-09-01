@@ -120,15 +120,36 @@ namespace LibRyujinx
         }
 
         [UnmanagedCallersOnly(EntryPoint = "graphics_initialize")]
-        public static bool InitializeGraphicsNative(GraphicsConfiguration graphicsConfiguration)
-        {
-            if (OperatingSystem.IsIOS())
-            {
-                // Yes, macOS not iOS
-                Silk.NET.Core.Loader.SearchPathContainer.Platform = Silk.NET.Core.Loader.UnderlyingPlatform.MacOS;
-            }
-            return InitializeGraphics(graphicsConfiguration);
-        }
+public static bool InitializeGraphicsNative(float resScale,
+    float maxAnisotropy,
+    bool fastGpuTime,
+    bool fast2DCopy,
+    bool enableMacroJit,
+    bool enableMacroHLE,
+    bool enableShaderCache,
+    bool enableTextureRecompression,
+    int backendThreading,
+    int aspectRatio)  // 新增参数：画面比例
+{
+    if (OperatingSystem.IsIOS())
+    {
+        Silk.NET.Core.Loader.SearchPathContainer.Platform = Silk.NET.Core.Loader.UnderlyingPlatform.MacOS;
+    }
+    
+    return InitializeGraphics(new GraphicsConfiguration()
+    {
+        ResScale = resScale,
+        MaxAnisotropy = maxAnisotropy,
+        FastGpuTime = fastGpuTime,
+        Fast2DCopy = fast2DCopy,
+        EnableMacroJit = enableMacroJit,
+        EnableMacroHLE = enableMacroHLE,
+        EnableShaderCache = enableShaderCache,
+        EnableTextureRecompression = enableTextureRecompression,
+        BackendThreading = (BackendThreading)backendThreading,
+        AspectRatio = (AspectRatio)aspectRatio  // 设置画面比例
+    });
+}
 
         [UnmanagedCallersOnly(EntryPoint = "graphics_initialize_renderer")]
         public unsafe static bool InitializeGraphicsRendererNative(GraphicsBackend graphicsBackend, NativeGraphicsInterop nativeGraphicsInterop)
