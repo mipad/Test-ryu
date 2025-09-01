@@ -121,7 +121,7 @@ class SettingViews {
             val resScale = remember {
                 mutableStateOf(1f)
             }
-            val aspectRatio = remember { mutableStateOf(0) } // 新增状态变量：画面比例
+            val aspectRatio = remember { mutableStateOf(1) } // 默认16:9
             val useVirtualController = remember {
                 mutableStateOf(true)
             }
@@ -393,8 +393,8 @@ class SettingViews {
                                                 if (firmwareInstallState.value == FirmwareInstallState.None) {
                                                     showFirwmareDialog.value = false
                                                     settingsViewModel.clearFirmwareSelection(
-                                                        firmwareInstallState
-                                                    )
+                                                    firmwareInstallState
+                                                )
                                                 }
                                             }, modifier = Modifier.padding(horizontal = 8.dp)) {
                                                 Text(text = "Yes")
@@ -754,7 +754,8 @@ class SettingViews {
         
                             // 新增：画面比例选择器
                             Text(text = "Aspect Ratio", modifier = Modifier.padding(8.dp))
-                            val aspectRatioOptions = listOf("Stretched", "16:9", "4:3", "21:9", "32:9", "16:10", "32:10")
+                            // 重新排列选项：4:3, 16:9, 16:10, 21:9, 32:9, Stretched
+                            val aspectRatioOptions = listOf("4:3", "16:9", "16:10", "21:9", "32:9", "Stretched")
                             aspectRatioOptions.forEachIndexed { index, option ->
                                 Row(
                                     modifier = Modifier
