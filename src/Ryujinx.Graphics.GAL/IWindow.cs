@@ -14,5 +14,8 @@ namespace Ryujinx.Graphics.GAL
         void SetScalingFilter(ScalingFilter type);
         void SetScalingFilterLevel(float level);
         void SetColorSpacePassthrough(bool colorSpacePassThroughEnabled);
+
+        // 新增方法：设置画面比例
+        void SetAspectRatio(AspectRatio aspectRatio);
     }
 }
