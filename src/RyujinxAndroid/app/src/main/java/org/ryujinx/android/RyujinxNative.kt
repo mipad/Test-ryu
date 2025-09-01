@@ -26,7 +26,7 @@ interface RyujinxNativeJna : Library {
         fastGpuTime: Boolean = true,
         fast2DCopy: Boolean = true,
         enableMacroJit: Boolean = false,
-        enableMacroHLE: Boolean = 1f,
+        enableMacroHLE: Boolean = true,
         enableShaderCache: Boolean = true,
         enableTextureRecompression: Boolean = false,
         backendThreading: Int = BackendThreading.Auto.ordinal,
