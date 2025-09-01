@@ -40,7 +40,7 @@ class DlcViews {
             val dlcItems = remember { SnapshotStateList<DlcItem>() }
 
             Column(modifier = Modifier.padding(16.dp)) {
-                // 标题区域 - 采用版本10的布局风格
+                // 标题区域 
                 Column {
                     Row(
                         modifier = Modifier
@@ -55,7 +55,7 @@ class DlcViews {
                         )
                     }
                     
-                    // DLC列表区域 - 采用版本10的Surface和LazyColumn
+                    // DLC列表区域 
                     Surface(
                         modifier = Modifier.padding(8.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant,
@@ -103,9 +103,9 @@ class DlcViews {
                 
                 Spacer(modifier = Modifier.height(8.dp))
                 
-                // 底部按钮区域 - 采用版本10的布局风格
+                // 底部按钮区域 
                 Row(modifier = Modifier.align(Alignment.End)) {
-                    // 添加按钮 - 保留版本11的图标按钮设计
+                    // 添加按钮 
                     IconButton(
                         modifier = Modifier.padding(4.dp),
                         onClick = {
@@ -118,7 +118,7 @@ class DlcViews {
                         )
                     }
                     
-                    // 保存按钮 - 采用版本10的文本按钮设计
+                    // 保存按钮 
                     TextButton(
                         modifier = Modifier.padding(4.dp),
                         onClick = {
