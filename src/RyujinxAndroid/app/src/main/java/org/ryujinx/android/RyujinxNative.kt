@@ -26,7 +26,7 @@ interface RyujinxNativeJna : Library {
         fastGpuTime: Boolean = true,
         fast2DCopy: Boolean = true,
         enableMacroJit: Boolean = false,
-        enableMacroHLE: Boolean = true,
+        enableMacroHLE: Boolean = 1f,
         enableShaderCache: Boolean = true,
         enableTextureRecompression: Boolean = false,
         backendThreading: Int = BackendThreading.Auto.ordinal,
@@ -84,6 +84,8 @@ interface RyujinxNativeJna : Library {
     fun loggingEnabledGraphicsLog(enabled: Boolean)
     // 添加跳过内存屏障的方法
     fun setSkipMemoryBarriers(skip: Boolean)
+    // 添加设置画面比例的方法
+    fun setAspectRatio(aspectRatio: Int)
 }
 
 class RyujinxNative {
