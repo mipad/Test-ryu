@@ -82,7 +82,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableTextureRecompression.value =
             sharedPref.getBoolean("enableTextureRecompression", false)
         resScale.value = sharedPref.getFloat("resScale", 1f)
-        aspectRatio.value = sharedPref.getInt("aspect_ratio", 0) // 从SharedPreferences中读取画面比例设置
+        aspectRatio.value = sharedPref.getInt("aspect_ratio", 1) // 默认使用16:9
         useVirtualController.value = sharedPref.getBoolean("useVirtualController", true)
         isGrid.value = sharedPref.getBoolean("isGrid", true)
         useSwitchLayout.value = sharedPref.getBoolean("useSwitchLayout", true)
