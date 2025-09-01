@@ -546,11 +546,11 @@ public static bool JnaGraphicsInitialize(float resScale,
         }
 
         [UnmanagedCallersOnly(EntryPoint = "setAspectRatio")]
-        public static void JnaSetAspectRatio(int aspectRatio)
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            SetAspectRatioNative(aspectRatio); // 改为调用 SetAspectRatioNative
-        }
+public static void JnaSetAspectRatio(int aspectRatio)
+{
+    Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
+    SetAspectRatio((AspectRatio)aspectRatio);
+}
     }
 
     internal static partial class Logcat
