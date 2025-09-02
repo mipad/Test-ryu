@@ -103,7 +103,7 @@ fun ModView(viewModel: ModViewModel, titleId: String) {
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(modItems { modItem ->
+                items(modItems) { modItem ->
                     ModListItem(
                         modItem = modItem,
                         onToggle = { enabled ->
@@ -217,7 +217,7 @@ fun FileBrowserDialog(
                 )
                 
                 Text(
-                    text = "Current: $currentth",
+                    text = "Current: $currentPath",
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
