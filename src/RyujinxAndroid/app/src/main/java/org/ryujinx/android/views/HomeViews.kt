@@ -40,6 +40,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
@@ -65,6 +67,8 @@ import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
@@ -115,8 +119,6 @@ import androidx.compose.foundation.clickable
 import java.io.File
 import android.content.Context
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 
@@ -588,6 +590,9 @@ class HomeViews {
             var newGameName by remember { mutableStateOf("") }
             val focusRequester = remember { FocusRequester() }
 
+            // 添加管理Mods对话框状态
+            var showManageModsDialog by remember { mutableStateOf(false) }
+
             val nestedScrollConnection = remember {
                 object : NestedScrollConnection {
                     override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
@@ -735,7 +740,7 @@ class HomeViews {
                                                 Image(
                                                     bitmap = BitmapFactory.decodeByteArray(
                                                         pic,
-                                                        0,
+                                                                                       0,
                                                         pic?.size ?: 0
                                                     )
                                                         .asImageBitmap(),
@@ -1289,15 +1294,12 @@ class HomeViews {
                                             showAppMenu.value = false
                                             openDlcDialog.value = true
                                         })
-                                        // 添加Install Mod选项
+                                        // 修改为Manage Mods选项
                                         DropdownMenuItem(text = {
-                                            Text(text = "Install Mod")
+                                            Text(text = "Manage Mods")
                                         }, onClick = {
                                             showAppMenu.value = false
-                                            val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
-                                            if (titleId.isNotEmpty()) {
-                                                navController?.navigate("mods/$titleId")
-                                            }
+                                            showManageModsDialog = true
                                         })
                                     }
                                 }
@@ -1335,6 +1337,73 @@ class HomeViews {
                     dismissButton = {
                         TextButton(
                             onClick = { showRenameDialog = false }
+                        ) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
+
+            // 添加管理Mods对话框
+            if (showManageModsDialog) {
+                AlertDialog(
+                    onDismissRequest = { showManageModsDialog = false },
+                    title = { Text(text = "Manage Mods") },
+                    text = {
+                        Column {
+                            Text("Choose how you want to install mods:")
+                            Spacer(modifier = Modifier.height(16.dp))
+                            // 压缩包安装选项
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showManageModsDialog = false
+                                        val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
+                                        if (titleId.isNotEmpty()) {
+                                            navController?.navigate("mods/contents/$titleId")
+                                        }
+                                    }
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Filled.Archive,
+                                    contentDescription = "Install from Archive",
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Text("Install from Archive (ZIP/RAR/7Z)")
+                            }
+                            Divider()
+                            // 文件夹安装选项
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showManageModsDialog = false
+                                        val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
+                                        if (titleId.isNotEmpty()) {
+                                            // 导航到mods视图，并传递参数表示要安装文件夹
+                                            navController?.navigate("mods/contents/$titleId?installFolder=true")
+                                        }
+                                    }
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Filled.Folder,
+                                    contentDescription = "Install from Folder",
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Text("Install from Folder")
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = { showManageModsDialog = false }
                         ) {
                             Text("Cancel")
                         }
