@@ -120,6 +120,7 @@ import android.content.Context
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import org.ryujinx.android.viewmodels.ModViewModel
 
 class HomeViews {
     companion object {
@@ -444,7 +445,7 @@ class HomeViews {
                                     thread {
                                         showLoading.value = true
                                         val success =
-                                            viewModel.mainViewModel?.loadGame(gameModel) ?: 0
+                                        viewModel.mainViewModel?.loadGame(gameModel) ?: 0
                                         if (success == 1) {
                                             launchOnUiThread {
                                                 viewModel.mainViewModel?.navigateToGame()
@@ -452,7 +453,7 @@ class HomeViews {
                                         } else {
                                             if (success == -2)
                                                 showError.value =
-                                                    "Error loading update. Please re-add update file"
+                                                "Error loading update. Please re-add update file"
                                             gameModel.close()
                                         }
                                         showLoading.value = false
@@ -654,7 +655,7 @@ class HomeViews {
                                     if (refreshUser)
                                         if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
                                             val pic =
-                                                viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
+                                            viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
                                             Image(
                                                 bitmap = BitmapFactory.decodeByteArray(
                                                     pic,
@@ -735,11 +736,11 @@ class HomeViews {
                                         if (refreshUser)
                                             if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
                                                 val pic =
-                                                    viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
+                                                viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
                                                 Image(
                                                     bitmap = BitmapFactory.decodeByteArray(
                                                         pic,
-                                                                                       0,
+                                                        0,
                                                         pic?.size ?: 0
                                                     )
                                                         .asImageBitmap(),
@@ -1010,7 +1011,7 @@ class HomeViews {
                                     ) {
                                         if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
                                             val pic =
-                                                viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
+                                            viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
                                             Image(
                                                 bitmap = BitmapFactory.decodeByteArray(
                                                     pic,
@@ -1063,7 +1064,7 @@ class HomeViews {
                                                                         user
                                                                     )
                                                                     refreshUser =
-                                                                        false
+                                                                    false
                                                                 })
                                                     )
                                                 }
@@ -1215,7 +1216,7 @@ class HomeViews {
                                         thread {
                                             showLoading.value = true
                                             val success =
-                                                viewModel.mainViewModel!!.loadGame(viewModel.mainViewModel!!.selected!!)
+                                            viewModel.mainViewModel!!.loadGame(viewModel.mainViewModel!!.selected!!)
                                             if (success == 1) {
                                                 launchOnUiThread {
                                                     viewModel.mainViewModel!!.navigateToGame()
@@ -1223,7 +1224,7 @@ class HomeViews {
                                             } else {
                                                 if (success == -2)
                                                     showError.value =
-                                                        "Error loading update. Please re-add update file"
+                                                    "Error loading update. Please re-add update file"
                                                 viewModel.mainViewModel!!.selected!!.close()
                                             }
                                             showLoading.value = false
@@ -1360,7 +1361,9 @@ class HomeViews {
                                         showManageModsDialog = false
                                         val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
                                         if (titleId.isNotEmpty()) {
-                                            navController?.navigate("mods/contents/$titleId")
+                                            // 直接创建ModViewModel并调用add方法，而不是导航
+                                            val modViewModel = ModViewModel(titleId)
+                                            modViewModel.add()
                                         }
                                     }
                                     .padding(16.dp),
