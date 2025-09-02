@@ -119,6 +119,7 @@ import android.content.Context
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.material3.Divider
 
 class HomeViews {
     companion object {
@@ -277,7 +278,7 @@ class HomeViews {
                                     selected = null
                                 }
                                 selectedModel.value = null
-                            } else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "000000000000000" || gameModel.type == FileType.Nro) {
+                            } else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro) {
                                 thread {
                                     showLoading.value = true
                                     val success =
@@ -299,7 +300,7 @@ class HomeViews {
                         onLongClick = {
                             viewModel.mainViewModel?.selected = gameModel
                             showAppActions.value = true
-                            selectedModel.value = game
+                            selectedModel.value = gameModel
                         }
                     )
             ) {
@@ -319,14 +320,14 @@ class HomeViews {
                             } else {
                                 Modifier
                                     .fillMaxWidth()
-                                    .aspectRatio(1)
+                                    .aspectRatio(1f)
                             }
                         ) {
                             if (gameModel.icon?.isNotEmpty() == true) {
                                 val pic = decoder.decode(gameModel.icon)
                                 Box(
                                     modifier = Modifier
-                                        .fillSize()
+                                        .fillMaxSize()
                                         .clip(RoundedCornerShape(16.dp))
                                 ) {
                                     Image(
@@ -353,7 +354,7 @@ class HomeViews {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .clip(RoundedCornerShape16.dp))
+                                        .clip(RoundedCornerShape(16.dp))
                                 ) {
                                     NotAvailableIcon(
                                         modifier = Modifier
@@ -378,7 +379,7 @@ class HomeViews {
                         ) {
                             NotAvailableIcon(
                                 modifier = Modifier
-                                    .fillMaxSize(0.8)
+                                    .fillMaxSize(0.8f)
                                     .align(Alignment.Center)
                             )
                         }
@@ -400,12 +401,12 @@ class HomeViews {
         fun LandscapeGameCarouselItem(
             gameModel: GameModel?,
             viewModel: HomeViewModel,
-            showAppActions: MutableStateBoolean>,
+            showAppActions: MutableState<Boolean>,
             showLoading: MutableState<Boolean>,
             selectedModel: MutableState<GameModel?>,
             showError: MutableState<String>,
             isCentered: Boolean = false,
-            onClick: () -> Unit = {}
+            onItemClick: () -> Unit = {}
         ) {
             if (gameModel == null) {
                 // 空项目
@@ -443,7 +444,7 @@ class HomeViews {
                                     thread {
                                         showLoading.value = true
                                         val success =
-                                            viewModel.mainViewModel?.Game(gameModel) ?: 0
+                                            viewModel.mainViewModel?.loadGame(gameModel) ?: 0
                                         if (success == 1) {
                                             launchOnUiThread {
                                                 viewModel.mainViewModel?.navigateToGame()
@@ -476,8 +477,8 @@ class HomeViews {
                             }
                         )
                 ) {
-                    if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type极速赛车开奖FileType.Nro)) {
-                        if (gameicon?.isNotEmpty() == true) {
+                    if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
+                        if (gameModel.icon?.isNotEmpty() == true) {
                             val pic = decoder.decode(gameModel.icon)
                             Image(
                                 bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
@@ -522,12 +523,12 @@ class HomeViews {
                             val pic = decoder.decode(gameModel.icon)
                             Image(
                                 bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
-                                    .asBitmap(),
+                                    .asImageBitmap(),
                                 contentDescription = gameModel.getDisplayName() + " icon",
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
                             )
-                        } else if (gameModel.type == FileType.N) {
+                        } else if (gameModel.type == FileType.Nro) {
                             NROIcon(
                                 modifier = Modifier
                                     .fillMaxSize(0.8f)
@@ -619,7 +620,7 @@ class HomeViews {
 
             Scaffold(
                 modifier = Modifier.fillMaxSize(),
-                topr = {
+                topBar = {
                     if (!isLandscape) {
                         // 竖屏模式下的搜索栏
                         SearchBar(
@@ -641,7 +642,7 @@ class HomeViews {
                                 )
                             },
                             placeholder = {
-                                Text(text"Ryujinx")
+                                Text(text = "Ryujinx")
                             },
                             trailingIcon = {
                                 IconButton(onClick = {
@@ -671,10 +672,10 @@ class HomeViews {
                                             )
                                         } else {
                                             Box(
-                                                modifier =Modifier
+                                                modifier = Modifier
                                                     .size(40.dp)
-                                                    .(RoundedCornerShape(12.dp))
-                                                    .border(1dp, Color.Gray, RoundedCornerShape(12.dp)),
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)),
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Icon(
@@ -698,7 +699,7 @@ class HomeViews {
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.Start // 改为靠左对齐
                         ) {
-                            // 搜索框 - 缩短度，靠左显示
+                            // 搜索框 - 缩短宽度，靠左显示
                             SearchBar(
                                 modifier = Modifier
                                     .width(200.dp) // 固定宽度
@@ -729,7 +730,7 @@ class HomeViews {
                                         modifier = Modifier.size(32.dp)
                                     ) {
                                         if (!refreshUser) {
-                                            refreshr = true
+                                            refreshUser = true
                                         }
                                         if (refreshUser)
                                             if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
@@ -743,7 +744,7 @@ class HomeViews {
                                                     )
                                                         .asImageBitmap(),
                                                     contentDescription = "user image",
-                                                    contentScale = ContentScaleCrop,
+                                                    contentScale = ContentScale.Crop,
                                                     modifier = Modifier
                                                         .size(32.dp)
                                                         .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
@@ -752,7 +753,7 @@ class HomeViews {
                                             } else {
                                                 Box(
                                                     modifier = Modifier
-                                                        .size(32.d)
+                                                        .size(32.dp)
                                                         .clip(RoundedCornerShape(12.dp))
                                                         .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)),
                                                     contentAlignment = Alignment.Center
@@ -817,7 +818,7 @@ class HomeViews {
                                             .width(64.dp)
                                             .align(Alignment.Center),
                                         color = MaterialTheme.colorScheme.secondary,
-                                        trackor = MaterialTheme.colorScheme.surfaceVariant
+                                        trackColor = MaterialTheme.colorScheme.surfaceVariant
                                     )
                                 }
                             } else {
@@ -862,7 +863,7 @@ class HomeViews {
                                                             centeredIndex = if (centeredIndex == 0) filteredList.size - 1 else centeredIndex - 1
                                                         } else if (dragAmount < -50) {
                                                             // 向左滑动，显示下一个
-                                                            centeredx = if (centeredIndex == filteredList.size - 1) 0 else centeredIndex + 1
+                                                            centeredIndex = if (centeredIndex == filteredList.size - 1) 0 else centeredIndex + 1
                                                         }
                                                     }
                                                 }
@@ -890,7 +891,7 @@ class HomeViews {
                                                 )
                                                 
                                                 // 中央项目
-                                                LandscapeGameCarousel(
+                                                LandscapeGameCarouselItem(
                                                     gameModel = filteredList.getOrNull(centeredIndex),
                                                     viewModel = viewModel,
                                                     showAppActions = showAppActions,
@@ -924,7 +925,7 @@ class HomeViews {
                                             .padding(horizontal = 8.dp)
                                             .nestedScroll(nestedScrollConnection),
                                         horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                        verticalArrangement = Arrangement.spacedy(8.dp)
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         items(list) {
                                             if (it.getDisplayName().isNotEmpty() && (query.trim()
@@ -955,446 +956,3 @@ class HomeViews {
                                             ) {
                                                 Box(modifier = Modifier.animateItemPlacement()) {
                                                     ListGameItem(
-                                                        gameModel = it,
-                                                        viewModel = viewModel,
-                                                        showAppActions = showAppActions,
-                                                        showLoading = showLoading,
-                                                        selectedModel = selectedModel,
-                                                        showError = showError
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 用户卡片 - 放在游戏列表上方
-                    Column(
-                        modifier = Modifier
-                            .padding(contentPadding)
-                            .zIndex(2f)
-                    ) {
-                        val iconSize = 52.dp
-                        AnimatedVisibility(
-                            visible = openAppBarExtra,
-                        ) {
-                            Card(
-                                modifier = Modifier
-                                    .padding(vertical = 8dp, horizontal = 16.dp)
-                                    .fillMaxWidth(),
-                                shape = MaterialThemeshapes.medium
-                            ) {
-                                Column(modifier = Modifier.padding(8.dp)) {
-                                    Row(
-                                        modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                if (refreshUser) {
-                                    Box(
-                                        modifier = Modifier
-                                            .border(
-                                                width = 2.dp,
-                                                color = Color(0xFF14bf00),
-                                                shape = RoundedCornerShape(12.dp) // 改为圆角方形
-                                            )
-                                            .size(iconSize)
-                                            .padding(2.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() ==true) {
-                                            val pic =
-                                                viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
-                                            Image(
-                                                bitmap = BitmapFactory.decodeByteArray(
-                                                    pic,
-                                                    0,
-                                                    pic?.size ?: 0
-                                                )
-                                                    .asImageBitmap(),
-                                                contentDescription = "user image",
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier
-                                                    .padding(4.dp)
-                                                    .size(iconSize)
-                                                    .clip(RoundedCornerShape(12.dp)) // 改为角方形
-                                            )
-                                        } else {
-                                            Icon(
-                                                Icons.Filled.Person,
-                                                contentDescription = "",
-                                                modifier = Modifier.size(32.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                                Card(
-                                    modifier = Modifier
-                                        .padding(horizontal = 4.dp)
-                                        .fillMaxWidth(0.7f),
-                                    shape = MaterialTheme.shapes.small,
-                                ) {
-                                    LazyRow {
-                                        if (viewModel.mainViewModel?.userViewModel?.userList?.isNotEmpty() == true) {
-                                            items(viewModel.mainViewModel!!.userViewModel.userList) { user ->
-                                                if (user.id != viewModel.mainViewModel!!.userViewModel.openedUser.id) {
-                                                    Image(
-                                                        bitmap = BitmapFactory.decodeByteArray(
-                                                            user.userPicture,
-                                                            0,
-                                                            user.userPicture?.size ?: 0
-                                                        )
-                                                            .asImageBitmap(),
-                                                        contentDescription = "selected image",
-                                                        contentScale = ContentScale.Crop,
-                                                        modifier = Modifier
-                                                            .padding(4.dp)
-                                                            .size(iconSize)
-                                                            .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
-                                                            .combinedClickable(
-                                                                onClick = {
-                                                                    viewModel.mainViewModel!!.userViewModel.openUser(
-                                                                        user
-                                                                    )
-                                                                    refreshUser =
-                                                                        false
-                                                                })
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .size(iconSize)
-                                ) {
-                                    IconButton(
-                                        modifier = Modifier.fillMaxSize(),
-                                        onClick = {
-                                            openAppBarExtra = false
-                                            navController?.navigate("user")
-                                        }) {
-                                        Icon(
-                                            Icons.Filled.Add,
-                                            contentDescription = "N/A"
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        TextButton(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = {
-                                navController?.navigate("settings")
-                            }
-                        ) {
-                            Row(
-                                modifier =Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Filled.Settings,
-                                    contentDescription = "Settings"
-                                )
-                                Text(
-                                    text = "Settings",
-                                    modifier = Modifier.padding(start = 8.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (showLoading.value) {
-                BasicAlertDialog(onRequest = { }) {
-                    Card(
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .fillMaxWidth(),
-                        shape = MaterialTheme.shapes.medium
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .padding(16dp)
-                                .fillWidth()
-                        ) {
-                            Text(text = "Loading")
-                            LinearProgressIndicator(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 16.dp)
-                            )
-                        }
-
-                    }
-                }
-            }
-            if (openTitleUpdateDialog.value) {
-                BasicAlertDialog(onDismissRequest = {
-                    openTitleUpdateDialog.value = false
-                }) {
-                    Surface(
-                        modifier = Modifier
-                            .wrapContentWidth()
-                            .wrapContentHeight(),
-                        shape = MaterialTheme.shapes.large,
-                        tonalElevation = AlertDialogDefaults.TonalElevation
-                    ) {
-                        val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
-                        val name = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
-                        TitleUpdateViews.Main(titleId, name, openTitleUpdateDialog, canClose)
-                    }
-
-                }
-            }
-            if (openDlcDialog.value) {
-                BasicAlertDialog(onDismissRequest = {
-                    openDlcDialog.value = false
-                }) {
-                    Surface(
-                        modifier = Modifier
-                            .wrapContentWidth()
-                            .wrapContentHeight(),
-                        shape = MaterialTheme.shapes极速赛车large,
-                        tonalElevation = AlertDialogDefaults.TonalElevation
-                    ) {
-                        val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
-                        val name = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
-                        DlcViews.Main(titleId, name, openDlcDialog, canClose)
-                    }
-
-                }
-            }
-
-            if (showAppActions.value) {
-                ModalBottomSheet(
-                    onDismissRequest = {
-                        showAppActions.value = false
-                        selectedModel.value = null
-                    },
-                    sheetState = sheetate,
-                    scrimColor = Color.Transparent,
-                    content = {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp)
-                        ) {
-                            // 显示游戏名和版本号
-                            selectedModel.value?.let { game ->
-                                Text(
-                                    text = game.getDisplayName(),
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                                )
-                                if (!game.version.isNullOrEmpty()) {
-                                    Text(
-                                        text = "v${game.version}",
-                                        fontSize = 16.sp,
-                                        modifier = Modifier.align(Alignment.CenterHorizontally)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(16.dp))
-                            }
-                            
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceEvenly
-                            ) {
-                                IconButton(onClick = {
-                                    if (viewModel.mainViewModel?.selected != null) {
-                                        thread {
-                                            showLoading.value = true
-                                            val success =
-                                                viewModel.mainViewModel!!.loadGame(viewModel.mainViewModel!!.selected!!)
-                                            if (success == 1) {
-                                                launchOnUiThread {
-                                                    viewModel.mainViewModel!!.navigateToGame()
-                                                }
-                                            } else {
-                                                if (success == -2)
-                                                    showError.value =
-                                                        "Error loading update. Please re-add update file"
-                                                viewModel.mainViewModel!!.selected!!.close()
-                                            }
-                                            showLoading.value = false
-                                        }
-                                    }
-                                }) {
-                                    Icon(
-                                        Icons.Filled.PlayArrow,
-                                        contentDescription = "Run"
-                                    )
-                                }
-                                val showAppMenu = remember { mutableStateOf(false) }
-                                Box {
-                                    IconButton(onClick = {
-                                        showAppMenu.value = true
-                                    }) {
-                                        Icon(
-                                            Icons.FilledMenu,
-                                            contentDescription = "Menu"
-                                        )
-                                    }
-                                    DropdownMenu(
-                                        expanded = showAppMenu.value,
-                                        onDismissRequest = { showAppMenu.value = false }) {
-                                        DropdownMenuItem(text = {
-                                            Text(text = "Rename Game")
-                                        }, onClick = {
-                                            showAppMenu.value = false
-                                            selectedModel.value?.let { game ->
-                                                newGameName = game.getDisplayName()
-                                                showRenameDialog = true
-                                            }
-                                        })
-                                        DropdownMenuItem(text = {
-                                            Text(text = "Clear PPTC Cache")
-                                        }, onClick = {
-                                            showAppMenu.value = false
-                                            viewModel.mainViewModel?.clearPptcCache(
-                                                viewModel.mainViewModel?.selected?.titleId ?: ""
-                                            )
-                                        })
-                                        DropdownMenuItem(text = {
-                                            Text(text = "Purge Shader Cache")
-                                        }, onClick {
-                                            showAppMenu.value = false
-                                            viewModel.mainViewModel?.purgeShaderCache(
-                                                viewModel.mainViewModel?.selected?.titleId ?: ""
-                                            )
-                                        })
-                                        DropdownMenuItem(text = {
-                                            Text(text = "Delete All Cache")
-                                        }, onClick = {
-                                            showAppMenu.value = false
-                                            viewModel.mainViewModel?.deleteCache(
-                                                viewModel.mainViewModel?.selected?.titleId ?: ""
-                                            )
-                                        })
-                                        DropdownMenuItem(text = {
-                                            Text(text = "Manage Updates")
-                                        }, onClick = {
-                                            showAppMenu.value = false
-                                            openTitleUpdateDialog.value = true
-                                        })
-                                        DropdownMenuItem(text = {
-                                            Text(text = "Manage DLC")
-                                        }, onClick = {
-                                            showAppMenu.value = false
-                                            openDlcDialog.value = true
-                                        })
-                                        // 修改为Manage Mods选项
-                                        DropdownMenuItem(text = {
-                                            Text(text = "Manage Mods")
-                                        }, onClick = {
-                                            showAppMenu.value = false
-                                            showManageModsDialog = true
-                                        })
-                                    }
-                                }
-                            }
-                        }
-                    }
-                )
-            }
-
-            // 添加重命名对话框
-            if (showRenameDialog) {
-                AlertDialog(
-                    onDismissRequest = { showRenameDialog = false },
-                    title = { Text(text = "Rename Game") },
-                    text = {
-                        OutlinedTextField(
-                            value = newGameName,
-                            onValueChange = { newGameName = it },
-                            label = { Text("Game Name") },
-                            modifier = Modifier.focusRequester(focusRequester)
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
-                                selectedModel.value?.customName = newGameName
-                                showRenameDialog = false
-                                // 刷新列表以显示新名称
-                                viewModel.filter(query)
-                            }
-                        ) {
-                            Text("OK")
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(
-                            onClick = { showRenameDialog = false }
-                        ) {
-                            Text("Cancel")
-                        }
-                    }
-                )
-            }
-
-            // 添加管理Mods对话框
-            if (showManageModsDialog) {
-                AlertDialog(
-                    onDismissRequest = { showManageModsDialog = false },
-                    title = { Text(text = "Manage Mods") },
-                    text = {
-                        Column {
-                            Text("Choose how you want to install mods:")
-                            Spacer(modifier = Modifier.height(16.dp))
-                            // 压缩包安装选项
-                            TextButton(
-                                onClick = {
-                                    showManageModsDialog = false
-                                    val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
-                                    if (titleId.isNotEmpty()) {
-                                        navController?.navigate("mods/contents/$titleId")
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Install from Archive (ZIP/RAR/7Z)")
-                            }
-                            // 文件夹安装选项
-                            TextButton(
-                                onClick = {
-                                    showManageModsDialog = false
-                                    val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
-                                    if (titleId.isNotEmpty()) {
-                                        // 导航到mods视图，并传递参数表示要安装文件夹
-                                        navController?.navigate("mods/contents/$titleId?installFolder=true")
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Install from Folder")
-                            }
-                        }
-                    },
-                    confirmButton = {
-                        TextButton(
-                            onClick = { showManageModsDialog = false }
-                        ) {
-                            Text("Cancel")
-                        }
-                    }
-                )
-            }
-        }
-
-        @Preview
-        @Composable
-        fun HomePreview() {
-            Home(isPreview = true)
-        }
-    }
-}}}
