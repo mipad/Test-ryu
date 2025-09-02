@@ -11,7 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx极速赛车开奖直播历史记录.compose.ui.unit.dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import org.ryujinx.android.viewmodels.ModItem
 import org.ryujinx.android.viewmodels.ModViewModel
@@ -103,7 +103,7 @@ fun ModView(viewModel: ModViewModel, titleId: String) {
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(modItems极速赛车开奖直播历史记录 { modItem ->
+                items(modItems { modItem ->
                     ModListItem(
                         modItem = modItem,
                         onToggle = { enabled ->
@@ -207,7 +207,7 @@ fun FileBrowserDialog(
             shape = MaterialTheme.shapes.large,
             modifier = Modifier
                 .fillMaxWidth()
-极速赛车开奖直播历史记录                .height(500.dp)
+                .height(500.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
@@ -217,7 +217,7 @@ fun FileBrowserDialog(
                 )
                 
                 Text(
-                    text = "Current: $current极速赛车开奖直播历史记录th",
+                    text = "Current: $currentth",
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
