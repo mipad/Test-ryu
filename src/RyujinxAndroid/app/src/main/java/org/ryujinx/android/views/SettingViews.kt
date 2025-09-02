@@ -964,7 +964,6 @@ class SettingViews {
                                                             Text(text = "Add")
                                                         }
                                                     }
-                                                    }
                                                 }
                                             }
                                         }
