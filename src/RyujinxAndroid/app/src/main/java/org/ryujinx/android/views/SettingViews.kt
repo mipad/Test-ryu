@@ -2,6 +2,7 @@ package org.ryujinx.android.views
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
+import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
@@ -211,23 +212,23 @@ class SettingViews {
                                     enableShaderCache,
                                     enableTextureRecompression,
                                     resScale,
-                                    aspectRatio, // 新增参数
-                                    useVirtualController,
-                                    isGrid,
-                                    useSwitchLayout,
-                                    enableMotion,
-                                    enablePerformanceMode,
-                                    controllerStickSensitivity,
-                                    enableDebugLogs,
-                                    enableStubLogs,
-                                    enableInfoLogs,
-                                    enableWarningLogs,
-                                    enableErrorLogs,
-                                    enableGuestLogs,
-                                    enableAccessLogs,
-                                    enableTraceLogs,
-                                    enableGraphicsLogs,
-                                    skipMemoryBarriers // 新增参数
+                    aspectRatio, // 新增参数
+                    useVirtualController,
+                    isGrid,
+                    useSwitchLayout,
+                    enableMotion,
+                    enablePerformanceMode,
+                    controllerStickSensitivity,
+                    enableDebugLogs,
+                    enableStubLogs,
+                    enableInfoLogs,
+                    enableWarningLogs,
+                    enableErrorLogs,
+                    enableGuestLogs,
+                    enableAccessLogs,
+                    enableTraceLogs,
+                    enableGraphicsLogs,
+                    skipMemoryBarriers // 新增参数
                                 )
                                 settingsViewModel.navController.popBackStack()
                             }) {
@@ -561,7 +562,7 @@ class SettingViews {
                                 Column {
                                     Text(text = "Enable Performance Mode")
                                     Text(
-                                        text = "For forces CPU and GPU to run at max clocks if available.",
+                                        text = "Forces CPU and GPU to run at max clocks if available.",
                                         fontSize = 12.sp
                                     )
                                     Text(
@@ -755,7 +756,7 @@ class SettingViews {
             }
             }
         
-                            // 修改：画面比例选择器 - 改为横向方块按钮
+                            // 修改：画面比例选择器 - 改为横向矩形按钮
                             Text(text = "Aspect Ratio", modifier = Modifier.padding(8.dp))
                             val aspectRatioOptions = listOf("4:3", "16:9", "16:10", "21:9", "32:9", "Stretched")
                             
@@ -769,10 +770,11 @@ class SettingViews {
                                 aspectRatioOptions.forEachIndexed { index, option ->
                                     val isSelected = aspectRatio.value == index
                                     
-                                    // 使用Box来确保点击区域匹配方块大小
+                                    // 使用Box来确保点击区域匹配矩形大小
                                     Box(
                                         modifier = Modifier
-                                            .size(60.dp)
+                                            .width(80.dp) // 矩形宽度
+                                            .height(40.dp) // 矩形高度
                                             .clip(MaterialTheme.shapes.small)
                                             .clickable { aspectRatio.value = index }
                                             .border(
@@ -783,8 +785,9 @@ class SettingViews {
                                                 shape = MaterialTheme.shapes.small
                                             )
                                             .then(
-                                                if (isSelected) Modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
-                                                else Modifier
+                                                if (isSelected) Modifier.background(
+                                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                                ) else Modifier
                                             ),
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -1319,7 +1322,7 @@ class SettingViews {
 
         @Composable
         fun ExpandableContent(
-            visible: Boolean = true,
+            visible = true,
             content: @Composable () -> Unit
             ) {
             val enterTransition = remember {
