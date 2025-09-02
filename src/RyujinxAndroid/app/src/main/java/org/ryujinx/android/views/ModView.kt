@@ -11,7 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
+import androidx极速赛车开奖直播历史记录.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import org.ryujinx.android.viewmodels.ModItem
 import org.ryujinx.android.viewmodels.ModViewModel
@@ -69,19 +69,24 @@ fun ModView(viewModel: ModViewModel, titleId: String) {
             // 添加两个按钮：压缩包安装和文件夹安装
             Row {
                 // 压缩包安装按钮
-                IconButton(onClick = { 
-                    installFolderMode = false
-                    showFileBrowser = true 
-                }) {
-                    Icon(Icons.Filled.Archive, contentDescription = "Install from Archive")
+                Button(
+                    onClick = { 
+                        installFolderMode = false
+                        showFileBrowser = true 
+                    },
+                    modifier = Modifier.padding(end = 8.dp)
+                ) {
+                    Text("Add Archive")
                 }
                 
                 // 文件夹安装按钮
-                IconButton(onClick = { 
-                    installFolderMode = true
-                    showFileBrowser = true 
-                }) {
-                    Icon(Icons.Filled.Folder, contentDescription = "Install from Folder")
+                Button(
+                    onClick = { 
+                        installFolderMode = true
+                        showFileBrowser = true 
+                    }
+                ) {
+                    Text("Add Folder")
                 }
             }
         }
@@ -98,7 +103,7 @@ fun ModView(viewModel: ModViewModel, titleId: String) {
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(modItems) { modItem ->
+                items(modItems极速赛车开奖直播历史记录 { modItem ->
                     ModListItem(
                         modItem = modItem,
                         onToggle = { enabled ->
@@ -131,9 +136,9 @@ fun ModListItem(modItem: ModItem, onToggle: (Boolean) -> Unit, onDelete: () -> U
             
             Spacer(modifier = Modifier.width(16.dp))
             
-            Icon(
-                imageVector = if (modItem.isDirectory) Icons.Filled.Folder else Icons.Filled.InsertDriveFile,
-                contentDescription = if (modItem.isDirectory) "Folder" else "File",
+            // 使用文字代替图标
+            Text(
+                text = if (modItem.isDirectory) "[Folder]" else "[File]",
                 modifier = Modifier.size(24.dp)
             )
             
@@ -202,7 +207,7 @@ fun FileBrowserDialog(
             shape = MaterialTheme.shapes.large,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(500.dp)
+极速赛车开奖直播历史记录                .height(500.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
@@ -212,7 +217,7 @@ fun FileBrowserDialog(
                 )
                 
                 Text(
-                    text = "Current: $currentPath",
+                    text = "Current: $current极速赛车开奖直播历史记录th",
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -245,9 +250,9 @@ fun FileBrowserDialog(
                                 .padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = if (file.isDirectory) Icons.Filled.Folder else Icons.Filled.InsertDriveFile,
-                                contentDescription = if (file.isDirectory) "Folder" else "File",
+                            // 使用文字代替图标
+                            Text(
+                                text = if (file.isDirectory) "[Folder]" else "[File]",
                                 modifier = Modifier.size(24.dp)
                             )
                             
