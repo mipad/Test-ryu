@@ -964,6 +964,7 @@ class SettingViews {
                                                             Text(text = "Add")
                                                         }
                                                     }
+                                                    }
                                                 }
                                             }
                                         }
@@ -1322,7 +1323,7 @@ class SettingViews {
 
         @Composable
         fun ExpandableContent(
-            visible = true,
+            visible: Boolean = true,
             content: @Composable () -> Unit
             ) {
             val enterTransition = remember {
