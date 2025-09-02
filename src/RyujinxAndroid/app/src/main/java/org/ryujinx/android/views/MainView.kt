@@ -5,6 +5,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import org.ryujinx.android.viewmodels.MainViewModel
+import org.ryujinx.android.viewmodels.ModViewModel
 import org.ryujinx.android.viewmodels.SettingsViewModel
 
 class MainView {
@@ -25,6 +26,11 @@ class MainView {
                             mainViewModel.activity
                         ), mainViewModel
                     )
+                }
+                // 添加mods路由 - 使用正确的路径结构 mods/contents/{titleId}
+                composable("mods/contents/{titleId}") { backStackEntry ->
+                    val titleId = backStackEntry.arguments?.getString("titleId") ?: ""
+                    ModView(viewModel = ModViewModel(titleId), titleId = titleId)
                 }
             }
         }
