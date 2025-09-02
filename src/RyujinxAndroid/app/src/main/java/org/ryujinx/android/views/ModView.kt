@@ -16,6 +16,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.ryujinx.android.viewmodels.ModItem
 import org.ryujinx.android.viewmodels.ModViewModel
+import java.io.File
 
 @Composable
 fun ModView(viewModel: ModViewModel, titleId: String) {
@@ -41,7 +42,7 @@ fun ModView(viewModel: ModViewModel, titleId: String) {
             )
             
             IconButton(onClick = { viewModel.add() }) {
-                Icon(Icons.Default.Add, contentDescription = "Add Mod")
+                Icon(Icons.Filled.Add, contentDescription = "Add Mod")
             }
         }
         
@@ -78,7 +79,7 @@ fun ModListItem(modItem: ModItem, onDelete: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = if (modItem.isDirectory) Icons.Default.Folder else Icons.Default.InsertDriveFile,
+                imageVector = if (modItem.isDirectory) Icons.Filled.Folder else Icons.Filled.InsertDriveFile,
                 contentDescription = if (modItem.isDirectory) "Folder" else "File"
             )
             
@@ -100,7 +101,7 @@ fun ModListItem(modItem: ModItem, onDelete: () -> Unit) {
             }
             
             IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete")
+                Icon(Icons.Filled.Delete, contentDescription = "Delete")
             }
         }
     }
@@ -121,7 +122,7 @@ fun FileBrowserDialog(
         val directory = File(currentPath)
         if (directory.exists() && directory.isDirectory) {
             files.clear()
-            directory.listFiles()?.forEach { file ->
+            directory.listFiles()?.forEach { file: File ->
                 files.add(FileItem(
                     name = file.name,
                     path = file.absolutePath,
