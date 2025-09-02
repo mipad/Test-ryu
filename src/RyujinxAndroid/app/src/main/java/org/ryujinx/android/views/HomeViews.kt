@@ -70,7 +70,7 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.var
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
@@ -1289,6 +1289,16 @@ class HomeViews {
                                             showAppMenu.value = false
                                             openDlcDialog.value = true
                                         })
+                                        // 添加Install Mod选项
+                                        DropdownMenuItem(text = {
+                                            Text(text = "Install Mod")
+                                        }, onClick = {
+                                            showAppMenu.value = false
+                                            val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
+                                            if (titleId.isNotEmpty()) {
+                                                navController?.navigate("mods/$titleId")
+                                            }
+                                        })
                                     }
                                 }
                             }
@@ -1339,4 +1349,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}}}
+}
