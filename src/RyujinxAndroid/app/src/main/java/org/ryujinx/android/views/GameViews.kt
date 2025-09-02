@@ -40,7 +40,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -97,9 +96,6 @@ class GameViews {
                     mutableStateOf(QuickSettings(mainViewModel.activity).enableMotion)
                 }
                 val showMore = remember {
-                    mutableStateOf(false)
-                }
-                val showAspectRatioMenu = remember {
                     mutableStateOf(false)
                 }
 
@@ -168,16 +164,6 @@ class GameViews {
                             .align(Alignment.BottomCenter)
                             .padding(8.dp)
                     ) {
-                        // 新增：画面比例选择按钮
-                        IconButton(modifier = Modifier.padding(4.dp), onClick = {
-                            showAspectRatioMenu.value = true
-                        }) {
-                            Icon(
-                                imageVector = Icons.videoGame(),
-                                contentDescription = "Aspect Ratio"
-                            )
-                        }
-                        
                         IconButton(modifier = Modifier.padding(4.dp), onClick = {
                             showMore.value = true
                         }) {
@@ -185,60 +171,6 @@ class GameViews {
                                 imageVector = CssGgIcons.ToolbarBottom,
                                 contentDescription = "Open Panel"
                             )
-                        }
-                    }
-
-                    // 新增：画面比例选择菜单
-                    if (showAspectRatioMenu.value) {
-                        Popup(
-                            alignment = Alignment.BottomCenter,
-                            onDismissRequest = { showAspectRatioMenu.value = false }
-                        ) {
-                            Surface(
-                                modifier = Modifier.padding(16.dp),
-                                shape = MaterialTheme.shapes.medium
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .background(MaterialTheme.colorScheme.surface)
-                                        .padding(8.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        text = "Aspect Ratio",
-                                        modifier = Modifier.padding(bottom = 8.dp)
-                                    )
-                                    
-                                    Row(
-                                        horizontalArrangement = Arrangement.SpaceEvenly,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        // 定义比例选项
-                                        val aspectRatios = listOf(
-                                            "4:3" to 0,
-                                            "16:9" to 1,
-                                            "16:10" to 2,
-                                            "21:9" to 3,
-                                            "32:9" to 4,
-                                            "Stretched" to 5
-                                        )
-                                        
-                                        aspectRatios.forEach { (label, value) ->
-                                            AspectRatioButton(
-                                                label = label,
-                                                isSelected = QuickSettings(mainViewModel.activity).aspectRatio == value,
-                                                onClick = {
-                                                    val settings = QuickSettings(mainViewModel.activity)
-                                                    settings.aspectRatio = value
-                                                    settings.save()
-                                                    RyujinxNative.jnaInstance.setAspectRatio(value)
-                                                    showAspectRatioMenu.value = false
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
                         }
                     }
 
@@ -404,92 +336,61 @@ class GameViews {
         }
 
         @Composable
-        fun AspectRatioButton(
-            label: String,
-            isSelected: Boolean,
-            onClick: () -> Unit
+fun GameStats(mainViewModel: MainViewModel) {
+    val fifo = remember {
+        mutableDoubleStateOf(0.0)
+    }
+    val gameFps = remember {
+        mutableDoubleStateOf(0.0)
+    }
+    val gameTime = remember {
+        mutableDoubleStateOf(0.0)
+    }
+    val usedMem = remember {
+        mutableIntStateOf(0)
+    }
+    val totalMem = remember {
+        mutableIntStateOf(0)
+    }
+
+    // 完全透明的文字面板
+    CompositionLocalProvider(
+        LocalTextStyle provides TextStyle(
+            fontSize = 10.sp,
+            color = Color.White // 确保文字在游戏画面上可见
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(16.dp)
+                .background(Color.Transparent) // 完全透明背景
         ) {
-            Surface(
-                modifier = Modifier
-                    .padding(4.dp)
-                    .width(48.dp)
-                    .wrapContentHeight(),
-                shape = MaterialTheme.shapes.small,
-                color = if (isSelected) MaterialTheme.colorScheme.primary 
-                       else MaterialTheme.colorScheme.surfaceVariant,
-                contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary 
-                             else MaterialTheme.colorScheme.onSurfaceVariant,
-                onClick = onClick
+            val gameTimeVal = if (!gameTime.value.isInfinite()) gameTime.value else 0.0
+            
+            // 核心性能指标
+            Text(text = "${String.format("%.1f", fifo.value)}%")
+            
+            // 使用Box包装FPS文本，确保对齐不受背景影响
+            Box(
+                modifier = Modifier.align(Alignment.Start) // 确保左对齐
             ) {
-                Box(
-                    modifier = Modifier.padding(4.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = label,
-                        fontSize = 10.sp,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
-        }
-
-        @Composable
-        fun GameStats(mainViewModel: MainViewModel) {
-            val fifo = remember {
-                mutableDoubleStateOf(0.0)
-            }
-            val gameFps = remember {
-                mutableDoubleStateOf(0.0)
-            }
-            val gameTime = remember {
-                mutableDoubleStateOf(0.0)
-            }
-            val usedMem = remember {
-                mutableIntStateOf(0)
-            }
-            val totalMem = remember {
-                mutableIntStateOf(0)
-            }
-
-            // 完全透明的文字面板
-            CompositionLocalProvider(
-                LocalTextStyle provides TextStyle(
-                    fontSize = 10.sp,
-                    color = Color.White // 确保文字在游戏画面上可见
-                )
-            ) {
-                Column(
+                Text(
+                    text = "${String.format("%.1f", gameFps.value)} FPS",
                     modifier = Modifier
-                        .padding(16.dp)
-                        .background(Color.Transparent) // 完全透明背景
-                ) {
-                    val gameTimeVal = if (!gameTime.value.isInfinite()) gameTime.value else 0.0
-                    
-                    // 核心性能指标
-                    Text(text = "${String.format("%.1f", fifo.value)}%")
-                    
-                    // 使用Box包装FPS文本，确保对齐不受背景影响
-                    Box(
-                        modifier = Modifier.align(Alignment.Start) // 确保左对齐
-                    ) {
-                        Text(
-                            text = "${String.format("%.1f", gameFps.value)} FPS",
-                            modifier = Modifier
-                                .background(
-                                    color = Color.Black.copy(alpha = 0.26f),
-                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-                                )
-                                //.padding(horizontal = 4.dp, vertical = 2.dp)
+                        .background(
+                            color = Color.Black.copy(alpha = 0.26f),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                         )
-                    }
-                    
-                    // 内存使用
-                    Text(text = "${totalMem.value}/${usedMem.value} MB")
-                }
+                        //.padding(horizontal = 4.dp, vertical = 2.dp)
+                )
             }
-
-            mainViewModel.setStatStates(fifo, gameFps, gameTime, usedMem, totalMem)
+            
+            // 内存使用
+            Text(text = "${totalMem.value}/${usedMem.value} MB")
         }
+    }
+
+    mainViewModel.setStatStates(fifo, gameFps, gameTime, usedMem, totalMem)
+}
     }
 }
