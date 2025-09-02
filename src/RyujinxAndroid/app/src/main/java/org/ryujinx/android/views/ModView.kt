@@ -6,8 +6,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -78,9 +76,11 @@ fun ModListItem(modItem: ModItem, onDelete: () -> Unit) {
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = if (modItem.isDirectory) Icons.Filled.Folder else Icons.Filled.InsertDriveFile,
-                contentDescription = if (modItem.isDirectory) "Folder" else "File"
+            // 使用文字替代图标
+            Text(
+                text = if (modItem.isDirectory) "[文件夹]" else "[文件]",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.width(60.dp)
             )
             
             Spacer(modifier = Modifier.width(16.dp))
