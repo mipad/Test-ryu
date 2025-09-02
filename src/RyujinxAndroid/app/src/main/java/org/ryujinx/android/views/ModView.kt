@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import org.ryujinx.android.viewmodels.ModItem
 import org.ryujinx.android.viewmodels.ModViewModel
 import java.io.File
@@ -41,12 +42,10 @@ fun ModView(viewModel: ModViewModel, titleId: String) {
         )
     }
     
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         // Header with title and add button
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -60,7 +59,9 @@ fun ModView(viewModel: ModViewModel, titleId: String) {
             }
         }
         
-        // Mod list
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // Mod list with enable/disable checkboxes
         if (modItems.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -73,6 +74,10 @@ fun ModView(viewModel: ModViewModel, titleId: String) {
                 items(modItems) { modItem ->
                     ModListItem(
                         modItem = modItem,
+                        onToggle = { enabled ->
+                            // 处理启用/禁用状态切换
+                            viewModel.toggleMod(modItem, enabled)
+                        },
                         onDelete = { viewModel.remove(modItem) }
                     )
                 }
@@ -82,7 +87,7 @@ fun ModView(viewModel: ModViewModel, titleId: String) {
 }
 
 @Composable
-fun ModListItem(modItem: ModItem, onDelete: () -> Unit) {
+fun ModListItem(modItem: ModItem, onToggle: (Boolean) -> Unit, onDelete: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -92,6 +97,13 @@ fun ModListItem(modItem: ModItem, onDelete: () -> Unit) {
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            Checkbox(
+                checked = modItem.isEnabled.value,
+                onCheckedChange = onToggle
+            )
+            
+            Spacer(modifier = Modifier.width(16.dp))
+            
             Icon(
                 imageVector = if (modItem.isDirectory) Icons.Filled.Folder else Icons.Filled.InsertDriveFile,
                 contentDescription = if (modItem.isDirectory) "Folder" else "File",
@@ -157,11 +169,20 @@ fun FileBrowserDialog(
         }
     }
     
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Select Mod File or Folder") },
-        text = {
-            Column(modifier = Modifier.height(400.dp)) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(500.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Select Mod File or Folder",
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                
                 Text(
                     text = "Current: $currentPath",
                     style = MaterialTheme.typography.bodySmall,
@@ -172,7 +193,7 @@ fun FileBrowserDialog(
                 
                 Divider()
                 
-                LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                LazyColumn(modifier = Modifier.weight(1f)) {
                     items(files) { file ->
                         Row(
                             modifier = Modifier
@@ -220,14 +241,18 @@ fun FileBrowserDialog(
                         Divider()
                     }
                 }
-            }
-        },
-        confirmButton = {
-            Button(onClick = onDismiss) {
-                Text("Cancel")
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text("Cancel")
+                }
             }
         }
-    )
+    }
 }
 
 data class FileItem(
