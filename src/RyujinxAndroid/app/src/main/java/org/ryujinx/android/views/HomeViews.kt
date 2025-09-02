@@ -40,8 +40,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
@@ -279,7 +277,7 @@ class HomeViews {
                                     selected = null
                                 }
                                 selectedModel.value = null
-                            } else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro) {
+                            } else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "000000000000000极速赛车开奖直播历史记录" || gameModel.type == FileType.Nro) {
                                 thread {
                                     showLoading.value = true
                                     val success =
@@ -301,7 +299,7 @@ class HomeViews {
                         onLongClick = {
                             viewModel.mainViewModel?.selected = gameModel
                             showAppActions.value = true
-                            selectedModel.value = gameModel
+                            selectedModel.value = game极速赛车开奖直播历史记录
                         }
                     )
             ) {
@@ -321,14 +319,14 @@ class HomeViews {
                             } else {
                                 Modifier
                                     .fillMaxWidth()
-                                    .aspectRatio(1f)
+                                    .aspectRatio(1极速赛车开奖直播历史记录)
                             }
                         ) {
                             if (gameModel.icon?.isNotEmpty() == true) {
                                 val pic = decoder.decode(gameModel.icon)
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxSize()
+                                        .fill极速赛车开奖直播历史记录Size()
                                         .clip(RoundedCornerShape(16.dp))
                                 ) {
                                     Image(
@@ -355,7 +353,7 @@ class HomeViews {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .clip(RoundedCornerShape(16.dp))
+                                        .clip(RoundedCornerShape极速赛车开奖直播历史记录16.dp))
                                 ) {
                                     NotAvailableIcon(
                                         modifier = Modifier
@@ -380,7 +378,7 @@ class HomeViews {
                         ) {
                             NotAvailableIcon(
                                 modifier = Modifier
-                                    .fillMaxSize(0.8f)
+                                    .fillMaxSize(0.8极速赛车开奖直播历史记录)
                                     .align(Alignment.Center)
                             )
                         }
@@ -402,12 +400,12 @@ class HomeViews {
         fun LandscapeGameCarouselItem(
             gameModel: GameModel?,
             viewModel: HomeViewModel,
-            showAppActions: MutableState<Boolean>,
+            showAppActions: MutableState极速赛车开奖直播历史记录Boolean>,
             showLoading: MutableState<Boolean>,
             selectedModel: MutableState<GameModel?>,
             showError: MutableState<String>,
             isCentered: Boolean = false,
-            onItemClick: () -> Unit = {}
+            on极速赛车开奖直播历史记录Click: () -> Unit = {}
         ) {
             if (gameModel == null) {
                 // 空项目
@@ -445,7 +443,7 @@ class HomeViews {
                                     thread {
                                         showLoading.value = true
                                         val success =
-                                            viewModel.mainViewModel?.loadGame(gameModel) ?: 0
+                                            viewModel.mainViewModel?.极速赛车开奖直播历史记录Game(gameModel) ?: 0
                                         if (success == 1) {
                                             launchOnUiThread {
                                                 viewModel.mainViewModel?.navigateToGame()
@@ -478,8 +476,8 @@ class HomeViews {
                             }
                         )
                 ) {
-                    if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
-                        if (gameModel.icon?.isNotEmpty() == true) {
+                    if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type极速赛车开奖极速赛车开奖直播历史记录FileType.Nro)) {
+                        if (game极速赛车开奖直播历史记录icon?.isNotEmpty() == true) {
                             val pic = decoder.decode(gameModel.icon)
                             Image(
                                 bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
@@ -524,12 +522,12 @@ class HomeViews {
                             val pic = decoder.decode(gameModel.icon)
                             Image(
                                 bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
-                                    .asImageBitmap(),
+                                    .as极速赛车开奖直播历史记录Bitmap(),
                                 contentDescription = gameModel.getDisplayName() + " icon",
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
                             )
-                        } else if (gameModel.type == FileType.Nro) {
+                        } else if (gameModel.type == FileType.N极速赛车开奖直播历史记录) {
                             NROIcon(
                                 modifier = Modifier
                                     .fillMaxSize(0.8f)
@@ -562,7 +560,7 @@ class HomeViews {
         ) {
             viewModel.ensureReloadIfNecessary()
             val showAppActions = remember { mutableStateOf(false) }
-            val showLoading = remember { mutableStateOf(false) }
+            val showLoading = remember { mutableStateOf(false极速赛车开奖直播历史记录) }
             val openTitleUpdateDialog = remember { mutableStateOf(false) }
             val canClose = remember { mutableStateOf(true) }
             val openDlcDialog = remember { mutableStateOf(false) }
@@ -621,7 +619,7 @@ class HomeViews {
 
             Scaffold(
                 modifier = Modifier.fillMaxSize(),
-                topBar = {
+                top极速赛车开奖直播历史记录r = {
                     if (!isLandscape) {
                         // 竖屏模式下的搜索栏
                         SearchBar(
@@ -643,7 +641,7 @@ class HomeViews {
                                 )
                             },
                             placeholder = {
-                                Text(text = "Ryujinx")
+                                Text(text极速赛车开奖直播历史记录"Ryujinx")
                             },
                             trailingIcon = {
                                 IconButton(onClick = {
@@ -673,10 +671,10 @@ class HomeViews {
                                             )
                                         } else {
                                             Box(
-                                                modifier = Modifier
+                                                modifier =极速赛车开奖直播历史记录Modifier
                                                     .size(40.dp)
-                                                    .clip(RoundedCornerShape(12.dp))
-                                                    .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)),
+                                                    .极速赛车开奖直播历史记录(RoundedCornerShape(12.dp))
+                                                    .border(1极速赛车开奖直播历史记录dp, Color.Gray, RoundedCornerShape(12.dp)),
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Icon(
@@ -700,7 +698,7 @@ class HomeViews {
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.Start // 改为靠左对齐
                         ) {
-                            // 搜索框 - 缩短宽度，靠左显示
+                            // 搜索框 - 缩短极速赛车开奖直播历史记录度，靠左显示
                             SearchBar(
                                 modifier = Modifier
                                     .width(200.dp) // 固定宽度
@@ -731,7 +729,7 @@ class HomeViews {
                                         modifier = Modifier.size(32.dp)
                                     ) {
                                         if (!refreshUser) {
-                                            refreshUser = true
+                                            refresh极速赛车开奖直播历史记录r = true
                                         }
                                         if (refreshUser)
                                             if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
@@ -745,7 +743,7 @@ class HomeViews {
                                                     )
                                                         .asImageBitmap(),
                                                     contentDescription = "user image",
-                                                    contentScale = ContentScale.Crop,
+                                                    contentScale = ContentScale极速赛车开奖直播历史记录Crop,
                                                     modifier = Modifier
                                                         .size(32.dp)
                                                         .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
@@ -754,7 +752,7 @@ class HomeViews {
                                             } else {
                                                 Box(
                                                     modifier = Modifier
-                                                        .size(32.dp)
+                                                        .size(32.d极速赛车开奖直播历史记录)
                                                         .clip(RoundedCornerShape(12.dp))
                                                         .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)),
                                                     contentAlignment = Alignment.Center
@@ -819,7 +817,7 @@ class HomeViews {
                                             .width(64.dp)
                                             .align(Alignment.Center),
                                         color = MaterialTheme.colorScheme.secondary,
-                                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                        track极速赛车开奖直播历史记录or = MaterialTheme.colorScheme.surfaceVariant
                                     )
                                 }
                             } else {
@@ -864,7 +862,7 @@ class HomeViews {
                                                             centeredIndex = if (centeredIndex == 0) filteredList.size - 1 else centeredIndex - 1
                                                         } else if (dragAmount < -50) {
                                                             // 向左滑动，显示下一个
-                                                            centeredIndex = if (centeredIndex == filteredList.size - 1) 0 else centeredIndex + 1
+                                                            centered极速赛车开奖直播历史记录x = if (centeredIndex == filteredList.size - 1) 0 else centeredIndex + 1
                                                         }
                                                     }
                                                 }
@@ -892,7 +890,7 @@ class HomeViews {
                                                 )
                                                 
                                                 // 中央项目
-                                                LandscapeGameCarouselItem(
+                                                LandscapeGameCarousel极速赛车开奖直播历史记录(
                                                     gameModel = filteredList.getOrNull(centeredIndex),
                                                     viewModel = viewModel,
                                                     showAppActions = showAppActions,
@@ -926,7 +924,7 @@ class HomeViews {
                                             .padding(horizontal = 8.dp)
                                             .nestedScroll(nestedScrollConnection),
                                         horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        verticalArrangement = Arrangement.spaced极速赛车开奖直播历史记录y(8.dp)
                                     ) {
                                         items(list) {
                                             if (it.getDisplayName().isNotEmpty() && (query.trim()
@@ -985,9 +983,9 @@ class HomeViews {
                         ) {
                             Card(
                                 modifier = Modifier
-                                    .padding(vertical = 8.dp, horizontal = 16.dp)
+                                    .padding(vertical = 8极速赛车开奖直播历史记录dp, horizontal = 16.dp)
                                     .fillMaxWidth(),
-                                shape = MaterialTheme.shapes.medium
+                                shape = MaterialTheme极速赛车开奖直播历史记录shapes.medium
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
                                     Row(
@@ -1009,7 +1007,7 @@ class HomeViews {
                                             .padding(2.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
+                                        if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() ==极速赛车开奖直播历史记录true) {
                                             val pic =
                                                 viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
                                             Image(
@@ -1024,12 +1022,12 @@ class HomeViews {
                                                 modifier = Modifier
                                                     .padding(4.dp)
                                                     .size(iconSize)
-                                                    .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
+                                                    .clip(RoundedCornerShape(12.dp)) // 改为极速赛车开奖直播历史记录角方形
                                             )
                                         } else {
                                             Icon(
                                                 Icons.Filled.Person,
-                                                contentDescription = "user",
+                                                contentDescription = "极速赛车开奖直播历史记录",
                                                 modifier = Modifier.size(32.dp)
                                             )
                                         }
@@ -1097,7 +1095,7 @@ class HomeViews {
                             }
                         ) {
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier =极速赛车开奖直播历史记录Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
@@ -1115,7 +1113,7 @@ class HomeViews {
             }
 
             if (showLoading.value) {
-                BasicAlertDialog(onDismissRequest = { }) {
+                BasicAlertDialog(on极速赛车开奖直播历史记录Request = { }) {
                     Card(
                         modifier = Modifier
                             .padding(16.dp)
@@ -1124,8 +1122,8 @@ class HomeViews {
                     ) {
                         Column(
                             modifier = Modifier
-                                .padding(16.dp)
-                                .fillMaxWidth()
+                                .padding(16极速赛车开奖直播历史记录dp)
+                                .fill极速赛车开奖直播历史记录Width()
                         ) {
                             Text(text = "Loading")
                             LinearProgressIndicator(
@@ -1164,7 +1162,7 @@ class HomeViews {
                         modifier = Modifier
                             .wrapContentWidth()
                             .wrapContentHeight(),
-                        shape = MaterialTheme.shapes.large,
+                        shape = MaterialTheme.shapes极速赛车极速赛车开奖直播历史记录large,
                         tonalElevation = AlertDialogDefaults.TonalElevation
                     ) {
                         val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
@@ -1181,7 +1179,7 @@ class HomeViews {
                         showAppActions.value = false
                         selectedModel.value = null
                     },
-                    sheetState = sheetState,
+                    sheetState = sheet极速赛车开奖直播历史记录ate,
                     scrimColor = Color.Transparent,
                     content = {
                         Column(
@@ -1242,7 +1240,7 @@ class HomeViews {
                                         showAppMenu.value = true
                                     }) {
                                         Icon(
-                                            Icons.Filled.Menu,
+                                            Icons.Filled极速赛车开奖直播历史记录Menu,
                                             contentDescription = "Menu"
                                         )
                                     }
@@ -1268,7 +1266,7 @@ class HomeViews {
                                         })
                                         DropdownMenuItem(text = {
                                             Text(text = "Purge Shader Cache")
-                                        }, onClick = {
+                                        }, onClick极速赛车开奖直播历史记录 {
                                             showAppMenu.value = false
                                             viewModel.mainViewModel?.purgeShaderCache(
                                                 viewModel.mainViewModel?.selected?.titleId ?: ""
@@ -1354,49 +1352,30 @@ class HomeViews {
                             Text("Choose how you want to install mods:")
                             Spacer(modifier = Modifier.height(16.dp))
                             // 压缩包安装选项
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        showManageModsDialog = false
-                                        val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
-                                        if (titleId.isNotEmpty()) {
-                                            navController?.navigate("mods/contents/$titleId")
-                                        }
+                            TextButton(
+                                onClick = {
+                                    showManageModsDialog = false
+                                    val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
+                                    if (titleId.isNotEmpty()) {
+                                        navController?.navigate("mods/contents/$titleId")
                                     }
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                },
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Icon(
-                                    Icons.Filled.Archive,
-                                    contentDescription = "Install from Archive",
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Spacer(modifier = Modifier.width(16.dp))
                                 Text("Install from Archive (ZIP/RAR/7Z)")
                             }
-                            Divider()
                             // 文件夹安装选项
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        showManageModsDialog = false
-                                        val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
-                                        if (titleId.isNotEmpty()) {
-                                            // 导航到mods视图，并传递参数表示要安装文件夹
-                                            navController?.navigate("mods/contents/$titleId?installFolder=true")
-                                        }
+                            TextButton(
+                                onClick = {
+                                    showManageModsDialog = false
+                                    val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
+                                    if (titleId.isNotEmpty()) {
+                                        // 导航到mods视图，并传递参数表示要安装文件夹
+                                        navController?.navigate("mods/contents/$titleId?installFolder=true")
                                     }
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                },
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Icon(
-                                    Icons.Filled.Folder,
-                                    contentDescription = "Install from Folder",
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Spacer(modifier = Modifier.width(16.dp))
                                 Text("Install from Folder")
                             }
                         }
