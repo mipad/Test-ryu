@@ -1,11 +1,11 @@
 package org.ryujinx.android.views
 
+import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,9 +20,25 @@ import java.io.File
 fun ModView(viewModel: ModViewModel, titleId: String) {
     val modItems = remember { mutableStateListOf<ModItem>() }
     val canClose = remember { mutableStateOf(false) }
+    var showFileBrowser by remember { mutableStateOf(false) }
+    var currentDirectory by remember { mutableStateOf(File("/")) }
     
     LaunchedEffect(Unit) {
         viewModel.setModItems(modItems, canClose)
+    }
+    
+    if (showFileBrowser) {
+        FileBrowserDialog(
+            currentPath = currentDirectory.absolutePath,
+            onDismiss = { showFileBrowser = false },
+            onFileSelected = { selectedPath ->
+                viewModel.addMod(selectedPath)
+                showFileBrowser = false
+            },
+            onDirectoryChanged = { newDirectory ->
+                currentDirectory = File(newDirectory)
+            }
+        )
     }
     
     Column(modifier = Modifier.fillMaxSize()) {
@@ -39,7 +55,7 @@ fun ModView(viewModel: ModViewModel, titleId: String) {
                 style = MaterialTheme.typography.headlineSmall
             )
             
-            IconButton(onClick = { viewModel.add() }) {
+            IconButton(onClick = { showFileBrowser = true }) {
                 Icon(Icons.Filled.Add, contentDescription = "Add Mod")
             }
         }
@@ -76,11 +92,10 @@ fun ModListItem(modItem: ModItem, onDelete: () -> Unit) {
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 使用文字替代图标
-            Text(
-                text = if (modItem.isDirectory) "[文件夹]" else "[文件]",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.width(60.dp)
+            Icon(
+                imageVector = if (modItem.isDirectory) Icons.Filled.Folder else Icons.Filled.InsertDriveFile,
+                contentDescription = if (modItem.isDirectory) "Folder" else "File",
+                modifier = Modifier.size(24.dp)
             )
             
             Spacer(modifier = Modifier.width(16.dp))
@@ -107,13 +122,13 @@ fun ModListItem(modItem: ModItem, onDelete: () -> Unit) {
     }
 }
 
-// File browser dialog (simplified version)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FileBrowserDialog(
     currentPath: String,
     onDismiss: () -> Unit,
-    onFileSelected: (String) -> Unit
+    onFileSelected: (String) -> Unit,
+    onDirectoryChanged: (String) -> Unit
 ) {
     val files = remember { mutableStateListOf<FileItem>() }
     
@@ -122,11 +137,21 @@ fun FileBrowserDialog(
         val directory = File(currentPath)
         if (directory.exists() && directory.isDirectory) {
             files.clear()
-            directory.listFiles()?.forEach { file: File ->
+            // Add parent directory option if not at root
+            if (directory.parent != null) {
+                files.add(FileItem(
+                    name = "..",
+                    path = directory.parent!!,
+                    isDirectory = true
+                ))
+            }
+            
+            directory.listFiles()?.sortedBy { it.name }?.forEach { file ->
                 files.add(FileItem(
                     name = file.name,
                     path = file.absolutePath,
-                    isDirectory = file.isDirectory
+                    isDirectory = file.isDirectory,
+                    size = if (file.isDirectory) "" else "${file.length() / 1024} KB"
                 ))
             }
         }
@@ -134,24 +159,70 @@ fun FileBrowserDialog(
     
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Select File or Folder") },
+        title = { Text("Select Mod File or Folder") },
         text = {
-            Column {
-                // Breadcrumb navigation
-                // File list
-                LazyColumn {
+            Column(modifier = Modifier.height(400.dp)) {
+                Text(
+                    text = "Current: $currentPath",
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                
+                Divider()
+                
+                LazyColumn(modifier = Modifier.fillMaxWidth()) {
                     items(files) { file ->
-                        // File item with click handler
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    if (file.isDirectory) {
+                                        onDirectoryChanged(file.path)
+                                    } else {
+                                        // Only allow selecting certain file types
+                                        if (file.path.endsWith(".zip") || file.path.endsWith(".rar") || 
+                                            file.path.endsWith(".7z") || file.isDirectory) {
+                                            onFileSelected(file.path)
+                                        }
+                                    }
+                                }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (file.isDirectory) Icons.Filled.Folder else Icons.Filled.InsertDriveFile,
+                                contentDescription = if (file.isDirectory) "Folder" else "File",
+                                modifier = Modifier.size(24.dp)
+                            )
+                            
+                            Spacer(modifier = Modifier.width(16.dp))
+                            
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = file.name,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                
+                                if (file.size.isNotEmpty()) {
+                                    Text(
+                                        text = file.size,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                        
+                        Divider()
                     }
                 }
             }
         },
         confirmButton = {
-            Button(onClick = { /* Handle selection */ }) {
-                Text("Select")
-            }
-        },
-        dismissButton = {
             Button(onClick = onDismiss) {
                 Text("Cancel")
             }
@@ -162,5 +233,6 @@ fun FileBrowserDialog(
 data class FileItem(
     val name: String,
     val path: String,
-    val isDirectory: Boolean
+    val isDirectory: Boolean,
+    val size: String = ""
 )
