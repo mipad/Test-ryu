@@ -456,7 +456,13 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                Column {
                                 Text(text = "Use NCE")
+                                Text(
+                                        text = "Turn off using jit",
+                                        fontSize = 11.sp
+                                    )
+                                }
                                 Switch(checked = useNce.value, onCheckedChange = {
                                     useNce.value = it
                                     // 当NCE状态改变时，自动设置JIT Cache Eviction的状态
@@ -477,8 +483,8 @@ class SettingViews {
                                         Column {
                                             Text(text = "Enable Jit Cache Eviction")
                                             Text(
-                                                text = "Used with JIT mode",
-                                                fontSize = 12.sp,
+                                                text = "Used with JIT",
+                                                fontSize = 11.sp,
                                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                                             )
                                         }
@@ -563,11 +569,11 @@ class SettingViews {
                                     Text(text = "Enable Performance Mode")
                                     Text(
                                         text = "Forces CPU and GPU to run at max clocks if available.",
-                                        fontSize = 12.sp
+                                        fontSize = 11.sp
                                     )
                                     Text(
                                         text = "OS power settings may override this.",
-                                        fontSize = 12.sp
+                                        fontSize = 11.sp
                                     )
                                 }
                                 Switch(checked = enablePerformanceMode.value, onCheckedChange = {
