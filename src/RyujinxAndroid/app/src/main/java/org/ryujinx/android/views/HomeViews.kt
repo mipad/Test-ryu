@@ -70,10 +70,10 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.var
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -1323,7 +1323,7 @@ class HomeViews {
                     confirmButton = {
                         TextButton(
                             onClick = {
-                                selectedModel.value?.customName=newGameName
+                                selectedModel.value?.customName = newGameName
                                 showRenameDialog = false
                                 // 刷新列表以显示新名称
                                 viewModel.filter(query)
