@@ -23,6 +23,7 @@ fun ModView(viewModel: ModViewModel, titleId: String) {
     val canClose = remember { mutableStateOf(false) }
     var showFileBrowser by remember { mutableStateOf(false) }
     var currentDirectory by remember { mutableStateOf(File("/")) }
+    var installFolderMode by remember { mutableStateOf(false) }
     
     LaunchedEffect(Unit) {
         viewModel.setModItems(modItems, canClose)
@@ -33,12 +34,23 @@ fun ModView(viewModel: ModViewModel, titleId: String) {
             currentPath = currentDirectory.absolutePath,
             onDismiss = { showFileBrowser = false },
             onFileSelected = { selectedPath ->
-                viewModel.addMod(selectedPath)
+                if (installFolderMode) {
+                    // 处理文件夹安装
+                    val folder = File(selectedPath)
+                    if (folder.exists() && folder.isDirectory) {
+                        viewModel.addMod(selectedPath)
+                    }
+                } else {
+                    // 处理压缩包安装
+                    viewModel.addMod(selectedPath)
+                }
                 showFileBrowser = false
+                installFolderMode = false
             },
             onDirectoryChanged = { newDirectory ->
                 currentDirectory = File(newDirectory)
-            }
+            },
+            isFolderSelection = installFolderMode
         )
     }
     
@@ -54,8 +66,23 @@ fun ModView(viewModel: ModViewModel, titleId: String) {
                 style = MaterialTheme.typography.headlineSmall
             )
             
-            IconButton(onClick = { showFileBrowser = true }) {
-                Icon(Icons.Filled.Add, contentDescription = "Add Mod")
+            // 添加两个按钮：压缩包安装和文件夹安装
+            Row {
+                // 压缩包安装按钮
+                IconButton(onClick = { 
+                    installFolderMode = false
+                    showFileBrowser = true 
+                }) {
+                    Icon(Icons.Filled.Archive, contentDescription = "Install from Archive")
+                }
+                
+                // 文件夹安装按钮
+                IconButton(onClick = { 
+                    installFolderMode = true
+                    showFileBrowser = true 
+                }) {
+                    Icon(Icons.Filled.Folder, contentDescription = "Install from Folder")
+                }
             }
         }
         
@@ -140,7 +167,8 @@ fun FileBrowserDialog(
     currentPath: String,
     onDismiss: () -> Unit,
     onFileSelected: (String) -> Unit,
-    onDirectoryChanged: (String) -> Unit
+    onDirectoryChanged: (String) -> Unit,
+    isFolderSelection: Boolean = false
 ) {
     val files = remember { mutableStateListOf<FileItem>() }
     
@@ -178,7 +206,7 @@ fun FileBrowserDialog(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = "Select Mod File or Folder",
+                    text = if (isFolderSelection) "Select Mod Folder" else "Select Mod File or Folder",
                     style = MaterialTheme.typography.headlineSmall,
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
@@ -200,9 +228,14 @@ fun FileBrowserDialog(
                                 .fillMaxWidth()
                                 .clickable {
                                     if (file.isDirectory) {
-                                        onDirectoryChanged(file.path)
+                                        if (isFolderSelection && file.name != "..") {
+                                            // 如果是文件夹选择模式，选择文件夹
+                                            onFileSelected(file.path)
+                                        } else {
+                                            onDirectoryChanged(file.path)
+                                        }
                                     } else {
-                                        // Only allow selecting certain file types
+                                        // 只允许选择特定文件类型
                                         if (file.path.endsWith(".zip") || file.path.endsWith(".rar") || 
                                             file.path.endsWith(".7z") || file.isDirectory) {
                                             onFileSelected(file.path)
