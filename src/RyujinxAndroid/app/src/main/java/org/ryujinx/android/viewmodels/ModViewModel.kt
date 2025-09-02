@@ -2,6 +2,7 @@ package org.ryujinx.android.viewmodels
 
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
@@ -31,7 +32,8 @@ class ModViewModel(val titleId: String) {
     
     companion object {
         const val ModRequestCode = 1004
-        private val SUPPORTED_ARCHIVES = listOf("zip", "rar", "7z")
+        private val SUPPORTED_ARCHIVES = listOf("zip") // 只保留zip格式
+        private const val TAG = "ModViewModel"
     }
     
     init {
@@ -143,6 +145,7 @@ class ModViewModel(val titleId: String) {
      */
     private fun extractArchive(uri: Uri, gameId: String) {
         try {
+            Log.d(TAG, "开始解压文件: $uri")
             val context = storageHelper.storage.context
             val contentResolver = context.contentResolver
             val inputStream = contentResolver.openInputStream(uri)
@@ -155,8 +158,11 @@ class ModViewModel(val titleId: String) {
                 }
             }
             
+            Log.d(TAG, "创建临时文件: ${tempFile.absolutePath}")
+            
             // 检测压缩包结构
-            val containsIdDirectory = checkIfArchiveContainsIdDirectory(tempFile, gameId)
+            val containsIdDirectory = checkZipForIdDirectory(tempFile, gameId)
+            Log.d(TAG, "压缩包包含ID目录: $containsIdDirectory")
             
             // 根据检测结果决定解压路径
             val extractPath = if (containsIdDirectory) {
@@ -164,33 +170,26 @@ class ModViewModel(val titleId: String) {
                 contentsPath
             } else {
                 // 如果不包含ID目录，解压到contents/gameId下
+                // 确保目标目录存在
+                File(gameModPath).mkdirs()
                 gameModPath
             }
             
-            // 根据文件类型解压
-            when (tempFile.extension.toLowerCase()) {
-                "zip" -> extractZip(tempFile, extractPath)
-                "rar" -> extractRar(tempFile, extractPath)
-                "7z" -> extract7z(tempFile, extractPath)
-            }
+            Log.d(TAG, "解压路径: $extractPath")
+            
+            // 只处理ZIP文件
+            extractZip(tempFile, extractPath)
+            Log.d(TAG, "ZIP文件解压完成")
             
             // 清理临时文件
             tempFile.delete()
+            Log.d(TAG, "清理临时文件")
+            
+            // 刷新MOD列表
+            refreshModList()
         } catch (e: Exception) {
             e.printStackTrace()
-            // 处理解压错误
-        }
-    }
-    
-    /**
-     * 检测压缩包是否包含ID目录
-     */
-    private fun checkIfArchiveContainsIdDirectory(archiveFile: File, gameId: String): Boolean {
-        return when (archiveFile.extension.toLowerCase()) {
-            "zip" -> checkZipForIdDirectory(archiveFile, gameId)
-            "rar" -> checkRarForIdDirectory(archiveFile, gameId)
-            "7z" -> check7zForIdDirectory(archiveFile, gameId)
-            else -> false
+            Log.e(TAG, "解压过程中出错: ${e.message}")
         }
     }
     
@@ -217,57 +216,47 @@ class ModViewModel(val titleId: String) {
         }
     }
     
-    // RAR和7Z的检测方法需要相应的库支持
-    private fun checkRarForIdDirectory(rarFile: File, gameId: String): Boolean {
-        // 使用RAR库实现类似检测逻辑
-        // 这里简化处理，实际使用时需要根据所选RAR库的API实现
-        return false
-    }
-    
-    private fun check7zForIdDirectory(sevenZFile: File, gameId: String): Boolean {
-        // 使用7Z库实现类似检测逻辑
-        // 这里简化处理，实际使用时需要根据所选7Z库的API实现
-        return false
-    }
-    
     /**
      * 解压ZIP文件
      */
     private fun extractZip(file: File, destinationPath: String) {
         try {
+            Log.d(TAG, "开始解压ZIP文件到: $destinationPath")
+            
+            // 确保目标目录存在
+            File(destinationPath).mkdirs()
+            
             // 使用zip4j以获得更好的兼容性
             val zipFile = Zip4JFile(file)
             zipFile.extractAll(destinationPath)
+            Log.d(TAG, "ZIP4J解压成功")
         } catch (e: ZipException) {
             e.printStackTrace()
+            Log.e(TAG, "ZIP4J解压失败，尝试标准解压: ${e.message}")
+            
             // 回退到标准ZIP解压
-            ZipFile(file).use { zip ->
-                zip.entries().asSequence().forEach { entry ->
-                    val outputFile = File(destinationPath, entry.name)
-                    if (entry.isDirectory) {
-                        outputFile.mkdirs()
-                    } else {
-                        outputFile.parentFile.mkdirs()
-                        zip.getInputStream(entry).use { input ->
-                            FileOutputStream(outputFile).use { output ->
-                                input.copyTo(output)
+            try {
+                ZipFile(file).use { zip ->
+                    zip.entries().asSequence().forEach { entry ->
+                        val outputFile = File(destinationPath, entry.name)
+                        if (entry.isDirectory) {
+                            outputFile.mkdirs()
+                        } else {
+                            outputFile.parentFile.mkdirs()
+                            zip.getInputStream(entry).use { input ->
+                                FileOutputStream(outputFile).use { output ->
+                                    input.copyTo(output)
+                                }
                             }
                         }
                     }
                 }
+                Log.d(TAG, "标准ZIP解压成功")
+            } catch (e2: Exception) {
+                e2.printStackTrace()
+                Log.e(TAG, "标准ZIP解压也失败: ${e2.message}")
             }
         }
-    }
-    
-    // RAR和7Z的解压方法需要相应的库支持
-    private fun extractRar(file: File, destinationPath: String) {
-        // 实现RAR解压逻辑
-        // 需要添加RAR解压库依赖
-    }
-    
-    private fun extract7z(file: File, destinationPath: String) {
-        // 实现7Z解压逻辑
-        // 需要添加7Z解压库依赖
     }
     
     /**
