@@ -10,6 +10,7 @@ import androidx.compose.ui.text.toLowerCase
 import com.anggrayudi.storage.SimpleStorageHelper
 import com.anggrayudi.storage.file.extension
 import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import org.ryujinx.android.MainActivity
 import java.io.File
 import java.io.FileOutputStream
@@ -82,6 +83,59 @@ class ModViewModel(val titleId: String) {
             }
         }
         storageHelper.openFilePicker(ModRequestCode, allowMultiple = false)
+    }
+    
+    // 添加mod文件的方法
+    fun addMod(filePath: String) {
+        val file = File(filePath)
+        if (file.exists()) {
+            if (file.isDirectory) {
+                // 如果是文件夹，直接复制到mod目录
+                copyDirectory(file, File(gameModPath, file.name))
+            } else if (SUPPORTED_ARCHIVES.contains(file.extension.toLowerCase())) {
+                // 如果是压缩文件，解压
+                extractArchive(Uri.fromFile(file), titleId)
+            } else {
+                // 其他文件直接复制
+                file.copyTo(File(gameModPath, file.name), true)
+            }
+            refreshModList()
+        }
+    }
+    
+    // 切换mod启用状态
+    fun toggleMod(modItem: ModItem, enabled: Boolean) {
+        modItem.isEnabled.value = enabled
+        saveModState()
+    }
+    
+    // 保存mod状态到配置文件
+    private fun saveModState() {
+        val modStates = modItemsState?.associate { it.path to it.isEnabled.value } ?: emptyMap()
+        val json = Gson().toJson(modStates)
+        
+        val configFile = File("$gameModPath/mods_config.json")
+        configFile.writeText(json)
+    }
+    
+    // 从配置文件加载mod状态
+    private fun loadModState() {
+        val configFile = File("$gameModPath/mods_config.json")
+        if (configFile.exists()) {
+            try {
+                val json = configFile.readText()
+                val type = object : TypeToken<Map<String, Boolean>>() {}.type
+                val modStates: Map<String, Boolean> = Gson().fromJson(json, type)
+                
+                modItemsState?.forEach { modItem ->
+                    modStates[modItem.path]?.let { enabled ->
+                        modItem.isEnabled.value = enabled
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
     
     /**
@@ -234,7 +288,8 @@ class ModViewModel(val titleId: String) {
                             formatFileSize(getFolderSize(file))
                         } else {
                             formatFileSize(file.length())
-                        }
+                        },
+                        isEnabled = mutableStateOf(false) // 默认禁用
                     )
                 )
             }
@@ -242,6 +297,7 @@ class ModViewModel(val titleId: String) {
         
         modItemsState?.clear()
         modItemsState?.addAll(mods)
+        loadModState() // 加载保存的状态
         canClose?.value = true
     }
     
@@ -336,5 +392,6 @@ data class ModItem(
     var name: String = "",
     var path: String = "",
     var isDirectory: Boolean = false,
-    var size: String = ""
+    var size: String = "",
+    var isEnabled: MutableState<Boolean> = mutableStateOf(false) // 添加启用状态
 )
