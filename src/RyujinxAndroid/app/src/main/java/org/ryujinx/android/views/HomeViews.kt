@@ -121,6 +121,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import org.ryujinx.android.viewmodels.ModViewModel
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Button
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 
 class HomeViews {
     companion object {
@@ -592,6 +598,12 @@ class HomeViews {
 
             // 添加管理Mods对话框状态
             var showManageModsDialog by remember { mutableStateOf(false) }
+
+            // 添加Mod列表状态
+            val modItems = remember { mutableStateListOf<org.ryujinx.android.viewmodels.ModItem>() }
+            val modCanClose = remember { mutableStateOf(false) }
+            var modInstallProgress by remember { mutableStateOf(0f) }
+            var showModInstallProgress by remember { mutableStateOf(false) }
 
             val nestedScrollConnection = remember {
                 object : NestedScrollConnection {
@@ -1346,66 +1358,148 @@ class HomeViews {
 
             // 添加管理Mods对话框
             if (showManageModsDialog) {
+                val context = LocalContext.current
+                val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
+                if (titleId.isNotEmpty()) {
+                    val modViewModel = remember(titleId) { ModViewModel(titleId) }
+                    
+                    LaunchedEffect(titleId) {
+                        modViewModel.setModItems(modItems, modCanClose)
+                    }
+                    
+                    AlertDialog(
+                        onDismissRequest = { showManageModsDialog = false },
+                        title = { Text(text = "Manage Mods for ${viewModel.mainViewModel?.selected?.getDisplayName()}") },
+                        text = {
+                            Surface(
+                                modifier = Modifier
+                                    .height(300.dp)
+                                    .fillMaxWidth(),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                shape = MaterialTheme.shapes.medium
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .verticalScroll(rememberScrollState())
+                                ) {
+                                    if (modItems.isEmpty()) {
+                                        Box(
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text("No mods installed")
+                                        }
+                                    } else {
+                                        modItems.forEach { modItem ->
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Checkbox(
+                                                    checked = modItem.isEnabled.value,
+                                                    onCheckedChange = { enabled ->
+                                                        modViewModel.toggleMod(modItem, enabled)
+                                                    }
+                                                )
+                                                Text(
+                                                    text = modItem.name,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                Text(
+                                                    text = modItem.size,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                IconButton(
+                                                    onClick = { modViewModel.remove(modItem) },
+                                                    modifier = Modifier.padding(start = 8.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Filled.Delete,
+                                                        contentDescription = "Delete"
+                                                    )
+                                                }
+                                            }
+                                            Divider()
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            Row {
+                                Button(
+                                    onClick = {
+                                        // 安装ZIP
+                                        modViewModel.add()
+                                    }
+                                ) {
+                                    Text("Install from ZIP")
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Button(
+                                    onClick = {
+                                        // 打开mod目录
+                                        val intent = Intent(Intent.ACTION_VIEW)
+                                        val uri = Uri.parse("file://${modViewModel.getGameModPath()}")
+                                        intent.setDataAndType(uri, "resource/folder")
+                                        if (intent.resolveActivity(context.packageManager) != null) {
+                                            context.startActivity(intent)
+                                        } else {
+                                            Toast.makeText(context, "No file manager found", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                ) {
+                                    Text("Open Folder")
+                                }
+                            }
+                        },
+                        dismissButton = {
+                            Button(
+                                onClick = { showManageModsDialog = false }
+                            ) {
+                                Text("Done")
+                            }
+                        }
+                    )
+                } else {
+                    AlertDialog(
+                        onDismissRequest = { showManageModsDialog = false },
+                        title = { Text("Error") },
+                        text = { Text("No game selected") },
+                        confirmButton = {
+                            Button(onClick = { showManageModsDialog = false }) {
+                                Text("OK")
+                            }
+                        }
+                    )
+                }
+            }
+
+            // 显示mod安装进度
+            if (showModInstallProgress) {
                 AlertDialog(
-                    onDismissRequest = { showManageModsDialog = false },
-                    title = { Text(text = "Manage Mods") },
+                    onDismissRequest = { showModInstallProgress = false },
+                    title = { Text("Installing Mod") },
                     text = {
                         Column {
-                            Text("Choose how you want to install mods:")
+                            LinearProgressIndicator(
+                                progress = modInstallProgress,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                             Spacer(modifier = Modifier.height(16.dp))
-                            // 压缩包安装选项
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        showManageModsDialog = false
-                                        val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
-                                        if (titleId.isNotEmpty()) {
-                                            // 直接创建ModViewModel并调用add方法，而不是导航
-                                            val modViewModel = ModViewModel(titleId)
-                                            modViewModel.add()
-                                        }
-                                    }
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "ZIP",
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Spacer(modifier = Modifier.width(16.dp))
-                                Text("Install from Archive (ZIP/RAR/7Z)")
-                            }
-                            Divider()
-                            // 文件夹安装选项
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        showManageModsDialog = false
-                                        val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
-                                        if (titleId.isNotEmpty()) {
-                                            // 导航到mods视图，并传递参数表示要安装文件夹
-                                            navController?.navigate("mods/contents/$titleId?installFolder=true")
-                                        }
-                                    }
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Folder",
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Spacer(modifier = Modifier.width(16.dp))
-                                Text("Install from Folder")
-                            }
+                            Text("Installing mod... Please wait.")
                         }
                     },
                     confirmButton = {
-                        TextButton(
-                            onClick = { showManageModsDialog = false }
+                        Button(
+                            onClick = { showModInstallProgress = false },
+                            enabled = modInstallProgress >= 1f
                         ) {
-                            Text("Cancel")
+                            Text("OK")
                         }
                     }
                 )
