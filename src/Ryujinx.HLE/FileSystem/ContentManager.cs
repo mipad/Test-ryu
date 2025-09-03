@@ -228,7 +228,7 @@ namespace Ryujinx.HLE.FileSystem
                 switch (aoc.Extension)
                 {
                     case ".xci":
-                        var xci = new Xci(_virtualFileSystem.KeySet, fileStream.AsStorage()).OpenPartition(XciPartitionType.Secure);
+                        var xci = new Xci(_virtualFileSystem.KeySet, aoc.ContainerStream.AsStorage()).OpenPartition(XciPartitionType.Secure);                        
                         xci.OpenFile(ref ncaFile.Ref, aoc.NcaPath.ToU8Span(), OpenMode.Read);
                         break;
                     case ".nsp":
