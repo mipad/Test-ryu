@@ -41,8 +41,11 @@ fun ModView(viewModel: ModViewModel, titleId: String) {
                         viewModel.addMod(selectedPath)
                     }
                 } else {
-                    // 处理压缩包安装
-                    viewModel.addMod(selectedPath)
+                    // 处理压缩包安装 - 只允许ZIP文件
+                    val file = File(selectedPath)
+                    if (file.exists() && file.extension.toLowerCase() == "zip") {
+                        viewModel.addMod(selectedPath)
+                    }
                 }
                 showFileBrowser = false
                 installFolderMode = false
@@ -100,7 +103,7 @@ fun ModView(viewModel: ModViewModel, titleId: String) {
                     },
                     modifier = Modifier.padding(end = 8.dp)
                 ) {
-                    Text("Add Archive")
+                    Text("Add ZIP")
                 }
                 
                 // 文件夹安装按钮
@@ -149,6 +152,44 @@ fun ModListItem(modItem: ModItem, onToggle: (Boolean) -> Unit, onDelete: () -> U
             .fillMaxWidth()
             .padding(8.dp)
     ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = modItem.isEnabled.value,
+                onCheckedChange = onToggle
+            )
+            
+            Spacer(modifier = Modifier.width(16.dp))
+            
+            // 使用文字代替图标
+            Text(
+                text = if (modItem.isDirectory) "[Folder]" else "[File]",
+                modifier = Modifier.size(24.dp)
+            )
+            
+            Spacer(modifier = Modifier.width(16.dp))
+            
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = modItem.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                
+                Text(
+                    text = modItem.size,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Filled.Delete, contentDescription = "Delete")
+            }
+        }
     }
 }
 
@@ -197,7 +238,7 @@ fun FileBrowserDialog(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = if (isFolderSelection) "Select Mod Folder" else "Select Mod File or Folder",
+                    text = if (isFolderSelection) "Select Mod Folder" else "Select ZIP File or Folder",
                     style = MaterialTheme.typography.headlineSmall,
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
@@ -226,9 +267,8 @@ fun FileBrowserDialog(
                                             onDirectoryChanged(file.path)
                                         }
                                     } else {
-                                        // 只允许选择特定文件类型
-                                        if (file.path.endsWith(".zip") || file.path.endsWith(".rar") || 
-                                            file.path.endsWith(".7z") || file.isDirectory) {
+                                        // 只允许选择ZIP文件
+                                        if (file.path.endsWith(".zip")) {
                                             onFileSelected(file.path)
                                         }
                                     }
