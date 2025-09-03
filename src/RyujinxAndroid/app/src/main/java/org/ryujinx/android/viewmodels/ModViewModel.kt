@@ -19,6 +19,10 @@ import java.io.InputStream
 import java.util.zip.ZipFile
 import net.lingala.zip4j.ZipFile as Zip4JFile
 import net.lingala.zip4j.exception.ZipException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 
 class ModViewModel(val titleId: String) {
     private var canClose: MutableState<Boolean>? = null
@@ -28,11 +32,11 @@ class ModViewModel(val titleId: String) {
     // 基础路径定义
     private val baseModsPath = "${MainActivity.AppPath}/mods"
     private val contentsPath = "$baseModsPath/contents"
-    private val gameModPath = "$contentsPath/$titleId"
+    val gameModPath = "$contentsPath/$titleId"
     
     companion object {
         const val ModRequestCode = 1004
-        private val SUPPORTED_ARCHIVES = listOf("zip") // 只保留zip格式
+        private val SUPPORTED_ARCHIVES = listOf("zip", "rar", "7z")
         private const val TAG = "ModViewModel"
     }
     
@@ -41,6 +45,10 @@ class ModViewModel(val titleId: String) {
         // 确保所有必要的目录都存在
         ensureDirectoriesExist()
         refreshModList()
+    }
+    
+    fun getGameModPath(): String {
+        return gameModPath
     }
     
     private fun ensureDirectoriesExist() {
