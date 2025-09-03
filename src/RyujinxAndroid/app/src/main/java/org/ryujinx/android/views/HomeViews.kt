@@ -698,8 +698,8 @@ class HomeViews {
                             // 搜索框 - 缩短宽度，靠左显示
                             SearchBar(
                                 modifier = Modifier
-                                    .width(200.dp) // 固定宽度
-                                    .height(48.dp),
+                                    .width(185.dp) // 固定宽度
+                                    .height(55.dp),
                                 shape = SearchBarDefaults.inputFieldShape,
                                 query = query,
                                 onQueryChange = {
