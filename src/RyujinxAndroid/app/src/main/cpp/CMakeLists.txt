@@ -22,16 +22,26 @@ set(SKIA_ENABLE_PARAGRAPH ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
+# 使用 FetchContent 获取 adrenotools
 FetchContent_Declare(
     adrenotools
     GIT_REPOSITORY https://git.ryujinx.app/kenji-nx/libadrenotools.git
-   # GIT_TAG        deec5f75ee1a8ccbe32c8780b1d17284fc87b0f1 # v1.0-14-gdeec5f7
+    GIT_TAG        deec5f75ee1a8ccbe32c8780b1d17284fc87b0f1
 )
 
 FetchContent_MakeAvailable(adrenotools)
 
+# 使用 FetchContent 获取 openal
+FetchContent_Declare(
+    openal
+    GIT_REPOSITORY https://git.ryujinx.app/kenji-nx/openal-soft.git
+    # 如果需要特定版本，可以添加 GIT_TAG
+)
+
+FetchContent_MakeAvailable(openal)
+
 # Creates and names a library, sets it as either STATIC
-# or SHARED, 和 provides the relative paths to its source code.
+# or SHARED, 和 provides the relative paths to your source code.
 # You can define multiple libraries, 和 CMake builds them for you.
 # Gradle automatically packages shared libraries with your APK.
 
@@ -70,6 +80,7 @@ target_link_libraries( # Specifies the target library.
                         -lvulkan
                        -landroid
                         adrenotools
+                        OpenAL
         )
 
 # Build external libraries if prebuilt files don't exist
@@ -83,3 +94,10 @@ if (NOT (EXISTS ${LIBCRYPTO_JNI_PATH} AND EXISTS ${LIBSSL_JNI_PATH}))
     include(../../../../libryujinx/libs/OpenSSL.cmake)
     add_dependencies(ryujinxjni openssl)
 endif ()
+
+# 设置 OpenAL 输出目录
+set_target_properties(OpenAL PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
+    ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
+    RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
+)
