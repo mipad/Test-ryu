@@ -54,6 +54,31 @@ fun ModView(viewModel: ModViewModel, titleId: String) {
         )
     }
     
+    // 安装进度对话框
+    if (viewModel.showInstallProgress.value) {
+        AlertDialog(
+            onDismissRequest = { /* 不允许取消 */ },
+            title = { Text(text = "安装Mod") },
+            text = {
+                Column {
+                    LinearProgressIndicator(
+                        progress = viewModel.installProgress.value,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = viewModel.installStatus.value)
+                }
+            },
+            confirmButton = {
+                if (viewModel.installProgress.value >= 1f) {
+                    Button(onClick = { viewModel.showInstallProgress.value = false }) {
+                        Text("完成")
+                    }
+                }
+            }
+        )
+    }
+    
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         // Header with title and add button
         Row(
@@ -68,11 +93,10 @@ fun ModView(viewModel: ModViewModel, titleId: String) {
             
             // 添加两个按钮：压缩包安装和文件夹安装
             Row {
-                // 压缩包安装按钮
+                // 压缩包安装按钮 - 使用SimpleStorageHelper
                 Button(
                     onClick = { 
-                        installFolderMode = false
-                        showFileBrowser = true 
+                        viewModel.add()
                     },
                     modifier = Modifier.padding(end = 8.dp)
                 ) {
@@ -125,44 +149,6 @@ fun ModListItem(modItem: ModItem, onToggle: (Boolean) -> Unit, onDelete: () -> U
             .fillMaxWidth()
             .padding(8.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Checkbox(
-                checked = modItem.isEnabled.value,
-                onCheckedChange = onToggle
-            )
-            
-            Spacer(modifier = Modifier.width(16.dp))
-            
-            // 使用文字代替图标
-            Text(
-                text = if (modItem.isDirectory) "[Folder]" else "[File]",
-                modifier = Modifier.size(24.dp)
-            )
-            
-            Spacer(modifier = Modifier.width(16.dp))
-            
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = modItem.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                
-                Text(
-                    text = modItem.size,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Filled.Delete, contentDescription = "Delete")
-            }
-        }
     }
 }
 
