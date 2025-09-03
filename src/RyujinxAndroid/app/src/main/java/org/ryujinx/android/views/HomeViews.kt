@@ -1445,7 +1445,7 @@ class HomeViews {
                                     onClick = {
                                         // 打开mod目录
                                         val intent = Intent(Intent.ACTION_VIEW)
-                                        val uri = Uri.parse("file://${modViewModel.getGameModPath()}")
+                                        val uri = Uri.parse("file://${modViewModel.gameModPath}")
                                         intent.setDataAndType(uri, "resource/folder")
                                         if (intent.resolveActivity(context.packageManager) != null) {
                                             context.startActivity(intent)
