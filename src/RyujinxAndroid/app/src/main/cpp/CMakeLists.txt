@@ -31,7 +31,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(adrenotools)
 
 # Creates and names a library, sets it as either STATIC
-# or SHARED, 和 provides the relative paths to your source code.
+# or SHARED, 和 provides the relative paths to its source code.
 # You can define multiple libraries, 和 CMake builds them for you.
 # Gradle automatically packages shared libraries with your APK.
 
@@ -83,11 +83,3 @@ if (NOT (EXISTS ${LIBCRYPTO_JNI_PATH} AND EXISTS ${LIBSSL_JNI_PATH}))
     include(../../../../libryujinx/libs/OpenSSL.cmake)
     add_dependencies(ryujinxjni openssl)
 endif ()
-
-# Add OpenAL (从第一个 CMakeLists.txt 添加)
-add_subdirectory(libraries/openal)
-set_target_properties(OpenAL PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
-    ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
-    RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
-)
