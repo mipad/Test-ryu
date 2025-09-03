@@ -34,6 +34,11 @@ class ModViewModel(val titleId: String) {
     private val contentsPath = "$baseModsPath/contents"
     val gameModPath = "$contentsPath/$titleId"
     
+    // 添加进度状态
+    val showInstallProgress = mutableStateOf(false)
+    val installProgress = mutableStateOf(0f)
+    val installStatus = mutableStateOf("")
+    
     companion object {
         const val ModRequestCode = 1004
         private val SUPPORTED_ARCHIVES = listOf("zip", "rar", "7z")
@@ -46,8 +51,6 @@ class ModViewModel(val titleId: String) {
         ensureDirectoriesExist()
         refreshModList()
     }
-    
-    // 删除 getGameModPath() 方法，直接使用 gameModPath 属性
     
     private fun ensureDirectoriesExist() {
         File(baseModsPath).mkdirs()
@@ -77,20 +80,46 @@ class ModViewModel(val titleId: String) {
                     val file = files.firstOrNull()
                     file?.apply {
                         if (SUPPORTED_ARCHIVES.contains(file.extension?.toLowerCase())) {
+                            // 获取持久化URI权限
                             storageHelper.storage.context.contentResolver.takePersistableUriPermission(
                                 file.uri,
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                             )
                             
-                            // 解压压缩包到游戏mod目录
-                            extractArchive(file.uri, titleId)
-                            refreshModList()
+                            // 显示安装进度
+                            showInstallProgress.value = true
+                            installProgress.value = 0f
+                            installStatus.value = "开始解压文件..."
+                            
+                            // 在后台线程中解压
+                            thread {
+                                try {
+                                    // 解压压缩包到游戏mod目录
+                                    extractArchive(file.uri, titleId)
+                                    // 刷新mod列表
+                                    refreshModList()
+                                    installStatus.value = "安装完成"
+                                    installProgress.value = 1f
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                    installStatus.value = "安装失败: ${e.message}"
+                                    Log.e(TAG, "安装失败: ${e.message}")
+                                } finally {
+                                    // 延迟关闭进度条，让用户看到完成状态
+                                    Thread.sleep(1000)
+                                    showInstallProgress.value = false
+                                }
+                            }
                         }
                     }
                 }
             }
         }
-        storageHelper.openFilePicker(ModRequestCode, allowMultiple = false)
+        storageHelper.openFilePicker(
+            ModRequestCode, 
+            filterMimeTypes = arrayOf("application/zip", "application/x-rar-compressed", "application/x-7z-compressed"),
+            allowMultiple = false
+        )
     }
     
     // 添加mod文件的方法
@@ -152,6 +181,8 @@ class ModViewModel(val titleId: String) {
     private fun extractArchive(uri: Uri, gameId: String) {
         try {
             Log.d(TAG, "开始解压文件: $uri")
+            installStatus.value = "准备解压文件..."
+            
             val context = storageHelper.storage.context
             val contentResolver = context.contentResolver
             val inputStream = contentResolver.openInputStream(uri)
@@ -165,6 +196,8 @@ class ModViewModel(val titleId: String) {
             }
             
             Log.d(TAG, "创建临时文件: ${tempFile.absolutePath}")
+            installStatus.value = "分析压缩包结构..."
+            installProgress.value = 0.2f
             
             // 检测压缩包结构
             val containsIdDirectory = checkZipForIdDirectory(tempFile, gameId)
@@ -182,20 +215,25 @@ class ModViewModel(val titleId: String) {
             }
             
             Log.d(TAG, "解压路径: $extractPath")
+            installStatus.value = "解压文件中..."
+            installProgress.value = 0.4f
             
             // 只处理ZIP文件
             extractZip(tempFile, extractPath)
             Log.d(TAG, "ZIP文件解压完成")
+            installProgress.value = 0.8f
             
             // 清理临时文件
             tempFile.delete()
             Log.d(TAG, "清理临时文件")
+            installProgress.value = 1.0f
             
             // 刷新MOD列表
             refreshModList()
         } catch (e: Exception) {
             e.printStackTrace()
             Log.e(TAG, "解压过程中出错: ${e.message}")
+            throw e
         }
     }
     
@@ -243,7 +281,11 @@ class ModViewModel(val titleId: String) {
             // 回退到标准ZIP解压
             try {
                 ZipFile(file).use { zip ->
-                    zip.entries().asSequence().forEach { entry ->
+                    val entries = zip.entries().toList()
+                    val totalEntries = entries.size
+                    var processedEntries = 0
+                    
+                    entries.forEach { entry ->
                         val outputFile = File(destinationPath, entry.name)
                         if (entry.isDirectory) {
                             outputFile.mkdirs()
@@ -255,12 +297,17 @@ class ModViewModel(val titleId: String) {
                                 }
                             }
                         }
+                        
+                        processedEntries++
+                        // 更新进度
+                        installProgress.value = 0.4f + (0.4f * processedEntries / totalEntries)
                     }
                 }
                 Log.d(TAG, "标准ZIP解压成功")
             } catch (e2: Exception) {
                 e2.printStackTrace()
                 Log.e(TAG, "标准ZIP解压也失败: ${e2.message}")
+                throw e2
             }
         }
     }
