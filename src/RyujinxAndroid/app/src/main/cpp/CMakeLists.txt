@@ -22,6 +22,16 @@ set(SKIA_ENABLE_PARAGRAPH ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
+# 设置 OpenAL 构建选项
+set(ALSOFT_REQUIRE_OPENSL ON CACHE BOOL "Enable OpenSL backend")
+set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "Enable OpenSL backend")
+set(ALSOFT_BACKEND_AAUDIO OFF CACHE BOOL "Disable AAudio backend")
+set(ALSOFT_NO_CONFIG_UTIL ON CACHE BOOL "Disable config utility")
+set(ALSOFT_UTILS OFF CACHE BOOL "Disable utils")
+set(ALSOFT_EXAMPLES OFF CACHE BOOL "Disable examples")
+set(ALSOFT_INSTALL OFF CACHE BOOL "Disable installation")
+set(ALSOFT_INSTALL_PKG_CONFIG_FILES OFF CACHE BOOL "Disable pkg-config files")
+
 # 使用 FetchContent 获取 adrenotools
 FetchContent_Declare(
     adrenotools
@@ -68,6 +78,9 @@ find_library( # Sets the name of the path variable.
               # you want CMake to locate.
               log )
 
+# 添加 OpenSL ES 库查找
+find_library(opensles-lib OpenSLES)
+
 # Specifies libraries CMake should link to your target library. You
 # can link multiple libraries, such as libraries you define in this
 # build script, prebuilt third-party libraries, or system libraries.
@@ -77,10 +90,11 @@ target_link_libraries( # Specifies the target library.
                        # Links the target library to the log library
                        # included in the NDK.
                        ${log-lib}
-                        -lvulkan
+                       ${opensles-lib}  # 添加 OpenSL ES 链接
+                       -lvulkan
                        -landroid
-                        adrenotools
-                        OpenAL
+                       adrenotools
+                       OpenAL
         )
 
 # Build external libraries if prebuilt files don't exist
