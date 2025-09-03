@@ -36,14 +36,16 @@ android {
 
     buildTypes {
         release {
-            // postprocessing 块已完全弃用，使用新的配置替代
-            minifyEnabled true // 替代 removeUnusedCode 和 optimizeCode
-            shrinkResources false // 替代 removeUnusedResources
-            // obfuscate false // 已弃用，使用 minifyEnabled 控制
-            proguardFiles 'proguard-rules.pro'
+            postprocessing {
+                removeUnusedCode false
+                removeUnusedResources false
+                obfuscate false
+                optimizeCode true
+                proguardFiles 'proguard-rules.pro'
+            }
             signingConfig signingConfigs.debug
             debuggable false
-            // jniDebuggable false // 已弃用
+            jniDebuggable false
         }
     }
     compileOptions {
@@ -75,7 +77,7 @@ android {
     externalNativeBuild {
         cmake {
             path file('src/main/cpp/CMakeLists.txt')
-            version '4.1.1'
+            version '3.22.1'
         }
     }
 }
