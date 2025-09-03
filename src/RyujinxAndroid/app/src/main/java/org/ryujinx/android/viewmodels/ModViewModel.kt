@@ -187,7 +187,8 @@ class ModViewModel(val titleId: String) {
             val context = storageHelper.storage.context
             val contentResolver = context.contentResolver
             val inputStream = contentResolver.openInputStream(uri)
-            val tempFile = File.createTempFile("mod_temp", ".archive")
+            // 修改：使用.zip后缀而不是.archive
+            val tempFile = File.createTempFile("mod_temp", ".zip")
             
             // 复制到临时文件
             inputStream?.use { input ->
@@ -200,16 +201,18 @@ class ModViewModel(val titleId: String) {
             installStatus.value = "分析压缩包结构..."
             installProgress.value = 0.2f
             
-            // 直接解压到游戏mod目录，不检测ID目录
-            val extractPath = gameModPath
-            File(gameModPath).mkdirs() // 确保目录存在
+            // 创建游戏特定的mod目录
+            val gameModDir = File("$gameModPath")
+            if (!gameModDir.exists()) {
+                gameModDir.mkdirs()
+            }
             
-            Log.d(TAG, "解压路径: $extractPath")
+            Log.d(TAG, "游戏MOD目录: ${gameModDir.absolutePath}")
             installStatus.value = "解压文件中..."
             installProgress.value = 0.4f
             
-            // 解压ZIP文件
-            extractZip(tempFile, extractPath)
+            // 解压ZIP文件到游戏MOD目录
+            extractZip(tempFile, gameModDir.absolutePath)
             Log.d(TAG, "ZIP文件解压完成")
             installProgress.value = 0.8f
             
@@ -235,11 +238,54 @@ class ModViewModel(val titleId: String) {
             Log.d(TAG, "开始解压ZIP文件到: $destinationPath")
             
             // 确保目标目录存在
-            File(destinationPath).mkdirs()
+            val destDir = File(destinationPath)
+            if (!destDir.exists()) {
+                destDir.mkdirs()
+            }
             
             // 使用zip4j以获得更好的兼容性
             val zipFile = Zip4JFile(file)
-            zipFile.extractAll(destinationPath)
+            
+            // 检查ZIP文件结构，确定是否需要创建子目录
+            val fileHeaders = zipFile.fileHeaders
+            var hasRootFolder = false
+            var rootFolderName = ""
+            
+            // 检查是否所有文件都在同一个根目录下
+            for (header in fileHeaders) {
+                val fileName = header.fileName
+                if (fileName.contains("/")) {
+                    val firstSlash = fileName.indexOf("/")
+                    val folderName = fileName.substring(0, firstSlash)
+                    if (rootFolderName.isEmpty()) {
+                        rootFolderName = folderName
+                    } else if (rootFolderName != folderName) {
+                        // 有多个根目录，不创建子目录
+                        hasRootFolder = false
+                        break
+                    }
+                    hasRootFolder = true
+                } else {
+                    // 有文件在根目录，不创建子目录
+                    hasRootFolder = false
+                    break
+                }
+            }
+            
+            // 根据ZIP文件结构决定解压路径
+            val extractPath = if (hasRootFolder && rootFolderName.isNotEmpty()) {
+                // 如果ZIP文件有统一的根目录，直接解压到目标目录
+                destinationPath
+            } else {
+                // 如果没有统一的根目录，创建一个以ZIP文件名命名的子目录
+                val zipName = file.nameWithoutExtension
+                val subDir = File(destinationPath, zipName)
+                subDir.mkdirs()
+                subDir.absolutePath
+            }
+            
+            Log.d(TAG, "最终解压路径: $extractPath")
+            zipFile.extractAll(extractPath)
             Log.d(TAG, "ZIP4J解压成功")
         } catch (e: ZipException) {
             e.printStackTrace()
