@@ -23,7 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import kotlin.concurrent.thread  // 添加这行导入
+import kotlin.concurrent.thread
 
 class ModViewModel(val titleId: String) {
     private var canClose: MutableState<Boolean>? = null
@@ -93,7 +93,7 @@ class ModViewModel(val titleId: String) {
                             installStatus.value = "开始解压文件..."
                             
                             // 在后台线程中解压
-                            thread {  // 这里使用 thread 函数
+                            thread {
                                 try {
                                     // 解压压缩包到游戏mod目录
                                     extractArchive(file.uri, titleId)
@@ -200,26 +200,15 @@ class ModViewModel(val titleId: String) {
             installStatus.value = "分析压缩包结构..."
             installProgress.value = 0.2f
             
-            // 检测压缩包结构
-            val containsIdDirectory = checkZipForIdDirectory(tempFile, gameId)
-            Log.d(TAG, "压缩包包含ID目录: $containsIdDirectory")
-            
-            // 根据检测结果决定解压路径
-            val extractPath = if (containsIdDirectory) {
-                // 如果包含ID目录，直接解压到contents下
-                contentsPath
-            } else {
-                // 如果不包含ID目录，解压到contents/gameId下
-                // 确保目标目录存在
-                File(gameModPath).mkdirs()
-                gameModPath
-            }
+            // 直接解压到游戏mod目录，不检测ID目录
+            val extractPath = gameModPath
+            File(gameModPath).mkdirs() // 确保目录存在
             
             Log.d(TAG, "解压路径: $extractPath")
             installStatus.value = "解压文件中..."
             installProgress.value = 0.4f
             
-            // 只处理ZIP文件
+            // 解压ZIP文件
             extractZip(tempFile, extractPath)
             Log.d(TAG, "ZIP文件解压完成")
             installProgress.value = 0.8f
@@ -235,29 +224,6 @@ class ModViewModel(val titleId: String) {
             e.printStackTrace()
             Log.e(TAG, "解压过程中出错: ${e.message}")
             throw e
-        }
-    }
-    
-    /**
-     * 检测ZIP文件是否包含ID目录
-     */
-    private fun checkZipForIdDirectory(zipFile: File, gameId: String): Boolean {
-        return try {
-            val zip = ZipFile(zipFile)
-            var containsIdDir = false
-            
-            zip.entries().asSequence().forEach { entry ->
-                // 检查路径是否以gameId开头
-                if (entry.name.startsWith("$gameId/") || entry.name.startsWith("$gameId\\")) {
-                    containsIdDir = true
-                    return@forEach
-                }
-            }
-            
-            containsIdDir
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
         }
     }
     
