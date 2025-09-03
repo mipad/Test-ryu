@@ -47,9 +47,7 @@ class ModViewModel(val titleId: String) {
         refreshModList()
     }
     
-    fun getGameModPath(): String {
-        return gameModPath
-    }
+    // 删除 getGameModPath() 方法，直接使用 gameModPath 属性
     
     private fun ensureDirectoriesExist() {
         File(baseModsPath).mkdirs()
