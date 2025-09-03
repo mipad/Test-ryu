@@ -3,24 +3,15 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
-// 定义版本变量
-ext {
-    compileSdkVersion = 35
-    minSdkVersion = 30
-    targetSdkVersion = 35
-    composeBomVersion = '2024.08.00'
-    composeCompilerVersion = '1.5.15'
-}
-
 android {
     namespace 'org.ryujinx.android'
-    compileSdk compileSdkVersion
+    compileSdk 35 // 明确指定 compileSdk 版本
     // ndkVersion "27.2.12479018" // 考虑让 AGP 自动选择 NDK 版本
     
     defaultConfig {
         applicationId "org.ryujinx.android"
-        minSdk minSdkVersion
-        targetSdk targetSdkVersion
+        minSdk 30
+        targetSdk 35
         versionCode 10044
         versionName '1.0.44'
 
@@ -71,7 +62,7 @@ android {
         buildConfig true
     }
     composeOptions {
-        kotlinCompilerExtensionVersion composeCompilerVersion
+        kotlinCompilerExtensionVersion '1.5.15'
     }
     packagingOptions {
         jniLibs {
@@ -100,8 +91,8 @@ dependencies {
     implementation 'com.google.android.material:material:1.12.0'
     
     // 移除重复的 BOM 声明
-    implementation platform("androidx.compose:compose-bom:$composeBomVersion")
-    androidTestImplementation platform("androidx.compose:compose-bom:$composeBomVersion")
+    implementation platform('androidx.compose:compose-bom:2024.08.00')
+    androidTestImplementation platform('androidx.compose:compose-bom:2024.08.00')
     
     runtimeOnly project(":libryujinx")
     implementation 'androidx.core:core-ktx:1.16.0'
