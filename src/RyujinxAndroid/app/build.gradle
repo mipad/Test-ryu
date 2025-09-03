@@ -6,7 +6,7 @@ plugins {
 android {
     namespace 'org.ryujinx.android'
     compileSdk 35 // 明确指定 compileSdk 版本
-    // ndkVersion "27.2.12479018" // 考虑让 AGP 自动选择 NDK 版本
+    ndkVersion "27.2.12479018" // 考虑让 AGP 自动选择 NDK 版本
     
     defaultConfig {
         applicationId "org.ryujinx.android"
