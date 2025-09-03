@@ -4,16 +4,15 @@ plugins {
 }
 
 android {
-    namespace 'org.ryujinx.android'
+    namespace 'org.kenjinx.android'
     compileSdk 35
-    ndkVersion "27.2.12479018"
-    
+
     defaultConfig {
-        applicationId "org.ryujinx.android"
+        applicationId "org.kenjinx.android"
         minSdk 30
-        targetSdk 35
-        versionCode 10044
-        versionName '1.0.44'
+        targetSdk 34
+        versionCode 20004
+        versionName '2.0.4'
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -27,9 +26,10 @@ android {
 
         externalNativeBuild {
             cmake {
-                cppFlags "-std=c++20", "-O3", "-DNDEBUG", "-DENABLE_HIGH_PERF=1", "-ffast-math", "-march=armv8-a", "-funroll-loops"
-                arguments "-DCMAKE_BUILD_TYPE=Release", "-DANDROID_ARM_NEON=TRUE"
-                arguments "-DANDROID_STL=c++_shared"
+                cppFlags "-std=c++17 -O3 -ffast-math -march=armv8-a -funroll-loops"
+                arguments "-DANDROID_STL=c++_shared",
+                    "-DCMAKE_BUILD_TYPE=Release",
+                    "-DANDROID_ARM_NEON=TRUE"
             }
         }
     }
@@ -54,8 +54,7 @@ android {
     }
     kotlinOptions {
         jvmTarget = '21'
-        freeCompilerArgs += ["-opt-in=kotlin.RequiresOptIn",
-            "-Xjvm-default=all"]
+        freeCompilerArgs += ["-Xopt-in=kotlin.RequiresOptIn", "-Xallow-jvm-ir-dependencies"]
     }
     buildFeatures {
         compose true
@@ -63,20 +62,15 @@ android {
         buildConfig true
     }
     composeOptions {
-        kotlinCompilerExtensionVersion '1.5.15'
+        kotlinCompilerExtensionVersion '1.5.13'
     }
     packagingOptions {
         jniLibs {
-            keepDebugSymbols += '**/libryujinx.so'
+            keepDebugSymbols += '**/libkenjinx.so'
             useLegacyPackaging true
-            // 确保 JNA 库被包含
-            pickFirsts += ['**/libjnidispatch.so']
         }
         resources {
             excludes += '/META-INF/{AL2.0,LGPL2.1}'
-            // 确保 JNA 资源被包含
-            excludes += 'META-INF/maven/net.java.dev.jna/jna/pom.properties'
-            excludes += 'META-INF/maven/net.java.dev.jna/jna/pom.xml'
         }
     }
     externalNativeBuild {
@@ -85,68 +79,52 @@ android {
             version '3.22.1'
         }
     }
-    
+
     sourceSets {
         main {
-            jniLibs.srcDirs = ['src/main/extLibs', 'src/main/jniLibs', "$buildDir/jna-libs"]
+            jniLibs.srcDirs = ['src/main/extLibs', 'src/main/jniLibs']
         }
     }
-}
-
-// 添加任务来提取 JNA 库
-task extractJniLibs(type: Copy) {
-    from zipTree(configurations.runtimeClasspath.find { it.name.contains("jna") })
-    into "$buildDir/jna-libs"
-    include "**/*.so"
 }
 
 tasks.named("preBuild") {
-    dependsOn ':libryujinx:assemble'
-    dependsOn ':extractJniLibs'
-    doLast {
-        copy {
-            from "$buildDir/jna-libs"
-            into "src/main/jniLibs"
-            include "**/*.so"
-        }
-    }
+    dependsOn ':libkenjinx:assemble'
 }
 
 dependencies {
-    // 只保留 AAR 格式的 JNA 依赖
-    implementation 'net.java.dev.jna:jna:5.17.0@aar'
-    
-    implementation 'androidx.appcompat:appcompat:1.7.0'
-    implementation 'com.google.android.material:material:1.12.0'
-    implementation platform('androidx.compose:compose-bom:2024.08.00')
-    runtimeOnly project(":libryujinx")
-    implementation 'androidx.core:core-ktx:1.16.0'
-    implementation platform('org.jetbrains.kotlin:kotlin-bom:1.9.24')
-    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.9.0'
-    implementation "androidx.navigation:navigation-compose:2.9.0"
+    runtimeOnly project(":libkenjinx")
     implementation 'androidx.activity:activity-compose:1.10.1'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.compose.material:material-icons-extended:1.7.8'
     implementation 'androidx.compose.ui:ui'
     implementation 'androidx.compose.ui:ui-graphics'
     implementation 'androidx.compose.ui:ui-tooling-preview'
-    implementation 'androidx.compose.material3:material3'
-    implementation 'com.github.swordfish90:radialgamepad:2.0.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
-    implementation "com.anggrayudi:storage:1.5.6"
-    implementation "androidx.preference:preference-ktx:1.2.1"
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0'
+    implementation 'androidx.core:core-ktx:1.16.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.9.0'
+    implementation 'androidx.navigation:navigation-compose:2.9.0'
+    implementation 'androidx.preference:preference-ktx:1.2.1'
+    implementation 'br.com.devsrsouza.compose.icons:css-gg:1.1.1'
+    implementation 'com.anggrayudi:storage:1.5.6'
+    implementation 'com.github.swordfish90:radialgamepad:2.0.0'
+    implementation 'com.google.android.material:material:1.12.0'
     implementation 'com.google.code.gson:gson:2.11.0'
-    implementation 'net.lingala.zip4j:zip4j:2.11.5'
-    implementation("br.com.devsrsouza.compose.icons:css-gg:1.1.1")
+    implementation 'com.halilibo.compose-richtext:richtext-commonmark:0.20.0'
+    implementation 'com.halilibo.compose-richtext:richtext-ui-material3:0.20.0'
+    implementation 'com.halilibo.compose-richtext:richtext-ui:0.20.0'
     implementation 'io.coil-kt:coil-compose:2.6.0'
-    implementation("com.halilibo.compose-richtext:richtext-ui:0.20.0")
-    implementation("com.halilibo.compose-richtext:richtext-commonmark:0.20.0")
-    implementation("com.halilibo.compose-richtext:richtext-ui-material3:0.20.0")
-    testImplementation 'junit:junit:4.13.2'
-    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
-    androidTestImplementation platform('androidx.compose:compose-bom:2024.08.00')
-    androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
+    implementation 'net.java.dev.jna:jna:5.17.0@aar'
+    implementation 'net.lingala.zip4j:zip4j:2.11.5'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0'
-    debugImplementation 'androidx.compose.ui:ui-tooling'
+    implementation platform('androidx.compose:compose-bom:2024.08.00')
+    implementation platform('org.jetbrains.kotlin:kotlin-bom:1.9.24')
+    androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation platform('androidx.compose:compose-bom:2024.08.00')
+    testImplementation 'junit:junit:4.13.2'
     debugImplementation 'androidx.compose.ui:ui-test-manifest'
+    debugImplementation 'androidx.compose.ui:ui-tooling'
 }
