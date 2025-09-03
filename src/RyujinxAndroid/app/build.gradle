@@ -35,19 +35,19 @@ android {
     }
 
     buildTypes {
-        release {
-            postprocessing {
-                removeUnusedCode false
-                removeUnusedResources false
-                obfuscate false
-                optimizeCode true
-                proguardFiles 'proguard-rules.pro'
-            }
-            signingConfig signingConfigs.debug
-            debuggable false
-            jniDebuggable false
+    release {
+        postprocessing {
+            removeUnusedCode true
+            removeUnusedResources true
+            obfuscate true
+            optimizeCode true
+            proguardFiles 'proguard-rules.pro'
         }
+        signingConfig signingConfigs.debug
+        debuggable false
+        jniDebuggable false
     }
+}
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
