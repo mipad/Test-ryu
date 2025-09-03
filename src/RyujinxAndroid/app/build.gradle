@@ -28,7 +28,7 @@ android {
 
         externalNativeBuild {
             cmake {
-                cppFlags "-std=c++20", "-O3", "-DENABLE_HIGH_PERF=1", "-ffast-math", "-march=armv8-a", "-funroll-loops"
+                cppFlags "-std=c++20", "-O3", "-DNDEBUG", "-DENABLE_HIGH_PERF=1", "-ffast-math", "-march=armv8-a", "-funroll-loops"
                 arguments "-DCMAKE_BUILD_TYPE=Release", "-DANDROID_ARM_NEON=TRUE"
                 arguments "-DANDROID_STL=c++_shared"
             }
@@ -36,19 +36,19 @@ android {
     }
 
     buildTypes {
-    release {
-        postprocessing {
-            removeUnusedCode false
-            removeUnusedResources true
-            obfuscate false
-            optimizeCode true
-            proguardFiles 'proguard-rules.pro'
+        release {
+            postprocessing {
+                removeUnusedCode false
+                removeUnusedResources false
+                obfuscate false
+                optimizeCode true
+                proguardFiles 'proguard-rules.pro'
+            }
+            signingConfig signingConfigs.debug
+            debuggable false
+            jniDebuggable false
         }
-        signingConfig signingConfigs.debug
-        debuggable false
-        jniDebuggable false
     }
-}
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
