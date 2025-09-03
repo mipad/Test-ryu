@@ -127,6 +127,10 @@ import androidx.compose.material3.Button
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.mutableStateListOf
 
 class HomeViews {
     companion object {
@@ -1092,7 +1096,7 @@ class HomeViews {
                                         modifier = Modifier.fillMaxSize(),
                                         onClick = {
                                             openAppBarExtra = false
-                                            navController?.navigate("user")
+                                            navController?.navigate("user"
                                         }) {
                                         Icon(
                                             Icons.Filled.Add,
@@ -1417,10 +1421,7 @@ class HomeViews {
                                                     onClick = { modViewModel.remove(modItem) },
                                                     modifier = Modifier.padding(start = 8.dp)
                                                 ) {
-                                                    Icon(
-                                                        Icons.Filled.Delete,
-                                                        contentDescription = "Delete"
-                                                    )
+                                                    Text("删除")
                                                 }
                                             }
                                             Divider()
