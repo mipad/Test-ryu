@@ -23,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlin.concurrent.thread  // 添加这行导入
 
 class ModViewModel(val titleId: String) {
     private var canClose: MutableState<Boolean>? = null
@@ -41,7 +42,7 @@ class ModViewModel(val titleId: String) {
     
     companion object {
         const val ModRequestCode = 1004
-        private val SUPPORTED_ARCHIVES = listOf("zip", "rar", "7z")
+        private val SUPPORTED_ARCHIVES = listOf("zip")  // 只保留 ZIP
         private const val TAG = "ModViewModel"
     }
     
@@ -92,7 +93,7 @@ class ModViewModel(val titleId: String) {
                             installStatus.value = "开始解压文件..."
                             
                             // 在后台线程中解压
-                            thread {
+                            thread {  // 这里使用 thread 函数
                                 try {
                                     // 解压压缩包到游戏mod目录
                                     extractArchive(file.uri, titleId)
@@ -117,7 +118,7 @@ class ModViewModel(val titleId: String) {
         }
         storageHelper.openFilePicker(
             ModRequestCode, 
-            filterMimeTypes = arrayOf("application/zip", "application/x-rar-compressed", "application/x-7z-compressed"),
+            filterMimeTypes = arrayOf("application/zip"),  // 只允许 ZIP 文件
             allowMultiple = false
         )
     }
@@ -129,7 +130,7 @@ class ModViewModel(val titleId: String) {
             if (file.isDirectory) {
                 // 如果是文件夹，直接复制到mod目录
                 copyDirectory(file, File(gameModPath, file.name))
-            } else if (SUPPORTED_ARCHIVES.contains(file.extension.toLowerCase())) {
+            } else if (file.extension.toLowerCase() == "zip") {  // 只处理 ZIP 文件
                 // 如果是压缩文件，解压
                 extractArchive(Uri.fromFile(file), titleId)
             } else {
