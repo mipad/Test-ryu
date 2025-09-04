@@ -149,7 +149,8 @@ namespace Ryujinx.HLE.Loaders.Processes.Extensions
                     updatePath = JsonHelper.DeserializeFromFile(titleUpdateMetadataPath, _applicationSerializerContext.TitleUpdateMetadata).Selected;
                     if (File.Exists(updatePath))
                     {
-                        updatePartitionFileSystem = PartitionFileSystemUtils.OpenApplicationFileSystem(updatePath, fileSystem);
+                        bool isXci = Path.GetExtension(updatePath).ToLower() == ".xci";
+                        updatePartitionFileSystem = PartitionFileSystemUtils.OpenApplicationFileSystem(updatePath, isXci, fileSystem);
                     }
                 }
             }
