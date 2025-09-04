@@ -220,7 +220,7 @@ namespace Ryujinx.HLE.FileSystem
 
             if (AocData.TryGetValue(aocTitleId, out AocItem aoc))
             {
-                using var fileStream = new FileStream(aoc.ContainerPath, FileMode.Open, FileAccess.Read);
+                 var fileStream = new FileStream(aoc.ContainerPath, FileMode.Open, FileAccess.Read);
                 using var ncaFile = new UniqueRef<IFile>();
 
                 switch (aoc.Extension)
