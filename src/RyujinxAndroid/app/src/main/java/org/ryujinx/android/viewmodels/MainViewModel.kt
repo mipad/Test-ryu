@@ -301,7 +301,7 @@ class MainViewModel(val activity: MainActivity) {
                         caches.add(it.absolutePath)
                 }
                 val backupCache = basePath + "${File.separator}1"
-                File(backupCache).listFiles?().forEach {
+                File(backupCache).listFiles()?.forEach {
                     if (it.isFile && it.name.endsWith(".cache"))
                         caches.add(it.absolutePath)
                 }
