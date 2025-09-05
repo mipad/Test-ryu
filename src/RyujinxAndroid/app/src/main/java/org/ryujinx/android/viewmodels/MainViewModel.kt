@@ -37,7 +37,10 @@ class MainViewModel(val activity: MainActivity) {
     private var fifoState: MutableState<Double>? = null
     private var usedMemState: MutableState<Int>? = null
     private var totalMemState: MutableState<Int>? = null
-    private var cpuTemperatureState: MutableState<Double>? = null // 新增CPU温度状态
+    private var batteryTemperatureState: MutableState<Double>? = null // 电池温度状态
+    private var batteryLevelState: MutableState<Int>? = null // 电池电量状态
+    private var isChargingState: MutableState<Boolean>? = null // 充电状态
+    private var gpuNameState: MutableState<String>? = null // GPU名称状态
     private var frequenciesState: MutableList<Double>? = null
     private var progress: MutableState<String>? = null
     private var progressValue: MutableState<Float>? = null
@@ -357,7 +360,10 @@ class MainViewModel(val activity: MainActivity) {
         gameTime: MutableState<Double>,
         usedMem: MutableState<Int>,
         totalMem: MutableState<Int>,
-        cpuTemperature: MutableState<Double> // 新增CPU温度参数
+        batteryTemperature: MutableState<Double>, // 电池温度
+        batteryLevel: MutableState<Int>, // 电池电量
+        isCharging: MutableState<Boolean>, // 充电状态
+        gpuName: MutableState<String> // GPU名称
         //frequencies: MutableList<Double>
     ) {
         fifoState = fifo
@@ -365,7 +371,10 @@ class MainViewModel(val activity: MainActivity) {
         gameTimeState = gameTime
         usedMemState = usedMem
         totalMemState = totalMem
-        cpuTemperatureState = cpuTemperature // 保存CPU温度状态
+        batteryTemperatureState = batteryTemperature
+        batteryLevelState = batteryLevel
+        isChargingState = isCharging
+        gpuNameState = gpuName
         //frequenciesState = frequencies
     }
 
@@ -391,10 +400,29 @@ class MainViewModel(val activity: MainActivity) {
                 )
             }
         }
-        // 更新CPU温度 - 修复解构声明错误
-        cpuTemperatureState?.apply {
-            this.value = MainActivity.performanceMonitor.getCpuTemperature()
+        
+        // 更新电池温度
+        batteryTemperatureState?.apply {
+            this.value = MainActivity.performanceMonitor.getBatteryTemperature()
         }
+        
+        // 更新电池电量
+        batteryLevelState?.apply {
+            this.value = MainActivity.performanceMonitor.getBatteryLevel()
+        }
+        
+        // 更新充电状态
+        isChargingState?.apply {
+            this.value = MainActivity.performanceMonitor.isCharging()
+        }
+        
+        // 更新GPU名称（只在第一次调用时更新）
+        gpuNameState?.apply {
+            if (this.value.isEmpty() || this.value == "Unknown GPU") {
+                this.value = MainActivity.performanceMonitor.getGpuName()
+            }
+        }
+        
         //frequenciesState?.let { MainActivity.performanceMonitor.getFrequencies(it) }
     }
 
