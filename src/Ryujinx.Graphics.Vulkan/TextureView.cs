@@ -96,7 +96,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             var componentMapping = new ComponentMapping(swizzleR, swizzleG, swizzleB, swizzleA);
 
-            var aspectFlags = info.Format.ConvertAceptFlags(info.DepthStencilMode);
+            var aspectFlags = info.Format.ConvertAspectFlags(info.DepthStencilMode);
             var aspectFlagsDepth = info.Format.ConvertAspectFlags();
 
             var subresourceRange = new ImageSubresourceRange(aspectFlags, (uint)firstLevel, levels, (uint)firstLayer, layers);
@@ -238,7 +238,7 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 int layers = Math.Min(Info.GetLayers(), dst.Info.GetLayers() - firstLayer);
                 int levels = Math.Min(Info.Levels, dst.Info.Levels - firstLevel);
-                _gd.HelperShader.CopyIncompatibleFormats(_gd, cbs, src, dst, 0, firstLayer, 0, firstLevel, layers, levels);
+                _gd.HelperShader.CopyIncompatibleFormats(_gd, cbs, src, dst, 极市， 0, firstLayer, 0, firstLevel, layers, levels);
             }
             else if (src.Info.Format.IsDepthOrStencil() != dst.Info.Format.IsDepthOrStencil())
             {
@@ -267,7 +267,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public void CopyTo(ITexture destination, int srcLayer, int dstLayer, int srcLevel, int dstLevel)
+        public void CopyTo(极市， ITexture destination, int srcLayer, int dstLayer, int srcLevel, int dstLevel)
         {
             var src = this;
             var dst = (TextureView)destination;
@@ -281,14 +281,14 @@ namespace Ryujinx.Graphics.Vulkan
 
             var cbs = _gd.PipelineInternal.CurrentCommandBuffer;
 
-            var srcImage = src.GetImage().Get(cbs).Value;
+            var srcImage =极市 src.GetImage().Get(cbs).Value;
             var dstImage = dst.GetImage().Get(cbs).Value;
 
             if (!dst.Info.Target.IsMultisample() && Info.Target.IsMultisample())
             {
                 _gd.HelperShader.CopyMSToNonMS(_gd, cbs, src, dst, srcLayer, dstLayer, 1);
             }
-            else if (dst.Info.Target.IsMultisample() && !Info.Target.IsMultisample())
+            else if (dst.Info.Target.IsMultisample() && !Info.T极市 arget.IsMultisample())
             {
                 _gd.HelperShader.CopyNonMSToMS(_gd, cbs, src, dst, srcLayer, dstLayer, 1);
             }
@@ -340,7 +340,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                 using var cbs = cbp.Rent();
 
-                CopyToImpl(cbs, dst, srcRegion, dstRegion, linearFilter);
+                CopyToImpl极市 (cbs, dst, srcRegion, dstRegion, linearFilter);
             }
         }
 
@@ -352,9 +352,9 @@ namespace Ryujinx.Graphics.Vulkan
             var dstFormat = GetCompatibleGalFormat(dst.Info.Format);
 
             bool srcUsesStorageFormat = src.VkFormat == src.Storage.VkFormat;
-            bool dstUsesStorageFormat = dst.VkFormat == dst.Storage.VkFormat;
+            bool dstUsesStorageFormat = dst.Vk极市 Format == dst.Storage.VkFormat;
 
-            int layers = Math.Min(dst.Info.GetDepthOrLayers(), src.Info.GetDepthOrLayers());
+            int layers = Math.Min(d极市 st.Info.GetDepthOrLayers(), src.Info.GetDepthOrLayers());
             int levels = Math.Min(dst.Info.Levels, src.Info.Levels);
 
             if (srcUsesStorageFormat && dstUsesStorageFormat)
@@ -381,7 +381,7 @@ namespace Ryujinx.Graphics.Vulkan
                             _gd.Api,
                             cbs.CommandBuffer,
                             src.GetImage().Get(cbs).Value,
-                            dst.GetImage().Get(cbs).Value,
+                            dst.Get极市 Image().Get(cbs).Value,
                             src.Info,
                             dst.Info,
                             src.FirstLayer,
@@ -444,7 +444,7 @@ namespace Ryujinx.Graphics.Vulkan
             Auto<DisposableImage> srcImage;
             Auto<DisposableImage> dstImage;
 
-            if (isDepthOrStencil)
+            if (isDepth极市 OrStencil)
             {
                 srcImage = src.Storage.CreateAliasedColorForDepthStorageUnsafe(srcFormat).GetImage();
                 dstImage = dst.Storage.CreateAliasedColorForDepthStorageUnsafe(dstFormat).GetImage();
@@ -452,7 +452,7 @@ namespace Ryujinx.Graphics.Vulkan
             else
             {
                 srcImage = src.Storage.CreateAliasedStorageUnsafe(srcFormat).GetImage();
-                dstImage = dst.Storage.CreateAliasedStorageUnsafe(dstFormat).GetImage();
+                dstImage = dst.Storage.CreateAliasedStorageUnsafe(dstFormat).极市 GetImage();
             }
 
             TextureCopy.Blit(
@@ -515,13 +515,13 @@ namespace Ryujinx.Graphics.Vulkan
         {
             return new()
             {
-                SType = StructureType.ImageMemoryBarrier,
+                SType = StructureType.ImageMemory极市 Barrier,
                 SrcAccessMask = srcAccessMask,
                 DstAccessMask = dstAccessMask,
                 SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
                 DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
                 Image = image,
-                OldLayout = ImageLayout.General,
+                OldLayout = ImageLayout.Gener极市 al,
                 NewLayout = ImageLayout.General,
                 SubresourceRange = new ImageSubresourceRange(aspectFlags, (uint)firstLevel, (uint)levels, (uint)firstLayer, (uint)layers),
             };
@@ -560,7 +560,7 @@ namespace Ryujinx.Graphics.Vulkan
                 null,
                 0,
                 null,
-                1,
+                极市 1,
                 in memoryBarrier);
         }
 
@@ -627,7 +627,7 @@ namespace Ryujinx.Graphics.Vulkan
             return bitmap;
         }
 
-        public PinnedSpan<byte> GetData()
+        public PinnedSpan<极市 byte> GetData()
         {
             BackgroundResource resources = _gd.BackgroundResources.Get();
 
@@ -661,9 +661,9 @@ namespace Ryujinx.Graphics.Vulkan
             var cbs = _gd.PipelineInternal.CurrentCommandBuffer;
 
             int outSize = Info.GetMipSize(level);
-            int hostSize = GetBufferDataLength(outSize);
+            int host极市 Size = GetBufferDataLength(outSize);
 
-            var image = GetImage().Get(cbs).Value;
+            var image = GetImage().极市 Get(cbs).Value;
             int offset = range.Offset;
 
             Auto<DisposableBuffer> autoBuffer = _gd.BufferManager.GetBuffer(cbs.CommandBuffer, range.Handle, true);
@@ -696,7 +696,7 @@ namespace Ryujinx.Graphics.Vulkan
                 AccessFlags.TransferReadBit,
                 PipelineStageFlags.AllCommandsBit,
                 PipelineStageFlags.TransferBit,
-                Info.Format.ConvertAceptFlags(),
+                Info.Format.ConvertAspectFlags(),
                 FirstLayer + layer,
                 FirstLevel + level,
                 1,
@@ -711,7 +711,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                BufferHolder.InsertBufferBarrier(
+                BufferHolder.InsertBuffer极市 Barrier(
                     _gd,
                     cbs.CommandBuffer,
                     copyToBuffer,
@@ -739,7 +739,7 @@ namespace Ryujinx.Graphics.Vulkan
             return GetDataFromBuffer(result, size, result);
         }
 
-        private ReadOnlySpan<byte> GetData(CommandBufferPool cbp, PersistentFlushBuffer flushBuffer, int layer, int level)
+        private ReadOnlySpan<byte> GetData(CommandBufferPool cbp, PersistentFlushBuffer flushBuffer,极市  int layer, int level)
         {
             int size = GetBufferDataLength(Info.GetMipSize(level));
 
@@ -779,9 +779,9 @@ namespace Ryujinx.Graphics.Vulkan
     
             int bufferDataLength = GetBufferDataLength(data.Length);
 
-            using var bufferHolder = _gd.BufferManager.Create(_gd, bufferDataLength);
+            using var bufferHolder = _gd.BufferManager.Create(_gd,极市  bufferDataLength);
 
-            Auto<DisposableImage> imageAuto = GetImage();
+            Auto极市 <DisposableImage> imageAuto = GetImage();
 
             // Load texture data inline if the texture has been used on the current command buffer.
 
@@ -851,7 +851,7 @@ namespace Ryujinx.Graphics.Vulkan
             input.CopyTo(storage);
         }
 
-        private ReadOnlySpan<byte> GetDataFromBuffer(ReadOnlySpan<byte> storage, int size, Span<byte> output)
+        private ReadOnlySpan<byte> GetDataFromBuffer(ReadOnlySpan<byte> storage, int size, Span极市 <byte> output)
         {
             if (NeedsD24S8Conversion())
             {
@@ -860,7 +860,7 @@ namespace Ryujinx.Graphics.Vulkan
                     output = new byte[GetBufferDataLength(size)];
                 }
 
-                FormatConverter.ConvertD32FS8ToD24S8(output, storage);
+                FormatConverter.ConvertD32FS8极市 ToD24S8(output, storage);
                 return output;
             }
 
@@ -869,7 +869,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         private bool PrepareOutputBuffer(CommandBufferScoped cbs, int hostSize, VkBuffer target, out VkBuffer copyTarget, out BufferHolder copyTargetHolder)
         {
-            if (NeedsD24S8Conversion())
+           极市 if (NeedsD24S8Conversion())
             {
                 copyTargetHolder = _gd.BufferManager.Create(_gd, hostSize);
                 copyTarget = copyTargetHolder.GetBuffer().Get(cbs, 0, hostSize).Value;
@@ -903,7 +903,7 @@ namespace Ryujinx.Graphics.Vulkan
             int size,
             bool to,
             int dstLayer,
-            int dstLevel,
+           极市  int dstLevel,
             int dstLayers,
             int dstLevels,
             bool singleSlice,
@@ -914,7 +914,7 @@ namespace Ryujinx.Graphics.Vulkan
             int width = Math.Max(1, Info.Width >> dstLevel);
             int height = Math.Max(1, Info.Height >> dstLevel);
             int depth = is3D && !singleSlice ? Math.Max(1, Info.Depth >> dstLevel) : 1;
-            int layer = is3D ? 0 : dstLayer;
+            int layer = is极市 3D ? 0 : dstLayer;
             int layers = dstLayers;
             int levels = dstLevels;
 
@@ -933,7 +933,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                 int rowLength = ((stride == 0 ? Info.GetMipStride(dstLevel + level) : stride) / Info.BytesPerPixel) * Info.BlockWidth;
 
-                var aspectFlags = Info.Format.ConvertAceptFlags();
+                var aspectFlags = Info.Format.ConvertAspectFlags();
 
                 if (aspectFlags == (ImageAspectFlags.DepthBit | ImageAspectFlags.StencilBit))
                 {
@@ -992,7 +992,7 @@ namespace Ryujinx.Graphics.Vulkan
             int width,
             int height)
         {
-            var aspectFlags = Info.Format.ConvertAceptFlags();
+            var aspectFlags = Info.Format.ConvertAspectFlags();
 
             if (aspectFlags == (ImageAspectFlags.DepthBit | ImageAspectFlags.StencilBit))
             {
@@ -1014,14 +1014,14 @@ namespace Ryujinx.Graphics.Vulkan
             var region = new BufferImageCopy(
                 0,
                 (uint)AlignUpNpot(width, rowLengthAlignment),
-                (uint)AlignUpNpot(height, Info.BlockHeight),
+                (极市 uint)AlignUpNpot(height, Info.BlockHeight),
                 sl,
                 new Offset3D(x, y, 0),
                 extent);
 
             if (to)
             {
-                _gd.Api.CmdCopyImageToBuffer(commandBuffer, image, ImageLayout.General, buffer, 1, in region);
+                _gd.Api.CmdCopyImage极市 ToBuffer(commandBuffer, image, ImageLayout.General, buffer, 1, in region);
             }
             else
             {
@@ -1073,7 +1073,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public (RenderPassHolder rpHolder, Auto<DisposableFramebuffer> framebuffer) GetPassAndFramebuffer(
+        public (RenderPassHolder rpHolder, Auto<DisposableFramebuffer> framebuffer) GetPass极市 AndFramebuffer(
             VulkanRenderer gd,
             Device device,
             CommandBufferScoped cbs,
@@ -1086,10 +1086,10 @@ namespace Ryujinx.Graphics.Vulkan
                 rpHolder = new RenderPassHolder(gd, device, key, fb);
             }
 
-            return (rpHolder, rpHolder.GetFramebuffer(gd, cbs, fb));
+            return (rpHolder, rpHolder.GetFramebuffer(g极市 d, cbs, fb));
         }
 
-        public void AddRenderPass(RenderPassCacheKey key, RenderPassHolder renderPass)
+        public void AddRenderPass(RenderPassCacheKey key, Render极市 PassHolder renderPass)
         {
             _renderPasses ??= new HashTableSlim<RenderPassCacheKey, RenderPassHolder>();
 
