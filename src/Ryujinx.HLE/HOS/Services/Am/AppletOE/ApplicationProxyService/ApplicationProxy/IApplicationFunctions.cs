@@ -667,7 +667,7 @@ namespace Ryujinx.HLE.HOS.Services.Am.AppletOE.ApplicationProxyService.Applicati
             
 context.Response.HandleDesc = IpcHandleDesc.MakeCopy(_unknownEventHandle);
 
-            Logger.Stub?.PrintStub(LogClass.ServiceAm);
+            
 
             return ResultCode.Success;
         }
