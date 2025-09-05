@@ -29,15 +29,11 @@ namespace Ryujinx.Graphics.Vulkan
             int colorCount = 0;
             int maxColorAttachmentIndex = -1;
 
-            bool supported = gd.Capabilities.SupportsShaderStorageImageMultisample;
-
             for (int i = 0; i < state.AttachmentEnable.Length; i++)
             {
                 if (state.AttachmentEnable[i])
                 {
-                    bool supportedAttachment = gd.Capabilities.SupportsShaderStorageImageMultisample ||
-                        !state.AttachmentFormats[i].IsImageCompatible();
-
+                    attachmentFormats[attachmentCount] = gd.FormatCapabilities.ConvertToVkFormat(state.AttachmentFormats[i], true);
                     attachmentIndices[attachmentCount++] = i;
                     colorCount++;
                     maxColorAttachmentIndex = i;
