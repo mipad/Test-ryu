@@ -12,6 +12,7 @@ class PerformanceMonitor {
     // 温度缓存和更新时间戳
     private var lastCpuTemperatureUpdateTime = 0L
     private var cachedCpuTemperature = 0.0
+    private var temperatureSource = "Unknown" // 记录温度来源，用于调试
 
     fun getFrequencies(frequencies: MutableList<Double>){
         frequencies.clear()
@@ -48,15 +49,11 @@ class PerformanceMonitor {
         }
     }
     
-    // 获取CPU温度（带缓存，每30秒更新一次）
-    fun getCpuTemperature(): Double {
-        val currentTime = System.currentTimeMillis()
-        // 每30秒更新一次温度
-        if (currentTime - lastCpuTemperatureUpdateTime > 30000) {
-            lastCpuTemperatureUpdateTime = currentTime
-            cachedCpuTemperature = readCpuTemperature()
-        }
-        return cachedCpuTemperature
+    // 获取CPU温度（与FPS和内存使用相同的刷新频率）
+    fun getCpuTemperature(): Pair<Double, String> {
+        // 不再使用缓存，每次调用都尝试读取温度
+        val temp = readCpuTemperature()
+        return Pair(temp, temperatureSource)
     }
 
     // 实际读取CPU温度的方法
@@ -132,6 +129,7 @@ class PerformanceMonitor {
                 
                 // 只返回合理的温度值
                 if (temp > 0 && temp < 120) {
+                    temperatureSource = path // 记录成功读取的温度源
                     return temp
                 }
             } catch (e: Exception) {
@@ -139,6 +137,7 @@ class PerformanceMonitor {
             }
         }
         
+        temperatureSource = "No sensor found" // 记录没有找到传感器
         return 0.0
     }
 }
