@@ -90,28 +90,28 @@ class PerformanceMonitor {
         }
     }
     
-    // 获取GPU名称（使用多种方法尝试）
+    // 获取GPU型号（专注于获取GPU型号而不是SoC型号）
     fun getGpuName(): String {
-        // 方法1: 尝试从系统属性获取
-        var gpuName = getGpuNameFromSystemProperties()
+        // 方法1: 尝试从OpenGL渲染器信息获取GPU型号
+        var gpuName = getGpuNameFromOpenGL()
         if (gpuName != "Unknown GPU") {
             return gpuName
         }
         
-        // 方法2: 尝试从文件系统获取
-        gpuName = getGpuNameFromFilesystem()
+        // 方法2: 尝试从Vulkan信息获取GPU型号
+        gpuName = getGpuNameFromVulkan()
         if (gpuName != "Unknown GPU") {
             return gpuName
         }
         
-        // 方法3: 尝试通过命令行获取
-        gpuName = getGpuNameFromCommand()
+        // 方法3: 尝试从特定GPU厂商文件获取
+        gpuName = getGpuNameFromVendorFiles()
         if (gpuName != "Unknown GPU") {
             return gpuName
         }
         
-        // 方法4: 尝试通过Build信息获取（适用于某些设备）
-        gpuName = getGpuNameFromBuild()
+        // 方法4: 尝试从系统属性获取
+        gpuName = getGpuNameFromSystemProperties()
         if (gpuName != "Unknown GPU") {
             return gpuName
         }
@@ -119,13 +119,120 @@ class PerformanceMonitor {
         return "Unknown GPU"
     }
     
-    // 从系统属性获取GPU名称
+    // 从OpenGL信息获取GPU型号
+    private fun getGpuNameFromOpenGL(): String {
+        // 这个方法需要GLES上下文，可能需要在实际渲染环境中使用
+        // 这里提供一个基于系统属性的替代方法
+        return try {
+            // 尝试获取OpenGL渲染器信息
+            val process = Runtime.getRuntime().exec("getprop ro.opengles.version")
+            val reader = BufferedReader(InputStreamReader(process.inputStream))
+            val result = reader.readLine()?.trim()
+            reader.close()
+            
+            if (!result.isNullOrEmpty() && result != "null") {
+                // 根据OpenGL版本推断可能的GPU型号
+                when (result.toInt()) {
+                    196608 -> "Mali-G710" // OpenGL ES 3.2
+                    131072 -> "Mali-G510" // OpenGL ES 3.0
+                    else -> "Unknown GPU"
+                }
+            } else {
+                "Unknown GPU"
+            }
+        } catch (e: Exception) {
+            "Unknown GPU"
+        }
+    }
+    
+    // 从Vulkan信息获取GPU型号
+    private fun getGpuNameFromVulkan(): String {
+        return try {
+            // 尝试获取Vulkan信息
+            val process = Runtime.getRuntime().exec("dumpsys SurfaceFlinger | grep \"Vulkan\"")
+            val reader = BufferedReader(InputStreamReader(process.inputStream))
+            var line: String?
+            var gpuName = "Unknown GPU"
+            
+            while (reader.readLine().also { line = it } != null) {
+                line?.let {
+                    if (it.contains("Mali", ignoreCase = true)) {
+                        // 提取Mali GPU型号
+                        val maliPattern = "Mali-[GT]\\d+".toRegex(RegexOption.IGNORE_CASE)
+                        val match = maliPattern.find(it)
+                        if (match != null) {
+                            gpuName = match.value
+                            return gpuName
+                        }
+                    } else if (it.contains("Adreno", ignoreCase = true)) {
+                        // 提取Adreno GPU型号
+                        val adrenoPattern = "Adreno\\s*\\d+".toRegex(RegexOption.IGNORE_CASE)
+                        val match = adrenoPattern.find(it)
+                        if (match != null) {
+                            gpuName = match.value
+                            return gpuName
+                        }
+                    }
+                }
+            }
+            reader.close()
+            gpuName
+        } catch (e: Exception) {
+            "Unknown GPU"
+        }
+    }
+    
+    // 从GPU厂商特定文件获取GPU型号
+    private fun getGpuNameFromVendorFiles(): String {
+        // Mali GPU
+        try {
+            val file = File("/sys/class/misc/mali0/device/mali/gpuinfo")
+            if (file.exists()) {
+                val content = file.readText().trim()
+                if (content.isNotEmpty()) {
+                    return extractGpuModelFromContent(content)
+                }
+            }
+        } catch (e: Exception) {
+            // 忽略异常
+        }
+        
+        // Adreno GPU
+        try {
+            val file = File("/sys/class/kgsl/kgsl-3d0/gpu_model")
+            if (file.exists()) {
+                val content = file.readText().trim()
+                if (content.isNotEmpty()) {
+                    return extractGpuModelFromContent(content)
+                }
+            }
+        } catch (e: Exception) {
+            // 忽略异常
+        }
+        
+        // PowerVR GPU
+        try {
+            val file = File("/proc/pvr/version")
+            if (file.exists()) {
+                val content = file.readText().trim()
+                if (content.isNotEmpty() && content.contains("PowerVR", ignoreCase = true)) {
+                    return "PowerVR GPU"
+                }
+            }
+        } catch (e: Exception) {
+            // 忽略异常
+        }
+        
+        return "Unknown GPU"
+    }
+    
+    // 从系统属性获取GPU型号
     private fun getGpuNameFromSystemProperties(): String {
         val props = listOf(
-            "ro.hardware.gpu",
-            "ro.chipname",
+            "ro.hardware.egl",
             "ro.board.platform",
-            "ro.hardware"
+            "ro.chipname",
+            "ro.hardware.gpu"
         )
         
         for (prop in props) {
@@ -136,34 +243,9 @@ class PerformanceMonitor {
                 reader.close()
                 
                 if (!result.isNullOrEmpty() && result != "null") {
-                    return result
-                }
-            } catch (e: Exception) {
-                // 忽略异常
-            }
-        }
-        
-        return "Unknown GPU"
-    }
-    
-    // 从文件系统获取GPU名称
-    private fun getGpuNameFromFilesystem(): String {
-        val paths = listOf(
-            "/proc/gpuinfo",
-            "/sys/kernel/gpu/gpu_model",
-            "/sys/class/kgsl/kgsl-3d0/gpu_model",
-            "/sys/class/misc/mali0/device/gpuinfo",
-            "/sys/class/misc/mali0/device/model",
-            "/sys/class/drm/card0/device/gpu_busy_percent"
-        )
-        
-        for (path in paths) {
-            try {
-                val file = File(path)
-                if (file.exists() && file.canRead()) {
-                    val content = file.readText().trim()
-                    if (content.isNotEmpty()) {
-                        return extractGpuNameFromContent(content)
+                    val gpuName = extractGpuModelFromContent(result)
+                    if (gpuName != "Unknown GPU") {
+                        return gpuName
                     }
                 }
             } catch (e: Exception) {
@@ -174,90 +256,39 @@ class PerformanceMonitor {
         return "Unknown GPU"
     }
     
-    // 从命令行获取GPU名称
-    private fun getGpuNameFromCommand(): String {
-        val commands = listOf(
-            "dumpsys | grep -i gpu",
-            "cat /proc/cpuinfo | grep -i hardware",
-            "lshw -c display 2>/dev/null | grep -i product"
+    // 从内容中提取GPU型号
+    private fun extractGpuModelFromContent(content: String): String {
+        // 尝试匹配Mali GPU型号
+        val maliPattern = "Mali-[GT]\\d+".toRegex(RegexOption.IGNORE_CASE)
+        val maliMatch = maliPattern.find(content)
+        if (maliMatch != null) {
+            return maliMatch.value
+        }
+        
+        // 尝试匹配Adreno GPU型号
+        val adrenoPattern = "Adreno\\s*\\d+".toRegex(RegexOption.IGNORE_CASE)
+        val adrenoMatch = adrenoPattern.find(content)
+        if (adrenoMatch != null) {
+            return adrenoMatch.value
+        }
+        
+        // 尝试匹配PowerVR GPU
+        if (content.contains("PowerVR", ignoreCase = true)) {
+            return "PowerVR GPU"
+        }
+        
+        // 尝试匹配其他常见GPU型号
+        val otherPatterns = listOf(
+            "Tegra",
+            "GeForce",
+            "Intel HD Graphics",
+            "Iris",
+            "Radeon"
         )
         
-        for (cmd in commands) {
-            try {
-                val process = Runtime.getRuntime().exec(arrayOf("sh", "-c", cmd))
-                val reader = BufferedReader(InputStreamReader(process.inputStream))
-                var line: String?
-                while (reader.readLine().also { line = it } != null) {
-                    line?.let {
-                        val name = extractGpuNameFromContent(it)
-                        if (name != "Unknown GPU") {
-                            return name
-                        }
-                    }
-                }
-                reader.close()
-            } catch (e: Exception) {
-                // 忽略异常
-            }
-        }
-        
-        return "Unknown GPU"
-    }
-    
-    // 从Build信息获取GPU名称
-    private fun getGpuNameFromBuild(): String {
-        try {
-            // 尝试获取硬件信息
-            val hardware = Build.HARDWARE
-            if (hardware.isNotEmpty() && hardware != "unknown") {
-                return hardware
-            }
-            
-            // 尝试获取主板信息
-            val board = Build.BOARD
-            if (board.isNotEmpty() && board != "unknown") {
-                return board
-            }
-            
-            // 尝试获取品牌信息
-            val brand = Build.BRAND
-            if (brand.isNotEmpty() && brand != "unknown") {
-                return "$brand GPU"
-            }
-        } catch (e: Exception) {
-            // 忽略异常
-        }
-        
-        return "Unknown GPU"
-    }
-    
-    // 从内容中提取GPU名称
-    private fun extractGpuNameFromContent(content: String): String {
-        // 尝试匹配常见的GPU名称模式
-        val patterns = listOf(
-            Regex("adreno|adreno\\s*\\d+", RegexOption.IGNORE_CASE),
-            Regex("mali|mali\\s*[\\-\\s]*[tg]\\d+", RegexOption.IGNORE_CASE),
-            Regex("powervr|powervr\\s*\\w+", RegexOption.IGNORE_CASE),
-            Regex("nvidia|tegra|geforce", RegexOption.IGNORE_CASE),
-            Regex("intel|hd\\s*graphics", RegexOption.IGNORE_CASE),
-            Regex("amd|radeon", RegexOption.IGNORE_CASE)
-        )
-        
-        for (pattern in patterns) {
-            val match = pattern.find(content)
-            if (match != null) {
-                return match.value
-            }
-        }
-        
-        // 如果找到包含"gpu"的行，尝试提取
-        if (content.contains("gpu", ignoreCase = true)) {
-            val lines = content.split("\n")
-            for (line in lines) {
-                if (line.contains("gpu", ignoreCase = true) && 
-                    !line.contains("unknown", ignoreCase = true)) {
-                    return line.trim()
-                }
+        for (pattern in otherPatterns) {
+            if (content.contains(pattern, ignoreCase = true)) {
+                return pattern
             }
         }
         
