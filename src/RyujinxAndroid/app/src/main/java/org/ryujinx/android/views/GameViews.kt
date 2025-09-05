@@ -483,6 +483,14 @@ class GameViews {
                                     settings.showBatteryLevel = showBatteryLevel.value
                                     settings.showGpuName = showGpuName.value
                                     settings.save()
+                                    
+                                    // 强制重新组合 GameStats
+                                    mainViewModel.updateStats(
+                                        mainViewModel.fifoState?.value ?: 0.0,
+                                        mainViewModel.gameFpsState?.value ?: 0.0,
+                                        mainViewModel.gameTimeState?.value ?: 0.0
+                                    )
+                                    
                                     onDismiss()
                                 }
                             ) {
@@ -563,22 +571,45 @@ class GameViews {
                                             color = Color.Black.copy(alpha = 0.26f),
                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                                         )
+                                        .padding(horizontal = 4.dp, vertical = 2.dp)
                                 )
                             }
                         }
                         
                         // 内存使用（根据设置决定是否显示）
                         if (settings.showRam) {
-                            Text(text = "${usedMem.value}/${totalMem.value} MB")
+                            Box(
+                                modifier = Modifier.align(Alignment.Start) // 确保左对齐
+                            ) {
+                                Text(
+                                    text = "${usedMem.value}/${totalMem.value} MB",
+                                    modifier = Modifier
+                                        .background(
+                                            color = Color.Black.copy(alpha = 0.26f),
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
                         }
                         
                         // GPU名称（根据设置决定是否显示）
                         if (settings.showGpuName && gpuName.value.isNotEmpty() && gpuName.value != "Unknown GPU") {
-                            Text(
-                                text = gpuName.value,
-                                fontSize = 8.sp,
-                                color = Color.Gray
-                            )
+                            Box(
+                                modifier = Modifier.align(Alignment.Start) // 确保左对齐
+                            ) {
+                                Text(
+                                    text = gpuName.value,
+                                    fontSize = 8.sp,
+                                    color = Color.Gray,
+                                    modifier = Modifier
+                                        .background(
+                                            color = Color.Black.copy(alpha = 0.26f),
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
                         }
                     }
 
