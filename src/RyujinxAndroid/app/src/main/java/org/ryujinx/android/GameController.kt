@@ -58,7 +58,7 @@ class DoubleCircleButtonView(context: Context, val buttonText: String, val butto
     
     private val textPaint = Paint().apply {
         color = Color.WHITE
-        textSize = 28f // 增大文字大小
+        textSize = 28f // 增大文字尺寸
         textAlign = Paint.Align.CENTER
         typeface = Typeface.DEFAULT_BOLD
         isAntiAlias = true
@@ -112,7 +112,7 @@ class DoubleCircleButtonView(context: Context, val buttonText: String, val butto
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(85) // 85dp
+        val size = dpToPx(85) // 增大到100dp
         setMeasuredDimension(size, size)
     }
     
@@ -184,40 +184,41 @@ class GameController(var activity: Activity) {
                 }
             }
             
-            // 计算按键宽度（假设每个按键宽度约为60dp）
-            val buttonWidth = TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP, 
-                60f, 
-                context.resources.displayMetrics
-            ).toInt()
-            
             // 设置L3和R3按钮的布局参数
             val layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
             
-            // 将L3按钮添加到左侧容器 - 向左移动4个按键宽度
+            
             layoutParams.apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.START
-                topMargin = 150 // 根据截图调整位置
-                leftMargin = 250 - (4 * buttonWidth) // 向左移动4个按键宽度
+                topMargin = dpToPx(context, 50) 
+                leftMargin = dpToPx(context, 250) 
             }
             l3Button.layoutParams = layoutParams
             view.findViewById<FrameLayout>(R.id.leftcontainer)!!.addView(l3Button)
             controller.l3Button = l3Button
             
-            // 将R3按钮添加到右侧容器 - 向左移动4个按键宽度
+            
             layoutParams.apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.END
-                topMargin = 150 // 根据截图调整位置
-                rightMargin = 250 - (4 * buttonWidth) // 向左移动4个按键宽度
+                topMargin = dpToPx(context, 50) 
+                rightMargin = dpToPx(context, 250) 
             }
             r3Button.layoutParams = layoutParams
             view.findViewById<FrameLayout>(R.id.rightcontainer)!!.addView(r3Button)
             controller.r3Button = r3Button
 
             return view
+        }
+        
+        private fun dpToPx(context: Context, dp: Int): Int {
+            return TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, 
+                dp.toFloat(), 
+                context.resources.displayMetrics
+            ).toInt()
         }
 
         @Composable
