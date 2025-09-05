@@ -9,8 +9,8 @@ import java.io.RandomAccessFile
 class PerformanceMonitor {
     val numberOfCores = Runtime.getRuntime().availableProcessors()
     
-    // 记录最后成功的温度传感器路径
-    private var lastSuccessfulPath: String? = null
+    // 温度来源信息（用于调试）
+    private var temperatureSource = "No sensor found"
 
     fun getFrequencies(frequencies: MutableList<Double>){
         frequencies.clear()
@@ -25,8 +25,9 @@ class PerformanceMonitor {
                 reader.close()
                 freq = f.toDouble() / 1000.0
             } catch (e: Exception) {
-                // 忽略错误
+
             }
+
             frequencies.add(freq)
         }
     }
@@ -46,93 +47,60 @@ class PerformanceMonitor {
         }
     }
     
-    // 获取CPU温度（不使用缓存）
+    // 获取CPU温度（不使用缓存，每次调用都尝试读取）
     fun getCpuTemperature(): Double {
-        // 如果之前有成功的路径，先尝试它
-        lastSuccessfulPath?.let { path ->
-            val temp = readTemperatureFromPath(path)
-            if (temp > 0) return temp
-        }
-        
-        // 如果没有成功路径或路径失效，尝试所有可能的路径
-        return findAndReadTemperature()
+        return readCpuTemperature()
     }
 
-    // 从指定路径读取温度
-    private fun readTemperatureFromPath(path: String): Double {
-        try {
-            val file = File(path)
-            if (!file.exists()) return 0.0
-            
-            val tempStr = file.readText().trim()
-            if (tempStr.isEmpty()) return 0.0
-            
-            // 有些文件返回的是毫摄氏度，所以除以1000
-            var temp = tempStr.toDouble() / 1000.0
-            
-            // 如果温度值异常大，可能是没有除以1000，所以再检查一次
-            if (temp > 200) {
-                temp /= 1000.0
-            }
-            
-            // 只返回合理的温度值
-            if (temp > 0 && temp < 120) {
-                lastSuccessfulPath = path // 记录成功路径
-                return temp
-            }
-        } catch (e: Exception) {
-            // 忽略错误
-        }
-        return 0.0
-    }
-
-    // 尝试所有可能的温度传感器路径
-    private fun findAndReadTemperature(): Double {
-        // 尝试所有可能的温度传感器路径
-        val allPaths = getAllPossibleTemperaturePaths()
-        
-        for (path in allPaths) {
-            val temp = readTemperatureFromPath(path)
-            if (temp > 0) return temp
-        }
-        
-        return 0.0
-    }
-
-    // 获取所有可能的温度传感器路径
-    private fun getAllPossibleTemperaturePaths(): List<String> {
+    // 实际读取CPU温度的方法
+    private fun readCpuTemperature(): Double {
+        // 尝试从多个可能的路径读取温度
         val paths = mutableListOf<String>()
         
-        // 添加所有可能的thermal_zone路径
+        // 添加 thermal_zone0 到 thermal_zone20
         for (i in 0..20) {
             paths.add("/sys/class/thermal/thermal_zone$i/temp")
             paths.add("/sys/devices/virtual/thermal/thermal_zone$i/temp")
         }
         
-        // 添加小米/天玑特有的路径
+        // 添加天玑芯片特有的温度传感器路径
         paths.addAll(listOf(
-            // 小米设备常见路径
-            "/sys/class/thermal/thermal_zone0/temp",
-            "/sys/class/thermal/thermal_zone1/temp",
-            "/sys/class/thermal/thermal_zone2/temp",
-            "/sys/class/thermal/thermal_zone3/temp",
-            "/sys/class/thermal/thermal_zone4/temp",
-            "/sys/class/thermal/thermal_zone5/temp",
-            "/sys/class/thermal/thermal_zone6/temp",
-            "/sys/class/thermal/thermal_zone7/temp",
-            "/sys/class/thermal/thermal_zone8/temp",
-            "/sys/class/thermal/thermal_zone9/temp",
-            "/sys/class/thermal/thermal_zone10/temp",
+            // 天玑芯片常见温度传感器路径
+            "/sys/devices/virtual/thermal/thermal_zone0/temp",
+            "/sys/devices/virtual/thermal/thermal_zone1/temp",
+            "/sys/devices/virtual/thermal/thermal_zone2/temp",
+            "/sys/devices/virtual/thermal/thermal_zone3/temp",
+            "/sys/devices/virtual/thermal/thermal_zone4/temp",
+            "/sys/devices/virtual/thermal/thermal_zone5/temp",
+            "/sys/devices/virtual/thermal/thermal_zone6/temp",
+            "/sys/devices/virtual/thermal/thermal_zone7/temp",
+            "/sys/devices/virtual/thermal/thermal_zone8/temp",
+            "/sys/devices/virtual/thermal/thermal_zone9/temp",
+            "/sys/devices/virtual/thermal/thermal_zone10/temp",
             
-            // 天玑芯片特定路径
+            // 天玑芯片特定温度传感器
             "/sys/class/thermal/thermal_zone/mtktscpu/temp",
             "/sys/class/thermal/thermal_zone/mtktsAP/temp",
             "/sys/class/thermal/thermal_zone/mtktscpu0/temp",
             "/sys/class/thermal/thermal_zone/mtktscpu1/temp",
             "/sys/class/thermal/thermal_zone/mtktscpu2/temp",
             "/sys/class/thermal/thermal_zone/mtktscpu3/temp",
+            "/sys/class/thermal/thermal_zone/mtktsabb/temp",
+            "/sys/class/thermal/thermal_zone/mtktsbts/temp",
+            "/sys/class/thermal/thermal_zone/mtkts_pa/temp",
+            "/sys/class/thermal/thermal_zone/mtkts_pa1/temp",
+            "/sys/class/thermal/thermal_zone/mtkts_pmic/temp",
             
-            // 小米设备可能使用的路径
+            // 小米设备特有的温度传感器路径
+            "/sys/class/thermal/thermal_zone/xiaomi-thermald/temp",
+            "/sys/class/thermal/thermal_zone/xiaomi-thermal/temp",
+            "/sys/class/thermal/thermal_zone/xiaomi_msm_therm/temp",
+            "/sys/class/thermal/thermal_zone/msm_therm/temp",
+            "/sys/class/thermal/thermal_zone/quiet_therm/temp",
+            "/sys/class/thermal/thermal_zone/conn_therm/temp",
+            "/sys/class/thermal/thermal_zone/sdm_therm/temp",
+            
+            // 其他可能的温度传感器路径
             "/sys/class/hwmon/hwmon0/temp1_input",
             "/sys/class/hwmon/hwmon1/temp1_input",
             "/sys/class/hwmon/hwmon2/temp1_input",
@@ -151,14 +119,87 @@ class PerformanceMonitor {
             "/proc/driver/thermal/temp",
             "/proc/thermal/temp",
             
-            // 小米设备可能使用的额外路径
-            "/sys/devices/virtual/thermal/thermal_zone11/temp",
-            "/sys/devices/virtual/thermal/thermal_zone12/temp",
-            "/sys/devices/virtual/thermal/thermal_zone13/temp",
-            "/sys/devices/virtual/thermal/thermal_zone14/temp",
-            "/sys/devices/virtual/thermal/thermal_zone15/temp"
+            // 小米设备可能使用的路径
+            "/sys/class/power_supply/battery/temp",
+            "/sys/class/power_supply/bms/temp",
+            "/sys/class/thermal/thermal_zone/battery/temp"
         ))
         
-        return paths
+        // 尝试读取每个路径
+        for (path in paths) {
+            try {
+                val file = File(path)
+                if (!file.exists()) continue
+                
+                val tempStr = file.readText().trim()
+                if (tempStr.isEmpty()) continue
+                
+                // 有些文件返回的是毫摄氏度，所以除以1000
+                var temp = tempStr.toDouble() / 1000.0
+                
+                // 如果温度值异常大，可能是没有除以1000，所以再检查一次
+                if (temp > 200) {
+                    temp /= 1000.0
+                }
+                
+                // 只返回合理的温度值
+                if (temp > 0 && temp < 120) {
+                    temperatureSource = path // 记录成功读取的温度源
+                    return temp
+                }
+            } catch (e: Exception) {
+                // 忽略，继续尝试下一个路径
+            }
+        }
+        
+        // 如果所有路径都失败，尝试使用shell命令读取温度
+        return tryShellCommandForTemperature()
+    }
+    
+    // 尝试使用shell命令读取温度
+    private fun tryShellCommandForTemperature(): Double {
+        try {
+            // 尝试使用dumpsys命令获取温度
+            val process = Runtime.getRuntime().exec("dumpsys battery")
+            val inputStream = process.inputStream
+            val reader = java.io.BufferedReader(java.io.InputStreamReader(inputStream))
+            var line: String?
+            
+            while (reader.readLine().also { line = it } != null) {
+                if (line?.contains("temperature") == true) {
+                    val tempStr = line?.substringAfter(":")?.trim()
+                    tempStr?.toDouble()?.let { temp ->
+                        // 电池温度通常是摄氏度，不需要转换
+                        if (temp > 0 && temp < 120) {
+                            temperatureSource = "dumpsys battery"
+                            return temp
+                        }
+                    }
+                }
+            }
+            
+            // 尝试使用thermal服务
+            val thermalProcess = Runtime.getRuntime().exec("dumpsys thermalservice")
+            val thermalInputStream = thermalProcess.inputStream
+            val thermalReader = java.io.BufferedReader(java.io.InputStreamReader(thermalInputStream))
+            
+            while (thermalReader.readLine().also { line = it } != null) {
+                if (line?.contains("temperature") == true || line?.contains("Temp") == true) {
+                    // 尝试从行中提取温度值
+                    val regex = "\\d+(\\.\\d+)?".toRegex()
+                    val match = regex.find(line ?: "")
+                    match?.value?.toDouble()?.let { temp ->
+                        if (temp > 0 && temp < 120) {
+                            temperatureSource = "dumpsys thermalservice"
+                            return temp
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // 忽略异常
+        }
+        
+        return 0.0
     }
 }
