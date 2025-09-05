@@ -2,9 +2,11 @@ package org.ryujinx.android
 
 import android.app.Activity
 import android.content.Context
+import android.graphics.Color
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
+import android.widget.Button
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -42,6 +44,84 @@ class GameController(var activity: Activity) {
             view.findViewById<FrameLayout>(R.id.leftcontainer)!!.addView(controller.leftGamePad)
             view.findViewById<FrameLayout>(R.id.rightcontainer)!!.addView(controller.rightGamePad)
 
+            // 添加L3按钮
+            val l3Button = Button(context).apply {
+                text = "L3"
+                setBackgroundColor(Color.argb(128, 100, 100, 100)) // 半透明灰色背景
+                setTextColor(Color.WHITE)
+                setOnTouchListener { _, event ->
+                    when (event.action) {
+                        KeyEvent.ACTION_DOWN -> {
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(
+                                GamePadButtonInputId.LeftStickButton.ordinal,
+                                controller.controllerId
+                            )
+                            true
+                        }
+                        KeyEvent.ACTION_UP -> {
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(
+                                GamePadButtonInputId.LeftStickButton.ordinal,
+                                controller.controllerId
+                            )
+                            true
+                        }
+                        else -> false
+                    }
+                }
+            }
+            
+            // 添加R3按钮
+            val r3Button = Button(context).apply {
+                text = "R3"
+                setBackgroundColor(Color.argb(128, 100, 100, 100)) // 半透明灰色背景
+                setTextColor(Color.WHITE)
+                setOnTouchListener { _, event ->
+                    when (event.action) {
+                        KeyEvent.ACTION_DOWN -> {
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(
+                                GamePadButtonInputId.RightStickButton.ordinal,
+                                controller.controllerId
+                            )
+                            true
+                        }
+                        KeyEvent.ACTION_UP -> {
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(
+                                GamePadButtonInputId.RightStickButton.ordinal,
+                                controller.controllerId
+                            )
+                            true
+                        }
+                        else -> false
+                    }
+                }
+            }
+            
+            // 设置L3和R3按钮的布局参数
+            val layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+            
+            // 将L3按钮添加到左侧容器
+            layoutParams.apply {
+                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
+                bottomMargin = 50
+                leftMargin = 50
+            }
+            l3Button.layoutParams = layoutParams
+            view.findViewById<FrameLayout>(R.id.leftcontainer)!!.addView(l3Button)
+            controller.l3Button = l3Button
+            
+            // 将R3按钮添加到右侧容器
+            layoutParams.apply {
+                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
+                bottomMargin = 50
+                rightMargin = 50
+            }
+            r3Button.layoutParams = layoutParams
+            view.findViewById<FrameLayout>(R.id.rightcontainer)!!.addView(r3Button)
+            controller.r3Button = r3Button
+
             return view
         }
 
@@ -74,6 +154,8 @@ class GameController(var activity: Activity) {
     private var controllerView: View? = null
     var leftGamePad: GamePad
     var rightGamePad: GamePad
+    var l3Button: Button? = null
+    var r3Button: Button? = null
     var controllerId: Int = -1
     val isVisible: Boolean
         get() {
@@ -100,6 +182,8 @@ class GameController(var activity: Activity) {
     fun setVisible(isVisible: Boolean) {
         controllerView?.apply {
             this.isVisible = isVisible
+            l3Button?.isVisible = isVisible
+            r3Button?.isVisible = isVisible
 
             if (isVisible)
                 connect()
