@@ -77,7 +77,7 @@ namespace Ryujinx.Graphics.Vulkan
             _device = device;
             _info = info;
 
-            var format = _gd.FormatCapabilities.ConvertToVkFormat(info.Format);
+            var format = _gd.FormatCapabilities.ConvertToVkFormat(info.Format, true);
             var levels = (uint)info.Levels;
             var layers = (uint)info.GetLayers();
             var depth = (uint)(info.Target == Target.Texture3D ? info.Depth : 1);
@@ -91,7 +91,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             var sampleCountFlags = ConvertToSampleCountFlags(gd.Capabilities.SupportedSampleCounts, (uint)info.Samples);
 
-            var usage = GetImageUsage(info.Format, info.Target, gd.Capabilities);
+            var usage = GetImageUsage(info.Format, info.Target, gd.Capabilities, false);
 
             var flags = ImageCreateFlags.CreateMutableFormatBit | ImageCreateFlags.CreateExtendedUsageBit;
 
