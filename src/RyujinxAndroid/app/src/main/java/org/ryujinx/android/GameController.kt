@@ -190,8 +190,8 @@ val l3LayoutParams = FrameLayout.LayoutParams(
     ViewGroup.LayoutParams.WRAP_CONTENT,
     ViewGroup.LayoutParams.WRAP_CONTENT
 ).apply {
-    gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
-    bottomMargin = dpToPx(context, 120) // 距离底部120dp
+    gravity = android.view.Gravity.TOP or android.view.Gravity.START
+    topMargin = dpToPx(context, 30) // 距离顶部30dp，靠近边缘
     leftMargin = dpToPx(context, 280) // 距离左侧280dp，位于L键右边
 }
 l3Button.layoutParams = l3LayoutParams
@@ -202,8 +202,8 @@ val r3LayoutParams = FrameLayout.LayoutParams(
     ViewGroup.LayoutParams.WRAP_CONTENT,
     ViewGroup.LayoutParams.WRAP_CONTENT
 ).apply {
-    gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
-    bottomMargin = dpToPx(context, 120) // 距离底部120dp
+    gravity = android.view.Gravity.TOP or android.view.Gravity.END
+    topMargin = dpToPx(context, 30) // 距离顶部30dp，靠近边缘
     rightMargin = dpToPx(context, 280) // 距离右侧280dp，位于R键左边
 }
 r3Button.layoutParams = r3LayoutParams
