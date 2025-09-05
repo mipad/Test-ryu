@@ -471,8 +471,8 @@ namespace Ryujinx.Graphics.Vulkan
                 layers,
                 levels,
                 linearFilter,
-                ImageAceptFlags.ColorBit,
-                ImageAceptFlags.ColorBit);
+                ImageAspectFlags.ColorBit,
+                ImageAspectFlags.ColorBit);
         }
 
         public static unsafe void InsertMemoryBarrier(
@@ -935,9 +935,9 @@ namespace Ryujinx.Graphics.Vulkan
 
                 var aspectFlags = Info.Format.ConvertAceptFlags();
 
-                if (aspectFlags == (ImageAceptFlags.DepthBit | ImageAceptFlags.StencilBit))
+                if (aspectFlags == (ImageAspectFlags.DepthBit | ImageAspectFlags.StencilBit))
                 {
-                    aspectFlags = ImageAceptFlags.DepthBit;
+                    aspectFlags = ImageAspectFlags.DepthBit;
                 }
 
                 var sl = new ImageSubresourceLayers(
@@ -994,9 +994,9 @@ namespace Ryujinx.Graphics.Vulkan
         {
             var aspectFlags = Info.Format.ConvertAceptFlags();
 
-            if (aspectFlags == (ImageAceptFlags.DepthBit | ImageAceptFlags.StencilBit))
+            if (aspectFlags == (ImageAspectFlags.DepthBit | ImageAspectFlags.StencilBit))
             {
-                aspectFlags = ImageAceptFlags.DepthBit;
+                aspectFlags = ImageAspectFlags.DepthBit;
             }
 
             var sl = new ImageSubresourceLayers(aspectFlags, (uint)(FirstLevel + dstLevel), (uint)(FirstLayer + dstLayer), 1);
