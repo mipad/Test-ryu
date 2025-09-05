@@ -37,6 +37,7 @@ class MainViewModel(val activity: MainActivity) {
     private var fifoState: MutableState<Double>? = null
     private var usedMemState: MutableState<Int>? = null
     private var totalMemState: MutableState<Int>? = null
+    private var cpuTemperatureState: MutableState<Double>? = null // 新增CPU温度状态
     private var frequenciesState: MutableList<Double>? = null
     private var progress: MutableState<String>? = null
     private var progressValue: MutableState<Float>? = null
@@ -300,7 +301,7 @@ class MainViewModel(val activity: MainActivity) {
                         caches.add(it.absolutePath)
                 }
                 val backupCache = basePath + "${File.separator}1"
-                File(backupCache).listFiles()?.forEach {
+                File(backupCache).listFiles?().forEach {
                     if (it.isFile && it.name.endsWith(".cache"))
                         caches.add(it.absolutePath)
                 }
@@ -356,6 +357,7 @@ class MainViewModel(val activity: MainActivity) {
         gameTime: MutableState<Double>,
         usedMem: MutableState<Int>,
         totalMem: MutableState<Int>,
+        cpuTemperature: MutableState<Double> // 新增CPU温度参数
         //frequencies: MutableList<Double>
     ) {
         fifoState = fifo
@@ -363,6 +365,7 @@ class MainViewModel(val activity: MainActivity) {
         gameTimeState = gameTime
         usedMemState = usedMem
         totalMemState = totalMem
+        cpuTemperatureState = cpuTemperature // 保存CPU温度状态
         //frequenciesState = frequencies
     }
 
@@ -387,6 +390,10 @@ class MainViewModel(val activity: MainActivity) {
                     totalMem
                 )
             }
+        }
+        // 更新CPU温度
+        cpuTemperatureState?.apply {
+            this.value = MainActivity.performanceMonitor.getCpuTemperature()
         }
         //frequenciesState?.let { MainActivity.performanceMonitor.getFrequencies(it) }
     }
