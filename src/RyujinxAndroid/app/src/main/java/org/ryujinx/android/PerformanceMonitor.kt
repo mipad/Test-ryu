@@ -9,10 +9,8 @@ import java.io.RandomAccessFile
 class PerformanceMonitor {
     val numberOfCores = Runtime.getRuntime().availableProcessors()
     
-    // 温度缓存和更新时间戳
-    private var lastCpuTemperatureUpdateTime = 0L
-    private var cachedCpuTemperature = 0.0
-    private var temperatureSource = "Unknown" // 记录温度来源，用于调试
+    // 记录最后成功的温度传感器路径
+    private var lastSuccessfulPath: String? = null
 
     fun getFrequencies(frequencies: MutableList<Double>){
         frequencies.clear()
@@ -27,9 +25,8 @@ class PerformanceMonitor {
                 reader.close()
                 freq = f.toDouble() / 1000.0
             } catch (e: Exception) {
-
+                // 忽略错误
             }
-
             frequencies.add(freq)
         }
     }
@@ -49,21 +46,72 @@ class PerformanceMonitor {
         }
     }
     
-    // 获取CPU温度（与FPS和内存使用相同的刷新频率）
-    fun getCpuTemperature(): Pair<Double, String> {
-        // 不再使用缓存，每次调用都尝试读取温度
-        val temp = readCpuTemperature()
-        return Pair(temp, temperatureSource)
+    // 获取CPU温度（不使用缓存）
+    fun getCpuTemperature(): Double {
+        // 如果之前有成功的路径，先尝试它
+        lastSuccessfulPath?.let { path ->
+            val temp = readTemperatureFromPath(path)
+            if (temp > 0) return temp
+        }
+        
+        // 如果没有成功路径或路径失效，尝试所有可能的路径
+        return findAndReadTemperature()
     }
 
-    // 实际读取CPU温度的方法
-    private fun readCpuTemperature(): Double {
-        // 尝试从多个可能的路径读取温度
+    // 从指定路径读取温度
+    private fun readTemperatureFromPath(path: String): Double {
+        try {
+            val file = File(path)
+            if (!file.exists()) return 0.0
+            
+            val tempStr = file.readText().trim()
+            if (tempStr.isEmpty()) return 0.0
+            
+            // 有些文件返回的是毫摄氏度，所以除以1000
+            var temp = tempStr.toDouble() / 1000.0
+            
+            // 如果温度值异常大，可能是没有除以1000，所以再检查一次
+            if (temp > 200) {
+                temp /= 1000.0
+            }
+            
+            // 只返回合理的温度值
+            if (temp > 0 && temp < 120) {
+                lastSuccessfulPath = path // 记录成功路径
+                return temp
+            }
+        } catch (e: Exception) {
+            // 忽略错误
+        }
+        return 0.0
+    }
+
+    // 尝试所有可能的温度传感器路径
+    private fun findAndReadTemperature(): Double {
+        // 尝试所有可能的温度传感器路径
+        val allPaths = getAllPossibleTemperaturePaths()
+        
+        for (path in allPaths) {
+            val temp = readTemperatureFromPath(path)
+            if (temp > 0) return temp
+        }
+        
+        return 0.0
+    }
+
+    // 获取所有可能的温度传感器路径
+    private fun getAllPossibleTemperaturePaths(): List<String> {
         val paths = mutableListOf<String>()
         
-        // 小米设备常用的温度传感器路径
+        // 添加所有可能的thermal_zone路径
+        for (i in 0..20) {
+            paths.add("/sys/class/thermal/thermal_zone$i/temp")
+            paths.add("/sys/devices/virtual/thermal/thermal_zone$i/temp")
+        }
+        
+        // 添加小米/天玑特有的路径
         paths.addAll(listOf(
-            // 小米/天玑常用路径
+            // 小米设备常见路径
             "/sys/class/thermal/thermal_zone0/temp",
             "/sys/class/thermal/thermal_zone1/temp",
             "/sys/class/thermal/thermal_zone2/temp",
@@ -75,23 +123,16 @@ class PerformanceMonitor {
             "/sys/class/thermal/thermal_zone8/temp",
             "/sys/class/thermal/thermal_zone9/temp",
             "/sys/class/thermal/thermal_zone10/temp",
-            "/sys/class/thermal/thermal_zone11/temp",
-            "/sys/class/thermal/thermal_zone12/temp",
             
             // 天玑芯片特定路径
-            "/sys/devices/virtual/thermal/thermal_zone0/temp",
-            "/sys/devices/virtual/thermal/thermal_zone1/temp",
-            "/sys/devices/virtual/thermal/thermal_zone2/temp",
-            "/sys/devices/virtual/thermal/thermal_zone3/temp",
-            "/sys/devices/virtual/thermal/thermal_zone4/temp",
-            "/sys/devices/virtual/thermal/thermal_zone5/temp",
+            "/sys/class/thermal/thermal_zone/mtktscpu/temp",
+            "/sys/class/thermal/thermal_zone/mtktsAP/temp",
+            "/sys/class/thermal/thermal_zone/mtktscpu0/temp",
+            "/sys/class/thermal/thermal_zone/mtktscpu1/temp",
+            "/sys/class/thermal/thermal_zone/mtktscpu2/temp",
+            "/sys/class/thermal/thermal_zone/mtktscpu3/temp",
             
             // 小米设备可能使用的路径
-            "/sys/class/thermal/thermal_message/zone0",
-            "/sys/class/thermal/thermal_message/zone1",
-            "/sys/class/thermal/thermal_message/zone2",
-            
-            // 其他可能的温度传感器路径
             "/sys/class/hwmon/hwmon0/temp1_input",
             "/sys/class/hwmon/hwmon1/temp1_input",
             "/sys/class/hwmon/hwmon2/temp1_input",
@@ -110,39 +151,14 @@ class PerformanceMonitor {
             "/proc/driver/thermal/temp",
             "/proc/thermal/temp",
             
-            // 电池温度（虽然不是CPU温度，但有时可以作为参考）
-            "/sys/class/power_supply/battery/temp",
-            "/sys/class/power_supply/bms/temp"
+            // 小米设备可能使用的额外路径
+            "/sys/devices/virtual/thermal/thermal_zone11/temp",
+            "/sys/devices/virtual/thermal/thermal_zone12/temp",
+            "/sys/devices/virtual/thermal/thermal_zone13/temp",
+            "/sys/devices/virtual/thermal/thermal_zone14/temp",
+            "/sys/devices/virtual/thermal/thermal_zone15/temp"
         ))
         
-        // 尝试读取每个路径
-        for (path in paths) {
-            try {
-                val file = File(path)
-                if (!file.exists()) continue
-                
-                val tempStr = file.readText().trim()
-                if (tempStr.isEmpty()) continue
-                
-                // 有些文件返回的是毫摄氏度，所以除以1000
-                var temp = tempStr.toDouble() / 1000.0
-                
-                // 如果温度值异常大，可能是没有除以1000，所以再检查一次
-                if (temp > 200) {
-                    temp /= 1000.0
-                }
-                
-                // 只返回合理的温度值
-                if (temp > 0 && temp < 120) {
-                    temperatureSource = path // 记录成功读取的温度源
-                    return temp
-                }
-            } catch (e: Exception) {
-                // 忽略，继续尝试下一个路径
-            }
-        }
-        
-        temperatureSource = "No sensor found" // 记录没有找到传感器
-        return 0.0
+        return paths
     }
 }
