@@ -87,6 +87,7 @@ tasks.named("preBuild") {
 }
 
 dependencies {
+    implementation 'com.github.shazam:gpuinfo:1.4.0'
     implementation 'net.java.dev.jna:jna:5.17.0@aar'
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'com.google.android.material:material:1.12.0'
