@@ -68,7 +68,7 @@ namespace Ryujinx.Graphics.Vulkan
             // 修改第67行：使用新的参数调用 GetImageUsage
             bool isNotMsOrSupportsStorage = !info.Target.IsMultisample() || gd.Capabilities.SupportsShaderStorageImageMultisample;
             bool supportsAttachmentFeedbackLoop = gd.Capabilities.SupportsAttachmentFeedbackLoop;
-            var usage = TextureStorage.GetImageUsage(info.Format, isNotMsOrSupportsStorage, false, supportsAttachmentFeedbackLoop);
+            var usage = TextureStorage.GetImageUsage(info.Format, isNotMsOrSupportsStorage, supportsAttachmentFeedbackLoop);
             
             var levels = (uint)info.Levels;
             var layers = (uint)info.GetLayers();
@@ -512,7 +512,7 @@ namespace Ryujinx.Graphics.Vulkan
             Image image,
             AccessFlags srcAccessMask,
             AccessFlags dstAccessMask,
-            ImageAspectFlags aspectFlags, // 修复拼写错误
+            ImageAspectFlags aspectFlags,
             int firstLayer,
             int firstLevel,
             int layers,
@@ -540,7 +540,7 @@ namespace Ryujinx.Graphics.Vulkan
             AccessFlags dstAccessMask,
             PipelineStageFlags srcStageMask,
             PipelineStageFlags dstStageMask,
-            ImageAspectFlags aspectFlags, // 修复拼写错误
+            ImageAspectFlags aspectFlags,
             int firstLayer,
             int firstLevel,
             int layers,
@@ -560,12 +560,12 @@ namespace Ryujinx.Graphics.Vulkan
                 commandBuffer,
                 srcStageMask,
                 dstStageMask,
-                0,
-                0,
-                null,
+                DependencyFlags.None,
                 0,
                 null,
-                1, // 修复参数错误
+                0,
+                null,
+                1,
                 in memoryBarrier);
         }
 
@@ -826,14 +826,14 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         private int GetBufferDataLength(int length)
+        {
+            if (NeedsD24S8Conversion())
             {
-                if (NeedsD24S8Conversion())
-                {
-                    return length * 2;
-                }
-
-                return length;
+                return length * 2;
             }
+
+            return length;
+        }
 
         private Format GetCompatibleGalFormat(Format format)
         {
@@ -940,7 +940,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                 var aspectFlags = Info.Format.ConvertAspectFlags();
 
-                if (aspectFlags == (ImageAspectFlags.DepthBit | ImageAspectFlags.StencilBit))
+                if (aspectFlags == (ImageAceptFlags.DepthBit | ImageAspectFlags.StencilBit))
                 {
                     aspectFlags = ImageAspectFlags.DepthBit;
                 }
