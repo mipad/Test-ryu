@@ -85,8 +85,29 @@ class GameViews {
         @OptIn(ExperimentalMaterial3Api::class)
         @Composable
         fun GameOverlay(mainViewModel: MainViewModel) {
+            // 全局显示/隐藏状态
+            val showStats = remember {
+                mutableStateOf(true)
+            }
+            
+            // 各个统计项的独立显示状态
+            val showFps = remember { mutableStateOf(true) }
+            val showRam = remember { mutableStateOf(true) }
+            val showBatteryTemperature = remember { mutableStateOf(true) }
+            val showBatteryLevel = remember { mutableStateOf(true) }
+            val showGpuName = remember { mutableStateOf(true) }
+
             Box(modifier = Modifier.fillMaxSize()) {
-                GameStats(mainViewModel)
+                if (showStats.value) {
+                    GameStats(
+                        mainViewModel = mainViewModel,
+                        showFps = showFps.value,
+                        showRam = showRam.value,
+                        showBatteryTemperature = showBatteryTemperature.value,
+                        showBatteryLevel = showBatteryLevel.value,
+                        showGpuName = showGpuName.value
+                    )
+                }
 
                 val showController = remember {
                     mutableStateOf(QuickSettings(mainViewModel.activity).useVirtualController)
@@ -239,13 +260,14 @@ class GameViews {
                                                 contentDescription = "Toggle VSync"
                                             )
                                         }
-                                        // 新增性能设置图标
+                                        // 性能设置图标
                                         IconButton(modifier = Modifier.padding(4.dp), onClick = {
                                             showMore.value = false
                                             showPerformanceSettings.value = true
                                         }) {
                                             Icon(
                                                 imageVector = Icons.stats(),
+                                                tint = if (showStats.value) Color.Green else Color.Red,
                                                 contentDescription = "Performance Settings"
                                             )
                                         }
@@ -258,7 +280,12 @@ class GameViews {
                     // 性能设置对话框
                     if (showPerformanceSettings.value) {
                         PerformanceSettingsDialog(
-                            mainViewModel = mainViewModel,
+                            showStats = showStats,
+                            showFps = showFps,
+                            showRam = showRam,
+                            showBatteryTemperature = showBatteryTemperature,
+                            showBatteryLevel = showBatteryLevel,
+                            showGpuName = showGpuName,
                             onDismiss = { showPerformanceSettings.value = false }
                         )
                     }
@@ -359,22 +386,23 @@ class GameViews {
         }
 
         @Composable
-        fun PerformanceSettingsDialog(mainViewModel: MainViewModel, onDismiss: () -> Unit) {
-            val settings = QuickSettings(mainViewModel.activity)
-            
-            val showFps = remember { mutableStateOf(settings.showFps) }
-            val showRam = remember { mutableStateOf(settings.showRam) }
-            val showBatteryTemperature = remember { mutableStateOf(settings.showBatteryTemperature) }
-            val showBatteryLevel = remember { mutableStateOf(settings.showBatteryLevel) }
-            val showGpuName = remember { mutableStateOf(settings.showGpuName) }
-
+        fun PerformanceSettingsDialog(
+            showStats: androidx.compose.runtime.MutableState<Boolean>,
+            showFps: androidx.compose.runtime.MutableState<Boolean>,
+            showRam: androidx.compose.runtime.MutableState<Boolean>,
+            showBatteryTemperature: androidx.compose.runtime.MutableState<Boolean>,
+            showBatteryLevel: androidx.compose.runtime.MutableState<Boolean>,
+            showGpuName: androidx.compose.runtime.MutableState<Boolean>,
+            onDismiss: () -> Unit
+        ) {
             BasicAlertDialog(onDismissRequest = onDismiss) {
                 Surface(
                     modifier = Modifier
                         .wrapContentWidth()
                         .wrapContentHeight(),
                     shape = MaterialTheme.shapes.large,
-                    tonalElevation = AlertDialogDefaults.TonalElevation
+                    tonalElevation = AlertDialogDefaults.TonalElevation,
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
                 ) {
                     Column(
                         modifier = Modifier
@@ -386,6 +414,21 @@ class GameViews {
                             style = MaterialTheme.typography.headlineSmall,
                             modifier = Modifier.padding(bottom = 16.dp)
                         )
+                        
+                        // 全局显示/隐藏开关
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "Show Performance Stats")
+                            Switch(
+                                checked = showStats.value,
+                                onCheckedChange = { showStats.value = it }
+                            )
+                        }
                         
                         // FPS显示开关
                         Row(
@@ -469,32 +512,9 @@ class GameViews {
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Button(
-                                onClick = onDismiss,
-                                modifier = Modifier.padding(end = 8.dp)
+                                onClick = onDismiss
                             ) {
-                                Text(text = "Cancel")
-                            }
-                            Button(
-                                onClick = {
-                                    // 保存设置
-                                    settings.showFps = showFps.value
-                                    settings.showRam = showRam.value
-                                    settings.showBatteryTemperature = showBatteryTemperature.value
-                                    settings.showBatteryLevel = showBatteryLevel.value
-                                    settings.showGpuName = showGpuName.value
-                                    settings.save()
-                                    
-                                    // 强制重新组合 GameStats
-                                    mainViewModel.updateStats(
-                                        mainViewModel.fifoState?.value ?: 0.0,
-                                        mainViewModel.gameFpsState?.value ?: 0.0,
-                                        mainViewModel.gameTimeState?.value ?: 0.0
-                                    )
-                                    
-                                    onDismiss()
-                                }
-                            ) {
-                                Text(text = "Apply")
+                                Text(text = "Close")
                             }
                         }
                     }
@@ -503,7 +523,14 @@ class GameViews {
         }
 
         @Composable
-        fun GameStats(mainViewModel: MainViewModel) {
+        fun GameStats(
+            mainViewModel: MainViewModel,
+            showFps: Boolean,
+            showRam: Boolean,
+            showBatteryTemperature: Boolean,
+            showBatteryLevel: Boolean,
+            showGpuName: Boolean
+        ) {
             val fifo = remember {
                 mutableDoubleStateOf(0.0)
             }
@@ -536,9 +563,6 @@ class GameViews {
                 mutableStateOf("")
             }
 
-            // 获取性能显示设置
-            val settings = QuickSettings(mainViewModel.activity)
-
             // 完全透明的文字面板
             CompositionLocalProvider(
                 LocalTextStyle provides TextStyle(
@@ -560,7 +584,7 @@ class GameViews {
                         Text(text = "${String.format("%.1f", fifo.value)}%")
                         
                         // FPS显示（根据设置决定是否显示）
-                        if (settings.showFps) {
+                        if (showFps) {
                             Box(
                                 modifier = Modifier.align(Alignment.Start) // 确保左对齐
                             ) {
@@ -577,7 +601,7 @@ class GameViews {
                         }
                         
                         // 内存使用（根据设置决定是否显示）
-                        if (settings.showRam) {
+                        if (showRam) {
                             Box(
                                 modifier = Modifier.align(Alignment.Start) // 确保左对齐
                             ) {
@@ -594,7 +618,7 @@ class GameViews {
                         }
                         
                         // GPU名称（根据设置决定是否显示）
-                        if (settings.showGpuName && gpuName.value.isNotEmpty() && gpuName.value != "Unknown GPU") {
+                        if (showGpuName && gpuName.value.isNotEmpty() && gpuName.value != "Unknown GPU") {
                             Box(
                                 modifier = Modifier.align(Alignment.Start) // 确保左对齐
                             ) {
@@ -623,7 +647,7 @@ class GameViews {
                             horizontalAlignment = Alignment.End
                         ) {
                             // 电池温度显示（根据设置决定是否显示）
-                            if (settings.showBatteryTemperature && batteryTemperature.value > 0) {
+                            if (showBatteryTemperature && batteryTemperature.value > 0) {
                                 Box(
                                     modifier = Modifier
                                         .background(
@@ -644,7 +668,7 @@ class GameViews {
                             }
                             
                             // 电池电量显示（根据设置决定是否显示）
-                            if (settings.showBatteryLevel && batteryLevel.value >= 0) {
+                            if (showBatteryLevel && batteryLevel.value >= 0) {
                                 Spacer(modifier = Modifier.padding(2.dp))
                                 Box(
                                     modifier = Modifier
