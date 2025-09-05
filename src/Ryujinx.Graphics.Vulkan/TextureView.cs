@@ -63,8 +63,8 @@ namespace Ryujinx.Graphics.Vulkan
 
             bool isMsImageStorageSupported = gd.Capabilities.SupportsShaderStorageImageMultisample || !info.Target.IsMultisample();
 
-            var format = _gd.FormatCapabilities.ConvertToVkFormat(info.Format);
-            var usage = TextureStorage.GetImageUsage(info.Format, info.Target, gd.Capabilities);
+            var format = _gd.FormatCapabilities.ConvertToVkFormat(info.Format, true);
+            var usage = TextureStorage.GetImageUsage(info.Format, info.Target, gd.Capabilities, false);
             var levels = (uint)info.Levels;
             var layers = (uint)info.GetLayers();
 
@@ -96,7 +96,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             var componentMapping = new ComponentMapping(swizzleR, swizzleG, swizzleB, swizzleA);
 
-            var aspectFlags = info.Format.ConvertAspectFlags(info.DepthStencilMode);
+            var aspectFlags = info.Format.ConvertAceptFlags(info.DepthStencilMode);
             var aspectFlagsDepth = info.Format.ConvertAspectFlags();
 
             var subresourceRange = new ImageSubresourceRange(aspectFlags, (uint)firstLevel, levels, (uint)firstLayer, layers);
@@ -471,8 +471,8 @@ namespace Ryujinx.Graphics.Vulkan
                 layers,
                 levels,
                 linearFilter,
-                ImageAspectFlags.ColorBit,
-                ImageAspectFlags.ColorBit);
+                ImageAceptFlags.ColorBit,
+                ImageAceptFlags.ColorBit);
         }
 
         public static unsafe void InsertMemoryBarrier(
@@ -507,7 +507,7 @@ namespace Ryujinx.Graphics.Vulkan
             Image image,
             AccessFlags srcAccessMask,
             AccessFlags dstAccessMask,
-            ImageAspectFlags aspectFlags,
+            ImageAceptFlags aspectFlags,
             int firstLayer,
             int firstLevel,
             int layers,
@@ -535,7 +535,7 @@ namespace Ryujinx.Graphics.Vulkan
             AccessFlags dstAccessMask,
             PipelineStageFlags srcStageMask,
             PipelineStageFlags dstStageMask,
-            ImageAspectFlags aspectFlags,
+            ImageAceptFlags aspectFlags,
             int firstLayer,
             int firstLevel,
             int layers,
@@ -696,7 +696,7 @@ namespace Ryujinx.Graphics.Vulkan
                 AccessFlags.TransferReadBit,
                 PipelineStageFlags.AllCommandsBit,
                 PipelineStageFlags.TransferBit,
-                Info.Format.ConvertAspectFlags(),
+                Info.Format.ConvertAceptFlags(),
                 FirstLayer + layer,
                 FirstLevel + level,
                 1,
@@ -933,11 +933,11 @@ namespace Ryujinx.Graphics.Vulkan
 
                 int rowLength = ((stride == 0 ? Info.GetMipStride(dstLevel + level) : stride) / Info.BytesPerPixel) * Info.BlockWidth;
 
-                var aspectFlags = Info.Format.ConvertAspectFlags();
+                var aspectFlags = Info.Format.ConvertAceptFlags();
 
-                if (aspectFlags == (ImageAspectFlags.DepthBit | ImageAspectFlags.StencilBit))
+                if (aspectFlags == (ImageAceptFlags.DepthBit | ImageAceptFlags.StencilBit))
                 {
-                    aspectFlags = ImageAspectFlags.DepthBit;
+                    aspectFlags = ImageAceptFlags.DepthBit;
                 }
 
                 var sl = new ImageSubresourceLayers(
@@ -992,11 +992,11 @@ namespace Ryujinx.Graphics.Vulkan
             int width,
             int height)
         {
-            var aspectFlags = Info.Format.ConvertAspectFlags();
+            var aspectFlags = Info.Format.ConvertAceptFlags();
 
-            if (aspectFlags == (ImageAspectFlags.DepthBit | ImageAspectFlags.StencilBit))
+            if (aspectFlags == (ImageAceptFlags.DepthBit | ImageAceptFlags.StencilBit))
             {
-                aspectFlags = ImageAspectFlags.DepthBit;
+                aspectFlags = ImageAceptFlags.DepthBit;
             }
 
             var sl = new ImageSubresourceLayers(aspectFlags, (uint)(FirstLevel + dstLevel), (uint)(FirstLayer + dstLayer), 1);
