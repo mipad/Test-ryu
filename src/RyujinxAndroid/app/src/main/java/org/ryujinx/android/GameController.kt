@@ -2,11 +2,16 @@ package org.ryujinx.android
 
 import android.app.Activity
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
-import android.widget.Button
+import android.view.ViewGroup
+import android.view.animation.Animation
+import android.view.animation.ScaleAnimation
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -35,6 +40,82 @@ import org.ryujinx.android.viewmodels.QuickSettings
 typealias GamePad = RadialGamePad
 typealias GamePadConfig = RadialGamePadConfig
 
+// 自定义双圆形按钮视图
+class DoubleCircleButtonView(context: Context, val buttonText: String, val buttonId: Int) : View(context) {
+    private val outerCirclePaint = Paint().apply {
+        color = Color.argb(128, 255, 255, 255) // 半透明白色外圈
+        style = Paint.Style.STROKE
+        strokeWidth = 4f
+        isAntiAlias = true
+    }
+    
+    private val innerCirclePaint = Paint().apply {
+        color = Color.argb(64, 200, 200, 200) // 更透明的内圈
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+    
+    private val textPaint = Paint().apply {
+        color = Color.WHITE
+        textSize = 24f
+        textAlign = Paint.Align.CENTER
+        typeface = Typeface.DEFAULT_BOLD
+        isAntiAlias = true
+    }
+    
+    private var isPressed = false
+    
+    fun setPressedState(pressed: Boolean) {
+        isPressed = pressed
+        if (pressed) {
+            // 按压动画
+            val scaleAnimation = ScaleAnimation(
+                1.0f, 0.8f, 1.0f, 0.8f,
+                Animation.RELATIVE_TO_SELF, 0.5f,
+                Animation.RELATIVE_TO_SELF, 0.5f
+            )
+            scaleAnimation.duration = 100
+            scaleAnimation.fillAfter = true
+            startAnimation(scaleAnimation)
+        } else {
+            // 回弹动画
+            val scaleAnimation = ScaleAnimation(
+                0.8f, 1.0f, 0.8f, 1.0f,
+                Animation.RELATIVE_TO_SELF, 0.5f,
+                Animation.RELATIVE_TO_SELF, 0.5f
+            )
+            scaleAnimation.duration = 100
+            scaleAnimation.fillAfter = true
+            startAnimation(scaleAnimation)
+        }
+        invalidate()
+    }
+    
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        
+        val centerX = width / 2f
+        val centerY = height / 2f
+        val outerRadius = (width.coerceAtMost(height) / 2f) * 0.9f
+        val innerRadius = outerRadius * 0.6f
+        
+        // 绘制外圈
+        canvas.drawCircle(centerX, centerY, outerRadius, outerCirclePaint)
+        
+        // 绘制内圈
+        canvas.drawCircle(centerX, centerY, innerRadius, innerCirclePaint)
+        
+        // 绘制文字
+        val textY = centerY - (textPaint.descent() + textPaint.ascent()) / 2
+        canvas.drawText(buttonText, centerX, textY, textPaint)
+    }
+    
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val size = 80 // 80dp
+        setMeasuredDimension(size, size)
+    }
+}
+
 class GameController(var activity: Activity) {
 
     companion object {
@@ -45,13 +126,11 @@ class GameController(var activity: Activity) {
             view.findViewById<FrameLayout>(R.id.rightcontainer)!!.addView(controller.rightGamePad)
 
             // 添加L3按钮
-            val l3Button = Button(context).apply {
-                text = "L3"
-                setBackgroundColor(Color.argb(128, 100, 100, 100)) // 半透明灰色背景
-                setTextColor(Color.WHITE)
+            val l3Button = DoubleCircleButtonView(context, "L3", GamePadButtonInputId.LeftStickButton.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
                         KeyEvent.ACTION_DOWN -> {
+                            setPressedState(true)
                             RyujinxNative.jnaInstance.inputSetButtonPressed(
                                 GamePadButtonInputId.LeftStickButton.ordinal,
                                 controller.controllerId
@@ -59,6 +138,7 @@ class GameController(var activity: Activity) {
                             true
                         }
                         KeyEvent.ACTION_UP -> {
+                            setPressedState(false)
                             RyujinxNative.jnaInstance.inputSetButtonReleased(
                                 GamePadButtonInputId.LeftStickButton.ordinal,
                                 controller.controllerId
@@ -71,13 +151,11 @@ class GameController(var activity: Activity) {
             }
             
             // 添加R3按钮
-            val r3Button = Button(context).apply {
-                text = "R3"
-                setBackgroundColor(Color.argb(128, 100, 100, 100)) // 半透明灰色背景
-                setTextColor(Color.WHITE)
+            val r3Button = DoubleCircleButtonView(context, "R3", GamePadButtonInputId.RightStickButton.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
                         KeyEvent.ACTION_DOWN -> {
+                            setPressedState(true)
                             RyujinxNative.jnaInstance.inputSetButtonPressed(
                                 GamePadButtonInputId.RightStickButton.ordinal,
                                 controller.controllerId
@@ -85,6 +163,7 @@ class GameController(var activity: Activity) {
                             true
                         }
                         KeyEvent.ACTION_UP -> {
+                            setPressedState(false)
                             RyujinxNative.jnaInstance.inputSetButtonReleased(
                                 GamePadButtonInputId.RightStickButton.ordinal,
                                 controller.controllerId
@@ -98,25 +177,25 @@ class GameController(var activity: Activity) {
             
             // 设置L3和R3按钮的布局参数
             val layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
             )
             
-            // 将L3按钮添加到左侧容器
+            // 将L3按钮添加到左侧容器 - 放置在L按钮右侧
             layoutParams.apply {
-                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
-                bottomMargin = 50
-                leftMargin = 50
+                gravity = android.view.Gravity.TOP or android.view.Gravity.START
+                topMargin = 150 // 根据截图调整位置
+                leftMargin = 250 // 根据截图调整位置
             }
             l3Button.layoutParams = layoutParams
             view.findViewById<FrameLayout>(R.id.leftcontainer)!!.addView(l3Button)
             controller.l3Button = l3Button
             
-            // 将R3按钮添加到右侧容器
+            // 将R3按钮添加到右侧容器 - 放置在R按钮左侧
             layoutParams.apply {
-                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
-                bottomMargin = 50
-                rightMargin = 50
+                gravity = android.view.Gravity.TOP or android.view.Gravity.END
+                topMargin = 150 // 根据截图调整位置
+                rightMargin = 250 // 根据截图调整位置
             }
             r3Button.layoutParams = layoutParams
             view.findViewById<FrameLayout>(R.id.rightcontainer)!!.addView(r3Button)
@@ -154,8 +233,8 @@ class GameController(var activity: Activity) {
     private var controllerView: View? = null
     var leftGamePad: GamePad
     var rightGamePad: GamePad
-    var l3Button: Button? = null
-    var r3Button: Button? = null
+    var l3Button: DoubleCircleButtonView? = null
+    var r3Button: DoubleCircleButtonView? = null
     var controllerId: Int = -1
     val isVisible: Boolean
         get() {
