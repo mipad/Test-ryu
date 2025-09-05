@@ -391,10 +391,13 @@ class MainViewModel(val activity: MainActivity) {
                 )
             }
         }
-        // 更新CPU温度
-        cpuTemperatureState?.apply {
-            this.value = MainActivity.performanceMonitor.getCpuTemperature()
-        }
+        // 在updateStats方法中修改温度更新部分
+// 更新CPU温度
+cpuTemperatureState?.apply {
+    val (temp, source) = MainActivity.performanceMonitor.getCpuTemperature()
+    this.value = temp
+    // 如果需要，可以在这里记录source用于调试
+}
         //frequenciesState?.let { MainActivity.performanceMonitor.getFrequencies(it) }
     }
 
