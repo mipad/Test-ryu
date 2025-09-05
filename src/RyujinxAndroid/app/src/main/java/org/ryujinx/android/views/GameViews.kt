@@ -95,7 +95,7 @@ class GameViews {
             val showRam = remember { mutableStateOf(true) }
             val showBatteryTemperature = remember { mutableStateOf(false) }
             val showBatteryLevel = remember { mutableStateOf(false) }
-            val showGpuName = remember { mutableStateOf(false) }
+            val showGpuName = remember { mutableStateOf(true) }
 
             Box(modifier = Modifier.fillMaxSize()) {
                 if (showStats.value) {
