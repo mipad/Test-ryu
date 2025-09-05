@@ -58,7 +58,7 @@ class DoubleCircleButtonView(context: Context, val buttonText: String, val butto
     
     private val textPaint = Paint().apply {
         color = Color.WHITE
-        textSize = 32f // 增大文字尺寸
+        textSize = 20f // 增大文字尺寸
         textAlign = Paint.Align.CENTER
         typeface = Typeface.DEFAULT_BOLD
         isAntiAlias = true
@@ -112,7 +112,7 @@ class DoubleCircleButtonView(context: Context, val buttonText: String, val butto
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(100) // 增大到100dp
+        val size = dpToPx(70) 
         setMeasuredDimension(size, size)
     }
     
@@ -184,31 +184,31 @@ class GameController(var activity: Activity) {
                 }
             }
             
+            
             // 设置L3和R3按钮的布局参数
-            val layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            
-            // 将L3按钮添加到左侧容器 - 向左移动3个按键位置
-            layoutParams.apply {
-                gravity = android.view.Gravity.TOP or android.view.Gravity.START
-                topMargin = dpToPx(context, 150) // 根据截图调整位置
-                leftMargin = dpToPx(context, 100) // 向左移动3个按键位置
-            }
-            l3Button.layoutParams = layoutParams
-            view.findViewById<FrameLayout>(R.id.leftcontainer)!!.addView(l3Button)
-            controller.l3Button = l3Button
-            
-            // 将R3按钮添加到右侧容器 - 向左移动3个按键位置
-            layoutParams.apply {
-                gravity = android.view.Gravity.TOP or android.view.Gravity.END
-                topMargin = dpToPx(context, 150) // 根据截图调整位置
-                rightMargin = dpToPx(context, 100) // 向左移动3个按键位置
-            }
-            r3Button.layoutParams = layoutParams
-            view.findViewById<FrameLayout>(R.id.rightcontainer)!!.addView(r3Button)
-            controller.r3Button = r3Button
+val l3LayoutParams = FrameLayout.LayoutParams(
+    ViewGroup.LayoutParams.WRAP_CONTENT,
+    ViewGroup.LayoutParams.WRAP_CONTENT
+).apply {
+    gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
+    bottomMargin = dpToPx(context, 120) // 距离底部120dp
+    leftMargin = dpToPx(context, 280) // 距离左侧280dp，位于L键右边
+}
+l3Button.layoutParams = l3LayoutParams
+view.findViewById<FrameLayout>(R.id.leftcontainer)!!.addView(l3Button)
+controller.l3Button = l3Button
+
+val r3LayoutParams = FrameLayout.LayoutParams(
+    ViewGroup.LayoutParams.WRAP_CONTENT,
+    ViewGroup.LayoutParams.WRAP_CONTENT
+).apply {
+    gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
+    bottomMargin = dpToPx(context, 120) // 距离底部120dp
+    rightMargin = dpToPx(context, 280) // 距离右侧280dp，位于R键左边
+}
+r3Button.layoutParams = r3LayoutParams
+view.findViewById<FrameLayout>(R.id.rightcontainer)!!.addView(r3Button)
+controller.r3Button = r3Button
 
             return view
         }
