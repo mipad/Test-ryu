@@ -24,6 +24,13 @@ class QuickSettings(val activity: Activity) {
     var controllerStickSensitivity: Float
     var skipMemoryBarriers: Boolean // 新增：跳过内存屏障
 
+    // 性能显示设置
+    var showFps: Boolean
+    var showRam: Boolean
+    var showBatteryTemperature: Boolean
+    var showBatteryLevel: Boolean
+    var showGpuName: Boolean
+
     // Logs
     var enableDebugLogs: Boolean
     var enableStubLogs: Boolean
@@ -58,6 +65,13 @@ class QuickSettings(val activity: Activity) {
         controllerStickSensitivity = sharedPref.getFloat("controllerStickSensitivity", 1.0f)
         skipMemoryBarriers = sharedPref.getBoolean("skipMemoryBarriers", false) // 初始化
 
+        // 性能显示设置默认值
+        showFps = sharedPref.getBoolean("showFps", true)
+        showRam = sharedPref.getBoolean("showRam", true)
+        showBatteryTemperature = sharedPref.getBoolean("showBatteryTemperature", true)
+        showBatteryLevel = sharedPref.getBoolean("showBatteryLevel", true)
+        showGpuName = sharedPref.getBoolean("showGpuName", true)
+
         enableDebugLogs = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs = sharedPref.getBoolean("enableStubLogs", false)
         enableInfoLogs = sharedPref.getBoolean("enableInfoLogs", true)
@@ -90,6 +104,13 @@ class QuickSettings(val activity: Activity) {
         editor.putBoolean("enablePerformanceMode", enablePerformanceMode)
         editor.putFloat("controllerStickSensitivity", controllerStickSensitivity)
         editor.putBoolean("skipMemoryBarriers", skipMemoryBarriers) // 保存
+
+        // 保存性能显示设置
+        editor.putBoolean("showFps", showFps)
+        editor.putBoolean("showRam", showRam)
+        editor.putBoolean("showBatteryTemperature", showBatteryTemperature)
+        editor.putBoolean("showBatteryLevel", showBatteryLevel)
+        editor.putBoolean("showGpuName", showGpuName)
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs)
         editor.putBoolean("enableStubLogs", enableStubLogs)
