@@ -512,7 +512,7 @@ namespace Ryujinx.Graphics.Vulkan
             Image image,
             AccessFlags srcAccessMask,
             AccessFlags dstAccessMask,
-            ImageAceptFlags aspectFlags,
+            ImageAspectFlags aspectFlags, // 修复拼写错误
             int firstLayer,
             int firstLevel,
             int layers,
@@ -540,7 +540,7 @@ namespace Ryujinx.Graphics.Vulkan
             AccessFlags dstAccessMask,
             PipelineStageFlags srcStageMask,
             PipelineStageFlags dstStageMask,
-            ImageAspectFlags aspectFlags,
+            ImageAspectFlags aspectFlags, // 修复拼写错误
             int firstLayer,
             int firstLevel,
             int layers,
@@ -565,7 +565,7 @@ namespace Ryujinx.Graphics.Vulkan
                 null,
                 0,
                 null,
-                l,
+                1, // 修复参数错误
                 in memoryBarrier);
         }
 
@@ -942,7 +942,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                 if (aspectFlags == (ImageAspectFlags.DepthBit | ImageAspectFlags.StencilBit))
                 {
-                    aspectFlags = ImageAceptFlags.DepthBit;
+                    aspectFlags = ImageAspectFlags.DepthBit;
                 }
 
                 var sl = new ImageSubresourceLayers(
@@ -1001,7 +1001,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (aspectFlags == (ImageAspectFlags.DepthBit | ImageAspectFlags.StencilBit))
             {
-                aspectFlags = ImageAceptFlags.DepthBit;
+                aspectFlags = ImageAspectFlags.DepthBit;
             }
 
             var sl = new ImageSubresourceLayers(aspectFlags, (uint)(FirstLevel + dstLevel), (uint)(FirstLayer + dstLayer), 1);
