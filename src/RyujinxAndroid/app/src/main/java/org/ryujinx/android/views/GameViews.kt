@@ -336,112 +336,157 @@ class GameViews {
         }
 
         @Composable
-fun GameStats(mainViewModel: MainViewModel) {
-    val fifo = remember {
-        mutableDoubleStateOf(0.0)
-    }
-    val gameFps = remember {
-        mutableDoubleStateOf(0.0)
-    }
-    val gameTime = remember {
-        mutableDoubleStateOf(0.0)
-    }
-    val usedMem = remember {
-        mutableIntStateOf(0)
-    }
-    val totalMem = remember {
-        mutableIntStateOf(0)
-    }
-    // 添加CPU温度状态
-    val cpuTemperature = remember {
-        mutableDoubleStateOf(0.0)
-    }
-
-    // 完全透明的文字面板
-    CompositionLocalProvider(
-        LocalTextStyle provides TextStyle(
-            fontSize = 10.sp,
-            color = Color.White // 确保文字在游戏画面上可见
-        )
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            // 左上角的性能指标
-            Column(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(16.dp)
-                    .background(Color.Transparent) // 完全透明背景
-            ) {
-                val gameTimeVal = if (!gameTime.value.isInfinite()) gameTime.value else 0.0
-                
-                // 核心性能指标
-                Text(text = "${String.format("%.1f", fifo.value)}%")
-                
-                // 使用Box包装FPS文本，确保对齐不受背景影响
-                Box(
-                    modifier = Modifier.align(Alignment.Start) // 确保左对齐
-                ) {
-                    Text(
-                        text = "${String.format("%.1f", gameFps.value)} FPS",
-                        modifier = Modifier
-                            .background(
-                                color = Color.Black.copy(alpha = 0.26f),
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-                            )
-                    )
-                }
-                
-                // 内存使用
-                Text(text = "${usedMem.value}/${totalMem.value} MB")
+        fun GameStats(mainViewModel: MainViewModel) {
+            val fifo = remember {
+                mutableDoubleStateOf(0.0)
+            }
+            val gameFps = remember {
+                mutableDoubleStateOf(0.0)
+            }
+            val gameTime = remember {
+                mutableDoubleStateOf(0.0)
+            }
+            val usedMem = remember {
+                mutableIntStateOf(0)
+            }
+            val totalMem = remember {
+                mutableIntStateOf(0)
+            }
+            // 电池温度状态
+            val batteryTemperature = remember {
+                mutableDoubleStateOf(0.0)
+            }
+            // 电池电量状态
+            val batteryLevel = remember {
+                mutableIntStateOf(-1)
+            }
+            // 充电状态
+            val isCharging = remember {
+                mutableStateOf(false)
+            }
+            // GPU名称状态
+            val gpuName = remember {
+                mutableStateOf("")
             }
 
-            // 在GameStats函数中添加调试信息显示
-// 右上角的温度显示
-Box(
-    modifier = Modifier
-        .align(Alignment.TopEnd)
-        .padding(16.dp)
-) {
-    if (cpuTemperature.value > 0) {
-        Box(
-            modifier = Modifier
-                .background(
-                    color = Color.Black.copy(alpha = 0.26f),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+            // 完全透明的文字面板
+            CompositionLocalProvider(
+                LocalTextStyle provides TextStyle(
+                    fontSize = 10.sp,
+                    color = Color.White // 确保文字在游戏画面上可见
                 )
-                .padding(horizontal = 6.dp, vertical = 2.dp)
-        ) {
-            Text(
-                text = "${String.format("%.1f", cpuTemperature.value)}°C",
-                color = when {
-                    cpuTemperature.value > 70 -> Color.Red
-                    cpuTemperature.value > 60 -> Color.Yellow
-                    else -> Color.White
-                }
-            )
-        }
-    } else {
-        // 如果没有温度数据，显示调试信息
-        Box(
-            modifier = Modifier
-                .background(
-                    color = Color.Black.copy(alpha = 0.26f),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-                )
-                .padding(horizontal = 6.dp, vertical = 2.dp)
-        ) {
-            Text(
-                text = "N/A°C",
-                color = Color.Gray,
-                fontSize = 8.sp
-            )
-        }
-    }
-}
-        }
-    }
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    // 左上角的性能指标
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(16.dp)
+                            .background(Color.Transparent) // 完全透明背景
+                    ) {
+                        val gameTimeVal = if (!gameTime.value.isInfinite()) gameTime.value else 0.0
+                        
+                        // 核心性能指标
+                        Text(text = "${String.format("%.1f", fifo.value)}%")
+                        
+                        // 使用Box包装FPS文本，确保对齐不受背景影响
+                        Box(
+                            modifier = Modifier.align(Alignment.Start) // 确保左对齐
+                        ) {
+                            Text(
+                                text = "${String.format("%.1f", gameFps.value)} FPS",
+                                modifier = Modifier
+                                    .background(
+                                        color = Color.Black.copy(alpha = 0.26f),
+                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                    )
+                            )
+                        }
+                        
+                        // 内存使用
+                        Text(text = "${usedMem.value}/${totalMem.value} MB")
+                        
+                        // GPU名称
+                        if (gpuName.value.isNotEmpty() && gpuName.value != "Unknown GPU") {
+                            Text(
+                                text = gpuName.value,
+                                fontSize = 8.sp,
+                                color = Color.Gray
+                            )
+                        }
+                    }
 
-    mainViewModel.setStatStates(fifo, gameFps, gameTime, usedMem, totalMem, cpuTemperature)
-}
+                    // 右上角的电池信息显示
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(16.dp)
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.End
+                        ) {
+                            // 电池温度显示
+                            if (batteryTemperature.value > 0) {
+                                Box(
+                                    modifier = Modifier
+                                        .background(
+                                            color = Color.Black.copy(alpha = 0.26f),
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "${String.format("%.1f", batteryTemperature.value)}°C",
+                                        color = when {
+                                            batteryTemperature.value > 40 -> Color.Red
+                                            batteryTemperature.value > 35 -> Color.Yellow
+                                            else -> Color.White
+                                        }
+                                    )
+                                }
+                            }
+                            
+                            // 电池电量显示
+                            if (batteryLevel.value >= 0) {
+                                Spacer(modifier = Modifier.padding(2.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .background(
+                                            color = Color.Black.copy(alpha = 0.26f),
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = if (isCharging.value) {
+                                            "${batteryLevel.value}% ⚡"
+                                        } else {
+                                            "${batteryLevel.value}%"
+                                        },
+                                        color = when {
+                                            batteryLevel.value < 20 -> Color.Red
+                                            batteryLevel.value < 50 -> Color.Yellow
+                                            else -> Color.White
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            mainViewModel.setStatStates(
+                fifo, 
+                gameFps, 
+                gameTime, 
+                usedMem, 
+                totalMem, 
+                batteryTemperature,
+                batteryLevel,
+                isCharging,
+                gpuName
+            )
+        }
     }
 }
