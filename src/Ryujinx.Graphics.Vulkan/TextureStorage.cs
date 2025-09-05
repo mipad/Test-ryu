@@ -94,7 +94,7 @@ namespace Ryujinx.Graphics.Vulkan
             // 修改调用处，传递 isNotMsOrSupportsStorage 和 supportsAttachmentFeedbackLoop 参数
             bool isNotMsOrSupportsStorage = !info.Target.IsMultisample() || gd.Capabilities.SupportsShaderStorageImageMultisample;
             bool supportsAttachmentFeedbackLoop = gd.Capabilities.SupportsAttachmentFeedbackLoop;
-            var usage = GetImageUsage(info.Format, isNotMsOrSupportsStorage, false, supportsAttachmentFeedbackLoop);
+            var usage = GetImageUsage(info.Format, isNotMsOrSupportsStorage, supportsAttachmentFeedbackLoop);
 
             var flags = ImageCreateFlags.CreateMutableFormatBit | ImageCreateFlags.CreateExtendedUsageBit;
 
@@ -308,7 +308,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public static ImageUsageFlags GetImageUsage(Format format, bool isNotMsOrSupportsStorage, bool extendedUsage, bool supportsAttachmentFeedbackLoop)
+        public static ImageUsageFlags GetImageUsage(Format format, bool isNotMsOrSupportsStorage, bool supportsAttachmentFeedbackLoop)
         {
             var usage = DefaultUsageFlags;
 
@@ -337,7 +337,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         public static SampleCountFlags ConvertToSampleCountFlags(SampleCountFlags supportedSampleCounts, uint samples)
         {
-            if (samples == 0 || samples > (uint)SampleCountFlags.Count64Bit)
+            if (samples == 0 or samples > (uint)SampleCountFlags.Count64Bit)
             {
                 return SampleCountFlags.Count1Bit;
             }
@@ -593,6 +593,10 @@ namespace Ryujinx.Graphics.Vulkan
                 _gd.PipelineInternal?.FlushCommandsIfWeightExceeding(_imageAuto, _size);
 
                 Dispose();
+            }
+            else if (_viewsCount < 0)
+            {
+                _viewsCount = 0;
             }
         }
 
