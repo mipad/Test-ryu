@@ -41,7 +41,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.Npad
         public NpadLarkType LarkTypeRight;
         public NpadLuciaType LuciaType;
         public uint Unknown43EC;
-        public ulong SixAxisSensorPropertiesArray
+        public ulong SixAxisSensorPropertiesArray;
 
         [StructLayout(LayoutKind.Sequential, Size = 123, Pack = 1)]
         private struct Reserved2Struct { }
