@@ -61,34 +61,35 @@ class PerformanceMonitor {
         // 尝试从多个可能的路径读取温度
         val paths = mutableListOf<String>()
         
-        // 添加 thermal_zone0 到 thermal_zone20
-        for (i in 0..20) {
-            paths.add("/sys/class/thermal/thermal_zone$i/temp")
-            paths.add("/sys/devices/virtual/thermal/thermal_zone$i/temp")
-        }
-        
-        // 添加天玑芯片特有的温度传感器路径
+        // 小米设备常用的温度传感器路径
         paths.addAll(listOf(
-            // 天玑芯片常见温度传感器路径
+            // 小米/天玑常用路径
+            "/sys/class/thermal/thermal_zone0/temp",
+            "/sys/class/thermal/thermal_zone1/temp",
+            "/sys/class/thermal/thermal_zone2/temp",
+            "/sys/class/thermal/thermal_zone3/temp",
+            "/sys/class/thermal/thermal_zone4/temp",
+            "/sys/class/thermal/thermal_zone5/temp",
+            "/sys/class/thermal/thermal_zone6/temp",
+            "/sys/class/thermal/thermal_zone7/temp",
+            "/sys/class/thermal/thermal_zone8/temp",
+            "/sys/class/thermal/thermal_zone9/temp",
+            "/sys/class/thermal/thermal_zone10/temp",
+            "/sys/class/thermal/thermal_zone11/temp",
+            "/sys/class/thermal/thermal_zone12/temp",
+            
+            // 天玑芯片特定路径
             "/sys/devices/virtual/thermal/thermal_zone0/temp",
             "/sys/devices/virtual/thermal/thermal_zone1/temp",
             "/sys/devices/virtual/thermal/thermal_zone2/temp",
             "/sys/devices/virtual/thermal/thermal_zone3/temp",
             "/sys/devices/virtual/thermal/thermal_zone4/temp",
             "/sys/devices/virtual/thermal/thermal_zone5/temp",
-            "/sys/devices/virtual/thermal/thermal_zone6/temp",
-            "/sys/devices/virtual/thermal/thermal_zone7/temp",
-            "/sys/devices/virtual/thermal/thermal_zone8/temp",
-            "/sys/devices/virtual/thermal/thermal_zone9/temp",
-            "/sys/devices/virtual/thermal/thermal_zone10/temp",
             
-            // 天玑芯片特定温度传感器
-            "/sys/class/thermal/thermal_zone/mtktscpu/temp",
-            "/sys/class/thermal/thermal_zone/mtktsAP/temp",
-            "/sys/class/thermal/thermal_zone/mtktscpu0/temp",
-            "/sys/class/thermal/thermal_zone/mtktscpu1/temp",
-            "/sys/class/thermal/thermal_zone/mtktscpu2/temp",
-            "/sys/class/thermal/thermal_zone/mtktscpu3/temp",
+            // 小米设备可能使用的路径
+            "/sys/class/thermal/thermal_message/zone0",
+            "/sys/class/thermal/thermal_message/zone1",
+            "/sys/class/thermal/thermal_message/zone2",
             
             // 其他可能的温度传感器路径
             "/sys/class/hwmon/hwmon0/temp1_input",
@@ -107,7 +108,11 @@ class PerformanceMonitor {
             // 其他可能的路径
             "/sys/class/thermal/thermal_zone/temp",
             "/proc/driver/thermal/temp",
-            "/proc/thermal/temp"
+            "/proc/thermal/temp",
+            
+            // 电池温度（虽然不是CPU温度，但有时可以作为参考）
+            "/sys/class/power_supply/battery/temp",
+            "/sys/class/power_supply/bms/temp"
         ))
         
         // 尝试读取每个路径
