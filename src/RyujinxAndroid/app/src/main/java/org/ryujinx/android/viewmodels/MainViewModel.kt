@@ -364,7 +364,6 @@ class MainViewModel(val activity: MainActivity) {
         batteryLevel: MutableState<Int>, // 电池电量
         isCharging: MutableState<Boolean>, // 充电状态
         gpuName: MutableState<String> // GPU名称
-        //frequencies: MutableList<Double>
     ) {
         fifoState = fifo
         gameFpsState = gameFps
@@ -375,7 +374,6 @@ class MainViewModel(val activity: MainActivity) {
         batteryLevelState = batteryLevel
         isChargingState = isCharging
         gpuNameState = gpuName
-        //frequenciesState = frequencies
     }
 
     fun updateStats(
@@ -422,8 +420,6 @@ class MainViewModel(val activity: MainActivity) {
                 this.value = MainActivity.performanceMonitor.getGpuName()
             }
         }
-        
-        //frequenciesState?.let { MainActivity.performanceMonitor.getFrequencies(it) }
     }
 
     fun setGameController(controller: GameController) {
