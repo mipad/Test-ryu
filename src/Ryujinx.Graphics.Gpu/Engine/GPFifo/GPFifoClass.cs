@@ -151,7 +151,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
             uint syncpointId = (uint)_state.State.SyncpointbSyncptIndex;
             
             // 添加同步点 ID 验证
-            if (syncpointId >= SynchronizationManager.MaxHardwareSyncpoints)
+            if (syncpointId >= (uint)SynchronizationManager.MaxHardwareSyncpoints)
             {
                 // 记录更详细的警告信息
                 Logger.Warning?.Print(LogClass.Gpu, 
