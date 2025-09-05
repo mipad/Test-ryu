@@ -940,7 +940,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                 var aspectFlags = Info.Format.ConvertAspectFlags();
 
-                if (aspectFlags == (ImageAceptFlags.DepthBit | ImageAspectFlags.StencilBit))
+                if (aspectFlags == (ImageAspectFlags.DepthBit | ImageAspectFlags.StencilBit))
                 {
                     aspectFlags = ImageAspectFlags.DepthBit;
                 }
