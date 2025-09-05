@@ -419,7 +419,7 @@ class GameViews {
                             text = "Game Stats",
                             style = MaterialTheme.typography.headlineSmall,
                             modifier = Modifier
-                                .padding(bottom = 16.dp)
+                                .padding(bottom = 10.dp)
                                 .align(Alignment.CenterHorizontally)
                         )
                         
@@ -439,7 +439,7 @@ class GameViews {
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(text = "Show FIFO")
+                                    Text(text = "FIFO")
                                     Switch(
                                         checked = showFifo.value,
                                         onCheckedChange = { showFifo.value = it }
@@ -452,7 +452,7 @@ class GameViews {
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(text = "Show FPS")
+                                    Text(text = "FPS")
                                     Switch(
                                         checked = showFps.value,
                                         onCheckedChange = { showFps.value = it }
@@ -465,7 +465,7 @@ class GameViews {
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(text = "Show RAM Usage")
+                                    Text(text = "RAM Usage")
                                     Switch(
                                         checked = showRam.value,
                                         onCheckedChange = { showRam.value = it }
@@ -484,7 +484,7 @@ class GameViews {
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(text = "Show Battery Temp")
+                                    Text(text = "Battery Temp")
                                     Switch(
                                         checked = showBatteryTemperature.value,
                                         onCheckedChange = { showBatteryTemperature.value = it }
@@ -497,7 +497,7 @@ class GameViews {
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(text = "Show Battery Level")
+                                    Text(text = "Battery Level")
                                     Switch(
                                         checked = showBatteryLevel.value,
                                         onCheckedChange = { showBatteryLevel.value = it }
@@ -510,7 +510,7 @@ class GameViews {
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(text = "Show GPU Name")
+                                    Text(text = "GPU Name")
                                     Switch(
                                         checked = showGpuName.value,
                                         onCheckedChange = { showGpuName.value = it }
