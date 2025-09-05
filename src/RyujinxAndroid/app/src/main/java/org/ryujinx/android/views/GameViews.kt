@@ -395,47 +395,49 @@ fun GameStats(mainViewModel: MainViewModel) {
                 Text(text = "${usedMem.value}/${totalMem.value} MB")
             }
 
-            // 右上角的温度显示
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(16.dp)
-            ) {
-                if (cpuTemperature.value > 0) {
-                    Box(
-                        modifier = Modifier
-                            .background(
-                                color = Color.Black.copy(alpha = 0.26f),
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-                            )
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = "${String.format("%.1f", cpuTemperature.value)}°C",
-                            color = when {
-                                cpuTemperature.value > 70 -> Color.Red
-                                cpuTemperature.value > 60 -> Color.Yellow
-                                else -> Color.White
-                            }
-                        )
-                    }
-                } else {
-                    // 如果没有温度数据，显示一个占位符或调试信息
-                    Box(
-                        modifier = Modifier
-                            .background(
-                                color = Color.Black.copy(alpha = 0.26f),
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-                            )
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = "N/A°C",
-                            color = Color.Gray
-                        )
-                    }
+            // 在GameStats函数中添加调试信息显示
+// 右上角的温度显示
+Box(
+    modifier = Modifier
+        .align(Alignment.TopEnd)
+        .padding(16.dp)
+) {
+    if (cpuTemperature.value > 0) {
+        Box(
+            modifier = Modifier
+                .background(
+                    color = Color.Black.copy(alpha = 0.26f),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                )
+                .padding(horizontal = 6.dp, vertical = 2.dp)
+        ) {
+            Text(
+                text = "${String.format("%.1f", cpuTemperature.value)}°C",
+                color = when {
+                    cpuTemperature.value > 70 -> Color.Red
+                    cpuTemperature.value > 60 -> Color.Yellow
+                    else -> Color.White
                 }
-            }
+            )
+        }
+    } else {
+        // 如果没有温度数据，显示调试信息
+        Box(
+            modifier = Modifier
+                .background(
+                    color = Color.Black.copy(alpha = 0.26f),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                )
+                .padding(horizontal = 6.dp, vertical = 2.dp)
+        ) {
+            Text(
+                text = "N/A°C",
+                color = Color.Gray,
+                fontSize = 8.sp
+            )
+        }
+    }
+}
         }
     }
 
