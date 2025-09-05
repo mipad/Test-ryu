@@ -184,31 +184,31 @@ class GameController(var activity: Activity) {
                 }
             }
             
+            
             // 设置L3和R3按钮的布局参数
-            val layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            
-            
-            layoutParams.apply {
-                gravity = android.view.Gravity.TOP or android.view.Gravity.START
-                topMargin = dpToPx(context, 50) 
-                leftMargin = dpToPx(context, 270) 
-            }
-            l3Button.layoutParams = layoutParams
-            view.findViewById<FrameLayout>(R.id.leftcontainer)!!.addView(l3Button)
-            controller.l3Button = l3Button
-            
-            
-            layoutParams.apply {
-                gravity = android.view.Gravity.TOP or android.view.Gravity.END
-                topMargin = dpToPx(context, 50) 
-                rightMargin = dpToPx(context, 270) 
-            }
-            r3Button.layoutParams = layoutParams
-            view.findViewById<FrameLayout>(R.id.rightcontainer)!!.addView(r3Button)
-            controller.r3Button = r3Button
+val l3LayoutParams = FrameLayout.LayoutParams(
+    ViewGroup.LayoutParams.WRAP_CONTENT,
+    ViewGroup.LayoutParams.WRAP_CONTENT
+).apply {
+    gravity = android.view.Gravity.TOP or android.view.Gravity.START
+    topMargin = dpToPx(context, 30) // 距离顶部30dp，靠近边缘
+    leftMargin = dpToPx(context, 280) // 距离左侧280dp，位于L键右边
+}
+l3Button.layoutParams = l3LayoutParams
+view.findViewById<FrameLayout>(R.id.leftcontainer)!!.addView(l3Button)
+controller.l3Button = l3Button
+
+val r3LayoutParams = FrameLayout.LayoutParams(
+    ViewGroup.LayoutParams.WRAP_CONTENT,
+    ViewGroup.LayoutParams.WRAP_CONTENT
+).apply {
+    gravity = android.view.Gravity.TOP or android.view.Gravity.END
+    topMargin = dpToPx(context, 30) // 距离顶部30dp，靠近边缘
+    rightMargin = dpToPx(context, 280) // 距离右侧280dp，位于R键左边
+}
+r3Button.layoutParams = r3LayoutParams
+view.findViewById<FrameLayout>(R.id.rightcontainer)!!.addView(r3Button)
+controller.r3Button = r3Button
 
             return view
         }
