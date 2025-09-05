@@ -203,8 +203,8 @@ class GameController(var activity: Activity) {
             
             layoutParams.apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.END
-                topMargin = dpToPx(context, 150) 
-                rightMargin = dpToPx(context, 230) 
+                topMargin = dpToPx(context, 100) 
+                rightMargin = dpToPx(context, 240) 
             }
             r3Button.layoutParams = layoutParams
             view.findViewById<FrameLayout>(R.id.rightcontainer)!!.addView(r3Button)
