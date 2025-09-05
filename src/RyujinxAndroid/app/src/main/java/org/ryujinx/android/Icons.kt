@@ -810,8 +810,8 @@ class Icons {
                 }.build()
             }
         }
-    }
-}
+    
+
 
 @Composable
         fun stats(): ImageVector {
