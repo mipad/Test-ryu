@@ -1,3 +1,4 @@
+using Ryujinx.Common.Logging; // 添加这个命名空间引用
 using Ryujinx.Graphics.Device;
 using Ryujinx.Graphics.Gpu.Engine.MME;
 using Ryujinx.Graphics.Gpu.Synchronization;
@@ -148,7 +149,23 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
             SyncpointbOperation operation = _state.State.SyncpointbOperation;
 
             uint syncpointId = (uint)_state.State.SyncpointbSyncptIndex;
-
+            
+            // 添加同步点 ID 验证
+            if (syncpointId >= SynchronizationManager.MaxHardwareSyncpoints)
+            {
+                // 记录更详细的警告信息
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Invalid syncpoint ID {syncpointId} (max is {SynchronizationManager.MaxHardwareSyncpoints - 1}) in {operation} operation, ignoring command");
+                
+                // 记录调用堆栈（仅在调试模式下）
+                #if DEBUG
+                Logger.Debug?.Print(LogClass.Gpu, $"Call stack: {Environment.StackTrace}");
+                #endif
+                
+                _context.AdvanceSequence();
+                return;
+            }
+    
             if (operation == SyncpointbOperation.Wait)
             {
                 uint threshold = (uint)_state.State.SyncpointaPayload;
