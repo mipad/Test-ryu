@@ -98,6 +98,9 @@ class GameViews {
                 val showMore = remember {
                     mutableStateOf(false)
                 }
+                val showPerformanceSettings = remember {
+                    mutableStateOf(false)
+                }
 
                 val showLoading = remember {
                     mutableStateOf(true)
@@ -234,10 +237,28 @@ class GameViews {
                                                 contentDescription = "Toggle VSync"
                                             )
                                         }
+                                        // 新增性能设置图标
+                                        IconButton(modifier = Modifier.padding(4.dp), onClick = {
+                                            showMore.value = false
+                                            showPerformanceSettings.value = true
+                                        }) {
+                                            Icon(
+                                                imageVector = Icons.stats(),
+                                                contentDescription = "Performance Settings"
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
+                    }
+
+                    // 性能设置对话框
+                    if (showPerformanceSettings.value) {
+                        PerformanceSettingsDialog(
+                            mainViewModel = mainViewModel,
+                            onDismiss = { showPerformanceSettings.value = false }
+                        )
                     }
                 }
 
@@ -336,6 +357,142 @@ class GameViews {
         }
 
         @Composable
+        fun PerformanceSettingsDialog(mainViewModel: MainViewModel, onDismiss: () -> Unit) {
+            val settings = QuickSettings(mainViewModel.activity)
+            
+            val showFps = remember { mutableStateOf(settings.showFps) }
+            val showRam = remember { mutableStateOf(settings.showRam) }
+            val showBatteryTemperature = remember { mutableStateOf(settings.showBatteryTemperature) }
+            val showBatteryLevel = remember { mutableStateOf(settings.showBatteryLevel) }
+            val showGpuName = remember { mutableStateOf(settings.showGpuName) }
+
+            BasicAlertDialog(onDismissRequest = onDismiss) {
+                Surface(
+                    modifier = Modifier
+                        .wrapContentWidth()
+                        .wrapContentHeight(),
+                    shape = MaterialTheme.shapes.large,
+                    tonalElevation = AlertDialogDefaults.TonalElevation
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            text = "Performance Display Settings",
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
+                        
+                        // FPS显示开关
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "Show FPS")
+                            Switch(
+                                checked = showFps.value,
+                                onCheckedChange = { showFps.value = it }
+                            )
+                        }
+                        
+                        // 内存显示开关
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "Show RAM Usage")
+                            Switch(
+                                checked = showRam.value,
+                                onCheckedChange = { showRam.value = it }
+                            )
+                        }
+                        
+                        // 电池温度显示开关
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "Show Battery Temperature")
+                            Switch(
+                                checked = showBatteryTemperature.value,
+                                onCheckedChange = { showBatteryTemperature.value = it }
+                            )
+                        }
+                        
+                        // 电池电量显示开关
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "Show Battery Level")
+                            Switch(
+                                checked = showBatteryLevel.value,
+                                onCheckedChange = { showBatteryLevel.value = it }
+                            )
+                        }
+                        
+                        // GPU名称显示开关
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "Show GPU Name")
+                            Switch(
+                                checked = showGpuName.value,
+                                onCheckedChange = { showGpuName.value = it }
+                            )
+                        }
+                        
+                        Spacer(modifier = Modifier.padding(8.dp))
+                        
+                        Row(
+                            horizontalArrangement = Arrangement.End,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Button(
+                                onClick = onDismiss,
+                                modifier = Modifier.padding(end = 8.dp)
+                            ) {
+                                Text(text = "Cancel")
+                            }
+                            Button(
+                                onClick = {
+                                    // 保存设置
+                                    settings.showFps = showFps.value
+                                    settings.showRam = showRam.value
+                                    settings.showBatteryTemperature = showBatteryTemperature.value
+                                    settings.showBatteryLevel = showBatteryLevel.value
+                                    settings.showGpuName = showGpuName.value
+                                    settings.save()
+                                    onDismiss()
+                                }
+                            ) {
+                                Text(text = "Apply")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        @Composable
         fun GameStats(mainViewModel: MainViewModel) {
             val fifo = remember {
                 mutableDoubleStateOf(0.0)
@@ -369,6 +526,9 @@ class GameViews {
                 mutableStateOf("")
             }
 
+            // 获取性能显示设置
+            val settings = QuickSettings(mainViewModel.activity)
+
             // 完全透明的文字面板
             CompositionLocalProvider(
                 LocalTextStyle provides TextStyle(
@@ -389,25 +549,29 @@ class GameViews {
                         // 核心性能指标
                         Text(text = "${String.format("%.1f", fifo.value)}%")
                         
-                        // 使用Box包装FPS文本，确保对齐不受背景影响
-                        Box(
-                            modifier = Modifier.align(Alignment.Start) // 确保左对齐
-                        ) {
-                            Text(
-                                text = "${String.format("%.1f", gameFps.value)} FPS",
-                                modifier = Modifier
-                                    .background(
-                                        color = Color.Black.copy(alpha = 0.26f),
-                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-                                    )
-                            )
+                        // FPS显示（根据设置决定是否显示）
+                        if (settings.showFps) {
+                            Box(
+                                modifier = Modifier.align(Alignment.Start) // 确保左对齐
+                            ) {
+                                Text(
+                                    text = "${String.format("%.1f", gameFps.value)} FPS",
+                                    modifier = Modifier
+                                        .background(
+                                            color = Color.Black.copy(alpha = 0.26f),
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                        )
+                                )
+                            }
                         }
                         
-                        // 内存使用
-                        Text(text = "${usedMem.value}/${totalMem.value} MB")
+                        // 内存使用（根据设置决定是否显示）
+                        if (settings.showRam) {
+                            Text(text = "${usedMem.value}/${totalMem.value} MB")
+                        }
                         
-                        // GPU名称
-                        if (gpuName.value.isNotEmpty() && gpuName.value != "Unknown GPU") {
+                        // GPU名称（根据设置决定是否显示）
+                        if (settings.showGpuName && gpuName.value.isNotEmpty() && gpuName.value != "Unknown GPU") {
                             Text(
                                 text = gpuName.value,
                                 fontSize = 8.sp,
@@ -425,8 +589,8 @@ class GameViews {
                         Column(
                             horizontalAlignment = Alignment.End
                         ) {
-                            // 电池温度显示
-                            if (batteryTemperature.value > 0) {
+                            // 电池温度显示（根据设置决定是否显示）
+                            if (settings.showBatteryTemperature && batteryTemperature.value > 0) {
                                 Box(
                                     modifier = Modifier
                                         .background(
@@ -446,8 +610,8 @@ class GameViews {
                                 }
                             }
                             
-                            // 电池电量显示
-                            if (batteryLevel.value >= 0) {
+                            // 电池电量显示（根据设置决定是否显示）
+                            if (settings.showBatteryLevel && batteryLevel.value >= 0) {
                                 Spacer(modifier = Modifier.padding(2.dp))
                                 Box(
                                     modifier = Modifier
