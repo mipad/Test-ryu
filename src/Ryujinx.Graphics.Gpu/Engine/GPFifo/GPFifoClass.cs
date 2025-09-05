@@ -1,4 +1,4 @@
-using Ryujinx.Common.Logging; // 添加这个命名空间引用
+using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.Device;
 using Ryujinx.Graphics.Gpu.Engine.MME;
 using Ryujinx.Graphics.Gpu.Synchronization;
@@ -213,7 +213,19 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
         /// <param name="argument">Method call argument</param>
         public void LoadMmeInstructionRam(int argument)
         {
-            _macroCode[_state.State.LoadMmeInstructionRamPointer++] = argument;
+            int pointer = _state.State.LoadMmeInstructionRamPointer;
+            
+            // 添加边界检查
+            if (pointer < 0 || pointer >= _macroCode.Length)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"LoadMmeInstructionRamPointer out of range: {pointer} (max is {_macroCode.Length - 1}), resetting to 0");
+                pointer = 0;
+                _state.State.LoadMmeInstructionRamPointer = pointer;
+            }
+            
+            _macroCode[pointer] = argument;
+            _state.State.LoadMmeInstructionRamPointer = pointer + 1;
         }
 
         /// <summary>
@@ -222,7 +234,19 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
         /// <param name="argument">Method call argument</param>
         public void LoadMmeStartAddressRam(int argument)
         {
-            _macros[_state.State.LoadMmeStartAddressRamPointer++] = new Macro(argument);
+            int pointer = _state.State.LoadMmeStartAddressRamPointer;
+            
+            // 添加边界检查
+            if (pointer < 0 || pointer >= _macros.Length)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"LoadMmeStartAddressRamPointer out of range: {pointer} (max is {_macros.Length - 1}), resetting to 0");
+                pointer = 0;
+                _state.State.LoadMmeStartAddressRamPointer = pointer;
+            }
+            
+            _macros[pointer] = new Macro(argument);
+            _state.State.LoadMmeStartAddressRamPointer = pointer + 1;
         }
 
         /// <summary>
@@ -242,6 +266,13 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
         /// <param name="argument">Argument to be pushed to the macro</param>
         public void MmePushArgument(int index, ulong gpuVa, int argument)
         {
+            if (index < 0 || index >= _macros.Length)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Macro index out of range: {index} (max is {_macros.Length - 1}), ignoring push");
+                return;
+            }
+            
             _macros[index].PushArgument(gpuVa, argument);
         }
 
@@ -252,6 +283,13 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
         /// <param name="argument">Initial argument passed to the macro</param>
         public void MmeStart(int index, int argument)
         {
+            if (index < 0 || index >= _macros.Length)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Macro index out of range: {index} (max is {_macros.Length - 1}), ignoring start");
+                return;
+            }
+            
             _macros[index].StartExecution(_context, _parent, _macroCode, argument);
         }
 
@@ -262,6 +300,13 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
         /// <param name="state">Current GPU state</param>
         public void CallMme(int index, IDeviceState state)
         {
+            if (index < 0 || index >= _macros.Length)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Macro index out of range: {index} (max is {_macros.Length - 1}), ignoring call");
+                return;
+            }
+            
             _macros[index].Execute(_macroCode, state);
         }
     }
