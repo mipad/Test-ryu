@@ -58,7 +58,7 @@ class DoubleCircleButtonView(context: Context, val buttonText: String, val butto
     
     private val textPaint = Paint().apply {
         color = Color.WHITE
-        textSize = 28f // 增大文字尺寸
+        textSize = 25f // 增大文字尺寸
         textAlign = Paint.Align.CENTER
         typeface = Typeface.DEFAULT_BOLD
         isAntiAlias = true
@@ -112,7 +112,7 @@ class DoubleCircleButtonView(context: Context, val buttonText: String, val butto
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(85) // 增大到100dp
+        val size = dpToPx(80) 
         setMeasuredDimension(size, size)
     }
     
@@ -193,8 +193,8 @@ class GameController(var activity: Activity) {
             
             layoutParams.apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.START
-                topMargin = dpToPx(context, 50) 
-                leftMargin = dpToPx(context, 250) 
+                topMargin = dpToPx(context, 100) 
+                leftMargin = dpToPx(context, 270) 
             }
             l3Button.layoutParams = layoutParams
             view.findViewById<FrameLayout>(R.id.leftcontainer)!!.addView(l3Button)
@@ -203,8 +203,8 @@ class GameController(var activity: Activity) {
             
             layoutParams.apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.END
-                topMargin = dpToPx(context, 50) 
-                rightMargin = dpToPx(context, 250) 
+                topMargin = dpToPx(context, 100) 
+                rightMargin = dpToPx(context, 270) 
             }
             r3Button.layoutParams = layoutParams
             view.findViewById<FrameLayout>(R.id.rightcontainer)!!.addView(r3Button)
