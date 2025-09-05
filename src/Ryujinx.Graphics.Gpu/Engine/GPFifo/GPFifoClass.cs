@@ -213,10 +213,11 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
         /// <param name="argument">Method call argument</param>
         public void LoadMmeInstructionRam(int argument)
         {
-            int pointer = _state.State.LoadMmeInstructionRamPointer;
+            // 使用 uint 类型，因为 GPFifoClassState 中的字段可能是 uint 类型
+            uint pointer = _state.State.LoadMmeInstructionRamPointer;
             
             // 添加边界检查
-            if (pointer < 0 || pointer >= _macroCode.Length)
+            if (pointer >= (uint)_macroCode.Length)
             {
                 Logger.Warning?.Print(LogClass.Gpu, 
                     $"LoadMmeInstructionRamPointer out of range: {pointer} (max is {_macroCode.Length - 1}), resetting to 0");
@@ -224,7 +225,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
                 _state.State.LoadMmeInstructionRamPointer = pointer;
             }
             
-            _macroCode[pointer] = argument;
+            _macroCode[(int)pointer] = argument; // 显式转换为 int
             _state.State.LoadMmeInstructionRamPointer = pointer + 1;
         }
 
@@ -234,10 +235,11 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
         /// <param name="argument">Method call argument</param>
         public void LoadMmeStartAddressRam(int argument)
         {
-            int pointer = _state.State.LoadMmeStartAddressRamPointer;
+            // 使用 uint 类型，因为 GPFifoClassState 中的字段可能是 uint 类型
+            uint pointer = _state.State.LoadMmeStartAddressRamPointer;
             
             // 添加边界检查
-            if (pointer < 0 || pointer >= _macros.Length)
+            if (pointer >= (uint)_macros.Length)
             {
                 Logger.Warning?.Print(LogClass.Gpu, 
                     $"LoadMmeStartAddressRamPointer out of range: {pointer} (max is {_macros.Length - 1}), resetting to 0");
@@ -245,7 +247,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.GPFifo
                 _state.State.LoadMmeStartAddressRamPointer = pointer;
             }
             
-            _macros[pointer] = new Macro(argument);
+            _macros[(int)pointer] = new Macro(argument); // 显式转换为 int
             _state.State.LoadMmeStartAddressRamPointer = pointer + 1;
         }
 
