@@ -305,7 +305,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public static ImageUsageFlags GetImageUsage(Format format, Target target, in HardwareCapabilities capabilities)
+        public static ImageUsageFlags GetImageUsage(Format format, Target target, in HardwareCapabilities capabilities, bool extendedUsage)
         {
             var usage = DefaultUsageFlags;
 
