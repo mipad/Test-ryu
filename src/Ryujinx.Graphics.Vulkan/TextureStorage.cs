@@ -91,9 +91,10 @@ namespace Ryujinx.Graphics.Vulkan
 
             var sampleCountFlags = ConvertToSampleCountFlags(gd.Capabilities.SupportedSampleCounts, (uint)info.Samples);
 
-            // 修改调用处，传递 isNotMsOrSupportsStorage 参数
+            // 修改调用处，传递 isNotMsOrSupportsStorage 和 supportsAttachmentFeedbackLoop 参数
             bool isNotMsOrSupportsStorage = !info.Target.IsMultisample() || gd.Capabilities.SupportsShaderStorageImageMultisample;
-            var usage = GetImageUsage(info.Format, isNotMsOrSupportsStorage, false);
+            bool supportsAttachmentFeedbackLoop = gd.Capabilities.SupportsAttachmentFeedbackLoop;
+            var usage = GetImageUsage(info.Format, isNotMsOrSupportsStorage, false, supportsAttachmentFeedbackLoop);
 
             var flags = ImageCreateFlags.CreateMutableFormatBit | ImageCreateFlags.CreateExtendedUsageBit;
 
@@ -307,7 +308,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public static ImageUsageFlags GetImageUsage(Format format, bool isNotMsOrSupportsStorage, bool extendedUsage)
+        public static ImageUsageFlags GetImageUsage(Format format, bool isNotMsOrSupportsStorage, bool extendedUsage, bool supportsAttachmentFeedbackLoop)
         {
             var usage = DefaultUsageFlags;
 
@@ -325,20 +326,18 @@ namespace Ryujinx.Graphics.Vulkan
                 usage |= ImageUsageFlags.StorageBit;
             }
 
-            // 注意：由于移除了 capabilities 参数，这里无法检查 SupportsAttachmentFeedbackLoop
-            // 如果需要此功能，可能需要将相关检查移到调用处
-            // if (capabilities.SupportsAttachmentFeedbackLoop &&
-            //     (usage & (ImageUsageFlags.DepthStencilAttachmentBit | ImageUsageFlags.ColorAttachmentBit)) != 0)
-            // {
-            //     usage |= ImageUsageFlags.AttachmentFeedbackLoopBitExt;
-            // }
+            if (supportsAttachmentFeedbackLoop &&
+                (usage & (ImageUsageFlags.DepthStencilAttachmentBit | ImageUsageFlags.ColorAttachmentBit)) != 0)
+            {
+                usage |= ImageUsageFlags.AttachmentFeedbackLoopBitExt;
+            }
 
             return usage;
         }
 
         public static SampleCountFlags ConvertToSampleCountFlags(SampleCountFlags supportedSampleCounts, uint samples)
         {
-            if (samples == 0 || samples > (uint)SampleCountFlags.Count64Bit)
+            if (samples == 0 or samples > (uint)SampleCountFlags.Count64Bit)
             {
                 return SampleCountFlags.Count1Bit;
             }
