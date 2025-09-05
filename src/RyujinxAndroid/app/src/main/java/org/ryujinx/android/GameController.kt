@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.util.TypedValue
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
@@ -57,7 +58,7 @@ class DoubleCircleButtonView(context: Context, val buttonText: String, val butto
     
     private val textPaint = Paint().apply {
         color = Color.WHITE
-        textSize = 24f
+        textSize = 32f // 增大文字尺寸
         textAlign = Paint.Align.CENTER
         typeface = Typeface.DEFAULT_BOLD
         isAntiAlias = true
@@ -111,8 +112,16 @@ class DoubleCircleButtonView(context: Context, val buttonText: String, val butto
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = 80 // 80dp
+        val size = dpToPx(100) // 增大到100dp
         setMeasuredDimension(size, size)
+    }
+    
+    private fun dpToPx(dp: Int): Int {
+        return TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP, 
+            dp.toFloat(), 
+            resources.displayMetrics
+        ).toInt()
     }
 }
 
@@ -181,27 +190,35 @@ class GameController(var activity: Activity) {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
             
-            // 将L3按钮添加到左侧容器 - 放置在L按钮右侧
+            // 将L3按钮添加到左侧容器 - 向左移动3个按键位置
             layoutParams.apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.START
-                topMargin = 150 // 根据截图调整位置
-                leftMargin = 250 // 根据截图调整位置
+                topMargin = dpToPx(context, 150) // 根据截图调整位置
+                leftMargin = dpToPx(context, 100) // 向左移动3个按键位置
             }
             l3Button.layoutParams = layoutParams
             view.findViewById<FrameLayout>(R.id.leftcontainer)!!.addView(l3Button)
             controller.l3Button = l3Button
             
-            // 将R3按钮添加到右侧容器 - 放置在R按钮左侧
+            // 将R3按钮添加到右侧容器 - 向左移动3个按键位置
             layoutParams.apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.END
-                topMargin = 150 // 根据截图调整位置
-                rightMargin = 250 // 根据截图调整位置
+                topMargin = dpToPx(context, 150) // 根据截图调整位置
+                rightMargin = dpToPx(context, 100) // 向左移动3个按键位置
             }
             r3Button.layoutParams = layoutParams
             view.findViewById<FrameLayout>(R.id.rightcontainer)!!.addView(r3Button)
             controller.r3Button = r3Button
 
             return view
+        }
+        
+        private fun dpToPx(context: Context, dp: Int): Int {
+            return TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, 
+                dp.toFloat(), 
+                context.resources.displayMetrics
+            ).toInt()
         }
 
         @Composable
