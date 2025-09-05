@@ -39,9 +39,9 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.Common
 
         public ref AtomicStorage<T> GetCurrentAtomicEntryRef()
         {
-            ulong countAvailaible = Math.Min(Math.Max(0, ReadCurrentCount()), 1);
+            ulong countAvailable = Math.Min(Math.Max(0, ReadCurrentCount()), 1);
 
-            if (countAvailaible == 0)
+            if (countAvailable == 0)
             {
                 _storage[0] = default;
 
@@ -52,7 +52,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.Common
 
             while (true)
             {
-                int inputEntryIndex = (int)((index + MaxEntries + 1 - countAvailaible) % MaxEntries);
+                int inputEntryIndex = (int)((index + MaxEntries + 1 - countAvailable) % MaxEntries);
 
                 ref AtomicStorage<T> result = ref _storage[inputEntryIndex];
 
@@ -61,9 +61,9 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.Common
 
                 if (samplingNumber0 != samplingNumber1 && (result.SamplingNumber - result.SamplingNumber) != 1)
                 {
-                    ulong tempCount = Math.Min(ReadCurrentCount(), countAvailaible);
+                    ulong tempCount = Math.Min(ReadCurrentCount(), countAvailable);
 
-                    countAvailaible = Math.Min(tempCount, 1);
+                    countAvailable = Math.Min(tempCount, 1);
                     index = ReadCurrentIndex();
 
                     continue;
@@ -81,21 +81,21 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.Common
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ReadOnlySpan<AtomicStorage<T>> ReadEntries(uint maxCount)
         {
-            ulong countAvailaible = Math.Min(Math.Max(0, ReadCurrentCount()), maxCount);
+            ulong countAvailable = Math.Min(Math.Max(0, ReadCurrentCount()), maxCount);
 
-            if (countAvailaible == 0)
+            if (countAvailable == 0)
             {
                 return ReadOnlySpan<AtomicStorage<T>>.Empty;
             }
 
             ulong index = ReadCurrentIndex();
 
-            AtomicStorage<T>[] result = new AtomicStorage<T>[countAvailaible];
+            AtomicStorage<T>[] result = new AtomicStorage<T>[countAvailable];
 
-            for (ulong i = 0; i < countAvailaible; i++)
+            for (ulong i = 0; i < countAvailable; i++)
             {
-                int inputEntryIndex = (int)((index + MaxEntries + 1 - countAvailaible + i) % MaxEntries);
-                int outputEntryIndex = (int)(countAvailaible - i - 1);
+                int inputEntryIndex = (int)((index + MaxEntries + 1 - countAvailable + i) % MaxEntries);
+                int outputEntryIndex = (int)(countAvailable - i - 1);
 
                 ulong samplingNumber0 = _storage[inputEntryIndex].ReadSamplingNumberAtomic();
                 result[outputEntryIndex] = _storage[inputEntryIndex];
@@ -103,9 +103,9 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Types.SharedMemory.Common
 
                 if (samplingNumber0 != samplingNumber1 && (i > 0 && (result[outputEntryIndex].SamplingNumber - result[outputEntryIndex].SamplingNumber) != 1))
                 {
-                    ulong tempCount = Math.Min(ReadCurrentCount(), countAvailaible);
+                    ulong tempCount = Math.Min(ReadCurrentCount(), countAvailable);
 
-                    countAvailaible = Math.Min(tempCount, maxCount);
+                    countAvailable = Math.Min(tempCount, maxCount);
                     index = ReadCurrentIndex();
 
                     i -= 1;
