@@ -46,7 +46,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (state.DepthStencilEnable)
             {
-                attachmentFormats[attachmentCount++] = gd.FormatCapabilities.ConvertToVkFormat(state.DepthStencilFormat);
+                attachmentFormats[attachmentCount++] = gd.FormatCapabilities.ConvertToVkFormat(state.DepthStencilFormat, true);
             }
 
             if (attachmentCount != 0)
@@ -299,7 +299,7 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 if (state.AttachmentEnable[i])
                 {
-                    pipeline.Internal.AttachmentFormats[attachmentCount++] = gd.FormatCapabilities.ConvertToVkFormat(state.AttachmentFormats[i]);
+                    pipeline.Internal.AttachmentFormats[attachmentCount++] = gd.FormatCapabilities.ConvertToVkFormat(state.AttachmentFormats[i], true);
                     maxColorAttachmentIndex = i;
 
                     if (state.AttachmentFormats[i].IsInteger())
@@ -313,7 +313,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (state.DepthStencilEnable)
             {
-                pipeline.Internal.AttachmentFormats[attachmentCount++] = gd.FormatCapabilities.ConvertToVkFormat(state.DepthStencilFormat);
+                pipeline.Internal.AttachmentFormats[attachmentCount++] = gd.FormatCapabilities.ConvertToVkFormat(state.DepthStencilFormat, true);
             }
 
             pipeline.ColorBlendAttachmentStateCount = (uint)(maxColorAttachmentIndex + 1);
