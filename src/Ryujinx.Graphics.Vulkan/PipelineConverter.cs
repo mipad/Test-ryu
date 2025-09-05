@@ -33,7 +33,8 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 if (state.AttachmentEnable[i])
                 {
-                    attachmentFormats[attachmentCount] = gd.FormatCapabilities.ConvertToVkFormat(state.AttachmentFormats[i]);
+                    bool supportedAttachment = gd.Capabilities.SupportsShaderStorageImageMultisample ||
+                        !state.AttachmentFormats[i].IsImageCompatible();
 
                     attachmentIndices[attachmentCount++] = i;
                     colorCount++;
