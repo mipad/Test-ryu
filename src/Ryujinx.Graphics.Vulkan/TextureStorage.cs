@@ -91,7 +91,9 @@ namespace Ryujinx.Graphics.Vulkan
 
             var sampleCountFlags = ConvertToSampleCountFlags(gd.Capabilities.SupportedSampleCounts, (uint)info.Samples);
 
-            var usage = GetImageUsage(info.Format, info.Target, gd.Capabilities, false);
+            // 修改调用处，传递 isNotMsOrSupportsStorage 参数
+            bool isNotMsOrSupportsStorage = !info.Target.IsMultisample() || gd.Capabilities.SupportsShaderStorageImageMultisample;
+            var usage = GetImageUsage(info.Format, isNotMsOrSupportsStorage, false);
 
             var flags = ImageCreateFlags.CreateMutableFormatBit | ImageCreateFlags.CreateExtendedUsageBit;
 
@@ -305,7 +307,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public static ImageUsageFlags GetImageUsage(Format format, Target target, in HardwareCapabilities capabilities, bool extendedUsage)
+        public static ImageUsageFlags GetImageUsage(Format format, bool isNotMsOrSupportsStorage, bool extendedUsage)
         {
             var usage = DefaultUsageFlags;
 
@@ -318,18 +320,18 @@ namespace Ryujinx.Graphics.Vulkan
                 usage |= ImageUsageFlags.ColorAttachmentBit;
             }
 
-            bool supportsMsStorage = capabilities.SupportsShaderStorageImageMultisample;
-
-            if (format.IsImageCompatible() && (supportsMsStorage || !target.IsMultisample()))
+            if (format.IsImageCompatible() && isNotMsOrSupportsStorage)
             {
                 usage |= ImageUsageFlags.StorageBit;
             }
 
-            if (capabilities.SupportsAttachmentFeedbackLoop &&
-                (usage & (ImageUsageFlags.DepthStencilAttachmentBit | ImageUsageFlags.ColorAttachmentBit)) != 0)
-            {
-                usage |= ImageUsageFlags.AttachmentFeedbackLoopBitExt;
-            }
+            // 注意：由于移除了 capabilities 参数，这里无法检查 SupportsAttachmentFeedbackLoop
+            // 如果需要此功能，可能需要将相关检查移到调用处
+            // if (capabilities.SupportsAttachmentFeedbackLoop &&
+            //     (usage & (ImageUsageFlags.DepthStencilAttachmentBit | ImageUsageFlags.ColorAttachmentBit)) != 0)
+            // {
+            //     usage |= ImageUsageFlags.AttachmentFeedbackLoopBitExt;
+            // }
 
             return usage;
         }
