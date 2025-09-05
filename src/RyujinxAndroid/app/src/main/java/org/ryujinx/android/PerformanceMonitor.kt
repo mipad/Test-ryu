@@ -3,6 +3,7 @@ package org.ryujinx.android
 import android.app.ActivityManager
 import android.content.Context.ACTIVITY_SERVICE
 import androidx.compose.runtime.MutableState
+import java.io.File
 import java.io.RandomAccessFile
 
 class PerformanceMonitor {
@@ -63,36 +64,62 @@ class PerformanceMonitor {
         // 尝试从多个可能的路径读取温度
         val paths = mutableListOf<String>()
         
-        // 添加 thermal_zone0 到 thermal_zone9
-        for (i in 0..9) {
+        // 添加 thermal_zone0 到 thermal_zone20
+        for (i in 0..20) {
             paths.add("/sys/class/thermal/thermal_zone$i/temp")
             paths.add("/sys/devices/virtual/thermal/thermal_zone$i/temp")
         }
         
-        // 添加其他可能的温度传感器路径
+        // 添加天玑芯片特有的温度传感器路径
         paths.addAll(listOf(
+            // 天玑芯片常见温度传感器路径
+            "/sys/devices/virtual/thermal/thermal_zone0/temp",
+            "/sys/devices/virtual/thermal/thermal_zone1/temp",
+            "/sys/devices/virtual/thermal/thermal_zone2/temp",
+            "/sys/devices/virtual/thermal/thermal_zone3/temp",
+            "/sys/devices/virtual/thermal/thermal_zone4/temp",
+            "/sys/devices/virtual/thermal/thermal_zone5/temp",
+            "/sys/devices/virtual/thermal/thermal_zone6/temp",
+            "/sys/devices/virtual/thermal/thermal_zone7/temp",
+            "/sys/devices/virtual/thermal/thermal_zone8/temp",
+            "/sys/devices/virtual/thermal/thermal_zone9/temp",
+            "/sys/devices/virtual/thermal/thermal_zone10/temp",
+            
+            // 天玑芯片特定温度传感器
+            "/sys/class/thermal/thermal_zone/mtktscpu/temp",
+            "/sys/class/thermal/thermal_zone/mtktsAP/temp",
+            "/sys/class/thermal/thermal_zone/mtktscpu0/temp",
+            "/sys/class/thermal/thermal_zone/mtktscpu1/temp",
+            "/sys/class/thermal/thermal_zone/mtktscpu2/temp",
+            "/sys/class/thermal/thermal_zone/mtktscpu3/temp",
+            
+            // 其他可能的温度传感器路径
             "/sys/class/hwmon/hwmon0/temp1_input",
             "/sys/class/hwmon/hwmon1/temp1_input",
             "/sys/class/hwmon/hwmon2/temp1_input",
             "/sys/class/hwmon/hwmon3/temp1_input",
             "/sys/class/hwmon/hwmon4/temp1_input",
             "/sys/class/hwmon/hwmon5/temp1_input",
-            "/sys/devices/virtual/thermal/thermal_zone0/temp",
-            "/sys/devices/virtual/thermal/thermal_zone1/temp",
+            
+            // 平台特定路径
             "/sys/devices/platform/soc/soc:mtk-thermal/temp",
             "/sys/devices/platform/soc/soc:thermal/temp",
             "/sys/devices/platform/soc/soc:thermal-sensor/temp",
             "/sys/devices/virtual/thermal/tzbypass/temp",
-            "/sys/class/thermal/thermal_zone/temp"
+            
+            // 其他可能的路径
+            "/sys/class/thermal/thermal_zone/temp",
+            "/proc/driver/thermal/temp",
+            "/proc/thermal/temp"
         ))
         
+        // 尝试读取每个路径
         for (path in paths) {
             try {
-                val file = RandomAccessFile(path, "r")
-                val tempStr = file.readLine().trim()
-                file.close()
+                val file = File(path)
+                if (!file.exists()) continue
                 
-                // 跳过空字符串
+                val tempStr = file.readText().trim()
                 if (tempStr.isEmpty()) continue
                 
                 // 有些文件返回的是毫摄氏度，所以除以1000
@@ -111,6 +138,7 @@ class PerformanceMonitor {
                 // 忽略，继续尝试下一个路径
             }
         }
+        
         return 0.0
     }
 }
