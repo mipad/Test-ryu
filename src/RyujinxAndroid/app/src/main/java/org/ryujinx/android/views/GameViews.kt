@@ -634,7 +634,7 @@ class GameViews {
                                             color = Color.Black.copy(alpha = 0.26f),
                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                                         )
-                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                        //.padding(horizontal = 4.dp, vertical = 2.dp)
                                 )
                             }
                         }
@@ -651,7 +651,7 @@ class GameViews {
                                             color = Color.Black.copy(alpha = 0.26f),
                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                                         )
-                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                        //.padding(horizontal = 4.dp, vertical = 2.dp)
                                 )
                             }
                         }
@@ -662,13 +662,13 @@ class GameViews {
                                 modifier = Modifier.align(Alignment.Start)
                             ) {
                                 Text(
-                                    text = "${usedMem.value}/${totalMem.value} MB",
+                                    text = "${totalMem.value}/${usedMem.value} MB",
                                     modifier = Modifier
                                         .background(
                                             color = Color.Black.copy(alpha = 0.26f),
                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                                         )
-                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                        //.padding(horizontal = 4.dp, vertical = 2.dp)
                                 )
                             }
                         }
@@ -687,7 +687,7 @@ class GameViews {
                                             color = Color.Black.copy(alpha = 0.26f),
                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                                         )
-                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                        //.padding(horizontal = 4.dp, vertical = 2.dp)
                                 )
                             }
                         }
@@ -710,7 +710,7 @@ class GameViews {
                                             color = Color.Black.copy(alpha = 0.26f),
                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                                         )
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        //.padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
                                     Text(
                                         text = "${String.format("%.1f", batteryTemperature.value)}°C",
@@ -732,7 +732,7 @@ class GameViews {
                                             color = Color.Black.copy(alpha = 0.26f),
                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                                         )
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        //.padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
                                     Text(
                                         text = if (isCharging.value) {
@@ -741,8 +741,8 @@ class GameViews {
                                             "${batteryLevel.value}%"
                                         },
                                         color = when {
-                                            batteryLevel.value < 20 -> Color.Red
-                                            batteryLevel.value < 50 -> Color.Yellow
+                                            batteryLevel.value < 15 -> Color.Red
+                                            batteryLevel.value < 40 -> Color.Yellow
                                             else -> Color.White
                                         }
                                     )
