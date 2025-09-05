@@ -93,9 +93,9 @@ class GameViews {
             // 各个统计项的独立显示状态
             val showFps = remember { mutableStateOf(true) }
             val showRam = remember { mutableStateOf(true) }
-            val showBatteryTemperature = remember { mutableStateOf(true) }
-            val showBatteryLevel = remember { mutableStateOf(true) }
-            val showGpuName = remember { mutableStateOf(true) }
+            val showBatteryTemperature = remember { mutableStateOf(false) }
+            val showBatteryLevel = remember { mutableStateOf(false) }
+            val showGpuName = remember { mutableStateOf(false) }
 
             Box(modifier = Modifier.fillMaxSize()) {
                 if (showStats.value) {
