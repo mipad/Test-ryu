@@ -64,7 +64,12 @@ namespace Ryujinx.Graphics.Vulkan
             bool isMsImageStorageSupported = gd.Capabilities.SupportsShaderStorageImageMultisample || !info.Target.IsMultisample();
 
             var format = _gd.FormatCapabilities.ConvertToVkFormat(info.Format, true);
-            var usage = TextureStorage.GetImageUsage(info.Format, info.Target, gd.Capabilities, false);
+            
+            // 修改第67行：使用新的参数调用 GetImageUsage
+            bool isNotMsOrSupportsStorage = !info.Target.IsMultisample() || gd.Capabilities.SupportsShaderStorageImageMultisample;
+            bool supportsAttachmentFeedbackLoop = gd.Capabilities.SupportsAttachmentFeedbackLoop;
+            var usage = TextureStorage.GetImageUsage(info.Format, isNotMsOrSupportsStorage, false, supportsAttachmentFeedbackLoop);
+            
             var levels = (uint)info.Levels;
             var layers = (uint)info.GetLayers();
 
@@ -507,7 +512,7 @@ namespace Ryujinx.Graphics.Vulkan
             Image image,
             AccessFlags srcAccessMask,
             AccessFlags dstAccessMask,
-            ImageAspectFlags aspectFlags,
+            ImageAceptFlags aspectFlags,
             int firstLayer,
             int firstLevel,
             int layers,
@@ -560,7 +565,7 @@ namespace Ryujinx.Graphics.Vulkan
                 null,
                 0,
                 null,
-                1,
+                l,
                 in memoryBarrier);
         }
 
@@ -821,14 +826,14 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         private int GetBufferDataLength(int length)
-        {
-            if (NeedsD24S8Conversion())
             {
-                return length * 2;
-            }
+                if (NeedsD24S8Conversion())
+                {
+                    return length * 2;
+                }
 
-            return length;
-        }
+                return length;
+            }
 
         private Format GetCompatibleGalFormat(Format format)
         {
@@ -937,7 +942,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                 if (aspectFlags == (ImageAspectFlags.DepthBit | ImageAspectFlags.StencilBit))
                 {
-                    aspectFlags = ImageAspectFlags.DepthBit;
+                    aspectFlags = ImageAceptFlags.DepthBit;
                 }
 
                 var sl = new ImageSubresourceLayers(
@@ -996,7 +1001,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (aspectFlags == (ImageAspectFlags.DepthBit | ImageAspectFlags.StencilBit))
             {
-                aspectFlags = ImageAspectFlags.DepthBit;
+                aspectFlags = ImageAceptFlags.DepthBit;
             }
 
             var sl = new ImageSubresourceLayers(aspectFlags, (uint)(FirstLevel + dstLevel), (uint)(FirstLayer + dstLayer), 1);
@@ -1149,11 +1154,10 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         public bool IsUnused()
-{
-    // 当视图无效且没有外部引用时认为未使用
-    return !Valid && _hazardUses == 0;
-}
-
+        {
+            // 当视图无效且没有外部引用时认为未使用
+            return !Valid && _hazardUses == 0;
+        }
 
         public void Dispose()
         {
