@@ -813,6 +813,83 @@ class Icons {
     }
 }
 
+@Composable
+        fun stats(): ImageVector {
+            val primaryColor = MaterialTheme.colorScheme.primary
+            return remember {
+                ImageVector.Builder(
+                    name = "stats",
+                    defaultWidth = 40.0.dp,
+                    defaultHeight = 40.0.dp,
+                    viewportWidth = 40.0f,
+                    viewportHeight = 40.0f
+                ).apply {
+                    path(
+                        fill = SolidColor(Color.Black.copy(alpha = 0.5f)),
+                        stroke = SolidColor(primaryColor),
+                        fillAlpha = 1f,
+                        strokeAlpha = 1f,
+                        strokeLineWidth = 1.0f,
+                        strokeLineCap = StrokeCap.Butt,
+                        strokeLineJoin = StrokeJoin.Miter,
+                        strokeLineMiter = 1f,
+                        pathFillType = PathFillType.NonZero
+                    ) {
+                        moveTo(8.333f, 30.833f)
+                        quadToRelative(-0.541f, 0f, -0.937f, -0.396f)
+                        quadToRelative(-0.396f, -0.395f, -0.396f, -0.937f)
+                        verticalLineTo(22.5f)
+                        quadToRelative(0f, -0.541f, 0.396f, -0.937f)
+                        quadToRelative(0.396f, -0.396f, 0.937f, -0.396f)
+                        quadToRelative(0.542f, 0f, 0.938f, 0.396f)
+                        quadToRelative(0.395f, 0.396f, 0.395f, 0.937f)
+                        verticalLineToRelative(7f)
+                        quadToRelative(0f, 0.542f, -0.395f, 0.937f)
+                        quadToRelative(-0.396f, 0.396f, -0.938f, 0.396f)
+                        close()
+                        moveToRelative(8.334f, 0f)
+                        quadToRelative(-0.542f, 0f, -0.938f, -0.396f)
+                        quadToRelative(-0.395f, -0.395f, -0.395f, -0.937f)
+                        verticalLineTo(15.833f)
+                        quadToRelative(0f, -0.541f, 0.395f, -0.937f)
+                        quadToRelative(0.396f, -0.396f, 0.938f, -0.396f)
+                        quadToRelative(0.541f, 0f, 0.937f, 0.396f)
+                        quadToRelative(0.396f, 0.396f, 0.396f, 0.937f)
+                        verticalLineToRelative(14f)
+                        quadToRelative(0f, 0.542f, -0.396f, 0.937f)
+                        quadToRelative(-0.396f, 0.396f, -0.937f, 0.396f)
+                        close()
+                        moveToRelative(8.333f, 0f)
+                        quadToRelative(-0.542f, 0f, -0.938f, -0.396f)
+                        quadToRelative(-0.396f, -0.395f, -0.396f, -0.937f)
+                        verticalLineTo(10.833f)
+                        quadToRelative(0f, -0.541f, 0.396f, -0.937f)
+                        quadToRelative(0.396f, -0.396f, 0.938f, -0.396f)
+                        quadToRelative(0.541f, 0f, 0.937f, 0.396f)
+                        quadToRelative(0.396f, 0.396f, 0.396f, 0.937f)
+                        verticalLineToRelative(19f)
+                        quadToRelative(0f, 0.542f, -0.396f, 0.937f)
+                        quadToRelative(-0.396f, 0.396f, -0.937f, 0.396f)
+                        close()
+                        moveToRelative(8.333f, 0f)
+                        quadToRelative(-0.542f, 0f, -0.937f, -0.396f)
+                        quadToRelative(-0.396f, -0.395f, -0.396f, -0.937f)
+                        verticalLineTo(18.333f)
+                        quadToRelative(0f, -0.541f, 0.396f, -0.937f)
+                        quadToRelative(0.395f, -0.396f, 0.937f, -0.396f)
+                        quadToRelative(0.542f, 0f, 0.938f, 0.396f)
+                        quadToRelative(0.396f, 0.396f, 0.396f, 0.937f)
+                        verticalLineToRelative(11.167f)
+                        quadToRelative(0f, 0.542f, -0.396f, 0.937f)
+                        quadToRelative(-0.396f, 0.396f, -0.938f, 0.396f)
+                        close()
+                    }
+                }.build()
+            }
+        }
+    }
+}
+
 @Preview
 @Composable
 fun Preview() {
