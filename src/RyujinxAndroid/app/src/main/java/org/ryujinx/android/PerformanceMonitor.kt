@@ -3,6 +3,8 @@ package org.ryujinx.android
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Context.BATTERY_SERVICE
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.BatteryManager
 import androidx.compose.runtime.MutableState
 import java.io.File
@@ -46,9 +48,10 @@ class PerformanceMonitor {
     fun getBatteryTemperature(): Double {
         return try {
             MainActivity.mainViewModel?.activity?.let { activity ->
-                val batteryManager = activity.getSystemService(BATTERY_SERVICE) as BatteryManager
-                val temperature = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_TEMPERATURE)
-                temperature / 10.0 // 电池温度单位是0.1°C，所以除以10
+                // 使用 Intent 获取电池信息
+                val batteryIntent = activity.registerReceiver(null, 
+                    IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                batteryIntent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0)?.div(10.0) ?: 0.0
             } ?: 0.0
         } catch (e: Exception) {
             0.0
@@ -59,8 +62,10 @@ class PerformanceMonitor {
     fun getBatteryLevel(): Int {
         return try {
             MainActivity.mainViewModel?.activity?.let { activity ->
-                val batteryManager = activity.getSystemService(BATTERY_SERVICE) as BatteryManager
-                batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                // 使用 Intent 获取电池信息
+                val batteryIntent = activity.registerReceiver(null, 
+                    IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
             } ?: -1
         } catch (e: Exception) {
             -1
@@ -71,8 +76,10 @@ class PerformanceMonitor {
     fun isCharging(): Boolean {
         return try {
             MainActivity.mainViewModel?.activity?.let { activity ->
-                val batteryManager = activity.getSystemService(BATTERY_SERVICE) as BatteryManager
-                val status = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_STATUS)
+                // 使用 Intent 获取电池信息
+                val batteryIntent = activity.registerReceiver(null, 
+                    IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                val status = batteryIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
                 status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
             } ?: false
         } catch (e: Exception) {
