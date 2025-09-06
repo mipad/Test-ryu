@@ -558,26 +558,31 @@ class SettingViews {
                             }
                             Row(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(8.dp),
-                                horizontalArrangement = Arrangement.Start,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text(text = "Enable Performance Mode")
-                                    Text(
-                                        text = "Forces CPU and GPU to run at max clocks if available.",
-                                        fontSize = 12.sp
-                                    )
-                                    Text(
-                                        text = "OS power settings may override this.",
-                                        fontSize = 12.sp
-                                    )
-                                }
-                                Switch(checked = enablePerformanceMode.value, onCheckedChange = {
-                                    enablePerformanceMode.value = !enablePerformanceMode.value
-                                })
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                                 horizontalArrangement = Arrangement.SpaceBetween,
+                                 verticalAlignment = Alignment.CenterVertically
+                             ) {
+                            Column(
+                            modifier = Modifier.weight(1f)
+                             ) {
+                             Text(text = "Enable Performance Mode")
+                             Text(
+                                text = "Forces CPU and GPU to run at max clocks if available.",
+                                fontSize = 12.sp
+                               )
+                             Text(
+                              text = "OS power settings may override this.",
+                              fontSize = 12.sp
+                              )
                             }
+                         Switch(
+                          checked = enablePerformanceMode.value,
+                          onCheckedChange = {
+                           enablePerformanceMode.value = !enablePerformanceMode.value
+                           }
+                          )
+                         }
                             val isImporting = remember {
                                 mutableStateOf(false)
                             }
