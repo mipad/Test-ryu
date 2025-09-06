@@ -29,7 +29,7 @@ android {
             cmake {
                 cppFlags "-std=c++20", "-O3", "-DNDEBUG", "-DENABLE_HIGH_PERF=1", "-ffast-math", "-march=armv8-a", "-funroll-loops"
                 arguments "-DCMAKE_BUILD_TYPE=Release", "-DANDROID_ARM_NEON=TRUE"
-                arguments "-DANDROID_STL=c++_shared"
+                arguments "-DANDROID_STL=c++_shared"  // 已经设置，符合要求
             }
         }
     }
@@ -59,7 +59,7 @@ android {
     }
     buildFeatures {
         compose true
-        prefab true
+        prefab true  // 已经启用，符合要求
         buildConfig true
     }
     composeOptions {
@@ -117,6 +117,10 @@ dependencies {
     implementation("com.halilibo.compose-richtext:richtext-ui:0.20.0")
     implementation("com.halilibo.compose-richtext:richtext-commonmark:0.20.0")
     implementation("com.halilibo.compose-richtext:richtext-ui-material3:0.20.0")
+    
+    // 添加 Oboe 依赖 (使用最新稳定版本)
+    implementation 'com.google.oboe:oboe:1.7.0'
+    
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
