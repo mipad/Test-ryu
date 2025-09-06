@@ -54,7 +54,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -1125,7 +1124,7 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(text = "Controller Stick Sensitivity")
-                                Slider(modifier = Modifier.width(250.dp), value = controllerStickSensitivity.value, onValueChange = {
+                                androidx.compose.material3.Slider(modifier = Modifier.width(250.dp), value = controllerStickSensitivity.value, onValueChange = {
                                     controllerStickSensitivity.value = it
                                 }, valueRange = 0.1f..2f,
                                     steps = 20,
