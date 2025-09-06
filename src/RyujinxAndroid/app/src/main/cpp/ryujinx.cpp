@@ -20,6 +20,7 @@
 #include "pthread.h"
 #include <chrono>
 #include <csignal>
+#include "oboe_audio_renderer.h"  // 添加 Oboe 音频渲染器头文件
 
 
 std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
@@ -247,4 +248,37 @@ JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setIsInitialOrientationFlipped(JNIEnv *env, jobject thiz,
                                                                       jboolean is_flipped) {
     isInitialOrientationFlipped = is_flipped;
+}
+
+// 添加 Oboe 音频相关的 JNI 函数
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_initOboeAudio(JNIEnv *env, jobject thiz) {
+    OboeAudioRenderer::getInstance().initialize();
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_shutdownOboeAudio(JNIEnv *env, jobject thiz) {
+    OboeAudioRenderer::getInstance().shutdown();
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(JNIEnv *env, jobject thiz, jfloatArray audio_data, jint num_frames) {
+    jfloat* data = env->GetFloatArrayElements(audio_data, nullptr);
+    OboeAudioRenderer::getInstance().writeAudio(data, num_frames);
+    env->ReleaseFloatArrayElements(audio_data, data, 0);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_setOboeSampleRate(JNIEnv *env, jobject thiz, jint sample_rate) {
+    OboeAudioRenderer::getInstance().setSampleRate(sample_rate);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_setOboeBufferSize(JNIEnv *env, jobject thiz, jint buffer_size) {
+    OboeAudioRenderer::getInstance().setBufferSize(buffer_size);
 }
