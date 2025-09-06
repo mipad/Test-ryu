@@ -179,10 +179,11 @@ namespace Ryujinx.Audio.Backends.Oboe
                 writeOboeAudio(floatData, floatData.Length / (int)_channelCount);
             }
 
-            public void RegisterBuffer(AudioBuffer buffer)
+            public bool RegisterBuffer(AudioBuffer buffer)
             {
                 // Oboe是实时处理的，不需要注册缓冲区
-                // 但为了满足接口要求，我们需要实现这个方法
+                // 但为了满足接口要求，我们返回true表示成功
+                return true;
             }
 
             public void UnregisterBuffer(AudioBuffer buffer)
