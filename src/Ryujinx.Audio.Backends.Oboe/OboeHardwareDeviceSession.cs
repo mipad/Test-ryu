@@ -110,7 +110,8 @@ namespace Ryujinx.Audio.Backends.Oboe
             UpdateMasterVolume(0.0f);
             _driver.GetUpdateRequiredEvent().Set();
         }
-
+       }
+       
         public override void UnregisterBuffer(AudioBuffer buffer)
         {
             lock (_lock)
