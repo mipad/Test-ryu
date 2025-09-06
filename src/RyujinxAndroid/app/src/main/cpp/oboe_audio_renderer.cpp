@@ -1,7 +1,16 @@
 // oboe_audio_renderer.cpp
 #include "oboe_audio_renderer.h"
-#include <log/log.h>
+#include <android/log.h>  // 修改这里，使用正确的 Android 日志头文件
 #include <cstring>
+
+// 定义 Android 日志宏（如果未定义）
+#ifndef ALOGE
+#define ALOGE(...) __android_log_print(ANDROID_LOG_ERROR, "OboeAudio", __VA_ARGS__)
+#endif
+
+#ifndef ALOGI
+#define ALOGI(...) __android_log_print(ANDROID_LOG_INFO, "OboeAudio", __VA_ARGS__)
+#endif
 
 OboeAudioRenderer::OboeAudioRenderer() {
     // 初始化音频缓冲区
