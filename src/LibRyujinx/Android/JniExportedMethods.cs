@@ -36,6 +36,22 @@ namespace LibRyujinx
         [DllImport("libryujinxjni")]
         internal extern static void setCurrentTransform(long native_window, int transform);
 
+        // 添加 Oboe 音频函数的 P/Invoke 声明
+        [DllImport("libryujinxjni", EntryPoint = "initOboeAudio")]
+        internal extern static void InitOboeAudio();
+
+        [DllImport("libryujinxjni", EntryPoint = "shutdownOboeAudio")]
+        internal extern static void ShutdownOboeAudio();
+
+        [DllImport("libryujinxjni", EntryPoint = "writeOboeAudio")]
+        internal extern static void WriteOboeAudio(float[] data, int num_frames);
+
+        [DllImport("libryujinxjni", EntryPoint = "setOboeSampleRate")]
+        internal extern static void SetOboeSampleRate(int sample_rate);
+
+        [DllImport("libryujinxjni", EntryPoint = "setOboeBufferSize")]
+        internal extern static void SetOboeBufferSize(int buffer_size);
+
         public delegate IntPtr JniCreateSurface(IntPtr native_surface, IntPtr instance);
 
         [UnmanagedCallersOnly(EntryPoint = "javaInitialize")]
@@ -84,6 +100,10 @@ namespace LibRyujinx
         {
             debug_break(4);
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
+            
+            // 初始化 Oboe 音频
+            InitOboeAudio();
+            
             AudioDriver = new OboeAudioDriver();
 
             var timezone = Marshal.PtrToStringAnsi(timeZonePtr);
@@ -166,6 +186,8 @@ namespace LibRyujinx
         public static void JniCloseEmulationNative()
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
+            // 关闭 Oboe 音频
+            ShutdownOboeAudio();
             CloseEmulation();
         }
 
@@ -403,7 +425,7 @@ public static bool JnaGraphicsInitialize(float resScale,
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             SetButtonPressed((GamepadButtonInputId)button, id);
-        }
+}
 
         [UnmanagedCallersOnly(EntryPoint = "inputSetButtonReleased")]
         public static void JnaSetButtonReleased(int button, int id)
