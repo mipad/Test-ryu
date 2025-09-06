@@ -30,20 +30,11 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(adrenotools)
 
 # 尝试使用更新的 OpenAL Soft 分支或变种
-# 选项1: 使用专门针对 Android 优化的分支
 FetchContent_Declare(
     openal
     GIT_REPOSITORY https://github.com/kcat/openal-soft.git
     GIT_TAG        master  # 使用主分支获取最新修复
-    # GIT_TAG        android  # 如果有专门针对 Android 的分支
 )
-
-# 选项2: 尝试使用其他优化的 OpenAL 变种
-# FetchContent_Declare(
-#     openal
-#     GIT_REPOSITORY https://github.com/Ryujinx/openal-soft.git
-#     GIT_TAG        ryujinx-optimized  # 如果 Ryujinx 有专门的优化分支
-# )
 
 # 设置 OpenAL 构建选项 - 深度优化以减少杂音和延迟
 set(ALSOFT_REQUIRE_OPENSL ON CACHE BOOL "Enable OpenSL backend")
@@ -61,8 +52,7 @@ set(ALSOFT_CPUEXT_NEON ON CACHE BOOL "Enable NEON optimizations")
 set(ALSOFT_REQUIRE_NEON OFF CACHE BOOL "Don't require NEON")
 set(ALSOFT_HRTF_DISABLE ON CACHE BOOL "Disable HRTF" FORCE)
 set(ALSOFT_AMBIENT_CHANNELS 0 CACHE STRING "Ambient channels")
-set(ALSOFT_DEFAULT_CFG "" CACHE STRING "Default config file")
-set(ALSOFT_CONFIG "" CACHE STRING "Config file")
+set(ALSOFT_INSTALL_CONFIG "" CACHE STRING "Install config file")  # 修复：使用 INSTALL_CONFIG 代替 CONFIG
 set(ALSOFT_DEFAULT_REVERB OFF CACHE BOOL "Disable default reverb")
 set(ALSOFT_DEFAULT_ECHO OFF CACHE BOOL "Disable default echo")
 set(ALSOFT_DEFAULT_MODULATION OFF CACHE BOOL "Disable default modulation")
@@ -117,19 +107,27 @@ endif()
 # 查找系统库
 find_library(log-lib log)
 find_library(opensles-lib OpenSLES)
-find_library(aaudio-lib AAudio)  # 查找 AAudio 库
+
+# 修复：只有当启用 AAudio 后端时才查找和链接 AAudio 库
+if(ALSOFT_BACKEND_AAUDIO)
+    find_library(aaudio-lib AAudio)
+endif()
 
 # 链接库
 target_link_libraries(
     ryujinxjni
     ${log-lib}
     ${opensles-lib}
-    ${aaudio-lib}  # 链接 AAudio 库
     -lvulkan
     -landroid
     adrenotools
     OpenAL
 )
+
+# 修复：只有当启用 AAudio 后端时才链接 AAudio 库
+if(ALSOFT_BACKEND_AAUDIO)
+    target_link_libraries(ryujinxjni ${aaudio-lib})
+endif()
 
 # 设置 JNI 库输出路径
 set(JNI_PATH ../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
