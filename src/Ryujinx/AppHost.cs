@@ -883,7 +883,11 @@ namespace Ryujinx.Ava
         private static IHardwareDeviceDriver InitializeAudio()
         {
             var availableBackends = new List<AudioBackend>
-            {
+            {   
+       
+#if ANDROID
+                AudioBackend.Oboe,
+#endif
                 AudioBackend.SDL2,
                 AudioBackend.SoundIo,
                 AudioBackend.OpenAl,
@@ -922,7 +926,10 @@ namespace Ryujinx.Ava
                 AudioBackend nextBackend = i + 1 < availableBackends.Count ? availableBackends[i + 1] : AudioBackend.Dummy;
 
                 deviceDriver = currentBackend switch
-                {
+                {   
+                    #if ANDROID
+                    AudioBackend.Oboe => InitializeAudioBackend<OboeHardwareDeviceDriver>(AudioBackend.Oboe, nextBackend),
+                    #endif
                     AudioBackend.SDL2 => InitializeAudioBackend<SDL2HardwareDeviceDriver>(AudioBackend.SDL2, nextBackend),
                     AudioBackend.SoundIo => InitializeAudioBackend<SoundIoHardwareDeviceDriver>(AudioBackend.SoundIo, nextBackend),
                     AudioBackend.OpenAl => InitializeAudioBackend<OpenALHardwareDeviceDriver>(AudioBackend.OpenAl, nextBackend),
