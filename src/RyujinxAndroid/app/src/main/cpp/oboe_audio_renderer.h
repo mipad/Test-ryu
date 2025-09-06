@@ -7,7 +7,8 @@
 #include <vector>
 #include <atomic>
 
-class OboeAudioRenderer : public oboe::AudioStreamDataCallback {
+class OboeAudioRenderer : public oboe::AudioStreamDataCallback, 
+                          public oboe::AudioStreamErrorCallback {
 public:
     static OboeAudioRenderer& getInstance();
     
@@ -22,6 +23,8 @@ public:
     
     // oboe::AudioStreamDataCallback interface
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t numFrames) override;
+    
+    // oboe::AudioStreamErrorCallback interface
     void onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) override;
     
 private:
