@@ -606,6 +606,14 @@ class HomeViews {
             val configuration = LocalConfiguration.current
             val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
+            // 添加屏幕方向改变时的处理
+            LaunchedEffect(configuration.orientation) {
+                // 当屏幕方向改变时，关闭底部操作菜单
+                showAppActions.value = false
+                selectedModel.value = null
+                viewModel.mainViewModel?.selected = null
+            }
+
             // 横屏模式下跟踪当前中央项
             var centeredIndex by remember { mutableStateOf(0) }
             // 添加一个标志来跟踪是否是初始加载
@@ -1339,4 +1347,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}}}
+}
