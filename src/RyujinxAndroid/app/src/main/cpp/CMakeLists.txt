@@ -33,7 +33,7 @@ FetchContent_MakeAvailable(adrenotools)
 FetchContent_Declare(
     openal
     GIT_REPOSITORY https://github.com/kcat/openal-soft.git
-    GIT_TAG        1.23.1  # 使用稳定版本
+    GIT_TAG        master  # 使用稳定版本
 )
 
 # 设置 OpenAL 构建选项 - 优化以减少杂音和延迟
