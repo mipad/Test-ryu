@@ -1,3 +1,4 @@
+// JniExportedMethods.cs
 using LibRyujinx.Android;
 using LibRyujinx.Jni.Pointers;
 using Ryujinx.Audio.Backends.OpenAL;
@@ -253,33 +254,33 @@ namespace LibRyujinx
         }
 
         [UnmanagedCallersOnly(EntryPoint = "graphicsInitialize")]
-public static bool JnaGraphicsInitialize(float resScale,
-        float maxAnisotropy,
-        bool fastGpuTime,
-        bool fast2DCopy,
-        bool enableMacroJit,
-        bool enableMacroHLE,
-        bool enableShaderCache,
-        bool enableTextureRecompression,
-        int backendThreading,
-        int aspectRatio)  // 新增参数
-{
-    Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-    SearchPathContainer.Platform = UnderlyingPlatform.Android;
-    return InitializeGraphics(new GraphicsConfiguration()
-    {
-        ResScale = resScale,
-        MaxAnisotropy = maxAnisotropy,
-        FastGpuTime = fastGpuTime,
-        Fast2DCopy = fast2DCopy,
-        EnableMacroJit = enableMacroJit,
-        EnableMacroHLE = enableMacroHLE,
-        EnableShaderCache = enableShaderCache,
-        EnableTextureRecompression = enableTextureRecompression,
-        BackendThreading = (BackendThreading)backendThreading,
-        AspectRatio = (AspectRatio)aspectRatio  // 设置画面比例
-    });
-}
+        public static bool JnaGraphicsInitialize(float resScale,
+                float maxAnisotropy,
+                bool fastGpuTime,
+                bool fast2DCopy,
+                bool enableMacroJit,
+                bool enableMacroHLE,
+                bool enableShaderCache,
+                bool enableTextureRecompression,
+                int backendThreading,
+                int aspectRatio)  // 新增参数
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
+            SearchPathContainer.Platform = UnderlyingPlatform.Android;
+            return InitializeGraphics(new GraphicsConfiguration()
+            {
+                ResScale = resScale,
+                MaxAnisotropy = maxAnisotropy,
+                FastGpuTime = fastGpuTime,
+                Fast2DCopy = fast2DCopy,
+                EnableMacroJit = enableMacroJit,
+                EnableMacroHLE = enableMacroHLE,
+                EnableShaderCache = enableShaderCache,
+                EnableTextureRecompression = enableTextureRecompression,
+                BackendThreading = (BackendThreading)backendThreading,
+                AspectRatio = (AspectRatio)aspectRatio  // 设置画面比例
+            });
+        }
 
         [UnmanagedCallersOnly(EntryPoint = "graphicsInitializeRenderer")]
         public unsafe static bool JnaGraphicsInitializeRenderer(char** extensionsArray,
@@ -425,7 +426,7 @@ public static bool JnaGraphicsInitialize(float resScale,
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             SetButtonPressed((GamepadButtonInputId)button, id);
-}
+        }
 
         [UnmanagedCallersOnly(EntryPoint = "inputSetButtonReleased")]
         public static void JnaSetButtonReleased(int button, int id)
@@ -569,11 +570,11 @@ public static bool JnaGraphicsInitialize(float resScale,
         }
 
         [UnmanagedCallersOnly(EntryPoint = "setAspectRatio")]
-public static void JnaSetAspectRatio(int aspectRatio)
-{
-    Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-    SetAspectRatio((AspectRatio)aspectRatio);
-}
+        public static void JnaSetAspectRatio(int aspectRatio)
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
+            SetAspectRatio((AspectRatio)aspectRatio);
+        }
     }
 
     internal static partial class Logcat
