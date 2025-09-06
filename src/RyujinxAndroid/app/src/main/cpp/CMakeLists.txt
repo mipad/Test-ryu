@@ -37,7 +37,7 @@ FetchContent_MakeAvailable(adrenotools)
 FetchContent_Declare(
     openal
     GIT_REPOSITORY https://github.com/kcat/openal-soft.git
-    GIT_TAG        1.23.1  # 使用稳定版本
+    GIT_TAG        1.24.3  # 使用稳定版本
 )
 
 # 设置 OpenAL 构建选项 - 优化以减少杂音和延迟
@@ -65,6 +65,15 @@ set(ALSOFT_DEFAULT_ECHO OFF CACHE BOOL "Disable default echo")
 set(ALSOFT_DEFAULT_MODULATION OFF CACHE BOOL "Disable default modulation")
 
 FetchContent_MakeAvailable(openal)
+
+# 使用 FetchContent 获取 Oboe 源码
+FetchContent_Declare(
+    oboe
+    GIT_REPOSITORY https://github.com/google/oboe.git
+    GIT_TAG        1.9.3  # 使用与 Gradle 依赖相同的版本
+)
+
+FetchContent_MakeAvailable(oboe)
 
 # 创建主库
 add_library(
@@ -96,8 +105,8 @@ find_library(log-lib log)
 find_library(opensles-lib OpenSLES)
 find_library(android-lib android)
 
-# 添加 Oboe 包含目录 - 使用预构建的 Oboe 库
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../../build/intermediates/prefab_package/release/headers/oboe)
+# 添加 Oboe 包含目录
+include_directories(${oboe_SOURCE_DIR}/include)
 
 # 链接库
 target_link_libraries(
@@ -108,8 +117,7 @@ target_link_libraries(
     -lvulkan
     adrenotools
     OpenAL
-    # 链接预构建的 Oboe 库
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../build/intermediates/prefab_package/release/libs/arm64-v8a/liboboe.so
+    oboe  # 链接 Oboe 库
 )
 
 # 设置 JNI 库输出路径
