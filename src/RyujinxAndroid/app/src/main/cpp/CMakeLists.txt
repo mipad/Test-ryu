@@ -29,14 +29,14 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(adrenotools)
 
-# 尝试使用更新的 OpenAL Soft 分支或变种
+# 使用 FetchContent 获取标准 OpenAL Soft
 FetchContent_Declare(
     openal
     GIT_REPOSITORY https://github.com/kcat/openal-soft.git
-    GIT_TAG        master  # 使用主分支获取最新修复
+    GIT_TAG        1.23.1  # 使用稳定版本
 )
 
-# 设置 OpenAL 构建选项 - 深度优化以减少杂音和延迟
+# 设置 OpenAL 构建选项 - 优化以减少杂音和延迟
 set(ALSOFT_REQUIRE_OPENSL ON CACHE BOOL "Enable OpenSL backend")
 set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "Enable OpenSL backend")
 set(ALSOFT_BACKEND_AAUDIO OFF CACHE BOOL "Disable AAudio backend")
@@ -47,26 +47,22 @@ set(ALSOFT_INSTALL OFF CACHE BOOL "Disable installation")
 set(ALSOFT_INSTALL_PKG_CONFIG_FILES OFF CACHE BOOL "Disable pkg-config files")
 set(ALSOFT_TESTS OFF CACHE BOOL "Disable tests")
 
-# 深度优化选项
+# 添加优化选项以减少杂音和延迟
 set(ALSOFT_CPUEXT_NEON ON CACHE BOOL "Enable NEON optimizations")
 set(ALSOFT_REQUIRE_NEON OFF CACHE BOOL "Don't require NEON")
-set(ALSOFT_HRTF_DISABLE ON CACHE BOOL "Disable HRTF" FORCE)
-set(ALSOFT_AMBIENT_CHANNELS 0 CACHE STRING "Ambient channels")
-set(ALSOFT_INSTALL_CONFIG "" CACHE STRING "Install config file")  # 修复：使用 INSTALL_CONFIG 代替 CONFIG
+set(ALSOFT_HRTF_DISABLE ON CACHE BOOL "Disable HRTF" FORCE) # 禁用HRTF可能减少延迟
+set(ALSOFT_AMBIENT_CHANNELS 0 CACHE STRING "Ambient channels") # 减少环境声道
+
+# 针对低延迟优化
+set(ALSOFT_DEFAULT_CFG "" CACHE STRING "Default config file")
+set(ALSOFT_CONFIG "" CACHE STRING "Config file")
 set(ALSOFT_DEFAULT_REVERB OFF CACHE BOOL "Disable default reverb")
 set(ALSOFT_DEFAULT_ECHO OFF CACHE BOOL "Disable default echo")
 set(ALSOFT_DEFAULT_MODULATION OFF CACHE BOOL "Disable default modulation")
-set(ALSOFT_EMBED_HRTF_DATA OFF CACHE BOOL "Disable embedded HRTF data")
 
-# 针对延迟和杂音的专门优化
-set(ALSOFT_ALSA_MMAP ON CACHE BOOL "Enable ALSA mmap mode" FORCE)  # 即使不是ALSA也设置
-set(ALSOFT_LATENCY_CONTROL ON CACHE BOOL "Enable latency control" FORCE)
-set(ALSOFT_DMA_SOUND ON CACHE BOOL "Enable DMA sound" FORCE)
-set(ALSOFT_DMA_SOUND_MIXED ON CACHE BOOL "Enable DMA mixed sound" FORCE)
-
-# 启用详细错误检查（调试用）
-set(ALSOFT_TRAP_AL_ERROR ON CACHE BOOL "Trap AL errors")
-set(ALSOFT_TRAP_ALC_ERROR ON CACHE BOOL "Trap ALC errors")
+# 启用调试信息（如果需要）
+# set(ALSOFT_TRAP_AL_ERROR ON CACHE BOOL "Trap AL errors")
+# set(ALSOFT_TRAP_ALC_ERROR ON CACHE BOOL "Trap ALC errors")
 
 FetchContent_MakeAvailable(openal)
 
@@ -81,37 +77,12 @@ add_library(
 # 添加编译定义以优化音频处理
 target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
-    OPENAL_ALEXT_PROTOTYPES
-    AL_ALEXT_PROTOTYPES
+    # 如果需要，可以添加更多音频优化标志
 )
-
-# 添加针对音频优化的编译标志
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(ryujinxjni PRIVATE
-        -O3
-        -ffast-math
-        -fno-exceptions
-        -fno-rtti
-    )
-    
-    # 针对 ARM 架构的优化
-    if(CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
-        target_compile_options(ryujinxjni PRIVATE -mfpu=neon -mfloat-abi=softfp)
-    endif()
-    
-    if(CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
-        target_compile_options(ryujinxjni PRIVATE -march=armv8-a+crc+crypto)
-    endif()
-endif()
 
 # 查找系统库
 find_library(log-lib log)
 find_library(opensles-lib OpenSLES)
-
-# 修复：只有当启用 AAudio 后端时才查找和链接 AAudio 库
-if(ALSOFT_BACKEND_AAUDIO)
-    find_library(aaudio-lib AAudio)
-endif()
 
 # 链接库
 target_link_libraries(
@@ -123,11 +94,6 @@ target_link_libraries(
     adrenotools
     OpenAL
 )
-
-# 修复：只有当启用 AAudio 后端时才链接 AAudio 库
-if(ALSOFT_BACKEND_AAUDIO)
-    target_link_libraries(ryujinxjni ${aaudio-lib})
-endif()
 
 # 设置 JNI 库输出路径
 set(JNI_PATH ../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
@@ -149,8 +115,8 @@ set_target_properties(OpenAL PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
 )
 
-# 添加自定义后构建步骤
-add_custom_command(TARGET ryujinxjni POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E echo "Audio-optimized build completed. Checking OpenAL configuration..."
-    COMMAND ${CMAKE_COMMAND} -E echo "For best results, set environment variables: ALSOFT_BUFFERS=4 ALSOFT_SIZE=2048"
-)
+# 添加自定义后构建步骤以优化音频库（可选）
+# add_custom_command(TARGET ryujinxjni POST_BUILD
+#     COMMAND ${CMAKE_COMMAND} -E echo "Applying audio optimizations..."
+#     COMMAND ... # 这里可以添加任何后处理步骤
+# )
