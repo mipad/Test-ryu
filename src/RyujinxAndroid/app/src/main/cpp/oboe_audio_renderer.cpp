@@ -80,15 +80,28 @@ void OboeAudioRenderer::shutdown() {
 
 void OboeAudioRenderer::setSampleRate(int32_t sampleRate) {
     mSampleRate = sampleRate;
+    if (mIsInitialized && mAudioStream) {
+        // 重新初始化以应用新的采样率
+        shutdown();
+        initialize();
+    }
 }
 
 void OboeAudioRenderer::setBufferSize(int32_t bufferSize) {
     mBufferSize = bufferSize;
+    if (mIsInitialized && mAudioStream) {
+        // 重新初始化以应用新的缓冲区大小
+        shutdown();
+        initialize();
+    }
 }
 
 void OboeAudioRenderer::writeAudio(const float* data, int32_t numFrames) {
     if (!mIsInitialized) {
-        return;
+        // 如果未初始化，尝试初始化
+        if (!initialize()) {
+            return;
+        }
     }
     
     std::lock_guard<std::mutex> lock(mBufferMutex);
@@ -129,6 +142,11 @@ oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(oboe::AudioStream* audi
 }
 
 void OboeAudioRenderer::onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
-    ALOGE("Oboe audio stream error: %s", oboe::convertToText(error));
+    ALOGE("Oboe audio stream error after close: %s", oboe::convertToText(error));
+    mIsInitialized = false;
+}
+
+void OboeAudioRenderer::onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
+    ALOGE("Oboe audio stream error before close: %s", oboe::convertToText(error));
     mIsInitialized = false;
 }
