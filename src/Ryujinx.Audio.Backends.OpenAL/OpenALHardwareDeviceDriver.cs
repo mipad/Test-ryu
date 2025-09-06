@@ -9,7 +9,7 @@ using System.Collections.Concurrent;
 using System.Threading;
 using static Ryujinx.Audio.Integration.IHardwareDeviceDriver;
 
-// Oboe 相关的命名空间
+// Oboe 相关的命名空间 - 根据 Yuzu 的实现方式
 using OboeStream = Com.Google.Android.Oboe.AudioStream;
 using OboeStreamBuilder = Com.Google.Android.Oboe.AudioStreamBuilder;
 using OboeDirection = Com.Google.Android.Oboe.Direction;
@@ -22,11 +22,12 @@ using OboeResult = Com.Google.Android.Oboe.Result;
 
 namespace Ryujinx.Audio.Backends.Oboe
 {
-    public class OboeHardwareDeviceDriver : IHardwareDeviceDriver
+    public class OboeHardwareDeviceDriver : IHardwareDeviceDriver, IDisposable
     {
         private readonly ManualResetEvent _updateRequiredEvent;
         private readonly ManualResetEvent _pauseEvent;
         private readonly ConcurrentDictionary<OboeHardwareDeviceSession, byte> _sessions;
+        private bool _disposed;
         private bool _stillRunning;
         private readonly Thread _updaterThread;
 
@@ -34,6 +35,8 @@ namespace Ryujinx.Audio.Backends.Oboe
         private readonly object _volumeLock = new();
 
         private OboeStream _audioStream;
+        private OboeDataCallbackImpl _dataCallback;
+        private OboeErrorCallbackImpl _errorCallback;
 
         public float Volume
         {
@@ -82,21 +85,36 @@ namespace Ryujinx.Audio.Backends.Oboe
         {
             try
             {
+                _dataCallback = new OboeDataCallbackImpl(this);
+                _errorCallback = new OboeErrorCallbackImpl(this);
+                
                 var builder = new OboeStreamBuilder()
                     .SetDirection(OboeDirection.Output)
                     .SetPerformanceMode(OboePerformanceMode.LowLatency)
-                    .SetSharingMode(OboeSharingMode.Exclusive)
+                    .SetSharingMode(OboeSharingMode.Shared)
                     .SetFormat(OboeFormat.I16)
                     .SetChannelCount(2) // Stereo
-                    .SetSampleRate((int)Constants.TargetSampleRate)
-                    .SetDataCallback(new OboeDataCallbackImpl(this))
-                    .SetErrorCallback(new OboeErrorCallbackImpl(this));
+                    .SetSampleRate(48000) // Standard sample rate
+                    .SetDataCallback(_dataCallback)
+                    .SetErrorCallback(_errorCallback);
 
-                _audioStream = builder.Build();
+                var result = builder.OpenStream(out _audioStream);
                 
-                if (_audioStream != null)
+                if (result == OboeResult.Ok && _audioStream != null)
                 {
                     _audioStream.RequestStart();
+                }
+                else
+                {
+                    // Fallback to a more compatible configuration
+                    builder.SetPerformanceMode(OboePerformanceMode.None);
+                    builder.SetSharingMode(OboeSharingMode.Shared);
+                    result = builder.OpenStream(out _audioStream);
+                    
+                    if (result == OboeResult.Ok && _audioStream != null)
+                    {
+                        _audioStream.RequestStart();
+                    }
                 }
             }
             catch (Exception ex)
@@ -131,7 +149,7 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             if (sampleRate == 0)
             {
-                sampleRate = Constants.TargetSampleRate;
+                sampleRate = 48000; // Standard sample rate
             }
 
             if (direction != Direction.Output)
@@ -224,24 +242,30 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         public void Dispose()
         {
-            GC.SuppressFinalize(this);
             Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
         protected virtual void Dispose(bool disposing)
         {
-            if (disposing)
+            if (!_disposed)
             {
-                _stillRunning = false;
-
-                foreach (OboeHardwareDeviceSession session in _sessions.Keys)
+                if (disposing)
                 {
-                    session.Dispose();
+                    _stillRunning = false;
+
+                    foreach (OboeHardwareDeviceSession session in _sessions.Keys)
+                    {
+                        session.Dispose();
+                    }
+
+                    _audioStream?.Close();
+                    _audioStream?.Dispose();
+                    _pauseEvent.Dispose();
+                    _updateRequiredEvent.Dispose();
                 }
 
-                _audioStream?.Close();
-                _audioStream?.Dispose();
-                _pauseEvent.Dispose();
+                _disposed = true;
             }
         }
 
@@ -277,17 +301,27 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             public override OboeResult OnAudioReady(OboeStream stream, Java.Lang.Object audioData, int numFrames)
             {
-                byte[] mixedData = _driver.GetMixedAudioData(numFrames);
-                
-                if (mixedData != null && audioData is ByteBuffer buffer)
+                try
                 {
-                    buffer.Rewind();
-                    buffer.Put(mixedData);
+                    if (audioData is ByteBuffer buffer)
+                    {
+                        byte[] mixedData = _driver.GetMixedAudioData(numFrames);
+                        
+                        if (mixedData != null)
+                        {
+                            buffer.Rewind();
+                            buffer.Put(mixedData);
+                        }
+                    }
+                    
+                    _driver.OnAudioReady();
+                    
+                    return OboeResult.Ok;
                 }
-                
-                _driver.OnAudioReady();
-                
-                return OboeResult.Ok;
+                catch (Exception)
+                {
+                    return OboeResult.ErrorInternal;
+                }
             }
         }
 
