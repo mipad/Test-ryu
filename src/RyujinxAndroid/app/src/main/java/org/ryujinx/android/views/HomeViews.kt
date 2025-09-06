@@ -432,7 +432,7 @@ class HomeViews {
                     modifier = Modifier
                         .fillMaxWidth(0.6f)
                         .aspectRatio(1.3f)
-                        .offset(y = (-10).dp) // 向上移动10dp
+                        .offset(y = (-18).dp) // 向上移动10dp
                         .combinedClickable(
                             onClick = {
                                 if (viewModel.mainViewModel?.selected != null) {
