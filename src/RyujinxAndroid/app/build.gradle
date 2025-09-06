@@ -121,7 +121,7 @@ dependencies {
     implementation("com.halilibo.compose-richtext:richtext-ui-material3:0.20.0")
     
     // 添加 Oboe 依赖 (使用最新稳定版本)
-    implementation 'com.google.oboe:oboe:1.7.0'
+    implementation 'com.google.oboe:oboe:1.9.3'
     
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
