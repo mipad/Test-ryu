@@ -376,8 +376,14 @@ class GameViews {
                                         }, modifier = Modifier.padding(16.dp)) {
                                             Text(text = "Dismiss")
                                         }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
+
+                mainViewModel.activity.uiHandler.Compose()
             }
         }
 
