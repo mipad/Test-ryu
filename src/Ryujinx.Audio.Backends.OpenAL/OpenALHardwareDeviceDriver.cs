@@ -1,104 +1,61 @@
-#if ANDROID
-using Android.Media;
-using Android.Runtime;
-using Java.Nio;
+using OpenTK.Audio.OpenAL;
 using Ryujinx.Audio.Common;
 using Ryujinx.Audio.Integration;
 using Ryujinx.Memory;
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Threading;
 using static Ryujinx.Audio.Integration.IHardwareDeviceDriver;
 
-namespace Ryujinx.Audio.Backends.Oboe
+namespace Ryujinx.Audio.Backends.OpenAL
 {
-    public class OboeHardwareDeviceDriver : IHardwareDeviceDriver, IDisposable
+    public class OpenALHardwareDeviceDriver : IHardwareDeviceDriver
     {
+        private readonly ALDevice _device;
+        private readonly ALContext _context;
         private readonly ManualResetEvent _updateRequiredEvent;
         private readonly ManualResetEvent _pauseEvent;
-        private readonly ConcurrentDictionary<OboeHardwareDeviceSession, byte> _sessions;
-        private bool _disposed;
+        private readonly ConcurrentDictionary<OpenALHardwareDeviceSession, byte> _sessions;
         private bool _stillRunning;
         private readonly Thread _updaterThread;
 
         private float _volume;
-        private readonly object _volumeLock = new();
-
-        private AudioTrack _audioTrack;
-        private byte[] _audioBuffer;
 
         public float Volume
         {
             get
             {
-                lock (_volumeLock)
-                {
-                    return _volume;
-                }
+                return _volume;
             }
             set
             {
-                lock (_volumeLock)
-                {
-                    _volume = value;
+                _volume = value;
 
-                    foreach (OboeHardwareDeviceSession session in _sessions.Keys)
-                    {
-                        session.UpdateMasterVolume(value);
-                    }
+                foreach (OpenALHardwareDeviceSession session in _sessions.Keys)
+                {
+                    session.UpdateMasterVolume(value);
                 }
             }
         }
 
-        public OboeHardwareDeviceDriver()
+        public OpenALHardwareDeviceDriver()
         {
+            _device = ALC.OpenDevice("");
+            _context = ALC.CreateContext(_device, new ALContextAttributes());
             _updateRequiredEvent = new ManualResetEvent(false);
             _pauseEvent = new ManualResetEvent(true);
-            _sessions = new ConcurrentDictionary<OboeHardwareDeviceSession, byte>();
+            _sessions = new ConcurrentDictionary<OpenALHardwareDeviceSession, byte>();
 
             _stillRunning = true;
             _updaterThread = new Thread(Update)
             {
-                Name = "HardwareDeviceDriver.Oboe",
-                IsBackground = true
+                Name = "HardwareDeviceDriver.OpenAL",
             };
 
             _volume = 1f;
 
-            InitializeAudioTrack();
-
             _updaterThread.Start();
-        }
-
-        private void InitializeAudioTrack()
-        {
-            try
-            {
-                int bufferSize = AudioTrack.GetMinBufferSize(
-                    48000, // Sample rate
-                    ChannelOut.Stereo, // Channel configuration
-                    Android.Media.Encoding.Pcm16bit); // Audio format
-
-                _audioTrack = new AudioTrack(
-                    Stream.Music,
-                    48000, // Sample rate
-                    ChannelOut.Stereo, // Channel configuration
-                    Android.Media.Encoding.Pcm16bit, // Audio format
-                    bufferSize,
-                    AudioTrackMode.Stream);
-
-                _audioBuffer = new byte[bufferSize];
-
-                if (_audioTrack != null)
-                {
-                    _audioTrack.Play();
-                }
-            }
-            catch (Exception ex)
-            {
-                // Handle initialization error
-                // In a real implementation, you might want to log this error
-            }
         }
 
         public static bool IsSupported
@@ -107,8 +64,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 try
                 {
-                    // AudioTrack is supported on all Android versions
-                    return true;
+                    return ALC.GetStringList(GetEnumerationStringList.DeviceSpecifier).Any();
                 }
                 catch
                 {
@@ -126,7 +82,7 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             if (sampleRate == 0)
             {
-                sampleRate = 48000; // Standard sample rate
+                sampleRate = Constants.TargetSampleRate;
             }
 
             if (direction != Direction.Output)
@@ -138,14 +94,14 @@ namespace Ryujinx.Audio.Backends.Oboe
                 throw new ArgumentException($"{channelCount}");
             }
 
-            OboeHardwareDeviceSession session = new(this, memoryManager, sampleFormat, sampleRate, channelCount);
+            OpenALHardwareDeviceSession session = new(this, memoryManager, sampleFormat, sampleRate, channelCount);
 
             _sessions.TryAdd(session, 0);
 
             return session;
         }
 
-        internal bool Unregister(OboeHardwareDeviceSession session)
+        internal bool Unregister(OpenALHardwareDeviceSession session)
         {
             return _sessions.TryRemove(session, out _);
         }
@@ -160,108 +116,64 @@ namespace Ryujinx.Audio.Backends.Oboe
             return _pauseEvent;
         }
 
-        internal void OnAudioReady()
-        {
-            bool updateRequired = false;
-
-            foreach (OboeHardwareDeviceSession session in _sessions.Keys)
-            {
-                if (session.NeedsUpdate())
-                {
-                    updateRequired = true;
-                }
-            }
-
-            if (updateRequired)
-            {
-                _updateRequiredEvent.Set();
-            }
-        }
-
         private void Update()
         {
+            ALC.MakeContextCurrent(_context);
+
             while (_stillRunning)
             {
-                Thread.Sleep(10);
-                
-                // Write mixed audio data to AudioTrack
-                byte[] mixedData = GetMixedAudioData(1024); // Adjust frame count as needed
-                if (mixedData != null && _audioTrack != null)
-                {
-                    _audioTrack.Write(mixedData, 0, mixedData.Length);
-                }
-            }
-        }
+                bool updateRequired = false;
 
-        internal byte[] GetMixedAudioData(int numFrames)
-        {
-            // Mix audio from all active sessions
-            byte[] mixedData = new byte[numFrames * 2 * 2]; // 16-bit stereo
-
-            foreach (OboeHardwareDeviceSession session in _sessions.Keys)
-            {
-                if (session.IsActive)
+                foreach (OpenALHardwareDeviceSession session in _sessions.Keys)
                 {
-                    byte[] sessionData = session.GetAudioData(numFrames);
-                    if (sessionData != null)
+                    if (session.Update())
                     {
-                        MixAudioData(mixedData, sessionData);
+                        updateRequired = true;
                     }
                 }
-            }
 
-            return mixedData;
-        }
+                if (updateRequired)
+                {
+                    _updateRequiredEvent.Set();
+                }
 
-        private void MixAudioData(byte[] target, byte[] source)
-        {
-            // Simple audio mixing - in a real implementation, you'd need proper
-            // audio mixing with clipping protection
-            for (int i = 0; i < Math.Min(target.Length, source.Length); i++)
-            {
-                int mixed = target[i] + source[i];
-                target[i] = (byte)Math.Min(Math.Max(mixed, 0), 255);
+                // If it's not slept it will waste cycles.
+                Thread.Sleep(10);
             }
         }
 
         public void Dispose()
         {
-            Dispose(true);
             GC.SuppressFinalize(this);
+            Dispose(true);
         }
 
         protected virtual void Dispose(bool disposing)
         {
-            if (!_disposed)
+            if (disposing)
             {
-                if (disposing)
+                _stillRunning = false;
+
+                foreach (OpenALHardwareDeviceSession session in _sessions.Keys)
                 {
-                    _stillRunning = false;
-
-                    foreach (OboeHardwareDeviceSession session in _sessions.Keys)
-                    {
-                        session.Dispose();
-                    }
-
-                    _audioTrack?.Stop();
-                    _audioTrack?.Release();
-                    _audioTrack?.Dispose();
-                    _pauseEvent.Dispose();
-                    _updateRequiredEvent.Dispose();
+                    session.Dispose();
                 }
 
-                _disposed = true;
+                ALC.DestroyContext(_context);
+                ALC.CloseDevice(_device);
+
+                _pauseEvent.Dispose();
             }
         }
 
         public bool SupportsSampleRate(uint sampleRate)
         {
-            return sampleRate == 48000; // Standard sample rate
+            return true;
         }
 
         public bool SupportsSampleFormat(SampleFormat sampleFormat)
         {
-            return sampleFormat == SampleFormat.PcmInt16; // Standard format
+            return true;
         }
 
         public bool SupportsChannelCount(uint channelCount)
@@ -275,4 +187,3 @@ namespace Ryujinx.Audio.Backends.Oboe
         }
     }
 }
-#endif
