@@ -40,7 +40,6 @@ class MainViewModel(val activity: MainActivity) {
     var batteryTemperatureState: MutableState<Double>? = null // 电池温度状态
     var batteryLevelState: MutableState<Int>? = null // 电池电量状态
     var isChargingState: MutableState<Boolean>? = null // 充电状态
-    var gpuNameState: MutableState<String>? = null // GPU名称状态
     private var frequenciesState: MutableList<Double>? = null
     private var progress: MutableState<String>? = null
     private var progressValue: MutableState<Float>? = null
@@ -362,8 +361,7 @@ class MainViewModel(val activity: MainActivity) {
         totalMem: MutableState<Int>,
         batteryTemperature: MutableState<Double>, // 电池温度
         batteryLevel: MutableState<Int>, // 电池电量
-        isCharging: MutableState<Boolean>, // 充电状态
-        gpuName: MutableState<String> // GPU名称
+        isCharging: MutableState<Boolean> // 充电状态
     ) {
         fifoState = fifo
         gameFpsState = gameFps
@@ -373,7 +371,6 @@ class MainViewModel(val activity: MainActivity) {
         batteryTemperatureState = batteryTemperature
         batteryLevelState = batteryLevel
         isChargingState = isCharging
-        gpuNameState = gpuName
     }
 
     fun updateStats(
@@ -412,13 +409,6 @@ class MainViewModel(val activity: MainActivity) {
         // 更新充电状态
         isChargingState?.apply {
             this.value = MainActivity.performanceMonitor.isCharging()
-        }
-        
-        // 更新GPU名称（只在第一次调用时更新）
-        gpuNameState?.apply {
-            if (this.value.isEmpty() || this.value == "Unknown GPU") {
-                this.value = MainActivity.performanceMonitor.getGpuName()
-            }
         }
     }
 
