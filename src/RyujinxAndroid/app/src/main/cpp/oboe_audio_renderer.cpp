@@ -30,8 +30,8 @@ bool OboeAudioRenderer::initialize() {
     builder.setChannelCount(oboe::ChannelCount::Stereo);
     builder.setSampleRate(mSampleRate);
     builder.setBufferCapacityInFrames(mBufferSize * 2);
-    builder.setDataCallback(this);
-    builder.setErrorCallback(this);
+    builder.setDataCallback(this);  // 设置数据回调
+    builder.setErrorCallback(this); // 设置错误回调
     
     oboe::Result result = builder.openStream(mAudioStream);
     if (result != oboe::Result::OK) {
