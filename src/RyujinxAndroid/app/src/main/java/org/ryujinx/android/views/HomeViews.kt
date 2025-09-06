@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -431,6 +432,7 @@ class HomeViews {
                     modifier = Modifier
                         .fillMaxWidth(0.6f)
                         .aspectRatio(1.3f)
+                        .offset(y = (-10).dp) // 向上移动10dp
                         .combinedClickable(
                             onClick = {
                                 if (viewModel.mainViewModel?.selected != null) {
@@ -483,7 +485,7 @@ class HomeViews {
                                 bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
                                     .asImageBitmap(),
                                 contentDescription = gameModel.getDisplayName() + " icon",
-                                contentScale = ContentScale.Crop,
+                                contentScale = ContentScale.FillBounds, // 改为FillBounds以拉伸图片
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .clip(RoundedCornerShape(12.dp))
