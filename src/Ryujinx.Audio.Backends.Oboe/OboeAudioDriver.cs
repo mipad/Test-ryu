@@ -215,23 +215,23 @@ namespace Ryujinx.Audio.Backends.Oboe
             }
 
             private float[] ConvertToFloat(byte[] audioData, SampleFormat format)
-            {
-                if (format == SampleFormat.PcmInt16)
-                {
-                    int sampleCount = audioData.Length / 2;
-                    float[] floatData = new float[sampleCount];
-                    
-                    for (int i = 0; i < sampleCount; i++)
-                    {
-                        short sample = (short)((audioData[i * 2 + 1] << 8) | audioData[i * 2]);
-                        floatData[i] = sample / 32768.0f * _volume;
-                    }
-                    
-                    return floatData;
-                }
-                
-                throw new NotSupportedException($"Sample format {format} is not supported");
-            }
+{
+    if (format == SampleFormat.PcmInt16)
+    {
+        int sampleCount = audioData.Length / 2;
+        float[] floatData = new float[sampleCount];
+        
+        for (int i = 0; i < sampleCount; i++)
+        {
+            short sample = BitConverter.ToInt16(audioData, i * 2);
+            floatData[i] = sample / 32768.0f * _volume;
+        }
+        
+        return floatData;
+    }
+    
+    throw new NotSupportedException($"Sample format {format} is not supported");
+}
         }
     }
 }
