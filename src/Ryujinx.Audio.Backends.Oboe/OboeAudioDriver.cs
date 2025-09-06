@@ -25,6 +25,24 @@ namespace Ryujinx.Audio.Backends.Oboe
         [DllImport("libryujinxjni")]
         private static extern void setOboeBufferSize(int bufferSize);
 
+        public static bool IsSupported
+{
+    get
+    {
+        try
+        {
+            // 尝试初始化 Oboe 来检查是否支持
+            initOboeAudio();
+            shutdownOboeAudio();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+}
+
         private bool _disposed;
 
         public OboeAudioDriver()
