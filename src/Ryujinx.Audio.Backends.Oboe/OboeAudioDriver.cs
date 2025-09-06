@@ -87,8 +87,8 @@ namespace Ryujinx.Audio.Backends.Oboe
         public bool SupportsChannelCount(uint channelCount) =>
             channelCount == 1 || channelCount == 2 || channelCount == 6;
 
-        public bool SupportsDirection(Direction direction) =>
-            direction == Direction.Output;
+        public bool SupportsDirection(IHardwareDeviceDriver.Direction direction) =>
+            direction == IHardwareDeviceDriver.Direction.Output;
 
         // ========== 事件 ==========
         public ManualResetEvent GetPauseEvent() => _pauseEvent;
@@ -96,13 +96,13 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         // ========== 打开设备会话 ==========
         public IHardwareDeviceSession OpenDeviceSession(
-            Direction direction,
+            IHardwareDeviceDriver.Direction direction,
             IVirtualMemoryManager memoryManager,
             SampleFormat sampleFormat,
             uint sampleRate,
             uint channelCount)
         {
-            if (direction != Direction.Output)
+            if (direction != IHardwareDeviceDriver.Direction.Output)
                 throw new ArgumentException($"Unsupported direction: {direction}");
 
             if (!SupportsChannelCount(channelCount))
