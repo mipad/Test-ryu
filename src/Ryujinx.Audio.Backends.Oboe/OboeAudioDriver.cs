@@ -1,3 +1,4 @@
+// OboeAudioDriver.cs
 #if ANDROID
 using Ryujinx.Audio.Common;
 using Ryujinx.Audio.Integration;
@@ -60,7 +61,6 @@ namespace Ryujinx.Audio.Backends.Oboe
             _volume = 1.0f;
             _pauseEvent = new ManualResetEvent(true);
             _updateRequiredEvent = new ManualResetEvent(false);
-            initOboeAudio();
         }
 
         public ManualResetEvent GetPauseEvent()
@@ -84,6 +84,9 @@ namespace Ryujinx.Audio.Backends.Oboe
                 throw new ArgumentException($"{channelCount}");
             }
 
+            // 初始化 Oboe 音频
+            initOboeAudio();
+            
             // 设置采样率
             setOboeSampleRate((int)sampleRate);
             
@@ -215,23 +218,23 @@ namespace Ryujinx.Audio.Backends.Oboe
             }
 
             private float[] ConvertToFloat(byte[] audioData, SampleFormat format)
-{
-    if (format == SampleFormat.PcmInt16)
-    {
-        int sampleCount = audioData.Length / 2;
-        float[] floatData = new float[sampleCount];
-        
-        for (int i = 0; i < sampleCount; i++)
-        {
-            short sample = BitConverter.ToInt16(audioData, i * 2);
-            floatData[i] = sample / 32768.0f * _volume;
-        }
-        
-        return floatData;
-    }
-    
-    throw new NotSupportedException($"Sample format {format} is not supported");
-}
+            {
+                if (format == SampleFormat.PcmInt16)
+                {
+                    int sampleCount = audioData.Length / 2;
+                    float[] floatData = new float[sampleCount];
+                    
+                    for (int i = 0; i < sampleCount; i++)
+                    {
+                        short sample = BitConverter.ToInt16(audioData, i * 2);
+                        floatData[i] = sample / 32768.0f * _volume;
+                    }
+                    
+                    return floatData;
+                }
+                
+                throw new NotSupportedException($"Sample format {format} is not supported");
+            }
         }
     }
 }
