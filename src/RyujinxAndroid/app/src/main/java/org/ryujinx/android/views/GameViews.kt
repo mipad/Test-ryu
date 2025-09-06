@@ -97,7 +97,6 @@ class GameViews {
             val showRam = remember { mutableStateOf(true) }
             val showBatteryTemperature = remember { mutableStateOf(false) }
             val showBatteryLevel = remember { mutableStateOf(false) }
-            val showGpuName = remember { mutableStateOf(false) }
             val showFifo = remember { mutableStateOf(true) } // 添加FIFO显示状态
 
             Box(modifier = Modifier.fillMaxSize()) {
@@ -108,7 +107,6 @@ class GameViews {
                         showRam = showRam.value,
                         showBatteryTemperature = showBatteryTemperature.value,
                         showBatteryLevel = showBatteryLevel.value,
-                        showGpuName = showGpuName.value,
                         showFifo = showFifo.value
                     )
                 }
@@ -289,7 +287,6 @@ class GameViews {
                             showRam = showRam,
                             showBatteryTemperature = showBatteryTemperature,
                             showBatteryLevel = showBatteryLevel,
-                            showGpuName = showGpuName,
                             showFifo = showFifo,
                             onDismiss = { showPerformanceSettings.value = false }
                         )
@@ -379,14 +376,8 @@ class GameViews {
                                         }, modifier = Modifier.padding(16.dp)) {
                                             Text(text = "Dismiss")
                                         }
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
-
-                mainViewModel.activity.uiHandler.Compose()
             }
         }
 
@@ -397,7 +388,6 @@ class GameViews {
             showRam: androidx.compose.runtime.MutableState<Boolean>,
             showBatteryTemperature: androidx.compose.runtime.MutableState<Boolean>,
             showBatteryLevel: androidx.compose.runtime.MutableState<Boolean>,
-            showGpuName: androidx.compose.runtime.MutableState<Boolean>,
             showFifo: androidx.compose.runtime.MutableState<Boolean>,
             onDismiss: () -> Unit
         ) {
@@ -503,19 +493,6 @@ class GameViews {
                                         onCheckedChange = { showBatteryLevel.value = it }
                                     )
                                 }
-                                
-                                // GPU名称显示开关
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(text = "GPU Name")
-                                    Switch(
-                                        checked = showGpuName.value,
-                                        onCheckedChange = { showGpuName.value = it }
-                                    )
-                                }
                             }
                         }
                         
@@ -570,7 +547,6 @@ class GameViews {
             showRam: Boolean,
             showBatteryTemperature: Boolean,
             showBatteryLevel: Boolean,
-            showGpuName: Boolean,
             showFifo: Boolean
         ) {
             val fifo = remember {
@@ -599,10 +575,6 @@ class GameViews {
             // 充电状态
             val isCharging = remember {
                 mutableStateOf(false)
-            }
-            // GPU名称状态
-            val gpuName = remember {
-                mutableStateOf("")
             }
 
             // 完全透明的文字面板
@@ -663,25 +635,6 @@ class GameViews {
                             ) {
                                 Text(
                                     text = "${totalMem.value}/${usedMem.value} MB",
-                                    modifier = Modifier
-                                        .background(
-                                            color = Color.Black.copy(alpha = 0.26f),
-                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-                                        )
-                                        //.padding(horizontal = 4.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                        
-                        // GPU名称（根据设置决定是否显示）
-                        if (showGpuName && gpuName.value.isNotEmpty() && gpuName.value != "Unknown GPU") {
-                            Box(
-                                modifier = Modifier.align(Alignment.Start)
-                            ) {
-                                Text(
-                                    text = gpuName.value,
-                                    fontSize = 8.sp,
-                                    color = Color.Gray,
                                     modifier = Modifier
                                         .background(
                                             color = Color.Black.copy(alpha = 0.26f),
@@ -761,8 +714,7 @@ class GameViews {
                 totalMem, 
                 batteryTemperature,
                 batteryLevel,
-                isCharging,
-                gpuName
+                isCharging
             )
         }
     }
