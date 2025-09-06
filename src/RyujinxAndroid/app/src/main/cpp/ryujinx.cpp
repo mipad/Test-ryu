@@ -282,3 +282,28 @@ JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setOboeBufferSize(JNIEnv *env, jobject thiz, jint buffer_size) {
     OboeAudioRenderer::getInstance().setBufferSize(buffer_size);
 }
+
+// 添加直接供 .NET 调用的 C 函数
+extern "C" {
+
+void initOboeAudio() {
+    OboeAudioRenderer::getInstance().initialize();
+}
+
+void shutdownOboeAudio() {
+    OboeAudioRenderer::getInstance().shutdown();
+}
+
+void writeOboeAudio(const float* data, int32_t num_frames) {
+    OboeAudioRenderer::getInstance().writeAudio(data, num_frames);
+}
+
+void setOboeSampleRate(int32_t sample_rate) {
+    OboeAudioRenderer::getInstance().setSampleRate(sample_rate);
+}
+
+void setOboeBufferSize(int32_t buffer_size) {
+    OboeAudioRenderer::getInstance().setBufferSize(buffer_size);
+}
+
+} // extern "C"
