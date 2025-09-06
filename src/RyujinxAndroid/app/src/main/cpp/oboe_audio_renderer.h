@@ -7,6 +7,7 @@
 #include <vector>
 #include <atomic>
 #include <memory>
+#include <cstdint>
 
 class OboeAudioRenderer : public oboe::AudioStreamDataCallback, 
                           public oboe::AudioStreamErrorCallback {
@@ -27,17 +28,19 @@ public:
     
     // oboe::AudioStreamErrorCallback interface
     void onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) override;
+    void onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) override;
     
 private:
     OboeAudioRenderer();
     ~OboeAudioRenderer();
     
-    std::shared_ptr<oboe::AudioStream> mAudioStream; // 改为 shared_ptr
+    std::shared_ptr<oboe::AudioStream> mAudioStream;
     std::vector<float> mAudioBuffer;
     std::mutex mBufferMutex;
     std::atomic<bool> mIsInitialized{false};
     std::atomic<int32_t> mSampleRate{48000};
     std::atomic<int32_t> mBufferSize{1024};
+    std::atomic<int32_t> mChannelCount{2}; // 默认立体声
 };
 
 #endif // RYUJINX_OBOE_AUDIO_RENDERER_H
