@@ -735,44 +735,49 @@ class SettingViews {
                                 )
                             }
                             
-                            // 分辨率选项 - 点击后显示
-                            AnimatedVisibility(visible = showResScaleOptions.value) {
-                                Column(modifier = Modifier.fillMaxWidth()) {
-                                    // 预设按钮组
-                                    val resolutionPresets = listOf(0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.85f, 0.9f, 0.95f, 1f, 1.25f, 1.5f, 1.75f, 2f, 3f, 4f)
-                                    
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                            .horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        resolutionPresets.forEach { preset ->
-                                            val isSelected = resScale.value == preset
-                                            
-                                            TextButton(
-                                                onClick = {
-                                                    resScale.value = preset
-                                                    showResScaleOptions.value = false // 选择后隐藏选项
-                                                },
-                                                modifier = Modifier
-                                                    .height(36.dp)
-                                                    .border(
-                                                        width = 1.dp,
-                                                        color = if (isSelected) MaterialTheme.colorScheme.primary 
-                                                               else MaterialTheme.colorScheme.outline,
-                                                        shape = MaterialTheme.shapes.small
-                                                    ),
-                                                colors = ButtonDefaults.textButtonColors(
-                                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent,
-                                                    contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer 
-                                                                 else MaterialTheme.colorScheme.onSurface
-                                                )
-                                            ) {
-                                                Text(
-                                                    text = "%.2fx".format(preset),
-                                                    fontSize = 12.sp
+                            // 分辨率比例选项修改
+AnimatedVisibility(visible = showResScaleOptions.value) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // 预设按钮组
+        val resolutionPresets = listOf(0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.85f, 0.9f, 0.95f, 1f, 1.25f, 1.5f, 1.75f, 2f, 3f, 4f)
+        
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            resolutionPresets.forEach { preset ->
+                val isSelected = resScale.value == preset
+                
+                TextButton(
+                    onClick = {
+                        resScale.value = preset
+                        showResScaleOptions.value = false // 选择后隐藏选项
+                    },
+                    modifier = Modifier
+                        .height(36.dp)
+                        .then(
+                            if (isSelected) {
+                                Modifier.border(
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    shape = MaterialTheme.shapes.small
+                                )
+                            } else {
+                                Modifier
+                            }
+                        ),
+                    colors = ButtonDefaults.textButtonColors(
+                        containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent,
+                        contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer 
+                                     else MaterialTheme.colorScheme.onSurface
+                    )
+                ) {
+                    Text(
+                        text = "%.2fx".format(preset),
+                        fontSize = 12.sp
                                                 )
                                             }
                                         }
@@ -805,54 +810,58 @@ class SettingViews {
                                 )
                             }
                             
-                            // 画面比例选项 - 点击后显示
-                            AnimatedVisibility(visible = showAspectRatioOptions.value) {
-                                Column(modifier = Modifier.fillMaxWidth()) {
-                                    val aspectRatioOptions = listOf("4:3", "16:9", "16:10", "21:9", "32:9", "Stretched")
-                                    
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                            .horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        aspectRatioOptions.forEachIndexed { index, option ->
-                                            val isSelected = aspectRatio.value == index
-                                            
-                                            // 使用Box来确保点击区域匹配矩形大小
-                                            Box(
-                                                modifier = Modifier
-                                                    .width(80.dp) // 矩形宽度
-                                                    .height(40.dp) // 矩形高度
-                                                    .clip(MaterialTheme.shapes.small)
-                                                    .clickable(
-                                                        interactionSource = remember { MutableInteractionSource() },
-                                                        indication = null
-                                                    ) { 
-                                                        aspectRatio.value = index
-                                                        showAspectRatioOptions.value = false // 选择后隐藏选项
-                                                    }
-                                                    .border(
-                                                        width = 1.dp,
-                                                        // 使用outlineVariant确保在亮色和暗色模式下都可见
-                                                        color = if (isSelected) MaterialTheme.colorScheme.primary 
-                                                               else MaterialTheme.colorScheme.outlineVariant,
-                                                        shape = MaterialTheme.shapes.small
-                                                    )
-                                                    .then(
-                                                        if (isSelected) Modifier.background(
-                                                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                                                        ) else Modifier
-                                                    ),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Text(
-                                                    text = option,
-                                                    fontSize = 12.sp,
-                                                    textAlign = TextAlign.Center,
-                                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer 
-                                                           else MaterialTheme.colorScheme.onSurface
+                            // 画面比例选项修改
+AnimatedVisibility(visible = showAspectRatioOptions.value) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        val aspectRatioOptions = listOf("4:3", "16:9", "16:10", "21:9", "32:9", "Stretched")
+        
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            aspectRatioOptions.forEachIndexed { index, option ->
+                val isSelected = aspectRatio.value == index
+                
+                // 使用Box来确保点击区域匹配矩形大小
+                Box(
+                    modifier = Modifier
+                        .width(80.dp) // 矩形宽度
+                        .height(40.dp) // 矩形高度
+                        .clip(MaterialTheme.shapes.small)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { 
+                            aspectRatio.value = index
+                            showAspectRatioOptions.value = false // 选择后隐藏选项
+                        }
+                        .then(
+                            if (isSelected) {
+                                Modifier.border(
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    shape = MaterialTheme.shapes.small
+                                )
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .then(
+                            if (isSelected) Modifier.background(
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                            ) else Modifier
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = option,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center,
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer 
+                               else MaterialTheme.colorScheme.onSurface
                                                 )
                                             }
                                         }
