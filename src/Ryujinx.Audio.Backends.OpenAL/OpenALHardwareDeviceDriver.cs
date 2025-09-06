@@ -1,4 +1,5 @@
 #if ANDROID
+using Android.Media;
 using Android.Runtime;
 using Java.Nio;
 using Ryujinx.Audio.Common;
@@ -8,17 +9,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using static Ryujinx.Audio.Integration.IHardwareDeviceDriver;
-
-// Oboe 相关的命名空间 - 根据 Yuzu 的实现方式
-using OboeStream = Com.Google.Android.Oboe.AudioStream;
-using OboeStreamBuilder = Com.Google.Android.Oboe.AudioStreamBuilder;
-using OboeDirection = Com.Google.Android.Oboe.Direction;
-using OboePerformanceMode = Com.Google.Android.Oboe.PerformanceMode;
-using OboeSharingMode = Com.Google.Android.Oboe.SharingMode;
-using OboeFormat = Com.Google.Android.Oboe.Format;
-using OboeDataCallback = Com.Google.Android.Oboe.AudioStreamDataCallback;
-using OboeErrorCallback = Com.Google.Android.Oboe.AudioStreamErrorCallback;
-using OboeResult = Com.Google.Android.Oboe.Result;
 
 namespace Ryujinx.Audio.Backends.Oboe
 {
@@ -34,9 +24,8 @@ namespace Ryujinx.Audio.Backends.Oboe
         private float _volume;
         private readonly object _volumeLock = new();
 
-        private OboeStream _audioStream;
-        private OboeDataCallbackImpl _dataCallback;
-        private OboeErrorCallbackImpl _errorCallback;
+        private AudioTrack _audioTrack;
+        private byte[] _audioBuffer;
 
         public float Volume
         {
@@ -76,45 +65,33 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             _volume = 1f;
 
-            InitializeOboeStream();
+            InitializeAudioTrack();
 
             _updaterThread.Start();
         }
 
-        private void InitializeOboeStream()
+        private void InitializeAudioTrack()
         {
             try
             {
-                _dataCallback = new OboeDataCallbackImpl(this);
-                _errorCallback = new OboeErrorCallbackImpl(this);
-                
-                var builder = new OboeStreamBuilder()
-                    .SetDirection(OboeDirection.Output)
-                    .SetPerformanceMode(OboePerformanceMode.LowLatency)
-                    .SetSharingMode(OboeSharingMode.Shared)
-                    .SetFormat(OboeFormat.I16)
-                    .SetChannelCount(2) // Stereo
-                    .SetSampleRate(48000) // Standard sample rate
-                    .SetDataCallback(_dataCallback)
-                    .SetErrorCallback(_errorCallback);
+                int bufferSize = AudioTrack.GetMinBufferSize(
+                    48000, // Sample rate
+                    ChannelOut.Stereo, // Channel configuration
+                    Android.Media.Encoding.Pcm16bit); // Audio format
 
-                var result = builder.OpenStream(out _audioStream);
-                
-                if (result == OboeResult.Ok && _audioStream != null)
+                _audioTrack = new AudioTrack(
+                    Stream.Music,
+                    48000, // Sample rate
+                    ChannelOut.Stereo, // Channel configuration
+                    Android.Media.Encoding.Pcm16bit, // Audio format
+                    bufferSize,
+                    AudioTrackMode.Stream);
+
+                _audioBuffer = new byte[bufferSize];
+
+                if (_audioTrack != null)
                 {
-                    _audioStream.RequestStart();
-                }
-                else
-                {
-                    // Fallback to a more compatible configuration
-                    builder.SetPerformanceMode(OboePerformanceMode.None);
-                    builder.SetSharingMode(OboeSharingMode.Shared);
-                    result = builder.OpenStream(out _audioStream);
-                    
-                    if (result == OboeResult.Ok && _audioStream != null)
-                    {
-                        _audioStream.RequestStart();
-                    }
+                    _audioTrack.Play();
                 }
             }
             catch (Exception ex)
@@ -130,8 +107,8 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 try
                 {
-                    // Oboe is supported on Android API 16+ (Jelly Bean)
-                    return Android.OS.Build.VERSION.SdkInt >= Android.OS.BuildVersionCodes.JellyBean;
+                    // AudioTrack is supported on all Android versions
+                    return true;
                 }
                 catch
                 {
@@ -206,6 +183,13 @@ namespace Ryujinx.Audio.Backends.Oboe
             while (_stillRunning)
             {
                 Thread.Sleep(10);
+                
+                // Write mixed audio data to AudioTrack
+                byte[] mixedData = GetMixedAudioData(1024); // Adjust frame count as needed
+                if (mixedData != null && _audioTrack != null)
+                {
+                    _audioTrack.Write(mixedData, 0, mixedData.Length);
+                }
             }
         }
 
@@ -259,8 +243,9 @@ namespace Ryujinx.Audio.Backends.Oboe
                         session.Dispose();
                     }
 
-                    _audioStream?.Close();
-                    _audioStream?.Dispose();
+                    _audioTrack?.Stop();
+                    _audioTrack?.Release();
+                    _audioTrack?.Dispose();
                     _pauseEvent.Dispose();
                     _updateRequiredEvent.Dispose();
                 }
@@ -271,12 +256,12 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         public bool SupportsSampleRate(uint sampleRate)
         {
-            return sampleRate == 48000; // Oboe supports various rates, but we'll use 48kHz for compatibility
+            return sampleRate == 48000; // Standard sample rate
         }
 
         public bool SupportsSampleFormat(SampleFormat sampleFormat)
         {
-            return sampleFormat == SampleFormat.PcmInt16; // Oboe supports various formats, but we'll use PCM16
+            return sampleFormat == SampleFormat.PcmInt16; // Standard format
         }
 
         public bool SupportsChannelCount(uint channelCount)
@@ -287,59 +272,6 @@ namespace Ryujinx.Audio.Backends.Oboe
         public bool SupportsDirection(Direction direction)
         {
             return direction == Direction.Output;
-        }
-
-        // Oboe data callback implementation
-        private class OboeDataCallbackImpl : OboeDataCallback
-        {
-            private readonly OboeHardwareDeviceDriver _driver;
-
-            public OboeDataCallbackImpl(OboeHardwareDeviceDriver driver)
-            {
-                _driver = driver;
-            }
-
-            public override OboeResult OnAudioReady(OboeStream stream, Java.Lang.Object audioData, int numFrames)
-            {
-                try
-                {
-                    if (audioData is ByteBuffer buffer)
-                    {
-                        byte[] mixedData = _driver.GetMixedAudioData(numFrames);
-                        
-                        if (mixedData != null)
-                        {
-                            buffer.Rewind();
-                            buffer.Put(mixedData);
-                        }
-                    }
-                    
-                    _driver.OnAudioReady();
-                    
-                    return OboeResult.Ok;
-                }
-                catch (Exception)
-                {
-                    return OboeResult.ErrorInternal;
-                }
-            }
-        }
-
-        // Oboe error callback implementation
-        private class OboeErrorCallbackImpl : OboeErrorCallback
-        {
-            private readonly OboeHardwareDeviceDriver _driver;
-
-            public OboeErrorCallbackImpl(OboeHardwareDeviceDriver driver)
-            {
-                _driver = driver;
-            }
-
-            public override bool OnError(OboeStream stream, OboeResult error)
-            {
-                // Handle error - in a real implementation, you might want to log this
-                return true; // Return true to indicate the error was handled
-            }
         }
     }
 }
