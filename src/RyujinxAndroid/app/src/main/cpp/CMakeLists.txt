@@ -66,6 +66,9 @@ set(ALSOFT_DEFAULT_MODULATION OFF CACHE BOOL "Disable default modulation")
 
 FetchContent_MakeAvailable(openal)
 
+# 查找 Oboe 库 (Google 官方推荐方式)
+find_package(oboe REQUIRED CONFIG)
+
 # 创建主库
 add_library(
     ryujinxjni
@@ -84,7 +87,7 @@ target_compile_definitions(ryujinxjni PRIVATE
 find_library(log-lib log)
 find_library(opensles-lib OpenSLES)
 
-# 链接库
+# 链接库 (添加 oboe::oboe)
 target_link_libraries(
     ryujinxjni
     ${log-lib}
@@ -93,6 +96,7 @@ target_link_libraries(
     -landroid
     adrenotools
     OpenAL
+    oboe::oboe  # 添加 Oboe 库 (Google 官方推荐方式)
 )
 
 # 设置 JNI 库输出路径
