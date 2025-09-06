@@ -425,6 +425,9 @@ class HomeViews {
             }
             val isSelected = selectedModel.value == gameModel
             val decoder = Base64.getDecoder()
+            
+            // 根据主题确定边框颜色
+            val borderColor = if (MaterialTheme.colorScheme.isLight) Color.Black else Color.White
 
             if (isCentered) {
                 // 中央项目 - 只显示图标，不显示文字
@@ -433,6 +436,7 @@ class HomeViews {
                         .fillMaxWidth(0.6f)
                         .aspectRatio(1.3f)
                         .offset(y = (-20).dp) // 向上移动10dp
+                        .border(1.dp, borderColor, RoundedCornerShape(12.dp)) // 添加超细线框
                         .combinedClickable(
                             onClick = {
                                 if (viewModel.mainViewModel?.selected != null) {
