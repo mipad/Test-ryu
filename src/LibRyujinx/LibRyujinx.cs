@@ -81,7 +81,7 @@ namespace LibRyujinx
                 return false;
             }
             
-            OpenALLibraryNameContainer.OverridePath = "libopenal.so";
+            OpenALLibraryNameContainer.OverridePath = "liboboe.so";
 
             return true;
         }
