@@ -1,41 +1,45 @@
+// OboeAudioDriver.cs
 #if ANDROID
 using Ryujinx.Audio.Common;
 using Ryujinx.Audio.Integration;
 using Ryujinx.Memory;
 using System;
-using System.Collections.Concurrent;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
-using static Ryujinx.Audio.Integration.IHardwareDeviceDriver;
 
 namespace Ryujinx.Audio.Backends.Oboe
 {
     public class OboeAudioDriver : IHardwareDeviceDriver, IDisposable
     {
-        [DllImport("libryujinxjni")]
+        // ========== P/Invoke 声明 ==========
+        [DllImport("libryujinxjni", EntryPoint = "initOboeAudio")]
         private static extern void initOboeAudio();
-        
-        [DllImport("libryujinxjni")]
+
+        [DllImport("libryujinxjni", EntryPoint = "shutdownOboeAudio")]
         private static extern void shutdownOboeAudio();
-        
-        [DllImport("libryujinxjni")]
+
+        [DllImport("libryujinxjni", EntryPoint = "writeOboeAudio")]
         private static extern void writeOboeAudio(float[] audioData, int numFrames);
-        
-        [DllImport("libryujinxjni")]
+
+        [DllImport("libryujinxjni", EntryPoint = "setOboeSampleRate")]
         private static extern void setOboeSampleRate(int sampleRate);
-        
-        [DllImport("libryujinxjni")]
+
+        [DllImport("libryujinxjni", EntryPoint = "setOboeBufferSize")]
         private static extern void setOboeBufferSize(int bufferSize);
 
-        private readonly ManualResetEvent _updateRequiredEvent;
-        private readonly ManualResetEvent _pauseEvent;
-        private readonly ConcurrentDictionary<OboeAudioSession, byte> _sessions;
-        private bool _stillRunning;
-        private readonly Thread _updaterThread;
+        [DllImport("libryujinxjni", EntryPoint = "setOboeVolume")]
+        private static extern void setOboeVolume(float volume);
 
-        private float _volume;
-        private bool _isInitialized;
+        [DllImport("libryujinxjni", EntryPoint = "isOboeInitialized")]
+        private static extern bool isOboeInitialized();
+
+        // ========== 属性 ==========
+        public static bool IsSupported => true; // Oboe 在 Android 8.1+ 基本都支持
+
+        private bool _disposed;
+        private float _volume = 1.0f;
+        private readonly ManualResetEvent _pauseEvent = new(true);
+        private readonly ManualResetEvent _updateRequiredEvent = new(false);
 
         public float Volume
         {
@@ -43,122 +47,14 @@ namespace Ryujinx.Audio.Backends.Oboe
             set
             {
                 _volume = value;
-                foreach (OboeAudioSession session in _sessions.Keys)
-                {
-                    session.UpdateMasterVolume(value);
-                }
+                setOboeVolume(value); // 实时同步到原生层
             }
         }
 
+        // ========== 构造与生命周期 ==========
         public OboeAudioDriver()
         {
-            _updateRequiredEvent = new ManualResetEvent(false);
-            _pauseEvent = new ManualResetEvent(true);
-            _sessions = new ConcurrentDictionary<OboeAudioSession, byte>();
-
-            _stillRunning = true;
-            _updaterThread = new Thread(Update)
-            {
-                Name = "HardwareDeviceDriver.Oboe",
-                IsBackground = true
-            };
-
-            _volume = 1f;
-            _isInitialized = false;
-            
-            _updaterThread.Start();
-        }
-
-        public static bool IsSupported
-        {
-            get
-            {
-                try
-                {
-                    // 尝试初始化 Oboe 来检查是否支持
-                    initOboeAudio();
-                    shutdownOboeAudio();
-                    return true;
-                }
-                catch
-                {
-                    return false;
-                }
-            }
-        }
-
-        public ManualResetEvent GetPauseEvent()
-        {
-            return _pauseEvent;
-        }
-
-        public ManualResetEvent GetUpdateRequiredEvent()
-        {
-            return _updateRequiredEvent;
-        }
-
-        public IHardwareDeviceSession OpenDeviceSession(Direction direction, IVirtualMemoryManager memoryManager, SampleFormat sampleFormat, uint sampleRate, uint channelCount)
-        {
-            if (direction != Direction.Output)
-            {
-                throw new ArgumentException($"{direction}");
-            }
-            else if (!SupportsChannelCount(channelCount))
-            {
-                throw new ArgumentException($"{channelCount}");
-            }
-
-            // 在这里设置参数 + 初始化
-            setOboeSampleRate((int)sampleRate);
-            setOboeBufferSize(CalculateBufferSize(sampleRate));
-            
-            // 此时才初始化音频流
-            if (!_isInitialized)
-            {
-                initOboeAudio();
-                _isInitialized = true;
-            }
-
-            OboeAudioSession session = new OboeAudioSession(this, memoryManager, sampleFormat, sampleRate, channelCount);
-
-            _sessions.TryAdd(session, 0);
-
-            return session;
-        }
-
-        private int CalculateBufferSize(uint sampleRate)
-        {
-            int desiredLatencyMs = 20; // 目标延迟 20ms
-            return (int)(sampleRate * desiredLatencyMs / 1000);
-        }
-
-        internal bool Unregister(OboeAudioSession session)
-        {
-            return _sessions.TryRemove(session, out _);
-        }
-
-        private void Update()
-        {
-            while (_stillRunning)
-            {
-                bool updateRequired = false;
-
-                foreach (OboeAudioSession session in _sessions.Keys)
-                {
-                    if (session.Update())
-                    {
-                        updateRequired = true;
-                    }
-                }
-
-                if (updateRequired)
-                {
-                    _updateRequiredEvent.Set();
-                }
-
-                // 休眠以避免占用过多CPU
-                Thread.Sleep(5);
-            }
+            // 不在这里初始化 Oboe！等 OpenDeviceSession 时再初始化
         }
 
         public void Dispose()
@@ -169,209 +65,138 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         protected virtual void Dispose(bool disposing)
         {
-            if (disposing)
+            if (!_disposed)
             {
-                _stillRunning = false;
-
-                foreach (OboeAudioSession session in _sessions.Keys)
-                {
-                    session.Dispose();
-                }
-
-                if (_isInitialized)
+                if (disposing)
                 {
                     shutdownOboeAudio();
-                    _isInitialized = false;
+                    _pauseEvent?.Dispose();
+                    _updateRequiredEvent?.Dispose();
                 }
-                
-                _pauseEvent?.Dispose();
-                _updateRequiredEvent?.Dispose();
+                _disposed = true;
             }
         }
 
-        public bool SupportsSampleRate(uint sampleRate)
+        // ========== 设备能力查询 ==========
+        public bool SupportsSampleRate(uint sampleRate) =>
+            sampleRate == 48000 || sampleRate == 44100 || sampleRate == 32000;
+
+        public bool SupportsSampleFormat(SampleFormat sampleFormat) =>
+            sampleFormat == SampleFormat.PcmInt16;
+
+        public bool SupportsChannelCount(uint channelCount) =>
+            channelCount == 1 || channelCount == 2 || channelCount == 6;
+
+        public bool SupportsDirection(Direction direction) =>
+            direction == Direction.Output;
+
+        // ========== 事件 ==========
+        public ManualResetEvent GetPauseEvent() => _pauseEvent;
+        public ManualResetEvent GetUpdateRequiredEvent() => _updateRequiredEvent;
+
+        // ========== 打开设备会话 ==========
+        public IHardwareDeviceSession OpenDeviceSession(
+            Direction direction,
+            IVirtualMemoryManager memoryManager,
+            SampleFormat sampleFormat,
+            uint sampleRate,
+            uint channelCount)
         {
-            return sampleRate == 48000 || sampleRate == 44100 || sampleRate == 32000;
+            if (direction != Direction.Output)
+                throw new ArgumentException($"Unsupported direction: {direction}");
+
+            if (!SupportsChannelCount(channelCount))
+                throw new ArgumentException($"Unsupported channel count: {channelCount}");
+
+            if (!SupportsSampleFormat(sampleFormat))
+                throw new ArgumentException($"Unsupported sample format: {sampleFormat}");
+
+            // 设置参数 → 初始化 Oboe（关键！不在构造函数中初始化）
+            setOboeSampleRate((int)sampleRate);
+            setOboeBufferSize(CalculateBufferSize(sampleRate));
+            setOboeVolume(_volume); // 同步初始音量
+
+            initOboeAudio(); // 此时才初始化！
+
+            return new OboeAudioSession(this, sampleFormat, sampleRate, channelCount);
         }
 
-        public bool SupportsSampleFormat(SampleFormat sampleFormat)
+        private int CalculateBufferSize(uint sampleRate)
         {
-            return sampleFormat == SampleFormat.PcmInt16;
+            const int desiredLatencyMs = 20; // 20ms 延迟
+            return (int)(sampleRate * desiredLatencyMs / 1000);
         }
 
-        public bool SupportsChannelCount(uint channelCount)
-        {
-            return channelCount == 1 || channelCount == 2 || channelCount == 6;
-        }
-
-        public bool SupportsDirection(Direction direction)
-        {
-            return direction == Direction.Output;
-        }
-
-        // Oboe音频会话类
+        // ========== 音频会话类 ==========
         private class OboeAudioSession : IHardwareDeviceSession
         {
             private readonly OboeAudioDriver _driver;
             private readonly SampleFormat _sampleFormat;
             private readonly uint _sampleRate;
             private readonly uint _channelCount;
-            private bool _isActive;
-            private float _volume;
-            private ulong _playedSampleCount;
-            private readonly ConcurrentQueue<OboeAudioBuffer> _queuedBuffers;
-            private readonly object _lock = new object();
+            private bool _active = false;
+            private float _volume = 1.0f;
 
-            public OboeAudioSession(OboeAudioDriver driver, IVirtualMemoryManager memoryManager, SampleFormat sampleFormat, uint sampleRate, uint channelCount)
+            public OboeAudioSession(OboeAudioDriver driver, SampleFormat sampleFormat, uint sampleRate, uint channelCount)
             {
                 _driver = driver;
                 _sampleFormat = sampleFormat;
                 _sampleRate = sampleRate;
                 _channelCount = channelCount;
-                _isActive = false;
-                _volume = 1.0f;
-                _playedSampleCount = 0;
-                _queuedBuffers = new ConcurrentQueue<OboeAudioBuffer>();
             }
 
-            public void Dispose()
-            {
-                // 清理所有排队的缓冲区
-                while (_queuedBuffers.TryDequeue(out OboeAudioBuffer buffer))
-                {
-                    // 缓冲区由Oboe管理，不需要手动释放
-                }
-                
-                _driver.Unregister(this);
-            }
+            public void Dispose() { }
 
-            public void PrepareToClose()
-            {
-                // 准备关闭
-            }
+            public void PrepareToClose() { }
 
-            public void Start()
-            {
-                _isActive = true;
-            }
-
-            public void Stop()
-            {
-                _isActive = false;
-            }
+            public void Start() => _active = true;
+            public void Stop() => _active = false;
 
             public void QueueBuffer(AudioBuffer buffer)
             {
-                if (!_isActive) return;
+                if (!_active) return;
 
-                // 将音频数据转换为float格式并发送到Oboe
-                float[] floatData = ConvertToFloat(buffer.Data, _sampleFormat);
-                
-                // 创建缓冲区记录
-                OboeAudioBuffer oboeBuffer = new OboeAudioBuffer
-                {
-                    DriverIdentifier = buffer.DataPointer,
-                    SampleCount = GetSampleCount(buffer)
-                };
-                
-                _queuedBuffers.Enqueue(oboeBuffer);
-                
-                // 写入音频数据
+                // 转换为 float[] 并发送
+                float[] floatData = ConvertToFloat(buffer.Data, _sampleFormat, _volume);
                 writeOboeAudio(floatData, floatData.Length / (int)_channelCount);
+
+                // 可选：调试日志（缓冲区水位）
+                // int buffered = getOboeBufferedFrames();
+                // Console.WriteLine($"[Oboe] Buffered frames: {buffered}");
             }
 
-            public bool RegisterBuffer(AudioBuffer buffer)
-            {
-                // Oboe是实时处理的，不需要注册缓冲区
-                return true;
-            }
-
-            public void UnregisterBuffer(AudioBuffer buffer)
-            {
-                // 不需要实现，因为Oboe是实时处理的
-            }
-
-            public bool WasBufferFullyConsumed(AudioBuffer buffer)
-            {
-                // 检查缓冲区是否已被处理
-                return !_queuedBuffers.Any(b => b.DriverIdentifier == buffer.DataPointer);
-            }
+            public bool RegisterBuffer(AudioBuffer buffer) => true; // Oboe 实时流，无需注册
+            public void UnregisterBuffer(AudioBuffer buffer) { }   // 无需实现
+            public bool WasBufferFullyConsumed(AudioBuffer buffer) => true; // 假设总是消费
 
             public void SetVolume(float volume)
             {
                 _volume = volume;
+                _driver.setOboeVolume(volume); // 同步到驱动（原生层）
             }
 
-            public float GetVolume()
-            {
-                return _volume;
-            }
+            public float GetVolume() => _volume;
 
-            public void UpdateMasterVolume(float masterVolume)
-            {
-                // 主音量更新时应用
-                _volume = masterVolume;
-            }
+            public ulong GetPlayedSampleCount() => 0; // Oboe 是实时流，无法精确计数（可改进）
 
-            public ulong GetPlayedSampleCount()
-            {
-                return _playedSampleCount;
-            }
-
-            public bool Update()
-            {
-                // 模拟缓冲区处理，实际上Oboe是实时处理的
-                // 这里我们假设所有已写入的缓冲区都已被处理
-                bool buffersProcessed = false;
-                
-                while (_queuedBuffers.TryPeek(out OboeAudioBuffer buffer))
-                {
-                    _playedSampleCount += buffer.SampleCount;
-                    _queuedBuffers.TryDequeue(out _);
-                    buffersProcessed = true;
-                }
-                
-                return buffersProcessed;
-            }
-
-            private ulong GetSampleCount(AudioBuffer buffer)
-            {
-                return (ulong)(buffer.Data.Length / (GetSampleSize() * _channelCount));
-            }
-
-            private int GetSampleSize()
-            {
-                return _sampleFormat switch
-                {
-                    SampleFormat.PcmInt16 => 2,
-                    _ => throw new NotImplementedException($"Unsupported sample format {_sampleFormat}"),
-                };
-            }
-
-            private float[] ConvertToFloat(byte[] audioData, SampleFormat format)
+            private float[] ConvertToFloat(byte[] audioData, SampleFormat format, float volume)
             {
                 if (format == SampleFormat.PcmInt16)
                 {
                     int sampleCount = audioData.Length / 2;
                     float[] floatData = new float[sampleCount];
-                    
+
                     for (int i = 0; i < sampleCount; i++)
                     {
                         short sample = BitConverter.ToInt16(audioData, i * 2);
-                        floatData[i] = sample / 32768.0f * _volume;
+                        floatData[i] = sample / 32768.0f * volume; // 音量在 C# 层乘（也可移到原生层）
                     }
-                    
+
                     return floatData;
                 }
-                
+
                 throw new NotSupportedException($"Sample format {format} is not supported");
             }
-        }
-        
-        private class OboeAudioBuffer
-        {
-            public ulong DriverIdentifier;
-            public ulong SampleCount;
         }
     }
 }
