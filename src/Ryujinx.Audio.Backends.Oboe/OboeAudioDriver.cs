@@ -4,6 +4,7 @@ using Ryujinx.Audio.Integration;
 using Ryujinx.Memory;
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 using static Ryujinx.Audio.Integration.IHardwareDeviceDriver;
 
 namespace Ryujinx.Audio.Backends.Oboe
@@ -26,28 +27,50 @@ namespace Ryujinx.Audio.Backends.Oboe
         private static extern void setOboeBufferSize(int bufferSize);
 
         public static bool IsSupported
-{
-    get
-    {
-        try
         {
-            // 尝试初始化 Oboe 来检查是否支持
-            initOboeAudio();
-            shutdownOboeAudio();
-            return true;
+            get
+            {
+                try
+                {
+                    // 尝试初始化 Oboe 来检查是否支持
+                    initOboeAudio();
+                    shutdownOboeAudio();
+                    return true;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
         }
-        catch
-        {
-            return false;
-        }
-    }
-}
 
         private bool _disposed;
+        private float _volume;
+        private readonly ManualResetEvent _pauseEvent;
+        private readonly ManualResetEvent _updateRequiredEvent;
+
+        public float Volume
+        {
+            get => _volume;
+            set => _volume = value;
+        }
 
         public OboeAudioDriver()
         {
+            _volume = 1.0f;
+            _pauseEvent = new ManualResetEvent(true);
+            _updateRequiredEvent = new ManualResetEvent(false);
             initOboeAudio();
+        }
+
+        public ManualResetEvent GetPauseEvent()
+        {
+            return _pauseEvent;
+        }
+
+        public ManualResetEvent GetUpdateRequiredEvent()
+        {
+            return _updateRequiredEvent;
         }
 
         public IHardwareDeviceSession OpenDeviceSession(Direction direction, IVirtualMemoryManager memoryManager, SampleFormat sampleFormat, uint sampleRate, uint channelCount)
@@ -80,6 +103,8 @@ namespace Ryujinx.Audio.Backends.Oboe
                 if (disposing)
                 {
                     shutdownOboeAudio();
+                    _pauseEvent?.Dispose();
+                    _updateRequiredEvent?.Dispose();
                 }
 
                 _disposed = true;
@@ -152,6 +177,12 @@ namespace Ryujinx.Audio.Backends.Oboe
                 // 将音频数据转换为float格式并发送到Oboe
                 float[] floatData = ConvertToFloat(buffer.Data, _sampleFormat);
                 writeOboeAudio(floatData, floatData.Length / (int)_channelCount);
+            }
+
+            public void RegisterBuffer(AudioBuffer buffer)
+            {
+                // Oboe是实时处理的，不需要注册缓冲区
+                // 但为了满足接口要求，我们需要实现这个方法
             }
 
             public void UnregisterBuffer(AudioBuffer buffer)
