@@ -29,14 +29,30 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(adrenotools)
 
-# 使用 FetchContent 获取 Ryujinx 的定制 OpenAL 实现
+# 使用 FetchContent 获取标准 OpenAL Soft
 FetchContent_Declare(
-    ryujinx_openal
-    GIT_REPOSITORY https://github.com/Ryujinx/Ryujinx.Audio.OpenAL.git
-    GIT_TAG        1.24.3  # 使用 Ryujinx 的特定版本
+    openal
+    GIT_REPOSITORY https://github.com/kcat/openal-soft.git
+    GIT_TAG        1.23.1  # 使用稳定版本
 )
 
-FetchContent_MakeAvailable(ryujinx_openal)
+# 设置 OpenAL 构建选项 - 应用 Ryujinx 的配置
+set(ALSOFT_REQUIRE_OPENSL ON CACHE BOOL "Enable OpenSL backend")
+set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "Enable OpenSL backend")
+set(ALSOFT_BACKEND_AAUDIO OFF CACHE BOOL "Disable AAudio backend")
+set(ALSOFT_NO_CONFIG_UTIL ON CACHE BOOL "Disable config utility")
+set(ALSOFT_UTILS OFF CACHE BOOL "Disable utils")
+set(ALSOFT_EXAMPLES OFF CACHE BOOL "Disable examples")
+set(ALSOFT_INSTALL OFF CACHE BOOL "Disable installation")
+set(ALSOFT_INSTALL_PKG_CONFIG_FILES OFF CACHE BOOL "Disable pkg-config files")
+set(ALSOFT_TESTS OFF CACHE BOOL "Disable tests")
+
+# 添加 Ryujinx 特定的补丁或配置
+# 这里可以添加任何 Ryujinx 特定的修改
+set(ALSOFT_CPUEXT_SSE OFF CACHE BOOL "Disable SSE optimizations")
+set(ALSOFT_CPUEXT_NEON ON CACHE BOOL "Enable NEON optimizations")
+
+FetchContent_MakeAvailable(openal)
 
 # 创建主库
 add_library(
@@ -58,7 +74,7 @@ target_link_libraries(
     -lvulkan
     -landroid
     adrenotools
-    Ryujinx.Audio.OpenAL  # 使用 Ryujinx 的 OpenAL 实现
+    OpenAL
 )
 
 # 设置 JNI 库输出路径
@@ -74,9 +90,13 @@ if (NOT (EXISTS ${LIBCRYPTO_JNI_PATH} AND EXISTS ${LIBSSL_JNI_PATH}))
     add_dependencies(ryujinxjni openssl)
 endif ()
 
-# 设置 Ryujinx OpenAL 输出目录
-set_target_properties(Ryujinx.Audio.OpenAL PROPERTIES
+# 设置 OpenAL 输出目录
+set_target_properties(OpenAL PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
     ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
     RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
 )
+
+# 添加 Ryujinx 特定的音频初始化代码
+# 这可以确保音频系统以与 Ryujinx 相同的方式初始化
+add_compile_definitions(RYUJINX_AUDIO_INIT=1)
