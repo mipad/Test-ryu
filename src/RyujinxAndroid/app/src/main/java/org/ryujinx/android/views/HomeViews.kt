@@ -426,8 +426,10 @@ class HomeViews {
             val isSelected = selectedModel.value == gameModel
             val decoder = Base64.getDecoder()
             
-            // 根据主题确定边框颜色
-            val borderColor = if (MaterialTheme.colorScheme.isLight) Color.Black else Color.White
+            // 根据主题确定边框颜色 - 使用背景色的亮度来判断
+            val backgroundColor = MaterialTheme.colorScheme.background
+            val luminance = 0.299 * backgroundColor.red + 0.587 * backgroundColor.green + 0.114 * backgroundColor.blue
+            val borderColor = if (luminance > 0.5) Color.Black else Color.White
 
             if (isCentered) {
                 // 中央项目 - 只显示图标，不显示文字
@@ -1145,7 +1147,6 @@ class HomeViews {
                         }
 
                     }
-                }
             }
             if (openTitleUpdateDialog.value) {
                 BasicAlertDialog(onDismissRequest = {
@@ -1353,4 +1354,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}}}
+}
