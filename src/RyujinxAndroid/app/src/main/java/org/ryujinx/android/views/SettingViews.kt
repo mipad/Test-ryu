@@ -722,7 +722,10 @@ class SettingViews {
                                 Text(text = "Resolution Scale")
                                 Text(
                                     text = "%.2fx".format(resScale.value),
-                                    modifier = Modifier.clickable { 
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) { 
                                         showResScaleOptions.value = !showResScaleOptions.value
                                         // 当显示分辨率选项时，隐藏画面比例选项
                                         if (showResScaleOptions.value) {
@@ -762,7 +765,7 @@ class SettingViews {
                                                         shape = MaterialTheme.shapes.small
                                                     ),
                                                 colors = ButtonDefaults.textButtonColors(
-                                                    containerColor = Color.Transparent,
+                                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent,
                                                     contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer 
                                                                  else MaterialTheme.colorScheme.onSurface
                                                 )
@@ -789,7 +792,10 @@ class SettingViews {
                                 val aspectRatioMap = listOf("4:3", "16:9", "16:10", "21:9", "32:9", "Stretched")
                                 Text(
                                     text = aspectRatioMap[aspectRatio.value],
-                                    modifier = Modifier.clickable { 
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) { 
                                         showAspectRatioOptions.value = !showAspectRatioOptions.value
                                         // 当显示画面比例选项时，隐藏分辨率选项
                                         if (showAspectRatioOptions.value) {
@@ -820,7 +826,10 @@ class SettingViews {
                                                     .width(80.dp) // 矩形宽度
                                                     .height(40.dp) // 矩形高度
                                                     .clip(MaterialTheme.shapes.small)
-                                                    .clickable { 
+                                                    .clickable(
+                                                        interactionSource = remember { MutableInteractionSource() },
+                                                        indication = null
+                                                    ) { 
                                                         aspectRatio.value = index
                                                         showAspectRatioOptions.value = false // 选择后隐藏选项
                                                     }
@@ -861,7 +870,7 @@ class SettingViews {
                                 Text(text = "Enable Texture Recompression")
                                 Switch(
                                     checked = enableTextureRecompression.value,
-                                    onCheckedChange = {
+                                    onValueChange = {
                                         enableTextureRecompression.value =
                                             !enableTextureRecompression.value
                                     })
