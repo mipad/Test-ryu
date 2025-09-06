@@ -1,7 +1,6 @@
 using LibRyujinx.Android;
 using LibRyujinx.Jni.Pointers;
 using Ryujinx.Audio.Backends.OpenAL;
-using Ryujinx.Audio.Backends.Oboe;
 using Ryujinx.Common;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
