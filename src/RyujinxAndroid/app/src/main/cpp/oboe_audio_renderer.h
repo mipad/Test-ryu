@@ -6,6 +6,7 @@
 #include <mutex>
 #include <vector>
 #include <atomic>
+#include <memory>
 
 class OboeAudioRenderer : public oboe::AudioStreamDataCallback, 
                           public oboe::AudioStreamErrorCallback {
@@ -31,7 +32,7 @@ private:
     OboeAudioRenderer();
     ~OboeAudioRenderer();
     
-    std::unique_ptr<oboe::AudioStream> mAudioStream;
+    std::shared_ptr<oboe::AudioStream> mAudioStream; // 改为 shared_ptr
     std::vector<float> mAudioBuffer;
     std::mutex mBufferMutex;
     std::atomic<bool> mIsInitialized{false};
