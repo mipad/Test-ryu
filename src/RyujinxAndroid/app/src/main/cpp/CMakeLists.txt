@@ -20,6 +20,10 @@ set(SKIA_ENABLE_PARAGRAPH ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
+# 设置 Android 特定选项
+set(ANDROID_STL c++_shared)
+set(ANDROID_ARM_NEON TRUE)
+
 # 使用 FetchContent 获取 adrenotools
 FetchContent_Declare(
     adrenotools
@@ -33,7 +37,7 @@ FetchContent_MakeAvailable(adrenotools)
 FetchContent_Declare(
     openal
     GIT_REPOSITORY https://github.com/kcat/openal-soft.git
-    GIT_TAG        1.23.1  # 使用稳定版本
+    GIT_TAG        1.24.3  # 使用稳定版本
 )
 
 # 设置 OpenAL 构建选项 - 优化以减少杂音和延迟
@@ -66,9 +70,6 @@ set(ALSOFT_DEFAULT_MODULATION OFF CACHE BOOL "Disable default modulation")
 
 FetchContent_MakeAvailable(openal)
 
-# 查找 Oboe 库 (Google 官方推荐方式)
-find_package(oboe REQUIRED CONFIG)
-
 # 创建主库
 add_library(
     ryujinxjni
@@ -84,20 +85,36 @@ target_compile_definitions(ryujinxjni PRIVATE
     # 如果需要，可以添加更多音频优化标志
 )
 
+# 添加编译选项
+target_compile_options(ryujinxjni PRIVATE
+    -std=c++20
+    -O3
+    -DNDEBUG
+    -DENABLE_HIGH_PERF=1
+    -ffast-math
+    -march=armv8-a
+    -funroll-loops
+)
+
 # 查找系统库
 find_library(log-lib log)
 find_library(opensles-lib OpenSLES)
+find_library(android-lib android)
 
-# 链接库 (添加 oboe::oboe)
+# 添加 Oboe 包含目录
+include_directories(${CMAKE_ANDROID_NDK}/sources/third_party/oboe/include)
+
+# 链接库
 target_link_libraries(
     ryujinxjni
     ${log-lib}
     ${opensles-lib}
+    ${android-lib}
     -lvulkan
-    -landroid
     adrenotools
     OpenAL
-    oboe::oboe  # 添加 Oboe 库 (Google 官方推荐方式)
+    # 直接链接 Oboe 库
+    oboe
 )
 
 # 设置 JNI 库输出路径
@@ -119,9 +136,3 @@ set_target_properties(OpenAL PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
     RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
 )
-
-# 添加自定义后构建步骤以优化音频库（可选）
-# add_custom_command(TARGET ryujinxjni POST_BUILD
-#     COMMAND ${CMAKE_COMMAND} -E echo "Applying audio optimizations..."
-#     COMMAND ... # 这里可以添加任何后处理步骤
-# )
