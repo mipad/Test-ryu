@@ -438,7 +438,8 @@ class GameViews {
                                     Text(text = "FIFO")
                                     Switch(
                                         checked = showFifo.value,
-                                        onCheckedChange = { showFifo.value = it }
+                                        onCheckedChange = { showFifo.value = it },
+                                        modifier = Modifier.size(width = 36.dp, height = 24.dp)
                                     )
                                 }
                                 
@@ -451,7 +452,8 @@ class GameViews {
                                     Text(text = "FPS")
                                     Switch(
                                         checked = showFps.value,
-                                        onCheckedChange = { showFps.value = it }
+                                        onCheckedChange = { showFps.value = it },
+                                        modifier = Modifier.size(width = 36.dp, height = 24.dp)
                                     )
                                 }
                                 
@@ -464,7 +466,8 @@ class GameViews {
                                     Text(text = "RAM")
                                     Switch(
                                         checked = showRam.value,
-                                        onCheckedChange = { showRam.value = it }
+                                        onCheckedChange = { showRam.value = it },
+                                        modifier = Modifier.size(width = 36.dp, height = 24.dp)
                                     )
                                 }
                             }
@@ -483,7 +486,8 @@ class GameViews {
                                     Text(text = "Battery Temp")
                                     Switch(
                                         checked = showBatteryTemperature.value,
-                                        onCheckedChange = { showBatteryTemperature.value = it }
+                                        onCheckedChange = { showBatteryTemperature.value = it },
+                                        modifier = Modifier.size(width = 36.dp, height = 24.dp)
                                     )
                                 }
                                 
@@ -496,7 +500,8 @@ class GameViews {
                                     Text(text = "Level")
                                     Switch(
                                         checked = showBatteryLevel.value,
-                                        onCheckedChange = { showBatteryLevel.value = it }
+                                        onCheckedChange = { showBatteryLevel.value = it },
+                                        modifier = Modifier.size(width = 36.dp, height = 24.dp)
                                     )
                                 }
                             }
@@ -520,12 +525,13 @@ class GameViews {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Show All Stats",
+                                text = "All Stats",
                                 style = MaterialTheme.typography.bodyLarge
                             )
                             Switch(
                                 checked = showStats.value,
-                                onCheckedChange = { showStats.value = it }
+                                onCheckedChange = { showStats.value = it },
+                                modifier = Modifier.size(width = 36.dp, height = 24.dp)
                             )
                         }
                         
