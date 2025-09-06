@@ -1,9 +1,9 @@
 // oboe_audio_renderer.cpp
 #include "oboe_audio_renderer.h"
-#include <android/log.h>  // 修改这里，使用正确的 Android 日志头文件
+#include <android/log.h>
 #include <cstring>
 
-// 定义 Android 日志宏（如果未定义）
+// 定义 Android 日志宏
 #ifndef ALOGE
 #define ALOGE(...) __android_log_print(ANDROID_LOG_ERROR, "OboeAudio", __VA_ARGS__)
 #endif
@@ -42,11 +42,15 @@ bool OboeAudioRenderer::initialize() {
     builder.setDataCallback(this);  // 设置数据回调
     builder.setErrorCallback(this); // 设置错误回调
     
-    oboe::Result result = builder.openStream(mAudioStream);
+    // 创建 shared_ptr 并传递给 openStream
+    std::shared_ptr<oboe::AudioStream> stream;
+    oboe::Result result = builder.openStream(stream);
     if (result != oboe::Result::OK) {
         ALOGE("Failed to open Oboe stream: %s", oboe::convertToText(result));
         return false;
     }
+    
+    mAudioStream = stream; // 赋值给成员变量
     
     result = mAudioStream->requestStart();
     if (result != oboe::Result::OK) {
