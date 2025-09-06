@@ -29,7 +29,9 @@ android {
             cmake {
                 cppFlags "-std=c++20", "-O3", "-DNDEBUG", "-DENABLE_HIGH_PERF=1", "-ffast-math", "-march=armv8-a", "-funroll-loops"
                 arguments "-DCMAKE_BUILD_TYPE=Release", "-DANDROID_ARM_NEON=TRUE"
-                arguments "-DANDROID_STL=c++_shared"  // 已经设置，符合要求
+                arguments "-DANDROID_STL=c++_shared"
+                // 添加 Oboe 路径
+                arguments "-DOBOE_DIR=${project.rootDir}/../oboe"
             }
         }
     }
@@ -59,7 +61,7 @@ android {
     }
     buildFeatures {
         compose true
-        prefab true  // 已经启用，符合要求
+        prefab true
         buildConfig true
     }
     composeOptions {
