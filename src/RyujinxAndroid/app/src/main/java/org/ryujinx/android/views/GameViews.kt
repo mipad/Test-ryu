@@ -461,7 +461,7 @@ class GameViews {
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(text = "RAM Usage")
+                                    Text(text = "RAM")
                                     Switch(
                                         checked = showRam.value,
                                         onCheckedChange = { showRam.value = it }
@@ -493,7 +493,7 @@ class GameViews {
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(text = "Battery Level")
+                                    Text(text = "Level")
                                     Switch(
                                         checked = showBatteryLevel.value,
                                         onCheckedChange = { showBatteryLevel.value = it }
