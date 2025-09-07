@@ -607,21 +607,21 @@ namespace Ryujinx.Audio.Renderer.Server
 
         // 新增：处理缓冲区欠载的方法
         private void HandleBufferUnderrun()
-{
-    // 动态扩大缓冲区 (最大扩容至8倍)
-    uint newSize = Math.Min(_sampleCount * 2, Constants.MaxSampleCount * 8);
-    
-    if (newSize > _sampleCount)
-    {
-        Logger.Warning?.Print(LogClass.AudioRenderer, 
-            $"Buffer underrun! Resizing: {_sampleCount} -> {newSize}");
-        
-        // 重新分配混音缓冲区（使用预留空间）
-        uint newBufferSize = newSize * (_voiceChannelCountMax + _mixBufferCount);
-        _mixBuffer = _mixBuffer.Slice(0, (int)newBufferSize);
-        _sampleCount = newSize;
-    }
-}
+        {
+            // 动态扩大缓冲区 (最大扩容至8倍)
+            uint newSize = Math.Min(_sampleCount * 2, Constants.MaxSampleCount * 8);
+            
+            if (newSize > _sampleCount)
+            {
+                Logger.Warning?.Print(LogClass.AudioRenderer, 
+                    $"Buffer underrun! Resizing: {_sampleCount} -> {newSize}");
+                
+                // 重新分配混音缓冲区（使用预留空间）
+                uint newBufferSize = newSize * (_voiceChannelCountMax + _mixBufferCount);
+                _mixBuffer = _mixBuffer.Slice(0, (int)newBufferSize);
+                _sampleCount = newSize;
+            }
+        }
 
         private void GenerateCommandList(out CommandList commandList)
         {
@@ -788,11 +788,13 @@ namespace Ryujinx.Audio.Renderer.Server
             uint mixesCount = parameter.SubMixBufferCount + 1;
 
             // Effect 增加 20% (1.2 = 6/5)，Voice 增加 50% (1.5 = 3/2)
+            // 这是为了提供额外的缓冲区空间以减少音频欠载
             uint memoryPoolCount = (uint)((parameter.EffectCount * 6 / 5) + (parameter.VoiceCount * Constants.VoiceWaveBufferCount * 3 / 2));
 
             ulong size = 0;
 
             // 混音缓冲区大小（预留8倍扩容空间）
+            // 这是为了应对可能的缓冲区欠载情况
             ulong maxMixBufferSize = (ulong)parameter.SampleCount * 
                                     (Constants.VoiceChannelCountMax + parameter.MixBufferCount) * 
                                     8; // 最大扩容8倍
@@ -855,6 +857,9 @@ size += (ulong)BitUtils.AlignUp(scaledSize, BaseAlignment);
 
                 size += BitUtils.AlignUp<ulong>(performanceMetricsPerFramesSize, Constants.PerformanceMetricsPerFramesSizeAlignment);
             }
+
+            // 增加额外的缓冲区空间以减少音频欠载
+            size = size * 12 / 10; // 增加20%的缓冲区空间
 
             return BitUtils.AlignUp<ulong>(size, Constants.WorkBufferAlignment);
         }
