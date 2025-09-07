@@ -1074,11 +1074,11 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                         }
                     }
                     
-                    // 新增：区域与语言设置
-                    // 区域与语言设置 - 使用下拉菜单优化
+                   
+// 区域与语言设置 - 使用优化后的下拉菜单
 ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
     Column(modifier = Modifier.fillMaxWidth()) {
-        // 区域设置 - 使用下拉菜单
+        // 区域设置 - 保持不变
         var expandedRegion by remember { mutableStateOf(false) }
         Box(
             modifier = Modifier
@@ -1118,7 +1118,7 @@ ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
             }
         }
         
-        // 语言设置 - 使用下拉菜单
+        // 语言设置 - 优化后的实现
         var expandedLanguage by remember { mutableStateOf(false) }
         Box(
             modifier = Modifier
@@ -1151,9 +1151,11 @@ ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
                 )
             }
             
+            // 使用更高效的实现替代LazyColumn
             DropdownMenu(
                 expanded = expandedLanguage,
-                onDismissRequest = { expandedLanguage = false }
+                onDismissRequest = { expandedLanguage = false },
+                modifier = Modifier.heightIn(max = 400.dp)
             ) {
                 val languageOptions = listOf(
                     "Japanese", "American English", "French", "German", "Italian", 
@@ -1163,13 +1165,19 @@ ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
                     "Brazilian Portuguese"
                 )
                 
-                // 使用LazyColumn实现滚动
-                LazyColumn(
-                    modifier = Modifier.heightIn(max = 400.dp)
+                // 使用常规Column和垂直滚动，性能更好
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState())
                 ) {
-                    itemsIndexed(languageOptions) { index, option ->
+                    languageOptions.forEachIndexed { index, option ->
                         DropdownMenuItem(
-                            text = { Text(option) },
+                            text = { 
+                                Text(
+                                    text = option,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
                             onClick = {
                                 systemLanguage.value = index
                                 expandedLanguage = false
