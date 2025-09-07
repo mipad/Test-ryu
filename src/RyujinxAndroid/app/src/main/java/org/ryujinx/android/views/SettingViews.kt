@@ -1119,62 +1119,84 @@ ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
             }
         }
         
-        // 语言设置 - 使用对话框替代下拉菜单
+        // 语言设置 - 使用BasicAlertDialog替代
         var showLanguageDialog by remember { mutableStateOf(false) }
         
         // 语言选择对话框
         if (showLanguageDialog) {
-            AlertDialog(
-                onDismissRequest = { showLanguageDialog = false },
-                title = { Text("Select Language") },
-                text = {
+            BasicAlertDialog(
+                onDismissRequest = { showLanguageDialog = false }
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .wrapContentWidth()
+                        .wrapContentHeight(),
+                    shape = MaterialTheme.shapes.large,
+                    tonalElevation = AlertDialogDefaults.TonalElevation
+                ) {
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .verticalScroll(rememberScrollState())
+                        modifier = Modifier.padding(16.dp)
                     ) {
-                        val languageOptions = listOf(
-                            "Japanese", "American English", "French", "German", "Italian", 
-                            "Spanish", "Chinese", "Korean", "Dutch", "Portuguese", 
-                            "Russian", "Taiwanese", "British English", "Canadian French", 
-                            "Latin American Spanish", "Simplified Chinese", "Traditional Chinese", 
-                            "Brazilian Portuguese"
+                        Text(
+                            text = "Select Language",
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier.padding(bottom = 16.dp)
                         )
-                        
-                        languageOptions.forEachIndexed { index, option ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        systemLanguage.value = index
-                                        showLanguageDialog = false
-                                    }
-                                    .padding(vertical = 12.dp, horizontal = 16.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 400.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            val languageOptions = listOf(
+                                "Japanese", "American English", "French", "German", "Italian", 
+                                "Spanish", "Chinese", "Korean", "Dutch", "Portuguese", 
+                                "Russian", "Taiwanese", "British English", "Canadian French", 
+                                "Latin American Spanish", "Simplified Chinese", "Traditional Chinese", 
+                                "Brazilian Portuguese"
+                            )
+                            
+                            languageOptions.forEachIndexed { index, option ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            systemLanguage.value = index
+                                            showLanguageDialog = false
+                                        }
+                                        .padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = systemLanguage.value == index,
+                                        onClick = {
+                                            systemLanguage.value = index
+                                            showLanguageDialog = false
+                                        }
+                                    )
+                                    Text(
+                                        text = option,
+                                        modifier = Modifier.padding(start = 16.dp)
+                                    )
+                                }
+                            }
+                        }
+                        // 添加取消按钮
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(
+                                onClick = { showLanguageDialog = false }
                             ) {
-                                RadioButton(
-                                    selected = systemLanguage.value == index,
-                                    onClick = {
-                                        systemLanguage.value = index
-                                        showLanguageDialog = false
-                                    }
-                                )
-                                Text(
-                                    text = option,
-                                    modifier = Modifier.padding(start = 16.dp)
-                                )
+                                Text("Cancel")
                             }
                         }
                     }
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = { showLanguageDialog = false }
-                    ) {
-                        Text("Cancel")
-                    }
                 }
-            )
+            }
         }
         
         // 语言选择行
