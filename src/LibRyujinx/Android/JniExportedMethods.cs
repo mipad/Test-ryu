@@ -103,10 +103,10 @@ namespace LibRyujinx
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             
              // 初始化 Oboe 音频
-            Logger.Info?.Print(LogClass.Audio, "Initializing Oboe audio in deviceInitialize");
-            InitOboeAudio();
+            //Logger.Info?.Print(LogClass.Audio, "Initializing Oboe audio in deviceInitialize");
+            //InitOboeAudio();
             
-            AudioDriver = new OboeAudioDriver();
+            //AudioDriver = new OboeAudioDriver();
 
             var timezone = Marshal.PtrToStringAnsi(timeZonePtr);
             return InitializeDevice(isHostMapped,
