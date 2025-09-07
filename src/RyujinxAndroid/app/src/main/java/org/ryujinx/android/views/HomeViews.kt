@@ -5,6 +5,7 @@ import android.content.res.Resources
 import android.graphics.BitmapFactory
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -48,6 +49,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialogDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -66,6 +68,7 @@ import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
@@ -106,9 +109,6 @@ import org.ryujinx.android.viewmodels.HomeViewModel
 import org.ryujinx.android.viewmodels.QuickSettings
 import java.util.Base64
 import java.util.Locale
-import kotlin.concurrent.thread
-import kotlin.math.roundToInt
-import kotlin.math.abs
 import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.foundation.layout.calculateStartPadding
@@ -116,8 +116,6 @@ import androidx.compose.foundation.clickable
 import java.io.File
 import android.content.Context
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 
@@ -159,7 +157,11 @@ class HomeViews {
             }
             val isSelected = selectedModel.value == gameModel
 
-            val decoder = Base64.getDecoder()
+            // 使用缓存的图标
+            val cachedIcon = remember(gameModel.titleId) {
+                derivedStateOf { viewModel.getCachedIcon(gameModel.titleId) }
+            }.value
+
             Surface(
                 shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.surface,
@@ -175,18 +177,16 @@ class HomeViews {
                                 }
                                 selectedModel.value = null
                             } else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro) {
-                                thread {
+                                // 使用协程而不是线程
+                                val scope = rememberCoroutineScope()
+                                scope.launch {
                                     showLoading.value = true
-                                    val success =
-                                        viewModel.mainViewModel?.loadGame(gameModel) ?: 0
+                                    val success = viewModel.mainViewModel?.loadGame(gameModel) ?: 0
                                     if (success == 1) {
-                                        launchOnUiThread {
-                                            viewModel.mainViewModel?.navigateToGame()
-                                        }
+                                        viewModel.mainViewModel?.navigateToGame()
                                     } else {
                                         if (success == -2)
-                                            showError.value =
-                                                "Error loading update. Please re-add update file"
+                                            showError.value = "Error loading update. Please re-add update file"
                                         gameModel.close()
                                     }
                                     showLoading.value = false
@@ -194,6 +194,8 @@ class HomeViews {
                             }
                         },
                         onLongClick = {
+                            // 预加载菜单数据
+                            viewModel.preloadMenuData(gameModel)
                             viewModel.mainViewModel?.selected = gameModel
                             showAppActions.value = true
                             selectedModel.value = gameModel
@@ -217,10 +219,20 @@ class HomeViews {
                                     Modifier.padding(end = 8.dp)
                                 }
                             ) {
-                                if (gameModel.icon?.isNotEmpty() == true) {
+                                if (cachedIcon != null) {
+                                    // 使用缓存的图标
+                                    val size = ListImageSize / Resources.getSystem().displayMetrics.density
+                                    Image(
+                                        bitmap = cachedIcon,
+                                        contentDescription = gameModel.getDisplayName() + " icon",
+                                        modifier = Modifier
+                                            .width(size.roundToInt().dp)
+                                            .height(size.roundToInt().dp)
+                                    )
+                                } else if (gameModel.icon?.isNotEmpty() == true) {
+                                    val decoder = Base64.getDecoder()
                                     val pic = decoder.decode(gameModel.icon)
-                                    val size =
-                                        ListImageSize / Resources.getSystem().displayMetrics.density
+                                    val size = ListImageSize / Resources.getSystem().displayMetrics.density
                                     Image(
                                         bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
                                             .asImageBitmap(),
@@ -263,7 +275,11 @@ class HomeViews {
             }
             val isSelected = selectedModel.value == gameModel
 
-            val decoder = Base64.getDecoder()
+            // 使用缓存的图标
+            val cachedIcon = remember(gameModel.titleId) {
+                derivedStateOf { viewModel.getCachedIcon(gameModel.titleId) }
+            }.value
+
             Surface(
                 shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.surface,
@@ -279,18 +295,16 @@ class HomeViews {
                                 }
                                 selectedModel.value = null
                             } else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro) {
-                                thread {
+                                // 使用协程而不是线程
+                                val scope = rememberCoroutineScope()
+                                scope.launch {
                                     showLoading.value = true
-                                    val success =
-                                        viewModel.mainViewModel?.loadGame(gameModel) ?: 0
+                                    val success = viewModel.mainViewModel?.loadGame(gameModel) ?: 0
                                     if (success == 1) {
-                                        launchOnUiThread {
-                                            viewModel.mainViewModel?.navigateToGame()
-                                        }
+                                        viewModel.mainViewModel?.navigateToGame()
                                     } else {
                                         if (success == -2)
-                                            showError.value =
-                                                "Error loading update. Please re-add update file"
+                                            showError.value = "Error loading update. Please re-add update file"
                                         gameModel.close()
                                     }
                                     showLoading.value = false
@@ -298,6 +312,8 @@ class HomeViews {
                             }
                         },
                         onLongClick = {
+                            // 预加载菜单数据
+                            viewModel.preloadMenuData(gameModel)
                             viewModel.mainViewModel?.selected = gameModel
                             showAppActions.value = true
                             selectedModel.value = gameModel
@@ -323,7 +339,22 @@ class HomeViews {
                                     .aspectRatio(1f)
                             }
                         ) {
-                            if (gameModel.icon?.isNotEmpty() == true) {
+                            if (cachedIcon != null) {
+                                // 使用缓存的图标
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(RoundedCornerShape(16.dp))
+                                ) {
+                                    Image(
+                                        bitmap = cachedIcon,
+                                        contentDescription = gameModel.getDisplayName() + " icon",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                            } else if (gameModel.icon?.isNotEmpty() == true) {
+                                val decoder = Base64.getDecoder()
                                 val pic = decoder.decode(gameModel.icon)
                                 Box(
                                     modifier = Modifier
@@ -358,8 +389,8 @@ class HomeViews {
                                 ) {
                                     NotAvailableIcon(
                                         modifier = Modifier
-                                        .fillMaxSize(0.8f)
-                                        .align(Alignment.Center)
+                                            .fillMaxSize(0.8f)
+                                            .align(Alignment.Center)
                                     )
                                 }
                             }
@@ -424,7 +455,11 @@ class HomeViews {
                 selectedModel
             }
             val isSelected = selectedModel.value == gameModel
-            val decoder = Base64.getDecoder()
+            
+            // 使用缓存的图标
+            val cachedIcon = remember(gameModel.titleId) {
+                derivedStateOf { viewModel.getCachedIcon(gameModel.titleId) }
+            }.value
             
             // 根据主题确定边框颜色 - 使用背景色的亮度来判断
             val backgroundColor = MaterialTheme.colorScheme.background
@@ -432,8 +467,6 @@ class HomeViews {
             val borderColor = if (luminance > 0.5) Color.Black else Color.White
 
             if (isCentered) {
-                // 中央项目 - 只显示图标，不显示文字
-                // 修复：将combinedClickable移到外层，确保边框不影响点击区域
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(0.6f)
@@ -448,18 +481,16 @@ class HomeViews {
                                     }
                                     selectedModel.value = null
                                 } else if (gameModel.titleId.isNullOrEmpty() || gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro) {
-                                    thread {
+                                    // 使用协程而不是线程
+                                    val scope = rememberCoroutineScope()
+                                    scope.launch {
                                         showLoading.value = true
-                                        val success =
-                                            viewModel.mainViewModel?.loadGame(gameModel) ?: 0
+                                        val success = viewModel.mainViewModel?.loadGame(gameModel) ?: 0
                                         if (success == 1) {
-                                            launchOnUiThread {
-                                                viewModel.mainViewModel?.navigateToGame()
-                                            }
+                                            viewModel.mainViewModel?.navigateToGame()
                                         } else {
                                             if (success == -2)
-                                                showError.value =
-                                                    "Error loading update. Please re-add update file"
+                                                showError.value = "Error loading update. Please re-add update file"
                                             gameModel.close()
                                         }
                                         showLoading.value = false
@@ -467,6 +498,8 @@ class HomeViews {
                                 }
                             },
                             onLongClick = {
+                                // 预加载菜单数据
+                                viewModel.preloadMenuData(gameModel)
                                 viewModel.mainViewModel?.selected = gameModel
                                 showAppActions.value = true
                                 selectedModel.value = gameModel
@@ -490,13 +523,24 @@ class HomeViews {
                             )
                     ) {
                         if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
-                            if (gameModel.icon?.isNotEmpty() == true) {
+                            if (cachedIcon != null) {
+                                // 使用缓存的图标
+                                Image(
+                                    bitmap = cachedIcon,
+                                    contentDescription = gameModel.getDisplayName() + " icon",
+                                    contentScale = ContentScale.FillBounds,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(RoundedCornerShape(12.dp))
+                                )
+                            } else if (gameModel.icon?.isNotEmpty() == true) {
+                                val decoder = Base64.getDecoder()
                                 val pic = decoder.decode(gameModel.icon)
                                 Image(
                                     bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
                                         .asImageBitmap(),
                                     contentDescription = gameModel.getDisplayName() + " icon",
-                                    contentScale = ContentScale.FillBounds, // 改为FillBounds以拉伸图片
+                                    contentScale = ContentScale.FillBounds,
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .clip(RoundedCornerShape(12.dp))
@@ -524,7 +568,6 @@ class HomeViews {
                     }
                 }
             } else {
-                // 两侧项目 - 只显示图标
                 Box(
                     modifier = Modifier
                         .size(80.dp)
@@ -532,7 +575,16 @@ class HomeViews {
                         .clickable(onClick = onItemClick)
                 ) {
                     if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
-                        if (gameModel.icon?.isNotEmpty() == true) {
+                        if (cachedIcon != null) {
+                            // 使用缓存的图标
+                            Image(
+                                bitmap = cachedIcon,
+                                contentDescription = gameModel.getDisplayName() + " icon",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else if (gameModel.icon?.isNotEmpty() == true) {
+                            val decoder = Base64.getDecoder()
                             val pic = decoder.decode(gameModel.icon)
                             Image(
                                 bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
@@ -632,9 +684,6 @@ class HomeViews {
             var centeredIndex by remember { mutableStateOf(0) }
             // 添加一个标志来跟踪是否是初始加载
             var isInitialLoad by remember { mutableStateOf(true) }
-
-            // 使用无背景的ModalBottomSheet
-            val sheetState = androidx.compose.material3.rememberModalBottomSheetState()
 
             Scaffold(
                 modifier = Modifier.fillMaxSize(),
@@ -1193,130 +1242,166 @@ class HomeViews {
             }
 
             if (showAppActions.value) {
-                ModalBottomSheet(
-                    onDismissRequest = {
-                        showAppActions.value = false
-                        selectedModel.value = null
-                    },
-                    sheetState = sheetState,
-                    scrimColor = Color.Transparent,
-                    content = {
+                // 使用轻量级的底部菜单替代ModalBottomSheet
+                val slideIn = remember { 
+                    slideInVertically(initialOffsetY = { it }, animationSpec = tween(durationMillis = 200))
+                }
+                val slideOut = remember { 
+                    slideOutVertically(targetOffsetY = { it }, animationSpec = tween(durationMillis = 150)) 
+                }
+                
+                AnimatedVisibility(
+                    visible = showAppActions.value,
+                    enter = slideIn,
+                    exit = slideOut,
+                    modifier = Modifier.zIndex(3f)
+                ) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .wrapContentHeight()
+                            .padding(16.dp)
+                            .clip(MaterialTheme.shapes.medium),
+                        color = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 8.dp
+                    ) {
                         Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp)
+                            modifier = Modifier.padding(16.dp)
                         ) {
                             // 显示游戏名和版本号
                             selectedModel.value?.let { game ->
                                 Text(
                                     text = game.getDisplayName(),
-                                    fontSize = 20.sp,
+                                    fontSize = 18.sp,
                                     fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.align(Alignment.CenterHorizontally)
                                 )
                                 if (!game.version.isNullOrEmpty()) {
                                     Text(
                                         text = "v${game.version}",
-                                        fontSize = 16.sp,
+                                        fontSize = 14.sp,
                                         modifier = Modifier.align(Alignment.CenterHorizontally)
                                     )
                                 }
-                                Spacer(modifier = Modifier.height(16.dp))
+                                Spacer(modifier = Modifier.height(12.dp))
                             }
                             
+                            // 简化操作按钮布局
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceEvenly
                             ) {
-                                IconButton(onClick = {
-                                    if (viewModel.mainViewModel?.selected != null) {
-                                        thread {
-                                            showLoading.value = true
-                                            val success =
-                                                viewModel.mainViewModel!!.loadGame(viewModel.mainViewModel!!.selected!!)
-                                            if (success == 1) {
-                                                launchOnUiThread {
-                                                    viewModel.mainViewModel!!.navigateToGame()
+                                // 运行按钮
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    IconButton(
+                                        onClick = {
+                                            if (viewModel.mainViewModel?.selected != null) {
+                                                val scope = rememberCoroutineScope()
+                                                scope.launch {
+                                                    showLoading.value = true
+                                                    val success = viewModel.mainViewModel!!.loadGame(viewModel.mainViewModel!!.selected!!)
+                                                    if (success == 1) {
+                                                        viewModel.mainViewModel!!.navigateToGame()
+                                                    } else {
+                                                        if (success == -2)
+                                                            showError.value = "Error loading update. Please re-add update file"
+                                                        viewModel.mainViewModel!!.selected!!.close()
+                                                    }
+                                                    showLoading.value = false
                                                 }
-                                            } else {
-                                                if (success == -2)
-                                                    showError.value =
-                                                        "Error loading update. Please re-add update file"
-                                                viewModel.mainViewModel!!.selected!!.close()
                                             }
-                                            showLoading.value = false
-                                        }
-                                    }
-                                }) {
-                                    Icon(
-                                        Icons.Filled.PlayArrow,
-                                        contentDescription = "Run"
-                                    )
-                                }
-                                val showAppMenu = remember { mutableStateOf(false) }
-                                Box {
-                                    IconButton(onClick = {
-                                        showAppMenu.value = true
-                                    }) {
+                                        },
+                                        modifier = Modifier.size(48.dp)
+                                    ) {
                                         Icon(
-                                            Icons.Filled.Menu,
-                                            contentDescription = "Menu"
+                                            Icons.Filled.PlayArrow,
+                                            contentDescription = "Run",
+                                            modifier = Modifier.size(32.dp)
                                         )
                                     }
+                                    Text("运行", fontSize = 12.sp)
+                                }
+                                
+                                // 更多选项按钮
+                                var showOptions by remember { mutableStateOf(false) }
+                                Box {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        IconButton(
+                                            onClick = { showOptions = true },
+                                            modifier = Modifier.size(48.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.Menu,
+                                                contentDescription = "Menu",
+                                                modifier = Modifier.size(32.dp)
+                                            )
+                                        }
+                                        Text("更多", fontSize = 12.sp)
+                                    }
+                                    
                                     DropdownMenu(
-                                        expanded = showAppMenu.value,
-                                        onDismissRequest = { showAppMenu.value = false }) {
-                                        DropdownMenuItem(text = {
-                                            Text(text = "Rename Game")
-                                        }, onClick = {
-                                            showAppMenu.value = false
-                                            selectedModel.value?.let { game ->
-                                                newGameName = game.getDisplayName()
-                                                showRenameDialog = true
+                                        expanded = showOptions,
+                                        onDismissRequest = { showOptions = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("重命名游戏") },
+                                            onClick = {
+                                                showOptions = false
+                                                selectedModel.value?.let { game ->
+                                                    newGameName = game.getDisplayName()
+                                                    showRenameDialog = true
+                                                }
                                             }
-                                        })
-                                        DropdownMenuItem(text = {
-                                            Text(text = "Clear PPTC Cache")
-                                        }, onClick = {
-                                            showAppMenu.value = false
-                                            viewModel.mainViewModel?.clearPptcCache(
-                                                viewModel.mainViewModel?.selected?.titleId ?: ""
-                                            )
-                                        })
-                                        DropdownMenuItem(text = {
-                                            Text(text = "Purge Shader Cache")
-                                        }, onClick = {
-                                            showAppMenu.value = false
-                                            viewModel.mainViewModel?.purgeShaderCache(
-                                                viewModel.mainViewModel?.selected?.titleId ?: ""
-                                            )
-                                        })
-                                        DropdownMenuItem(text = {
-                                            Text(text = "Delete All Cache")
-                                        }, onClick = {
-                                            showAppMenu.value = false
-                                            viewModel.mainViewModel?.deleteCache(
-                                                viewModel.mainViewModel?.selected?.titleId ?: ""
-                                            )
-                                        })
-                                        DropdownMenuItem(text = {
-                                            Text(text = "Manage Updates")
-                                        }, onClick = {
-                                            showAppMenu.value = false
-                                            openTitleUpdateDialog.value = true
-                                        })
-                                        DropdownMenuItem(text = {
-                                            Text(text = "Manage DLC")
-                                        }, onClick = {
-                                            showAppMenu.value = false
-                                            openDlcDialog.value = true
-                                        })
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("清除PPTC缓存") },
+                                            onClick = {
+                                                showOptions = false
+                                                viewModel.mainViewModel?.clearPptcCache(
+                                                    viewModel.mainViewModel?.selected?.titleId ?: ""
+                                                )
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("清除着色器缓存") },
+                                            onClick = {
+                                                showOptions = false
+                                                viewModel.mainViewModel?.purgeShaderCache(
+                                                    viewModel.mainViewModel?.selected?.titleId ?: ""
+                                                )
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("清除所有缓存") },
+                                            onClick = {
+                                                showOptions = false
+                                                viewModel.mainViewModel?.deleteCache(
+                                                    viewModel.mainViewModel?.selected?.titleId ?: ""
+                                                )
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("管理更新") },
+                                            onClick = {
+                                                showOptions = false
+                                                openTitleUpdateDialog.value = true
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("管理DLC") },
+                                            onClick = {
+                                                showOptions = false
+                                                openDlcDialog.value = true
+                                            }
+                                        )
                                     }
                                 }
                             }
                         }
                     }
-                )
+                }
             }
 
             // 添加重命名对话框
