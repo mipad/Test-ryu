@@ -54,6 +54,9 @@ set(ALSOFT_INSTALL OFF CACHE BOOL "Disable installation")
 set(ALSOFT_INSTALL_PKG_CONFIG_FILES OFF CACHE BOOL "Disable pkg-config files")
 set(ALSOFT_TESTS OFF CACHE BOOL "Disable tests")
 
+# 修复弃用的变量
+set(ALSOFT_INSTALL_CONFIG "" CACHE STRING "Config file")  # 替换 ALSOFT_CONFIG
+
 # 添加优化选项以减少杂音和延迟
 set(ALSOFT_CPUEXT_NEON ON CACHE BOOL "Enable NEON optimizations")
 set(ALSOFT_REQUIRE_NEON OFF CACHE BOOL "Don't require NEON")
@@ -62,7 +65,6 @@ set(ALSOFT_AMBIENT_CHANNELS 0 CACHE STRING "Ambient channels") # 减少环境声
 
 # 针对低延迟优化
 set(ALSOFT_DEFAULT_CFG "" CACHE STRING "Default config file")
-set(ALSOFT_CONFIG "" CACHE STRING "Config file")
 set(ALSOFT_DEFAULT_REVERB OFF CACHE BOOL "Disable default reverb")
 set(ALSOFT_DEFAULT_ECHO OFF CACHE BOOL "Disable default echo")
 set(ALSOFT_DEFAULT_MODULATION OFF CACHE BOOL "Disable default modulation")
@@ -85,13 +87,14 @@ target_compile_definitions(ryujinxjni PRIVATE
 
 # 查找系统库
 find_library(log-lib log)
-find_library(aaudio-lib AAudio)  # 添加AAudio库查找
+# 直接链接AAudio而不使用find_library，因为它是Android NDK的一部分
+# find_library(aaudio-lib aaudio)  # 注释掉这行，直接链接
 
 # 链接库
 target_link_libraries(
     ryujinxjni
     ${log-lib}
-    ${aaudio-lib}  # 链接AAudio库
+    aaudio  # 直接链接AAudio库
     -lvulkan
     -landroid
     adrenotools
