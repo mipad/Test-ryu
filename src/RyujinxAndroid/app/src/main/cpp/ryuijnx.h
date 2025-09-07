@@ -53,6 +53,9 @@ extern "C" {
     void writeOboeAudio(const float* data, int32_t num_frames);
     void setOboeSampleRate(int32_t sample_rate);
     void setOboeBufferSize(int32_t buffer_size);
+    void setOboeVolume(float volume);
+    bool isOboeInitialized();
+    int32_t getOboeBufferedFrames();
 }
 
 #endif //RYUJINXNATIVE_RYUIJNX_H
