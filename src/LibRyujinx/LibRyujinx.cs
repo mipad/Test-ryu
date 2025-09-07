@@ -101,7 +101,7 @@ namespace LibRyujinx
 
         public static void InitializeAudio()
         {
-            AudioDriver = new SDL2HardwareDeviceDriver();
+            AudioDriver = new OboeAudioDriver();
         }
 
         public static GameStats GetGameStats()
