@@ -6,6 +6,7 @@ using Ryujinx.Memory;
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Ryujinx.Common.Logging; // 添加日志命名空间
 
 namespace Ryujinx.Audio.Backends.Oboe
 {
@@ -55,6 +56,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         public OboeAudioDriver()
         {
             // 不在这里初始化 Oboe！等 OpenDeviceSession 时再初始化
+            Logger.Info?.Print(LogClass.Audio, "OboeAudioDriver created");
         }
 
         public void Dispose()
@@ -69,6 +71,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 if (disposing)
                 {
+                    Logger.Info?.Print(LogClass.Audio, "Shutting down Oboe audio");
                     shutdownOboeAudio();
                     _pauseEvent?.Dispose();
                     _updateRequiredEvent?.Dispose();
@@ -102,6 +105,8 @@ namespace Ryujinx.Audio.Backends.Oboe
             uint sampleRate,
             uint channelCount)
         {
+            Logger.Info?.Print(LogClass.Audio, $"Opening Oboe device session: direction={direction}, sampleRate={sampleRate}, channelCount={channelCount}, format={sampleFormat}");
+
             if (direction != IHardwareDeviceDriver.Direction.Output)
                 throw new ArgumentException($"Unsupported direction: {direction}");
 
@@ -116,7 +121,11 @@ namespace Ryujinx.Audio.Backends.Oboe
             setOboeBufferSize(CalculateBufferSize(sampleRate));
             setOboeVolume(_volume); // 同步初始音量
 
+            Logger.Info?.Print(LogClass.Audio, "Initializing Oboe audio");
             initOboeAudio(); // 此时才初始化！
+
+            bool initialized = isOboeInitialized();
+            Logger.Info?.Print(LogClass.Audio, $"Oboe initialization result: {initialized}");
 
             return new OboeAudioSession(this, sampleFormat, sampleRate, channelCount);
         }
@@ -143,41 +152,86 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _sampleFormat = sampleFormat;
                 _sampleRate = sampleRate;
                 _channelCount = channelCount;
+                Logger.Info?.Print(LogClass.Audio, $"OboeAudioSession created: sampleRate={sampleRate}, channelCount={channelCount}, format={sampleFormat}");
             }
 
-            public void Dispose() { }
+            public void Dispose() 
+            {
+                Logger.Info?.Print(LogClass.Audio, "OboeAudioSession disposed");
+            }
 
-            public void PrepareToClose() { }
+            public void PrepareToClose() 
+            {
+                Logger.Info?.Print(LogClass.Audio, "OboeAudioSession preparing to close");
+            }
 
-            public void Start() => _active = true;
-            public void Stop() => _active = false;
+            public void Start() 
+            {
+                _active = true;
+                Logger.Info?.Print(LogClass.Audio, "OboeAudioSession started");
+            }
+            
+            public void Stop() 
+            {
+                _active = false;
+                Logger.Info?.Print(LogClass.Audio, "OboeAudioSession stopped");
+            }
 
             public void QueueBuffer(AudioBuffer buffer)
             {
-                if (!_active) return;
+                if (!_active) 
+                {
+                    Logger.Debug?.Print(LogClass.Audio, "OboeAudioSession not active, skipping buffer");
+                    return;
+                }
 
                 // 转换为 float[] 并发送
                 float[] floatData = ConvertToFloat(buffer.Data, _sampleFormat, _volume);
+                
+                Logger.Debug?.Print(LogClass.Audio, $"Queueing buffer: {floatData.Length} samples, {floatData.Length / (int)_channelCount} frames");
+                
                 writeOboeAudio(floatData, floatData.Length / (int)_channelCount);
 
-                // 可选：调试日志（缓冲区水位）
+                // 调试日志（缓冲区水位）
                 // int buffered = getOboeBufferedFrames();
-                // Console.WriteLine($"[Oboe] Buffered frames: {buffered}");
+                // Logger.Debug?.Print(LogClass.Audio, $"[Oboe] Buffered frames: {buffered}");
             }
 
-            public bool RegisterBuffer(AudioBuffer buffer) => true; // Oboe 实时流，无需注册
-            public void UnregisterBuffer(AudioBuffer buffer) { }   // 无需实现
-            public bool WasBufferFullyConsumed(AudioBuffer buffer) => true; // 假设总是消费
+            public bool RegisterBuffer(AudioBuffer buffer) 
+            {
+                Logger.Debug?.Print(LogClass.Audio, "RegisterBuffer called");
+                return true; // Oboe 实时流，无需注册
+            }
+            
+            public void UnregisterBuffer(AudioBuffer buffer) 
+            {
+                Logger.Debug?.Print(LogClass.Audio, "UnregisterBuffer called");
+            }   // 无需实现
+            
+            public bool WasBufferFullyConsumed(AudioBuffer buffer) 
+            {
+                Logger.Debug?.Print(LogClass.Audio, "WasBufferFullyConsumed called");
+                return true; // 假设总是消费
+            }
 
             public void SetVolume(float volume)
             {
                 _volume = volume;
+                Logger.Info?.Print(LogClass.Audio, $"Setting volume: {volume}");
                 OboeAudioDriver.setOboeVolume(volume); // 正确：通过类名调用静态方法 // 同步到驱动（原生层）
             }
 
-            public float GetVolume() => _volume;
+            public float GetVolume() 
+            {
+                Logger.Debug?.Print(LogClass.Audio, "GetVolume called");
+                return _volume;
+            }
 
-            public ulong GetPlayedSampleCount() => 0; // Oboe 是实时流，无法精确计数（可改进）
+            public ulong GetPlayedSampleCount() 
+            {
+                Logger.Debug?.Print(LogClass.Audio, "GetPlayedSampleCount called");
+                return 0; // Oboe 是实时流，无法精确计数（可改进）
+            }
 
             private float[] ConvertToFloat(byte[] audioData, SampleFormat format, float volume)
             {
