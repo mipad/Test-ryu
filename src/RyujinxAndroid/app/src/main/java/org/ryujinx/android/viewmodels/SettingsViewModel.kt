@@ -12,7 +12,9 @@ import com.anggrayudi.storage.file.extension
 import com.anggrayudi.storage.file.getAbsolutePath
 import org.ryujinx.android.LogLevel
 import org.ryujinx.android.MainActivity
+import org.ryujinx.android.RegionCode
 import org.ryujinx.android.RyujinxNative
+import org.ryujinx.android.SystemLanguage
 import java.io.File
 import kotlin.concurrent.thread
 
@@ -68,7 +70,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableAccessLogs: MutableState<Boolean>,
         enableTraceLogs: MutableState<Boolean>,
         enableGraphicsLogs: MutableState<Boolean>,
-        skipMemoryBarriers: MutableState<Boolean> // 新增参数
+        skipMemoryBarriers: MutableState<Boolean>, // 新增参数
+        regionCode: MutableState<Int>, // 新增参数：区域代码
+        systemLanguage: MutableState<Int> // 新增参数：系统语言
     ) {
 
         isHostMapped.value = sharedPref.getBoolean("isHostMapped", true)
@@ -90,6 +94,8 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enablePerformanceMode.value = sharedPref.getBoolean("enablePerformanceMode", false)
         controllerStickSensitivity.value = sharedPref.getFloat("controllerStickSensitivity", 1.0f)
         skipMemoryBarriers.value = sharedPref.getBoolean("skipMemoryBarriers", false) // 初始化
+        regionCode.value = sharedPref.getInt("regionCode", RegionCode.USA.ordinal) // 默认USA
+        systemLanguage.value = sharedPref.getInt("systemLanguage", SystemLanguage.AmericanEnglish.ordinal) // 默认美式英语
 
         enableDebugLogs.value = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs.value = sharedPref.getBoolean("enableStubLogs", false)
@@ -129,7 +135,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableAccessLogs: MutableState<Boolean>,
         enableTraceLogs: MutableState<Boolean>,
         enableGraphicsLogs: MutableState<Boolean>,
-        skipMemoryBarriers: MutableState<Boolean> // 新增参数
+        skipMemoryBarriers: MutableState<Boolean>, // 新增参数
+        regionCode: MutableState<Int>, // 新增参数：区域代码
+        systemLanguage: MutableState<Int> // 新增参数：系统语言
     ) {
         val editor = sharedPref.edit()
 
@@ -151,6 +159,8 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.putBoolean("enablePerformanceMode", enablePerformanceMode.value)
         editor.putFloat("controllerStickSensitivity", controllerStickSensitivity.value)
         editor.putBoolean("skipMemoryBarriers", skipMemoryBarriers.value) // 保存
+        editor.putInt("regionCode", regionCode.value) // 保存区域代码
+        editor.putInt("systemLanguage", systemLanguage.value) // 保存系统语言
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs.value)
         editor.putBoolean("enableStubLogs", enableStubLogs.value)
