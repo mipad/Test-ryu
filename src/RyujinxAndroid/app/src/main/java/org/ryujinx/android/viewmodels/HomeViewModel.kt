@@ -1,3 +1,4 @@
+// HomeViewModel.kt
 package org.ryujinx.android.viewmodels
 
 import android.content.SharedPreferences
@@ -109,8 +110,9 @@ class HomeViewModel(
                     if (file.extension == "xci" || file.extension == "nsp" || file.extension == "nro") {
                         activity.let {
                             val item = GameModel(file, it)
+                            val titleId = item.titleId // 获取局部变量
 
-                            if (item.titleId?.isNotEmpty() == true && 
+                            if (titleId?.isNotEmpty() == true && 
                                 item.getDisplayName().isNotEmpty() && 
                                 item.getDisplayName() != "Unknown") {
                                 
@@ -120,7 +122,7 @@ class HomeViewModel(
                                         val pic = decoder.decode(item.icon)
                                         val bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
                                         if (bitmap != null) {
-                                            iconCache[item.titleId] = bitmap.asImageBitmap()
+                                            iconCache[titleId] = bitmap.asImageBitmap() // 使用局部变量titleId
                                         }
                                     } catch (e: Exception) {
                                         // 图标解码失败，跳过
@@ -163,9 +165,10 @@ class HomeViewModel(
     // 预加载菜单数据
     fun preloadMenuData(selectedGame: GameModel?) {
         if (selectedGame != null) {
+            val titleId = selectedGame.titleId // 获取局部变量
             // 预加载可能需要的数据
             // 例如: 确保图标已缓存
-            if (selectedGame.titleId != null && !iconCache.containsKey(selectedGame.titleId)) {
+            if (titleId != null && !iconCache.containsKey(titleId)) {
                 scope.launch {
                     selectedGame.icon?.let { iconData ->
                         try {
@@ -173,7 +176,7 @@ class HomeViewModel(
                             val pic = decoder.decode(iconData)
                             val bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
                             if (bitmap != null) {
-                                iconCache[selectedGame.titleId] = bitmap.asImageBitmap()
+                                iconCache[titleId] = bitmap.asImageBitmap() // 使用局部变量titleId
                             }
                         } catch (e: Exception) {
                             // 图标解码失败
