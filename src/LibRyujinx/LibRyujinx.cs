@@ -14,6 +14,9 @@ using Ryujinx.UI.Common.Configuration;
 using Ryujinx.Common.Logging;
 using Ryujinx.Audio.Integration;
 using Ryujinx.Audio.Backends.SDL2;
+#if ANDROID
+using Ryujinx.Audio.Backends.Oboe;
+#endif
 using System.IO;
 using LibHac.Common.Keys;
 using LibHac.Common;
@@ -100,9 +103,11 @@ namespace LibRyujinx
         }
 
         public static void InitializeAudio()
-        {
-            AudioDriver = new OboeAudioDriver();
-        }
+{
+#if ANDROID
+    AudioDriver = new OboeAudioDriver();
+#endif
+}
 
         public static GameStats GetGameStats()
         {
