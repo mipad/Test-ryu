@@ -108,6 +108,11 @@ class MainActivity : BaseActivity() {
         val success =
             RyujinxNative.jnaInstance.javaInitialize(appPath, JNIEnv.CURRENT)
 
+        // 初始化 Oboe 音频
+        if (success) {
+            NativeHelpers.instance.initOboeAudio()
+        }
+
         uiHandler = UiHandler()
         _isInit = success
     }
@@ -204,6 +209,8 @@ class MainActivity : BaseActivity() {
 
         if (isGameRunning) {
             mainViewModel?.performanceManager?.setTurboMode(false)
+            // 关闭 Oboe 音频
+            NativeHelpers.instance.shutdownOboeAudio()
         }
     }
 
@@ -215,6 +222,8 @@ class MainActivity : BaseActivity() {
             setFullScreen(true)
             if (QuickSettings(this).enableMotion)
                 motionSensorManager.register()
+            // 重新初始化 Oboe 音频
+            NativeHelpers.instance.initOboeAudio()
         }
     }
 
@@ -224,6 +233,8 @@ class MainActivity : BaseActivity() {
 
         if (isGameRunning) {
             mainViewModel?.performanceManager?.setTurboMode(false)
+            // 关闭 Oboe 音频
+            NativeHelpers.instance.shutdownOboeAudio()
         }
 
         motionSensorManager.unregister()
