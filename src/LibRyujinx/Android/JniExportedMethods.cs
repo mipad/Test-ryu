@@ -102,8 +102,9 @@ namespace LibRyujinx
             debug_break(4);
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             
-               // 初始化音频驱动
-            LibRyujinx.InitializeAudio();
+               // 初始化 Oboe 音频
+            Logger.Info?.Print(LogClass.Audio, "Initializing Oboe audio in deviceInitialize");
+            InitOboeAudio();
             
             //AudioDriver = new OboeAudioDriver();
 
