@@ -66,10 +66,13 @@ class MainActivity : BaseActivity() {
         val appPath: String = AppPath
 
         var quickSettings = QuickSettings(this)
-        
+
+        //  新增：初始化 OpenAL 音频系统（强制使用 Oboe 后端）
+        NativeHelpers.instance.initAudio()
+
         // 设置跳过内存屏障
         RyujinxNative.jnaInstance.setSkipMemoryBarriers(quickSettings.skipMemoryBarriers)
-        
+
         RyujinxNative.jnaInstance.loggingSetEnabled(
             LogLevel.Debug.ordinal,
             quickSettings.enableDebugLogs
