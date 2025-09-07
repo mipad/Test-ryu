@@ -36,26 +36,16 @@ FetchContent_Declare(
     GIT_TAG        1.24.3  # 使用稳定版本
 )
 
-# 设置 OpenAL 构建选项 - 启用AAudio后端
-set(ALSOFT_REQUIRE_OPENSL OFF CACHE BOOL "Disable OpenSL backend")
-set(ALSOFT_BACKEND_OPENSL OFF CACHE BOOL "Disable OpenSL backend")
-set(ALSOFT_BACKEND_AAUDIO ON CACHE BOOL "Enable AAudio backend")
-set(ALSOFT_BACKEND_ANDROID ON CACHE BOOL "Enable Android backend")
-
-# 添加AAudio特定的优化选项
-set(ALSOFT_AAUDIO_ALLOW_LOW_LATENCY ON CACHE BOOL "Allow low latency mode")
-set(ALSOFT_AAUDIO_SHARING_MODE SHARED CACHE STRING "AAudio sharing mode")
-
-# 其他优化选项
+# 设置 OpenAL 构建选项 - 优化以减少杂音和延迟
+set(ALSOFT_REQUIRE_OPENSL ON CACHE BOOL "Enable OpenSL backend")
+set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "Enable OpenSL backend")
+set(ALSOFT_BACKEND_AAUDIO OFF CACHE BOOL "Disable AAudio backend")
 set(ALSOFT_NO_CONFIG_UTIL ON CACHE BOOL "Disable config utility")
 set(ALSOFT_UTILS OFF CACHE BOOL "Disable utils")
 set(ALSOFT_EXAMPLES OFF CACHE BOOL "Disable examples")
 set(ALSOFT_INSTALL OFF CACHE BOOL "Disable installation")
 set(ALSOFT_INSTALL_PKG_CONFIG_FILES OFF CACHE BOOL "Disable pkg-config files")
 set(ALSOFT_TESTS OFF CACHE BOOL "Disable tests")
-
-# 修复弃用的变量
-set(ALSOFT_INSTALL_CONFIG "" CACHE STRING "Config file")  # 替换 ALSOFT_CONFIG
 
 # 添加优化选项以减少杂音和延迟
 set(ALSOFT_CPUEXT_NEON ON CACHE BOOL "Enable NEON optimizations")
@@ -65,9 +55,14 @@ set(ALSOFT_AMBIENT_CHANNELS 0 CACHE STRING "Ambient channels") # 减少环境声
 
 # 针对低延迟优化
 set(ALSOFT_DEFAULT_CFG "" CACHE STRING "Default config file")
+set(ALSOFT_CONFIG "" CACHE STRING "Config file")
 set(ALSOFT_DEFAULT_REVERB OFF CACHE BOOL "Disable default reverb")
 set(ALSOFT_DEFAULT_ECHO OFF CACHE BOOL "Disable default echo")
 set(ALSOFT_DEFAULT_MODULATION OFF CACHE BOOL "Disable default modulation")
+
+# 启用调试信息（如果需要）
+# set(ALSOFT_TRAP_AL_ERROR ON CACHE BOOL "Trap AL errors")
+# set(ALSOFT_TRAP_ALC_ERROR ON CACHE BOOL "Trap ALC errors")
 
 FetchContent_MakeAvailable(openal)
 
@@ -87,14 +82,13 @@ target_compile_definitions(ryujinxjni PRIVATE
 
 # 查找系统库
 find_library(log-lib log)
-# 直接链接AAudio而不使用find_library，因为它是Android NDK的一部分
-# find_library(aaudio-lib aaudio)  # 注释掉这行，直接链接
+find_library(opensles-lib OpenSLES)
 
 # 链接库
 target_link_libraries(
     ryujinxjni
     ${log-lib}
-    aaudio  # 直接链接AAudio库
+    ${opensles-lib}
     -lvulkan
     -landroid
     adrenotools
