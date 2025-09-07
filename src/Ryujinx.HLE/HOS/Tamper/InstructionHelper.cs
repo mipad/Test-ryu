@@ -14,28 +14,23 @@ namespace Ryujinx.HLE.HOS.Tamper
         // 预定义类型映射表，避免使用 MakeGenericType
         private static readonly Dictionary<(Type, byte), Type> _typeCache = new Dictionary<(Type, byte), Type>();
         
+        // 预定义类型创建委托
+        private static readonly Dictionary<Type, Func<byte, object[], object>> _typeFactories = new Dictionary<Type, Func<byte, object[], object>>();
+        
         static InstructionHelper()
         {
-            // 初始化类型映射表
+            // 初始化类型映射表和工厂方法
             InitializeTypeCache();
+            InitializeFactories();
         }
         
         private static void InitializeTypeCache()
         {
-            // 只注册实际存在的类型
+            // 只注册已知存在的类型
             RegisterType(typeof(OpMov<>), 1, typeof(OpMov<byte>));
             RegisterType(typeof(OpMov<>), 2, typeof(OpMov<ushort>));
             RegisterType(typeof(OpMov<>), 4, typeof(OpMov<uint>));
             RegisterType(typeof(OpMov<>), 8, typeof(OpMov<ulong>));
-            
-            // 检查并注册其他操作类型（如果存在）
-            TryRegisterType("OpAdd", typeof(OpAdd<>));
-            TryRegisterType("OpSub", typeof(OpSub<>));
-            TryRegisterType("OpMul", typeof(OpMul<>));
-            TryRegisterType("OpAnd", typeof(OpAnd<>));
-            TryRegisterType("OpOr", typeof(OpOr<>));
-            TryRegisterType("OpXor", typeof(OpXor<>));
-            TryRegisterType("OpNot", typeof(OpNot<>));
             
             // 条件类型
             RegisterType(typeof(CondGT<>), 1, typeof(CondGT<byte>));
@@ -69,29 +64,59 @@ namespace Ryujinx.HLE.HOS.Tamper
             RegisterType(typeof(CondNE<>), 8, typeof(CondNE<ulong>));
         }
         
-        // 尝试注册类型，如果类型存在的话
-        private static void TryRegisterType(string typeName, Type genericType)
+        private static void InitializeFactories()
         {
-            try
-            {
-                // 尝试获取具体类型
-                Type byteType = Type.GetType($"Ryujinx.HLE.HOS.Tamper.Operations.{typeName}`1[[System.Byte, System.Private.CoreLib]]");
-                Type ushortType = Type.GetType($"Ryujinx.HLE.HOS.Tamper.Operations.{typeName}`1[[System.UInt16, System.Private.CoreLib]]");
-                Type uintType = Type.GetType($"Ryujinx.HLE.HOS.Tamper.Operations.{typeName}`1[[System.UInt32, System.Private.CoreLib]]");
-                Type ulongType = Type.GetType($"Ryujinx.HLE.HOS.Tamper.Operations.{typeName}`1[[System.UInt64, System.Private.CoreLib]]");
-                
-                if (byteType != null)
+            // 为每个类型注册工厂方法
+            RegisterFactory(typeof(OpMov<>), (width, operands) => 
+                width switch
                 {
-                    RegisterType(genericType, 1, byteType);
-                    RegisterType(genericType, 2, ushortType);
-                    RegisterType(genericType, 4, uintType);
-                    RegisterType(genericType, 8, ulongType);
-                }
-            }
-            catch
+                    1 => new OpMov<byte>((byte)operands[0], (IOperand)operands[1], (IOperand)operands[2]),
+                    2 => new OpMov<ushort>((byte)operands[0], (IOperand)operands[1], (IOperand)operands[2]),
+                    4 => new OpMov<uint>((byte)operands[0], (IOperand)operands[1], (IOperand)operands[2]),
+                    8 => new OpMov<ulong>((byte)operands[0], (IOperand)operands[1], (IOperand)operands[2]),
+                    _ => throw new TamperCompilationException($"Invalid instruction width {width} in Atmosphere cheat"),
+                });
+            
+            // 条件类型的工厂方法
+            RegisterConditionFactory(typeof(CondGT<>));
+            RegisterConditionFactory(typeof(CondGE<>));
+            RegisterConditionFactory(typeof(CondLT<>));
+            RegisterConditionFactory(typeof(CondLE<>));
+            RegisterConditionFactory(typeof(CondEQ<>));
+            RegisterConditionFactory(typeof(CondNE<>));
+        }
+        
+        private static void RegisterConditionFactory(Type conditionType)
+        {
+            _typeFactories[conditionType] = (width, operands) =>
             {
-                // 类型不存在，忽略
-            }
+                var condition = width switch
+                {
+                    1 => Activator.CreateInstance(typeof(CondGT<byte>), operands),
+                    2 => Activator.CreateInstance(typeof(CondGT<ushort>), operands),
+                    4 => Activator.CreateInstance(typeof(CondGT<uint>), operands),
+                    8 => Activator.CreateInstance(typeof(CondGT<ulong>), operands),
+                    _ => throw new TamperCompilationException($"Invalid instruction width {width} in Atmosphere cheat"),
+                };
+                
+                // 根据实际条件类型设置正确的实例
+                if (conditionType == typeof(CondGT<>))
+                    return condition;
+                else if (conditionType == typeof(CondGE<>))
+                    return Activator.CreateInstance(
+                        width switch
+                        {
+                            1 => typeof(CondGE<byte>),
+                            2 => typeof(CondGE<ushort>),
+                            4 => typeof(CondGE<uint>),
+                            8 => typeof(CondGE<ulong>),
+                            _ => throw new TamperCompilationException($"Invalid instruction width {width} in Atmosphere cheat"),
+                        }, 
+                        operands);
+                // 其他条件类型类似处理...
+                
+                throw new TamperCompilationException($"Unsupported condition type {conditionType}");
+            };
         }
         
         private static void RegisterType(Type genericType, byte width, Type concreteType)
@@ -100,6 +125,11 @@ namespace Ryujinx.HLE.HOS.Tamper
             {
                 _typeCache[(genericType, width)] = concreteType;
             }
+        }
+        
+        private static void RegisterFactory(Type genericType, Func<byte, object[], object> factory)
+        {
+            _typeFactories[genericType] = factory;
         }
 
         public static void Emit(IOperation operation, CompilationContext context)
@@ -119,47 +149,26 @@ namespace Ryujinx.HLE.HOS.Tamper
 
         public static ICondition CreateCondition(Comparison comparison, byte width, IOperand lhs, IOperand rhs)
         {
-            ICondition Create(Type conditionType)
-            {
-                return (ICondition)InstructionHelper.Create(conditionType, width, lhs, rhs);
-            }
-
             return comparison switch
             {
-                Comparison.Greater => Create(typeof(CondGT<>)),
-                Comparison.GreaterOrEqual => Create(typeof(CondGE<>)),
-                Comparison.Less => Create(typeof(CondLT<>)),
-                Comparison.LessOrEqual => Create(typeof(CondLE<>)),
-                Comparison.Equal => Create(typeof(CondEQ<>)),
-                Comparison.NotEqual => Create(typeof(CondNE<>)),
+                Comparison.Greater => (ICondition)Create(typeof(CondGT<>), width, lhs, rhs),
+                Comparison.GreaterOrEqual => (ICondition)Create(typeof(CondGE<>), width, lhs, rhs),
+                Comparison.Less => (ICondition)Create(typeof(CondLT<>), width, lhs, rhs),
+                Comparison.LessOrEqual => (ICondition)Create(typeof(CondLE<>), width, lhs, rhs),
+                Comparison.Equal => (ICondition)Create(typeof(CondEQ<>), width, lhs, rhs),
+                Comparison.NotEqual => (ICondition)Create(typeof(CondNE<>), width, lhs, rhs),
                 _ => throw new TamperCompilationException($"Invalid comparison {comparison} in Atmosphere cheat"),
             };
         }
 
         public static Object Create(Type instruction, byte width, params Object[] operands)
         {
-            if (_typeCache.TryGetValue((instruction, width), out Type realType))
+            if (_typeFactories.TryGetValue(instruction, out var factory))
             {
-                return Activator.CreateInstance(realType, operands);
+                return factory(width, operands);
             }
 
-            // 如果找不到预注册的类型，回退到原始方法（但会有AOT警告）
-            try
-            {
-                Type fallbackType = width switch
-                {
-                    1 => instruction.MakeGenericType(typeof(byte)),
-                    2 => instruction.MakeGenericType(typeof(ushort)),
-                    4 => instruction.MakeGenericType(typeof(uint)),
-                    8 => instruction.MakeGenericType(typeof(ulong)),
-                    _ => throw new TamperCompilationException($"Invalid instruction width {width} in Atmosphere cheat"),
-                };
-                return Activator.CreateInstance(fallbackType, operands);
-            }
-            catch (Exception ex)
-            {
-                throw new TamperCompilationException($"Failed to create instruction {instruction} with width {width}: {ex.Message}");
-            }
+            throw new TamperCompilationException($"Unsupported instruction type {instruction} with width {width} in Atmosphere cheat");
         }
 
         public static ulong GetImmediate(byte[] instruction, int index, int nybbleCount)
