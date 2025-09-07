@@ -752,8 +752,7 @@ class SettingViews {
                                         // 当显示分辨率选项时，隐藏其他选项
                                         if (showResScaleOptions.value) {
                                             showAspectRatioOptions.value = false
-                                            showRegionOptions.value = false
-                                            showLanguageOptions.value = false
+                                            
                                         }
                                     }
                                 )
@@ -829,8 +828,6 @@ AnimatedVisibility(visible = showResScaleOptions.value) {
                                         // 当显示画面比例选项时，隐藏其他选项
                                         if (showAspectRatioOptions.value) {
                                             showResScaleOptions.value = false
-                                            showRegionOptions.value = false
-                                            showLanguageOptions.value = false
                                         }
                                     }
                                 )
