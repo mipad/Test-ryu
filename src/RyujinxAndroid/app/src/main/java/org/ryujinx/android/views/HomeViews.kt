@@ -150,6 +150,102 @@ class HomeViews {
             )
         }
 
+        @Composable
+        private fun GameIconContent(
+            gameModel: GameModel,
+            viewModel: HomeViewModel,
+            modifier: Modifier = Modifier,
+            isSelected: Boolean = false
+        ) {
+            // 使用缓存的图标
+            val cachedIcon = remember(gameModel.titleId) {
+                viewModel.getCachedIcon(gameModel.titleId)
+            }
+            
+            Box(modifier = modifier) {
+                if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
+                    if (cachedIcon != null) {
+                        // 使用缓存的图标
+                        Image(
+                            bitmap = cachedIcon,
+                            contentDescription = gameModel.getDisplayName() + " icon",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else if (gameModel.icon?.isNotEmpty() == true) {
+                        val decoder = Base64.getDecoder()
+                        val pic = decoder.decode(gameModel.icon)
+                        Image(
+                            bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
+                                .asImageBitmap(),
+                            contentDescription = gameModel.getDisplayName() + " icon",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else if (gameModel.type == FileType.Nro) {
+                        NROIcon(
+                            modifier = Modifier
+                                .fillMaxSize(0.8f)
+                                .align(Alignment.Center)
+                        )
+                    } else {
+                        NotAvailableIcon(
+                            modifier = Modifier
+                                .fillMaxSize(0.8f)
+                                .align(Alignment.Center)
+                        )
+                    }
+                } else {
+                    NotAvailableIcon(
+                        modifier = Modifier
+                            .fillMaxSize(0.8f)
+                            .align(Alignment.Center)
+                    )
+                }
+            }
+        }
+
+        @Composable
+        private fun UserAvatarContent(
+            viewModel: HomeViewModel,
+            refreshUser: Boolean,
+            modifier: Modifier = Modifier,
+            onUserClick: () -> Unit = {}
+        ) {
+            IconButton(
+                onClick = onUserClick,
+                modifier = modifier
+            ) {
+                if (refreshUser && viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
+                    val pic = viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
+                    Image(
+                        bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
+                            .asImageBitmap(),
+                        contentDescription = "user image",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .border(1.dp, Color.Gray, RoundedCornerShape(12.dp))
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.Person,
+                            contentDescription = "user",
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+            }
+        }
+
         @OptIn(ExperimentalFoundationApi::class)
         @Composable
         fun ListGameItem(
@@ -161,11 +257,6 @@ class HomeViews {
             showError: MutableState<String>
         ) {
             val isSelected = selectedModel.value == gameModel
-
-            // 使用缓存的图标
-            val cachedIcon = remember(gameModel.titleId) {
-                viewModel.getCachedIcon(gameModel.titleId)
-            }
 
             Surface(
                 shape = MaterialTheme.shapes.medium,
@@ -224,33 +315,23 @@ class HomeViews {
                                     Modifier.padding(end = 8.dp)
                                 }
                             ) {
-                                if (cachedIcon != null) {
-                                    // 使用缓存的图标
-                                    val size = (ListImageSize / Resources.getSystem().displayMetrics.density).roundToInt()
-                                    Image(
-                                        bitmap = cachedIcon,
-                                        contentDescription = gameModel.getDisplayName() + " icon",
-                                        modifier = Modifier
-                                            .width(size.dp)
-                                            .height(size.dp)
-                                    )
-                                } else if (gameModel.icon?.isNotEmpty() == true) {
-                                    val decoder = Base64.getDecoder()
-                                    val pic = decoder.decode(gameModel.icon)
-                                    val size = (ListImageSize / Resources.getSystem().displayMetrics.density).roundToInt()
-                                    Image(
-                                        bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
-                                            .asImageBitmap(),
-                                        contentDescription = gameModel.getDisplayName() + " icon",
-                                        modifier = Modifier
-                                            .width(size.dp)
-                                            .height(size.dp)
-                                    )
-                                } else if (gameModel.type == FileType.Nro)
-                                    NROIcon()
-                                else NotAvailableIcon()
+                                val size = (ListImageSize / Resources.getSystem().displayMetrics.density).roundToInt()
+                                GameIconContent(
+                                    gameModel = gameModel,
+                                    viewModel = viewModel,
+                                    modifier = Modifier
+                                        .width(size.dp)
+                                        .height(size.dp)
+                                )
                             }
-                        } else NotAvailableIcon()
+                        } else {
+                            val size = (ListImageSize / Resources.getSystem().displayMetrics.density).roundToInt()
+                            NotAvailableIcon(
+                                modifier = Modifier
+                                    .width(size.dp)
+                                    .height(size.dp)
+                            )
+                        }
                         Column {
                             Text(text = gameModel.getDisplayName())
                             Text(text = gameModel.developer ?: "")
@@ -276,11 +357,6 @@ class HomeViews {
             showError: MutableState<String>
         ) {
             val isSelected = selectedModel.value == gameModel
-
-            // 使用缓存的图标
-            val cachedIcon = remember(gameModel.titleId) {
-                viewModel.getCachedIcon(gameModel.titleId)
-            }
 
             Surface(
                 shape = MaterialTheme.shapes.medium,
@@ -328,94 +404,23 @@ class HomeViews {
                         .fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
-                        Box(
-                            modifier = if (isSelected) {
-                                Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(1f)
-                                    .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
-                            } else {
-                                Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(1f)
-                            }
-                        ) {
-                            if (cachedIcon != null) {
-                                // 使用缓存的图标
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(16.dp))
-                                ) {
-                                    Image(
-                                        bitmap = cachedIcon,
-                                        contentDescription = gameModel.getDisplayName() + " icon",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
-                            } else if (gameModel.icon?.isNotEmpty() == true) {
-                                val decoder = Base64.getDecoder()
-                                val pic = decoder.decode(gameModel.icon)
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(16.dp))
-                                ) {
-                                    Image(
-                                        bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
-                                            .asImageBitmap(),
-                                        contentDescription = gameModel.getDisplayName() + " icon",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
-                            } else if (gameModel.type == FileType.Nro) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(16.dp))
-                                ) {
-                                    NROIcon(
-                                        modifier = Modifier
-                                            .fillMaxSize(0.8f)
-                                            .align(Alignment.Center)
-                                    )
-                                }
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(16.dp))
-                                ) {
-                                    NotAvailableIcon(
-                                        modifier = Modifier
-                                            .fillMaxSize(0.8f)
-                                            .align(Alignment.Center)
-                                    )
-                                }
-                            }
+                    Box(
+                        modifier = if (isSelected) {
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1f)
+                                .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
+                        } else {
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1f)
                         }
-                    } else {
-                        Box(
-                            modifier = if (isSelected) {
-                                Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(1f)
-                                    .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
-                            } else {
-                                Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(1f)
-                            }
-                        ) {
-                            NotAvailableIcon(
-                                modifier = Modifier
-                                    .fillMaxSize(0.8f)
-                                    .align(Alignment.Center)
-                            )
-                        }
+                    ) {
+                        GameIconContent(
+                            gameModel = gameModel,
+                            viewModel = viewModel,
+                            modifier = Modifier.fillMaxSize()
+                        )
                     }
                     Text(
                         text = gameModel.getDisplayName(),
@@ -454,11 +459,6 @@ class HomeViews {
             }
 
             val isSelected = selectedModel.value == gameModel
-            
-            // 使用缓存的图标
-            val cachedIcon = remember(gameModel.titleId) {
-                viewModel.getCachedIcon(gameModel.titleId)
-            }
             
             // 根据主题确定边框颜色 - 使用背景色的亮度来判断
             val backgroundColor = MaterialTheme.colorScheme.background
@@ -521,49 +521,11 @@ class HomeViews {
                                 }
                             )
                     ) {
-                        if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
-                            if (cachedIcon != null) {
-                                // 使用缓存的图标
-                                Image(
-                                    bitmap = cachedIcon,
-                                    contentDescription = gameModel.getDisplayName() + " icon",
-                                    contentScale = ContentScale.FillBounds,
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(12.dp))
-                                )
-                            } else if (gameModel.icon?.isNotEmpty() == true) {
-                                val decoder = Base64.getDecoder()
-                                val pic = decoder.decode(gameModel.icon)
-                                Image(
-                                    bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
-                                        .asImageBitmap(),
-                                    contentDescription = gameModel.getDisplayName() + " icon",
-                                    contentScale = ContentScale.FillBounds,
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(12.dp))
-                                )
-                            } else if (gameModel.type == FileType.Nro) {
-                                NROIcon(
-                                    modifier = Modifier
-                                        .fillMaxSize(0.8f)
-                                        .align(Alignment.Center)
-                                )
-                            } else {
-                                NotAvailableIcon(
-                                    modifier = Modifier
-                                        .fillMaxSize(0.8f)
-                                        .align(Alignment.Center)
-                                )
-                            }
-                        } else {
-                            NotAvailableIcon(
-                                modifier = Modifier
-                                    .fillMaxSize(0.8f)
-                                    .align(Alignment.Center)
-                            )
-                        }
+                        GameIconContent(
+                            gameModel = gameModel,
+                            viewModel = viewModel,
+                            modifier = Modifier.fillMaxSize()
+                        )
                     }
                 }
             } else {
@@ -573,45 +535,11 @@ class HomeViews {
                         .clip(RoundedCornerShape(12.dp))
                         .clickable(onClick = onItemClick)
                 ) {
-                    if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
-                        if (cachedIcon != null) {
-                            // 使用缓存的图标
-                            Image(
-                                bitmap = cachedIcon,
-                                contentDescription = gameModel.getDisplayName() + " icon",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else if (gameModel.icon?.isNotEmpty() == true) {
-                            val decoder = Base64.getDecoder()
-                            val pic = decoder.decode(gameModel.icon)
-                            Image(
-                                bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
-                                    .asImageBitmap(),
-                                contentDescription = gameModel.getDisplayName() + " icon",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else if (gameModel.type == FileType.Nro) {
-                            NROIcon(
-                                modifier = Modifier
-                                    .fillMaxSize(0.8f)
-                                    .align(Alignment.Center)
-                            )
-                        } else {
-                            NotAvailableIcon(
-                                modifier = Modifier
-                                    .fillMaxSize(0.8f)
-                                    .align(Alignment.Center)
-                            )
-                        }
-                    } else {
-                        NotAvailableIcon(
-                            modifier = Modifier
-                                .fillMaxSize(0.8f)
-                                .align(Alignment.Center)
-                        )
-                    }
+                    GameIconContent(
+                        gameModel = gameModel,
+                        viewModel = viewModel,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
             }
         }
@@ -711,47 +639,14 @@ class HomeViews {
                                 Text(text = "Ryujinx")
                             },
                             trailingIcon = {
-                                IconButton(onClick = {
-                                    openAppBarExtra = !openAppBarExtra
-                                }) {
-                                    if (!refreshUser) {
-                                        refreshUser = true
+                                UserAvatarContent(
+                                    viewModel = viewModel,
+                                    refreshUser = refreshUser,
+                                    modifier = Modifier.size(40.dp),
+                                    onUserClick = {
+                                        openAppBarExtra = !openAppBarExtra
                                     }
-                                    if (refreshUser)
-                                        if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
-                                            val pic =
-                                                viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
-                                            Image(
-                                                bitmap = BitmapFactory.decodeByteArray(
-                                                    pic,
-                                                    0,
-                                                    pic?.size ?: 0
-                                                )
-                                                    .asImageBitmap(),
-                                                contentDescription = "user image",
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier
-                                                    .padding(4.dp)
-                                                    .size(40.dp) // 调整大小
-                                                    .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
-                                                    .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)) // 添加边框
-                                            )
-                                        } else {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(40.dp)
-                                                    .clip(RoundedCornerShape(12.dp))
-                                                    .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(
-                                                    Icons.Filled.Person,
-                                                    contentDescription = "user",
-                                                    modifier = Modifier.size(24.dp)
-                                                )
-                                            }
-                                        }
-                                }
+                                )
                             }
                         ) {
 
@@ -789,49 +684,14 @@ class HomeViews {
                                 },
                                 trailingIcon = {
                                     // 用户头像放在搜索框内部右侧
-                                    IconButton(
-                                        onClick = {
+                                    UserAvatarContent(
+                                        viewModel = viewModel,
+                                        refreshUser = refreshUser,
+                                        modifier = Modifier.size(32.dp),
+                                        onUserClick = {
                                             openAppBarExtra = !openAppBarExtra
-                                        },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        if (!refreshUser) {
-                                        refreshUser = true
-                                    }
-                                    if (refreshUser)
-                                        if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
-                                            val pic =
-                                                viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
-                                            Image(
-                                                bitmap = BitmapFactory.decodeByteArray(
-                                                    pic,
-                                                    0,
-                                                    pic?.size ?: 0
-                                                )
-                                                    .asImageBitmap(),
-                                                contentDescription = "user image",
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier
-                                                    .size(32.dp)
-                                                    .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
-                                                    .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)) // 添加边框
-                                            )
-                                        } else {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(32.dp)
-                                                    .clip(RoundedCornerShape(12.dp))
-                                                    .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(
-                                                    Icons.Filled.Person,
-                                                    contentDescription = "user",
-                                                    modifier = Modifier.size(24.dp)
-                                                )
-                                            }
                                         }
-                                }
+                                    )
                                 }
                             ) {}
                         }
@@ -1113,8 +973,7 @@ class HomeViews {
                                                     Image(
                                                         bitmap = BitmapFactory.decodeByteArray(
                                                             user.userPicture,
-                                                            0,
-                                                            user.userPicture?.size ?: 0
+                                                                                            user.userPicture?.size ?: 0
                                                         )
                                                             .asImageBitmap(),
                                                         contentDescription = "selected image",
