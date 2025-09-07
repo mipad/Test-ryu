@@ -1,3 +1,4 @@
+// HomeViews.kt
 package org.ryujinx.android.views 
 
 import android.content.res.Configuration
@@ -73,7 +74,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
@@ -118,6 +118,7 @@ import android.content.Context
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import kotlin.math.roundToInt
 
 class HomeViews {
     companion object {
@@ -221,25 +222,25 @@ class HomeViews {
                             ) {
                                 if (cachedIcon != null) {
                                     // 使用缓存的图标
-                                    val size = ListImageSize / Resources.getSystem().displayMetrics.density
+                                    val size = (ListImageSize / Resources.getSystem().displayMetrics.density).roundToInt()
                                     Image(
                                         bitmap = cachedIcon,
                                         contentDescription = gameModel.getDisplayName() + " icon",
                                         modifier = Modifier
-                                            .width(size.roundToInt().dp)
-                                            .height(size.roundToInt().dp)
+                                            .width(size.dp)
+                                            .height(size.dp)
                                     )
                                 } else if (gameModel.icon?.isNotEmpty() == true) {
                                     val decoder = Base64.getDecoder()
                                     val pic = decoder.decode(gameModel.icon)
-                                    val size = ListImageSize / Resources.getSystem().displayMetrics.density
+                                    val size = (ListImageSize / Resources.getSystem().displayMetrics.density).roundToInt()
                                     Image(
                                         bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
                                             .asImageBitmap(),
                                         contentDescription = gameModel.getDisplayName() + " icon",
                                         modifier = Modifier
-                                            .width(size.roundToInt().dp)
-                                            .height(size.roundToInt().dp)
+                                            .width(size.dp)
+                                            .height(size.dp)
                                     )
                                 } else if (gameModel.type == FileType.Nro)
                                     NROIcon()
