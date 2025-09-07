@@ -119,6 +119,10 @@ OboeAudioRenderer& OboeAudioRenderer::getInstance() {
 
 bool OboeAudioRenderer::openStreamWithFormat(oboe::AudioFormat format) {
     oboe::AudioStreamBuilder builder;
+
+     // 强制使用 OpenSL ES 后端
+    builder.setAudioApi(oboe::AudioApi::OpenSLES);
+    
     // 修改为更兼容的模式设置
     builder.setDirection(oboe::Direction::Output)
            ->setPerformanceMode(oboe::PerformanceMode::None) // 改为None以提高兼容性
