@@ -182,7 +182,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             return session;
         }
 
-        internal bool Unregister(OboeAudioSession session)
+        private bool Unregister(OboeAudioSession session)
         {
             return _sessions.TryRemove(session, out _);
         }
