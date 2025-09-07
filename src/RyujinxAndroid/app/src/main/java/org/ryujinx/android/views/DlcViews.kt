@@ -1,27 +1,13 @@
 package org.ryujinx.android.views
 
 import android.content.res.Configuration
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.remember
@@ -43,97 +29,199 @@ class DlcViews {
             val configuration = LocalConfiguration.current
             val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
             
-            // 根据屏幕方向调整高度
-            val contentHeight = if (isLandscape) 250.dp else 400.dp
-
-            Column(modifier = Modifier.padding(16.dp)) {
-                // 标题区域 
-                Column {
-                    Row(
-                        modifier = Modifier
-                            .padding(8.dp)
-                            .fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "DLC for $name",
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.align(Alignment.CenterVertically)
-                        )
-                    }
-                    
-                    // DLC列表区域 
-                    Surface(
-                        modifier = Modifier.padding(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = MaterialTheme.shapes.medium
-                    ) {
-                        viewModel.setDlcItems(dlcItems, canClose)
-                        
-                        LazyColumn(
+            // 根据屏幕方向调整布局
+            if (isLandscape) {
+                // 横屏布局 - 右侧垂直按钮
+                Row(modifier = Modifier.padding(16.dp)) {
+                    // DLC列表区域 (占70%宽度)
+                    Column(modifier = Modifier.weight(0.7f)) {
+                        // 标题区域
+                        Row(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height(contentHeight) // 使用动态高度
+                                .padding(8.dp)
+                                .fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            items(dlcItems) { dlcItem ->
-                                Row(
-                                    modifier = Modifier
-                                        .padding(8.dp)
-                                        .fillMaxWidth()
-                                ) {
-                                    Checkbox(
-                                        checked = dlcItem.isEnabled.value,
-                                        onCheckedChange = { dlcItem.isEnabled.value = it }
-                                    )
-                                    Text(
-                                        text = dlcItem.name,
+                            Text(
+                                text = "DLC for $name",
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.align(Alignment.CenterVertically)
+                            )
+                        }
+                        
+                        Surface(
+                            modifier = Modifier.padding(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            shape = MaterialTheme.shapes.medium
+                        ) {
+                            viewModel.setDlcItems(dlcItems, canClose)
+                            
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(300.dp) // 固定高度，确保内容可滚动
+                            ) {
+                                items(dlcItems) { dlcItem ->
+                                    Row(
                                         modifier = Modifier
-                                            .align(Alignment.CenterVertically)
-                                            .wrapContentWidth(Alignment.Start)
-                                            .fillMaxWidth(0.9f)
-                                    )
-                                    IconButton(
-                                        onClick = {
-                                            viewModel.remove(dlcItem)
-                                        }
+                                            .padding(8.dp)
+                                            .fillMaxWidth()
                                     ) {
-                                        Icon(
-                                            Icons.Filled.Delete,
-                                            contentDescription = "remove"
+                                        Checkbox(
+                                            checked = dlcItem.isEnabled.value,
+                                            onCheckedChange = { dlcItem.isEnabled.value = it }
                                         )
+                                        Text(
+                                            text = dlcItem.name,
+                                            modifier = Modifier
+                                                .align(Alignment.CenterVertically)
+                                                .wrapContentWidth(Alignment.Start)
+                                                .fillMaxWidth(0.7f)
+                                        )
+                                        IconButton(
+                                            onClick = {
+                                                viewModel.remove(dlcItem)
+                                            }
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.Delete,
+                                                contentDescription = "remove"
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                // 底部按钮区域 
-                Row(modifier = Modifier.align(Alignment.End)) {
-                    // 添加按钮 
-                    IconButton(
-                        modifier = Modifier.padding(4.dp),
-                        onClick = {
-                            viewModel.add()
-                        }
+                    
+                    // 按钮区域 (占30%宽度，垂直排列)
+                    Column(
+                        modifier = Modifier
+                            .weight(0.3f)
+                            .padding(start = 16.dp),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(
-                            Icons.Filled.Add,
-                            contentDescription = "Add"
-                        )
+                        // 添加按钮
+                        IconButton(
+                            modifier = Modifier.padding(8.dp),
+                            onClick = {
+                                viewModel.add()
+                            }
+                        ) {
+                            Icon(
+                                Icons.Filled.Add,
+                                contentDescription = "Add"
+                            )
+                        }
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        // 保存按钮
+                        Button(
+                            modifier = Modifier
+                                .padding(8.dp)
+                                .fillMaxWidth(),
+                            onClick = {
+                                canClose.value = true
+                                viewModel.save(openDialog)
+                            }
+                        ) {
+                            Text("Save")
+                        }
+                    }
+                }
+            } else {
+                // 竖屏布局 - 保持原有设计
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // 标题区域 
+                    Column {
+                        Row(
+                            modifier = Modifier
+                                .padding(8.dp)
+                                .fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "DLC for $name",
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.align(Alignment.CenterVertically)
+                            )
+                        }
+                        
+                        // DLC列表区域 
+                        Surface(
+                            modifier = Modifier.padding(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            shape = MaterialTheme.shapes.medium
+                        ) {
+                            viewModel.setDlcItems(dlcItems, canClose)
+                            
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(400.dp)
+                            ) {
+                                items(dlcItems) { dlcItem ->
+                                    Row(
+                                        modifier = Modifier
+                                            .padding(8.dp)
+                                            .fillMaxWidth()
+                                    ) {
+                                        Checkbox(
+                                            checked = dlcItem.isEnabled.value,
+                                            onCheckedChange = { dlcItem.isEnabled.value = it }
+                                        )
+                                        Text(
+                                            text = dlcItem.name,
+                                            modifier = Modifier
+                                                .align(Alignment.CenterVertically)
+                                                .wrapContentWidth(Alignment.Start)
+                                                .fillMaxWidth(0.9f)
+                                        )
+                                        IconButton(
+                                            onClick = {
+                                                viewModel.remove(dlcItem)
+                                            }
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.Delete,
+                                                contentDescription = "remove"
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                     
-                    // 保存按钮 
-                    TextButton(
-                        modifier = Modifier.padding(4.dp),
-                        onClick = {
-                            canClose.value = true
-                            viewModel.save(openDialog)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // 底部按钮区域 
+                    Row(modifier = Modifier.align(Alignment.End)) {
+                        // 添加按钮 
+                        IconButton(
+                            modifier = Modifier.padding(4.dp),
+                            onClick = {
+                                viewModel.add()
+                            }
+                        ) {
+                            Icon(
+                                Icons.Filled.Add,
+                                contentDescription = "Add"
+                            )
                         }
-                    ) {
-                        Text("Save")
+                        
+                        // 保存按钮 
+                        TextButton(
+                            modifier = Modifier.padding(4.dp),
+                            onClick = {
+                                canClose.value = true
+                                viewModel.save(openDialog)
+                            }
+                        ) {
+                            Text("Save")
+                        }
                     }
                 }
             }
