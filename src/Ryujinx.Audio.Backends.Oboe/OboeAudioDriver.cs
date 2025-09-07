@@ -172,7 +172,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             public void SetVolume(float volume)
             {
                 _volume = volume;
-                _driver.setOboeVolume(volume); // 同步到驱动（原生层）
+                OboeAudioDriver.setOboeVolume(volume); // 正确：通过类名调用静态方法 // 同步到驱动（原生层）
             }
 
             public float GetVolume() => _volume;
