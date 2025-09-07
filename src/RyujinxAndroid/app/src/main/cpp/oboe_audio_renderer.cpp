@@ -104,25 +104,26 @@ bool OboeAudioRenderer::initialize() {
         return true;
     }
 
+    // 创建构建器并设置参数
     oboe::AudioStreamBuilder builder;
     builder.setDirection(oboe::Direction::Output)
-           .setPerformanceMode(oboe::PerformanceMode::LowLatency)
-           .setSharingMode(oboe::SharingMode::Exclusive)
-           .setFormat(oboe::AudioFormat::Float)
-           .setChannelCount(mChannelCount)
-           .setSampleRate(mSampleRate.load(std::memory_order_relaxed))
-           .setBufferSizeInFrames(mBufferSize.load(std::memory_order_relaxed))
-           .setDataCallback(this)
-           .setErrorCallback(this);
+           ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
+           ->setSharingMode(oboe::SharingMode::Exclusive)
+           ->setFormat(oboe::AudioFormat::Float)
+           ->setChannelCount(mChannelCount)
+           ->setSampleRate(mSampleRate)
+           ->setBufferCapacityInFrames(mBufferSize) // 使用正确的API名称
+           ->setDataCallback(this)
+           ->setErrorCallback(this);
 
-    std::shared_ptr<oboe::AudioStream> stream;
-    oboe::Result result = builder.openStream(stream);
+    // 打开音频流
+    oboe::Result result = builder.openStream(mAudioStream);
     if (result != oboe::Result::OK) {
         ALOGE("Failed to open Oboe stream: %s", oboe::convertToText(result));
         return false;
     }
 
-    mAudioStream = stream;
+    // 启动音频流
     result = mAudioStream->requestStart();
     if (result != oboe::Result::OK) {
         ALOGE("Failed to start Oboe stream: %s", oboe::convertToText(result));
@@ -131,18 +132,20 @@ bool OboeAudioRenderer::initialize() {
         return false;
     }
 
+    // 更新实际使用的参数
+    mSampleRate = mAudioStream->getSampleRate();
+    mBufferSize = mAudioStream->getBufferSizeInFrames();
+    
     mIsInitialized.store(true, std::memory_order_release);
     ALOGI("Oboe stream started: SR=%d, BufSize=%d, Channels=%d",
-          (int)mAudioStream->getSampleRate(),
-          (int)mAudioStream->getBufferSizeInFrames(),
-          (int)mAudioStream->getChannelCount());
+          mSampleRate, mBufferSize, mAudioStream->getChannelCount());
 
     return true;
 }
 
 void OboeAudioRenderer::shutdown() {
     if (mAudioStream) {
-        mAudioStream->stop(0);
+        mAudioStream->stop();
         mAudioStream->close();
         mAudioStream.reset();
     }
@@ -155,12 +158,12 @@ void OboeAudioRenderer::shutdown() {
 
 void OboeAudioRenderer::setSampleRate(int32_t sampleRate) {
     if (sampleRate < 8000 || sampleRate > 192000) return;
-    mSampleRate.store(sampleRate, std::memory_order_relaxed);
+    mSampleRate = sampleRate;
 }
 
 void OboeAudioRenderer::setBufferSize(int32_t bufferSize) {
     if (bufferSize < 64 || bufferSize > 8192) return;
-    mBufferSize.store(bufferSize, std::memory_order_relaxed);
+    mBufferSize = bufferSize;
 }
 
 void OboeAudioRenderer::setVolume(float volume) {
