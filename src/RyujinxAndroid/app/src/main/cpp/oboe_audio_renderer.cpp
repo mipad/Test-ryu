@@ -111,8 +111,8 @@ bool OboeAudioRenderer::initialize() {
            ->setSharingMode(oboe::SharingMode::Exclusive)
            ->setFormat(oboe::AudioFormat::Float)
            ->setChannelCount(mChannelCount)
-           ->setSampleRate(mSampleRate)
-           ->setBufferCapacityInFrames(mBufferSize) // 使用正确的API名称
+           ->setSampleRate(mSampleRate.load(std::memory_order_relaxed))
+           ->setBufferCapacityInFrames(mBufferSize.load(std::memory_order_relaxed))
            ->setDataCallback(this)
            ->setErrorCallback(this);
 
@@ -133,12 +133,14 @@ bool OboeAudioRenderer::initialize() {
     }
 
     // 更新实际使用的参数
-    mSampleRate = mAudioStream->getSampleRate();
-    mBufferSize = mAudioStream->getBufferSizeInFrames();
+    mSampleRate.store(mAudioStream->getSampleRate(), std::memory_order_relaxed);
+    mBufferSize.store(mAudioStream->getBufferSizeInFrames(), std::memory_order_relaxed);
     
     mIsInitialized.store(true, std::memory_order_release);
     ALOGI("Oboe stream started: SR=%d, BufSize=%d, Channels=%d",
-          mSampleRate, mBufferSize, mAudioStream->getChannelCount());
+          static_cast<int>(mSampleRate.load(std::memory_order_relaxed)),
+          static_cast<int>(mBufferSize.load(std::memory_order_relaxed)),
+          static_cast<int>(mAudioStream->getChannelCount()));
 
     return true;
 }
@@ -158,12 +160,12 @@ void OboeAudioRenderer::shutdown() {
 
 void OboeAudioRenderer::setSampleRate(int32_t sampleRate) {
     if (sampleRate < 8000 || sampleRate > 192000) return;
-    mSampleRate = sampleRate;
+    mSampleRate.store(sampleRate, std::memory_order_relaxed);
 }
 
 void OboeAudioRenderer::setBufferSize(int32_t bufferSize) {
     if (bufferSize < 64 || bufferSize > 8192) return;
-    mBufferSize = bufferSize;
+    mBufferSize.store(bufferSize, std::memory_order_relaxed);
 }
 
 void OboeAudioRenderer::setVolume(float volume) {
