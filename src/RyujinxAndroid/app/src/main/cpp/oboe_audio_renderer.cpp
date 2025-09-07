@@ -96,7 +96,7 @@ void RingBuffer::clear() {
 
 // =============== OboeAudioRenderer Implementation ===============
 OboeAudioRenderer::OboeAudioRenderer()
-    : mRingBuffer(std::make_unique<RingBuffer>(48000 * 2 * 5))
+    : mRingBuffer(std::make_unique<RingBuffer>(48000 * 2 * 5)) // 5秒的缓冲
 {
     ALOGD("OboeAudioRenderer created");
 }
@@ -130,7 +130,7 @@ bool OboeAudioRenderer::initialize() {
            ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
            ->setSharingMode(oboe::SharingMode::Exclusive)
            ->setFormat(oboe::AudioFormat::Float)
-           ->setChannelCount(mChannelCount)
+           ->setChannelCount(mChannelCount.load(std::memory_order_relaxed))
            ->setSampleRate(mSampleRate.load(std::memory_order_relaxed))
            ->setBufferCapacityInFrames(mBufferSize.load(std::memory_order_relaxed))
            ->setDataCallback(this)
@@ -155,6 +155,7 @@ bool OboeAudioRenderer::initialize() {
     // 更新实际使用的参数
     mSampleRate.store(mAudioStream->getSampleRate(), std::memory_order_relaxed);
     mBufferSize.store(mAudioStream->getBufferSizeInFrames(), std::memory_order_relaxed);
+    mChannelCount.store(mAudioStream->getChannelCount(), std::memory_order_relaxed);
     
     mIsInitialized.store(true, std::memory_order_release);
     ALOGI("Oboe stream started: SR=%d, BufSize=%d, Channels=%d",
@@ -209,10 +210,13 @@ void OboeAudioRenderer::writeAudio(const float* data, int32_t numFrames) {
         return;
     }
 
-    size_t totalSamples = numFrames * mChannelCount;
+    int32_t channelCount = mChannelCount.load(std::memory_order_relaxed);
+    size_t totalSamples = numFrames * channelCount;
     
     if (!mRingBuffer->write(data, totalSamples)) {
         ALOGE("Audio buffer overflow! Dropping %d frames", numFrames);
+    } else {
+        ALOGD("Wrote %d frames (%zu samples) to ring buffer", numFrames, totalSamples);
     }
 }
 
@@ -226,7 +230,8 @@ size_t OboeAudioRenderer::getBufferedFrames() const {
     if (!mRingBuffer) {
         return 0;
     }
-    return mRingBuffer->available() / mChannelCount;
+    int32_t channelCount = mChannelCount.load(std::memory_order_relaxed);
+    return mRingBuffer->available() / channelCount;
 }
 
 oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
@@ -238,12 +243,14 @@ oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
     }
 
     float* output = static_cast<float*>(audioData);
-    size_t totalSamples = numFrames * mChannelCount;
+    int32_t channelCount = mChannelCount.load(std::memory_order_relaxed);
+    size_t totalSamples = numFrames * channelCount;
 
     size_t read = mRingBuffer->read(output, totalSamples);
     float volume = mVolume.load(std::memory_order_relaxed);
 
     if (read < totalSamples) {
+        ALOGW("Underflow: requested %zu samples, got %zu", totalSamples, read);
         if (read > 0 && volume != 1.0f) {
             for (size_t i = 0; i < read; i++) {
                 output[i] *= volume;
@@ -256,6 +263,7 @@ oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
         }
     }
 
+    ALOGD("Provided %zu samples for %d frames", read, numFrames);
     return oboe::DataCallbackResult::Continue;
 }
 
