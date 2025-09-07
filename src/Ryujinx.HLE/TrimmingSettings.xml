@@ -1,10 +1,55 @@
+<?xml version="1.0" encoding="utf-8" ?>
 <linker>
+  <!-- 保留整个 Ryujinx.HLE 程序集 -->
+  <assembly fullname="Ryujinx.HLE" preserve="all" />
+  
+  <!-- 特别保留 Tamper 相关的命名空间和类型 -->
   <assembly fullname="Ryujinx.HLE">
-    <namespace fullname="Ryujinx.HLE.HOS.Tamper" />
-    <namespace fullname="Ryujinx.HLE.HOS.Tamper.Operations" />
-    <namespace fullname="Ryujinx.HLE.HOS.Tamper.CodeEmitters" />
-    <type fullname="Ryujinx.HLE.HOS.Tamper.Operations.OpMov`1" />
-    <type fullname="Ryujinx.HLE.HOS.Tamper.Operations.OpMov`1[[System.UInt32, System.Private.CoreLib]]" />
-    <!-- 添加其他可能用到的泛型类型 -->
+    <namespace fullname="Ryujinx.HLE.HOS.Tamper" preserve="all" />
+    <namespace fullname="Ryujinx.HLE.HOS.Tamper.Operations" preserve="all" />
+    <namespace fullname="Ryujinx.HLE.HOS.Tamper.CodeEmitters" preserve="all" />
+    <namespace fullname="Ryujinx.HLE.HOS.Tamper.Compilers" preserve="all" />
+    
+    <!-- 显式保留 OpMov 泛型类型及其所有实例 -->
+    <type fullname="Ryujinx.HLE.HOS.Tamper.Operations.OpMov`1" preserve="all" />
+    <type fullname="Ryujinx.HLE.HOS.Tamper.Operations.OpMov`1[[System.Byte, System.Private.CoreLib]]" preserve="all" />
+    <type fullname="Ryujinx.HLE.HOS.Tamper.Operations.OpMov`1[[System.UInt16, System.Private.CoreLib]]" preserve="all" />
+    <type fullname="Ryujinx.HLE.HOS.Tamper.Operations.OpMov`1[[System.UInt32, System.Private.CoreLib]]" preserve="all" />
+    <type fullname="Ryujinx.HLE.HOS.Tamper.Operations.OpMov`1[[System.UInt64, System.Private.CoreLib]]" preserve="all" />
+    <type fullname="Ryujinx.HLE.HOS.Tamper.Operations.OpMov`1[[System.Int16, System.Private.CoreLib]]" preserve="all" />
+    <type fullname="Ryujinx.HLE.HOS.Tamper.Operations.OpMov`1[[System.Int32, System.Private.CoreLib]]" preserve="all" />
+    <type fullname="Ryujinx.HLE.HOS.Tamper.Operations.OpMov`1[[System.Int64, System.Private.CoreLib]]" preserve="all" />
+    
+    <!-- 保留其他可能用到的 Tamper 操作类型 -->
+    <type fullname="Ryujinx.HLE.HOS.Tamper.Operations.OpAdd`1" preserve="all" />
+    <type fullname="Ryujinx.HLE.HOS.Tamper.Operations.OpSub`1" preserve="all" />
+    <type fullname="Ryujinx.HLE.HOS.Tamper.Operations.OpMul`1" preserve="all" />
+    <type fullname="Ryujinx.HLE.HOS.Tamper.Operations.OpDiv`1" preserve="all" />
+    <type fullname="Ryujinx.HLE.HOS.Tamper.Operations.OpAnd`1" preserve="all" />
+    <type fullname="Ryujinx.HLE.HOS.Tamper.Operations.OpOr`1" preserve="all" />
+    <type fullname="Ryujinx.HLE.HOS.Tamper.Operations.OpXor`1" preserve="all" />
+    <type fullname="Ryujinx.HLE.HOS.Tamper.Operations.OpNot`1" preserve="all" />
+    <type fullname="Ryujinx.HLE.HOS.Tamper.Operations.OpShiftLeft`1" preserve="all" />
+    <type fullname="Ryujinx.HLE.HOS.Tamper.Operations.OpShiftRight`1" preserve="all" />
+    
+    <!-- 保留指令辅助类 -->
+    <type fullname="Ryujinx.HLE.HOS.Tamper.InstructionHelper" preserve="all" />
+    
+    <!-- 保留编译器相关类 -->
+    <type fullname="Ryujinx.HLE.HOS.Tamper.AtmosphereCompiler" preserve="all" />
+    <type fullname="Ryujinx.HLE.HOS.Tamper.CompilationContext" preserve="all" />
+    
+    <!-- 保留代码发射器 -->
+    <type fullname="Ryujinx.HLE.HOS.Tamper.CodeEmitters.StoreConstantToAddress" preserve="all" />
+    <type fullname="Ryujinx.HLE.HOS.Tamper.CodeEmitters.*" preserve="all" />
+  </assembly>
+  
+  <!-- 保留反射相关的核心类型 -->
+  <assembly fullname="System.Private.CoreLib">
+    <type fullname="System.Reflection.RuntimeConstructorInfo" preserve="all" />
+    <type fullname="System.Reflection.RuntimeMethodInfo" preserve="all" />
+    <type fullname="System.Reflection.RuntimeType" preserve="all" />
+    <type fullname="System.Type" preserve="all" />
+    <type fullname="System.Reflection.MethodBase" preserve="all" />
   </assembly>
 </linker>
