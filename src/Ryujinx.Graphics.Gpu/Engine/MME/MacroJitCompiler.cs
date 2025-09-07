@@ -1,6 +1,7 @@
 using Ryujinx.Graphics.Device;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection.Emit;
 
 namespace Ryujinx.Graphics.Gpu.Engine.MME
@@ -20,6 +21,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.MME
         /// <summary>
         /// Creates a new instance of the Macro Just-in-Time compiler.
         /// </summary>
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL3050:RequiresDynamicCode", Justification = "DynamicMethod is used only in JIT mode, not AOT.")]
         public MacroJitCompiler()
         {
             _meth = new DynamicMethod("Macro", typeof(void), new Type[] { typeof(MacroJitContext), typeof(IDeviceState), typeof(int) });
