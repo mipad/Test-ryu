@@ -91,7 +91,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         // ========== 设备能力查询 ==========
         public bool SupportsSampleRate(uint sampleRate)
         {
-            bool supported = sampleRate == 48000 || sampleRate == 44100 || sampleRate == 32000;
+            bool supported = sampleRate == 48000 || sampleRate == 44100 || sampleRate == 32000 || sampleRate == 24000 || sampleRate == 16000;
             Logger.Debug?.Print(LogClass.Audio, $"SupportsSampleRate({sampleRate}): {supported}");
             return supported;
         }
