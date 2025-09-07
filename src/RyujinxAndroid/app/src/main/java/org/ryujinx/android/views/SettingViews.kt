@@ -612,7 +612,7 @@ class SettingViews {
                                         run {
                                             onFileSelected = callBack
                                             if (requestCode == IMPORT_CODE) {
-                                                val file = files.firstOrNull()
+                                                the file = files.firstOrNull()
                                                 file?.apply {
                                                     if (this.extension == "zip") {
                                                         importFile.value = this
@@ -1091,53 +1091,53 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                         showRegionOptions.value = !showRegionOptions.value
                                         // 当显示区域选项时，隐藏其他选项
                                         if (showRegionOptions.value) {
+                                            showLanguageOptions.value = false
                                             showResScaleOptions.value = false
                                             showAspectRatioOptions.value = false
-                                            showLanguageOptions.value = false
                                         }
                                     }
                                 )
                             }
                             
-                            // 区域选项
-                            AnimatedVisibility(visible = showRegionOptions.value) {
-                                Column(modifier = Modifier.fillMaxWidth()) {
+                            // 区域选项 - 使用更轻量级的实现
+                            AnimatedVisibility(
+                                visible = showRegionOptions.value,
+                                enter = fadeIn() + expandVertically(),
+                                exit = fadeOut() + shrinkVertically()
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(200.dp) // 限制高度，避免界面卡顿
+                                        .padding(horizontal = 8.dp)
+                                        .verticalScroll(rememberScrollState())
+                                ) {
                                     val regionOptions = listOf("Japan", "USA", "Europe", "Australia", "China", "Korea", "Taiwan")
                                     
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                            .verticalScroll(rememberScrollState())
-                                    ) {
-                                        regionOptions.forEachIndexed { index, option ->
-                                            val isSelected = regionCode.value == index
-                                            
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clickable(
-                                                        interactionSource = remember { MutableInteractionSource() },
-                                                        indication = null
-                                                    ) { 
-                                                        regionCode.value = index
-                                                        showRegionOptions.value = false // 选择后隐藏选项
-                                                    }
-                                                    .padding(8.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                RadioButton(
-                                                    selected = isSelected,
-                                                    onClick = {
-                                                        regionCode.value = index
-                                                        showRegionOptions.value = false
-                                                    }
-                                                )
-                                                Text(
-                                                    text = option,
-                                                    modifier = Modifier.padding(start = 8.dp)
-                                                )
-                                            }
+                                    regionOptions.forEachIndexed { index, option ->
+                                        val isSelected = regionCode.value == index
+                                        
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    regionCode.value = index
+                                                    showRegionOptions.value = false // 选择后立即关闭选项
+                                                }
+                                                .padding(vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            RadioButton(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    regionCode.value = index
+                                                    showRegionOptions.value = false
+                                                }
+                                            )
+                                            Text(
+                                                text = option,
+                                                modifier = Modifier.padding(start = 8.dp)
+                                            )
                                         }
                                     }
                                 }
@@ -1160,7 +1160,7 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                     "Brazilian Portuguese"
                                 )
                                 Text(
-                                    text = languageNames[systemLanguage.value],
+                                    text = if (systemLanguage.value < languageNames.size) languageNames[systemLanguage.value] else "Unknown",
                                     modifier = Modifier.clickable(
                                         interactionSource = remember { MutableInteractionSource() },
                                         indication = null
@@ -1168,17 +1168,27 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                         showLanguageOptions.value = !showLanguageOptions.value
                                         // 当显示语言选项时，隐藏其他选项
                                         if (showLanguageOptions.value) {
+                                            showRegionOptions.value = false
                                             showResScaleOptions.value = false
                                             showAspectRatioOptions.value = false
-                                            showRegionOptions.value = false
                                         }
                                     }
                                 )
                             }
                             
-                            // 语言选项
-                            AnimatedVisibility(visible = showLanguageOptions.value) {
-                                Column(modifier = Modifier.fillMaxWidth()) {
+                            // 语言选项 - 使用更轻量级的实现
+                            AnimatedVisibility(
+                                visible = showLanguageOptions.value,
+                                enter = fadeIn() + expandVertically(),
+                                exit = fadeOut() + shrinkVertically()
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(300.dp) // 限制高度，避免界面卡顿
+                                        .padding(horizontal = 8.dp)
+                                        .verticalScroll(rememberScrollState())
+                                ) {
                                     val languageOptions = listOf(
                                         "Japanese", "American English", "French", "German", "Italian", 
                                         "Spanish", "Chinese", "Korean", "Dutch", "Portuguese", 
@@ -1187,41 +1197,30 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                         "Brazilian Portuguese"
                                     )
                                     
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(350.dp)
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                            .verticalScroll(rememberScrollState())
-                                    ) {
-                                        languageOptions.forEachIndexed { index, option ->
-                                            val isSelected = systemLanguage.value == index
-                                            
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clickable(
-                                                        interactionSource = remember { MutableInteractionSource() },
-                                                        indication = null
-                                                    ) { 
-                                                        systemLanguage.value = index
-                                                        showLanguageOptions.value = false // 选择后隐藏选项
-                                                    }
-                                                    .padding(8.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                RadioButton(
-                                                    selected = isSelected,
-                                                    onClick = {
-                                                        systemLanguage.value = index
-                                                        showLanguageOptions.value = false
-                                                    }
-                                                )
-                                                Text(
-                                                    text = option,
-                                                    modifier = Modifier.padding(start = 8.dp)
-                                                )
-                                            }
+                                    languageOptions.forEachIndexed { index, option ->
+                                        val isSelected = systemLanguage.value == index
+                                        
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    systemLanguage.value = index
+                                                    showLanguageOptions.value = false // 选择后立即关闭选项
+                                                }
+                                                .padding(vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            RadioButton(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    systemLanguage.value = index
+                                                    showLanguageOptions.value = false
+                                                }
+                                            )
+                                            Text(
+                                                text = option,
+                                                modifier = Modifier.padding(start = 8.dp)
+                                            )
                                         }
                                     }
                                 }
@@ -1409,7 +1408,7 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                     .fillMaxWidth()
                                     .padding(8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Arrayignment.CenterVertically
                             ) {
                                 Text(text = "Enable Access Logs")
                                 Switch(checked = enableAccessLogs.value, onCheckedChange = {
