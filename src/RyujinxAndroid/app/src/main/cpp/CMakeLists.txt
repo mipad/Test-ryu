@@ -36,10 +36,17 @@ FetchContent_Declare(
     GIT_TAG        1.24.3  # 使用稳定版本
 )
 
-# 设置 OpenAL 构建选项 - 优化以减少杂音和延迟
-set(ALSOFT_REQUIRE_OPENSL ON CACHE BOOL "Enable OpenSL backend")
-set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "Enable OpenSL backend")
-set(ALSOFT_BACKEND_AAUDIO OFF CACHE BOOL "Disable AAudio backend")
+# 设置 OpenAL 构建选项 - 启用AAudio后端
+set(ALSOFT_REQUIRE_OPENSL OFF CACHE BOOL "Disable OpenSL backend")
+set(ALSOFT_BACKEND_OPENSL OFF CACHE BOOL "Disable OpenSL backend")
+set(ALSOFT_BACKEND_AAUDIO ON CACHE BOOL "Enable AAudio backend")
+set(ALSOFT_BACKEND_ANDROID ON CACHE BOOL "Enable Android backend")
+
+# 添加AAudio特定的优化选项
+set(ALSOFT_AAUDIO_ALLOW_LOW_LATENCY ON CACHE BOOL "Allow low latency mode")
+set(ALSOFT_AAUDIO_SHARING_MODE SHARED CACHE STRING "AAudio sharing mode")
+
+# 其他优化选项
 set(ALSOFT_NO_CONFIG_UTIL ON CACHE BOOL "Disable config utility")
 set(ALSOFT_UTILS OFF CACHE BOOL "Disable utils")
 set(ALSOFT_EXAMPLES OFF CACHE BOOL "Disable examples")
@@ -60,10 +67,6 @@ set(ALSOFT_DEFAULT_REVERB OFF CACHE BOOL "Disable default reverb")
 set(ALSOFT_DEFAULT_ECHO OFF CACHE BOOL "Disable default echo")
 set(ALSOFT_DEFAULT_MODULATION OFF CACHE BOOL "Disable default modulation")
 
-# 启用调试信息（如果需要）
-# set(ALSOFT_TRAP_AL_ERROR ON CACHE BOOL "Trap AL errors")
-# set(ALSOFT_TRAP_ALC_ERROR ON CACHE BOOL "Trap ALC errors")
-
 FetchContent_MakeAvailable(openal)
 
 # 创建主库
@@ -82,13 +85,13 @@ target_compile_definitions(ryujinxjni PRIVATE
 
 # 查找系统库
 find_library(log-lib log)
-find_library(opensles-lib OpenSLES)
+find_library(aaudio-lib AAudio)  # 添加AAudio库查找
 
 # 链接库
 target_link_libraries(
     ryujinxjni
     ${log-lib}
-    ${opensles-lib}
+    ${aaudio-lib}  # 链接AAudio库
     -lvulkan
     -landroid
     adrenotools
