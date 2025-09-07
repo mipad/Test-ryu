@@ -21,6 +21,15 @@
 #include <chrono>
 #include <csignal>
 
+// ========== 新增头文件，用于音频初始化和日志 ==========
+#include <stdlib.h>     // for setenv
+#include <AL/al.h>      // OpenAL
+#include <AL/alc.h>     // OpenAL Context
+#include <android/log.h> // for logging
+
+#define LOG_TAG "RyujinxAudio"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
 
@@ -73,7 +82,7 @@ char *getStringPointer(
         jstring jS) {
     const char *cparam = env->GetStringUTFChars(jS, 0);
     auto len = env->GetStringUTFLength(jS);
-    char *s = new char[len];
+    char *s = new char[len + 1]; //  修复：+1 为 '\0' 留空间
     strcpy(s, cparam);
     env->ReleaseStringUTFChars(jS, cparam);
 
@@ -190,9 +199,9 @@ Java_org_ryujinx_android_NativeHelpers_loadDriver(JNIEnv *env, jobject thiz,
             nullptr
     );
 
-    delete libPath;
-    delete privateAppsPath;
-    delete driverName;
+    delete[] libPath;    //  修复：使用 delete[] 删除数组
+    delete[] privateAppsPath;
+    delete[] driverName;
 
     return (jlong) handle;
 }
@@ -247,4 +256,39 @@ JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setIsInitialOrientationFlipped(JNIEnv *env, jobject thiz,
                                                                       jboolean is_flipped) {
     isInitialOrientationFlipped = is_flipped;
+}
+
+// ==========  新增：OpenAL 音频初始化函数 ==========
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_initAudio(JNIEnv *env, jobject thiz) {
+    LOGI("Initializing OpenAL with Oboe backend...");
+
+    //  强制 OpenAL Soft 使用 Oboe 后端（推荐！）
+    setenv("ALSOFT_DRIVERS", "oboe", 1);
+
+    // 可选：进一步优化设置（低延迟）
+    // setenv("ALSOFT_HRTF", "disabled", 1);
+    // setenv("ALSOFT_PERIOD_SIZE", "192", 1);
+
+    // 初始化 OpenAL 设备
+    ALCdevice* device = alcOpenDevice(nullptr);
+    if (!device) {
+        LOGE(" Failed to open OpenAL device");
+        return;
+    }
+
+    ALCcontext* context = alcCreateContext(device, nullptr);
+    if (!context || !alcMakeContextCurrent(context)) {
+        LOGE(" Failed to create or activate OpenAL context");
+        alcCloseDevice(device);
+        return;
+    }
+
+    const ALCchar* deviceName = alcGetString(device, ALC_DEVICE_SPECIFIER);
+    LOGI(" OpenAL initialized successfully! Device: %s", deviceName);
+
+    // 你可以在这里保存 device 和 context 到全局变量，供后续使用
+    // _openalDevice = device;
+    // _openalContext = context;
 }
