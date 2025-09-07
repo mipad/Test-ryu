@@ -12,6 +12,10 @@ class NativeHelpers {
         }
     }
 
+    // ==========  新增：音频初始化函数 ==========
+    external fun initAudio()
+
+    // ==========  以下是原有函数 ==========
     external fun releaseNativeWindow(window: Long)
     external fun getCreateSurfacePtr(): Long
     external fun getNativeWindow(surface: Surface): Long
