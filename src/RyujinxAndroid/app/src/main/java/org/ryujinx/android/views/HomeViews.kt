@@ -848,7 +848,7 @@ class HomeViews {
                                 viewModel.requestReload()
                                 viewModel.ensureReloadIfNecessary()
                             },
-                            shape = MaterialTheme.shapes.small
+                            containerShape = MaterialTheme.shapes.small
                         ) {
                             Icon(Icons.Default.Refresh, contentDescription = "refresh")
                         }
@@ -1409,24 +1409,12 @@ class HomeViews {
                     onDismissRequest = { showRenameDialog = false },
                     title = { Text(text = "Rename Game") },
                     text = {
-                        BasicTextField(
+                        OutlinedTextField(
                             value = newGameName,
                             onValueChange = { newGameName = it },
                             modifier = Modifier.focusRequester(focusRequester),
-                            textStyle = TextStyle.Default.copy(color = MaterialTheme.colorScheme.onSurface),
-                            decorationBox = { innerTextField ->
-                                androidx.compose.material3.OutlinedTextFieldDefaults.DecorationBox(
-                                    value = newGameName,
-                                    innerTextField = innerTextField,
-                                    enabled = true,
-                                    singleLine = true,
-                                    visualTransformation = VisualTransformation.None,
-                                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                                    placeholder = { Text("Game Name") },
-                                    shape = MaterialTheme.shapes.small,
-                                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors()
-                                )
-                            }
+                            singleLine = true,
+                            placeholder = { Text("Game Name") }
                         )
                     },
                     confirmButton = {
@@ -1458,4 +1446,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}}}
+}
