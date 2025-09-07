@@ -1074,8 +1074,9 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                         }
                     }
                     
-                   
-// 区域与语言设置 - 使用优化后的下拉菜单
+                    // 新增：区域与语言设置
+                    // 区域与语言设置 - 使用下拉菜单优化
+// 区域与语言设置 - 使用对话框替代下拉菜单
 ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
     Column(modifier = Modifier.fillMaxWidth()) {
         // 区域设置 - 保持不变
@@ -1118,74 +1119,86 @@ ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
             }
         }
         
-        // 语言设置 - 优化后的实现
-        var expandedLanguage by remember { mutableStateOf(false) }
-        Box(
+        // 语言设置 - 使用对话框替代下拉菜单
+        var showLanguageDialog by remember { mutableStateOf(false) }
+        
+        // 语言选择对话框
+        if (showLanguageDialog) {
+            AlertDialog(
+                onDismissRequest = { showLanguageDialog = false },
+                title = { Text("Select Language") },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        val languageOptions = listOf(
+                            "Japanese", "American English", "French", "German", "Italian", 
+                            "Spanish", "Chinese", "Korean", "Dutch", "Portuguese", 
+                            "Russian", "Taiwanese", "British English", "Canadian French", 
+                            "Latin American Spanish", "Simplified Chinese", "Traditional Chinese", 
+                            "Brazilian Portuguese"
+                        )
+                        
+                        languageOptions.forEachIndexed { index, option ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        systemLanguage.value = index
+                                        showLanguageDialog = false
+                                    }
+                                    .padding(vertical = 12.dp, horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = systemLanguage.value == index,
+                                    onClick = {
+                                        systemLanguage.value = index
+                                        showLanguageDialog = false
+                                    }
+                                )
+                                Text(
+                                    text = option,
+                                    modifier = Modifier.padding(start = 16.dp)
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = { showLanguageDialog = false }
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+        
+        // 语言选择行
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(8.dp)
+                .clickable { showLanguageDialog = true },
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expandedLanguage = true },
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = "Language")
-                val languageNames = listOf(
-                    "Japanese", "American English", "French", "German", "Italian", 
-                    "Spanish", "Chinese", "Korean", "Dutch", "Portuguese", 
-                    "Russian", "Taiwanese", "British English", "Canadian French", 
-                    "Latin American Spanish", "Simplified Chinese", "Traditional Chinese", 
-                    "Brazilian Portuguese"
-                )
-                Text(
-                    text = languageNames[systemLanguage.value],
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Icon(
-                    imageVector = Icons.Filled.ArrowDropDown,
-                    contentDescription = "Expand language options"
-                )
-            }
-            
-            // 使用更高效的实现替代LazyColumn
-            DropdownMenu(
-                expanded = expandedLanguage,
-                onDismissRequest = { expandedLanguage = false },
-                modifier = Modifier.heightIn(max = 400.dp)
-            ) {
-                val languageOptions = listOf(
-                    "Japanese", "American English", "French", "German", "Italian", 
-                    "Spanish", "Chinese", "Korean", "Dutch", "Portuguese", 
-                    "Russian", "Taiwanese", "British English", "Canadian French", 
-                    "Latin American Spanish", "Simplified Chinese", "Traditional Chinese", 
-                    "Brazilian Portuguese"
-                )
-                
-                // 使用常规Column和垂直滚动，性能更好
-                Column(
-                    modifier = Modifier.verticalScroll(rememberScrollState())
-                ) {
-                    languageOptions.forEachIndexed { index, option ->
-                        DropdownMenuItem(
-                            text = { 
-                                Text(
-                                    text = option,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            },
-                            onClick = {
-                                systemLanguage.value = index
-                                expandedLanguage = false
-                            }
-                        )
-                    }
-                }
-            }
+            Text(text = "Language")
+            val languageNames = listOf(
+                "Japanese", "American English", "French", "German", "Italian", 
+                "Spanish", "Chinese", "Korean", "Dutch", "Portuguese", 
+                "Russian", "Taiwanese", "British English", "Canadian French", 
+                "Latin American Spanish", "Simplified Chinese", "Traditional Chinese", 
+                "Brazilian Portuguese"
+            )
+            Text(
+                text = languageNames[systemLanguage.value],
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
