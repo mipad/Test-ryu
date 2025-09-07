@@ -51,10 +51,10 @@ add_library(
     oboe_audio_renderer.cpp
 )
 
-# 添加编译定义以优化音频处理
+# 修改：强制使用 OpenSL ES 而不是 AAudio
 target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
-    OBOE_ENABLE_AAUDIO=1  # 明确启用 AAudio 支持
+    OBOE_USE_OPENSL=1  # 强制使用 OpenSL ES
 )
 
 # 添加编译选项
@@ -62,17 +62,14 @@ target_compile_options(ryujinxjni PRIVATE
     -std=c++20
     -O3
     -DNDEBUG
-    -DENABLE_HIGH_PERF=1
     -ffast-math
     -march=armv8-a
-    -funroll-loops
 )
 
 # 查找系统库
 find_library(log-lib log)
-find_library(opensles-lib OpenSLES)
+find_library(opensles-lib OpenSLES)  # OpenSL ES 库
 find_library(android-lib android)
-find_library(aaudio-lib aaudio)  # 添加 AAudio 库查找
 
 # 添加 Oboe 包含目录
 include_directories(${oboe_SOURCE_DIR}/include)
@@ -81,12 +78,11 @@ include_directories(${oboe_SOURCE_DIR}/include)
 target_link_libraries(
     ryujinxjni
     ${log-lib}
-    ${opensles-lib}
+    ${opensles-lib}  # 链接 OpenSL ES
     ${android-lib}
-    ${aaudio-lib}  # 添加 AAudio 库链接
     -lvulkan
     adrenotools
-    oboe  # 链接 Oboe 库
+    oboe
 )
 
 # 设置 JNI 库输出路径
