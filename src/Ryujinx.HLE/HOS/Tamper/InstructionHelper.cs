@@ -22,61 +22,20 @@ namespace Ryujinx.HLE.HOS.Tamper
         
         private static void InitializeTypeCache()
         {
-            // 为每个操作类型和宽度注册具体类型
+            // 只注册实际存在的类型
             RegisterType(typeof(OpMov<>), 1, typeof(OpMov<byte>));
             RegisterType(typeof(OpMov<>), 2, typeof(OpMov<ushort>));
             RegisterType(typeof(OpMov<>), 4, typeof(OpMov<uint>));
             RegisterType(typeof(OpMov<>), 8, typeof(OpMov<ulong>));
             
-            RegisterType(typeof(OpAdd<>), 1, typeof(OpAdd<byte>));
-            RegisterType(typeof(OpAdd<>), 2, typeof(OpAdd<ushort>));
-            RegisterType(typeof(OpAdd<>), 4, typeof(OpAdd<uint>));
-            RegisterType(typeof(OpAdd<>), 8, typeof(OpAdd<ulong>));
-            
-            RegisterType(typeof(OpSub<>), 1, typeof(OpSub<byte>));
-            RegisterType(typeof(OpSub<>), 2, typeof(OpSub<ushort>));
-            RegisterType(typeof(OpSub<>), 4, typeof(OpSub<uint>));
-            RegisterType(typeof(OpSub<>), 8, typeof(OpSub<ulong>));
-            
-            RegisterType(typeof(OpMul<>), 1, typeof(OpMul<byte>));
-            RegisterType(typeof(OpMul<>), 2, typeof(OpMul<ushort>));
-            RegisterType(typeof(OpMul<>), 4, typeof(OpMul<uint>));
-            RegisterType(typeof(OpMul<>), 8, typeof(OpMul<ulong>));
-            
-            RegisterType(typeof(OpDiv<>), 1, typeof(OpDiv<byte>));
-            RegisterType(typeof(OpDiv<>), 2, typeof(OpDiv<ushort>));
-            RegisterType(typeof(OpDiv<>), 4, typeof(OpDiv<uint>));
-            RegisterType(typeof(OpDiv<>), 8, typeof(OpDiv<ulong>));
-            
-            RegisterType(typeof(OpAnd<>), 1, typeof(OpAnd<byte>));
-            RegisterType(typeof(OpAnd<>), 2, typeof(OpAnd<ushort>));
-            RegisterType(typeof(OpAnd<>), 4, typeof(OpAnd<uint>));
-            RegisterType(typeof(OpAnd<>), 8, typeof(OpAnd<ulong>));
-            
-            RegisterType(typeof(OpOr<>), 1, typeof(OpOr<byte>));
-            RegisterType(typeof(OpOr<>), 2, typeof(OpOr<ushort>));
-            RegisterType(typeof(OpOr<>), 4, typeof(OpOr<uint>));
-            RegisterType(typeof(OpOr<>), 8, typeof(OpOr<ulong>));
-            
-            RegisterType(typeof(OpXor<>), 1, typeof(OpXor<byte>));
-            RegisterType(typeof(OpXor<>), 2, typeof(OpXor<ushort>));
-            RegisterType(typeof(OpXor<>), 4, typeof(OpXor<uint>));
-            RegisterType(typeof(OpXor<>), 8, typeof(OpXor<ulong>));
-            
-            RegisterType(typeof(OpNot<>), 1, typeof(OpNot<byte>));
-            RegisterType(typeof(OpNot<>), 2, typeof(OpNot<ushort>));
-            RegisterType(typeof(OpNot<>), 4, typeof(OpNot<uint>));
-            RegisterType(typeof(OpNot<>), 8, typeof(OpNot<ulong>));
-            
-            RegisterType(typeof(OpShiftLeft<>), 1, typeof(OpShiftLeft<byte>));
-            RegisterType(typeof(OpShiftLeft<>), 2, typeof(OpShiftLeft<ushort>));
-            RegisterType(typeof(OpShiftLeft<>), 4, typeof(OpShiftLeft<uint>));
-            RegisterType(typeof(OpShiftLeft<>), 8, typeof(OpShiftLeft<ulong>));
-            
-            RegisterType(typeof(OpShiftRight<>), 1, typeof(OpShiftRight<byte>));
-            RegisterType(typeof(OpShiftRight<>), 2, typeof(OpShiftRight<ushort>));
-            RegisterType(typeof(OpShiftRight<>), 4, typeof(OpShiftRight<uint>));
-            RegisterType(typeof(OpShiftRight<>), 8, typeof(OpShiftRight<ulong>));
+            // 检查并注册其他操作类型（如果存在）
+            TryRegisterType("OpAdd", typeof(OpAdd<>));
+            TryRegisterType("OpSub", typeof(OpSub<>));
+            TryRegisterType("OpMul", typeof(OpMul<>));
+            TryRegisterType("OpAnd", typeof(OpAnd<>));
+            TryRegisterType("OpOr", typeof(OpOr<>));
+            TryRegisterType("OpXor", typeof(OpXor<>));
+            TryRegisterType("OpNot", typeof(OpNot<>));
             
             // 条件类型
             RegisterType(typeof(CondGT<>), 1, typeof(CondGT<byte>));
@@ -110,9 +69,37 @@ namespace Ryujinx.HLE.HOS.Tamper
             RegisterType(typeof(CondNE<>), 8, typeof(CondNE<ulong>));
         }
         
+        // 尝试注册类型，如果类型存在的话
+        private static void TryRegisterType(string typeName, Type genericType)
+        {
+            try
+            {
+                // 尝试获取具体类型
+                Type byteType = Type.GetType($"Ryujinx.HLE.HOS.Tamper.Operations.{typeName}`1[[System.Byte, System.Private.CoreLib]]");
+                Type ushortType = Type.GetType($"Ryujinx.HLE.HOS.Tamper.Operations.{typeName}`1[[System.UInt16, System.Private.CoreLib]]");
+                Type uintType = Type.GetType($"Ryujinx.HLE.HOS.Tamper.Operations.{typeName}`1[[System.UInt32, System.Private.CoreLib]]");
+                Type ulongType = Type.GetType($"Ryujinx.HLE.HOS.Tamper.Operations.{typeName}`1[[System.UInt64, System.Private.CoreLib]]");
+                
+                if (byteType != null)
+                {
+                    RegisterType(genericType, 1, byteType);
+                    RegisterType(genericType, 2, ushortType);
+                    RegisterType(genericType, 4, uintType);
+                    RegisterType(genericType, 8, ulongType);
+                }
+            }
+            catch
+            {
+                // 类型不存在，忽略
+            }
+        }
+        
         private static void RegisterType(Type genericType, byte width, Type concreteType)
         {
-            _typeCache[(genericType, width)] = concreteType;
+            if (concreteType != null)
+            {
+                _typeCache[(genericType, width)] = concreteType;
+            }
         }
 
         public static void Emit(IOperation operation, CompilationContext context)
@@ -156,7 +143,23 @@ namespace Ryujinx.HLE.HOS.Tamper
                 return Activator.CreateInstance(realType, operands);
             }
 
-            throw new TamperCompilationException($"Invalid instruction width {width} or unsupported instruction type {instruction} in Atmosphere cheat");
+            // 如果找不到预注册的类型，回退到原始方法（但会有AOT警告）
+            try
+            {
+                Type fallbackType = width switch
+                {
+                    1 => instruction.MakeGenericType(typeof(byte)),
+                    2 => instruction.MakeGenericType(typeof(ushort)),
+                    4 => instruction.MakeGenericType(typeof(uint)),
+                    8 => instruction.MakeGenericType(typeof(ulong)),
+                    _ => throw new TamperCompilationException($"Invalid instruction width {width} in Atmosphere cheat"),
+                };
+                return Activator.CreateInstance(fallbackType, operands);
+            }
+            catch (Exception ex)
+            {
+                throw new TamperCompilationException($"Failed to create instruction {instruction} with width {width}: {ex.Message}");
+            }
         }
 
         public static ulong GetImmediate(byte[] instruction, int index, int nybbleCount)
