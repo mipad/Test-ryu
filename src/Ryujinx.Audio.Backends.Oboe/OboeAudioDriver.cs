@@ -47,6 +47,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         private readonly ManualResetEvent _pauseEvent = new(true);
         private readonly ManualResetEvent _updateRequiredEvent = new(false);
         private readonly ConcurrentDictionary<OboeAudioSession, byte> _sessions = new();
+        private bool _isOboeInitialized = false; // 新增：标记是否已初始化
 
         public float Volume
         {
@@ -63,6 +64,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         public OboeAudioDriver()
         {
             Logger.Info?.Print(LogClass.Audio, "OboeAudioDriver constructor called");
+            _volume = 1.0f; // 显式初始化
         }
 
         public void Dispose()
@@ -80,6 +82,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 {
                     Logger.Info?.Print(LogClass.Audio, "Shutting down Oboe audio");
                     shutdownOboeAudio();
+                    _isOboeInitialized = false;
                     _pauseEvent?.Dispose();
                     _updateRequiredEvent?.Dispose();
                 }
@@ -158,22 +161,25 @@ namespace Ryujinx.Audio.Backends.Oboe
                 throw new ArgumentException($"Unsupported sample format: {sampleFormat}");
             }
 
-            // 设置参数 → 初始化 Oboe
-            Logger.Info?.Print(LogClass.Audio, $"Setting Oboe parameters: sampleRate={(int)sampleRate}, bufferSize={CalculateBufferSize(sampleRate)}");
-            setOboeSampleRate((int)sampleRate);
-            setOboeBufferSize(CalculateBufferSize(sampleRate));
-            setOboeVolume(_volume);
-
-            Logger.Info?.Print(LogClass.Audio, "Initializing Oboe audio");
-            initOboeAudio();
-
-            bool initialized = isOboeInitialized();
-            Logger.Info?.Print(LogClass.Audio, $"Oboe initialization result: {initialized}");
-
-            if (!initialized)
+            // 设置参数 → 初始化 Oboe（仅初始化一次）
+            if (!_isOboeInitialized)
             {
-                Logger.Error?.Print(LogClass.Audio, "Oboe audio failed to initialize!");
-                throw new Exception("Oboe audio failed to initialize");
+                Logger.Info?.Print(LogClass.Audio, $"Setting Oboe parameters: sampleRate={(int)sampleRate}, bufferSize={CalculateBufferSize(sampleRate)}");
+                setOboeSampleRate((int)sampleRate);
+                setOboeBufferSize(CalculateBufferSize(sampleRate));
+                setOboeVolume(_volume);
+
+                Logger.Info?.Print(LogClass.Audio, "Initializing Oboe audio");
+                initOboeAudio();
+
+                _isOboeInitialized = isOboeInitialized();
+                Logger.Info?.Print(LogClass.Audio, $"Oboe initialization result: {_isOboeInitialized}");
+
+                if (!_isOboeInitialized)
+                {
+                    Logger.Error?.Print(LogClass.Audio, "Oboe audio failed to initialize!");
+                    throw new Exception("Oboe audio failed to initialize");
+                }
             }
 
             OboeAudioSession session = new OboeAudioSession(this, sampleFormat, sampleRate, channelCount);
