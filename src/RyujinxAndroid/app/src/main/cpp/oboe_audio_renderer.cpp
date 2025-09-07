@@ -58,7 +58,7 @@ size_t RingBuffer::read(float* output, size_t count) {
     size_t writeIndex = mWriteIndex.load(std::memory_order_acquire);
     size_t readIndex = mReadIndex.load(std::memory_order_relaxed);
 
-    size_t available = available();
+    size_t availableSamples = available();
     size_t toRead = std::min(count, available);
     if (toRead == 0) {
         return 0;
