@@ -236,8 +236,8 @@ namespace Ryujinx.HLE.HOS.Tamper
 
             var words = rawInstruction.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
 
-            byte[] instruction = new byte(WordSize * words.Length);
-
+            byte[] instruction = new byte[WordSize * words.Length];
+            
             if (words.Length == 0)
             {
                 throw new TamperCompilationException("Empty instruction in Atmosphere cheat");
