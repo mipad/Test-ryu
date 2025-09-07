@@ -162,8 +162,8 @@ class MainViewModel(val activity: MainActivity) {
                 success = RyujinxNative.jnaInstance.deviceInitialize(
                     settings.isHostMapped,
                     settings.useNce,
-                    SystemLanguage.AmericanEnglish.ordinal,
-                    RegionCode.USA.ordinal,
+                    settings.systemLanguage,
+                    settings.regionCode,
                     settings.enableVsync,
                     settings.enableDocked,
                     settings.enablePtc,
@@ -266,8 +266,8 @@ class MainViewModel(val activity: MainActivity) {
                 success = RyujinxNative.jnaInstance.deviceInitialize(
                     settings.isHostMapped,
                     settings.useNce,
-                    SystemLanguage.AmericanEnglish.ordinal,
-                    RegionCode.USA.ordinal,
+                    settings.systemLanguage,
+                    settings.regionCode,
                     settings.enableVsync,
                     settings.enableDocked,
                     settings.enablePtc,
