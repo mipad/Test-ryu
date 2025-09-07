@@ -68,14 +68,24 @@ namespace Ryujinx.HLE.HOS.Tamper
         {
             // 为每个类型注册工厂方法
             RegisterFactory(typeof(OpMov<>), (width, operands) => 
-                width switch
+            {
+                // 根据 OpMov<T> 的实际构造函数签名调整参数
+                // 假设 OpMov<T> 的构造函数接受两个 IOperand 参数
+                if (operands.Length < 2)
+                    throw new TamperCompilationException("OpMov requires at least 2 operands");
+                
+                IOperand destination = (IOperand)operands[0];
+                IOperand source = (IOperand)operands[1];
+                
+                return width switch
                 {
-                    1 => new OpMov<byte>((byte)operands[0], (IOperand)operands[1], (IOperand)operands[2]),
-                    2 => new OpMov<ushort>((byte)operands[0], (IOperand)operands[1], (IOperand)operands[2]),
-                    4 => new OpMov<uint>((byte)operands[0], (IOperand)operands[1], (IOperand)operands[2]),
-                    8 => new OpMov<ulong>((byte)operands[0], (IOperand)operands[1], (IOperand)operands[2]),
+                    1 => new OpMov<byte>(destination, source),
+                    2 => new OpMov<ushort>(destination, source),
+                    4 => new OpMov<uint>(destination, source),
+                    8 => new OpMov<ulong>(destination, source),
                     _ => throw new TamperCompilationException($"Invalid instruction width {width} in Atmosphere cheat"),
-                });
+                };
+            });
             
             // 条件类型的工厂方法
             RegisterConditionFactory(typeof(CondGT<>));
@@ -90,32 +100,46 @@ namespace Ryujinx.HLE.HOS.Tamper
         {
             _typeFactories[conditionType] = (width, operands) =>
             {
-                var condition = width switch
+                // 根据条件类型的实际构造函数签名调整参数
+                // 假设条件类型的构造函数接受两个 IOperand 参数
+                if (operands.Length < 2)
+                    throw new TamperCompilationException("Condition requires at least 2 operands");
+                
+                IOperand lhs = (IOperand)operands[0];
+                IOperand rhs = (IOperand)operands[1];
+                
+                return width switch
                 {
-                    1 => Activator.CreateInstance(typeof(CondGT<byte>), operands),
-                    2 => Activator.CreateInstance(typeof(CondGT<ushort>), operands),
-                    4 => Activator.CreateInstance(typeof(CondGT<uint>), operands),
-                    8 => Activator.CreateInstance(typeof(CondGT<ulong>), operands),
+                    1 => conditionType == typeof(CondGT<>) ? new CondGT<byte>(lhs, rhs) :
+                          conditionType == typeof(CondGE<>) ? new CondGE<byte>(lhs, rhs) :
+                          conditionType == typeof(CondLT<>) ? new CondLT<byte>(lhs, rhs) :
+                          conditionType == typeof(CondLE<>) ? new CondLE<byte>(lhs, rhs) :
+                          conditionType == typeof(CondEQ<>) ? new CondEQ<byte>(lhs, rhs) :
+                          conditionType == typeof(CondNE<>) ? new CondNE<byte>(lhs, rhs) :
+                          throw new TamperCompilationException($"Unsupported condition type {conditionType}"),
+                    2 => conditionType == typeof(CondGT<>) ? new CondGT<ushort>(lhs, rhs) :
+                          conditionType == typeof(CondGE<>) ? new CondGE<ushort>(lhs, rhs) :
+                          conditionType == typeof(CondLT<>) ? new CondLT<ushort>(lhs, rhs) :
+                          conditionType == typeof(CondLE<>) ? new CondLE<ushort>(lhs, rhs) :
+                          conditionType == typeof(CondEQ<>) ? new CondEQ<ushort>(lhs, rhs) :
+                          conditionType == typeof(CondNE<>) ? new CondNE<ushort>(lhs, rhs) :
+                          throw new TamperCompilationException($"Unsupported condition type {conditionType}"),
+                    4 => conditionType == typeof(CondGT<>) ? new CondGT<uint>(lhs, rhs) :
+                          conditionType == typeof(CondGE<>) ? new CondGE<uint>(lhs, rhs) :
+                          conditionType == typeof(CondLT<>) ? new CondLT<uint>(lhs, rhs) :
+                          conditionType == typeof(CondLE<>) ? new CondLE<uint>(lhs, rhs) :
+                          conditionType == typeof(CondEQ<>) ? new CondEQ<uint>(lhs, rhs) :
+                          conditionType == typeof(CondNE<>) ? new CondNE<uint>(lhs, rhs) :
+                          throw new TamperCompilationException($"Unsupported condition type {conditionType}"),
+                    8 => conditionType == typeof(CondGT<>) ? new CondGT<ulong>(lhs, rhs) :
+                          conditionType == typeof(CondGE<>) ? new CondGE<ulong>(lhs, rhs) :
+                          conditionType == typeof(CondLT<>) ? new CondLT<ulong>(lhs, rhs) :
+                          conditionType == typeof(CondLE<>) ? new CondLE<ulong>(lhs, rhs) :
+                          conditionType == typeof(CondEQ<>) ? new CondEQ<ulong>(lhs, rhs) :
+                          conditionType == typeof(CondNE<>) ? new CondNE<ulong>(lhs, rhs) :
+                          throw new TamperCompilationException($"Unsupported condition type {conditionType}"),
                     _ => throw new TamperCompilationException($"Invalid instruction width {width} in Atmosphere cheat"),
                 };
-                
-                // 根据实际条件类型设置正确的实例
-                if (conditionType == typeof(CondGT<>))
-                    return condition;
-                else if (conditionType == typeof(CondGE<>))
-                    return Activator.CreateInstance(
-                        width switch
-                        {
-                            1 => typeof(CondGE<byte>),
-                            2 => typeof(CondGE<ushort>),
-                            4 => typeof(CondGE<uint>),
-                            8 => typeof(CondGE<ulong>),
-                            _ => throw new TamperCompilationException($"Invalid instruction width {width} in Atmosphere cheat"),
-                        }, 
-                        operands);
-                // 其他条件类型类似处理...
-                
-                throw new TamperCompilationException($"Unsupported condition type {conditionType}");
             };
         }
         
@@ -212,7 +236,7 @@ namespace Ryujinx.HLE.HOS.Tamper
 
             var words = rawInstruction.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
 
-            byte[] instruction = new byte[WordSize * words.Length];
+            byte[] instruction = new byte(WordSize * words.Length);
 
             if (words.Length == 0)
             {
