@@ -27,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import org.ryujinx.android.viewmodels.DlcItem
@@ -38,6 +39,11 @@ class DlcViews {
         fun Main(titleId: String, name: String, openDialog: MutableState<Boolean>, canClose: MutableState<Boolean>) {
             val viewModel = DlcViewModel(titleId)
             val dlcItems = remember { SnapshotStateList<DlcItem>() }
+            val configuration = LocalConfiguration.current
+            val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+            
+            // 根据屏幕方向调整高度
+            val contentHeight = if (isLandscape) 250.dp else 400.dp
 
             Column(modifier = Modifier.padding(16.dp)) {
                 // 标题区域 
@@ -66,7 +72,7 @@ class DlcViews {
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(400.dp)
+                                .height(contentHeight) // 使用动态高度
                         ) {
                             items(dlcItems) { dlcItem ->
                                 Row(
