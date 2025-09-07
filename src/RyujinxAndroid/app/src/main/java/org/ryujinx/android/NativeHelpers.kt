@@ -12,8 +12,9 @@ class NativeHelpers {
         }
     }
 
-    // ==========  新增：音频初始化函数 ==========
+    // ==========  音频初始化函数 ==========
     external fun initAudio()
+    external fun cleanupAudio() // 新增：清理音频资源
 
     // ==========  以下是原有函数 ==========
     external fun releaseNativeWindow(window: Long)
