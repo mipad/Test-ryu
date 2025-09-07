@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -117,17 +118,18 @@ class DlcViews {
                         
                         Spacer(modifier = Modifier.height(16.dp))
                         
-                        // 保存按钮
-                        Button(
-                            modifier = Modifier
-                                .padding(8.dp)
-                                .fillMaxWidth(),
+                        // 保存按钮 - 横屏使用✔图标
+                        IconButton(
+                            modifier = Modifier.padding(8.dp),
                             onClick = {
                                 canClose.value = true
                                 viewModel.save(openDialog)
                             }
                         ) {
-                            Text("Save")
+                            Icon(
+                                Icons.Filled.Check,
+                                contentDescription = "Save"
+                            )
                         }
                     }
                 }
@@ -212,7 +214,7 @@ class DlcViews {
                             )
                         }
                         
-                        // 保存按钮 
+                        // 保存按钮 - 竖屏使用文本
                         TextButton(
                             modifier = Modifier.padding(4.dp),
                             onClick = {
