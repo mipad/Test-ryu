@@ -164,8 +164,8 @@ class HomeViews {
 
             // 使用缓存的图标
             val cachedIcon = remember(gameModel.titleId) {
-                derivedStateOf { viewModel.getCachedIcon(gameModel.titleId) }
-            }.value
+                viewModel.getCachedIcon(gameModel.titleId)
+            }
 
             Surface(
                 shape = MaterialTheme.shapes.medium,
@@ -279,8 +279,8 @@ class HomeViews {
 
             // 使用缓存的图标
             val cachedIcon = remember(gameModel.titleId) {
-                derivedStateOf { viewModel.getCachedIcon(gameModel.titleId) }
-            }.value
+                viewModel.getCachedIcon(gameModel.titleId)
+            }
 
             Surface(
                 shape = MaterialTheme.shapes.medium,
@@ -457,8 +457,8 @@ class HomeViews {
             
             // 使用缓存的图标
             val cachedIcon = remember(gameModel.titleId) {
-                derivedStateOf { viewModel.getCachedIcon(gameModel.titleId) }
-            }.value
+                viewModel.getCachedIcon(gameModel.titleId)
+            }
             
             // 根据主题确定边框颜色 - 使用背景色的亮度来判断
             val backgroundColor = MaterialTheme.colorScheme.background
@@ -848,7 +848,7 @@ class HomeViews {
                                 viewModel.requestReload()
                                 viewModel.ensureReloadIfNecessary()
                             },
-                            containerShape = MaterialTheme.shapes.small
+                            shape = MaterialTheme.shapes.small
                         ) {
                             Icon(Icons.Default.Refresh, contentDescription = "refresh")
                         }
