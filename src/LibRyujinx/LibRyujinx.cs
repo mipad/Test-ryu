@@ -105,7 +105,9 @@ namespace LibRyujinx
         public static void InitializeAudio()
 {
 #if ANDROID
+    Logger.Info?.Print(LogClass.Audio, "Initializing Oboe audio driver");
     AudioDriver = new OboeAudioDriver();
+    Logger.Info?.Print(LogClass.Audio, "Oboe audio driver initialized");
 #endif
 }
 
