@@ -78,6 +78,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -119,6 +120,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import kotlin.math.roundToInt
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
 
 class HomeViews {
     companion object {
@@ -153,9 +160,6 @@ class HomeViews {
             selectedModel: MutableState<GameModel?>,
             showError: MutableState<String>
         ) {
-            remember {
-                selectedModel
-            }
             val isSelected = selectedModel.value == gameModel
 
             // 使用缓存的图标
@@ -271,9 +275,6 @@ class HomeViews {
             selectedModel: MutableState<GameModel?>,
             showError: MutableState<String>
         ) {
-            remember {
-                selectedModel
-            }
             val isSelected = selectedModel.value == gameModel
 
             // 使用缓存的图标
@@ -452,9 +453,6 @@ class HomeViews {
                 return
             }
 
-            remember {
-                selectedModel
-            }
             val isSelected = selectedModel.value == gameModel
             
             // 使用缓存的图标
@@ -915,10 +913,6 @@ class HomeViews {
                                             centeredIndex = 0
                                         }
                                         
-                                        // 计算左右项目的索引
-                                        val leftIndex = if (centeredIndex == 0) filteredList.size - 1 else centeredIndex - 1
-                                        val rightIndex = if (centeredIndex == filteredList.size - 1) 0 else centeredIndex + 1
-                                        
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxSize()
@@ -936,6 +930,10 @@ class HomeViews {
                                                     }
                                                 }
                                         ) {
+                                            // 计算左右项目的索引
+                                            val leftIndex = if (centeredIndex == 0) filteredList.size - 1 else centeredIndex - 1
+                                            val rightIndex = if (centeredIndex == filteredList.size - 1) 0 else centeredIndex + 1
+                                            
                                             // 游戏项目 - 调整排列方式确保三个项目都能显示
                                             Row(
                                                 modifier = Modifier
@@ -995,13 +993,13 @@ class HomeViews {
                                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                                         verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        items(list) {
-                                            if (it.getDisplayName().isNotEmpty() && (query.trim()
-                                                    .isEmpty() || it.getDisplayName().lowercase(Locale.getDefault())
+                                        items(list) { gameModel ->
+                                            if (gameModel.getDisplayName().isNotEmpty() && (query.trim()
+                                                    .isEmpty() || gameModel.getDisplayName().lowercase(Locale.getDefault())
                                                     .contains(query))
                                             ) {
                                                 GridGameItem(
-                                                    gameModel = it,
+                                                    gameModel = gameModel,
                                                     viewModel = viewModel,
                                                     showAppActions = showAppActions,
                                                     showLoading = showLoading,
@@ -1015,16 +1013,16 @@ class HomeViews {
                                     LazyColumn(
                                         modifier = Modifier.fillMaxSize()
                                     ) {
-                                        items(list) {
-                                            if (it.getDisplayName().isNotEmpty() && (query.trim()
-                                                    .isEmpty() || it.getDisplayName().lowercase(
+                                        items(list) { gameModel ->
+                                            if (gameModel.getDisplayName().isNotEmpty() && (query.trim()
+                                                    .isEmpty() || gameModel.getDisplayName().lowercase(
                                                     Locale.getDefault()
                                                 )
                                                     .contains(query))
                                             ) {
                                                 Box(modifier = Modifier.animateItemPlacement()) {
                                                     ListGameItem(
-                                                        gameModel = it,
+                                                        gameModel = gameModel,
                                                         viewModel = viewModel,
                                                         showAppActions = showAppActions,
                                                         showLoading = showLoading,
@@ -1218,7 +1216,7 @@ class HomeViews {
                     ) {
                         val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
                         val name = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
-                        TitleUpdateViews.Main(titleId, name, openTitleUpdateDialog, canClose)
+                        // TitleUpdateViews.Main(titleId, name, openTitleUpdateDialog, canClose)
                     }
 
                 }
@@ -1236,7 +1234,7 @@ class HomeViews {
                     ) {
                         val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
                         val name = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
-                        DlcViews.Main(titleId, name, openDlcDialog, canClose)
+                        // DlcViews.Main(titleId, name, openDlcDialog, canClose)
                     }
 
                 }
@@ -1411,11 +1409,24 @@ class HomeViews {
                     onDismissRequest = { showRenameDialog = false },
                     title = { Text(text = "Rename Game") },
                     text = {
-                        OutlinedTextField(
+                        BasicTextField(
                             value = newGameName,
                             onValueChange = { newGameName = it },
-                            label = { Text("Game Name") },
-                            modifier = Modifier.focusRequester(focusRequester)
+                            modifier = Modifier.focusRequester(focusRequester),
+                            textStyle = TextStyle.Default.copy(color = MaterialTheme.colorScheme.onSurface),
+                            decorationBox = { innerTextField ->
+                                androidx.compose.material3.OutlinedTextFieldDefaults.DecorationBox(
+                                    value = newGameName,
+                                    innerTextField = innerTextField,
+                                    enabled = true,
+                                    singleLine = true,
+                                    visualTransformation = VisualTransformation.None,
+                                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                    placeholder = { Text("Game Name") },
+                                    shape = MaterialTheme.shapes.small,
+                                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors()
+                                )
+                            }
                         )
                     },
                     confirmButton = {
