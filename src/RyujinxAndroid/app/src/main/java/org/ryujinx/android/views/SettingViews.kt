@@ -75,6 +75,8 @@ import androidx.documentfile.provider.DocumentFile
 import com.anggrayudi.storage.file.extension
 import org.ryujinx.android.Helpers
 import org.ryujinx.android.MainActivity
+import org.ryujinx.android.RegionCode
+import org.ryujinx.android.SystemLanguage
 import org.ryujinx.android.providers.DocumentProvider
 import org.ryujinx.android.viewmodels.FirmwareInstallState
 import org.ryujinx.android.viewmodels.MainViewModel
@@ -153,10 +155,14 @@ class SettingViews {
             val enableTraceLogs = remember { mutableStateOf(true) }
             val enableGraphicsLogs = remember { mutableStateOf(true) }
             val skipMemoryBarriers = remember { mutableStateOf(false) } // 新增状态变量
+            val regionCode = remember { mutableStateOf(RegionCode.USA.ordinal) } // 新增状态变量：区域代码
+            val systemLanguage = remember { mutableStateOf(SystemLanguage.AmericanEnglish.ordinal) } // 新增状态变量：系统语言
 
             // 新增状态变量用于控制选项显示
             val showResScaleOptions = remember { mutableStateOf(false) }
             val showAspectRatioOptions = remember { mutableStateOf(false) }
+            val showRegionOptions = remember { mutableStateOf(false) } // 新增：显示区域选项
+            val showLanguageOptions = remember { mutableStateOf(false) } // 新增：显示语言选项
 
             if (!loaded.value) {
                 settingsViewModel.initializeState(
@@ -182,7 +188,9 @@ class SettingViews {
                     enableAccessLogs,
                     enableTraceLogs,
                     enableGraphicsLogs,
-                    skipMemoryBarriers // 新增参数
+                    skipMemoryBarriers, // 新增参数
+                    regionCode, // 新增参数
+                    systemLanguage // 新增参数
                 )
                 loaded.value = true
             }
@@ -231,7 +239,9 @@ class SettingViews {
                     enableAccessLogs,
                     enableTraceLogs,
                     enableGraphicsLogs,
-                    skipMemoryBarriers // 新增参数
+                    skipMemoryBarriers, // 新增参数
+                    regionCode, // 新增参数
+                    systemLanguage // 新增参数
                                 )
                                 settingsViewModel.navController.popBackStack()
                             }) {
@@ -731,9 +741,11 @@ class SettingViews {
                                         indication = null
                                     ) { 
                                         showResScaleOptions.value = !showResScaleOptions.value
-                                        // 当显示分辨率选项时，隐藏画面比例选项
+                                        // 当显示分辨率选项时，隐藏其他选项
                                         if (showResScaleOptions.value) {
                                             showAspectRatioOptions.value = false
+                                            showRegionOptions.value = false
+                                            showLanguageOptions.value = false
                                         }
                                     }
                                 )
@@ -806,9 +818,11 @@ AnimatedVisibility(visible = showResScaleOptions.value) {
                                         indication = null
                                     ) { 
                                         showAspectRatioOptions.value = !showAspectRatioOptions.value
-                                        // 当显示画面比例选项时，隐藏分辨率选项
+                                        // 当显示画面比例选项时，隐藏其他选项
                                         if (showAspectRatioOptions.value) {
                                             showResScaleOptions.value = false
+                                            showRegionOptions.value = false
+                                            showLanguageOptions.value = false
                                         }
                                     }
                                 )
@@ -1054,6 +1068,167 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
 
                         }
                     }
+                    
+                    // 新增：区域与语言设置
+                    ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            // 区域设置
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Region")
+                                val regionNames = listOf("Japan", "USA", "Europe", "Australia", "China", "Korea", "Taiwan")
+                                Text(
+                                    text = regionNames[regionCode.value],
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) { 
+                                        showRegionOptions.value = !showRegionOptions.value
+                                        // 当显示区域选项时，隐藏其他选项
+                                        if (showRegionOptions.value) {
+                                            showResScaleOptions.value = false
+                                            showAspectRatioOptions.value = false
+                                            showLanguageOptions.value = false
+                                        }
+                                    }
+                                )
+                            }
+                            
+                            // 区域选项
+                            AnimatedVisibility(visible = showRegionOptions.value) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    val regionOptions = listOf("Japan", "USA", "Europe", "Australia", "China", "Korea", "Taiwan")
+                                    
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                            .verticalScroll(rememberScrollState())
+                                    ) {
+                                        regionOptions.forEachIndexed { index, option ->
+                                            val isSelected = regionCode.value == index
+                                            
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable(
+                                                        interactionSource = remember { MutableInteractionSource() },
+                                                        indication = null
+                                                    ) { 
+                                                        regionCode.value = index
+                                                        showRegionOptions.value = false // 选择后隐藏选项
+                                                    }
+                                                    .padding(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                RadioButton(
+                                                    selected = isSelected,
+                                                    onClick = {
+                                                        regionCode.value = index
+                                                        showRegionOptions.value = false
+                                                    }
+                                                )
+                                                Text(
+                                                    text = option,
+                                                    modifier = Modifier.padding(start = 8.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // 语言设置
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Language")
+                                val languageNames = listOf(
+                                    "Japanese", "American English", "French", "German", "Italian", 
+                                    "Spanish", "Chinese", "Korean", "Dutch", "Portuguese", 
+                                    "Russian", "Taiwanese", "British English", "Canadian French", 
+                                    "Latin American Spanish", "Simplified Chinese", "Traditional Chinese", 
+                                    "Brazilian Portuguese"
+                                )
+                                Text(
+                                    text = languageNames[systemLanguage.value],
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) { 
+                                        showLanguageOptions.value = !showLanguageOptions.value
+                                        // 当显示语言选项时，隐藏其他选项
+                                        if (showLanguageOptions.value) {
+                                            showResScaleOptions.value = false
+                                            showAspectRatioOptions.value = false
+                                            showRegionOptions.value = false
+                                        }
+                                    }
+                                )
+                            }
+                            
+                            // 语言选项
+                            AnimatedVisibility(visible = showLanguageOptions.value) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    val languageOptions = listOf(
+                                        "Japanese", "American English", "French", "German", "Italian", 
+                                        "Spanish", "Chinese", "Korean", "Dutch", "Portuguese", 
+                                        "Russian", "Taiwanese", "British English", "Canadian French", 
+                                        "Latin American Spanish", "Simplified Chinese", "Traditional Chinese", 
+                                        "Brazilian Portuguese"
+                                    )
+                                    
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(350.dp)
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                            .verticalScroll(rememberScrollState())
+                                    ) {
+                                        languageOptions.forEachIndexed { index, option ->
+                                            val isSelected = systemLanguage.value == index
+                                            
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable(
+                                                        interactionSource = remember { MutableInteractionSource() },
+                                                        indication = null
+                                                    ) { 
+                                                        systemLanguage.value = index
+                                                        showLanguageOptions.value = false // 选择后隐藏选项
+                                                    }
+                                                    .padding(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                RadioButton(
+                                                    selected = isSelected,
+                                                    onClick = {
+                                                        systemLanguage.value = index
+                                                        showLanguageOptions.value = false
+                                                    }
+                                                )
+                                                Text(
+                                                    text = option,
+                                                    modifier = Modifier.padding(start = 8.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
                     ExpandableView(onCardArrowClick = { }, title = "Hack") {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             Row(
@@ -1305,7 +1480,9 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                         enableAccessLogs,
                         enableTraceLogs,
                         enableGraphicsLogs,
-                        skipMemoryBarriers // 新增参数
+                        skipMemoryBarriers, // 新增参数
+                        regionCode, // 新增参数
+                        systemLanguage // 新增参数
                     )
                     settingsViewModel.navController.popBackStack()
                 }
