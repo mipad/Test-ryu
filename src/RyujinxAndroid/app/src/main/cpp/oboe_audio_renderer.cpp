@@ -12,9 +12,20 @@
 #define ALOGI(...) __android_log_print(ANDROID_LOG_INFO, "OboeAudio", __VA_ARGS__)
 #endif
 
+#ifndef ALOGW
+#define ALOGW(...) __android_log_print(ANDROID_LOG_WARN, "OboeAudio", __VA_ARGS__)
+#endif
+
+#ifndef ALOGD
+#define ALOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "OboeAudio", __VA_ARGS__)
+#endif
+
 // =============== RingBuffer Implementation ===============
 RingBuffer::RingBuffer(size_t capacity)
-    : mCapacity(capacity), mBuffer(capacity) {}
+    : mCapacity(capacity), mBuffer(capacity) 
+{
+    ALOGD("RingBuffer created with capacity: %zu", capacity);
+}
 
 bool RingBuffer::write(const float* data, size_t count) {
     if (count == 0) return true;
@@ -27,6 +38,7 @@ bool RingBuffer::write(const float* data, size_t count) {
         : (readIndex - writeIndex - 1);
 
     if (count > available) {
+        ALOGW("RingBuffer overflow: count=%zu, available=%zu", count, available);
         return false;
     }
 
@@ -54,7 +66,9 @@ size_t RingBuffer::read(float* output, size_t count) {
         : (mCapacity - readIndex + writeIndex);
 
     size_t toRead = std::min(count, available);
-    if (toRead == 0) return 0;
+    if (toRead == 0) {
+        return 0;
+    }
 
     size_t end = readIndex + toRead;
     if (end <= mCapacity) {
@@ -82,7 +96,9 @@ void RingBuffer::clear() {
 
 // =============== OboeAudioRenderer Implementation ===============
 OboeAudioRenderer::OboeAudioRenderer()
-    : mRingBuffer(std::make_unique<RingBuffer>(48000 * 2 * 5)) { // 5秒容量
+    : mRingBuffer(std::make_unique<RingBuffer>(48000 * 2 * 5))
+{
+    ALOGD("OboeAudioRenderer created");
 }
 
 OboeAudioRenderer::~OboeAudioRenderer() {
@@ -96,13 +112,17 @@ OboeAudioRenderer& OboeAudioRenderer::getInstance() {
 
 bool OboeAudioRenderer::initialize() {
     if (mIsInitialized.load(std::memory_order_acquire)) {
+        ALOGW("OboeAudioRenderer already initialized");
         return true;
     }
 
     std::lock_guard<std::mutex> lock(mInitMutex);
     if (mIsInitialized.load(std::memory_order_acquire)) {
+        ALOGW("OboeAudioRenderer already initialized (double-checked)");
         return true;
     }
+
+    ALOGI("Initializing OboeAudioRenderer");
 
     // 创建构建器并设置参数
     oboe::AudioStreamBuilder builder;
@@ -146,6 +166,7 @@ bool OboeAudioRenderer::initialize() {
 }
 
 void OboeAudioRenderer::shutdown() {
+    ALOGI("Shutting down OboeAudioRenderer");
     if (mAudioStream) {
         mAudioStream->stop();
         mAudioStream->close();
@@ -155,16 +176,21 @@ void OboeAudioRenderer::shutdown() {
         mRingBuffer->clear();
     }
     mIsInitialized.store(false, std::memory_order_release);
-    ALOGI("Oboe stream shutdown");
 }
 
 void OboeAudioRenderer::setSampleRate(int32_t sampleRate) {
-    if (sampleRate < 8000 || sampleRate > 192000) return;
+    if (sampleRate < 8000 || sampleRate > 192000) {
+        ALOGW("Invalid sample rate: %d", sampleRate);
+        return;
+    }
     mSampleRate.store(sampleRate, std::memory_order_relaxed);
 }
 
 void OboeAudioRenderer::setBufferSize(int32_t bufferSize) {
-    if (bufferSize < 64 || bufferSize > 8192) return;
+    if (bufferSize < 64 || bufferSize > 8192) {
+        ALOGW("Invalid buffer size: %d", bufferSize);
+        return;
+    }
     mBufferSize.store(bufferSize, std::memory_order_relaxed);
 }
 
@@ -178,9 +204,13 @@ void OboeAudioRenderer::writeAudio(const float* data, int32_t numFrames) {
         return;
     }
 
-    if (!data || numFrames <= 0) return;
+    if (!data || numFrames <= 0) {
+        ALOGW("writeAudio: Invalid data or numFrames");
+        return;
+    }
 
     size_t totalSamples = numFrames * mChannelCount;
+    
     if (!mRingBuffer->write(data, totalSamples)) {
         ALOGE("Audio buffer overflow! Dropping %d frames", numFrames);
     }
@@ -193,7 +223,9 @@ void OboeAudioRenderer::clearBuffer() {
 }
 
 size_t OboeAudioRenderer::getBufferedFrames() const {
-    if (!mRingBuffer) return 0;
+    if (!mRingBuffer) {
+        return 0;
+    }
     return mRingBuffer->available() / mChannelCount;
 }
 
@@ -201,6 +233,7 @@ oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
     oboe::AudioStream* audioStream, void* audioData, int32_t numFrames) {
 
     if (!mIsInitialized.load(std::memory_order_acquire)) {
+        ALOGE("onAudioReady: Renderer not initialized!");
         return oboe::DataCallbackResult::Stop;
     }
 
