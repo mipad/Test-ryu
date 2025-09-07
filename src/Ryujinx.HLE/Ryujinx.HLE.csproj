@@ -4,7 +4,21 @@
     <TargetFramework>net8.0</TargetFramework>
     <LangVersion>13.0</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    
+    <!-- 添加修剪相关设置 -->
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 引用修剪配置文件 -->
+    <TrimmerDescriptor Include="TrimmingSettings.xml" />
+    
+    <!-- 显式保留关键程序集 -->
+    <TrimmerRootAssembly Include="Ryujinx.HLE" />
+    <TrimmerRootAssembly Include="System.Private.CoreLib" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Ryujinx.Audio\Ryujinx.Audio.csproj" />
