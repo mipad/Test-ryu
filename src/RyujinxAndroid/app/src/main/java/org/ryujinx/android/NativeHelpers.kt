@@ -12,6 +12,11 @@ class NativeHelpers {
         }
     }
 
+    // ==========  音频初始化函数 ==========
+    external fun initAudio()
+    external fun cleanupAudio() // 新增：清理音频资源
+
+    // ==========  以下是原有函数 ==========
     external fun releaseNativeWindow(window: Long)
     external fun getCreateSurfacePtr(): Long
     external fun getNativeWindow(surface: Surface): Long
@@ -28,14 +33,4 @@ class NativeHelpers {
     external fun setSwapInterval(nativeWindow: Long, swapInterval: Int): Int
     external fun getStringJava(ptr: Long): String
     external fun setIsInitialOrientationFlipped(isFlipped: Boolean)
-
-    // Oboe 音频相关方法
-    external fun initOboeAudio()
-    external fun shutdownOboeAudio()
-    external fun writeOboeAudio(audioData: FloatArray, numFrames: Int)
-    external fun setOboeSampleRate(sampleRate: Int)
-    external fun setOboeBufferSize(bufferSize: Int)
-    external fun setOboeVolume(volume: Float)
-    external fun isOboeInitialized(): Boolean
-    external fun getOboeBufferedFrames(): Int
 }
