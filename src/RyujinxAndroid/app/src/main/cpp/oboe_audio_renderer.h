@@ -22,6 +22,7 @@ public:
     bool write(const float* data, size_t count);
     size_t read(float* output, size_t count);
     size_t available() const;
+    size_t availableForWrite() const;
     void clear();
 };
 
@@ -45,6 +46,7 @@ public:
     int32_t getSampleRate() const { return mSampleRate.load(std::memory_order_relaxed); }
     int32_t getBufferSize() const { return mBufferSize.load(std::memory_order_relaxed); }
     size_t getBufferedFrames() const;
+    size_t getAvailableFrames() const;
 
     // Oboe 回调
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t numFrames) override;
@@ -55,14 +57,18 @@ private:
     OboeAudioRenderer();
     ~OboeAudioRenderer();
 
+    bool openStreamWithFormat(oboe::AudioFormat format);
+    void updateStreamParameters();
+
     std::shared_ptr<oboe::AudioStream> mAudioStream;
     std::unique_ptr<RingBuffer> mRingBuffer;
     std::mutex mInitMutex;
     std::atomic<bool> mIsInitialized{false};
     std::atomic<int32_t> mSampleRate{48000};
     std::atomic<int32_t> mBufferSize{1024};
-    std::atomic<int32_t> mChannelCount{2}; // 改为可变的
+    std::atomic<int32_t> mChannelCount{2};
     std::atomic<float> mVolume{1.0f};
+    std::atomic<oboe::AudioFormat> mAudioFormat{oboe::AudioFormat::Float};
 };
 
 #endif // RYUJINX_OBOE_AUDIO_RENDERER_H
