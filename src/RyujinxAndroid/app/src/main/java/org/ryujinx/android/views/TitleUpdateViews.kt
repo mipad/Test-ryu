@@ -26,6 +26,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
@@ -42,6 +43,11 @@ class TitleUpdateViews {
             canClose: MutableState<Boolean>
         ) {
             val viewModel = TitleUpdateViewModel(titleId)
+            val configuration = LocalConfiguration.current
+            val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+            
+            // 根据屏幕方向调整高度
+            val contentHeight = if (isLandscape) 180.dp else 250.dp
 
             val selected = remember { mutableStateOf(0) }
             viewModel.data?.apply {
@@ -59,7 +65,7 @@ class TitleUpdateViews {
                     ) {
                         Column(
                             modifier = Modifier
-                                .height(250.dp)
+                                .height(contentHeight) // 使用动态高度
                                 .fillMaxWidth()
                                 .verticalScroll(rememberScrollState())
                         ) {
