@@ -766,6 +766,9 @@ private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, Integri
                                       string? timeZone,
                                       bool ignoreMissingServices)
         {
+             // 初始化音频驱动
+            InitializeAudio();
+    
             if (LibRyujinx.Renderer == null)
             {
                 return false;
