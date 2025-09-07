@@ -29,17 +29,6 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(adrenotools)
 
-# ========== 新增：获取 Oboe 库（Google 官方低延迟音频库） ==========
-# 请确保项目根目录或指定路径下存在 oboe 子模块或已下载源码
-# 例如：git submodule add https://github.com/google/oboe.git oboe
-FetchContent_Declare(
-    oboe
-    GIT_REPOSITORY https://github.com/google/oboe.git
-    GIT_TAG        1.9.3  
-)
-
-FetchContent_MakeAvailable(oboe)
-
 # 使用 FetchContent 获取标准 OpenAL Soft
 FetchContent_Declare(
     openal
@@ -47,16 +36,12 @@ FetchContent_Declare(
     GIT_TAG        1.24.3  # 使用稳定版本
 )
 
-# ==========  修改：启用 Oboe 后端（推荐），同时保留 AAudio 支持 ==========
-# 设置 OpenAL 构建选项 - 启用 Oboe 后端（Google 推荐）
-set(OBOE_INCLUDE_DIR ${oboe_SOURCE_DIR}/include CACHE PATH "Oboe include directory" FORCE)
-set(ALSOFT_BACKEND_OBOE ON CACHE BOOL "Enable Oboe backend (recommended)")
-
-# 启用 AAudio 作为 Oboe 的底层支持（Oboe 在 API 26+ 会使用 AAudio）
-set(ALSOFT_BACKEND_AAUDIO ON CACHE BOOL "Enable AAudio backend (used by Oboe)")
+# ========== 修改：启用 AAudio 后端 ==========
+# 设置 OpenAL 构建选项 - 启用 AAudio 后端
+set(ALSOFT_BACKEND_AAUDIO ON CACHE BOOL "Enable AAudio backend")
 set(ALSOFT_BACKEND_ANDROID ON CACHE BOOL "Enable Android backend")
 
-# 添加AAudio特定的优化选项（Oboe 内部可能使用）
+# 添加AAudio特定的优化选项
 set(ALSOFT_AAUDIO_ALLOW_LOW_LATENCY ON CACHE BOOL "Allow low latency mode")
 set(ALSOFT_AAUDIO_SHARING_MODE SHARED CACHE STRING "AAudio sharing mode")
 
@@ -102,12 +87,13 @@ target_compile_definitions(ryujinxjni PRIVATE
 
 # 查找系统库
 find_library(log-lib log)
+find_library(aaudio-lib aaudio)
 
 # 链接库
 target_link_libraries(
     ryujinxjni
     ${log-lib}
-    aaudio        # Oboe / OpenAL Soft 可能需要直接链接 AAudio
+    ${aaudio-lib}        # 直接链接 AAudio 库
     -lvulkan
     -landroid
     adrenotools
