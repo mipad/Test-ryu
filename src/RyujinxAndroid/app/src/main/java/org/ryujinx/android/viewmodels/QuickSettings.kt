@@ -3,6 +3,8 @@ package org.ryujinx.android.viewmodels
 import android.app.Activity
 import android.content.SharedPreferences
 import androidx.preference.PreferenceManager
+import org.ryujinx.android.RegionCode
+import org.ryujinx.android.SystemLanguage
 
 class QuickSettings(val activity: Activity) {
     var ignoreMissingServices: Boolean
@@ -23,6 +25,8 @@ class QuickSettings(val activity: Activity) {
     var enablePerformanceMode: Boolean
     var controllerStickSensitivity: Float
     var skipMemoryBarriers: Boolean // 新增：跳过内存屏障
+    var regionCode: Int // 新增：区域代码
+    var systemLanguage: Int // 新增：系统语言
 
     // Logs
     var enableDebugLogs: Boolean
@@ -57,6 +61,8 @@ class QuickSettings(val activity: Activity) {
         enablePerformanceMode = sharedPref.getBoolean("enablePerformanceMode", true)
         controllerStickSensitivity = sharedPref.getFloat("controllerStickSensitivity", 1.0f)
         skipMemoryBarriers = sharedPref.getBoolean("skipMemoryBarriers", false) // 初始化
+        regionCode = sharedPref.getInt("regionCode", RegionCode.USA.ordinal) // 默认USA
+        systemLanguage = sharedPref.getInt("systemLanguage", SystemLanguage.AmericanEnglish.ordinal) // 默认美式英语
 
         enableDebugLogs = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs = sharedPref.getBoolean("enableStubLogs", false)
@@ -90,6 +96,8 @@ class QuickSettings(val activity: Activity) {
         editor.putBoolean("enablePerformanceMode", enablePerformanceMode)
         editor.putFloat("controllerStickSensitivity", controllerStickSensitivity)
         editor.putBoolean("skipMemoryBarriers", skipMemoryBarriers) // 保存
+        editor.putInt("regionCode", regionCode) // 保存区域代码
+        editor.putInt("systemLanguage", systemLanguage) // 保存系统语言
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs)
         editor.putBoolean("enableStubLogs", enableStubLogs)
