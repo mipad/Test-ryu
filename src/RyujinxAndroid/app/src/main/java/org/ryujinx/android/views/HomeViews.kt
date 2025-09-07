@@ -433,12 +433,12 @@ class HomeViews {
 
             if (isCentered) {
                 // 中央项目 - 只显示图标，不显示文字
+                // 修复：将combinedClickable移到外层，确保边框不影响点击区域
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(0.6f)
                         .aspectRatio(1.3f)
                         .offset(y = (-20).dp) // 向上移动10dp
-                        .border(1.dp, borderColor, RoundedCornerShape(12.dp)) // 添加超细线框
                         .combinedClickable(
                             onClick = {
                                 if (viewModel.mainViewModel?.selected != null) {
@@ -472,36 +472,48 @@ class HomeViews {
                                 selectedModel.value = gameModel
                             }
                         )
-                        .then(
-                            if (isSelected) {
-                                Modifier.border(
-                                    2.dp,
-                                    MaterialTheme.colorScheme.primary,
-                                    RoundedCornerShape(12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .border(1.dp, borderColor, RoundedCornerShape(12.dp)) // 添加超细线框
+                            .then(
+                                if (isSelected) {
+                                    Modifier.border(
+                                        2.dp,
+                                        MaterialTheme.colorScheme.primary,
+                                        RoundedCornerShape(12.dp)
+                                    )
+                                } else {
+                                    Modifier
+                                }
+                            )
+                    ) {
+                        if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
+                            if (gameModel.icon?.isNotEmpty() == true) {
+                                val pic = decoder.decode(gameModel.icon)
+                                Image(
+                                    bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
+                                        .asImageBitmap(),
+                                    contentDescription = gameModel.getDisplayName() + " icon",
+                                    contentScale = ContentScale.FillBounds, // 改为FillBounds以拉伸图片
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(RoundedCornerShape(12.dp))
+                                )
+                            } else if (gameModel.type == FileType.Nro) {
+                                NROIcon(
+                                    modifier = Modifier
+                                        .fillMaxSize(0.8f)
+                                        .align(Alignment.Center)
                                 )
                             } else {
-                                Modifier
+                                NotAvailableIcon(
+                                    modifier = Modifier
+                                        .fillMaxSize(0.8f)
+                                        .align(Alignment.Center)
+                                )
                             }
-                        )
-                ) {
-                    if (!gameModel.titleId.isNullOrEmpty() && (gameModel.titleId != "0000000000000000" || gameModel.type == FileType.Nro)) {
-                        if (gameModel.icon?.isNotEmpty() == true) {
-                            val pic = decoder.decode(gameModel.icon)
-                            Image(
-                                bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
-                                    .asImageBitmap(),
-                                contentDescription = gameModel.getDisplayName() + " icon",
-                                contentScale = ContentScale.FillBounds, // 改为FillBounds以拉伸图片
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(12.dp))
-                            )
-                        } else if (gameModel.type == FileType.Nro) {
-                            NROIcon(
-                                modifier = Modifier
-                                    .fillMaxSize(0.8f)
-                                    .align(Alignment.Center)
-                            )
                         } else {
                             NotAvailableIcon(
                                 modifier = Modifier
@@ -509,12 +521,6 @@ class HomeViews {
                                     .align(Alignment.Center)
                             )
                         }
-                    } else {
-                        NotAvailableIcon(
-                            modifier = Modifier
-                                .fillMaxSize(0.8f)
-                                .align(Alignment.Center)
-                        )
                     }
                 }
             } else {
@@ -742,42 +748,42 @@ class HomeViews {
                                         modifier = Modifier.size(32.dp)
                                     ) {
                                         if (!refreshUser) {
-                                            refreshUser = true
-                                        }
-                                        if (refreshUser)
-                                            if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
-                                                val pic =
-                                                    viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
-                                                Image(
-                                                    bitmap = BitmapFactory.decodeByteArray(
-                                                        pic,
-                                                        0,
-                                                        pic?.size ?: 0
-                                                    )
-                                                        .asImageBitmap(),
-                                                    contentDescription = "user image",
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier
-                                                        .size(32.dp)
-                                                        .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
-                                                        .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)) // 添加边框
-                                                )
-                                            } else {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(32.dp)
-                                                        .clip(RoundedCornerShape(12.dp))
-                                                        .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Icon(
-                                                        Icons.Filled.Person,
-                                                        contentDescription = "user",
-                                                        modifier = Modifier.size(24.dp)
-                                                    )
-                                                }
-                                            }
+                                        refreshUser = true
                                     }
+                                    if (refreshUser)
+                                        if (viewModel.mainViewModel?.userViewModel?.openedUser?.userPicture?.isNotEmpty() == true) {
+                                            val pic =
+                                                viewModel.mainViewModel!!.userViewModel.openedUser.userPicture
+                                            Image(
+                                                bitmap = BitmapFactory.decodeByteArray(
+                                                    pic,
+                                                    0,
+                                                    pic?.size ?: 0
+                                                )
+                                                    .asImageBitmap(),
+                                                contentDescription = "user image",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .size(32.dp)
+                                                    .clip(RoundedCornerShape(12.dp)) // 改为圆角方形
+                                                    .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)) // 添加边框
+                                            )
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(32.dp)
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    Icons.Filled.Person,
+                                                    contentDescription = "user",
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                            }
+                                        }
+                                }
                                 }
                             ) {}
                         }
@@ -1147,6 +1153,7 @@ class HomeViews {
                         }
 
                     }
+                }
             }
             if (openTitleUpdateDialog.value) {
                 BasicAlertDialog(onDismissRequest = {
@@ -1328,7 +1335,7 @@ class HomeViews {
                     confirmButton = {
                         TextButton(
                             onClick = {
-                                selectedModel.value?.customName=newGameName
+                                selectedModel.value?.customName = newGameName
                                 showRenameDialog = false
                                 // 刷新列表以显示新名称
                                 viewModel.filter(query)
@@ -1354,4 +1361,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}}}}
+}}}
