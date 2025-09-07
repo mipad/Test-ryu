@@ -6,7 +6,7 @@ using Ryujinx.Memory;
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
-using Ryujinx.Common.Logging; // 添加日志命名空间
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Audio.Backends.Oboe
 {
@@ -35,7 +35,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         private static extern bool isOboeInitialized();
 
         // ========== 属性 ==========
-        public static bool IsSupported => true; // Oboe 在 Android 8.1+ 基本都支持
+        public static bool IsSupported => true;
 
         private bool _disposed;
         private float _volume = 1.0f;
@@ -48,14 +48,13 @@ namespace Ryujinx.Audio.Backends.Oboe
             set
             {
                 _volume = value;
-                setOboeVolume(value); // 实时同步到原生层
+                setOboeVolume(value);
             }
         }
 
         // ========== 构造与生命周期 ==========
         public OboeAudioDriver()
         {
-            // 不在这里初始化 Oboe！等 OpenDeviceSession 时再初始化
             Logger.Info?.Print(LogClass.Audio, "OboeAudioDriver created");
         }
 
@@ -116,13 +115,13 @@ namespace Ryujinx.Audio.Backends.Oboe
             if (!SupportsSampleFormat(sampleFormat))
                 throw new ArgumentException($"Unsupported sample format: {sampleFormat}");
 
-            // 设置参数 → 初始化 Oboe（关键！不在构造函数中初始化）
+            // 设置参数 → 初始化 Oboe
             setOboeSampleRate((int)sampleRate);
             setOboeBufferSize(CalculateBufferSize(sampleRate));
-            setOboeVolume(_volume); // 同步初始音量
+            setOboeVolume(_volume);
 
             Logger.Info?.Print(LogClass.Audio, "Initializing Oboe audio");
-            initOboeAudio(); // 此时才初始化！
+            initOboeAudio();
 
             bool initialized = isOboeInitialized();
             Logger.Info?.Print(LogClass.Audio, $"Oboe initialization result: {initialized}");
@@ -132,7 +131,7 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         private int CalculateBufferSize(uint sampleRate)
         {
-            const int desiredLatencyMs = 20; // 20ms 延迟
+            const int desiredLatencyMs = 20;
             return (int)(sampleRate * desiredLatencyMs / 1000);
         }
 
@@ -145,6 +144,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             private readonly uint _channelCount;
             private bool _active = false;
             private float _volume = 1.0f;
+            private ulong _playedSampleCount = 0;
 
             public OboeAudioSession(OboeAudioDriver driver, SampleFormat sampleFormat, uint sampleRate, uint channelCount)
             {
@@ -153,6 +153,9 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _sampleRate = sampleRate;
                 _channelCount = channelCount;
                 Logger.Info?.Print(LogClass.Audio, $"OboeAudioSession created: sampleRate={sampleRate}, channelCount={channelCount}, format={sampleFormat}");
+                
+                // 创建时自动激活会话
+                Start();
             }
 
             public void Dispose() 
@@ -181,8 +184,8 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 if (!_active) 
                 {
-                    Logger.Debug?.Print(LogClass.Audio, "OboeAudioSession not active, skipping buffer");
-                    return;
+                    Logger.Warning?.Print(LogClass.Audio, "OboeAudioSession not active, but attempting to queue buffer. Activating session.");
+                    Start();
                 }
 
                 // 转换为 float[] 并发送
@@ -191,34 +194,33 @@ namespace Ryujinx.Audio.Backends.Oboe
                 Logger.Debug?.Print(LogClass.Audio, $"Queueing buffer: {floatData.Length} samples, {floatData.Length / (int)_channelCount} frames");
                 
                 writeOboeAudio(floatData, floatData.Length / (int)_channelCount);
-
-                // 调试日志（缓冲区水位）
-                // int buffered = getOboeBufferedFrames();
-                // Logger.Debug?.Print(LogClass.Audio, $"[Oboe] Buffered frames: {buffered}");
+                
+                // 更新已播放样本计数
+                _playedSampleCount += (ulong)(floatData.Length / _channelCount);
             }
 
             public bool RegisterBuffer(AudioBuffer buffer) 
             {
                 Logger.Debug?.Print(LogClass.Audio, "RegisterBuffer called");
-                return true; // Oboe 实时流，无需注册
+                return true;
             }
             
             public void UnregisterBuffer(AudioBuffer buffer) 
             {
                 Logger.Debug?.Print(LogClass.Audio, "UnregisterBuffer called");
-            }   // 无需实现
+            }
             
             public bool WasBufferFullyConsumed(AudioBuffer buffer) 
             {
                 Logger.Debug?.Print(LogClass.Audio, "WasBufferFullyConsumed called");
-                return true; // 假设总是消费
+                return true;
             }
 
             public void SetVolume(float volume)
             {
                 _volume = volume;
                 Logger.Info?.Print(LogClass.Audio, $"Setting volume: {volume}");
-                OboeAudioDriver.setOboeVolume(volume); // 正确：通过类名调用静态方法 // 同步到驱动（原生层）
+                setOboeVolume(volume);
             }
 
             public float GetVolume() 
@@ -229,8 +231,8 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             public ulong GetPlayedSampleCount() 
             {
-                Logger.Debug?.Print(LogClass.Audio, "GetPlayedSampleCount called");
-                return 0; // Oboe 是实时流，无法精确计数（可改进）
+                Logger.Debug?.Print(LogClass.Audio, $"GetPlayedSampleCount: {_playedSampleCount}");
+                return _playedSampleCount;
             }
 
             private float[] ConvertToFloat(byte[] audioData, SampleFormat format, float volume)
@@ -243,7 +245,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                     for (int i = 0; i < sampleCount; i++)
                     {
                         short sample = BitConverter.ToInt16(audioData, i * 2);
-                        floatData[i] = sample / 32768.0f * volume; // 音量在 C# 层乘（也可移到原生层）
+                        floatData[i] = sample / 32768.0f * volume;
                     }
 
                     return floatData;
