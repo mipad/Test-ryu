@@ -1,7 +1,7 @@
 include(FetchContent)
 
 # For more information about using CMake with Android Studio, read the
-# documentation: https://d.android.com/studio/projects/add-native-code.html
+# documentation: https://d.android.com/studio/projects/add-native-code.html 
 
 # Sets the minimum version of CMake required to build the native library.
 cmake_minimum_required(VERSION 3.22.1)
@@ -23,29 +23,53 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 # 使用 FetchContent 获取 adrenotools
 FetchContent_Declare(
     adrenotools
-    GIT_REPOSITORY https://git.ryujinx.app/kenji-nx/libadrenotools.git
+    GIT_REPOSITORY https://git.ryujinx.app/kenji-nx/libadrenotools.git 
     GIT_TAG        deec5f75ee1a8ccbe32c8780b1d17284fc87b0f1
 )
 
 FetchContent_MakeAvailable(adrenotools)
 
+# ========== 新增：获取 Oboe 库（Google 官方低延迟音频库） ==========
+# 请确保项目根目录或指定路径下存在 oboe 子模块或已下载源码
+# 例如：git submodule add https://github.com/google/oboe.git oboe
+FetchContent_Declare(
+    oboe
+    GIT_REPOSITORY https://github.com/google/oboe.git
+    GIT_TAG        1.9.3  
+)
+
+FetchContent_MakeAvailable(oboe)
+
 # 使用 FetchContent 获取标准 OpenAL Soft
 FetchContent_Declare(
     openal
-    GIT_REPOSITORY https://github.com/kcat/openal-soft.git
+    GIT_REPOSITORY https://github.com/kcat/openal-soft.git 
     GIT_TAG        1.24.3  # 使用稳定版本
 )
 
-# 设置 OpenAL 构建选项 - 优化以减少杂音和延迟
-set(ALSOFT_REQUIRE_OPENSL ON CACHE BOOL "Enable OpenSL backend")
-set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "Enable OpenSL backend")
-set(ALSOFT_BACKEND_AAUDIO OFF CACHE BOOL "Disable AAudio backend")
+# ==========  修改：启用 Oboe 后端（推荐），同时保留 AAudio 支持 ==========
+# 设置 OpenAL 构建选项 - 启用 Oboe 后端（Google 推荐）
+set(OBOE_INCLUDE_DIR ${oboe_SOURCE_DIR}/include CACHE PATH "Oboe include directory" FORCE)
+set(ALSOFT_BACKEND_OBOE ON CACHE BOOL "Enable Oboe backend (recommended)")
+
+# 启用 AAudio 作为 Oboe 的底层支持（Oboe 在 API 26+ 会使用 AAudio）
+set(ALSOFT_BACKEND_AAUDIO ON CACHE BOOL "Enable AAudio backend (used by Oboe)")
+set(ALSOFT_BACKEND_ANDROID ON CACHE BOOL "Enable Android backend")
+
+# 添加AAudio特定的优化选项（Oboe 内部可能使用）
+set(ALSOFT_AAUDIO_ALLOW_LOW_LATENCY ON CACHE BOOL "Allow low latency mode")
+set(ALSOFT_AAUDIO_SHARING_MODE SHARED CACHE STRING "AAudio sharing mode")
+
+# 其他优化选项
 set(ALSOFT_NO_CONFIG_UTIL ON CACHE BOOL "Disable config utility")
 set(ALSOFT_UTILS OFF CACHE BOOL "Disable utils")
 set(ALSOFT_EXAMPLES OFF CACHE BOOL "Disable examples")
 set(ALSOFT_INSTALL OFF CACHE BOOL "Disable installation")
 set(ALSOFT_INSTALL_PKG_CONFIG_FILES OFF CACHE BOOL "Disable pkg-config files")
 set(ALSOFT_TESTS OFF CACHE BOOL "Disable tests")
+
+# 修复弃用的变量
+set(ALSOFT_INSTALL_CONFIG "" CACHE STRING "Config file")  # 替换 ALSOFT_CONFIG
 
 # 添加优化选项以减少杂音和延迟
 set(ALSOFT_CPUEXT_NEON ON CACHE BOOL "Enable NEON optimizations")
@@ -55,15 +79,11 @@ set(ALSOFT_AMBIENT_CHANNELS 0 CACHE STRING "Ambient channels") # 减少环境声
 
 # 针对低延迟优化
 set(ALSOFT_DEFAULT_CFG "" CACHE STRING "Default config file")
-set(ALSOFT_CONFIG "" CACHE STRING "Config file")
 set(ALSOFT_DEFAULT_REVERB OFF CACHE BOOL "Disable default reverb")
 set(ALSOFT_DEFAULT_ECHO OFF CACHE BOOL "Disable default echo")
 set(ALSOFT_DEFAULT_MODULATION OFF CACHE BOOL "Disable default modulation")
 
-# 启用调试信息（如果需要）
-# set(ALSOFT_TRAP_AL_ERROR ON CACHE BOOL "Trap AL errors")
-# set(ALSOFT_TRAP_ALC_ERROR ON CACHE BOOL "Trap ALC errors")
-
+# ==========  注意：必须在 FetchContent_MakeAvailable(openal) 之前设置所有 ALSOFT_* 变量 ==========
 FetchContent_MakeAvailable(openal)
 
 # 创建主库
@@ -82,17 +102,16 @@ target_compile_definitions(ryujinxjni PRIVATE
 
 # 查找系统库
 find_library(log-lib log)
-find_library(opensles-lib OpenSLES)
 
 # 链接库
 target_link_libraries(
     ryujinxjni
     ${log-lib}
-    ${opensles-lib}
+    aaudio        # Oboe / OpenAL Soft 可能需要直接链接 AAudio
     -lvulkan
     -landroid
     adrenotools
-    OpenAL
+    OpenAL        # OpenAL Soft 库
 )
 
 # 设置 JNI 库输出路径
@@ -108,7 +127,7 @@ if (NOT (EXISTS ${LIBCRYPTO_JNI_PATH} AND EXISTS ${LIBSSL_JNI_PATH}))
     add_dependencies(ryujinxjni openssl)
 endif ()
 
-# 设置 OpenAL 输出目录
+# 设置 OpenAL 输出目录（可选，便于调试）
 set_target_properties(OpenAL PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
     ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
