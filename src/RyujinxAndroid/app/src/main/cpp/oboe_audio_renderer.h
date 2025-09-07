@@ -61,7 +61,7 @@ private:
     std::atomic<bool> mIsInitialized{false};
     std::atomic<int32_t> mSampleRate{48000};
     std::atomic<int32_t> mBufferSize{1024};
-    const int32_t mChannelCount = 2; // Stereo
+    std::atomic<int32_t> mChannelCount{2}; // 改为可变的
     std::atomic<float> mVolume{1.0f};
 };
 
