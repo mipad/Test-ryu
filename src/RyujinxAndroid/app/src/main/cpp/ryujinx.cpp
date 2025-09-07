@@ -33,6 +33,10 @@
 
 std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
 
+// 全局 OpenAL 设备句柄
+static ALCdevice* _openalDevice = nullptr;
+static ALCcontext* _openalContext = nullptr;
+
 extern "C"
 {
 JNIEXPORT jlong JNICALL
@@ -258,37 +262,56 @@ Java_org_ryujinx_android_NativeHelpers_setIsInitialOrientationFlipped(JNIEnv *en
     isInitialOrientationFlipped = is_flipped;
 }
 
-// ==========  新增：OpenAL 音频初始化函数 ==========
+// ==========  修改：使用 AAudio 后端的 OpenAL 音频初始化函数 ==========
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_initAudio(JNIEnv *env, jobject thiz) {
-    LOGI("Initializing OpenAL with Oboe backend...");
+    LOGI("Initializing OpenAL with AAudio backend...");
 
-    //  强制 OpenAL Soft 使用 Oboe 后端（推荐！）
-    setenv("ALSOFT_DRIVERS", "oboe", 1);
+    // 强制 OpenAL Soft 使用 AAudio 后端
+    setenv("ALSOFT_DRIVERS", "aaudio", 1);
 
-    // 可选：进一步优化设置（低延迟）
-    // setenv("ALSOFT_HRTF", "disabled", 1);
-    // setenv("ALSOFT_PERIOD_SIZE", "192", 1);
+    // 设置低延迟参数
+    setenv("ALSOFT_AAUDIO_SHARING_MODE", "SHARED", 1);
+    setenv("ALSOFT_AAUDIO_PERFORMANCE_MODE", "LOW_LATENCY", 1);
 
     // 初始化 OpenAL 设备
-    ALCdevice* device = alcOpenDevice(nullptr);
-    if (!device) {
-        LOGE(" Failed to open OpenAL device");
+    _openalDevice = alcOpenDevice(nullptr);
+    if (!_openalDevice) {
+        LOGE("Failed to open OpenAL device");
         return;
     }
 
-    ALCcontext* context = alcCreateContext(device, nullptr);
-    if (!context || !alcMakeContextCurrent(context)) {
-        LOGE(" Failed to create or activate OpenAL context");
-        alcCloseDevice(device);
+    _openalContext = alcCreateContext(_openalDevice, nullptr);
+    if (!_openalContext || !alcMakeContextCurrent(_openalContext)) {
+        LOGE("Failed to create or activate OpenAL context");
+        if (_openalDevice) alcCloseDevice(_openalDevice);
         return;
     }
 
-    const ALCchar* deviceName = alcGetString(device, ALC_DEVICE_SPECIFIER);
-    LOGI(" OpenAL initialized successfully! Device: %s", deviceName);
+    const ALCchar* deviceName = alcGetString(_openalDevice, ALC_DEVICE_SPECIFIER);
+    LOGI("OpenAL initialized successfully with AAudio! Device: %s", deviceName);
 
-    // 你可以在这里保存 device 和 context 到全局变量，供后续使用
-    // _openalDevice = device;
-    // _openalContext = context;
+    // 设置一些基本参数
+    alDistanceModel(AL_NONE); // 禁用距离模型（适用于游戏）
+}
+
+// ==========  新增：清理音频资源函数 ==========
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_cleanupAudio(JNIEnv *env, jobject thiz) {
+    LOGI("Cleaning up OpenAL audio resources...");
+    
+    if (_openalContext) {
+        alcMakeContextCurrent(nullptr);
+        alcDestroyContext(_openalContext);
+        _openalContext = nullptr;
+    }
+    
+    if (_openalDevice) {
+        alcCloseDevice(_openalDevice);
+        _openalDevice = nullptr;
+    }
+    
+    LOGI("OpenAL audio resources cleaned up");
 }
