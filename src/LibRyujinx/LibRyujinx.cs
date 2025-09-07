@@ -767,7 +767,7 @@ private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, Integri
                                       bool ignoreMissingServices)
         {
              // 初始化音频驱动
-            InitializeAudio();
+            LibRyujinx.InitializeAudio();
     
             if (LibRyujinx.Renderer == null)
             {
