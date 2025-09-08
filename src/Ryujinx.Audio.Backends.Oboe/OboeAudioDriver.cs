@@ -1,4 +1,4 @@
-// OboeAudioDriver.cs (完整修复版)
+// OboeAudioDriver.cs (最终优化版)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -110,7 +110,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         // ========== 打开设备会话 ==========
         public IHardwareDeviceSession OpenDeviceSession(
             IHardwareDeviceDriver.Direction direction,
-            IVirtualMemoryManager memoryManager, // ← 关键：获取 memoryManager
+            IVirtualMemoryManager memoryManager,
             SampleFormat sampleFormat,
             uint sampleRate,
             uint channelCount)
@@ -142,7 +142,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                 Logger.Info?.Print(LogClass.Audio, "Oboe audio initialized successfully");
             }
 
-            // ✅ 传入 memoryManager！
             var session = new OboeAudioSession(this, memoryManager, sampleFormat, sampleRate, channelCount);
             _sessions.TryAdd(session, 0);
             return session;
@@ -150,7 +149,37 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         private bool Unregister(OboeAudioSession session) => _sessions.TryRemove(session, out _);
 
-        private int CalculateBufferSize(uint sampleRate) => (int)(sampleRate * 40 / 1000); // 40ms
+        // ✅ 关键修改：动态缓冲区大小
+        private int CalculateBufferSize(uint sampleRate)
+        {
+            int latencyMs = IsHighPerformanceDevice() ? 20 : 60; // 高性能设备20ms，低性能60ms
+            int bufferSize = (int)(sampleRate * latencyMs / 1000);
+            Logger.Debug?.Print(LogClass.Audio, $"CalculateBufferSize: latencyMs={latencyMs}, bufferSize={bufferSize}");
+            return bufferSize;
+        }
+
+        // ✅ 关键修改：根据设备型号判断性能
+        private bool IsHighPerformanceDevice()
+        {
+            string device = Android.OS.Build.Device.ToLower();
+            string model = Android.OS.Build.Model.ToLower();
+            
+            string[] highPerfDevices = {
+                "sdm845", "sdm855", "sdm865", "sdm888", "sm8350", "sm8450", "sm8550",
+                "kirin980", "kirin990", "kirin9000", "dimensity9000", "dimensity9200",
+                "exynos9820", "exynos990", "exynos2100", "exynos2200"
+            };
+            
+            foreach (string perfDevice in highPerfDevices) {
+                if (device.Contains(perfDevice) || model.Contains(perfDevice)) {
+                    Logger.Debug?.Print(LogClass.Audio, $"High performance device detected: {device} / {model}");
+                    return true;
+                }
+            }
+            
+            Logger.Debug?.Print(LogClass.Audio, $"Low performance device: {device} / {model}");
+            return false;
+        }
 
         // ========== 音频会话类 ==========
         private class OboeAudioSession : HardwareDeviceSessionOutputBase
@@ -162,14 +191,13 @@ namespace Ryujinx.Audio.Backends.Oboe
             private float _volume;
             private readonly int _channelCount;
 
-            // ✅ 修改构造函数：接收并传递 memoryManager
             public OboeAudioSession(
                 OboeAudioDriver driver,
-                IVirtualMemoryManager memoryManager, // ← 新增
+                IVirtualMemoryManager memoryManager,
                 SampleFormat sampleFormat,
                 uint sampleRate,
                 uint channelCount) 
-                : base(memoryManager, sampleFormat, sampleRate, channelCount) // ← 传给基类
+                : base(memoryManager, sampleFormat, sampleRate, channelCount)
             {
                 _driver = driver;
                 _channelCount = (int)channelCount;
@@ -198,6 +226,9 @@ namespace Ryujinx.Audio.Backends.Oboe
 
                 _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, (ulong)sampleCount));
                 _totalWrittenSamples += (ulong)sampleCount;
+
+                // ✅ 关键修改：添加写入频率日志
+                Logger.Debug?.Print(LogClass.Audio, $"QueueBuffer: wrote {sampleCount} samples");
             }
 
             public override bool WasBufferFullyConsumed(AudioBuffer buffer) =>
