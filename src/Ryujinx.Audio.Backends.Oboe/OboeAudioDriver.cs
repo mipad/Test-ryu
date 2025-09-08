@@ -22,13 +22,13 @@ namespace Ryujinx.Audio.Backends.Oboe
         private static extern void shutdownOboeAudio();
 
         [DllImport("libryujinxjni", EntryPoint = "writeOboeAudio")]
-        private static extern void writeOboeAudio(float[] audioData, int numFrames);
+        private static extern void writeOboeAudio(float[] audioData, int num_frames);
 
         [DllImport("libryujinxjni", EntryPoint = "setOboeSampleRate")]
-        private static extern void setOboeSampleRate(int sampleRate);
+        private static extern void setOboeSampleRate(int sample_rate);
 
         [DllImport("libryujinxjni", EntryPoint = "setOboeBufferSize")]
-        private static extern void setOboeBufferSize(int bufferSize);
+        private static extern void setOboeBufferSize(int buffer_size);
 
         [DllImport("libryujinxjni", EntryPoint = "setOboeVolume")]
         private static extern void setOboeVolume(float volume);
@@ -47,7 +47,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         private readonly ManualResetEvent _pauseEvent = new(true);
         private readonly ManualResetEvent _updateRequiredEvent = new(false);
         private readonly ConcurrentDictionary<OboeAudioSession, byte> _sessions = new();
-        private bool _isOboeInitialized = false; // 新增：标记是否已初始化
+        private bool _isOboeInitialized = false;
 
         public float Volume
         {
@@ -64,7 +64,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         public OboeAudioDriver()
         {
             Logger.Info?.Print(LogClass.Audio, "OboeAudioDriver constructor called");
-            _volume = 1.0f; // 显式初始化
+            _volume = 1.0f;
         }
 
         public void Dispose()
@@ -195,7 +195,7 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         private int CalculateBufferSize(uint sampleRate)
         {
-            const int desiredLatencyMs = 20;
+            const int desiredLatencyMs = 40; // 增加缓冲区大小以减少下溢
             int bufferSize = (int)(sampleRate * desiredLatencyMs / 1000);
             Logger.Debug?.Print(LogClass.Audio, $"CalculateBufferSize({sampleRate}): {bufferSize}");
             return bufferSize;
