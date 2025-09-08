@@ -1,4 +1,4 @@
-// OboeAudioDriver.cs (最终优化版)
+// OboeAudioDriver.cs (完整修复版)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -38,6 +38,13 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         [DllImport("libryujinxjni", EntryPoint = "getOboeBufferedFrames")]
         private static extern int getOboeBufferedFrames();
+
+        // ========== 设备信息 P/Invoke 声明 ===============
+        [DllImport("libryujinxjni", EntryPoint = "getAndroidDeviceModel")]
+        private static extern IntPtr GetAndroidDeviceModel();
+
+        [DllImport("libryujinxjni", EntryPoint = "getAndroidDeviceBrand")]
+        private static extern IntPtr GetAndroidDeviceBrand();
 
         // ========== 属性 ==========
         public static bool IsSupported => true;
@@ -149,36 +156,45 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         private bool Unregister(OboeAudioSession session) => _sessions.TryRemove(session, out _);
 
-        // ✅ 关键修改：动态缓冲区大小
+        // ✅ 修复：通过 JNI 获取设备信息
         private int CalculateBufferSize(uint sampleRate)
         {
-            int latencyMs = IsHighPerformanceDevice() ? 20 : 60; // 高性能设备20ms，低性能60ms
+            int latencyMs = IsHighPerformanceDevice() ? 20 : 60;
             int bufferSize = (int)(sampleRate * latencyMs / 1000);
             Logger.Debug?.Print(LogClass.Audio, $"CalculateBufferSize: latencyMs={latencyMs}, bufferSize={bufferSize}");
             return bufferSize;
         }
 
-        // ✅ 关键修改：根据设备型号判断性能
+        // ✅ 修复：使用 JNI 获取设备型号和品牌
         private bool IsHighPerformanceDevice()
         {
-            string device = Android.OS.Build.Device.ToLower();
-            string model = Android.OS.Build.Model.ToLower();
-            
-            string[] highPerfDevices = {
-                "sdm845", "sdm855", "sdm865", "sdm888", "sm8350", "sm8450", "sm8550",
-                "kirin980", "kirin990", "kirin9000", "dimensity9000", "dimensity9200",
-                "exynos9820", "exynos990", "exynos2100", "exynos2200"
-            };
-            
-            foreach (string perfDevice in highPerfDevices) {
-                if (device.Contains(perfDevice) || model.Contains(perfDevice)) {
-                    Logger.Debug?.Print(LogClass.Audio, $"High performance device detected: {device} / {model}");
-                    return true;
+            try
+            {
+                string device = Marshal.PtrToStringAnsi(GetAndroidDeviceModel())?.ToLower() ?? "";
+                string brand = Marshal.PtrToStringAnsi(GetAndroidDeviceBrand())?.ToLower() ?? "";
+                
+                string[] highPerfDevices = {
+                    "sdm845", "sdm855", "sdm865", "sdm888", "sm8350", "sm8450", "sm8550",
+                    "kirin980", "kirin990", "kirin9000", "dimensity9000", "dimensity9200",
+                    "exynos9820", "exynos990", "exynos2100", "exynos2200",
+                    "starqlte", "beyond1", "dreamlte", "raphael", "cepheus", "vangogh"
+                };
+                
+                foreach (string perfDevice in highPerfDevices) {
+                    if (device.Contains(perfDevice) || brand.Contains(perfDevice)) {
+                        Logger.Debug?.Print(LogClass.Audio, $"High performance device detected: {device} / {brand}");
+                        return true;
+                    }
                 }
+                
+                Logger.Debug?.Print(LogClass.Audio, $"Low performance device: {device} / {brand}");
+                return false;
             }
-            
-            Logger.Debug?.Print(LogClass.Audio, $"Low performance device: {device} / {model}");
-            return false;
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Audio, $"Failed to detect device performance: {ex.Message}");
+                return false;
+            }
         }
 
         // ========== 音频会话类 ==========
@@ -227,7 +243,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, (ulong)sampleCount));
                 _totalWrittenSamples += (ulong)sampleCount;
 
-                // ✅ 关键修改：添加写入频率日志
+                // 添加写入频率日志
                 Logger.Debug?.Print(LogClass.Audio, $"QueueBuffer: wrote {sampleCount} samples");
             }
 
