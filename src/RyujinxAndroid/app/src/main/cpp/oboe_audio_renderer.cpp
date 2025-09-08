@@ -99,7 +99,7 @@ void RingBuffer::clear() {
 
 // =============== OboeAudioRenderer Implementation ===============
 OboeAudioRenderer::OboeAudioRenderer()
-    : mRingBuffer(std::make_unique<RingBuffer>(48000 * 2 * 5)) // 5秒的缓冲
+    : mRingBuffer(std::make_unique<RingBuffer>(48000 * 2 * 10)) // 10秒的缓冲（原为5秒）
 {
     logToFile(3, "OboeAudio", "OboeAudioRenderer constructor called");
 }
@@ -256,7 +256,7 @@ void OboeAudioRenderer::writeAudio(const float* data, int32_t numFrames) {
                 mIsStreamStarted.store(true, std::memory_order_release);
                 logToFile(4, "OboeAudio", "Audio stream started on first write!");
                 
-                // ✅ 关键修改：预填充 500ms 静音（原为 100ms）
+                // ✅ 关键修改：预填充 500ms 静音（原为 200ms）
                 int32_t sampleRate = mSampleRate.load();
                 int32_t frames = sampleRate / 2; // 500ms
                 int32_t channels = mChannelCount.load();
