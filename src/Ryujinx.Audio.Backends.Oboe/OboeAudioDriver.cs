@@ -1,4 +1,4 @@
-// OboeAudioDriver.cs (优化版)
+// OboeAudioDriver.cs (完整修复版)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -56,6 +56,8 @@ namespace Ryujinx.Audio.Backends.Oboe
         private readonly ConcurrentDictionary<OboeAudioSession, byte> _sessions = new();
         private bool _isOboeInitialized = false;
         private float[] _tempFloatBuffer = Array.Empty<float>();
+        private Thread _updateThread;
+        private bool _stillRunning = true;
 
         public float Volume
         {
@@ -72,6 +74,29 @@ namespace Ryujinx.Audio.Backends.Oboe
         public OboeAudioDriver()
         {
             Logger.Info?.Print(LogClass.Audio, "OboeAudioDriver constructor called");
+            StartUpdateThread();
+        }
+
+        private void StartUpdateThread()
+        {
+            _updateThread = new Thread(() =>
+            {
+                while (_stillRunning)
+                {
+                    Thread.Sleep(10); // 适当间隔
+                    
+                    foreach (var session in _sessions.Keys)
+                    {
+                        int bufferedFrames = getOboeBufferedFrames();
+                        session.UpdatePlaybackStatus(bufferedFrames);
+                    }
+                }
+            })
+            {
+                Name = "Audio.Oboe.UpdateThread",
+                IsBackground = true
+            };
+            _updateThread.Start();
         }
 
         public void Dispose()
@@ -87,6 +112,9 @@ namespace Ryujinx.Audio.Backends.Oboe
                 Logger.Info?.Print(LogClass.Audio, "Disposing OboeAudioDriver");
                 if (disposing)
                 {
+                    _stillRunning = false;
+                    _updateThread?.Join(100);
+                    
                     shutdownOboeAudio();
                     _isOboeInitialized = false;
                     _pauseEvent?.Dispose();
@@ -155,12 +183,12 @@ namespace Ryujinx.Audio.Backends.Oboe
             return session;
         }
 
-        private bool Unregister(OboeAudioSession session) => _sessions.TryRemove(session, out _);
+        internal bool Unregister(OboeAudioSession session) => _sessions.TryRemove(session, out _);
 
         // ✅ 修复：通过 JNI 获取设备信息
         private int CalculateBufferSize(uint sampleRate)
         {
-            int latencyMs = IsHighPerformanceDevice() ? 40 : 80; // 增加延迟容限
+            int latencyMs = IsHighPerformanceDevice() ? 20 : 60;
             int bufferSize = (int)(sampleRate * latencyMs / 1000);
             Logger.Debug?.Print(LogClass.Audio, $"CalculateBufferSize: latencyMs={latencyMs}, bufferSize={bufferSize}");
             return bufferSize;
@@ -211,6 +239,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             private readonly OboeAudioDriver _driver;
             private readonly ConcurrentQueue<OboeAudioBuffer> _queuedBuffers = new();
             private ulong _totalWrittenSamples;
+            private ulong _totalPlayedSamples;
             private bool _active;
             private float _volume;
             private readonly int _channelCount;
@@ -227,6 +256,29 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _channelCount = (int)channelCount;
                 _volume = 1.0f;
                 Logger.Info?.Print(LogClass.Audio, $"Session created: {sampleRate}Hz, {channelCount}ch");
+            }
+
+            public void UpdatePlaybackStatus(int bufferedFrames)
+            {
+                ulong playedSamples = _totalWrittenSamples - (ulong)bufferedFrames * (ulong)_channelCount;
+                
+                ulong availableSampleCount = playedSamples - _totalPlayedSamples;
+                
+                while (availableSampleCount > 0 && _queuedBuffers.TryPeek(out OboeAudioBuffer driverBuffer))
+                {
+                    ulong sampleStillNeeded = driverBuffer.SampleCount - driverBuffer.SamplePlayed;
+                    ulong playedAudioBufferSampleCount = Math.Min(sampleStillNeeded, availableSampleCount);
+                    
+                    driverBuffer.SamplePlayed += playedAudioBufferSampleCount;
+                    availableSampleCount -= playedAudioBufferSampleCount;
+                    _totalPlayedSamples += playedAudioBufferSampleCount;
+                    
+                    if (driverBuffer.SamplePlayed == driverBuffer.SampleCount)
+                    {
+                        _queuedBuffers.TryDequeue(out _);
+                        _driver.GetUpdateRequiredEvent().Set();
+                    }
+                }
             }
 
             public override void Dispose() => _driver.Unregister(this);
@@ -248,11 +300,12 @@ namespace Ryujinx.Audio.Backends.Oboe
                 ConvertToFloatInPlace(buffer.Data, _driver._tempFloatBuffer, sampleCount, _volume);
                 writeOboeAudio(_driver._tempFloatBuffer, sampleCount / _channelCount);
 
+                // 记录缓冲区信息
                 _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, (ulong)sampleCount));
                 _totalWrittenSamples += (ulong)sampleCount;
 
                 // 添加写入频率日志
-                Logger.Debug?.Print(LogClass.Audio, $"QueueBuffer: wrote {sampleCount} samples, total: {_totalWrittenSamples}");
+                Logger.Debug?.Print(LogClass.Audio, $"QueueBuffer: wrote {sampleCount} samples");
                 
                 // 优化：立即触发更多写入
                 Thread.Yield();
@@ -272,11 +325,7 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             public override ulong GetPlayedSampleCount()
             {
-                int bufferedFrames = getOboeBufferedFrames();
-                ulong bufferedSamples = (ulong)bufferedFrames * (ulong)_channelCount;
-                return _totalWrittenSamples > bufferedSamples 
-                    ? _totalWrittenSamples - bufferedSamples 
-                    : 0;
+                return _totalPlayedSamples;
             }
 
             public override void UnregisterBuffer(AudioBuffer buffer)
@@ -304,11 +353,13 @@ namespace Ryujinx.Audio.Backends.Oboe
         {
             public readonly ulong DriverIdentifier;
             public readonly ulong SampleCount;
+            public ulong SamplePlayed;
 
             public OboeAudioBuffer(ulong driverIdentifier, ulong sampleCount)
             {
                 DriverIdentifier = driverIdentifier;
                 SampleCount = sampleCount;
+                SamplePlayed = 0;
             }
         }
     }
