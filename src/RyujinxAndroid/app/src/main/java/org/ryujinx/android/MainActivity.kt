@@ -235,7 +235,9 @@ class MainActivity : BaseActivity() {
             LogToFile.log("MainActivity", "Disabling turbo mode and shutting down Oboe audio")
             mainViewModel?.performanceManager?.setTurboMode(false)
             // 关闭 Oboe 音频
-            NativeHelpers.instance.shutdownOboeAudio()
+            if (NativeHelpers.instance.isOboeInitialized()) {
+                NativeHelpers.instance.shutdownOboeAudio()
+            }
         }
     }
 
@@ -249,23 +251,27 @@ class MainActivity : BaseActivity() {
             setFullScreen(true)
             if (QuickSettings(this).enableMotion)
                 motionSensorManager.register()
-            // 重新初始化 Oboe 音频
-            NativeHelpers.instance.initOboeAudio()
+            
+            // 只有在音频未初始化时才重新初始化
+            if (!NativeHelpers.instance.isOboeInitialized()) {
+                LogToFile.log("MainActivity", "Re-initializing Oboe audio")
+                NativeHelpers.instance.initOboeAudio()
+            }
         }
     }
 
     override fun onPause() {
         super.onPause()
         LogToFile.log("MainActivity", "onPause called")
-        isActive = true
+        isActive = false
 
         if (isGameRunning) {
-            LogToFile.log("MainActivity", "Game is running, disabling turbo mode and shutting down Oboe audio")
+            LogToFile.log("MainActivity", "Game is running, disabling turbo mode")
             mainViewModel?.performanceManager?.setTurboMode(false)
-            // 关闭 Oboe 音频
-            NativeHelpers.instance.shutdownOboeAudio()
+            
+            // 不要在这里关闭音频，只在onStop中关闭
+            // 这样可以避免频繁的音频设备开关
         }
-
         motionSensorManager.unregister()
     }
 
