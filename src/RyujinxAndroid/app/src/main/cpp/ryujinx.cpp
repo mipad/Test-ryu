@@ -6,6 +6,7 @@
 #include "oboe_audio_renderer.h"
 #include <android/log.h>
 #include <stdarg.h>
+#include <sys/system_properties.h>
 
 std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
 
