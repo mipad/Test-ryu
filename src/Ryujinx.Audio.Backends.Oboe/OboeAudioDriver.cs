@@ -1,4 +1,4 @@
-// OboeAudioDriver.cs
+// OboeAudioDriver.cs (完整修复版)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -110,7 +110,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         // ========== 打开设备会话 ==========
         public IHardwareDeviceSession OpenDeviceSession(
             IHardwareDeviceDriver.Direction direction,
-            IVirtualMemoryManager memoryManager,
+            IVirtualMemoryManager memoryManager, // ← 关键：获取 memoryManager
             SampleFormat sampleFormat,
             uint sampleRate,
             uint channelCount)
@@ -142,7 +142,8 @@ namespace Ryujinx.Audio.Backends.Oboe
                 Logger.Info?.Print(LogClass.Audio, "Oboe audio initialized successfully");
             }
 
-            var session = new OboeAudioSession(this, sampleFormat, sampleRate, channelCount);
+            // ✅ 传入 memoryManager！
+            var session = new OboeAudioSession(this, memoryManager, sampleFormat, sampleRate, channelCount);
             _sessions.TryAdd(session, 0);
             return session;
         }
@@ -161,8 +162,14 @@ namespace Ryujinx.Audio.Backends.Oboe
             private float _volume;
             private readonly int _channelCount;
 
-            public OboeAudioSession(OboeAudioDriver driver, SampleFormat sampleFormat, uint sampleRate, uint channelCount) 
-                : base(null, sampleFormat, sampleRate, channelCount)
+            // ✅ 修改构造函数：接收并传递 memoryManager
+            public OboeAudioSession(
+                OboeAudioDriver driver,
+                IVirtualMemoryManager memoryManager, // ← 新增
+                SampleFormat sampleFormat,
+                uint sampleRate,
+                uint channelCount) 
+                : base(memoryManager, sampleFormat, sampleRate, channelCount) // ← 传给基类
             {
                 _driver = driver;
                 _channelCount = (int)channelCount;
