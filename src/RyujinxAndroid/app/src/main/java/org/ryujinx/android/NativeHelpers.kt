@@ -1,6 +1,7 @@
 package org.ryujinx.android
 
 import android.view.Surface
+import android.util.Log
 
 class NativeHelpers {
 
@@ -9,6 +10,26 @@ class NativeHelpers {
 
         init {
             System.loadLibrary("ryujinxjni")
+        }
+        
+        // 从 C++ 调用此方法来记录日志
+        @JvmStatic
+        fun logFromNative(level: Int, tag: String, message: String) {
+            when (level) {
+                Log.ERROR -> LogToFile.log(tag, "ERROR: $message")
+                Log.WARN -> LogToFile.log(tag, "WARN: $message")
+                Log.INFO -> LogToFile.log(tag, "INFO: $message")
+                Log.DEBUG -> LogToFile.log(tag, "DEBUG: $message")
+                else -> LogToFile.log(tag, "UNKNOWN: $message")
+            }
+            // 同时输出到 Android 日志
+            when (level) {
+                Log.ERROR -> Log.e(tag, message)
+                Log.WARN -> Log.w(tag, message)
+                Log.INFO -> Log.i(tag, message)
+                Log.DEBUG -> Log.d(tag, message)
+                else -> Log.v(tag, message)
+            }
         }
     }
 
