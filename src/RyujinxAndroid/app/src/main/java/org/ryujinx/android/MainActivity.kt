@@ -63,12 +63,19 @@ class MainActivity : BaseActivity() {
         if (_isInit)
             return
 
+        // 初始化日志系统
+        LogToFile.initialize(this)
+        LogToFile.log("MainActivity", "Initializing application")
+
         val appPath: String = AppPath
+        LogToFile.log("MainActivity", "App path: $appPath")
 
         var quickSettings = QuickSettings(this)
+        LogToFile.log("MainActivity", "Quick settings loaded")
         
         // 设置跳过内存屏障
         RyujinxNative.jnaInstance.setSkipMemoryBarriers(quickSettings.skipMemoryBarriers)
+        LogToFile.log("MainActivity", "Skip memory barriers: ${quickSettings.skipMemoryBarriers}")
         
         RyujinxNative.jnaInstance.loggingSetEnabled(
             LogLevel.Debug.ordinal,
@@ -105,20 +112,30 @@ class MainActivity : BaseActivity() {
         RyujinxNative.jnaInstance.loggingEnabledGraphicsLog(
             quickSettings.enableTraceLogs
         )
+        LogToFile.log("MainActivity", "Logging settings applied")
+        
         val success =
             RyujinxNative.jnaInstance.javaInitialize(appPath, JNIEnv.CURRENT)
 
+        LogToFile.log("MainActivity", "Java initialization result: $success")
+
         // 初始化 Oboe 音频
         if (success) {
+            LogToFile.log("MainActivity", "Initializing Oboe audio")
             NativeHelpers.instance.initOboeAudio()
+            LogToFile.log("MainActivity", "Oboe audio initialization called")
+        } else {
+            LogToFile.log("MainActivity", "Skipping Oboe audio initialization due to failed Java init")
         }
 
         uiHandler = UiHandler()
         _isInit = success
+        LogToFile.log("MainActivity", "Initialization complete: $_isInit")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        LogToFile.log("MainActivity", "onCreate called")
 
         motionSensorManager = MotionSensorManager(this)
         Thread.setDefaultUncaughtExceptionHandler(crashHandler)
@@ -126,10 +143,12 @@ class MainActivity : BaseActivity() {
         if (
             !Environment.isExternalStorageManager()
         ) {
+            LogToFile.log("MainActivity", "Requesting full storage access")
             storageHelper?.storage?.requestFullStorageAccess()
         }
 
         AppPath = this.getExternalFilesDir(null)!!.absolutePath
+        LogToFile.log("MainActivity", "App path set to: $AppPath")
 
         initialize()
 
@@ -156,19 +175,23 @@ class MainActivity : BaseActivity() {
                 }
             }
         }
+        LogToFile.log("MainActivity", "UI setup complete")
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
+        LogToFile.log("MainActivity", "onSaveInstanceState called")
         storageHelper?.onSaveInstanceState(outState)
         super.onSaveInstanceState(outState)
     }
 
     override fun onRestoreInstanceState(savedInstanceState: Bundle) {
         super.onRestoreInstanceState(savedInstanceState)
+        LogToFile.log("MainActivity", "onRestoreInstanceState called")
         storageHelper?.onRestoreInstanceState(savedInstanceState)
     }
 
     fun setFullScreen(fullscreen: Boolean) {
+        LogToFile.log("MainActivity", "Setting fullscreen: $fullscreen")
         requestedOrientation =
             if (fullscreen) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_FULL_USER
 
@@ -205,9 +228,11 @@ class MainActivity : BaseActivity() {
 
     override fun onStop() {
         super.onStop()
+        LogToFile.log("MainActivity", "onStop called")
         isActive = false
 
         if (isGameRunning) {
+            LogToFile.log("MainActivity", "Disabling turbo mode and shutting down Oboe audio")
             mainViewModel?.performanceManager?.setTurboMode(false)
             // 关闭 Oboe 音频
             NativeHelpers.instance.shutdownOboeAudio()
@@ -216,9 +241,11 @@ class MainActivity : BaseActivity() {
 
     override fun onResume() {
         super.onResume()
+        LogToFile.log("MainActivity", "onResume called")
         isActive = true
 
         if (isGameRunning) {
+            LogToFile.log("MainActivity", "Game is running, setting fullscreen and initializing Oboe audio")
             setFullScreen(true)
             if (QuickSettings(this).enableMotion)
                 motionSensorManager.register()
@@ -229,14 +256,22 @@ class MainActivity : BaseActivity() {
 
     override fun onPause() {
         super.onPause()
+        LogToFile.log("MainActivity", "onPause called")
         isActive = true
 
         if (isGameRunning) {
+            LogToFile.log("MainActivity", "Game is running, disabling turbo mode and shutting down Oboe audio")
             mainViewModel?.performanceManager?.setTurboMode(false)
             // 关闭 Oboe 音频
             NativeHelpers.instance.shutdownOboeAudio()
         }
 
         motionSensorManager.unregister()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        LogToFile.log("MainActivity", "onDestroy called")
+        LogToFile.close()
     }
 }
