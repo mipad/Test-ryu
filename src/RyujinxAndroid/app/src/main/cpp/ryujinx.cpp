@@ -185,88 +185,138 @@ Java_org_ryujinx_android_NativeHelpers_setIsInitialOrientationFlipped(JNIEnv *en
 // =============== Oboe Audio JNI 接口 ===============
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_initOboeAudio(JNIEnv *env, jobject thiz) {
+    __android_log_write(ANDROID_LOG_DEBUG, "OboeAudio", "Initializing Oboe audio");
     OboeAudioRenderer::getInstance().initialize();
+    __android_log_write(ANDROID_LOG_DEBUG, "OboeAudio", "Oboe audio initialized");
 }
 
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_shutdownOboeAudio(JNIEnv *env, jobject thiz) {
+    __android_log_write(ANDROID_LOG_DEBUG, "OboeAudio", "Shutting down Oboe audio");
     OboeAudioRenderer::getInstance().shutdown();
+    __android_log_write(ANDROID_LOG_DEBUG, "OboeAudio", "Oboe audio shutdown complete");
 }
 
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(JNIEnv *env, jobject thiz, jfloatArray audio_data, jint num_frames) {
     if (!audio_data || num_frames <= 0) {
+        __android_log_write(ANDROID_LOG_WARN, "OboeAudio", "Invalid audio data or frame count");
         return;
     }
 
     jfloat* data = env->GetFloatArrayElements(audio_data, nullptr);
     if (data) {
+        __android_log_print(ANDROID_LOG_DEBUG, "OboeAudio", "Writing %d frames to Oboe", num_frames);
         OboeAudioRenderer::getInstance().writeAudio(data, num_frames);
         env->ReleaseFloatArrayElements(audio_data, data, 0);
+        __android_log_write(ANDROID_LOG_DEBUG, "OboeAudio", "Audio data written successfully");
+    } else {
+        __android_log_write(ANDROID_LOG_ERROR, "OboeAudio", "Failed to get audio data array");
     }
 }
 
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setOboeSampleRate(JNIEnv *env, jobject thiz, jint sample_rate) {
-    if (sample_rate < 8000 || sample_rate > 192000) return;
+    if (sample_rate < 8000 || sample_rate > 192000) {
+        __android_log_print(ANDROID_LOG_WARN, "OboeAudio", "Invalid sample rate: %d", sample_rate);
+        return;
+    }
+    __android_log_print(ANDROID_LOG_DEBUG, "OboeAudio", "Setting sample rate to %d", sample_rate);
     OboeAudioRenderer::getInstance().setSampleRate(sample_rate);
+    __android_log_write(ANDROID_LOG_DEBUG, "OboeAudio", "Sample rate set successfully");
 }
 
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setOboeBufferSize(JNIEnv *env, jobject thiz, jint buffer_size) {
-    if (buffer_size < 64 || buffer_size > 8192) return;
+    if (buffer_size < 64 || buffer_size > 8192) {
+        __android_log_print(ANDROID_LOG_WARN, "OboeAudio", "Invalid buffer size: %d", buffer_size);
+        return;
+    }
+    __android_log_print(ANDROID_LOG_DEBUG, "OboeAudio", "Setting buffer size to %d", buffer_size);
     OboeAudioRenderer::getInstance().setBufferSize(buffer_size);
+    __android_log_write(ANDROID_LOG_DEBUG, "OboeAudio", "Buffer size set successfully");
 }
 
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setOboeVolume(JNIEnv *env, jobject thiz, jfloat volume) {
+    __android_log_print(ANDROID_LOG_DEBUG, "OboeAudio", "Setting volume to %.2f", volume);
     OboeAudioRenderer::getInstance().setVolume(volume);
+    __android_log_write(ANDROID_LOG_DEBUG, "OboeAudio", "Volume set successfully");
 }
 
 JNIEXPORT jboolean JNICALL
 Java_org_ryujinx_android_NativeHelpers_isOboeInitialized(JNIEnv *env, jobject thiz) {
-    return OboeAudioRenderer::getInstance().isInitialized();
+    bool initialized = OboeAudioRenderer::getInstance().isInitialized();
+    __android_log_print(ANDROID_LOG_DEBUG, "OboeAudio", "Oboe initialized check: %s", initialized ? "true" : "false");
+    return initialized;
 }
 
 JNIEXPORT jint JNICALL
 Java_org_ryujinx_android_NativeHelpers_getOboeBufferedFrames(JNIEnv *env, jobject thiz) {
-    return (jint)OboeAudioRenderer::getInstance().getBufferedFrames();
+    int32_t bufferedFrames = (int32_t)OboeAudioRenderer::getInstance().getBufferedFrames();
+    __android_log_print(ANDROID_LOG_DEBUG, "OboeAudio", "Buffered frames: %d", bufferedFrames);
+    return (jint)bufferedFrames;
 }
 
 // =============== Oboe Audio C 接口 (for C# P/Invoke) ===============
 void initOboeAudio() {
+    __android_log_write(ANDROID_LOG_DEBUG, "OboeAudio", "Initializing Oboe audio (C interface)");
     OboeAudioRenderer::getInstance().initialize();
+    __android_log_write(ANDROID_LOG_DEBUG, "OboeAudio", "Oboe audio initialized (C interface)");
 }
 
 void shutdownOboeAudio() {
+    __android_log_write(ANDROID_LOG_DEBUG, "OboeAudio", "Shutting down Oboe audio (C interface)");
     OboeAudioRenderer::getInstance().shutdown();
+    __android_log_write(ANDROID_LOG_DEBUG, "OboeAudio", "Oboe audio shutdown complete (C interface)");
 }
 
 void writeOboeAudio(const float* data, int32_t num_frames) {
-    if (!data || num_frames <= 0) return;
+    if (!data || num_frames <= 0) {
+        __android_log_write(ANDROID_LOG_WARN, "OboeAudio", "Invalid audio data or frame count (C interface)");
+        return;
+    }
+    __android_log_print(ANDROID_LOG_DEBUG, "OboeAudio", "Writing %d frames to Oboe (C interface)", num_frames);
     OboeAudioRenderer::getInstance().writeAudio(data, num_frames);
+    __android_log_write(ANDROID_LOG_DEBUG, "OboeAudio", "Audio data written successfully (C interface)");
 }
 
 void setOboeSampleRate(int32_t sample_rate) {
-    if (sample_rate < 8000 || sample_rate > 192000) return;
+    if (sample_rate < 8000 || sample_rate > 192000) {
+        __android_log_print(ANDROID_LOG_WARN, "OboeAudio", "Invalid sample rate: %d (C interface)", sample_rate);
+        return;
+    }
+    __android_log_print(ANDROID_LOG_DEBUG, "OboeAudio", "Setting sample rate to %d (C interface)", sample_rate);
     OboeAudioRenderer::getInstance().setSampleRate(sample_rate);
+    __android_log_write(ANDROID_LOG_DEBUG, "OboeAudio", "Sample rate set successfully (C interface)");
 }
 
 void setOboeBufferSize(int32_t buffer_size) {
-    if (buffer_size < 64 || buffer_size > 8192) return;
+    if (buffer_size < 64 || buffer_size > 8192) {
+        __android_log_print(ANDROID_LOG_WARN, "OboeAudio", "Invalid buffer size: %d (C interface)", buffer_size);
+        return;
+    }
+    __android_log_print(ANDROID_LOG_DEBUG, "OboeAudio", "Setting buffer size to %d (C interface)", buffer_size);
     OboeAudioRenderer::getInstance().setBufferSize(buffer_size);
+    __android_log_write(ANDROID_LOG_DEBUG, "OboeAudio", "Buffer size set successfully (C interface)");
 }
 
 void setOboeVolume(float volume) {
+    __android_log_print(ANDROID_LOG_DEBUG, "OboeAudio", "Setting volume to %.2f (C interface)", volume);
     OboeAudioRenderer::getInstance().setVolume(volume);
+    __android_log_write(ANDROID_LOG_DEBUG, "OboeAudio", "Volume set successfully (C interface)");
 }
 
 bool isOboeInitialized() {
-    return OboeAudioRenderer::getInstance().isInitialized();
+    bool initialized = OboeAudioRenderer::getInstance().isInitialized();
+    __android_log_print(ANDROID_LOG_DEBUG, "OboeAudio", "Oboe initialized check: %s (C interface)", initialized ? "true" : "false");
+    return initialized;
 }
 
 int32_t getOboeBufferedFrames() {
-    return (int32_t)OboeAudioRenderer::getInstance().getBufferedFrames();
+    int32_t bufferedFrames = (int32_t)OboeAudioRenderer::getInstance().getBufferedFrames();
+    __android_log_print(ANDROID_LOG_DEBUG, "OboeAudio", "Buffered frames: %d (C interface)", bufferedFrames);
+    return bufferedFrames;
 }
 
 } // extern "C"
