@@ -177,7 +177,7 @@ void setCurrentTransform(long native_window, int transform) {
                     ANATIVEWINDOW_TRANSFORM_MIRROR_HORIZONTAL | ANATIVEWINDOW_TRANSFORM_ROTATE_90); break;
         case 0x40: nativeTransform = ANATIVEWINDOW_TRANSFORM_MIRROR_VERTICAL; break;
         case 0x80: nativeTransform = static_cast<ANativeWindowTransform>(
-                    ANATIVEWINDOW_TRANSFORM_MIRROR_VERTICAL | ANATIVEWINDOW_TRANSFORM_ROTATE_90); break;
+                    ANATIVEWINDOW_TRANSFORM_MIRROR_VERTICAL | ANATIVEWindow_TRANSFORM_ROTATE_90); break;
         case 0x100: nativeTransform = ANATIVEWINDOW_TRANSFORM_IDENTITY; break;
     }
 
@@ -330,20 +330,6 @@ Java_org_ryujinx_android_NativeHelpers_getOboeBufferedFrames(JNIEnv *env, jobjec
     return (jint)bufferedFrames;
 }
 
-// ========== 设备信息 JNI 函数 ===============
-JNIEXPORT jstring JNICALL
-Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceModel(JNIEnv *env, jobject thiz) {
-    char device[PROP_VALUE_MAX];
-    __system_property_get("ro.product.device", device);
-    return env->NewStringUTF(device);
-}
-
-JNIEXPORT jstring JNICALL
-Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceBrand(JNIEnv *env, jobject thiz) {
-    char brand[PROP_VALUE_MAX];
-    __system_property_get("ro.product.brand", brand);
-    return env->NewStringUTF(brand);
-}
 // =============== Oboe Audio C 接口 (for C# P/Invoke) ===============
 void initOboeAudio() {
     logToFile(LOG_LEVEL_DEBUG, "OboeAudio", "Initializing Oboe audio (C interface)");
