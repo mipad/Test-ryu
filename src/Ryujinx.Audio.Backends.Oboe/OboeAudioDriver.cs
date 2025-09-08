@@ -137,7 +137,8 @@ namespace Ryujinx.Audio.Backends.Oboe
             if (!_isOboeInitialized)
             {
                 setOboeSampleRate((int)sampleRate);
-                setOboeBufferSize(CalculateBufferSize(sampleRate));
+                // 修复：将缓冲区大小除以通道数转换为帧数
+                setOboeBufferSize(CalculateBufferSize(sampleRate) / (int)channelCount);
                 setOboeVolume(_volume);
 
                 initOboeAudio();
@@ -165,13 +166,20 @@ namespace Ryujinx.Audio.Backends.Oboe
             return bufferSize;
         }
 
-        // ✅ 修复：使用 JNI 获取设备型号和品牌
+        // ✅ 修复：使用 JNI 获取设备型号和品牌，添加天玑8100识别
         private bool IsHighPerformanceDevice()
         {
             try
             {
                 string device = Marshal.PtrToStringAnsi(GetAndroidDeviceModel())?.ToLower() ?? "";
                 string brand = Marshal.PtrToStringAnsi(GetAndroidDeviceBrand())?.ToLower() ?? "";
+                
+                // 添加天玑8100的识别
+                if (device.Contains("mt6893") || device.Contains("dimensity8100") || brand.Contains("mediatek"))
+                {
+                    Logger.Debug?.Print(LogClass.Audio, $"High performance device detected: {device} / {brand}");
+                    return true;
+                }
                 
                 string[] highPerfDevices = {
                     "sdm845", "sdm855", "sdm865", "sdm888", "sm8350", "sm8450", "sm8550",
@@ -245,6 +253,9 @@ namespace Ryujinx.Audio.Backends.Oboe
 
                 // 添加写入频率日志
                 Logger.Debug?.Print(LogClass.Audio, $"QueueBuffer: wrote {sampleCount} samples");
+                
+                // 优化：立即触发更多写入
+                Thread.Yield();
             }
 
             public override bool WasBufferFullyConsumed(AudioBuffer buffer) =>
