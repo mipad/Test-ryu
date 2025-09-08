@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (最终优化版)
+// oboe_audio_renderer.cpp (优化版)
 #include "oboe_audio_renderer.h"
 #include <android/log.h>
 #include <cstring>
@@ -99,7 +99,7 @@ void RingBuffer::clear() {
 
 // =============== OboeAudioRenderer Implementation ===============
 OboeAudioRenderer::OboeAudioRenderer()
-    : mRingBuffer(std::make_unique<RingBuffer>(48000 * 2 * 10)) // 10秒的缓冲（原为5秒）
+    : mRingBuffer(std::make_unique<RingBuffer>(48000 * 2 * 5)) // 减少到5秒缓冲
 {
     logToFile(3, "OboeAudio", "OboeAudioRenderer constructor called");
 }
@@ -118,10 +118,10 @@ bool OboeAudioRenderer::openStreamWithFormat(oboe::AudioFormat format) {
     oboe::AudioStreamBuilder builder;
 
     logToFile(3, "OboeAudio", "Attempting to open stream with format: %d", format);
-    builder.setAudioApi(oboe::AudioApi::OpenSLES);
+    // 不再强制使用OpenSL ES，让Oboe自动选择最佳API
     
     builder.setDirection(oboe::Direction::Output)
-           ->setPerformanceMode(oboe::PerformanceMode::None)
+           ->setPerformanceMode(oboe::PerformanceMode::LowLatency) // 使用低延迟模式
            ->setSharingMode(oboe::SharingMode::Shared)
            ->setFormat(format)
            ->setChannelCount(mChannelCount.load(std::memory_order_relaxed))
@@ -137,6 +137,7 @@ bool OboeAudioRenderer::openStreamWithFormat(oboe::AudioFormat format) {
     }
 
     logToFile(4, "OboeAudio", "Successfully opened audio stream with format: %d", format);
+    logToFile(4, "OboeAudio", "Using audio API: %s", oboe::convertToText(mAudioStream->getAudioApi()));
     return true;
 }
 
@@ -256,9 +257,9 @@ void OboeAudioRenderer::writeAudio(const float* data, int32_t numFrames) {
                 mIsStreamStarted.store(true, std::memory_order_release);
                 logToFile(4, "OboeAudio", "Audio stream started on first write!");
                 
-                // ✅ 关键修改：预填充 500ms 静音（原为 200ms）
+                // 减少预填充到100ms静音
                 int32_t sampleRate = mSampleRate.load();
-                int32_t frames = sampleRate / 2; // 500ms
+                int32_t frames = sampleRate / 10; // 100ms
                 int32_t channels = mChannelCount.load();
                 std::vector<float> silence(frames * channels, 0.0f);
                 mRingBuffer->write(silence.data(), silence.size());
