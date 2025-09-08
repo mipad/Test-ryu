@@ -292,6 +292,21 @@ namespace Ryujinx.Audio.Backends.Oboe
 
                 if (buffer.Data == null || buffer.Data.Length == 0) return;
 
+                // --- 新增：流量控制逻辑 ---
+                // 获取当前缓冲的帧数
+                int bufferedFrames = getOboeBufferedFrames();
+                // 计算最大允许缓冲的帧数（例如 5 * 1024 帧，约 100ms）
+                int maxBufferedFrames = 5 * 1024;
+
+                // 如果缓冲过多，就等待一段时间再重试，避免疯狂写入
+                while (bufferedFrames > maxBufferedFrames && _driver._stillRunning)
+                {
+                    Logger.Debug?.Print(LogClass.Audio, $"QueueBuffer: Buffered {bufferedFrames} frames, waiting...");
+                    Thread.Sleep(5); // 等待5ms
+                    bufferedFrames = getOboeBufferedFrames(); // 重新检查
+                }
+                // --- 流量控制逻辑结束 ---
+
                 // 优化：复用临时数组
                 int sampleCount = buffer.Data.Length / 2;
                 if (_driver._tempFloatBuffer.Length < sampleCount)
@@ -305,10 +320,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _totalWrittenSamples += (ulong)sampleCount;
 
                 // 添加写入频率日志
-                Logger.Debug?.Print(LogClass.Audio, $"QueueBuffer: wrote {sampleCount} samples");
-                
-                // 优化：立即触发更多写入
-                Thread.Yield();
+                Logger.Debug?.Print(LogClass.Audio, $"QueueBuffer: wrote {sampleCount} samples, buffered frames: {bufferedFrames}");
             }
 
             public override bool WasBufferFullyConsumed(AudioBuffer buffer) =>
