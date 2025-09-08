@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp
+// oboe_audio_renderer.cpp (最终优化版)
 #include "oboe_audio_renderer.h"
 #include <android/log.h>
 #include <cstring>
@@ -181,7 +181,6 @@ bool OboeAudioRenderer::initialize() {
             }
         }
 
-        // ✅ 关键：不调用 requestStart()！等待首次写入时启动
         updateStreamParameters();
         mIsInitialized.store(true, std::memory_order_release);
         logToFile(4, "OboeAudio", "Oboe stream opened (not started) on attempt %d", attempt + 1);
@@ -248,7 +247,7 @@ void OboeAudioRenderer::writeAudio(const float* data, int32_t numFrames) {
         return;
     }
 
-    // ✅ 关键：首次写入时启动流
+    // 首次写入时启动流
     if (!mIsStreamStarted.load(std::memory_order_acquire)) {
         std::lock_guard<std::mutex> lock(mInitMutex);
         if (!mIsStreamStarted.load(std::memory_order_acquire)) {
@@ -257,9 +256,9 @@ void OboeAudioRenderer::writeAudio(const float* data, int32_t numFrames) {
                 mIsStreamStarted.store(true, std::memory_order_release);
                 logToFile(4, "OboeAudio", "Audio stream started on first write!");
                 
-                // ✅ 可选：预填充静音
+                // ✅ 关键修改：预填充 200ms 静音（原为 100ms）
                 int32_t sampleRate = mSampleRate.load();
-                int32_t frames = sampleRate / 10; // 100ms
+                int32_t frames = sampleRate / 5; // 200ms
                 int32_t channels = mChannelCount.load();
                 std::vector<float> silence(frames * channels, 0.0f);
                 mRingBuffer->write(silence.data(), silence.size());
@@ -313,7 +312,7 @@ size_t OboeAudioRenderer::getAvailableFrames() const {
 oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
     oboe::AudioStream* audioStream, void* audioData, int32_t numFrames) {
 
-    // ✅ 关键：流未启动时返回静音且不记录警告
+    // 流未启动 → 静音，无警告
     if (!mIsStreamStarted.load(std::memory_order_acquire)) {
         oboe::AudioFormat format = mAudioFormat.load(std::memory_order_relaxed);
         int32_t channelCount = mChannelCount.load(std::memory_order_relaxed);
