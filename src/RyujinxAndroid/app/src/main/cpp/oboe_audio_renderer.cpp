@@ -5,13 +5,14 @@
 #include <algorithm>
 #include <thread>
 #include <chrono>
+#include <mutex>  // 添加 mutex 头文件
 
 // 声明 logToFile 函数
 extern "C" void logToFile(int level, const char* tag, const char* format, ...);
 
 // =============== RingBuffer Implementation ===============
 RingBuffer::RingBuffer(size_t capacity)
-    : mCapacity(capacity), mBuffer(capacity) 
+    : mCapacity(capacity), mBuffer(capacity), mReadIndex(0), mWriteIndex(0)
 {
     logToFile(3, "OboeAudio", "RingBuffer created with capacity: %zu", capacity);
     logToFile(3, "OboeAudio", "环形缓冲区已创建，容量: %zu", capacity);
@@ -21,8 +22,8 @@ bool RingBuffer::write(const float* data, size_t count) {
     if (count == 0) return true;
 
     std::lock_guard<std::mutex> lock(mMutex);
-    size_t writeIndex = mWriteIndex;
-    size_t readIndex = mReadIndex;
+    size_t writeIndex = mWriteIndex.load();
+    size_t readIndex = mReadIndex.load();
 
     size_t available = (readIndex > writeIndex) ? (readIndex - writeIndex - 1) : 
                      (mCapacity - writeIndex + readIndex - 1);
@@ -42,9 +43,9 @@ bool RingBuffer::write(const float* data, size_t count) {
         std::memcpy(&mBuffer[0], data + part1, (count - part1) * sizeof(float));
     }
 
-    mWriteIndex = (writeIndex + count) % mCapacity;
-    logToFile(3, "OboeAudio", "RingBuffer wrote %zu samples, new write index: %zu", count, mWriteIndex);
-    logToFile(3, "OboeAudio", "环形缓冲区写入 %zu 样本, 新写入位置: %zu", count, mWriteIndex);
+    mWriteIndex.store((writeIndex + count) % mCapacity);
+    logToFile(3, "OboeAudio", "RingBuffer wrote %zu samples, new write index: %zu", count, mWriteIndex.load());
+    logToFile(3, "OboeAudio", "环形缓冲区写入 %zu 样本, 新写入位置: %zu", count, mWriteIndex.load());
     return true;
 }
 
@@ -52,8 +53,8 @@ size_t RingBuffer::read(float* output, size_t count) {
     if (count == 0) return 0;
 
     std::lock_guard<std::mutex> lock(mMutex);
-    size_t writeIndex = mWriteIndex;
-    size_t readIndex = mReadIndex;
+    size_t writeIndex = mWriteIndex.load();
+    size_t readIndex = mReadIndex.load();
 
     size_t availableSamples = (writeIndex >= readIndex) ? (writeIndex - readIndex) : 
                              (mCapacity - readIndex + writeIndex);
@@ -74,16 +75,16 @@ size_t RingBuffer::read(float* output, size_t count) {
         std::memcpy(output + part1, &mBuffer[0], (toRead - part1) * sizeof(float));
     }
 
-    mReadIndex = (readIndex + toRead) % mCapacity;
-    logToFile(3, "OboeAudio", "RingBuffer read %zu samples, new read index: %zu", toRead, mReadIndex);
-    logToFile(3, "OboeAudio", "环形缓冲区读取 %zu 样本, 新读取位置: %zu", toRead, mReadIndex);
+    mReadIndex.store((readIndex + toRead) % mCapacity);
+    logToFile(3, "OboeAudio", "RingBuffer read %zu samples, new read index: %zu", toRead, mReadIndex.load());
+    logToFile(3, "OboeAudio", "环形缓冲区读取 %zu 样本, 新读取位置: %zu", toRead, mReadIndex.load());
     return toRead;
 }
 
 size_t RingBuffer::available() const {
     std::lock_guard<std::mutex> lock(mMutex);
-    size_t write = mWriteIndex;
-    size_t read = mReadIndex;
+    size_t write = mWriteIndex.load();
+    size_t read = mReadIndex.load();
     
     if (write >= read) {
         return write - read;
@@ -94,8 +95,8 @@ size_t RingBuffer::available() const {
 
 size_t RingBuffer::availableForWrite() const {
     std::lock_guard<std::mutex> lock(mMutex);
-    size_t write = mWriteIndex;
-    size_t read = mReadIndex;
+    size_t write = mWriteIndex.load();
+    size_t read = mReadIndex.load();
     
     if (write >= read) {
         return mCapacity - write + read - 1;
@@ -106,8 +107,8 @@ size_t RingBuffer::availableForWrite() const {
 
 void RingBuffer::clear() {
     std::lock_guard<std::mutex> lock(mMutex);
-    mReadIndex = 0;
-    mWriteIndex = 0;
+    mReadIndex.store(0);
+    mWriteIndex.store(0);
     logToFile(3, "OboeAudio", "RingBuffer cleared");
     logToFile(3, "OboeAudio", "环形缓冲区已清空");
 }
