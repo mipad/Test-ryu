@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <thread>
 #include <chrono>
+#include <mutex>  
 
 // 声明 logToFile 函数
 extern "C" void logToFile(int level, const char* tag, const char* format, ...);
