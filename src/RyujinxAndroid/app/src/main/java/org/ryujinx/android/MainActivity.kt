@@ -1,3 +1,4 @@
+// MainActivity.kt
 package org.ryujinx.android
 
 import android.annotation.SuppressLint
@@ -21,7 +22,6 @@ import org.ryujinx.android.ui.theme.RyujinxAndroidTheme
 import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.QuickSettings
 import org.ryujinx.android.views.MainView
-
 
 class MainActivity : BaseActivity() {
     private var physicalControllerManager: PhysicalControllerManager =
@@ -77,6 +77,7 @@ class MainActivity : BaseActivity() {
         RyujinxNative.jnaInstance.setSkipMemoryBarriers(quickSettings.skipMemoryBarriers)
         LogToFile.log("MainActivity", "Skip memory barriers: ${quickSettings.skipMemoryBarriers}")
         
+        // 设置日志级别
         RyujinxNative.jnaInstance.loggingSetEnabled(
             LogLevel.Debug.ordinal,
             quickSettings.enableDebugLogs
@@ -119,14 +120,13 @@ class MainActivity : BaseActivity() {
 
         LogToFile.log("MainActivity", "Java initialization result: $success")
 
-        // 初始化 Oboe 音频
-        if (success) {
-            LogToFile.log("MainActivity", "Initializing Oboe audio")
-            NativeHelpers.instance.initOboeAudio()
-            LogToFile.log("MainActivity", "Oboe audio initialization called")
-        } else {
-            LogToFile.log("MainActivity", "Skipping Oboe audio initialization due to failed Java init")
-        }
+        // ❌ 移除：不在这里初始化 Oboe 音频！
+        // 让 C# 层在 OpenDeviceSession 时初始化
+        // if (success) {
+        //     LogToFile.log("MainActivity", "Initializing Oboe audio")
+        //     NativeHelpers.instance.initOboeAudio()
+        //     LogToFile.log("MainActivity", "Oboe audio initialization called")
+        // }
 
         uiHandler = UiHandler()
         _isInit = success
@@ -140,9 +140,7 @@ class MainActivity : BaseActivity() {
         motionSensorManager = MotionSensorManager(this)
         Thread.setDefaultUncaughtExceptionHandler(crashHandler)
 
-        if (
-            !Environment.isExternalStorageManager()
-        ) {
+        if (!Environment.isExternalStorageManager()) {
             LogToFile.log("MainActivity", "Requesting full storage access")
             storageHelper?.storage?.requestFullStorageAccess()
         }
@@ -165,7 +163,6 @@ class MainActivity : BaseActivity() {
         mainViewModel?.apply {
             setContent {
                 RyujinxAndroidTheme {
-                    // A surface container using the 'background' color from the theme
                     Surface(
                         modifier = Modifier.fillMaxSize(),
                         color = MaterialTheme.colorScheme.background
@@ -198,15 +195,15 @@ class MainActivity : BaseActivity() {
         val insets = WindowCompat.getInsetsController(window, window.decorView)
 
         insets.apply {
-        if (fullscreen) {
-            insets.hide(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
-            insets.systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        } else {
-            insets.show(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
-            insets.systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
-        }
+            if (fullscreen) {
+                insets.hide(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
+                insets.systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            } else {
+                insets.show(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
+                insets.systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
+            }
         }
     }
 
@@ -234,9 +231,10 @@ class MainActivity : BaseActivity() {
         if (isGameRunning) {
             LogToFile.log("MainActivity", "Disabling turbo mode and shutting down Oboe audio")
             mainViewModel?.performanceManager?.setTurboMode(false)
-            // 关闭 Oboe 音频
+            // 关闭 Oboe 音频（如果已初始化）
             if (NativeHelpers.instance.isOboeInitialized()) {
                 NativeHelpers.instance.shutdownOboeAudio()
+                LogToFile.log("MainActivity", "Oboe audio shutdown completed")
             }
         }
     }
@@ -247,16 +245,17 @@ class MainActivity : BaseActivity() {
         isActive = true
 
         if (isGameRunning) {
-            LogToFile.log("MainActivity", "Game is running, setting fullscreen and initializing Oboe audio")
+            LogToFile.log("MainActivity", "Game is running, setting fullscreen")
             setFullScreen(true)
             if (QuickSettings(this).enableMotion)
                 motionSensorManager.register()
             
-            // 只有在音频未初始化时才重新初始化
-            if (!NativeHelpers.instance.isOboeInitialized()) {
-                LogToFile.log("MainActivity", "Re-initializing Oboe audio")
-                NativeHelpers.instance.initOboeAudio()
-            }
+            // ❌ 移除：不在这里重新初始化 Oboe 音频！
+            // 让 C# 层管理音频生命周期
+            // if (!NativeHelpers.instance.isOboeInitialized()) {
+            //     LogToFile.log("MainActivity", "Re-initializing Oboe audio")
+            //     NativeHelpers.instance.initOboeAudio()
+            // }
         }
     }
 
@@ -268,9 +267,7 @@ class MainActivity : BaseActivity() {
         if (isGameRunning) {
             LogToFile.log("MainActivity", "Game is running, disabling turbo mode")
             mainViewModel?.performanceManager?.setTurboMode(false)
-            
-            // 不要在这里关闭音频，只在onStop中关闭
-            // 这样可以避免频繁的音频设备开关
+            // 不要在这里关闭音频，只在 onStop 中关闭
         }
         motionSensorManager.unregister()
     }
