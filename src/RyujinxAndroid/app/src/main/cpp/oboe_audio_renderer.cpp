@@ -256,9 +256,9 @@ void OboeAudioRenderer::writeAudio(const float* data, int32_t numFrames) {
                 mIsStreamStarted.store(true, std::memory_order_release);
                 logToFile(4, "OboeAudio", "Audio stream started on first write!");
                 
-                // ✅ 关键修改：预填充 200ms 静音（原为 100ms）
+                // ✅ 关键修改：预填充 500ms 静音（原为 100ms）
                 int32_t sampleRate = mSampleRate.load();
-                int32_t frames = sampleRate / 5; // 200ms
+                int32_t frames = sampleRate / 2; // 500ms
                 int32_t channels = mChannelCount.load();
                 std::vector<float> silence(frames * channels, 0.0f);
                 mRingBuffer->write(silence.data(), silence.size());
