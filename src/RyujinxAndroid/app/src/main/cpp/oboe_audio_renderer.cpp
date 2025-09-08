@@ -4,27 +4,14 @@
 #include <cstring>
 #include <algorithm>
 
-#ifndef ALOGE
-#define ALOGE(...) __android_log_print(ANDROID_LOG_ERROR, "OboeAudio", __VA_ARGS__)
-#endif
-
-#ifndef ALOGI
-#define ALOGI(...) __android_log_print(ANDROID_LOG_INFO, "OboeAudio", __VA_ARGS__)
-#endif
-
-#ifndef ALOGW
-#define ALOGW(...) __android_log_print(ANDROID_LOG_WARN, "OboeAudio", __VA_ARGS__)
-#endif
-
-#ifndef ALOGD
-#define ALOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "OboeAudio", __VA_ARGS__)
-#endif
+// 声明 logToFile 函数
+extern "C" void logToFile(int level, const char* tag, const char* format, ...);
 
 // =============== RingBuffer Implementation ===============
 RingBuffer::RingBuffer(size_t capacity)
     : mCapacity(capacity), mBuffer(capacity) 
 {
-    ALOGD("RingBuffer created with capacity: %zu", capacity);
+    logToFile(3, "OboeAudio", "RingBuffer created with capacity: %zu", capacity);
 }
 
 bool RingBuffer::write(const float* data, size_t count) {
@@ -35,7 +22,7 @@ bool RingBuffer::write(const float* data, size_t count) {
 
     size_t available = availableForWrite();
     if (count > available) {
-        ALOGW("RingBuffer write overflow: requested %zu, available %zu", count, available);
+        logToFile(5, "OboeAudio", "RingBuffer write overflow: requested %zu, available %zu", count, available);
         return false;
     }
 
@@ -49,7 +36,7 @@ bool RingBuffer::write(const float* data, size_t count) {
     }
 
     mWriteIndex.store((writeIndex + count) % mCapacity, std::memory_order_release);
-    ALOGD("RingBuffer wrote %zu samples, new write index: %zu", count, mWriteIndex.load());
+    logToFile(3, "OboeAudio", "RingBuffer wrote %zu samples, new write index: %zu", count, mWriteIndex.load());
     return true;
 }
 
@@ -62,7 +49,7 @@ size_t RingBuffer::read(float* output, size_t count) {
     size_t availableSamples = available();
     size_t toRead = std::min(count, availableSamples);
     if (toRead == 0) {
-        ALOGW("RingBuffer read underflow: requested %zu, available %zu", count, availableSamples);
+        logToFile(5, "OboeAudio", "RingBuffer read underflow: requested %zu, available %zu", count, availableSamples);
         return 0;
     }
 
@@ -76,7 +63,7 @@ size_t RingBuffer::read(float* output, size_t count) {
     }
 
     mReadIndex.store((readIndex + toRead) % mCapacity, std::memory_order_release);
-    ALOGD("RingBuffer read %zu samples, new read index: %zu", toRead, mReadIndex.load());
+    logToFile(3, "OboeAudio", "RingBuffer read %zu samples, new read index: %zu", toRead, mReadIndex.load());
     return toRead;
 }
 
@@ -105,18 +92,18 @@ size_t RingBuffer::availableForWrite() const {
 void RingBuffer::clear() {
     mReadIndex.store(0, std::memory_order_relaxed);
     mWriteIndex.store(0, std::memory_order_relaxed);
-    ALOGD("RingBuffer cleared");
+    logToFile(3, "OboeAudio", "RingBuffer cleared");
 }
 
 // =============== OboeAudioRenderer Implementation ===============
 OboeAudioRenderer::OboeAudioRenderer()
     : mRingBuffer(std::make_unique<RingBuffer>(48000 * 2 * 5)) // 5秒的缓冲
 {
-    ALOGD("OboeAudioRenderer constructor called");
+    logToFile(3, "OboeAudio", "OboeAudioRenderer constructor called");
 }
 
 OboeAudioRenderer::~OboeAudioRenderer() {
-    ALOGD("OboeAudioRenderer destructor called");
+    logToFile(3, "OboeAudio", "OboeAudioRenderer destructor called");
     shutdown();
 }
 
@@ -129,7 +116,7 @@ bool OboeAudioRenderer::openStreamWithFormat(oboe::AudioFormat format) {
     oboe::AudioStreamBuilder builder;
 
     // 强制使用 OpenSL ES 后端
-    ALOGD("Attempting to open stream with format: %d", format);
+    logToFile(3, "OboeAudio", "Attempting to open stream with format: %d", format);
     builder.setAudioApi(oboe::AudioApi::OpenSLES);
     
     // 修改为更兼容的模式设置
@@ -145,11 +132,11 @@ bool OboeAudioRenderer::openStreamWithFormat(oboe::AudioFormat format) {
 
     oboe::Result result = builder.openStream(mAudioStream);
     if (result != oboe::Result::OK) {
-        ALOGE("Failed to open audio stream with format %d: %s", format, oboe::convertToText(result));
+        logToFile(6, "OboeAudio", "Failed to open audio stream with format %d: %s", format, oboe::convertToText(result));
         return false;
     }
 
-    ALOGI("Successfully opened audio stream with format: %d", format);
+    logToFile(4, "OboeAudio", "Successfully opened audio stream with format: %d", format);
     return true;
 }
 
@@ -160,30 +147,30 @@ void OboeAudioRenderer::updateStreamParameters() {
         mChannelCount.store(mAudioStream->getChannelCount(), std::memory_order_relaxed);
         mAudioFormat.store(mAudioStream->getFormat(), std::memory_order_relaxed);
         
-        ALOGI("Stream parameters updated: SampleRate=%d, BufferSize=%d, Channels=%d, Format=%d",
+        logToFile(4, "OboeAudio", "Stream parameters updated: SampleRate=%d, BufferSize=%d, Channels=%d, Format=%d",
               mSampleRate.load(), mBufferSize.load(), mChannelCount.load(), mAudioFormat.load());
     }
 }
 
 bool OboeAudioRenderer::initialize() {
     if (mIsInitialized.load(std::memory_order_acquire)) {
-        ALOGD("OboeAudioRenderer already initialized");
+        logToFile(3, "OboeAudio", "OboeAudioRenderer already initialized");
         return true;
     }
 
     std::lock_guard<std::mutex> lock(mInitMutex);
     if (mIsInitialized.load(std::memory_order_acquire)) {
-        ALOGD("OboeAudioRenderer already initialized (double-checked)");
+        logToFile(3, "OboeAudio", "OboeAudioRenderer already initialized (double-checked)");
         return true;
     }
 
-    ALOGI("Initializing OboeAudioRenderer...");
+    logToFile(4, "OboeAudio", "Initializing OboeAudioRenderer...");
     
     // 首先尝试Float格式
     if (!openStreamWithFormat(oboe::AudioFormat::Float)) {
-        ALOGW("Float format failed, trying I16 format");
+        logToFile(5, "OboeAudio", "Float format failed, trying I16 format");
         if (!openStreamWithFormat(oboe::AudioFormat::I16)) {
-            ALOGE("All audio format attempts failed");
+            logToFile(6, "OboeAudio", "All audio format attempts failed");
             return false;
         }
     }
@@ -191,7 +178,7 @@ bool OboeAudioRenderer::initialize() {
     // 启动音频流
     oboe::Result result = mAudioStream->requestStart();
     if (result != oboe::Result::OK) {
-        ALOGE("Failed to start audio stream: %s", oboe::convertToText(result));
+        logToFile(6, "OboeAudio", "Failed to start audio stream: %s", oboe::convertToText(result));
         mAudioStream->close();
         mAudioStream.reset();
         return false;
@@ -201,78 +188,78 @@ bool OboeAudioRenderer::initialize() {
     updateStreamParameters();
     
     mIsInitialized.store(true, std::memory_order_release);
-    ALOGI("OboeAudioRenderer initialized successfully");
+    logToFile(4, "OboeAudio", "OboeAudioRenderer initialized successfully");
     return true;
 }
 
 void OboeAudioRenderer::shutdown() {
-    ALOGI("Shutting down OboeAudioRenderer");
+    logToFile(4, "OboeAudio", "Shutting down OboeAudioRenderer");
     if (mAudioStream) {
-        ALOGD("Stopping audio stream");
+        logToFile(3, "OboeAudio", "Stopping audio stream");
         mAudioStream->stop();
-        ALOGD("Closing audio stream");
+        logToFile(3, "OboeAudio", "Closing audio stream");
         mAudioStream->close();
         mAudioStream.reset();
-        ALOGD("Audio stream released");
+        logToFile(3, "OboeAudio", "Audio stream released");
     }
     if (mRingBuffer) {
-        ALOGD("Clearing ring buffer");
+        logToFile(3, "OboeAudio", "Clearing ring buffer");
         mRingBuffer->clear();
     }
     mIsInitialized.store(false, std::memory_order_release);
-    ALOGI("OboeAudioRenderer shutdown complete");
+    logToFile(4, "OboeAudio", "OboeAudioRenderer shutdown complete");
 }
 
 void OboeAudioRenderer::setSampleRate(int32_t sampleRate) {
     if (sampleRate < 8000 || sampleRate > 192000) {
-        ALOGW("Invalid sample rate: %d", sampleRate);
+        logToFile(5, "OboeAudio", "Invalid sample rate: %d", sampleRate);
         return;
     }
-    ALOGD("Setting sample rate to: %d", sampleRate);
+    logToFile(3, "OboeAudio", "Setting sample rate to: %d", sampleRate);
     mSampleRate.store(sampleRate, std::memory_order_relaxed);
 }
 
 void OboeAudioRenderer::setBufferSize(int32_t bufferSize) {
     if (bufferSize < 64 || bufferSize > 8192) {
-        ALOGW("Invalid buffer size: %d", bufferSize);
+        logToFile(5, "OboeAudio", "Invalid buffer size: %d", bufferSize);
         return;
     }
-    ALOGD("Setting buffer size to: %d", bufferSize);
+    logToFile(3, "OboeAudio", "Setting buffer size to: %d", bufferSize);
     mBufferSize.store(bufferSize, std::memory_order_relaxed);
 }
 
 void OboeAudioRenderer::setVolume(float volume) {
     float clampedVolume = std::clamp(volume, 0.0f, 1.0f);
-    ALOGD("Setting volume to: %.2f", clampedVolume);
+    logToFile(3, "OboeAudio", "Setting volume to: %.2f", clampedVolume);
     mVolume.store(clampedVolume, std::memory_order_relaxed);
 }
 
 void OboeAudioRenderer::writeAudio(const float* data, int32_t numFrames) {
     if (!mIsInitialized.load(std::memory_order_acquire)) {
-        ALOGW("Attempted to write audio but renderer is not initialized");
+        logToFile(5, "OboeAudio", "Attempted to write audio but renderer is not initialized");
         return;
     }
 
     if (!data || numFrames <= 0) {
-        ALOGW("Invalid audio data or frame count: %d", numFrames);
+        logToFile(5, "OboeAudio", "Invalid audio data or frame count: %d", numFrames);
         return;
     }
 
     int32_t channelCount = mChannelCount.load(std::memory_order_relaxed);
     size_t totalSamples = numFrames * channelCount;
     
-    ALOGD("Writing %d frames (%zu samples) to ring buffer", numFrames, totalSamples);
+    logToFile(3, "OboeAudio", "Writing %d frames (%zu samples) to ring buffer", numFrames, totalSamples);
     
     if (!mRingBuffer->write(data, totalSamples)) {
-        ALOGW("Ring buffer overflow when writing %zu samples", totalSamples);
+        logToFile(5, "OboeAudio", "Ring buffer overflow when writing %zu samples", totalSamples);
         // 静默处理溢出
     } else {
-        ALOGD("Successfully wrote %zu samples to ring buffer", totalSamples);
+        logToFile(3, "OboeAudio", "Successfully wrote %zu samples to ring buffer", totalSamples);
     }
 }
 
 void OboeAudioRenderer::clearBuffer() {
-    ALOGD("Clearing audio buffer");
+    logToFile(3, "OboeAudio", "Clearing audio buffer");
     if (mRingBuffer) {
         mRingBuffer->clear();
     }
@@ -284,7 +271,7 @@ size_t OboeAudioRenderer::getBufferedFrames() const {
     }
     int32_t channelCount = mChannelCount.load(std::memory_order_relaxed);
     size_t frames = mRingBuffer->available() / channelCount;
-    ALOGD("Buffered frames: %zu", frames);
+    logToFile(3, "OboeAudio", "Buffered frames: %zu", frames);
     return frames;
 }
 
@@ -294,7 +281,7 @@ size_t OboeAudioRenderer::getAvailableFrames() const {
     }
     int32_t channelCount = mChannelCount.load(std::memory_order_relaxed);
     size_t frames = mRingBuffer->availableForWrite() / channelCount;
-    ALOGD("Available frames: %zu", frames);
+    logToFile(3, "OboeAudio", "Available frames: %zu", frames);
     return frames;
 }
 
@@ -302,7 +289,7 @@ oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
     oboe::AudioStream* audioStream, void* audioData, int32_t numFrames) {
 
     if (!mIsInitialized.load(std::memory_order_acquire)) {
-        ALOGW("Audio callback called but renderer is not initialized");
+        logToFile(5, "OboeAudio", "Audio callback called but renderer is not initialized");
         return oboe::DataCallbackResult::Stop;
     }
 
@@ -312,7 +299,7 @@ oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
 
     oboe::AudioFormat format = mAudioFormat.load(std::memory_order_relaxed);
     
-    ALOGD("Audio callback: %d frames, %d channels, format %d, volume %.2f", 
+    logToFile(3, "OboeAudio", "Audio callback: %d frames, %d channels, format %d, volume %.2f", 
           numFrames, channelCount, format, volume);
     
     if (format == oboe::AudioFormat::I16) {
@@ -322,7 +309,7 @@ oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
         size_t read = mRingBuffer->read(floatData.data(), totalSamples);
         
         if (read < totalSamples) {
-            ALOGW("Audio underflow: requested %zu samples, got %zu", totalSamples, read);
+            logToFile(5, "OboeAudio", "Audio underflow: requested %zu samples, got %zu", totalSamples, read);
             std::fill(floatData.begin() + read, floatData.end(), 0.0f);
         }
         
@@ -332,13 +319,13 @@ oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
             output[i] = static_cast<int16_t>(sample * 32767);
         }
         
-        ALOGD("Processed %zu samples for I16 output", totalSamples);
+        logToFile(3, "OboeAudio", "Processed %zu samples for I16 output", totalSamples);
     } else {
         float* output = static_cast<float*>(audioData);
         size_t read = mRingBuffer->read(output, totalSamples);
         
         if (read < totalSamples) {
-            ALOGW("Audio underflow: requested %zu samples, got %zu", totalSamples, read);
+            logToFile(5, "OboeAudio", "Audio underflow: requested %zu samples, got %zu", totalSamples, read);
             std::memset(output + read, 0, (totalSamples - read) * sizeof(float));
         }
         
@@ -348,18 +335,18 @@ oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
             }
         }
         
-        ALOGD("Processed %zu samples for Float output", totalSamples);
+        logToFile(3, "OboeAudio", "Processed %zu samples for Float output", totalSamples);
     }
 
     return oboe::DataCallbackResult::Continue;
 }
 
 void OboeAudioRenderer::onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
-    ALOGE("Audio error after close: %s", oboe::convertToText(error));
+    logToFile(6, "OboeAudio", "Audio error after close: %s", oboe::convertToText(error));
     mIsInitialized.store(false, std::memory_order_release);
 }
 
 void OboeAudioRenderer::onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
-    ALOGE("Audio error before close: %s", oboe::convertToText(error));
+    logToFile(6, "OboeAudio", "Audio error before close: %s", oboe::convertToText(error));
     mIsInitialized.store(false, std::memory_order_release);
 }
