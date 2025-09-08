@@ -12,13 +12,14 @@
 // 声明 logToFile 函数
 extern "C" void logToFile(int level, const char* tag, const char* format, ...);
 
-// 无锁环形缓冲区（单生产者单消费者）
+// 环形缓冲区（使用互斥锁保证线程安全）
 class RingBuffer {
 private:
     std::vector<float> mBuffer;
     std::atomic<size_t> mReadIndex{0};
     std::atomic<size_t> mWriteIndex{0};
     size_t mCapacity;
+    mutable std::mutex mMutex; // 添加互斥锁成员变量
 
 public:
     explicit RingBuffer(size_t capacity);
