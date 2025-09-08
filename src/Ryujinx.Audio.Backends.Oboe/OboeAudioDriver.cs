@@ -183,7 +183,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             return session;
         }
 
-        internal bool Unregister(OboeAudioSession session) => _sessions.TryRemove(session, out _);
+        private bool Unregister(OboeAudioSession session) => _sessions.TryRemove(session, out _);
 
         // ✅ 修复：通过 JNI 获取设备信息
         private int CalculateBufferSize(uint sampleRate)
