@@ -118,7 +118,7 @@ bool OboeAudioRenderer::openStreamWithFormat(oboe::AudioFormat format) {
     oboe::AudioStreamBuilder builder;
 
     logToFile(3, "OboeAudio", "Attempting to open stream with format: %d", format);
-    builder.setAudioApi(oboe::AudioApi::OpenSLES);
+   // builder.setAudioApi(oboe::AudioApi::OpenSLES);
     
     builder.setDirection(oboe::Direction::Output)
            ->setPerformanceMode(oboe::PerformanceMode::None)
