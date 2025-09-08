@@ -1,4 +1,4 @@
-// OboeAudioDriver.cs (优化版)
+// OboeAudioDriver.cs
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -48,7 +48,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         private readonly ManualResetEvent _updateRequiredEvent = new(false);
         private readonly ConcurrentDictionary<OboeAudioSession, byte> _sessions = new();
         private bool _isOboeInitialized = false;
-        private float[] _tempFloatBuffer = Array.Empty<float>(); // 优化：复用数组
+        private float[] _tempFloatBuffer = Array.Empty<float>();
 
         public float Volume
         {
@@ -139,11 +139,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 if (!_isOboeInitialized)
                     throw new Exception("Oboe audio failed to initialize");
 
-                // ✅ 可选：预填充静音
-                int silenceFrames = (int)(sampleRate / 10); // 100ms
-                float[] silence = new float[silenceFrames * (int)channelCount];
-                writeOboeAudio(silence, silenceFrames);
-                Logger.Info?.Print(LogClass.Audio, $"Pre-filled {silenceFrames} frames of silence");
+                Logger.Info?.Print(LogClass.Audio, "Oboe audio initialized successfully");
             }
 
             var session = new OboeAudioSession(this, sampleFormat, sampleRate, channelCount);
@@ -185,7 +181,7 @@ namespace Ryujinx.Audio.Backends.Oboe
 
                 if (buffer.Data == null || buffer.Data.Length == 0) return;
 
-                // ✅ 优化：复用临时数组
+                // 优化：复用临时数组
                 int sampleCount = buffer.Data.Length / 2;
                 if (_driver._tempFloatBuffer.Length < sampleCount)
                     _driver._tempFloatBuffer = new float[sampleCount];
@@ -220,7 +216,7 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             public override void UnregisterBuffer(AudioBuffer buffer)
             {
-                // ✅ 只移除队首匹配的缓冲区
+                // 只移除队首匹配的缓冲区
                 if (_queuedBuffers.TryPeek(out var driverBuffer) && 
                     driverBuffer.DriverIdentifier == buffer.DataPointer)
                 {
