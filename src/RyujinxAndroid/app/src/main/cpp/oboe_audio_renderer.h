@@ -9,10 +9,6 @@
 #include <memory>
 #include <cstdint>
 
-// 声明 logToFile 函数
-extern "C" void logToFile(int level, const char* tag, const char* format, ...);
-
-// 无锁环形缓冲区（单生产者单消费者）
 class RingBuffer {
 private:
     std::vector<float> mBuffer;
@@ -44,14 +40,12 @@ public:
     void writeAudio(const float* data, int32_t numFrames);
     void clearBuffer();
 
-    // 状态查询
     bool isInitialized() const { return mIsInitialized.load(std::memory_order_acquire); }
     int32_t getSampleRate() const { return mSampleRate.load(std::memory_order_relaxed); }
     int32_t getBufferSize() const { return mBufferSize.load(std::memory_order_relaxed); }
     size_t getBufferedFrames() const;
     size_t getAvailableFrames() const;
 
-    // Oboe 回调
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t numFrames) override;
     void onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) override;
     void onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) override;
@@ -60,18 +54,19 @@ private:
     OboeAudioRenderer();
     ~OboeAudioRenderer();
 
-    bool openStreamWithFormat(oboe::AudioFormat format);
-    void updateStreamParameters();
-
     std::shared_ptr<oboe::AudioStream> mAudioStream;
     std::unique_ptr<RingBuffer> mRingBuffer;
     std::mutex mInitMutex;
     std::atomic<bool> mIsInitialized{false};
+    std::atomic<bool> mIsStreamStarted{false}; // 新增：流是否已启动
     std::atomic<int32_t> mSampleRate{48000};
     std::atomic<int32_t> mBufferSize{1024};
     std::atomic<int32_t> mChannelCount{2};
-    std::atomic<float> mVolume{1.0f};
     std::atomic<oboe::AudioFormat> mAudioFormat{oboe::AudioFormat::Float};
+    std::atomic<float> mVolume{1.0f};
+
+    bool openStreamWithFormat(oboe::AudioFormat format);
+    void updateStreamParameters();
 };
 
 #endif // RYUJINX_OBOE_AUDIO_RENDERER_H
