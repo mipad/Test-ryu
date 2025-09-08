@@ -340,6 +340,21 @@ Java_org_ryujinx_android_NativeHelpers_getOboeBufferedFrames(JNIEnv *env, jobjec
     return static_cast<jint>(bufferedFrames);
 }
 
+// =============== 新增：设备信息获取函数 ===============
+JNIEXPORT jstring JNICALL
+Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceModel(JNIEnv *env, jobject thiz) {
+    char model[PROP_VALUE_MAX];
+    __system_property_get("ro.product.model", model);
+    return env->NewStringUTF(model);
+}
+
+JNIEXPORT jstring JNICALL
+Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceBrand(JNIEnv *env, jobject thiz) {
+    char brand[PROP_VALUE_MAX];
+    __system_property_get("ro.product.brand", brand);
+    return env->NewStringUTF(brand);
+}
+
 // =============== Oboe Audio C 接口 (for C# P/Invoke) ===============
 void initOboeAudio() {
     logToFile(LOG_LEVEL_DEBUG, "OboeAudio", "Initializing Oboe audio (C interface)");
@@ -403,6 +418,23 @@ int32_t getOboeBufferedFrames() {
     size_t bufferedFrames = OboeAudioRenderer::getInstance().getBufferedFrames();
     logToFile(LOG_LEVEL_DEBUG, "OboeAudio", "Buffered frames: %zu (C interface)", bufferedFrames);
     return static_cast<int32_t>(bufferedFrames);
+}
+
+// =============== 新增：设备信息获取 C 接口 ===============
+const char* GetAndroidDeviceModel() {
+    static char model[PROP_VALUE_MAX] = {0};
+    if (model[0] == '\0') {
+        __system_property_get("ro.product.model", model);
+    }
+    return model;
+}
+
+const char* GetAndroidDeviceBrand() {
+    static char brand[PROP_VALUE_MAX] = {0};
+    if (brand[0] == '\0') {
+        __system_property_get("ro.product.brand", brand);
+    }
+    return brand;
 }
 
 } // extern "C"
