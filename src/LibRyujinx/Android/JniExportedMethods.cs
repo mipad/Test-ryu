@@ -106,7 +106,7 @@ namespace LibRyujinx
             Logger.Info?.Print(LogClass.Audio, "Initializing Oboe audio in deviceInitialize");
             InitOboeAudio();
             
-            //AudioDriver = new OboeAudioDriver();
+            AudioDriver = new OboeAudioDriver();
 
             var timezone = Marshal.PtrToStringAnsi(timeZonePtr);
             return InitializeDevice(isHostMapped,
