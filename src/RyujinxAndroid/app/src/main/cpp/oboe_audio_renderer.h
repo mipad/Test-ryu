@@ -9,6 +9,9 @@
 #include <memory>
 #include <cstdint>
 
+// 声明 logToFile 函数
+extern "C" void logToFile(int level, const char* tag, const char* format, ...);
+
 // 无锁环形缓冲区（单生产者单消费者）
 class RingBuffer {
 private:
