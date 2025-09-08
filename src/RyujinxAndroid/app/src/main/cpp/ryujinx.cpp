@@ -258,8 +258,12 @@ Java_org_ryujinx_android_NativeHelpers_setIsInitialOrientationFlipped(JNIEnv *en
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_initOboeAudio(JNIEnv *env, jobject thiz) {
     logToFile(LOG_LEVEL_DEBUG, "OboeAudio", "Initializing Oboe audio");
-    OboeAudioRenderer::getInstance().initialize();
-    logToFile(LOG_LEVEL_DEBUG, "OboeAudio", "Oboe audio initialized");
+    bool success = OboeAudioRenderer::getInstance().initialize();
+    if (success) {
+        logToFile(LOG_LEVEL_DEBUG, "OboeAudio", "Oboe audio initialized successfully");
+    } else {
+        logToFile(LOG_LEVEL_ERROR, "OboeAudio", "Oboe audio initialization failed");
+    }
 }
 
 JNIEXPORT void JNICALL
@@ -276,11 +280,17 @@ Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(JNIEnv *env, jobject thiz,
         return;
     }
 
+    jsize length = env->GetArrayLength(audio_data);
+    if (length < num_frames) {
+        logToFile(LOG_LEVEL_WARN, "OboeAudio", "Audio data array too small: %d < %d", length, num_frames);
+        return;
+    }
+
     jfloat* data = env->GetFloatArrayElements(audio_data, nullptr);
     if (data) {
         logToFile(LOG_LEVEL_DEBUG, "OboeAudio", "Writing %d frames to Oboe", num_frames);
         OboeAudioRenderer::getInstance().writeAudio(data, num_frames);
-        env->ReleaseFloatArrayElements(audio_data, data, 0);
+        env->ReleaseFloatArrayElements(audio_data, data, JNI_ABORT); // 使用 JNI_ABORT 避免复制回Java
         logToFile(LOG_LEVEL_DEBUG, "OboeAudio", "Audio data written successfully");
     } else {
         logToFile(LOG_LEVEL_ERROR, "OboeAudio", "Failed to get audio data array");
@@ -325,16 +335,20 @@ Java_org_ryujinx_android_NativeHelpers_isOboeInitialized(JNIEnv *env, jobject th
 
 JNIEXPORT jint JNICALL
 Java_org_ryujinx_android_NativeHelpers_getOboeBufferedFrames(JNIEnv *env, jobject thiz) {
-    int32_t bufferedFrames = (int32_t)OboeAudioRenderer::getInstance().getBufferedFrames();
-    logToFile(LOG_LEVEL_DEBUG, "OboeAudio", "Buffered frames: %d", bufferedFrames);
-    return (jint)bufferedFrames;
+    size_t bufferedFrames = OboeAudioRenderer::getInstance().getBufferedFrames();
+    logToFile(LOG_LEVEL_DEBUG, "OboeAudio", "Buffered frames: %zu", bufferedFrames);
+    return static_cast<jint>(bufferedFrames);
 }
 
 // =============== Oboe Audio C 接口 (for C# P/Invoke) ===============
 void initOboeAudio() {
     logToFile(LOG_LEVEL_DEBUG, "OboeAudio", "Initializing Oboe audio (C interface)");
-    OboeAudioRenderer::getInstance().initialize();
-    logToFile(LOG_LEVEL_DEBUG, "OboeAudio", "Oboe audio initialized (C interface)");
+    bool success = OboeAudioRenderer::getInstance().initialize();
+    if (success) {
+        logToFile(LOG_LEVEL_DEBUG, "OboeAudio", "Oboe audio initialized successfully (C interface)");
+    } else {
+        logToFile(LOG_LEVEL_ERROR, "OboeAudio", "Oboe audio initialization failed (C interface)");
+    }
 }
 
 void shutdownOboeAudio() {
@@ -386,9 +400,9 @@ bool isOboeInitialized() {
 }
 
 int32_t getOboeBufferedFrames() {
-    int32_t bufferedFrames = (int32_t)OboeAudioRenderer::getInstance().getBufferedFrames();
-    logToFile(LOG_LEVEL_DEBUG, "OboeAudio", "Buffered frames: %d (C interface)", bufferedFrames);
-    return bufferedFrames;
+    size_t bufferedFrames = OboeAudioRenderer::getInstance().getBufferedFrames();
+    logToFile(LOG_LEVEL_DEBUG, "OboeAudio", "Buffered frames: %zu (C interface)", bufferedFrames);
+    return static_cast<int32_t>(bufferedFrames);
 }
 
 } // extern "C"
