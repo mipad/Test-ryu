@@ -1,4 +1,4 @@
-// OboeAudioDriver.cs (完整修复版)
+// OboeAudioDriver.cs (优化版)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -160,7 +160,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         // ✅ 修复：通过 JNI 获取设备信息
         private int CalculateBufferSize(uint sampleRate)
         {
-            int latencyMs = IsHighPerformanceDevice() ? 20 : 60;
+            int latencyMs = IsHighPerformanceDevice() ? 40 : 80; // 增加延迟容限
             int bufferSize = (int)(sampleRate * latencyMs / 1000);
             Logger.Debug?.Print(LogClass.Audio, $"CalculateBufferSize: latencyMs={latencyMs}, bufferSize={bufferSize}");
             return bufferSize;
@@ -252,7 +252,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _totalWrittenSamples += (ulong)sampleCount;
 
                 // 添加写入频率日志
-                Logger.Debug?.Print(LogClass.Audio, $"QueueBuffer: wrote {sampleCount} samples");
+                Logger.Debug?.Print(LogClass.Audio, $"QueueBuffer: wrote {sampleCount} samples, total: {_totalWrittenSamples}");
                 
                 // 优化：立即触发更多写入
                 Thread.Yield();
