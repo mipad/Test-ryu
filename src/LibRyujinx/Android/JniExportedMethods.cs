@@ -1,8 +1,7 @@
-// JniExportedMethods.cs
+// JniExportedMethods.cs (完整修复版)
 using LibRyujinx.Android;
 using LibRyujinx.Jni.Pointers;
-using Ryujinx.Audio.Backends.OpenAL;
-using Ryujinx.Audio.Backends.Oboe;
+using Ryujinx.Audio.Backends.Oboe; // 移除 OpenAL 引用（如果不用）
 using Ryujinx.Common;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
@@ -37,7 +36,7 @@ namespace LibRyujinx
         [DllImport("libryujinxjni")]
         internal extern static void setCurrentTransform(long native_window, int transform);
 
-        // 添加 Oboe 音频函数的 P/Invoke 声明
+        // Oboe 音频函数的 P/Invoke 声明
         [DllImport("libryujinxjni", EntryPoint = "initOboeAudio")]
         internal extern static void InitOboeAudio();
 
@@ -52,6 +51,22 @@ namespace LibRyujinx
 
         [DllImport("libryujinxjni", EntryPoint = "setOboeBufferSize")]
         internal extern static void SetOboeBufferSize(int buffer_size);
+
+        [DllImport("libryujinxjni", EntryPoint = "setOboeVolume")]
+        internal extern static void SetOboeVolume(float volume);
+
+        [DllImport("libryujinxjni", EntryPoint = "isOboeInitialized")]
+        internal extern static bool IsOboeInitialized();
+
+        [DllImport("libryujinxjni", EntryPoint = "getOboeBufferedFrames")]
+        internal extern static int GetOboeBufferedFrames();
+
+        // ========== 设备信息 P/Invoke 声明 ===============
+        [DllImport("libryujinxjni", EntryPoint = "getAndroidDeviceModel")]
+        internal static extern IntPtr GetAndroidDeviceModel();
+
+        [DllImport("libryujinxjni", EntryPoint = "getAndroidDeviceBrand")]
+        internal static extern IntPtr GetAndroidDeviceBrand();
 
         public delegate IntPtr JniCreateSurface(IntPtr native_surface, IntPtr instance);
 
@@ -86,40 +101,40 @@ namespace LibRyujinx
             SwitchDevice?.ReloadFileSystem();
         }
 
+        // ========== 修复：移除过早的 Oboe 初始化 ==========
         [UnmanagedCallersOnly(EntryPoint = "deviceInitialize")]
-        public static bool JnaDeviceInitialize(bool isHostMapped,
-                                                    bool useNce,
-                                                    int systemLanguage,
-                                                    int regionCode,
-                                                    bool enableVsync,
-                                                    bool enableDockedMode,
-                                                    bool enablePtc,
-                                                    bool enableJitCacheEviction,
-                                                    bool enableInternetAccess,
-                                                    IntPtr timeZonePtr,
-                                                    bool ignoreMissingServices)
+        public static bool JnaDeviceInitialize(
+            bool isHostMapped,
+            bool useNce,
+            int systemLanguage,
+            int regionCode,
+            bool enableVsync,
+            bool enableDockedMode,
+            bool enablePtc,
+            bool enableJitCacheEviction,
+            bool enableInternetAccess,
+            IntPtr timeZonePtr,
+            bool ignoreMissingServices)
         {
             debug_break(4);
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            
-               // 初始化 Oboe 音频
-            //Logger.Info?.Print(LogClass.Audio, "Initializing Oboe audio in deviceInitialize");
-           // InitOboeAudio();
-            
+
+            // ✅ 只创建驱动，不初始化 Oboe 流！
             AudioDriver = new OboeAudioDriver();
 
             var timezone = Marshal.PtrToStringAnsi(timeZonePtr);
-            return InitializeDevice(isHostMapped,
-                                    useNce,
-                                    (SystemLanguage)systemLanguage,
-                                    (RegionCode)regionCode,
-                                    enableVsync,
-                                    enableDockedMode,
-                                    enablePtc,
-                                    enableJitCacheEviction,
-                                    enableInternetAccess,
-                                    timezone,
-                                    ignoreMissingServices);
+            return InitializeDevice(
+                isHostMapped,
+                useNce,
+                (SystemLanguage)systemLanguage,
+                (RegionCode)regionCode,
+                enableVsync,
+                enableDockedMode,
+                enablePtc,
+                enableJitCacheEviction,
+                enableInternetAccess,
+                timezone,
+                ignoreMissingServices);
         }
 
         [UnmanagedCallersOnly(EntryPoint = "deviceGetGameFifo")]
@@ -127,7 +142,6 @@ namespace LibRyujinx
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             var stats = SwitchDevice?.EmulationContext?.Statistics.GetFifoPercent() ?? 0;
-
             return stats;
         }
 
@@ -136,7 +150,6 @@ namespace LibRyujinx
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             var stats = SwitchDevice?.EmulationContext?.Statistics.GetGameFrameTime() ?? 0;
-
             return stats;
         }
 
@@ -145,7 +158,6 @@ namespace LibRyujinx
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             var stats = SwitchDevice?.EmulationContext?.Statistics.GetGameFrameRate() ?? 0;
-
             return stats;
         }
 
@@ -157,7 +169,6 @@ namespace LibRyujinx
             {
                 return false;
             }
-
             return LaunchMiiEditApplet();
         }
 
@@ -166,7 +177,6 @@ namespace LibRyujinx
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             var list = GetDlcContentList(Marshal.PtrToStringAnsi(pathPtr) ?? "", (ulong)titleId);
-
             return CreateStringArray(list);
         }
 
@@ -188,7 +198,7 @@ namespace LibRyujinx
         public static void JniCloseEmulationNative()
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            // 关闭 Oboe 音频
+            // 关闭 Oboe 音频（由 Dispose 触发，但这里也调用确保关闭）
             ShutdownOboeAudio();
             CloseEmulation();
         }
@@ -264,7 +274,7 @@ namespace LibRyujinx
                 bool enableShaderCache,
                 bool enableTextureRecompression,
                 int backendThreading,
-                int aspectRatio)  // 新增参数
+                int aspectRatio)
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             SearchPathContainer.Platform = UnderlyingPlatform.Android;
@@ -279,7 +289,7 @@ namespace LibRyujinx
                 EnableShaderCache = enableShaderCache,
                 EnableTextureRecompression = enableTextureRecompression,
                 BackendThreading = (BackendThreading)backendThreading,
-                AspectRatio = (AspectRatio)aspectRatio  // 设置画面比例
+                AspectRatio = (AspectRatio)aspectRatio
             });
         }
 
@@ -470,7 +480,6 @@ namespace LibRyujinx
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             var userId = GetOpenedUser();
             var ptr = Marshal.StringToHGlobalAnsi(userId);
-
             return ptr;
         }
 
@@ -479,7 +488,6 @@ namespace LibRyujinx
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             var userId = Marshal.PtrToStringAnsi(userIdPtr) ?? "";
-
             return Marshal.StringToHGlobalAnsi(GetUserPicture(userId));
         }
 
@@ -489,7 +497,6 @@ namespace LibRyujinx
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             var userId = Marshal.PtrToStringAnsi(userIdPtr) ?? "";
             var picture = Marshal.PtrToStringAnsi(picturePtr) ?? "";
-
             SetUserPicture(userId, picture);
         }
 
@@ -498,7 +505,6 @@ namespace LibRyujinx
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             var userId = Marshal.PtrToStringAnsi(userIdPtr) ?? "";
-
             return Marshal.StringToHGlobalAnsi(GetUserName(userId));
         }
 
@@ -508,7 +514,6 @@ namespace LibRyujinx
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             var userId = Marshal.PtrToStringAnsi(userIdPtr) ?? "";
             var userName = Marshal.PtrToStringAnsi(userNamePtr) ?? "";
-
             SetUserName(userId, userName);
         }
 
@@ -517,7 +522,6 @@ namespace LibRyujinx
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             var users = GetAllUsers();
-
             return CreateStringArray(users.ToList());
         }
 
@@ -527,7 +531,6 @@ namespace LibRyujinx
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             var userName = Marshal.PtrToStringAnsi(userNamePtr) ?? "";
             var picture = Marshal.PtrToStringAnsi(picturePtr) ?? "";
-
             AddUser(userName, picture);
         }
 
@@ -536,7 +539,6 @@ namespace LibRyujinx
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             var userId = Marshal.PtrToStringAnsi(userIdPtr) ?? "";
-
             DeleteUser(userId);
         }
 
@@ -557,7 +559,6 @@ namespace LibRyujinx
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             var userId = Marshal.PtrToStringAnsi(userIdPtr) ?? "";
-
             OpenUser(userId);
         }
 
@@ -566,7 +567,6 @@ namespace LibRyujinx
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             var userId = Marshal.PtrToStringAnsi(userIdPtr) ?? "";
-
             CloseUser(userId);
         }
 
