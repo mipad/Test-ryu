@@ -177,7 +177,7 @@ void setCurrentTransform(long native_window, int transform) {
                     ANATIVEWINDOW_TRANSFORM_MIRROR_HORIZONTAL | ANATIVEWINDOW_TRANSFORM_ROTATE_90); break;
         case 0x40: nativeTransform = ANATIVEWINDOW_TRANSFORM_MIRROR_VERTICAL; break;
         case 0x80: nativeTransform = static_cast<ANativeWindowTransform>(
-                    ANATIVEWINDOW_TRANSFORM_MIRROR_VERTICAL | ANATIVEWindow_TRANSFORM_ROTATE_90); break;
+                    ANATIVEWINDOW_TRANSFORM_MIRROR_VERTICAL | ANATIVEWINDOW_TRANSFORM_ROTATE_90); break;
         case 0x100: nativeTransform = ANATIVEWINDOW_TRANSFORM_IDENTITY; break;
     }
 
