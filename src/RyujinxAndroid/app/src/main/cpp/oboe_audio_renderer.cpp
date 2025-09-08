@@ -3,6 +3,8 @@
 #include <android/log.h>
 #include <cstring>
 #include <algorithm>
+#include <thread>
+#include <chrono>
 
 // 声明 logToFile 函数
 extern "C" void logToFile(int level, const char* tag, const char* format, ...);
@@ -166,30 +168,53 @@ bool OboeAudioRenderer::initialize() {
 
     logToFile(4, "OboeAudio", "Initializing OboeAudioRenderer...");
     
-    // 首先尝试Float格式
-    if (!openStreamWithFormat(oboe::AudioFormat::Float)) {
-        logToFile(5, "OboeAudio", "Float format failed, trying I16 format");
-        if (!openStreamWithFormat(oboe::AudioFormat::I16)) {
-            logToFile(6, "OboeAudio", "All audio format attempts failed");
-            return false;
+    // 最多重试3次
+    const int maxRetries = 3;
+    for (int attempt = 0; attempt < maxRetries; attempt++) {
+        if (attempt > 0) {
+            logToFile(4, "OboeAudio", "Retry attempt %d/%d", attempt + 1, maxRetries);
+            // 等待一段时间再重试
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
-    }
+        
+        // 首先尝试Float格式
+        if (!openStreamWithFormat(oboe::AudioFormat::Float)) {
+            logToFile(5, "OboeAudio", "Float format failed, trying I16 format");
+            if (!openStreamWithFormat(oboe::AudioFormat::I16)) {
+                logToFile(6, "OboeAudio", "All audio format attempts failed");
+                continue;
+            }
+        }
 
-    // 启动音频流
-    oboe::Result result = mAudioStream->requestStart();
-    if (result != oboe::Result::OK) {
-        logToFile(6, "OboeAudio", "Failed to start audio stream: %s", oboe::convertToText(result));
-        mAudioStream->close();
-        mAudioStream.reset();
-        return false;
-    }
+        // 启动音频流
+        oboe::Result result = mAudioStream->requestStart();
+        if (result != oboe::Result::OK) {
+            logToFile(6, "OboeAudio", "Failed to start audio stream: %s", oboe::convertToText(result));
+            mAudioStream->close();
+            mAudioStream.reset();
+            continue;
+        }
 
-    // 更新实际使用的参数
-    updateStreamParameters();
+        // 等待流进入开始状态
+        auto state = mAudioStream->getState();
+        if (state != oboe::StreamState::Started) {
+            logToFile(5, "OboeAudio", "Stream not in started state: %d", state);
+            mAudioStream->close();
+            mAudioStream.reset();
+            continue;
+        }
+
+        // 更新实际使用的参数
+        updateStreamParameters();
+        
+        // 确保这是最后一步
+        mIsInitialized.store(true, std::memory_order_release);
+        logToFile(4, "OboeAudio", "OboeAudioRenderer initialized successfully on attempt %d", attempt + 1);
+        return true;
+    }
     
-    mIsInitialized.store(true, std::memory_order_release);
-    logToFile(4, "OboeAudio", "OboeAudioRenderer initialized successfully");
-    return true;
+    logToFile(6, "OboeAudio", "All initialization attempts failed");
+    return false;
 }
 
 void OboeAudioRenderer::shutdown() {
@@ -289,8 +314,14 @@ oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
     oboe::AudioStream* audioStream, void* audioData, int32_t numFrames) {
 
     if (!mIsInitialized.load(std::memory_order_acquire)) {
-        logToFile(5, "OboeAudio", "Audio callback called but renderer is not initialized");
-        return oboe::DataCallbackResult::Stop;
+        logToFile(5, "OboeAudio", "Audio callback called but renderer is not fully initialized");
+        // 返回静音数据而不是停止
+        if (mAudioFormat.load(std::memory_order_relaxed) == oboe::AudioFormat::I16) {
+            memset(audioData, 0, numFrames * mChannelCount.load(std::memory_order_relaxed) * sizeof(int16_t));
+        } else {
+            memset(audioData, 0, numFrames * mChannelCount.load(std::memory_order_relaxed) * sizeof(float));
+        }
+        return oboe::DataCallbackResult::Continue;
     }
 
     int32_t channelCount = mChannelCount.load(std::memory_order_relaxed);
