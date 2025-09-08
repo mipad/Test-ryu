@@ -120,9 +120,9 @@ bool OboeAudioRenderer::openStreamWithFormat(oboe::AudioFormat format) {
     logToFile(3, "OboeAudio", "Attempting to open stream with format: %d", format);
     builder.setAudioApi(oboe::AudioApi::OpenSLES);
     
-    builder.setDirection(oboee::Direction::Output)
-           ->setPerformanceMode(oboee::PerformanceMode::None)
-           ->setSharingMode(oboee::SharingMode::Shared)
+    builder.setDirection(oboe::Direction::Output)
+           ->setPerformanceMode(oboe::PerformanceMode::None)
+           ->setSharingMode(oboe::SharingMode::Shared)
            ->setFormat(format)
            ->setChannelCount(mChannelCount.load(std::memory_order_relaxed))
            ->setSampleRate(mSampleRate.load(std::memory_order_relaxed))
