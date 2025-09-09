@@ -17,7 +17,9 @@ interface RyujinxNativeJna : Library {
         enableJitCacheEviction: Boolean,
         enableInternetAccess: Boolean,
         timeZone: String,
-        ignoreMissingServices: Boolean
+        ignoreMissingServices: Boolean,
+        audioEngineType: Int // 新增音频引擎参数
+    ): Boolean
     ): Boolean
 
     fun graphicsInitialize(
