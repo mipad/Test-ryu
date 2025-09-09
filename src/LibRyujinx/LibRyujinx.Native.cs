@@ -2,6 +2,8 @@ using LibRyujinx.Shared;
 using OpenTK.Graphics.OpenGL;
 using Ryujinx.Audio.Backends.Dummy;
 using Ryujinx.Audio.Backends.OpenAL;
+using Ryujinx.Audio.Backends.SDL2;
+using Ryujinx.Audio.Backends.Oboe;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.OpenGL;
