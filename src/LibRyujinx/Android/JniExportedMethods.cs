@@ -3,7 +3,9 @@ using LibRyujinx.Jni.Pointers;
 using Ryujinx.Audio.Backends.OpenAL;
 using Ryujinx.Audio.Backends.Dummy;
 using Ryujinx.Audio.Backends.SDL2;
+#if ANDROID
 using Ryujinx.Audio.Backends.Oboe;
+#endif
 using Ryujinx.Common;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
@@ -101,10 +103,11 @@ namespace LibRyujinx
             // 添加SDL2音频驱动
             AudioDriver = new SDL2HardwareDeviceDriver();
             break;
+        #if ANDROID
         case 3: // Oboe
-            // 添加Oboe音频驱动
             AudioDriver = new OboeHardwareDeviceDriver();
             break;
+        #endif
         default: // 默认使用 OpenAL
             AudioDriver = new OpenALHardwareDeviceDriver();
             break;
