@@ -6,8 +6,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
@@ -68,10 +67,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -166,10 +161,12 @@ class SettingViews {
             val skipMemoryBarriers = remember { mutableStateOf(false) } // 新增状态变量
             val regionCode = remember { mutableStateOf(RegionCode.USA.ordinal) } // 新增状态变量：区域代码
             val systemLanguage = remember { mutableStateOf(SystemLanguage.AmericanEnglish.ordinal) } // 新增状态变量：系统语言
+            val audioEngineType = remember { mutableStateOf(1) } // 0=禁用，1=OpenAL
 
             // 新增状态变量用于控制选项显示
             val showResScaleOptions = remember { mutableStateOf(false) }
             val showAspectRatioOptions = remember { mutableStateOf(false) }
+            val showAudioEngineDialog = remember { mutableStateOf(false) } // 控制音频引擎对话框显示
             
 
             if (!loaded.value) {
@@ -198,7 +195,8 @@ class SettingViews {
                     enableGraphicsLogs,
                     skipMemoryBarriers, // 新增参数
                     regionCode, // 新增参数
-                    systemLanguage // 新增参数
+                    systemLanguage, // 新增参数
+                    audioEngineType // 新增参数
                 )
                 loaded.value = true
             }
@@ -249,7 +247,8 @@ class SettingViews {
                     enableGraphicsLogs,
                     skipMemoryBarriers, // 新增参数
                     regionCode, // 新增参数
-                    systemLanguage // 新增参数
+                    systemLanguage, // 新增参数
+                    audioEngineType // 新增参数
                                 )
                                 settingsViewModel.navController.popBackStack()
                             }) {
@@ -309,7 +308,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Button(onClick = {
-                                    fun createIntent(action: String): Intent {
+                                    fun createIntent(action: String): Intent
                                         val intent = Intent(action)
                                         intent.addCategory(Intent.CATEGORY_DEFAULT)
                                         intent.data = DocumentsContract.buildRootUri(
@@ -1074,9 +1073,28 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                         }
                     }
                     
-                    // 新增：区域与语言设置
-                    // 区域与语言设置 - 使用下拉菜单优化
-// 区域与语言设置 - 使用对话框替代下拉菜单
+                    // 新增音频设置部分
+                    ExpandableView(onCardArrowClick = { }, title = "Audio") {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            // 音频引擎设置
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp)
+                                    .clickable { showAudioEngineDialog.value = true },
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Audio Engine")
+                                Text(
+                                    text = if (audioEngineType.value == 1) "OpenAL" else "Disabled",
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                    
+                    // 区域与语言设置 - 使用对话框替代下拉菜单
 ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
     Column(modifier = Modifier.fillMaxWidth()) {
         // 区域设置 - 保持不变
@@ -1453,6 +1471,93 @@ ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
                     }
                 }
 
+                // 音频引擎选择对话框
+                if (showAudioEngineDialog.value) {
+                    BasicAlertDialog(
+                        onDismissRequest = { showAudioEngineDialog.value = false }
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .wrapContentWidth()
+                                .wrapContentHeight(),
+                            shape = MaterialTheme.shapes.large,
+                            tonalElevation = AlertDialogDefaults.TonalElevation
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp)
+                            ) {
+                                Text(
+                                    text = "Select Audio Engine",
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    modifier = Modifier.padding(bottom = 16.dp)
+                                )
+                                
+                                // OpenAL选项
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            audioEngineType.value = 1
+                                            showAudioEngineDialog.value = false
+                                        }
+                                        .padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = audioEngineType.value == 1,
+                                        onClick = {
+                                            audioEngineType.value = 1
+                                            showAudioEngineDialog.value = false
+                                        }
+                                    )
+                                    Text(
+                                        text = "OpenAL",
+                                        modifier = Modifier.padding(start = 16.dp)
+                                    )
+                                }
+                                
+                                // 禁用音频选项
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            audioEngineType.value = 0
+                                            showAudioEngineDialog.value = false
+                                        }
+                                        .padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = audioEngineType.value == 0,
+                                        onClick = {
+                                            audioEngineType.value = 0
+                                            showAudioEngineDialog.value = false
+                                        }
+                                    )
+                                    Text(
+                                        text = "Disabled",
+                                        modifier = Modifier.padding(start = 16.dp)
+                                    )
+                                }
+                                
+                                // 添加取消按钮
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 16.dp),
+                                    horizontalArrangement = Arrangement.End
+                                ) {
+                                    TextButton(
+                                        onClick = { showAudioEngineDialog.value = false }
+                                    ) {
+                                        Text("Cancel")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 BackHandler {
                     settingsViewModel.save(
                         isHostMapped,
@@ -1478,7 +1583,8 @@ ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
                         enableGraphicsLogs,
                         skipMemoryBarriers, // 新增参数
                         regionCode, // 新增参数
-                        systemLanguage // 新增参数
+                        systemLanguage, // 新增参数
+                        audioEngineType // 新增参数
                     )
                     settingsViewModel.navController.popBackStack()
                 }
