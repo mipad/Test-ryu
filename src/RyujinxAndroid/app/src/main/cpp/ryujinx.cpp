@@ -20,7 +20,10 @@
 #include "pthread.h"
 #include <chrono>
 #include <csignal>
-
+#include "oboe_audio_renderer.h"
+#include <android/log.h>
+#include <stdarg.h>
+#include <sys/system_properties.h>
 
 std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
 
@@ -73,7 +76,7 @@ char *getStringPointer(
         jstring jS) {
     const char *cparam = env->GetStringUTFChars(jS, 0);
     auto len = env->GetStringUTFLength(jS);
-    char *s = new char[len];
+    char *s = new char[len + 1];
     strcpy(s, cparam);
     env->ReleaseStringUTFChars(jS, cparam);
 
@@ -95,8 +98,6 @@ jstring createStringFromStdString(
 
     return str;
 }
-
-
 }
 extern "C"
 void setRenderingThread() {
@@ -190,9 +191,9 @@ Java_org_ryujinx_android_NativeHelpers_loadDriver(JNIEnv *env, jobject thiz,
             nullptr
     );
 
-    delete libPath;
-    delete privateAppsPath;
-    delete driverName;
+    delete[] libPath;
+    delete[] privateAppsPath;
+    delete[] driverName;
 
     return (jlong) handle;
 }
@@ -247,4 +248,158 @@ JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setIsInitialOrientationFlipped(JNIEnv *env, jobject thiz,
                                                                       jboolean is_flipped) {
     isInitialOrientationFlipped = is_flipped;
+}
+
+// =============== Oboe Audio JNI 接口 ===============
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_initOboeAudio(JNIEnv *env, jobject thiz) {
+    OboeAudioRenderer::getInstance().initialize();
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_shutdownOboeAudio(JNIEnv *env, jobject thiz) {
+    OboeAudioRenderer::getInstance().shutdown();
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(JNIEnv *env, jobject thiz, jfloatArray audio_data, jint num_frames) {
+    if (!audio_data || num_frames <= 0) {
+        return;
+    }
+
+    jsize length = env->GetArrayLength(audio_data);
+    if (length < num_frames) {
+        return;
+    }
+
+    jfloat* data = env->GetFloatArrayElements(audio_data, nullptr);
+    if (data) {
+        OboeAudioRenderer::getInstance().writeAudio(data, num_frames);
+        env->ReleaseFloatArrayElements(audio_data, data, JNI_ABORT);
+    }
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_setOboeSampleRate(JNIEnv *env, jobject thiz, jint sample_rate) {
+    if (sample_rate < 8000 || sample_rate > 192000) {
+        return;
+    }
+    OboeAudioRenderer::getInstance().setSampleRate(sample_rate);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_setOboeBufferSize(JNIEnv *env, jobject thiz, jint buffer_size) {
+    if (buffer_size < 64 || buffer_size > 8192) {
+        return;
+    }
+    OboeAudioRenderer::getInstance().setBufferSize(buffer_size);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_setOboeVolume(JNIEnv *env, jobject thiz, jfloat volume) {
+    OboeAudioRenderer::getInstance().setVolume(volume);
+}
+
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_org_ryujinx_android_NativeHelpers_isOboeInitialized(JNIEnv *env, jobject thiz) {
+    return OboeAudioRenderer::getInstance().isInitialized();
+}
+
+extern "C"
+JNIEXPORT jint JNICALL
+Java_org_ryujinx_android_NativeHelpers_getOboeBufferedFrames(JNIEnv *env, jobject thiz) {
+    return static_cast<jint>(OboeAudioRenderer::getInstance().getBufferedFrames());
+}
+
+// =============== 新增：设备信息获取函数 ===============
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceModel(JNIEnv *env, jobject thiz) {
+    char model[PROP_VALUE_MAX];
+    __system_property_get("ro.product.model", model);
+    return env->NewStringUTF(model);
+}
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceBrand(JNIEnv *env, jobject thiz) {
+    char brand[PROP_VALUE_MAX];
+    __system_property_get("ro.product.brand", brand);
+    return env->NewStringUTF(brand);
+}
+
+// =============== Oboe Audio C 接口 (for C# P/Invoke) ===============
+extern "C"
+void initOboeAudio() {
+    OboeAudioRenderer::getInstance().initialize();
+}
+
+extern "C"
+void shutdownOboeAudio() {
+    OboeAudioRenderer::getInstance().shutdown();
+}
+
+extern "C"
+void writeOboeAudio(const float* data, int32_t num_frames) {
+    if (!data || num_frames <= 0) {
+        return;
+    }
+    OboeAudioRenderer::getInstance().writeAudio(data, num_frames);
+}
+
+extern "C"
+void setOboeSampleRate(int32_t sample_rate) {
+    if (sample_rate < 8000 || sample_rate > 192000) {
+        return;
+    }
+    OboeAudioRenderer::getInstance().setSampleRate(sample_rate);
+}
+
+extern "C"
+void setOboeBufferSize(int32_t buffer_size) {
+    if (buffer_size < 64 || buffer_size > 8192) {
+        return;
+    }
+    OboeAudioRenderer::getInstance().setBufferSize(buffer_size);
+}
+
+extern "C"
+void setOboeVolume(float volume) {
+    OboeAudioRenderer::getInstance().setVolume(volume);
+}
+
+extern "C"
+bool isOboeInitialized() {
+    return OboeAudioRenderer::getInstance().isInitialized();
+}
+
+extern "C"
+int32_t getOboeBufferedFrames() {
+    return static_cast<int32_t>(OboeAudioRenderer::getInstance().getBufferedFrames());
+}
+
+// =============== 新增：设备信息获取 C 接口 ===============
+extern "C"
+const char* GetAndroidDeviceModel() {
+    static char model[PROP_VALUE_MAX] = {0};
+    if (model[0] == '\0') {
+        __system_property_get("ro.product.model", model);
+    }
+    return model;
+}
+
+extern "C"
+const char* GetAndroidDeviceBrand() {
+    static char brand[PROP_VALUE_MAX] = {0};
+    if (brand[0] == '\0') {
+        __system_property_get("ro.product.brand", brand);
+    }
+    return brand;
 }
