@@ -28,7 +28,8 @@ namespace LibRyujinx.Sample
                                                   bool enablePtc,
                                                   bool enableInternetAccess,
                                                   IntPtr timeZone,
-                                                  bool ignoreMissingServices);
+                                                  bool ignoreMissingServices,
+                                                  int audioEngineType);
 
         [DllImport(dll, EntryPoint = "graphics_initialize_renderer")]
         internal extern static bool InitializeGraphicsRenderer(GraphicsBackend backend, NativeGraphicsInterop nativeGraphicsInterop);
