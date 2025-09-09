@@ -102,11 +102,9 @@ namespace LibRyujinx
     case 2: // SDL2
         AudioDriver = new SDL2HardwareDeviceDriver();
         break;
-#if ANDROID
     case 3: // Oboe
         AudioDriver = new OboeHardwareDeviceDriver();
         break;
-#endif
     default:
         AudioDriver = new OpenALHardwareDeviceDriver();
         break;
