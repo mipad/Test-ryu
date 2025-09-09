@@ -72,7 +72,8 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableGraphicsLogs: MutableState<Boolean>,
         skipMemoryBarriers: MutableState<Boolean>, // 新增参数
         regionCode: MutableState<Int>, // 新增参数：区域代码
-        systemLanguage: MutableState<Int> // 新增参数：系统语言
+        systemLanguage: MutableState<Int>, // 新增参数：系统语言
+        audioEngineType: MutableState<Int> // 新增音频引擎参数
     ) {
 
         isHostMapped.value = sharedPref.getBoolean("isHostMapped", true)
@@ -96,6 +97,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         skipMemoryBarriers.value = sharedPref.getBoolean("skipMemoryBarriers", false) // 初始化
         regionCode.value = sharedPref.getInt("regionCode", RegionCode.USA.ordinal) // 默认USA
         systemLanguage.value = sharedPref.getInt("systemLanguage", SystemLanguage.AmericanEnglish.ordinal) // 默认美式英语
+        audioEngineType.value = sharedPref.getInt("audioEngineType", 1) // 默认OpenAL
 
         enableDebugLogs.value = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs.value = sharedPref.getBoolean("enableStubLogs", false)
@@ -137,7 +139,8 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableGraphicsLogs: MutableState<Boolean>,
         skipMemoryBarriers: MutableState<Boolean>, // 新增参数
         regionCode: MutableState<Int>, // 新增参数：区域代码
-        systemLanguage: MutableState<Int> // 新增参数：系统语言
+        systemLanguage: MutableState<Int>, // 新增参数：系统语言
+        audioEngineType: MutableState<Int> // 新增音频引擎参数
     ) {
         val editor = sharedPref.edit()
 
@@ -161,6 +164,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.putBoolean("skipMemoryBarriers", skipMemoryBarriers.value) // 保存
         editor.putInt("regionCode", regionCode.value) // 保存区域代码
         editor.putInt("systemLanguage", systemLanguage.value) // 保存系统语言
+        editor.putInt("audioEngineType", audioEngineType.value) // 保存音频引擎设置
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs.value)
         editor.putBoolean("enableStubLogs", enableStubLogs.value)
