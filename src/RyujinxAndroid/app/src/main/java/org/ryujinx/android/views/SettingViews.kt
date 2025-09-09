@@ -161,7 +161,7 @@ class SettingViews {
             val skipMemoryBarriers = remember { mutableStateOf(false) } // 新增状态变量
             val regionCode = remember { mutableStateOf(RegionCode.USA.ordinal) } // 新增状态变量：区域代码
             val systemLanguage = remember { mutableStateOf(SystemLanguage.AmericanEnglish.ordinal) } // 新增状态变量：系统语言
-            val audioEngineType = remember { mutableStateOf(1) } // 0=禁用，1=OpenAL
+            val audioEngineType = remember { mutableStateOf(1) } // 0=禁用，1=OpenAL, 2=SDL2, 3=Oboe
 
             // 新增状态变量用于控制选项显示
             val showResScaleOptions = remember { mutableStateOf(false) }
@@ -492,25 +492,25 @@ class SettingViews {
                                             .fillMaxWidth()
                                             .padding(8.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column {
-                                            Text(text = "Enable Jit Cache Eviction")
-                                            Text(
-                                                text = "Used with JIT mode",
-                                                fontSize = 12.sp,
-                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                                            )
-                                        }
-                                        Switch(
-                                            checked = enableJitCacheEviction.value, 
-                                            onCheckedChange = {
-                                                enableJitCacheEviction.value = it
-                                            }
-                                        )
-                                    }
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(text = "Enable Jit Cache Eviction")
+                                    Text(
+                                        text = "Used with JIT mode",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                    )
                                 }
+                                Switch(
+                                    checked = enableJitCacheEviction.value, 
+                                    onCheckedChange = {
+                                        enableJitCacheEviction.value = it
+                                    }
+                                )
                             }
+                        }
+                    }
                             
                             Row(
                                 modifier = Modifier
@@ -1087,7 +1087,12 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                             ) {
                                 Text(text = "Audio Engine")
                                 Text(
-                                    text = if (audioEngineType.value == 1) "OpenAL" else "Disabled",
+                                    text = when (audioEngineType.value) {
+                                        1 -> "OpenAL"
+                                        2 -> "SDL2"
+                                        3 -> "Oboe"
+                                        else -> "Disabled"
+                                    },
                                     color = MaterialTheme.colorScheme.primary
                                 )
                             }
@@ -1512,6 +1517,54 @@ ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
                                     )
                                     Text(
                                         text = "OpenAL",
+                                        modifier = Modifier.padding(start = 16.dp)
+                                    )
+                                }
+                                
+                                // SDL2选项
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            audioEngineType.value = 2
+                                            showAudioEngineDialog.value = false
+                                        }
+                                        .padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = audioEngineType.value == 2,
+                                        onClick = {
+                                            audioEngineType.value = 2
+                                            showAudioEngineDialog.value = false
+                                        }
+                                    )
+                                    Text(
+                                        text = "SDL2",
+                                        modifier = Modifier.padding(start = 16.dp)
+                                    )
+                                }
+                                
+                                // Oboe选项
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            audioEngineType.value = 3
+                                            showAudioEngineDialog.value = false
+                                        }
+                                        .padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = audioEngineType.value == 3,
+                                        onClick = {
+                                            audioEngineType.value = 3
+                                            showAudioEngineDialog.value = false
+                                        }
+                                    )
+                                    Text(
+                                        text = "Oboe",
                                         modifier = Modifier.padding(start = 16.dp)
                                     )
                                 }
