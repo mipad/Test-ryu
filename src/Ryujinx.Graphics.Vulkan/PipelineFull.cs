@@ -246,7 +246,6 @@ namespace Ryujinx.Graphics.Vulkan
             AutoFlush.RegisterFlush(DrawCount);
             EndRenderPass();
 
-            // 强制结束所有活跃查询，但不重新开始它们
             foreach ((var queryPool, _) in _activeQueries)
             {
                 Gd.Api.CmdEndQuery(CommandBuffer, queryPool, 0);
@@ -264,7 +263,7 @@ namespace Ryujinx.Graphics.Vulkan
             CommandBuffer = (Cbs = Gd.CommandBufferPool.ReturnAndRent(Cbs)).CommandBuffer;
             Gd.RegisterFlush();
 
-            // 清除镜像缓冲区
+            // Restore per-command buffer state.
             foreach (BufferHolder buffer in _activeBufferMirrors)
             {
                 buffer.ClearMirrors();
@@ -272,9 +271,13 @@ namespace Ryujinx.Graphics.Vulkan
 
             _activeBufferMirrors.Clear();
 
-            // 关键修改：不再重新开始被强制结束的查询，而是清空活跃查询列表
-            // 让游戏逻辑在需要时重新开始查询
-            _activeQueries.Clear();
+            foreach ((var queryPool, var isOcclusion) in _activeQueries)
+            {
+                bool isPrecise = Gd.Capabilities.SupportsPreciseOcclusionQueries && isOcclusion;
+
+                Gd.Api.CmdResetQueryPool(CommandBuffer, queryPool, 0, 1);
+                Gd.Api.CmdBeginQuery(CommandBuffer, queryPool, 0, isPrecise ? QueryControlFlags.PreciseBit : 0);
+            }
 
             Gd.ResetCounterPool();
 
