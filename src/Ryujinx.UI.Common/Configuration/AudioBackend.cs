@@ -10,5 +10,6 @@ namespace Ryujinx.UI.Common.Configuration
         OpenAl,
         SoundIo,
         SDL2,
+        Oboe,
     }
 }
