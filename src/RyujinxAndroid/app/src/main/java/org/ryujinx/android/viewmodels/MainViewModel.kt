@@ -170,7 +170,8 @@ class MainViewModel(val activity: MainActivity) {
                     settings.enableJitCacheEviction,
                     false,
                     "UTC",
-                    settings.ignoreMissingServices
+                    settings.ignoreMissingServices,
+                    settings.audioEngineType // 新增音频引擎参数
                 )
 
                 semaphore.release()
@@ -274,7 +275,8 @@ class MainViewModel(val activity: MainActivity) {
                     settings.enableJitCacheEviction,
                     false,
                     "UTC",
-                    settings.ignoreMissingServices
+                    settings.ignoreMissingServices,
+                    settings.audioEngineType // 新增音频引擎参数
                 )
 
                 semaphore.release()
