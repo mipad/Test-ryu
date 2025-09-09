@@ -1,4 +1,4 @@
-// OboeAudioDriver.cs (完整修复版)
+// OboeHardwareDeviceDriver.cs (极致优化版)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -64,7 +64,6 @@ namespace Ryujinx.Audio.Backends.Oboe
             get => _volume;
             set
             {
-                Logger.Info?.Print(LogClass.Audio, $"Setting driver volume: {value}");
                 _volume = value;
                 setOboeVolume(value);
             }
@@ -73,7 +72,6 @@ namespace Ryujinx.Audio.Backends.Oboe
         // ========== 构造与生命周期 ==========
         public OboeHardwareDeviceDriver()
         {
-            Logger.Info?.Print(LogClass.Audio, "OboeAudioDriver constructor called");
             StartUpdateThread();
         }
 
@@ -83,7 +81,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 while (_stillRunning)
                 {
-                    Thread.Sleep(10); // 适当间隔
+                    Thread.Sleep(5); // 减少间隔时间
                     
                     foreach (var session in _sessions.Keys)
                     {
@@ -94,7 +92,8 @@ namespace Ryujinx.Audio.Backends.Oboe
             })
             {
                 Name = "Audio.Oboe.UpdateThread",
-                IsBackground = true
+                IsBackground = true,
+                Priority = ThreadPriority.AboveNormal // 提高线程优先级
             };
             _updateThread.Start();
         }
@@ -109,11 +108,10 @@ namespace Ryujinx.Audio.Backends.Oboe
         {
             if (!_disposed)
             {
-                Logger.Info?.Print(LogClass.Audio, "Disposing OboeAudioDriver");
                 if (disposing)
                 {
                     _stillRunning = false;
-                    _updateThread?.Join(100);
+                    _updateThread?.Join(50); // 减少等待时间
                     
                     shutdownOboeAudio();
                     _isOboeInitialized = false;
@@ -121,7 +119,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                     _updateRequiredEvent?.Dispose();
                 }
                 _disposed = true;
-                Logger.Info?.Print(LogClass.Audio, "OboeAudioDriver disposed");
             }
         }
 
@@ -150,8 +147,6 @@ namespace Ryujinx.Audio.Backends.Oboe
             uint sampleRate,
             uint channelCount)
         {
-            Logger.Info?.Print(LogClass.Audio, $"Opening Oboe device session: {sampleRate}Hz, {channelCount}ch");
-
             if (direction != IHardwareDeviceDriver.Direction.Output)
                 throw new ArgumentException($"Unsupported direction: {direction}");
 
@@ -165,7 +160,6 @@ namespace Ryujinx.Audio.Backends.Oboe
             if (!_isOboeInitialized)
             {
                 setOboeSampleRate((int)sampleRate);
-                // 修复：将缓冲区大小除以通道数转换为帧数
                 setOboeBufferSize(CalculateBufferSize(sampleRate) / (int)channelCount);
                 setOboeVolume(_volume);
 
@@ -174,8 +168,6 @@ namespace Ryujinx.Audio.Backends.Oboe
 
                 if (!_isOboeInitialized)
                     throw new Exception("Oboe audio failed to initialize");
-
-                Logger.Info?.Print(LogClass.Audio, "Oboe audio initialized successfully");
             }
 
             var session = new OboeAudioSession(this, memoryManager, sampleFormat, sampleRate, channelCount);
@@ -185,16 +177,12 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         private bool Unregister(OboeAudioSession session) => _sessions.TryRemove(session, out _);
 
-        // ✅ 修复：通过 JNI 获取设备信息
         private int CalculateBufferSize(uint sampleRate)
         {
-            int latencyMs = IsHighPerformanceDevice() ? 20 : 60;
-            int bufferSize = (int)(sampleRate * latencyMs / 1000);
-            Logger.Debug?.Print(LogClass.Audio, $"CalculateBufferSize: latencyMs={latencyMs}, bufferSize={bufferSize}");
-            return bufferSize;
+            int latencyMs = IsHighPerformanceDevice() ? 10 : 30; // 减少延迟时间
+            return (int)(sampleRate * latencyMs / 1000);
         }
 
-        // ✅ 修复：使用 JNI 获取设备型号和品牌，添加天玑8100识别
         private bool IsHighPerformanceDevice()
         {
             try
@@ -202,10 +190,8 @@ namespace Ryujinx.Audio.Backends.Oboe
                 string device = Marshal.PtrToStringAnsi(GetAndroidDeviceModel())?.ToLower() ?? "";
                 string brand = Marshal.PtrToStringAnsi(GetAndroidDeviceBrand())?.ToLower() ?? "";
                 
-                // 添加天玑8100的识别
                 if (device.Contains("mt6893") || device.Contains("dimensity8100") || brand.Contains("mediatek"))
                 {
-                    Logger.Debug?.Print(LogClass.Audio, $"High performance device detected: {device} / {brand}");
                     return true;
                 }
                 
@@ -218,17 +204,14 @@ namespace Ryujinx.Audio.Backends.Oboe
                 
                 foreach (string perfDevice in highPerfDevices) {
                     if (device.Contains(perfDevice) || brand.Contains(perfDevice)) {
-                        Logger.Debug?.Print(LogClass.Audio, $"High performance device detected: {device} / {brand}");
                         return true;
                     }
                 }
                 
-                Logger.Debug?.Print(LogClass.Audio, $"Low performance device: {device} / {brand}");
                 return false;
             }
-            catch (Exception ex)
+            catch
             {
-                Logger.Warning?.Print(LogClass.Audio, $"Failed to detect device performance: {ex.Message}");
                 return false;
             }
         }
@@ -255,7 +238,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                 _driver = driver;
                 _channelCount = (int)channelCount;
                 _volume = 1.0f;
-                Logger.Info?.Print(LogClass.Audio, $"Session created: {sampleRate}Hz, {channelCount}ch");
             }
 
             public void UpdatePlaybackStatus(int bufferedFrames)
@@ -292,20 +274,16 @@ namespace Ryujinx.Audio.Backends.Oboe
 
                 if (buffer.Data == null || buffer.Data.Length == 0) return;
 
-                // --- 新增：流量控制逻辑 ---
-                // 获取当前缓冲的帧数
+                // --- 优化的流量控制逻辑 ---
                 int bufferedFrames = getOboeBufferedFrames();
-                // 计算最大允许缓冲的帧数（例如 5 * 1024 帧，约 100ms）
-                int maxBufferedFrames = 5 * 1024;
+                int maxBufferedFrames = 2 * 1024; // 减少最大缓冲帧数
 
-                // 如果缓冲过多，就等待一段时间再重试，避免疯狂写入
+                // 如果缓冲过多，就等待一段时间再重试
                 while (bufferedFrames > maxBufferedFrames && _driver._stillRunning)
                 {
-                    Logger.Debug?.Print(LogClass.Audio, $"QueueBuffer: Buffered {bufferedFrames} frames, waiting...");
-                    Thread.Sleep(5); // 等待5ms
-                    bufferedFrames = getOboeBufferedFrames(); // 重新检查
+                    Thread.Sleep(2); // 减少等待时间
+                    bufferedFrames = getOboeBufferedFrames();
                 }
-                // --- 流量控制逻辑结束 ---
 
                 // 优化：复用临时数组
                 int sampleCount = buffer.Data.Length / 2;
@@ -318,9 +296,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                 // 记录缓冲区信息
                 _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, (ulong)sampleCount));
                 _totalWrittenSamples += (ulong)sampleCount;
-
-                // 添加写入频率日志
-                Logger.Debug?.Print(LogClass.Audio, $"QueueBuffer: wrote {sampleCount} samples, buffered frames: {bufferedFrames}");
             }
 
             public override bool WasBufferFullyConsumed(AudioBuffer buffer) =>
@@ -342,7 +317,6 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             public override void UnregisterBuffer(AudioBuffer buffer)
             {
-                // 只移除队首匹配的缓冲区
                 if (_queuedBuffers.TryPeek(out var driverBuffer) && 
                     driverBuffer.DriverIdentifier == buffer.DataPointer)
                 {
