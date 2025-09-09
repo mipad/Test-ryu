@@ -64,15 +64,25 @@ namespace LibRyujinx
                                                   int audioEngineType)  // 新增音频引擎参数
         {
             // 根据音频引擎类型设置音频驱动
-            switch (audioEngineType)
-            {
-                case 0: // 禁用音频
-                    AudioDriver = new DummyHardwareDeviceDriver();
-                    break;
-                case 1: // OpenAL
-                default: // 默认使用 OpenAL
-                    AudioDriver = new OpenALHardwareDeviceDriver();
-                    break;
+    switch (audioEngineType)
+    {
+        case 0: // 禁用音频
+            AudioDriver = new DummyHardwareDeviceDriver();
+            break;
+        case 1: // OpenAL
+            AudioDriver = new OpenALHardwareDeviceDriver();
+            break;
+        case 2: // SDL2
+            // 添加SDL2音频驱动
+            AudioDriver = new SDL2HardwareDeviceDriver();
+            break;
+        case 3: // Oboe
+            // 添加Oboe音频驱动
+            AudioDriver = new OboeHardwareDeviceDriver();
+            break;
+        default: // 默认使用 OpenAL
+            AudioDriver = new OpenALHardwareDeviceDriver();
+            break;
             }
             
             return InitializeDevice(isHostMapped,
