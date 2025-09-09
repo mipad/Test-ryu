@@ -98,7 +98,7 @@ This folder is located in the user folder, which can be accessed by clicking `Op
 - **Audio**
 
   Audio output is entirely supported, audio input (microphone) isn't supported.
-  We use C# wrappers for [OpenAL](https://openal-soft.org/), and [SDL2](https://www.libsdl.org/) & [libsoundio](http://libsound.io/) as fallbacks.
+  We use C# wrappers for [OpenAL](https://openal-soft.org/), and [SDL2](https://www.libsdl.org/) & [libsoundio](http://libsound.io/)  & Android[Oboe] as fallbacks.
 
 - **CPU**
 
