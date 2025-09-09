@@ -71,7 +71,7 @@ class MainActivity : BaseActivity() {
         RyujinxNative.jnaInstance.setSkipMemoryBarriers(quickSettings.skipMemoryBarriers)
         
         // 设置音频引擎
-        RyujinxNative.jnaInstance.setAudioBackend(quickSettings.audioBackend)
+        RyujinxNative.jnaInstance.setAudioBackend(quickSettings.audioEngineType)
         
         RyujinxNative.jnaInstance.loggingSetEnabled(
             LogLevel.Debug.ordinal,
