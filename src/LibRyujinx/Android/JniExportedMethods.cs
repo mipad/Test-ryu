@@ -93,7 +93,7 @@ namespace LibRyujinx
                     break;
                 case 0: // 禁用音频
                 default:
-                    AudioDriver = new DummyHardwareDeviceDriver; // 或设置为一个空实现的音频驱动
+                    AudioDriver = new DummyHardwareDeviceDriver(); // 音频驱动
                     break;
             }
 
