@@ -27,6 +27,7 @@ class QuickSettings(val activity: Activity) {
     var skipMemoryBarriers: Boolean // 新增：跳过内存屏障
     var regionCode: Int // 新增：区域代码
     var systemLanguage: Int // 新增：系统语言
+    var audioEngineType: Int // 0=禁用，1=OpenAL
 
     // Logs
     var enableDebugLogs: Boolean
@@ -63,6 +64,7 @@ class QuickSettings(val activity: Activity) {
         skipMemoryBarriers = sharedPref.getBoolean("skipMemoryBarriers", false) // 初始化
         regionCode = sharedPref.getInt("regionCode", RegionCode.USA.ordinal) // 默认USA
         systemLanguage = sharedPref.getInt("systemLanguage", SystemLanguage.AmericanEnglish.ordinal) // 默认美式英语
+        audioEngineType = sharedPref.getInt("audioEngineType", 1) // 默认使用OpenAL
 
         enableDebugLogs = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs = sharedPref.getBoolean("enableStubLogs", false)
@@ -98,6 +100,7 @@ class QuickSettings(val activity: Activity) {
         editor.putBoolean("skipMemoryBarriers", skipMemoryBarriers) // 保存
         editor.putInt("regionCode", regionCode) // 保存区域代码
         editor.putInt("systemLanguage", systemLanguage) // 保存系统语言
+        editor.putInt("audioEngineType", audioEngineType) // 保存音频引擎设置
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs)
         editor.putBoolean("enableStubLogs", enableStubLogs)
