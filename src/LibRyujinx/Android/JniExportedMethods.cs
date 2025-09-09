@@ -79,11 +79,23 @@ namespace LibRyujinx
                                                     bool enableJitCacheEviction,
                                                     bool enableInternetAccess,
                                                     IntPtr timeZonePtr,
-                                                    bool ignoreMissingServices)
+                                                    bool ignoreMissingServices,
+                                                    int audioEngineType)  // 新增音频引擎参数
         {
             debug_break(4);
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            AudioDriver = new OpenALHardwareDeviceDriver();
+            
+            // 根据音频引擎类型设置音频驱动
+            switch (audioEngineType)
+            {
+                case 1: // OpenAL
+                    AudioDriver = new OpenALHardwareDeviceDriver();
+                    break;
+                case 0: // 禁用音频
+                default:
+                    AudioDriver = null; // 或设置为一个空实现的音频驱动
+                    break;
+            }
 
             var timezone = Marshal.PtrToStringAnsi(timeZonePtr);
             return InitializeDevice(isHostMapped,
@@ -230,33 +242,33 @@ namespace LibRyujinx
         }
 
         [UnmanagedCallersOnly(EntryPoint = "graphicsInitialize")]
-public static bool JnaGraphicsInitialize(float resScale,
-        float maxAnisotropy,
-        bool fastGpuTime,
-        bool fast2DCopy,
-        bool enableMacroJit,
-        bool enableMacroHLE,
-        bool enableShaderCache,
-        bool enableTextureRecompression,
-        int backendThreading,
-        int aspectRatio)  // 新增参数
-{
-    Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-    SearchPathContainer.Platform = UnderlyingPlatform.Android;
-    return InitializeGraphics(new GraphicsConfiguration()
-    {
-        ResScale = resScale,
-        MaxAnisotropy = maxAnisotropy,
-        FastGpuTime = fastGpuTime,
-        Fast2DCopy = fast2DCopy,
-        EnableMacroJit = enableMacroJit,
-        EnableMacroHLE = enableMacroHLE,
-        EnableShaderCache = enableShaderCache,
-        EnableTextureRecompression = enableTextureRecompression,
-        BackendThreading = (BackendThreading)backendThreading,
-        AspectRatio = (AspectRatio)aspectRatio  // 设置画面比例
-    });
-}
+        public static bool JnaGraphicsInitialize(float resScale,
+                float maxAnisotropy,
+                bool fastGpuTime,
+                bool fast2DCopy,
+                bool enableMacroJit,
+                bool enableMacroHLE,
+                bool enableShaderCache,
+                bool enableTextureRecompression,
+                int backendThreading,
+                int aspectRatio)  // 新增参数
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
+            SearchPathContainer.Platform = UnderlyingPlatform.Android;
+            return InitializeGraphics(new GraphicsConfiguration()
+            {
+                ResScale = resScale,
+                MaxAnisotropy = maxAnisotropy,
+                FastGpuTime = fastGpuTime,
+                Fast2DCopy = fast2DCopy,
+                EnableMacroJit = enableMacroJit,
+                EnableMacroHLE = enableMacroHLE,
+                EnableShaderCache = enableShaderCache,
+                EnableTextureRecompression = enableTextureRecompression,
+                BackendThreading = (BackendThreading)backendThreading,
+                AspectRatio = (AspectRatio)aspectRatio  // 设置画面比例
+            });
+        }
 
         [UnmanagedCallersOnly(EntryPoint = "graphicsInitializeRenderer")]
         public unsafe static bool JnaGraphicsInitializeRenderer(char** extensionsArray,
@@ -546,11 +558,11 @@ public static bool JnaGraphicsInitialize(float resScale,
         }
 
         [UnmanagedCallersOnly(EntryPoint = "setAspectRatio")]
-public static void JnaSetAspectRatio(int aspectRatio)
-{
-    Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-    SetAspectRatio((AspectRatio)aspectRatio);
-}
+        public static void JnaSetAspectRatio(int aspectRatio)
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
+            SetAspectRatio((AspectRatio)aspectRatio);
+        }
     }
 
     internal static partial class Logcat
