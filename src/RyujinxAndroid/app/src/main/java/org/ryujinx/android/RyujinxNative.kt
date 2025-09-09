@@ -20,7 +20,6 @@ interface RyujinxNativeJna : Library {
         ignoreMissingServices: Boolean,
         audioEngineType: Int // 新增音频引擎参数
     ): Boolean
-    ): Boolean
 
     fun graphicsInitialize(
         rescale: Float = 1f,
