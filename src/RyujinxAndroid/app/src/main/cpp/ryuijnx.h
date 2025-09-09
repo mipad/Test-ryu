@@ -46,4 +46,16 @@ JavaVM *_vm = nullptr;
 jobject _mainActivity = nullptr;
 jclass _mainActivityClass = nullptr;
 
+// 添加 Oboe 音频相关的函数声明
+extern "C" {
+    void initOboeAudio();
+    void shutdownOboeAudio();
+    void writeOboeAudio(const float* data, int32_t num_frames);
+    void setOboeSampleRate(int32_t sample_rate);
+    void setOboeBufferSize(int32_t buffer_size);
+    void setOboeVolume(float volume);
+    bool isOboeInitialized();
+    int32_t getOboeBufferedFrames();
+}
+
 #endif //RYUJINXNATIVE_RYUIJNX_H
