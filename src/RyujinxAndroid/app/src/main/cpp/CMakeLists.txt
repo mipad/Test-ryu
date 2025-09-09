@@ -20,6 +20,10 @@ set(SKIA_ENABLE_PARAGRAPH ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
+# 设置 Android 特定选项
+set(ANDROID_STL c++_shared)
+set(ANDROID_ARM_NEON TRUE)
+
 # 使用 FetchContent 获取 adrenotools
 FetchContent_Declare(
     adrenotools
@@ -28,6 +32,15 @@ FetchContent_Declare(
 )
 
 FetchContent_MakeAvailable(adrenotools)
+
+# 使用 FetchContent 获取 Oboe 源码
+FetchContent_Declare(
+    oboe
+    GIT_REPOSITORY https://github.com/google/oboe.git
+    GIT_TAG        1.9.3  # 使用与 Gradle 依赖相同的版本
+)
+
+FetchContent_MakeAvailable(oboe)
 
 # 使用 FetchContent 获取标准 OpenAL Soft
 FetchContent_Declare(
@@ -60,10 +73,6 @@ set(ALSOFT_DEFAULT_REVERB OFF CACHE BOOL "Disable default reverb")
 set(ALSOFT_DEFAULT_ECHO OFF CACHE BOOL "Disable default echo")
 set(ALSOFT_DEFAULT_MODULATION OFF CACHE BOOL "Disable default modulation")
 
-# 启用调试信息（如果需要）
-# set(ALSOFT_TRAP_AL_ERROR ON CACHE BOOL "Trap AL errors")
-# set(ALSOFT_TRAP_ALC_ERROR ON CACHE BOOL "Trap ALC errors")
-
 FetchContent_MakeAvailable(openal)
 
 # 创建主库
@@ -72,26 +81,46 @@ add_library(
     SHARED
     vulkan_wrapper.cpp
     ryujinx.cpp
+    oboe_audio_renderer.cpp
+    openal_audio_renderer.cpp  # 添加 OpenAL 音频渲染器实现
 )
 
-# 添加编译定义以优化音频处理
+# 定义音频后端选择宏
 target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
-    # 如果需要，可以添加更多音频优化标志
+    RYUJINX_AUDIO_BACKEND_OBOE=1
+    RYUJINX_AUDIO_BACKEND_OPENAL=1
+)
+
+# 添加编译选项
+target_compile_options(ryujinxjni PRIVATE
+    -std=c++20
+    -O3
+    -DNDEBUG
+    -ffast-math
+    -march=armv8-a
 )
 
 # 查找系统库
 find_library(log-lib log)
 find_library(opensles-lib OpenSLES)
+find_library(android-lib android)
+
+# 添加 Oboe 和 OpenAL 包含目录
+include_directories(
+    ${oboe_SOURCE_DIR}/include
+    ${openal_SOURCE_DIR}/include
+)
 
 # 链接库
 target_link_libraries(
     ryujinxjni
     ${log-lib}
     ${opensles-lib}
+    ${android-lib}
     -lvulkan
-    -landroid
     adrenotools
+    oboe
     OpenAL
 )
 
@@ -108,15 +137,9 @@ if (NOT (EXISTS ${LIBCRYPTO_JNI_PATH} AND EXISTS ${LIBSSL_JNI_PATH}))
     add_dependencies(ryujinxjni openssl)
 endif ()
 
-# 设置 OpenAL 输出目录
+# 设置 OpenAL 输出目录（可选，如果需要单独输出）
 set_target_properties(OpenAL PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
     ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
     RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
 )
-
-# 添加自定义后构建步骤以优化音频库（可选）
-# add_custom_command(TARGET ryujinxjni POST_BUILD
-#     COMMAND ${CMAKE_COMMAND} -E echo "Applying audio optimizations..."
-#     COMMAND ... # 这里可以添加任何后处理步骤
-# )
