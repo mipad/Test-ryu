@@ -66,12 +66,12 @@ class MainActivity : BaseActivity() {
         val appPath: String = AppPath
 
         var quickSettings = QuickSettings(this)
+
+        // 设置音频引擎
+        RyujinxNative.jnaInstance.setAudioBackend(quickSettings.audioEngineType)
         
         // 设置跳过内存屏障
         RyujinxNative.jnaInstance.setSkipMemoryBarriers(quickSettings.skipMemoryBarriers)
-        
-        // 设置音频引擎
-        RyujinxNative.jnaInstance.setAudioBackend(quickSettings.audioEngineType)
         
         RyujinxNative.jnaInstance.loggingSetEnabled(
             LogLevel.Debug.ordinal,
