@@ -12,7 +12,7 @@ using System.Threading;
 
 namespace Ryujinx.Audio.Backends.Oboe
 {
-    public class OboeAudioDriver : IHardwareDeviceDriver, IDisposable
+    public class OboeHardwareDeviceDriver : IHardwareDeviceDriver, IDisposable
     {
         // ========== P/Invoke 声明 ==========
         [DllImport("libryujinxjni", EntryPoint = "initOboeAudio")]
