@@ -87,15 +87,15 @@ namespace LibRyujinx
             
             // 根据音频引擎类型设置音频驱动
             switch (audioEngineType)
-            {
-                case 1: // OpenAL
-                    AudioDriver = new OpenALHardwareDeviceDriver();
-                    break;
-                case 0: // 禁用音频
-                default:
-                    AudioDriver = new DummyHardwareDeviceDriver(); // 音频驱动
-                    break;
-            }
+{
+    case 0: // 禁用音频
+        AudioDriver = new DummyHardwareDeviceDriver();
+        break;
+    case 1: // OpenAL
+    default: // 默认使用 OpenAL
+        AudioDriver = new OpenALHardwareDeviceDriver();
+        break;
+}
 
             var timezone = Marshal.PtrToStringAnsi(timeZonePtr);
             return InitializeDevice(isHostMapped,
