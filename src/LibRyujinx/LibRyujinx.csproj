@@ -6,6 +6,12 @@
     <LinkerFlavor Condition="'$(RuntimeIdentifier)'=='linux-bionic-arm64'">lld</LinkerFlavor>
     <DefineConstants>$(DefineConstants);FORCE_EXTERNAL_BASE_DIR</DefineConstants>
   </PropertyGroup>
+  
+  <!-- 添加 ANDROID 符号定义 -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'linux-bionic-arm64'">
+    <DefineConstants>$(DefineConstants);ANDROID</DefineConstants>
+  </PropertyGroup>
+  
   <PropertyGroup>
     <PublishAot>true</PublishAot>
     <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
@@ -52,10 +58,15 @@
     <Copy SourceFiles="@(SymbolFiles)" DestinationFolder="$(PublishDir)$(TargetName).framework.dSYM" />
   </Target>
   <!-- End iOS Linking Fixes -->
+  
   <ItemGroup>
     <ProjectReference Include="..\Ryujinx.Core\Ryujinx.Core.csproj" />
     <ProjectReference Include="..\Ryujinx.Audio.Backends.OpenAL\Ryujinx.Audio.Backends.OpenAL.csproj" />
     <ProjectReference Include="..\Ryujinx.Audio.Backends.SDL2\Ryujinx.Audio.Backends.SDL2.csproj" />
+    
+    <!-- 添加 Oboe 项目引用，仅针对 Android 平台 -->
+    <ProjectReference Include="..\Ryujinx.Audio.Backends.Oboe\Ryujinx.Audio.Backends.Oboe.csproj" Condition="'$(RuntimeIdentifier)' == 'linux-bionic-arm64'" />
+    
     <ProjectReference Include="..\Ryujinx.Input\Ryujinx.Input.csproj" />
     <ProjectReference Include="..\Ryujinx.Common\Ryujinx.Common.csproj" />
     <ProjectReference Include="..\Ryujinx.HLE\Ryujinx.HLE.csproj" />
@@ -65,9 +76,11 @@
     <ProjectReference Include="..\Ryujinx.Graphics.Gpu\Ryujinx.Graphics.Gpu.csproj" />
     <ProjectReference Include="..\Ryujinx.UI.Common\Ryujinx.UI.Common.csproj" />
   </ItemGroup>
+  
   <ItemGroup>
     <RdXmlFile Include="rd.xml" />
   </ItemGroup>
+  
   <ItemGroup>
     <PackageReference Include="Rxmxnx.PInvoke.Extensions" />
     <PackageReference Include="Silk.NET.Vulkan" />
