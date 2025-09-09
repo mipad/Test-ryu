@@ -308,7 +308,7 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Button(onClick = {
-                                    fun createIntent(action: String): Intent
+                                    fun createIntent(action: String): Intent {
                                         val intent = Intent(action)
                                         intent.addCategory(Intent.CATEGORY_DEFAULT)
                                         intent.data = DocumentsContract.buildRootUri(
