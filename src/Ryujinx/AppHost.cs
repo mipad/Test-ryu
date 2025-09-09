@@ -4,6 +4,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Threading;
 using LibHac.Tools.FsSystem;
+using Ryujinx.Audio.Backends.Oboe;
 using Ryujinx.Audio.Backends.Dummy;
 using Ryujinx.Audio.Backends.OpenAL;
 using Ryujinx.Audio.Backends.SDL2;
@@ -883,7 +884,11 @@ namespace Ryujinx.Ava
         private static IHardwareDeviceDriver InitializeAudio()
         {
             var availableBackends = new List<AudioBackend>
-            {
+            {   
+       
+#if ANDROID
+                AudioBackend.Oboe,
+#endif
                 AudioBackend.SDL2,
                 AudioBackend.SoundIo,
                 AudioBackend.OpenAl,
@@ -922,7 +927,10 @@ namespace Ryujinx.Ava
                 AudioBackend nextBackend = i + 1 < availableBackends.Count ? availableBackends[i + 1] : AudioBackend.Dummy;
 
                 deviceDriver = currentBackend switch
-                {
+                {   
+                    #if ANDROID
+                    AudioBackend.Oboe => InitializeAudioBackend<OboeAudioDriver>(AudioBackend.Oboe, nextBackend),
+#endif
                     AudioBackend.SDL2 => InitializeAudioBackend<SDL2HardwareDeviceDriver>(AudioBackend.SDL2, nextBackend),
                     AudioBackend.SoundIo => InitializeAudioBackend<SoundIoHardwareDeviceDriver>(AudioBackend.SoundIo, nextBackend),
                     AudioBackend.OpenAl => InitializeAudioBackend<OpenALHardwareDeviceDriver>(AudioBackend.OpenAl, nextBackend),
