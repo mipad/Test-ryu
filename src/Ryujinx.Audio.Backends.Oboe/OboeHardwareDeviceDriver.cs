@@ -71,7 +71,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         }
 
         // ========== 构造与生命周期 ==========
-        public OboeAudioDriver()
+        public OboeHardwareDeviceDriver()
         {
             Logger.Info?.Print(LogClass.Audio, "OboeAudioDriver constructor called");
             StartUpdateThread();
