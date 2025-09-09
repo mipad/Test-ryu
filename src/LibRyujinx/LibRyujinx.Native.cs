@@ -1,5 +1,7 @@
 using LibRyujinx.Shared;
 using OpenTK.Graphics.OpenGL;
+using Ryujinx.Audio.Backends.Dummy;
+using Ryujinx.Audio.Backends.OpenAL;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.OpenGL;
@@ -58,8 +60,21 @@ namespace LibRyujinx
                                                   bool enableJitCacheEviction,
                                                   bool enableInternetAccess,
                                                   IntPtr timeZone,
-                                                  bool ignoreMissingServices)
+                                                  bool ignoreMissingServices,
+                                                  int audioEngineType)  // 新增音频引擎参数
         {
+            // 根据音频引擎类型设置音频驱动
+            switch (audioEngineType)
+            {
+                case 0: // 禁用音频
+                    AudioDriver = new DummyHardwareDeviceDriver();
+                    break;
+                case 1: // OpenAL
+                default: // 默认使用 OpenAL
+                    AudioDriver = new OpenALHardwareDeviceDriver();
+                    break;
+            }
+            
             return InitializeDevice(isHostMapped,
                                     useHypervisor,
                                     systemLanguage,
