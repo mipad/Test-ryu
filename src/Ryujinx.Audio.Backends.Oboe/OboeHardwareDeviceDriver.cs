@@ -236,7 +236,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         // ========== 音频会话类 ==========
         private class OboeAudioSession : HardwareDeviceSessionOutputBase
         {
-            private readonly OboeAudioDriver _driver;
+            private readonly OboeHardwareDeviceDriver _driver;
             private readonly ConcurrentQueue<OboeAudioBuffer> _queuedBuffers = new();
             private ulong _totalWrittenSamples;
             private ulong _totalPlayedSamples;
@@ -245,7 +245,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             private readonly int _channelCount;
 
             public OboeAudioSession(
-                OboeAudioDriver driver,
+                OboeHardwareDeviceDriver driver,
                 IVirtualMemoryManager memoryManager,
                 SampleFormat sampleFormat,
                 uint sampleRate,
