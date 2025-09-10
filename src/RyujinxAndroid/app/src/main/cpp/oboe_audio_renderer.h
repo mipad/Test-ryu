@@ -68,7 +68,7 @@ private:
     std::unique_ptr<RingBuffer> mRingBuffer;
     std::mutex mInitMutex;
     std::atomic<bool> mIsInitialized{false};
-    std::atomic<bool> mIsStreamStarted{false}; // ✅ 新增：流是否已启动
+    std::atomic<bool> mIsStreamStarted{false};
     std::atomic<int32_t> mSampleRate{48000};
     std::atomic<int32_t> mBufferSize{1024};
     std::atomic<int32_t> mChannelCount{2};
