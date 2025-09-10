@@ -396,9 +396,3 @@ const char* GetAndroidDeviceBrand() {
     }
     return brand;
 }
-
-extern "C"
-void writeOboeAudio(float* audioData, int num_frames, int input_channels, int output_channels) {
-    // 这个函数现在在 oboe_audio_renderer.cpp 中实现
-    // 这里不需要重复实现，只需声明以匹配头文件
-}
