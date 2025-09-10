@@ -75,43 +75,6 @@ set(ALSOFT_DEFAULT_MODULATION OFF CACHE BOOL "Disable default modulation")
 
 FetchContent_MakeAvailable(openal)
 
-# 使用 FetchContent 获取 SDL2
-FetchContent_Declare(
-    sdl2
-    GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-    GIT_TAG        release-3.2.22  # 使用较新的稳定版本
-)
-
-# 设置 SDL2 构建选项 - 启用音频和视频功能
-set(SDL_SHARED ON CACHE BOOL "Build shared library")
-set(SDL_STATIC OFF CACHE BOOL "Disable static library")
-set(SDL_TEST OFF CACHE BOOL "Disable tests")
-set(SDL_VIDEO ON CACHE BOOL "Enable video support")
-set(SDL_AUDIO ON CACHE BOOL "Enable audio support")
-set(SDL_RENDER ON CACHE BOOL "Enable render support")
-set(SDL_EVENTS ON CACHE BOOL "Enable events support")
-set(SDL_JOYSTICK ON CACHE BOOL "Enable joystick support")
-set(SDL_HAPTIC ON CACHE BOOL "Enable haptic support")
-set(SDL_POWER ON CACHE BOOL "Enable power management support")
-set(SDL_THREADS ON CACHE BOOL "Enable threads support")
-set(SDL_TIMERS ON CACHE BOOL "Enable timers support")
-set(SDL_FILE ON CACHE BOOL "Enable file I/O support")
-set(SDL_LOADSO ON CACHE BOOL "Enable loadso support")
-set(SDL_CPUINFO ON CACHE BOOL "Enable CPU info support")
-set(SDL_FILESYSTEM ON CACHE BOOL "Enable filesystem support")
-
-# 对于 Android，需要特别设置
-set(SDL_ANDROID ON CACHE BOOL "Enable Android support")
-set(SDL_ANDROID_BACKBUTTON ON CACHE BOOL "Enable Android back button support")
-set(SDL_ANDROID_BLOCK_ON_PAUSE ON CACHE BOOL "Block on pause")
-
-# 启用 OpenGL ES 支持
-set(SDL_OPENGL ON CACHE BOOL "Enable OpenGL support")
-set(SDL_OPENGLES ON CACHE BOOL "Enable OpenGL ES support")
-set(SDL_VULKAN ON CACHE BOOL "Enable Vulkan support")
-
-FetchContent_MakeAvailable(sdl2)
-
 # 创建主库
 add_library(
     ryujinxjni
@@ -141,11 +104,8 @@ find_library(log-lib log)
 find_library(opensles-lib OpenSLES)
 find_library(android-lib android)
 
-# 添加包含目录
-include_directories(
-    ${oboe_SOURCE_DIR}/include
-    ${sdl2_SOURCE_DIR}/include
-)
+# 添加 Oboe 包含目录
+include_directories(${oboe_SOURCE_DIR}/include)
 
 # 链接库
 target_link_libraries(
@@ -157,7 +117,6 @@ target_link_libraries(
     adrenotools
     oboe
     OpenAL
-    SDL2
 )
 
 # 设置 JNI 库输出路径
@@ -175,13 +134,6 @@ endif ()
 
 # 设置 OpenAL 输出目录
 set_target_properties(OpenAL PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
-    ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
-    RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
-)
-
-# 设置 SDL2 输出目录
-set_target_properties(SDL2 PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${JNI_PATH}
     ARCHIVE_OUTPUT_DIRECTORY ${JNI_PATH}
     RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
