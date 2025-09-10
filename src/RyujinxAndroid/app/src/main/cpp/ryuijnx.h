@@ -50,12 +50,13 @@ jclass _mainActivityClass = nullptr;
 extern "C" {
     void initOboeAudio();
     void shutdownOboeAudio();
-    void writeOboeAudio(const float* data, int32_t num_frames);
+    void writeOboeAudio(float* audioData, int num_frames, int input_channels, int output_channels); // 修改声明以匹配 oboe_audio_renderer.h
     void setOboeSampleRate(int32_t sample_rate);
     void setOboeBufferSize(int32_t buffer_size);
     void setOboeVolume(float volume);
     bool isOboeInitialized();
     int32_t getOboeBufferedFrames();
+    int getOboeChannelCount(); // 添加声道数获取函数声明
 }
 
 #endif //RYUJINXNATIVE_RYUIJNX_H
