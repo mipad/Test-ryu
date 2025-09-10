@@ -1135,6 +1135,15 @@ Column(modifier = Modifier.fillMaxWidth()) {
                                     !enableTextureRecompression.value
                             })
                     }
+                    
+                    // 将变量声明移到Row块之前
+                    var isDriverSelectorOpen = remember {
+                        mutableStateOf(false)
+                    }
+                    var isChanged = remember {
+                        mutableStateOf(false)
+                    }
+                    
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1142,14 +1151,8 @@ Column(modifier = Modifier.fillMaxWidth()) {
                         horizontalArrangement = Arrangement.Start,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        var isDriverSelectorOpen = remember {
-                            mutableStateOf(false)
-                        }
                         var driverViewModel =
                             VulkanDriverViewModel(settingsViewModel.activity)
-                        var isChanged = remember {
-                            mutableStateOf(false)
-                        }
                         var refresh = remember {
                             mutableStateOf(false)
                         }
@@ -1874,4 +1877,5 @@ Column(modifier = Modifier.fillMaxWidth()) {
             settingsViewModel.navController.popBackStack()
         }
     }
+}
 }
