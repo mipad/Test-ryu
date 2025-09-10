@@ -169,6 +169,7 @@ class SettingViews {
             val showResScaleOptions = remember { mutableStateOf(false) }
             val showAspectRatioOptions = remember { mutableStateOf(false) }
             val showAudioEngineDialog = remember { mutableStateOf(false) } // 控制音频引擎对话框显示
+            val showScalingFilterDialog = remember { mutableStateOf(false) } // 控制Scaling Filter对话框显示
             
 
             if (!loaded.value) {
@@ -1082,9 +1083,7 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                     // 新增后处理设置部分
 ExpandableView(onCardArrowClick = { }, title = "Post-Processing") {
     Column(modifier = Modifier.fillMaxWidth()) {
-        // Scaling Filter 设置
-        var showScalingFilterDialog by remember { mutableStateOf(false) }
-        
+        // Scaling Filter 设置       
         Row(
             modifier = Modifier
                 .fillMaxWidth()
