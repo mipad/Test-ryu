@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (音质优化版)
+// oboe_audio_renderer.cpp (移除噪声整形版本)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -7,7 +7,8 @@
 #include <mutex>
 #include <cmath>
 
-// =============== 噪声整形器实现 ===============
+// =============== 噪声整形器实现 (暂时注释掉) ===============
+/*
 class NoiseShaper {
 private:
     float mHistory[3];
@@ -49,6 +50,7 @@ public:
         return quantized;
     }
 };
+*/
 
 // =============== 高质量采样率转换器 ===============
 class SampleRateConverter {
@@ -189,9 +191,9 @@ void RingBuffer::clear() {
 
 // =============== OboeAudioRenderer Implementation ===============
 OboeAudioRenderer::OboeAudioRenderer()
-    : mRingBuffer(std::make_unique<RingBuffer>((48000 * 2 * 100) / 1000)), // 100ms缓冲
-      mNoiseShaper(std::make_unique<NoiseShaper>()),
-      mSampleRateConverter(std::make_unique<SampleRateConverter>())
+    : mRingBuffer(std::make_unique<RingBuffer>((48000 * 2 * 100) / 1000)) // 100ms缓冲
+    // , mNoiseShaper(std::make_unique<NoiseShaper>()) // 暂时注释掉噪声整形器
+    , mSampleRateConverter(std::make_unique<SampleRateConverter>())
 {
 }
 
@@ -298,8 +300,8 @@ void OboeAudioRenderer::shutdown() {
     mIsStreamStarted.store(false);
     mIsInitialized.store(false);
     
-    // 重置噪声整形器
-    mNoiseShaper->reset();
+    // 重置噪声整形器 (暂时注释掉)
+    // mNoiseShaper->reset();
     mSampleRateConverter->reset();
 }
 
@@ -367,7 +369,8 @@ void OboeAudioRenderer::clearBuffer() {
     if (mRingBuffer) {
         mRingBuffer->clear();
     }
-    mNoiseShaper->reset();
+    // 重置噪声整形器 (暂时注释掉)
+    // mNoiseShaper->reset();
     mSampleRateConverter->reset();
 }
 
@@ -415,13 +418,13 @@ oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
             std::fill(floatData.begin() + read, floatData.end(), 0.0f);
         }
         
-        // 应用噪声整形和高质量转换
+        // 应用高质量转换 (暂时注释掉噪声整形)
         for (size_t i = 0; i < totalSamples; i++) {
             float sample = floatData[i] * volume;
             sample = std::clamp(sample, -1.0f, 1.0f);
             
-            // 应用噪声整形
-            sample = mNoiseShaper->process(sample);
+            // 应用噪声整形 (暂时注释掉)
+            // sample = mNoiseShaper->process(sample);
             
             // 高质量转换到16位
             output[i] = static_cast<int16_t>(sample * 32767);
@@ -448,13 +451,15 @@ oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
 void OboeAudioRenderer::onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
     mIsStreamStarted.store(false);
     mIsInitialized.store(false);
-    mNoiseShaper->reset();
+    // 重置噪声整形器 (暂时注释掉)
+    // mNoiseShaper->reset();
     mSampleRateConverter->reset();
 }
 
 void OboeAudioRenderer::onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
     mIsStreamStarted.store(false);
     mIsInitialized.store(false);
-    mNoiseShaper->reset();
+    // 重置噪声整形器 (暂时注释掉)
+    // mNoiseShaper->reset();
     mSampleRateConverter->reset();
 }
