@@ -19,7 +19,7 @@ class MainView {
                 composable("user") { UserViews.Main(mainViewModel) }
                 composable("game") { GameViews.Main() }
                 composable("settings") {
-                    SettingViewsMain( // Changed from SettingViews.Main to SettingViewsMain
+                    SettingViews.Main(
                         SettingsViewModel(
                             navController,
                             mainViewModel.activity
