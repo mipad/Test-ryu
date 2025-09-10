@@ -12,32 +12,28 @@
 
 std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
 
-// 添加全局变量声明（如果尚未声明）
-JavaVM* _vm = nullptr;
-jobject _mainActivity = nullptr;
-jclass _mainActivityClass = nullptr;
-pthread_t _renderingThreadId;
+// 移除重复的全局变量定义，这些已经在 ryuijnx.h 中定义
+// JavaVM* _vm = nullptr; // 已定义在头文件中
+// jobject _mainActivity = nullptr; // 已定义在头文件中
+// jclass _mainActivityClass = nullptr; // 已定义在头文件中
+// pthread_t _renderingThreadId; // 已定义在头文件中
 
-// 添加缺失的宏定义
-#define VK_CHECK(result) \
-    if (result != VK_SUCCESS) { \
-        __android_log_print(ANDROID_LOG_ERROR, "Ryuijnx", "Vulkan error: %d", result); \
-        return -1; \
-    }
+// 移除重复的宏定义
+// #define VK_CHECK(result) \ // 已定义在头文件中
 
-// 添加缺失的类型定义
-typedef struct ANativeWindow ANativeWindow;
-typedef int32_t ANativeWindowTransform;
+// 移除重复的类型定义
+// typedef int32_t ANativeWindowTransform; // 已在系统头文件中定义
 
-// 添加缺失的函数声明
+// 移除重复的函数声明
 extern "C" {
-    typedef void* (*PFN_vkGetInstanceProcAddr)(void* instance, const char* name);
-    typedef int (*PFN_vkCreateAndroidSurfaceKHR)(void* instance, const void* pCreateInfo, const void* pAllocator, void* pSurface);
+    // 这些类型已在 Vulkan 头文件中定义
+    // typedef void* (*PFN_vkGetInstanceProcAddr)(void* instance, const char* name);
+    // typedef int (*PFN_vkCreateAndroidSurfaceKHR)(void* instance, const void* pCreateInfo, const void* pAllocator, void* pSurface);
     
     // 添加 adrenotools 相关声明 - 使用正确的类型
-    void* adrenotools_open_libvulkan(int flags, int driver_type, const char* target_dir,
-                                    const char* lib_dir, const char* app_dir, const char* package_name,
-                                    const char* dev_dir, const char* hook_dir);
+    // void* adrenotools_open_libvulkan(int flags, int driver_type, const char* target_dir, // 已在头文件中声明
+    //                                 const char* lib_dir, const char* app_dir, const char* package_name,
+    //                                 const char* dev_dir, const char* hook_dir);
     void adrenotools_set_turbo(bool enable); // 修正为使用 bool 类型
 }
 
