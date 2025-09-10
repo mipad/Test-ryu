@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (修复版，重新添加噪声整形)
+// oboe_audio_renderer.h (终极修复版：配合高质量采样率转换 + 动态缓冲监控)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -9,14 +9,14 @@
 #include <memory>
 #include <cstdint>
 
-// 环形缓冲区（使用互斥锁保证线程安全）
+// =============== 环形缓冲区 ===============
 class RingBuffer {
 private:
     std::vector<float> mBuffer;
     std::atomic<size_t> mReadIndex{0};
     std::atomic<size_t> mWriteIndex{0};
     size_t mCapacity;
-    mutable std::mutex mMutex; // 添加互斥锁成员变量
+    mutable std::mutex mMutex;
 
 public:
     explicit RingBuffer(size_t capacity);
@@ -27,22 +27,37 @@ public:
     void clear();
 };
 
-// 噪声整形器类定义
+// =============== 噪声整形器 (稳定一阶版) ===============
 class NoiseShaper {
 private:
-    float mHistory[3];
-    float mCoefficients[3];
-    mutable std::mutex mMutex; // 添加互斥锁
+    float mHistory[3] = {0}; // 初始化为0
+    mutable std::mutex mMutex;
 
 public:
-    NoiseShaper();
+    NoiseShaper() = default; // 使用默认构造，reset()内已初始化
     void reset();
     float process(float input);
 };
 
-// 前向声明
-class SampleRateConverter;
+// =============== 高质量采样率转换器 (Cubic插值) ===============
+class SampleRateConverter {
+private:
+    float mLastSamples[4] = {0};
+    float mPosition = 0.0f;
+    float mRatio = 1.0f;
+    size_t mWriteIndex = 0;
+    bool mHasEnoughSamples = false;
 
+    static float cubicInterpolate(float y0, float y1, float y2, float y3, float mu);
+
+public:
+    SampleRateConverter() = default;
+    void setRatio(float inputRate, float outputRate);
+    void reset();
+    size_t convert(const float* input, size_t inputSize, float* output, size_t outputSize);
+};
+
+// =============== Oboe 音频渲染器 ===============
 class OboeAudioRenderer : public oboe::AudioStreamDataCallback,
                           public oboe::AudioStreamErrorCallback {
 public:
@@ -69,7 +84,7 @@ public:
     // Oboe 回调
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t numFrames) override;
     void onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) override;
-    void onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) override;
+    void onErrorBeforeClose(oboee::AudioStream* audioStream, oboe::Result error) override;
 
 private:
     OboeAudioRenderer();
@@ -83,14 +98,23 @@ private:
     std::unique_ptr<NoiseShaper> mNoiseShaper;
     std::unique_ptr<SampleRateConverter> mSampleRateConverter;
     std::mutex mInitMutex;
+
+    // 状态标志
     std::atomic<bool> mIsInitialized{false};
     std::atomic<bool> mIsStreamStarted{false};
     std::atomic<bool> mNoiseShapingEnabled{true};
+
+    // 音频参数
     std::atomic<int32_t> mSampleRate{48000};
     std::atomic<int32_t> mBufferSize{1024};
     std::atomic<int32_t> mChannelCount{2};
     std::atomic<float> mVolume{1.0f};
     std::atomic<oboe::AudioFormat> mAudioFormat{oboe::AudioFormat::Float};
+
+    // === 新增：动态缓冲区监控 ===
+    std::atomic<size_t> mLastBufferLevel{0};      // 上次记录的缓冲帧数
+    std::atomic<size_t> mUnderrunCount{0};       // 欠载次数统计
+    std::atomic<size_t> mTotalFramesWritten{0};  // 总写入帧数（用于日志节流）
 };
 
 #endif // RYUJINX_OBOE_AUDIO_RENDERER_H
