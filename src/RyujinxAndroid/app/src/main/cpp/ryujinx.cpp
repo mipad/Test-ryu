@@ -346,13 +346,6 @@ void shutdownOboeAudio() {
     OboeAudioRenderer::getInstance().shutdown();
 }
 
-extern "C"
-void writeOboeAudio(const float* data, int32_t num_frames) {
-    if (!data || num_frames <= 0) {
-        return;
-    }
-    OboeAudioRenderer::getInstance().writeAudio(data, num_frames);
-}
 
 extern "C"
 void setOboeSampleRate(int32_t sample_rate) {
