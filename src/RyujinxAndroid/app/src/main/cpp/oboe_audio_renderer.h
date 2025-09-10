@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (修复版)
+// oboe_audio_renderer.h (修复版，重新添加噪声整形)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -27,7 +27,20 @@ public:
     void clear();
 };
 
-// 前向声明 (暂时移除 NoiseShaper)
+// 噪声整形器类定义
+class NoiseShaper {
+private:
+    float mHistory[3];
+    float mCoefficients[3];
+    mutable std::mutex mMutex; // 添加互斥锁
+
+public:
+    NoiseShaper();
+    void reset();
+    float process(float input);
+};
+
+// 前向声明
 class SampleRateConverter;
 
 class OboeAudioRenderer : public oboe::AudioStreamDataCallback,
@@ -41,6 +54,7 @@ public:
     void setSampleRate(int32_t sampleRate);
     void setBufferSize(int32_t bufferSize);
     void setVolume(float volume);
+    void setNoiseShapingEnabled(bool enabled);
 
     void writeAudio(const float* data, int32_t numFrames);
     void clearBuffer();
@@ -66,11 +80,12 @@ private:
 
     std::shared_ptr<oboe::AudioStream> mAudioStream;
     std::unique_ptr<RingBuffer> mRingBuffer;
-    // std::unique_ptr<NoiseShaper> mNoiseShaper; // 暂时移除噪声整形器
+    std::unique_ptr<NoiseShaper> mNoiseShaper;
     std::unique_ptr<SampleRateConverter> mSampleRateConverter;
     std::mutex mInitMutex;
     std::atomic<bool> mIsInitialized{false};
-    std::atomic<bool> mIsStreamStarted{false}; // ✅ 新增：流是否已启动
+    std::atomic<bool> mIsStreamStarted{false};
+    std::atomic<bool> mNoiseShapingEnabled{true};
     std::atomic<int32_t> mSampleRate{48000};
     std::atomic<int32_t> mBufferSize{1024};
     std::atomic<int32_t> mChannelCount{2};
