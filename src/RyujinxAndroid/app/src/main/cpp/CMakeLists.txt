@@ -1,4 +1,4 @@
-# CMakeLists.txt (终极优化版：专为消除滋滋声 + 最大化音频性能)
+# CMakeLists.txt (修复版：target_compile_options 放在 add_library 之后)
 include(FetchContent)
 
 # 设置最低 CMake 版本
@@ -16,22 +16,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(ANDROID_STL c++_shared)
 set(ANDROID_ARM_NEON TRUE)
 
-# =============== 性能编译选项 ===============
-set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded)
-
-# ✅ 全局优化标志：低延迟 + 高性能
-target_compile_options(ryujinxjni PRIVATE
-    -O3
-    -DNDEBUG
-    -ffast-math
-    -fno-exceptions          # 减少开销
-    -fno-rtti                # 减少开销
-    -flto                    # 链接时优化
-    -march=armv8-a
-    -mfpu=neon
-    -mfloat-abi=hard
-)
-
 # =============== 获取依赖库 ===============
 
 # --- adrenotools ---
@@ -42,7 +26,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(adrenotools)
 
-# --- Oboe (强制低延迟配置) ---
+# --- Oboe ---
 FetchContent_Declare(
     oboe
     GIT_REPOSITORY https://github.com/google/oboe.git
@@ -57,50 +41,63 @@ FetchContent_Declare(
     GIT_TAG        1.24.3
 )
 
-# ✅ OpenAL Soft 低延迟优化配置
+# OpenAL Soft 低延迟优化配置
 set(ALSOFT_REQUIRE_OPENSL OFF CACHE BOOL "Don't require OpenSL")
 set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "Enable OpenSL backend")
-set(ALSOFT_BACKEND_AAUDIO ON CACHE BOOL "Enable AAudio backend for lower latency") # ✅ 优先AAudio
+set(ALSOFT_BACKEND_AAUDIO ON CACHE BOOL "Enable AAudio backend for lower latency")
 set(ALSOFT_NO_CONFIG_UTIL ON CACHE BOOL "Disable config utility")
 set(ALSOFT_UTILS OFF CACHE BOOL "Disable utils")
 set(ALSOFT_EXAMPLES OFF CACHE BOOL "Disable examples")
 set(ALSOFT_INSTALL OFF CACHE BOOL "Disable installation")
 set(ALSOFT_TESTS OFF CACHE BOOL "Disable tests")
 
-# ✅ 性能优化
+# 性能优化
 set(ALSOFT_CPUEXT_NEON ON CACHE BOOL "Enable NEON optimizations")
 set(ALSOFT_REQUIRE_NEON OFF CACHE BOOL "Don't require NEON")
 
-# ✅ 延迟优化：禁用所有效果处理器
+# 延迟优化：禁用所有效果处理器
 set(ALSOFT_HRTF_DISABLE ON CACHE BOOL "Disable HRTF" FORCE)
 set(ALSOFT_AMBIENT_CHANNELS 0 CACHE STRING "Ambient channels")
 set(ALSOFT_DEFAULT_REVERB OFF CACHE BOOL "Disable default reverb")
 set(ALSOFT_DEFAULT_ECHO OFF CACHE BOOL "Disable default echo")
 set(ALSOFT_DEFAULT_MODULATION OFF CACHE BOOL "Disable default modulation")
 
-# ✅ 缓冲区优化（关键！）
-set(ALSOFT_PERIOD_SIZE 192 CACHE STRING "Period size in frames (lower = lower latency)") # 默认960太高
-set(ALSOFT_PERIODS 3 CACHE STRING "Number of periods (2-4 recommended)") # 减少缓冲区层级
+# 缓冲区优化（关键！）
+set(ALSOFT_PERIOD_SIZE 192 CACHE STRING "Period size in frames (lower = lower latency)")
+set(ALSOFT_PERIODS 3 CACHE STRING "Number of periods (2-4 recommended)")
 
 FetchContent_MakeAvailable(openal)
 
-# =============== 创建主库 ===============
+# =============== ✅ 先创建库 target ===============
 add_library(
     ryujinxjni
     SHARED
     vulkan_wrapper.cpp
     ryujinx.cpp
     oboe_audio_renderer.cpp
+    # 如果你创建了 vulkan_utils.cpp，也请添加在这里
 )
 
-# ✅ 添加音频专用编译定义
+# =============== ✅ 再配置编译选项 ===============
+# 添加音频专用编译定义
 target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
-    OBOE_ENABLE_AAUDIO=1           # 强制启用AAudio
-    OBOE_LOW_LATENCY=1             # 启用低延迟模式
+    OBOE_ENABLE_AAUDIO=1
+    OBOE_LOW_LATENCY=1
     OBOE_PERFORMANCE_MODE_LOW_LATENCY=1
-    # 如果需要调试，可临时添加：
-    # OBOE_ENABLE_LOGGING=1
+)
+
+# 添加编译选项
+target_compile_options(ryujinxjni PRIVATE
+    -O3
+    -DNDEBUG
+    -ffast-math
+    -fno-exceptions          # 减少开销
+    -fno-rtti                # 减少开销
+    -flto                    # 链接时优化
+    -march=armv8-a
+    -mfpu=neon
+    -mfloat-abi=hard
 )
 
 # =============== 链接库 ===============
@@ -142,11 +139,7 @@ set_target_properties(OpenAL PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${JNI_PATH}
 )
 
-# =============== 调试符号（可选） ===============
-# 在 Release 模式下保留调试符号，便于崩溃分析
+# =============== 调试符号 ===============
 set_target_properties(ryujinxjni PROPERTIES
     LINK_FLAGS "-Wl,--build-id"
 )
-
-# ✅ 生成 .map 文件（可选，用于分析符号）
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-Map=${CMAKE_PROJECT_NAME}.map")
