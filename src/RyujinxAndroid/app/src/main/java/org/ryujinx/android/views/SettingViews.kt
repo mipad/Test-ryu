@@ -1297,7 +1297,7 @@ Column(modifier = Modifier.fillMaxWidth()) {
                                 isChanged.value = false
                                 isDriverSelectorOpen.value = !isDriverSelectorOpen.value
                             },
-                            modifier = Modifier.align(Alignment.CenterHorizontal)
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
                         ) {
                             Text(text = "Drivers")
                         }
