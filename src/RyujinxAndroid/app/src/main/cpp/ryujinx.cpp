@@ -213,32 +213,35 @@ Java_org_ryujinx_android_NativeHelpers_loadDriver(JNIEnv *env, jobject thiz,
     auto privateAppsPath = getStringPointer(env, private_apps_path);
     auto driverName = getStringPointer(env, driver_name);
 
+    jlong result = 0;
+
     if (!libPath || !privateAppsPath || !driverName) {
         LOGE("loadDriver: Invalid parameters");
-        goto cleanup;
+    } else {
+        auto handle = adrenotools_open_libvulkan(
+                RTLD_NOW,
+                1, // ADRENOTOOLS_DRIVER_CUSTOM
+                nullptr,
+                libPath,
+                privateAppsPath,
+                driverName,
+                nullptr,
+                nullptr
+        );
+
+        if (!handle) {
+            LOGE("loadDriver: adrenotools_open_libvulkan failed");
+        } else {
+            result = (jlong) handle;
+        }
     }
 
-    auto handle = adrenotools_open_libvulkan(
-            RTLD_NOW,
-            1, // ADRENOTOOLS_DRIVER_CUSTOM
-            nullptr,
-            libPath,
-            privateAppsPath,
-            driverName,
-            nullptr,
-            nullptr
-    );
-
-    if (!handle) {
-        LOGE("loadDriver: adrenotools_open_libvulkan failed");
-    }
-
-cleanup:
+    // 清理内存
     delete[] libPath;
     delete[] privateAppsPath;
     delete[] driverName;
 
-    return (jlong) handle;
+    return result;
 }
 
 // =============== 调试与Turbo模式 ===============
