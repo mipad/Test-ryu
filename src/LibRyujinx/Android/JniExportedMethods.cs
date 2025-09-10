@@ -576,6 +576,54 @@ namespace LibRyujinx
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             SetAspectRatio((AspectRatio)aspectRatio);
         }
+
+        // 新增：设置缩放过滤器的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "setScalingFilter")]
+        public static void JnaSetScalingFilter(int filter)
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: setScalingFilter");
+            try
+            {
+                // 更新配置状态
+                ConfigurationState.Instance.Graphics.ScalingFilter.Value = (ScalingFilter)filter;
+                
+                // 如果渲染器已初始化，直接应用设置
+                if (Renderer != null && Renderer.Window != null)
+                {
+                    Renderer.Window.SetScalingFilter((Ryujinx.Graphics.GAL.ScalingFilter)filter);
+                }
+                
+                Logger.Info?.Print(LogClass.Application, $"Scaling filter set to: {(ScalingFilter)filter}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Failed to set scaling filter: {ex.Message}");
+            }
+        }
+
+        // 新增：设置缩放过滤器级别的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "setScalingFilterLevel")]
+        public static void JnaSetScalingFilterLevel(int level)
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: setScalingFilterLevel");
+            try
+            {
+                // 更新配置状态
+                ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value = level;
+                
+                // 如果渲染器已初始化，直接应用设置
+                if (Renderer != null && Renderer.Window != null)
+                {
+                    Renderer.Window.SetScalingFilterLevel(level);
+                }
+                
+                Logger.Info?.Print(LogClass.Application, $"Scaling filter level set to: {level}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Failed to set scaling filter level: {ex.Message}");
+            }
+        }
     }
 
     internal static partial class Logcat
