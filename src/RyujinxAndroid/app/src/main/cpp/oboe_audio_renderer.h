@@ -41,8 +41,8 @@ public:
     void setSampleRate(int32_t sampleRate);
     void setBufferSize(int32_t bufferSize);
     void setVolume(float volume);
-    void setChannelCount(int32_t channelCount);
-    int32_t getChannelCount() const;
+    void setChannelCount(int32_t channelCount); // 确保这个声明存在
+    int32_t getChannelCount() const; // 确保这个声明存在
 
     void writeAudio(const float* data, int32_t numFrames);
     void clearBuffer();
