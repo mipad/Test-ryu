@@ -1,10 +1,100 @@
-// oboe_audio_renderer.cpp (极致优化版)
+// oboe_audio_renderer.cpp (音质优化版)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
 #include <thread>
 #include <chrono>
-#include <mutex>  
+#include <mutex>
+#include <cmath>
+
+// =============== 噪声整形器实现 ===============
+class NoiseShaper {
+private:
+    float mHistory[3];
+    float mCoefficients[3];
+    
+public:
+    NoiseShaper() {
+        reset();
+        // 设置噪声整形系数 (二阶噪声整形)
+        mCoefficients[0] = 2.0f;
+        mCoefficients[1] = -1.0f;
+        mCoefficients[2] = 0.5f;
+    }
+    
+    void reset() {
+        mHistory[0] = mHistory[1] = mHistory[2] = 0.0f;
+    }
+    
+    // 应用噪声整形
+    float process(float input) {
+        // 计算误差反馈
+        float errorFeedback = mCoefficients[0] * mHistory[0] + 
+                             mCoefficients[1] * mHistory[1] + 
+                             mCoefficients[2] * mHistory[2];
+        
+        // 添加误差反馈到输入
+        float shapedInput = input + errorFeedback;
+        
+        // 量化 (在外部完成)
+        // 这里我们只计算误差
+        float quantized = std::round(shapedInput * 32767.0f) / 32767.0f;
+        float error = shapedInput - quantized;
+        
+        // 更新历史
+        mHistory[2] = mHistory[1];
+        mHistory[1] = mHistory[0];
+        mHistory[0] = error;
+        
+        return quantized;
+    }
+};
+
+// =============== 高质量采样率转换器 ===============
+class SampleRateConverter {
+private:
+    float mLastSample;
+    float mPosition;
+    float mRatio;
+    
+public:
+    SampleRateConverter() : mLastSample(0.0f), mPosition(0.0f), mRatio(1.0f) {}
+    
+    void setRatio(float inputRate, float outputRate) {
+        mRatio = inputRate / outputRate;
+    }
+    
+    void reset() {
+        mLastSample = 0.0f;
+        mPosition = 0.0f;
+    }
+    
+    // 简单的线性插值采样率转换
+    size_t convert(const float* input, size_t inputSize, float* output, size_t outputSize) {
+        if (inputSize == 0 || outputSize == 0) return 0;
+        
+        size_t outputIndex = 0;
+        while (mPosition < inputSize && outputIndex < outputSize) {
+            int index = static_cast<int>(mPosition);
+            float frac = mPosition - index;
+            
+            if (index < inputSize - 1) {
+                // 线性插值
+                output[outputIndex++] = input[index] * (1.0f - frac) + input[index + 1] * frac;
+            } else {
+                // 最后一个样本
+                output[outputIndex++] = input[index];
+            }
+            
+            mPosition += mRatio;
+        }
+        
+        mPosition -= inputSize;
+        if (mPosition < 0) mPosition = 0;
+        
+        return outputIndex;
+    }
+};
 
 // =============== RingBuffer Implementation ===============
 RingBuffer::RingBuffer(size_t capacity)
@@ -99,7 +189,9 @@ void RingBuffer::clear() {
 
 // =============== OboeAudioRenderer Implementation ===============
 OboeAudioRenderer::OboeAudioRenderer()
-    : mRingBuffer(std::make_unique<RingBuffer>((48000 * 2 * 100) / 1000)) // 100ms缓冲
+    : mRingBuffer(std::make_unique<RingBuffer>((48000 * 2 * 100) / 1000)), // 100ms缓冲
+      mNoiseShaper(std::make_unique<NoiseShaper>()),
+      mSampleRateConverter(std::make_unique<SampleRateConverter>())
 {
 }
 
@@ -116,7 +208,7 @@ bool OboeAudioRenderer::openStreamWithFormat(oboe::AudioFormat format) {
     oboe::AudioStreamBuilder builder;
     
     // 尝试不同的音频API
-    const int maxApiRetries = 2; // 减少重试次数
+    const int maxApiRetries = 2;
     oboe::AudioApi audioApis[] = {
         oboe::AudioApi::AAudio,
         oboe::AudioApi::OpenSLES
@@ -127,13 +219,15 @@ bool OboeAudioRenderer::openStreamWithFormat(oboe::AudioFormat format) {
     for (int apiAttempt = 0; apiAttempt < maxApiRetries; apiAttempt++) {
         builder.setAudioApi(audioApis[apiAttempt]);
         
+        // 使用高质量音频设置
         builder.setDirection(oboe::Direction::Output)
                ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
-               ->setSharingMode(oboe::SharingMode::Exclusive) // 使用独占模式减少延迟
+               ->setSharingMode(oboe::SharingMode::Exclusive)
                ->setFormat(format)
                ->setChannelCount(mChannelCount.load())
                ->setSampleRate(mSampleRate.load())
-               ->setBufferCapacityInFrames(oboe::DefaultStreamValues::FramesPerBurst * 2) // 最小缓冲区
+               ->setBufferCapacityInFrames(oboe::DefaultStreamValues::FramesPerBurst * 2)
+               ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::High)
                ->setDataCallback(this)
                ->setErrorCallback(this);
 
@@ -153,6 +247,9 @@ void OboeAudioRenderer::updateStreamParameters() {
         mBufferSize.store(mAudioStream->getBufferSizeInFrames());
         mChannelCount.store(mAudioStream->getChannelCount());
         mAudioFormat.store(mAudioStream->getFormat());
+        
+        // 更新采样率转换器比率
+        mSampleRateConverter->setRatio(48000.0f, static_cast<float>(mSampleRate.load()));
     }
 }
 
@@ -166,15 +263,15 @@ bool OboeAudioRenderer::initialize() {
         return true;
     }
     
-    const int maxRetries = 2; // 减少重试次数
+    const int maxRetries = 2;
     for (int attempt = 0; attempt < maxRetries; attempt++) {
         if (attempt > 0) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(50)); // 减少等待时间
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
         
-        // 先尝试I16格式
-        if (!openStreamWithFormat(oboe::AudioFormat::I16)) {
-            if (!openStreamWithFormat(oboe::AudioFormat::Float)) {
+        // 优先尝试Float格式以获得更高音质
+        if (!openStreamWithFormat(oboe::AudioFormat::Float)) {
+            if (!openStreamWithFormat(oboe::AudioFormat::I16)) {
                 continue;
             }
         }
@@ -200,6 +297,10 @@ void OboeAudioRenderer::shutdown() {
     }
     mIsStreamStarted.store(false);
     mIsInitialized.store(false);
+    
+    // 重置噪声整形器
+    mNoiseShaper->reset();
+    mSampleRateConverter->reset();
 }
 
 void OboeAudioRenderer::setSampleRate(int32_t sampleRate) {
@@ -207,6 +308,7 @@ void OboeAudioRenderer::setSampleRate(int32_t sampleRate) {
         return;
     }
     mSampleRate.store(sampleRate);
+    mSampleRateConverter->setRatio(48000.0f, static_cast<float>(sampleRate));
 }
 
 void OboeAudioRenderer::setBufferSize(int32_t bufferSize) {
@@ -222,7 +324,6 @@ void OboeAudioRenderer::setVolume(float volume) {
 }
 
 void OboeAudioRenderer::writeAudio(const float* data, int32_t numFrames) {
-    // 检查初始化状态，如果未初始化则尝试初始化
     if (!mIsInitialized.load()) {
         if (!initialize()) {
             return;
@@ -233,14 +334,12 @@ void OboeAudioRenderer::writeAudio(const float* data, int32_t numFrames) {
         return;
     }
 
-    // 首次写入时启动流
     if (!mIsStreamStarted.load()) {
         std::lock_guard<std::mutex> lock(mInitMutex);
         if (!mIsStreamStarted.load()) {
             oboe::Result result = mAudioStream->requestStart();
             if (result == oboe::Result::OK) {
                 mIsStreamStarted.store(true);
-                // 移除了预填充静音代码
             } else {
                 return;
             }
@@ -250,14 +349,26 @@ void OboeAudioRenderer::writeAudio(const float* data, int32_t numFrames) {
     int32_t channelCount = mChannelCount.load();
     size_t totalSamples = numFrames * channelCount;
     
-    // 直接写入，不检查溢出（由调用方控制流量）
-    mRingBuffer->write(data, totalSamples);
+    // 如果需要采样率转换
+    if (mSampleRate.load() != 48000) {
+        std::vector<float> convertedSamples(totalSamples);
+        size_t convertedCount = mSampleRateConverter->convert(
+            data, totalSamples, convertedSamples.data(), totalSamples);
+        
+        if (convertedCount > 0) {
+            mRingBuffer->write(convertedSamples.data(), convertedCount);
+        }
+    } else {
+        mRingBuffer->write(data, totalSamples);
+    }
 }
 
 void OboeAudioRenderer::clearBuffer() {
     if (mRingBuffer) {
         mRingBuffer->clear();
     }
+    mNoiseShaper->reset();
+    mSampleRateConverter->reset();
 }
 
 size_t OboeAudioRenderer::getBufferedFrames() const {
@@ -279,12 +390,10 @@ size_t OboeAudioRenderer::getAvailableFrames() const {
 oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
     oboe::AudioStream* audioStream, void* audioData, int32_t numFrames) {
 
-    // 获取当前参数值
     int32_t channelCount = mChannelCount.load();
     oboe::AudioFormat audioFormat = mAudioFormat.load();
     float volume = mVolume.load();
 
-    // 流未启动 → 静音
     if (!mIsStreamStarted.load()) {
         if (audioFormat == oboe::AudioFormat::I16) {
             memset(audioData, 0, numFrames * channelCount * sizeof(int16_t));
@@ -306,9 +415,15 @@ oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
             std::fill(floatData.begin() + read, floatData.end(), 0.0f);
         }
         
+        // 应用噪声整形和高质量转换
         for (size_t i = 0; i < totalSamples; i++) {
             float sample = floatData[i] * volume;
             sample = std::clamp(sample, -1.0f, 1.0f);
+            
+            // 应用噪声整形
+            sample = mNoiseShaper->process(sample);
+            
+            // 高质量转换到16位
             output[i] = static_cast<int16_t>(sample * 32767);
         }
     } else {
@@ -319,6 +434,7 @@ oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
             std::memset(output + read, 0, (totalSamples - read) * sizeof(float));
         }
         
+        // 应用音量 (浮点格式不需要噪声整形)
         if (volume != 1.0f) {
             for (size_t i = 0; i < totalSamples; i++) {
                 output[i] *= volume;
@@ -332,9 +448,13 @@ oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
 void OboeAudioRenderer::onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
     mIsStreamStarted.store(false);
     mIsInitialized.store(false);
+    mNoiseShaper->reset();
+    mSampleRateConverter->reset();
 }
 
 void OboeAudioRenderer::onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
     mIsStreamStarted.store(false);
     mIsInitialized.store(false);
+    mNoiseShaper->reset();
+    mSampleRateConverter->reset();
 }
