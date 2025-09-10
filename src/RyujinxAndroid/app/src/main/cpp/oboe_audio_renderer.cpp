@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (深度修复版)
+// oboe_audio_renderer.cpp (声道修复版)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -105,7 +105,7 @@ void RingBuffer::clear() {
 
 // =============== OboeAudioRenderer Implementation ===============
 OboeAudioRenderer::OboeAudioRenderer()
-    : mRingBuffer(std::make_unique<RingBuffer>((48000 * 2 * 300) / 1000)) // 增加缓冲区大小到300ms
+    : mRingBuffer(std::make_unique<RingBuffer>((48000 * 2 * 300) / 1000))
 {
 }
 
@@ -138,15 +138,14 @@ bool OboeAudioRenderer::openStreamWithFormat(oboe::AudioFormat format) {
                ->setFormat(format)
                ->setChannelCount(mChannelCount.load())
                ->setSampleRate(mSampleRate.load())
-               ->setBufferCapacityInFrames(oboe::DefaultStreamValues::FramesPerBurst * 8) // 增加缓冲区大小
-               ->setFramesPerCallback(oboe::DefaultStreamValues::FramesPerBurst) // 设置每回调帧数
+               ->setBufferCapacityInFrames(oboe::DefaultStreamValues::FramesPerBurst * 8)
+               ->setFramesPerCallback(oboe::DefaultStreamValues::FramesPerBurst)
                ->setDataCallback(this)
                ->setErrorCallback(this);
 
         result = builder.openStream(mAudioStream);
         
         if (result == oboe::Result::OK) {
-            // 设置缓冲区大小
             mAudioStream->setBufferSizeInFrames(mBufferSize.load());
             break;
         }
@@ -180,7 +179,6 @@ bool OboeAudioRenderer::initialize() {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
         
-        // 优先尝试Float格式
         if (!openStreamWithFormat(oboe::AudioFormat::Float)) {
             if (!openStreamWithFormat(oboe::AudioFormat::I16)) {
                 continue;
@@ -189,7 +187,6 @@ bool OboeAudioRenderer::initialize() {
 
         updateStreamParameters();
         
-        // 预填充静音数据
         std::vector<float> silence(mRingBuffer->availableForWrite(), 0.0f);
         if (silence.size() > 0) {
             mRingBuffer->write(silence.data(), silence.size());
@@ -236,6 +233,45 @@ void OboeAudioRenderer::setVolume(float volume) {
     mVolume.store(clampedVolume);
 }
 
+void OboeAudioRenderer::setChannelCount(int32_t channelCount) {
+    if (channelCount < 1 || channelCount > 8) {
+        return;
+    }
+    mChannelCount.store(channelCount);
+}
+
+extern "C" void writeOboeAudio(float* audioData, int num_frames, int input_channels, int output_channels) {
+    auto& renderer = OboeAudioRenderer::getInstance();
+    
+    if (input_channels == output_channels) {
+        // 声道数相同，直接写入
+        renderer.writeAudio(audioData, num_frames);
+    } else if (input_channels == 1 && output_channels == 2) {
+        // 单声道转立体声：复制单声道数据到两个声道
+        std::vector<float> stereoData(num_frames * 2);
+        for (int i = 0; i < num_frames; i++) {
+            stereoData[i * 2] = audioData[i];     // 左声道
+            stereoData[i * 2 + 1] = audioData[i]; // 右声道
+        }
+        renderer.writeAudio(stereoData.data(), num_frames);
+    } else if (input_channels == 2 && output_channels == 1) {
+        // 立体声转单声道：混合两个声道
+        std::vector<float> monoData(num_frames);
+        for (int i = 0; i < num_frames; i++) {
+            monoData[i] = (audioData[i * 2] + audioData[i * 2 + 1]) / 2.0f; // 左右声道平均
+        }
+        renderer.writeAudio(monoData.data(), num_frames);
+    } else {
+        // 其他声道转换（如5.1转立体声等）
+        // 这里可以根据需要添加更多声道转换逻辑
+        renderer.writeAudio(audioData, num_frames);
+    }
+}
+
+extern "C" int getOboeChannelCount() {
+    return OboeAudioRenderer::getInstance().getChannelCount();
+}
+
 void OboeAudioRenderer::writeAudio(const float* data, int32_t numFrames) {
     if (!mIsInitialized.load()) {
         if (!initialize()) {
@@ -262,7 +298,6 @@ void OboeAudioRenderer::writeAudio(const float* data, int32_t numFrames) {
     int32_t channelCount = mChannelCount.load();
     size_t totalSamples = numFrames * channelCount;
     
-    // 分批写入以避免阻塞
     const size_t maxChunkSize = 512 * channelCount;
     for (size_t offset = 0; offset < totalSamples; offset += maxChunkSize) {
         size_t chunkSize = std::min(maxChunkSize, totalSamples - offset);
@@ -294,6 +329,10 @@ size_t OboeAudioRenderer::getAvailableFrames() const {
     return availableForWrite / channelCount;
 }
 
+int32_t OboeAudioRenderer::getChannelCount() const {
+    return mChannelCount.load();
+}
+
 oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
     oboe::AudioStream* audioStream, void* audioData, int32_t numFrames) {
 
@@ -322,12 +361,10 @@ oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
             std::fill(floatData.begin() + read, floatData.end(), 0.0f);
         }
         
-        // 应用平滑处理减少爆音
         for (size_t i = 0; i < totalSamples; i++) {
             float sample = floatData[i] * volume;
             sample = std::clamp(sample, -1.0f, 1.0f);
             
-            // 简单的平滑处理
             if (i > 0) {
                 sample = (sample + output[i-1] / 32768.0f * 0.1f) / 1.1f;
             }
@@ -343,11 +380,9 @@ oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
         }
         
         if (volume != 1.0f) {
-            // 应用平滑的音量调整
             for (size_t i = 0; i < totalSamples; i++) {
                 output[i] *= volume;
                 
-                // 简单的平滑处理
                 if (i > 0) {
                     output[i] = (output[i] + output[i-1] * 0.1f) / 1.1f;
                 }
@@ -362,7 +397,6 @@ void OboeAudioRenderer::onErrorAfterClose(oboe::AudioStream* audioStream, oboe::
     mIsStreamStarted.store(false);
     mIsInitialized.store(false);
     
-    // 尝试重新初始化
     std::thread([this]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         initialize();
@@ -373,7 +407,6 @@ void OboeAudioRenderer::onErrorBeforeClose(oboe::AudioStream* audioStream, oboe:
     mIsStreamStarted.store(false);
     mIsInitialized.store(false);
     
-    // 尝试重新初始化
     std::thread([this]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         initialize();
