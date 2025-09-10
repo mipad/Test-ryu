@@ -2,9 +2,9 @@ name: Android CI  Fix
 
 on:
   push:
-    branches: [ "音频引擎2" ]
+    branches: [ "缩放" ]
   pull_request:
-    branches: [ "音频引擎2" ]
+    branches: [ "缩放" ]
 
 jobs:
   build:
@@ -25,7 +25,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: 音频引擎2
+        ref: 缩放
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
