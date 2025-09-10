@@ -7,6 +7,7 @@ using Ryujinx.Audio.Backends.SDL2;
 using Ryujinx.Audio.Backends.Oboe;
 #endif
 using Ryujinx.Common;
+using Ryujinx.UI.Common.Configuration;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
 using Ryujinx.Common.Logging.Targets;
