@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (移除噪声整形版本)
+// OboeHardwareDeviceDriver.cs (添加噪声整形控制)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -33,6 +33,9 @@ namespace Ryujinx.Audio.Backends.Oboe
         [DllImport("libryujinxjni", EntryPoint = "setOboeVolume")]
         private static extern void setOboeVolume(float volume);
 
+        [DllImport("libryujinxjni", EntryPoint = "setOboeNoiseShapingEnabled")]
+        private static extern void setOboeNoiseShapingEnabled(bool enabled);
+
         [DllImport("libryujinxjni", EntryPoint = "isOboeInitialized")]
         private static extern bool isOboeInitialized();
 
@@ -51,6 +54,7 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         private bool _disposed;
         private float _volume = 1.0f;
+        private bool _noiseShapingEnabled = true;
         private readonly ManualResetEvent _pauseEvent = new(true);
         private readonly ManualResetEvent _updateRequiredEvent = new(false);
         private readonly ConcurrentDictionary<OboeAudioSession, byte> _sessions = new();
@@ -66,6 +70,16 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 _volume = value;
                 setOboeVolume(value);
+            }
+        }
+
+        public bool NoiseShapingEnabled
+        {
+            get => _noiseShapingEnabled;
+            set
+            {
+                _noiseShapingEnabled = value;
+                setOboeNoiseShapingEnabled(value);
             }
         }
 
@@ -162,6 +176,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 setOboeSampleRate((int)sampleRate);
                 setOboeBufferSize(CalculateBufferSize(sampleRate) / (int)channelCount);
                 setOboeVolume(_volume);
+                setOboeNoiseShapingEnabled(_noiseShapingEnabled);
 
                 initOboeAudio();
                 _isOboeInitialized = isOboeInitialized();
