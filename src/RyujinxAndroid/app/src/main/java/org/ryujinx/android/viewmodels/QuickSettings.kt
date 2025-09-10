@@ -28,6 +28,8 @@ class QuickSettings(val activity: Activity) {
     var regionCode: Int // 新增：区域代码
     var systemLanguage: Int // 新增：系统语言
     var audioEngineType: Int // 0=禁用，1=OpenAL
+    var scalingFilter: Int // 新增：缩放过滤器
+    var scalingFilterLevel: Int // 新增：缩放过滤器级别
 
     // Logs
     var enableDebugLogs: Boolean
@@ -65,6 +67,8 @@ class QuickSettings(val activity: Activity) {
         regionCode = sharedPref.getInt("regionCode", RegionCode.USA.ordinal) // 默认USA
         systemLanguage = sharedPref.getInt("systemLanguage", SystemLanguage.AmericanEnglish.ordinal) // 默认美式英语
         audioEngineType = sharedPref.getInt("audioEngineType", 1) // 默认使用OpenAL
+        scalingFilter = sharedPref.getInt("scalingFilter", 0) // 默认：最近邻
+        scalingFilterLevel = sharedPref.getInt("scalingFilterLevel", 80) // 默认级别：80
 
         enableDebugLogs = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs = sharedPref.getBoolean("enableStubLogs", false)
@@ -101,6 +105,8 @@ class QuickSettings(val activity: Activity) {
         editor.putInt("regionCode", regionCode) // 保存区域代码
         editor.putInt("systemLanguage", systemLanguage) // 保存系统语言
         editor.putInt("audioEngineType", audioEngineType) // 保存音频引擎设置
+        editor.putInt("scalingFilter", scalingFilter) // 保存缩放过滤器
+        editor.putInt("scalingFilterLevel", scalingFilterLevel) // 保存缩放过滤器级别
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs)
         editor.putBoolean("enableStubLogs", enableStubLogs)
