@@ -54,6 +54,7 @@ extern "C" {
     void setOboeSampleRate(int32_t sample_rate);
     void setOboeBufferSize(int32_t buffer_size);
     void setOboeVolume(float volume);
+    void setOboeNoiseShapingEnabled(bool enabled); // ✅ 新增：噪声整形开关
     bool isOboeInitialized();
     int32_t getOboeBufferedFrames();
 }
