@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (极致优化版)
+// OboeHardwareDeviceDriver.cs (音质优化版)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -39,6 +39,13 @@ namespace Ryujinx.Audio.Backends.Oboe
         [DllImport("libryujinxjni", EntryPoint = "getOboeBufferedFrames")]
         private static extern int getOboeBufferedFrames();
 
+        // ========== 高质量音频处理 P/Invoke ==========
+        [DllImport("libryujinxjni", EntryPoint = "setOboeHighQualityMode")]
+        private static extern void setOboeHighQualityMode(bool enabled);
+
+        [DllImport("libryujinxjni", EntryPoint = "setOboeNoiseShaping")]
+        private static extern void setOboeNoiseShaping(bool enabled);
+
         // ========== 设备信息 P/Invoke 声明 ===============
         [DllImport("libryujinxjni", EntryPoint = "getAndroidDeviceModel")]
         private static extern IntPtr GetAndroidDeviceModel();
@@ -58,6 +65,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         private float[] _tempFloatBuffer = Array.Empty<float>();
         private Thread _updateThread;
         private bool _stillRunning = true;
+        private bool _highQualityMode = true; // 默认启用高质量模式
 
         public float Volume
         {
@@ -66,6 +74,17 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 _volume = value;
                 setOboeVolume(value);
+            }
+        }
+
+        public bool HighQualityMode
+        {
+            get => _highQualityMode;
+            set
+            {
+                _highQualityMode = value;
+                setOboeHighQualityMode(value);
+                setOboeNoiseShaping(value);
             }
         }
 
@@ -81,7 +100,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 while (_stillRunning)
                 {
-                    Thread.Sleep(5); // 减少间隔时间
+                    Thread.Sleep(5);
                     
                     foreach (var session in _sessions.Keys)
                     {
@@ -93,7 +112,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 Name = "Audio.Oboe.UpdateThread",
                 IsBackground = true,
-                Priority = ThreadPriority.AboveNormal // 提高线程优先级
+                Priority = ThreadPriority.AboveNormal
             };
             _updateThread.Start();
         }
@@ -111,7 +130,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 if (disposing)
                 {
                     _stillRunning = false;
-                    _updateThread?.Join(50); // 减少等待时间
+                    _updateThread?.Join(50);
                     
                     shutdownOboeAudio();
                     _isOboeInitialized = false;
@@ -162,6 +181,10 @@ namespace Ryujinx.Audio.Backends.Oboe
                 setOboeSampleRate((int)sampleRate);
                 setOboeBufferSize(CalculateBufferSize(sampleRate) / (int)channelCount);
                 setOboeVolume(_volume);
+                
+                // 启用高质量模式和噪声整形
+                setOboeHighQualityMode(_highQualityMode);
+                setOboeNoiseShaping(_highQualityMode);
 
                 initOboeAudio();
                 _isOboeInitialized = isOboeInitialized();
@@ -179,7 +202,7 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         private int CalculateBufferSize(uint sampleRate)
         {
-            int latencyMs = IsHighPerformanceDevice() ? 10 : 30; // 减少延迟时间
+            int latencyMs = IsHighPerformanceDevice() ? 10 : 30;
             return (int)(sampleRate * latencyMs / 1000);
         }
 
@@ -274,14 +297,13 @@ namespace Ryujinx.Audio.Backends.Oboe
 
                 if (buffer.Data == null || buffer.Data.Length == 0) return;
 
-                // --- 优化的流量控制逻辑 ---
+                // 流量控制
                 int bufferedFrames = getOboeBufferedFrames();
-                int maxBufferedFrames = 2 * 1024; // 减少最大缓冲帧数
+                int maxBufferedFrames = 2 * 1024;
 
-                // 如果缓冲过多，就等待一段时间再重试
                 while (bufferedFrames > maxBufferedFrames && _driver._stillRunning)
                 {
-                    Thread.Sleep(2); // 减少等待时间
+                    Thread.Sleep(2);
                     bufferedFrames = getOboeBufferedFrames();
                 }
 
@@ -326,10 +348,11 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             private static void ConvertToFloatInPlace(byte[] audioData, float[] output, int sampleCount, float volume)
             {
+                // 高质量转换：使用精确的浮点计算
                 for (int i = 0; i < sampleCount; i++)
                 {
                     short sample = BitConverter.ToInt16(audioData, i * 2);
-                    output[i] = sample / 32768.0f * volume;
+                    output[i] = sample * (1.0f / 32768.0f) * volume;
                 }
             }
         }
