@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (修复版)
+// OboeHardwareDeviceDriver.cs (深度修复版)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -58,6 +58,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         private float[] _tempFloatBuffer = Array.Empty<float>();
         private Thread _updateThread;
         private bool _stillRunning = true;
+        private int _sampleRate = 48000;
 
         public float Volume
         {
@@ -81,7 +82,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 while (_stillRunning)
                 {
-                    Thread.Sleep(10); // 增加间隔时间以减少CPU使用
+                    Thread.Sleep(15); // 进一步增加间隔时间减少CPU使用
                     
                     foreach (var session in _sessions.Keys)
                     {
@@ -93,7 +94,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 Name = "Audio.Oboe.UpdateThread",
                 IsBackground = true,
-                Priority = ThreadPriority.AboveNormal
+                Priority = ThreadPriority.Normal // 改回正常优先级
             };
             _updateThread.Start();
         }
@@ -111,7 +112,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 if (disposing)
                 {
                     _stillRunning = false;
-                    _updateThread?.Join(100); // 增加等待时间
+                    _updateThread?.Join(100);
                     
                     shutdownOboeAudio();
                     _isOboeInitialized = false;
@@ -124,7 +125,7 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         // ========== 设备能力查询 ==========
         public bool SupportsSampleRate(uint sampleRate) =>
-            sampleRate is 48000 or 44100 or 32000 or 24000 or 16000;
+            sampleRate is 48000 or 44100 or 32000 or 24000 or 16000 or 96000;
 
         public bool SupportsSampleFormat(SampleFormat sampleFormat) =>
             sampleFormat == SampleFormat.PcmInt16;
@@ -156,10 +157,13 @@ namespace Ryujinx.Audio.Backends.Oboe
             if (!SupportsSampleFormat(sampleFormat))
                 throw new ArgumentException($"Unsupported sample format: {sampleFormat}");
 
+            // 保存采样率
+            _sampleRate = (int)sampleRate;
+
             // 延迟初始化
             if (!_isOboeInitialized)
             {
-                setOboeSampleRate((int)sampleRate);
+                setOboeSampleRate(_sampleRate);
                 setOboeBufferSize(CalculateBufferSize(sampleRate, channelCount));
                 setOboeVolume(_volume);
 
@@ -179,41 +183,8 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         private int CalculateBufferSize(uint sampleRate, uint channelCount)
         {
-            int latencyMs = IsHighPerformanceDevice() ? 20 : 40; // 增加延迟时间以提高稳定性
-            return (int)(sampleRate * latencyMs / 1000) * (int)channelCount;
-        }
-
-        private bool IsHighPerformanceDevice()
-        {
-            try
-            {
-                string device = Marshal.PtrToStringAnsi(GetAndroidDeviceModel())?.ToLower() ?? "";
-                string brand = Marshal.PtrToStringAnsi(GetAndroidDeviceBrand())?.ToLower() ?? "";
-                
-                if (device.Contains("mt6893") || device.Contains("dimensity8100") || brand.Contains("mediatek"))
-                {
-                    return true;
-                }
-                
-                string[] highPerfDevices = {
-                    "sdm845", "sdm855", "sdm865", "sdm888", "sm8350", "sm8450", "sm8550",
-                    "kirin980", "kirin990", "kirin9000", "dimensity9000", "dimensity9200",
-                    "exynos9820", "exynos990", "exynos2100", "exynos2200",
-                    "starqlte", "beyond1", "dreamlte", "raphael", "cepheus", "vangogh"
-                };
-                
-                foreach (string perfDevice in highPerfDevices) {
-                    if (device.Contains(perfDevice) || brand.Contains(perfDevice)) {
-                        return true;
-                    }
-                }
-                
-                return false;
-            }
-            catch
-            {
-                return false;
-            }
+            // 使用固定大小的缓冲区而不是基于延迟时间的计算
+            return 4096 * (int)channelCount; // 固定大小的缓冲区
         }
 
         // ========== 音频会话类 ==========
@@ -226,6 +197,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             private bool _active;
             private float _volume;
             private readonly int _channelCount;
+            private readonly uint _sampleRate;
 
             public OboeAudioSession(
                 OboeHardwareDeviceDriver driver,
@@ -237,6 +209,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 _driver = driver;
                 _channelCount = (int)channelCount;
+                _sampleRate = sampleRate;
                 _volume = 1.0f;
             }
 
@@ -276,13 +249,13 @@ namespace Ryujinx.Audio.Backends.Oboe
 
                 // --- 优化的流量控制逻辑 ---
                 int bufferedFrames = getOboeBufferedFrames();
-                int maxBufferedFrames = 4 * 1024; // 增加最大缓冲帧数以提高稳定性
+                int maxBufferedFrames = 8192; // 增加最大缓冲帧数
 
                 // 如果缓冲过多，就等待一段时间再重试
                 int waitCount = 0;
-                while (bufferedFrames > maxBufferedFrames && _driver._stillRunning && waitCount < 50)
+                while (bufferedFrames > maxBufferedFrames && _driver._stillRunning && waitCount < 20)
                 {
-                    Thread.Sleep(5); // 增加等待时间
+                    Thread.Sleep(10);
                     bufferedFrames = getOboeBufferedFrames();
                     waitCount++;
                 }
@@ -293,7 +266,20 @@ namespace Ryujinx.Audio.Backends.Oboe
                     _driver._tempFloatBuffer = new float[sampleCount];
 
                 ConvertToFloatInPlace(buffer.Data, _driver._tempFloatBuffer, sampleCount, _volume);
-                writeOboeAudio(_driver._tempFloatBuffer, sampleCount / _channelCount);
+                
+                // 分批写入以避免缓冲区溢出
+                int framesPerWrite = 512; // 小批量写入
+                int totalFrames = sampleCount / _channelCount;
+                
+                for (int offset = 0; offset < totalFrames; offset += framesPerWrite)
+                {
+                    int framesToWrite = Math.Min(framesPerWrite, totalFrames - offset);
+                    int samplesToWrite = framesToWrite * _channelCount;
+                    float[] chunk = new float[samplesToWrite];
+                    
+                    Array.Copy(_driver._tempFloatBuffer, offset * _channelCount, chunk, 0, samplesToWrite);
+                    writeOboeAudio(chunk, framesToWrite);
+                }
 
                 // 记录缓冲区信息
                 _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, (ulong)sampleCount));
@@ -328,10 +314,18 @@ namespace Ryujinx.Audio.Backends.Oboe
 
             private static void ConvertToFloatInPlace(byte[] audioData, float[] output, int sampleCount, float volume)
             {
+                // 使用更精确的转换方法
                 for (int i = 0; i < sampleCount; i++)
                 {
                     short sample = BitConverter.ToInt16(audioData, i * 2);
-                    output[i] = sample / 32768.0f * volume;
+                    // 使用更精确的归一化方法
+                    output[i] = (sample / 32768.0f) * volume;
+                    
+                    // 应用轻微的平滑处理减少爆音
+                    if (i > 0)
+                    {
+                        output[i] = (output[i] + output[i-1] * 0.1f) / 1.1f;
+                    }
                 }
             }
         }
