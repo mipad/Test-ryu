@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (移除噪声整形版本)
+// oboe_audio_renderer.cpp (修复版，重新添加噪声整形)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -6,51 +6,52 @@
 #include <chrono>
 #include <mutex>
 #include <cmath>
+#include <limits>
 
-// =============== 噪声整形器实现 (暂时注释掉) ===============
-/*
-class NoiseShaper {
-private:
-    float mHistory[3];
-    float mCoefficients[3];
+// =============== 噪声整形器实现 (修复版) ===============
+NoiseShaper::NoiseShaper() {
+    reset();
+    // 设置更保守的噪声整形系数 (二阶噪声整形)
+    mCoefficients[0] = 1.5f;
+    mCoefficients[1] = -0.8f;
+    mCoefficients[2] = 0.3f;
+}
+
+void NoiseShaper::reset() {
+    std::lock_guard<std::mutex> lock(mMutex);
+    mHistory[0] = mHistory[1] = mHistory[2] = 0.0f;
+}
+
+// 应用噪声整形 (修复版，添加数值边界检查)
+float NoiseShaper::process(float input) {
+    std::lock_guard<std::mutex> lock(mMutex);
     
-public:
-    NoiseShaper() {
-        reset();
-        // 设置噪声整形系数 (二阶噪声整形)
-        mCoefficients[0] = 2.0f;
-        mCoefficients[1] = -1.0f;
-        mCoefficients[2] = 0.5f;
+    // 检查输入是否为有效数字
+    if (std::isnan(input) || std::isinf(input)) {
+        return 0.0f;
     }
     
-    void reset() {
-        mHistory[0] = mHistory[1] = mHistory[2] = 0.0f;
-    }
+    // 计算误差反馈
+    float errorFeedback = mCoefficients[0] * mHistory[0] + 
+                         mCoefficients[1] * mHistory[1] + 
+                         mCoefficients[2] * mHistory[2];
     
-    // 应用噪声整形
-    float process(float input) {
-        // 计算误差反馈
-        float errorFeedback = mCoefficients[0] * mHistory[0] + 
-                             mCoefficients[1] * mHistory[1] + 
-                             mCoefficients[2] * mHistory[2];
-        
-        // 添加误差反馈到输入
-        float shapedInput = input + errorFeedback;
-        
-        // 量化 (在外部完成)
-        // 这里我们只计算误差
-        float quantized = std::round(shapedInput * 32767.0f) / 32767.0f;
-        float error = shapedInput - quantized;
-        
-        // 更新历史
-        mHistory[2] = mHistory[1];
-        mHistory[1] = mHistory[0];
-        mHistory[0] = error;
-        
-        return quantized;
-    }
-};
-*/
+    // 添加误差反馈到输入
+    float shapedInput = input + errorFeedback;
+    
+    // 量化 (在外部完成)
+    // 这里我们只计算误差
+    float quantized = std::round(shapedInput * 32767.0f) / 32767.0f;
+    float error = shapedInput - quantized;
+    
+    // 更新历史
+    mHistory[2] = mHistory[1];
+    mHistory[1] = mHistory[0];
+    mHistory[0] = error;
+    
+    // 确保输出在有效范围内
+    return std::clamp(quantized, -1.0f, 1.0f);
+}
 
 // =============== 高质量采样率转换器 ===============
 class SampleRateConverter {
@@ -191,9 +192,9 @@ void RingBuffer::clear() {
 
 // =============== OboeAudioRenderer Implementation ===============
 OboeAudioRenderer::OboeAudioRenderer()
-    : mRingBuffer(std::make_unique<RingBuffer>((48000 * 2 * 100) / 1000)) // 100ms缓冲
-    // , mNoiseShaper(std::make_unique<NoiseShaper>()) // 暂时注释掉噪声整形器
-    , mSampleRateConverter(std::make_unique<SampleRateConverter>())
+    : mRingBuffer(std::make_unique<RingBuffer>((48000 * 2 * 100) / 1000)), // 100ms缓冲
+      mNoiseShaper(std::make_unique<NoiseShaper>()),
+      mSampleRateConverter(std::make_unique<SampleRateConverter>())
 {
 }
 
@@ -204,6 +205,13 @@ OboeAudioRenderer::~OboeAudioRenderer() {
 OboeAudioRenderer& OboeAudioRenderer::getInstance() {
     static OboeAudioRenderer instance;
     return instance;
+}
+
+void OboeAudioRenderer::setNoiseShapingEnabled(bool enabled) {
+    mNoiseShapingEnabled.store(enabled);
+    if (mNoiseShaper) {
+        mNoiseShaper->reset();
+    }
 }
 
 bool OboeAudioRenderer::openStreamWithFormat(oboe::AudioFormat format) {
@@ -300,9 +308,13 @@ void OboeAudioRenderer::shutdown() {
     mIsStreamStarted.store(false);
     mIsInitialized.store(false);
     
-    // 重置噪声整形器 (暂时注释掉)
-    // mNoiseShaper->reset();
-    mSampleRateConverter->reset();
+    // 重置噪声整形器和采样率转换器
+    if (mNoiseShaper) {
+        mNoiseShaper->reset();
+    }
+    if (mSampleRateConverter) {
+        mSampleRateConverter->reset();
+    }
 }
 
 void OboeAudioRenderer::setSampleRate(int32_t sampleRate) {
@@ -310,7 +322,9 @@ void OboeAudioRenderer::setSampleRate(int32_t sampleRate) {
         return;
     }
     mSampleRate.store(sampleRate);
-    mSampleRateConverter->setRatio(48000.0f, static_cast<float>(sampleRate));
+    if (mSampleRateConverter) {
+        mSampleRateConverter->setRatio(48000.0f, static_cast<float>(sampleRate));
+    }
 }
 
 void OboeAudioRenderer::setBufferSize(int32_t bufferSize) {
@@ -369,9 +383,13 @@ void OboeAudioRenderer::clearBuffer() {
     if (mRingBuffer) {
         mRingBuffer->clear();
     }
-    // 重置噪声整形器 (暂时注释掉)
-    // mNoiseShaper->reset();
-    mSampleRateConverter->reset();
+    // 重置噪声整形器和采样率转换器
+    if (mNoiseShaper) {
+        mNoiseShaper->reset();
+    }
+    if (mSampleRateConverter) {
+        mSampleRateConverter->reset();
+    }
 }
 
 size_t OboeAudioRenderer::getBufferedFrames() const {
@@ -396,6 +414,7 @@ oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
     int32_t channelCount = mChannelCount.load();
     oboe::AudioFormat audioFormat = mAudioFormat.load();
     float volume = mVolume.load();
+    bool noiseShapingEnabled = mNoiseShapingEnabled.load();
 
     if (!mIsStreamStarted.load()) {
         if (audioFormat == oboe::AudioFormat::I16) {
@@ -418,13 +437,15 @@ oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
             std::fill(floatData.begin() + read, floatData.end(), 0.0f);
         }
         
-        // 应用高质量转换 (暂时注释掉噪声整形)
+        // 应用高质量转换
         for (size_t i = 0; i < totalSamples; i++) {
             float sample = floatData[i] * volume;
             sample = std::clamp(sample, -1.0f, 1.0f);
             
-            // 应用噪声整形 (暂时注释掉)
-            // sample = mNoiseShaper->process(sample);
+            // 应用噪声整形 (如果启用)
+            if (noiseShapingEnabled && mNoiseShaper) {
+                sample = mNoiseShaper->process(sample);
+            }
             
             // 高质量转换到16位
             output[i] = static_cast<int16_t>(sample * 32767);
@@ -451,15 +472,23 @@ oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
 void OboeAudioRenderer::onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) {
     mIsStreamStarted.store(false);
     mIsInitialized.store(false);
-    // 重置噪声整形器 (暂时注释掉)
-    // mNoiseShaper->reset();
-    mSampleRateConverter->reset();
+    // 重置噪声整形器和采样率转换器
+    if (mNoiseShaper) {
+        mNoiseShaper->reset();
+    }
+    if (mSampleRateConverter) {
+        mSampleRateConverter->reset();
+    }
 }
 
 void OboeAudioRenderer::onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) {
     mIsStreamStarted.store(false);
     mIsInitialized.store(false);
-    // 重置噪声整形器 (暂时注释掉)
-    // mNoiseShaper->reset();
-    mSampleRateConverter->reset();
+    // 重置噪声整形器和采样率转换器
+    if (mNoiseShaper) {
+        mNoiseShaper->reset();
+    }
+    if (mSampleRateConverter) {
+        mSampleRateConverter->reset();
+    }
 }
