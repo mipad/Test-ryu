@@ -62,6 +62,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -168,6 +169,10 @@ class SettingViews {
             val showAspectRatioOptions = remember { mutableStateOf(false) }
             val showAudioEngineDialog = remember { mutableStateOf(false) } // 控制音频引擎对话框显示
             
+            // 新增：缩放过滤器相关状态
+            val scalingFilter = remember { mutableStateOf(0) } // 0=Bilinear, 1=Nearest, 2=FSR
+            val scalingFilterLevel = remember { mutableStateOf(80) } // 默认80%
+            val showScalingFilterOptions = remember { mutableStateOf(false) }
 
             if (!loaded.value) {
                 settingsViewModel.initializeState(
@@ -196,7 +201,9 @@ class SettingViews {
                     skipMemoryBarriers, // 新增参数
                     regionCode, // 新增参数
                     systemLanguage, // 新增参数
-                    audioEngineType // 新增参数
+                    audioEngineType, // 新增参数
+                    scalingFilter, // 新增：缩放过滤器
+                    scalingFilterLevel // 新增：缩放过滤器级别
                 )
                 loaded.value = true
             }
@@ -248,7 +255,9 @@ class SettingViews {
                     skipMemoryBarriers, // 新增参数
                     regionCode, // 新增参数
                     systemLanguage, // 新增参数
-                    audioEngineType // 新增参数
+                    audioEngineType, // 新增参数
+                    scalingFilter, // 新增：缩放过滤器
+                    scalingFilterLevel // 新增：缩放过滤器级别
                                 )
                                 settingsViewModel.navController.popBackStack()
                             }) {
@@ -308,7 +317,8 @@ class SettingViews {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Button(onClick = {
-                                    fun createIntent(action: String): Intent {
+                                    fun createIntent(action: String): Intent
+                                    {
                                         val intent = Intent(action)
                                         intent.addCategory(Intent.CATEGORY_DEFAULT)
                                         intent.data = DocumentsContract.buildRootUri(
@@ -751,7 +761,7 @@ class SettingViews {
                                         // 当显示分辨率选项时，隐藏其他选项
                                         if (showResScaleOptions.value) {
                                             showAspectRatioOptions.value = false
-                                            
+                                            showScalingFilterOptions.value = false
                                         }
                                     }
                                 )
@@ -827,6 +837,7 @@ AnimatedVisibility(visible = showResScaleOptions.value) {
                                         // 当显示画面比例选项时，隐藏其他选项
                                         if (showAspectRatioOptions.value) {
                                             showResScaleOptions.value = false
+                                            showScalingFilterOptions.value = false
                                         }
                                     }
                                 )
@@ -888,6 +899,112 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                             }
                                         }
                                     }
+                                }
+                            }
+
+                            // Scaling Filter设置
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Scaling Filter")
+                                val filterNames = listOf("Bilinear", "Nearest", "FSR")
+                                Text(
+                                    text = filterNames[scalingFilter.value],
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) { 
+                                        showScalingFilterOptions.value = !showScalingFilterOptions.value
+                                        // 当显示缩放过滤器选项时，隐藏其他选项
+                                        if (showScalingFilterOptions.value) {
+                                            showResScaleOptions.value = false
+                                            showAspectRatioOptions.value = false
+                                        }
+                                    }
+                                )
+                            }
+
+                            // Scaling Filter选项
+                            AnimatedVisibility(visible = showScalingFilterOptions.value) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    val filterOptions = listOf("Bilinear", "Nearest", "FSR")
+                                    
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                            .horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        filterOptions.forEachIndexed { index, option ->
+                                            val isSelected = scalingFilter.value == index
+                                            
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(100.dp)
+                                                    .height(40.dp)
+                                                    .clip(MaterialTheme.shapes.small)
+                                                    .clickable {
+                                                        scalingFilter.value = index
+                                                        showScalingFilterOptions.value = false
+                                                        RyujinxNative.jnaInstance.setScalingFilter(index)
+                                                    }
+                                                    .then(
+                                                        if (isSelected) {
+                                                            Modifier.border(
+                                                                width = 1.dp,
+                                                                color = MaterialTheme.colorScheme.primary,
+                                                                shape = MaterialTheme.shapes.small
+                                                            )
+                                                        } else {
+                                                            Modifier
+                                                        }
+                                                    )
+                                                    .then(
+                                                        if (isSelected) Modifier.background(
+                                                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                                        ) else Modifier
+                                                    ),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = option,
+                                                    fontSize = 12.sp,
+                                                    textAlign = TextAlign.Center,
+                                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer 
+                                                           else MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Scaling Filter Level设置（仅在FSR时显示）
+                            if (scalingFilter.value == 2) { // FSR
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(text = "FSR Sharpening Level")
+                                    Slider(
+                                        value = scalingFilterLevel.value.toFloat(),
+                                        onValueChange = { newValue ->
+                                            scalingFilterLevel.value = newValue.toInt()
+                                            RyujinxNative.jnaInstance.setScalingFilterLevel(scalingFilterLevel.value)
+                                        },
+                                        valueRange = 0f..100f,
+                                        steps = 100,
+                                        modifier = Modifier.width(200.dp)
+                                    )
+                                    Text(text = "${scalingFilterLevel.value}%")
                                 }
                             }
         
@@ -1052,6 +1169,7 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                                         }, modifier = Modifier.padding(8.dp)) {
                                                             Text(text = "Add")
                                                         }
+                                                    }
                                                     }
                                                 }
                                             }
@@ -1637,7 +1755,9 @@ ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
                         skipMemoryBarriers, // 新增参数
                         regionCode, // 新增参数
                         systemLanguage, // 新增参数
-                        audioEngineType // 新增参数
+                        audioEngineType, // 新增参数
+                        scalingFilter, // 新增：缩放过滤器
+                        scalingFilterLevel // 新增：缩放过滤器级别
                     )
                     settingsViewModel.navController.popBackStack()
                 }
