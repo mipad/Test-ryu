@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (修复版)
+// oboe_audio_renderer.h (声道修复版)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -19,7 +19,7 @@ private:
     std::atomic<size_t> mReadIndex{0};
     std::atomic<size_t> mWriteIndex{0};
     size_t mCapacity;
-    mutable std::mutex mMutex; // 添加互斥锁成员变量
+    mutable std::mutex mMutex;
 
 public:
     explicit RingBuffer(size_t capacity);
@@ -41,6 +41,8 @@ public:
     void setSampleRate(int32_t sampleRate);
     void setBufferSize(int32_t bufferSize);
     void setVolume(float volume);
+    void setChannelCount(int32_t channelCount);
+    int32_t getChannelCount() const;
 
     void writeAudio(const float* data, int32_t numFrames);
     void clearBuffer();
@@ -75,5 +77,9 @@ private:
     std::atomic<float> mVolume{1.0f};
     std::atomic<oboe::AudioFormat> mAudioFormat{oboe::AudioFormat::Float};
 };
+
+// C接口函数声明
+extern "C" void writeOboeAudio(float* audioData, int num_frames, int input_channels, int output_channels);
+extern "C" int getOboeChannelCount();
 
 #endif // RYUJINX_OBOE_AUDIO_RENDERER_H
