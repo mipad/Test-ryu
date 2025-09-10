@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (极致优化版)
+// OboeHardwareDeviceDriver.cs (修复版)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -81,7 +81,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 while (_stillRunning)
                 {
-                    Thread.Sleep(5); // 减少间隔时间
+                    Thread.Sleep(10); // 增加间隔时间以减少CPU使用
                     
                     foreach (var session in _sessions.Keys)
                     {
@@ -93,7 +93,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 Name = "Audio.Oboe.UpdateThread",
                 IsBackground = true,
-                Priority = ThreadPriority.AboveNormal // 提高线程优先级
+                Priority = ThreadPriority.AboveNormal
             };
             _updateThread.Start();
         }
@@ -111,7 +111,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 if (disposing)
                 {
                     _stillRunning = false;
-                    _updateThread?.Join(50); // 减少等待时间
+                    _updateThread?.Join(100); // 增加等待时间
                     
                     shutdownOboeAudio();
                     _isOboeInitialized = false;
@@ -160,7 +160,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             if (!_isOboeInitialized)
             {
                 setOboeSampleRate((int)sampleRate);
-                setOboeBufferSize(CalculateBufferSize(sampleRate) / (int)channelCount);
+                setOboeBufferSize(CalculateBufferSize(sampleRate, channelCount));
                 setOboeVolume(_volume);
 
                 initOboeAudio();
@@ -177,10 +177,10 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         private bool Unregister(OboeAudioSession session) => _sessions.TryRemove(session, out _);
 
-        private int CalculateBufferSize(uint sampleRate)
+        private int CalculateBufferSize(uint sampleRate, uint channelCount)
         {
-            int latencyMs = IsHighPerformanceDevice() ? 10 : 30; // 减少延迟时间
-            return (int)(sampleRate * latencyMs / 1000);
+            int latencyMs = IsHighPerformanceDevice() ? 20 : 40; // 增加延迟时间以提高稳定性
+            return (int)(sampleRate * latencyMs / 1000) * (int)channelCount;
         }
 
         private bool IsHighPerformanceDevice()
@@ -276,13 +276,15 @@ namespace Ryujinx.Audio.Backends.Oboe
 
                 // --- 优化的流量控制逻辑 ---
                 int bufferedFrames = getOboeBufferedFrames();
-                int maxBufferedFrames = 2 * 1024; // 减少最大缓冲帧数
+                int maxBufferedFrames = 4 * 1024; // 增加最大缓冲帧数以提高稳定性
 
                 // 如果缓冲过多，就等待一段时间再重试
-                while (bufferedFrames > maxBufferedFrames && _driver._stillRunning)
+                int waitCount = 0;
+                while (bufferedFrames > maxBufferedFrames && _driver._stillRunning && waitCount < 50)
                 {
-                    Thread.Sleep(2); // 减少等待时间
+                    Thread.Sleep(5); // 增加等待时间
                     bufferedFrames = getOboeBufferedFrames();
+                    waitCount++;
                 }
 
                 // 优化：复用临时数组
