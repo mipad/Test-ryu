@@ -1,3 +1,7 @@
+//
+// Created by Emmanuel Hansen on 6/19/2023.
+//
+
 #ifndef RYUJINXNATIVE_RYUIJNX_H
 #define RYUJINXNATIVE_RYUIJNX_H
 
@@ -17,6 +21,7 @@
 #include "adrenotools/driver.h"
 #include "native_window.h"
 
+// A macro to pass call to Vulkan and check for return value for success
 #define CALL_VK(func)                                                 \
   if (VK_SUCCESS != (func)) {                                         \
     __android_log_print(ANDROID_LOG_ERROR, "Tutorial ",               \
@@ -25,26 +30,35 @@
     assert(false);                                                    \
   }
 
+// A macro to check value is VK_SUCCESS
+// Used also for non-vulkan functions but return VK_SUCCESS
 #define VK_CHECK(x)  CALL_VK(x)
+
 #define LoadLib(a) dlopen(a, RTLD_NOW)
 
 void *_ryujinxNative = NULL;
+
+// Ryujinx imported functions
 bool (*initialize)(char *) = NULL;
+
 long _renderingThreadId = 0;
 JavaVM *_vm = nullptr;
 jobject _mainActivity = nullptr;
 jclass _mainActivityClass = nullptr;
 
+// 添加 Oboe 音频相关的函数声明
 extern "C" {
     void initOboeAudio();
     void shutdownOboeAudio();
-    void writeOboeAudio(float* audioData, int num_frames, int input_channels, int output_channels);
+    void writeOboeAudio(const float* data, int32_t num_frames, int32_t input_channels, int32_t output_channels);
     void setOboeSampleRate(int32_t sample_rate);
     void setOboeBufferSize(int32_t buffer_size);
     void setOboeVolume(float volume);
     void setOboeNoiseShapingEnabled(bool enabled);
     bool isOboeInitialized();
     int32_t getOboeBufferedFrames();
+    const char* GetAndroidDeviceModel();
+    const char* GetAndroidDeviceBrand();
 }
 
-#endif
+#endif //RYUJINXNATIVE_RYUIJNX_H
