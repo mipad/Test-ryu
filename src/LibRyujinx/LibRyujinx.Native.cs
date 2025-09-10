@@ -6,6 +6,7 @@ using Ryujinx.Audio.Backends.SDL2;
 #if ANDROID
 using Ryujinx.Audio.Backends.Oboe;
 #endif
+using Ryujinx.UI.Common.Configuration;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.OpenGL;
