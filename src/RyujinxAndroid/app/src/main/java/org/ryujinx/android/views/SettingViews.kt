@@ -1088,7 +1088,7 @@ ExpandableView(onCardArrowClick = { }, title = "Post-Processing") {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(8.dp)
-                .clickable { showScalingFilterDialog = true },
+                .clickable { showScalingFilterDialog.value = true },  // 修复：添加 .value
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1141,9 +1141,9 @@ ExpandableView(onCardArrowClick = { }, title = "Post-Processing") {
 }
 
 // Scaling Filter 选择对话框
-if (showScalingFilterDialog) {
+if (showScalingFilterDialog.value) {  // 修复：添加 .value
     BasicAlertDialog(
-        onDismissRequest = { showScalingFilterDialog = false }
+        onDismissRequest = { showScalingFilterDialog.value = false }  // 修复：添加 .value
     ) {
         Surface(
             modifier = Modifier
@@ -1167,7 +1167,7 @@ if (showScalingFilterDialog) {
                         .fillMaxWidth()
                         .clickable {
                             scalingFilter.value = 0
-                            showScalingFilterDialog = false
+                            showScalingFilterDialog.value = false  // 修复：添加 .value
                         }
                         .padding(vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -1176,7 +1176,7 @@ if (showScalingFilterDialog) {
                         selected = scalingFilter.value == 0,
                         onClick = {
                             scalingFilter.value = 0
-                            showScalingFilterDialog = false
+                            showScalingFilterDialog.value = false  // 修复：添加 .value
                         }
                     )
                     Text(
@@ -1191,7 +1191,7 @@ if (showScalingFilterDialog) {
                         .fillMaxWidth()
                         .clickable {
                             scalingFilter.value = 1
-                            showScalingFilterDialog = false
+                            showScalingFilterDialog.value = false  // 修复：添加 .value
                         }
                         .padding(vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -1200,7 +1200,7 @@ if (showScalingFilterDialog) {
                         selected = scalingFilter.value == 1,
                         onClick = {
                             scalingFilter.value = 1
-                            showScalingFilterDialog = false
+                            showScalingFilterDialog.value = false  // 修复：添加 .value
                         }
                     )
                     Text(
@@ -1215,7 +1215,7 @@ if (showScalingFilterDialog) {
                         .fillMaxWidth()
                         .clickable {
                             scalingFilter.value = 2
-                            showScalingFilterDialog = false
+                            showScalingFilterDialog.value = false  // 修复：添加 .value
                         }
                         .padding(vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -1224,7 +1224,7 @@ if (showScalingFilterDialog) {
                         selected = scalingFilter.value == 2,
                         onClick = {
                             scalingFilter.value = 2
-                            showScalingFilterDialog = false
+                            showScalingFilterDialog.value = false  // 修复：添加 .value
                         }
                     )
                     Text(
@@ -1241,7 +1241,7 @@ if (showScalingFilterDialog) {
                     horizontalArrangement = Arrangement.End
                 ) {
                     TextButton(
-                        onClick = { showScalingFilterDialog = false }
+                        onClick = { showScalingFilterDialog.value = false }  // 修复：添加 .value
                     ) {
                         Text("Cancel")
                     }
