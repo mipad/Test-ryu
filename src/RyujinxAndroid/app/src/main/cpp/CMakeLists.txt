@@ -84,12 +84,10 @@ add_library(
     oboe_audio_renderer.cpp
 )
 
-# 添加编译定义以优化音频处理 (添加了23版本中的Oboe定义)
+# 添加编译定义以优化音频处理
 target_compile_definitions(ryujinxjni PRIVATE
     RYUJINX_AUDIO_OPTIMIZE=1
-    OBOE_ENABLE_AAUDIO=1
-    OBOE_LOW_LATENCY=1
-    OBOE_PERFORMANCE_MODE_LOW_LATENCY=1
+    # 如果需要，可以添加更多音频优化标志
 )
 
 # 添加编译选项
