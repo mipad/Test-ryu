@@ -7,7 +7,7 @@ android {
     namespace 'org.ryujinx.android'
     compileSdk 35
     ndkVersion "27.2.12479018"
-
+    
     defaultConfig {
         applicationId "org.ryujinx.android"
         minSdk 30
@@ -21,66 +21,59 @@ android {
         }
 
         ndk {
+            //noinspection ChromeOsAbiSupport
             abiFilters 'arm64-v8a'
         }
 
         externalNativeBuild {
             cmake {
-                arguments "-DCMAKE_BUILD_TYPE=Release"
+                cppFlags "-std=c++20", "-O3", "-DNDEBUG", "-DENABLE_HIGH_PERF=1", "-ffast-math", "-march=armv8-a", "-funroll-loops"
+                arguments "-DCMAKE_BUILD_TYPE=Release", "-DANDROID_ARM_NEON=TRUE"
+                arguments "-DANDROID_STL=c++_shared"
             }
         }
     }
 
     buildTypes {
         release {
-            // ✅ 方法一：使用新 postprocessing DSL + proguard-android.txt（非 -optimize.txt）
             postprocessing {
-                removeUnusedCode true
-                removeUnusedResources true
-                obfuscate false // ✅ Ryujinx 强烈建议关闭混淆，确保 JNI 100% 稳定
+                removeUnusedCode false
+                removeUnusedResources false
+                obfuscate false
                 optimizeCode true
-                // ✅ 使用基础规则 + 自定义规则，避免与新 DSL 冲突
-                proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+                proguardFiles 'proguard-rules.pro'
             }
             signingConfig signingConfigs.debug
             debuggable false
             jniDebuggable false
-            ndk {
-                debugSymbolLevel 'FULL' // 保留原生调试符号
-            }
         }
     }
-
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
     }
-
     kotlinOptions {
         jvmTarget = '21'
-        freeCompilerArgs += ["-opt-in=kotlin.RequiresOptIn", "-Xjvm-default=all"]
+        freeCompilerArgs += ["-opt-in=kotlin.RequiresOptIn",
+            "-Xjvm-default=all"]
     }
-
     buildFeatures {
         compose true
         prefab true
         buildConfig true
     }
-
     composeOptions {
         kotlinCompilerExtensionVersion '1.5.15'
     }
-
     packagingOptions {
         jniLibs {
-            keepDebugSymbols += '**/libryujinxjni.so'
+            keepDebugSymbols += '**/libryujinx.so'
             useLegacyPackaging true
         }
         resources {
             excludes += '/META-INF/{AL2.0,LGPL2.1}'
         }
     }
-
     externalNativeBuild {
         cmake {
             path file('src/main/cpp/CMakeLists.txt')
@@ -98,6 +91,8 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'com.google.android.material:material:1.12.0'
     implementation platform('androidx.compose:compose-bom:2024.08.00')
+    implementation platform('androidx.compose:compose-bom:2024.08.00')
+    androidTestImplementation platform('androidx.compose:compose-bom:2024.08.00')
     androidTestImplementation platform('androidx.compose:compose-bom:2024.08.00')
     runtimeOnly project(":libryujinx")
     implementation 'androidx.core:core-ktx:1.16.0'
