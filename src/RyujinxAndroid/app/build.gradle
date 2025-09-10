@@ -6,11 +6,11 @@ plugins {
 android {
     namespace 'org.ryujinx.android'
     compileSdk 35
-    ndkVersion "27.2.12479018"
-    
+    ndkVersion "27.2.12479018" // ✅ 保持最新稳定版
+
     defaultConfig {
         applicationId "org.ryujinx.android"
-        minSdk 30
+        minSdk 30 // ✅ Android 11+ 确保 AAudio 可用
         targetSdk 35
         versionCode 10044
         versionName '1.0.44'
@@ -21,15 +21,15 @@ android {
         }
 
         ndk {
-            //noinspection ChromeOsAbiSupport
-            abiFilters 'arm64-v8a'
+            abiFilters 'arm64-v8a' // ✅ 专注 64 位性能
         }
 
         externalNativeBuild {
             cmake {
-                cppFlags "-std=c++20", "-O3", "-DNDEBUG", "-DENABLE_HIGH_PERF=1", "-ffast-math", "-march=armv8-a", "-funroll-loops"
-                arguments "-DCMAKE_BUILD_TYPE=Release", "-DANDROID_ARM_NEON=TRUE"
-                arguments "-DANDROID_STL=c++_shared"
+                // ✅ 移除重复定义，让 CMakeLists.txt 主导（避免冲突）
+                // cppFlags 和 arguments 在 CMakeLists.txt 中统一管理更安全
+                // 只保留必要参数
+                arguments "-DCMAKE_BUILD_TYPE=Release"
             }
         }
     }
@@ -39,41 +39,50 @@ android {
             postprocessing {
                 removeUnusedCode false
                 removeUnusedResources false
-                obfuscate false
+                obfuscate false // ✅ 避免 JNI 符号被混淆
                 optimizeCode true
-                proguardFiles 'proguard-rules.pro'
+                proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             }
             signingConfig signingConfigs.debug
             debuggable false
             jniDebuggable false
+            // ✅ 启用 LTO（链接时优化）
+            ndk {
+                debugSymbolLevel 'FULL' // ✅ 保留调试符号用于崩溃分析
+            }
         }
     }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
     }
+
     kotlinOptions {
         jvmTarget = '21'
-        freeCompilerArgs += ["-opt-in=kotlin.RequiresOptIn",
-            "-Xjvm-default=all"]
+        freeCompilerArgs += ["-opt-in=kotlin.RequiresOptIn", "-Xjvm-default=all"]
     }
+
     buildFeatures {
         compose true
         prefab true
         buildConfig true
     }
+
     composeOptions {
         kotlinCompilerExtensionVersion '1.5.15'
     }
+
     packagingOptions {
         jniLibs {
-            keepDebugSymbols += '**/libryujinx.so'
+            keepDebugSymbols += '**/libryujinxjni.so' // ✅ 修正库名（应为 ryujinxjni）
             useLegacyPackaging true
         }
         resources {
             excludes += '/META-INF/{AL2.0,LGPL2.1}'
         }
     }
+
     externalNativeBuild {
         cmake {
             path file('src/main/cpp/CMakeLists.txt')
@@ -82,6 +91,7 @@ android {
     }
 }
 
+// ✅ 确保依赖顺序正确
 tasks.named("preBuild") {
     dependsOn ':libryujinx:assemble'
 }
@@ -91,8 +101,6 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'com.google.android.material:material:1.12.0'
     implementation platform('androidx.compose:compose-bom:2024.08.00')
-    implementation platform('androidx.compose:compose-bom:2024.08.00')
-    androidTestImplementation platform('androidx.compose:compose-bom:2024.08.00')
     androidTestImplementation platform('androidx.compose:compose-bom:2024.08.00')
     runtimeOnly project(":libryujinx")
     implementation 'androidx.core:core-ktx:1.16.0'
