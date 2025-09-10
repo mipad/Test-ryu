@@ -9,9 +9,6 @@
 #include <memory>
 #include <cstdint>
 
-// 声明 logToFile 函数
-extern "C" void logToFile(int level, const char* tag, const char* format, ...);
-
 // 环形缓冲区（使用互斥锁保证线程安全）
 class RingBuffer {
 private:
@@ -29,6 +26,10 @@ public:
     size_t availableForWrite() const;
     void clear();
 };
+
+// 前向声明
+class NoiseShaper;
+class SampleRateConverter;
 
 class OboeAudioRenderer : public oboe::AudioStreamDataCallback,
                           public oboe::AudioStreamErrorCallback {
@@ -66,6 +67,8 @@ private:
 
     std::shared_ptr<oboe::AudioStream> mAudioStream;
     std::unique_ptr<RingBuffer> mRingBuffer;
+    std::unique_ptr<NoiseShaper> mNoiseShaper;
+    std::unique_ptr<SampleRateConverter> mSampleRateConverter;
     std::mutex mInitMutex;
     std::atomic<bool> mIsInitialized{false};
     std::atomic<bool> mIsStreamStarted{false}; // ✅ 新增：流是否已启动
