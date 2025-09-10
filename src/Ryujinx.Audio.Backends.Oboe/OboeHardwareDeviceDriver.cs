@@ -1,4 +1,4 @@
-// OboeHardwareDeviceDriver.cs (音质优化版)
+// OboeHardwareDeviceDriver.cs (移除噪声整形版本)
 #if ANDROID
 using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Common;
@@ -39,13 +39,6 @@ namespace Ryujinx.Audio.Backends.Oboe
         [DllImport("libryujinxjni", EntryPoint = "getOboeBufferedFrames")]
         private static extern int getOboeBufferedFrames();
 
-        // ========== 高质量音频处理 P/Invoke ==========
-        [DllImport("libryujinxjni", EntryPoint = "setOboeHighQualityMode")]
-        private static extern void setOboeHighQualityMode(bool enabled);
-
-        [DllImport("libryujinxjni", EntryPoint = "setOboeNoiseShaping")]
-        private static extern void setOboeNoiseShaping(bool enabled);
-
         // ========== 设备信息 P/Invoke 声明 ===============
         [DllImport("libryujinxjni", EntryPoint = "getAndroidDeviceModel")]
         private static extern IntPtr GetAndroidDeviceModel();
@@ -65,7 +58,6 @@ namespace Ryujinx.Audio.Backends.Oboe
         private float[] _tempFloatBuffer = Array.Empty<float>();
         private Thread _updateThread;
         private bool _stillRunning = true;
-        private bool _highQualityMode = true; // 默认启用高质量模式
 
         public float Volume
         {
@@ -74,17 +66,6 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 _volume = value;
                 setOboeVolume(value);
-            }
-        }
-
-        public bool HighQualityMode
-        {
-            get => _highQualityMode;
-            set
-            {
-                _highQualityMode = value;
-                setOboeHighQualityMode(value);
-                setOboeNoiseShaping(value);
             }
         }
 
@@ -181,10 +162,6 @@ namespace Ryujinx.Audio.Backends.Oboe
                 setOboeSampleRate((int)sampleRate);
                 setOboeBufferSize(CalculateBufferSize(sampleRate) / (int)channelCount);
                 setOboeVolume(_volume);
-                
-                // 启用高质量模式和噪声整形
-                setOboeHighQualityMode(_highQualityMode);
-                setOboeNoiseShaping(_highQualityMode);
 
                 initOboeAudio();
                 _isOboeInitialized = isOboeInitialized();
