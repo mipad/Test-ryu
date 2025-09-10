@@ -1,6 +1,7 @@
 using LibRyujinx.Android;
 using LibRyujinx.Shared;
 using OpenTK.Graphics.OpenGL;
+using Ryujinx.UI.Common.Configuration;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
 using Ryujinx.Cpu;
