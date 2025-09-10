@@ -34,7 +34,7 @@ private:
     mutable std::mutex mMutex;
 
 public:
-    NoiseShaper() = default; // 使用默认构造，reset()内已初始化
+    NoiseShaper() = default;
     void reset();
     float process(float input);
 };
@@ -70,21 +70,23 @@ public:
     void setBufferSize(int32_t bufferSize);
     void setVolume(float volume);
     void setNoiseShapingEnabled(bool enabled);
+    void setChannelCount(int32_t channelCount);
 
-    void writeAudio(const float* data, int32_t numFrames);
+    void writeAudio(const float* data, int32_t numFrames, int32_t inputChannels);
     void clearBuffer();
 
     // 状态查询
     bool isInitialized() const { return mIsInitialized.load(std::memory_order_acquire); }
     int32_t getSampleRate() const { return mSampleRate.load(std::memory_order_relaxed); }
     int32_t getBufferSize() const { return mBufferSize.load(std::memory_order_relaxed); }
+    int32_t getChannelCount() const { return mChannelCount.load(std::memory_order_relaxed); }
     size_t getBufferedFrames() const;
     size_t getAvailableFrames() const;
 
     // Oboe 回调
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream* audioStream, void* audioData, int32_t numFrames) override;
     void onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) override;
-    void onErrorBeforeClose(oboee::AudioStream* audioStream, oboe::Result error) override;
+    void onErrorBeforeClose(oboe::AudioStream* audioStream, oboe::Result error) override;
 
 private:
     OboeAudioRenderer();
@@ -92,6 +94,7 @@ private:
 
     bool openStreamWithFormat(oboe::AudioFormat format);
     void updateStreamParameters();
+    void convertChannels(const float* input, float* output, int32_t numFrames, int32_t inputChannels, int32_t outputChannels);
 
     std::shared_ptr<oboe::AudioStream> mAudioStream;
     std::unique_ptr<RingBuffer> mRingBuffer;
@@ -111,10 +114,10 @@ private:
     std::atomic<float> mVolume{1.0f};
     std::atomic<oboe::AudioFormat> mAudioFormat{oboe::AudioFormat::Float};
 
-    // === 新增：动态缓冲区监控 ===
-    std::atomic<size_t> mLastBufferLevel{0};      // 上次记录的缓冲帧数
-    std::atomic<size_t> mUnderrunCount{0};       // 欠载次数统计
-    std::atomic<size_t> mTotalFramesWritten{0};  // 总写入帧数（用于日志节流）
+    // 动态缓冲区监控
+    std::atomic<size_t> mLastBufferLevel{0};
+    std::atomic<size_t> mUnderrunCount{0};
+    std::atomic<size_t> mTotalFramesWritten{0};
 };
 
 #endif // RYUJINX_OBOE_AUDIO_RENDERER_H
