@@ -233,6 +233,7 @@ void OboeAudioRenderer::setVolume(float volume) {
     mVolume.store(clampedVolume);
 }
 
+// 修复：添加setChannelCount方法的实现
 void OboeAudioRenderer::setChannelCount(int32_t channelCount) {
     if (channelCount < 1 || channelCount > 8) {
         return;
@@ -268,6 +269,7 @@ extern "C" void writeOboeAudio(float* audioData, int num_frames, int input_chann
     }
 }
 
+// 修复：添加getOboeChannelCount函数的实现
 extern "C" int getOboeChannelCount() {
     return OboeAudioRenderer::getInstance().getChannelCount();
 }
@@ -329,6 +331,7 @@ size_t OboeAudioRenderer::getAvailableFrames() const {
     return availableForWrite / channelCount;
 }
 
+// 修复：添加getChannelCount方法的实现
 int32_t OboeAudioRenderer::getChannelCount() const {
     return mChannelCount.load();
 }
