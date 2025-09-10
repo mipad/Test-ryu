@@ -88,12 +88,36 @@ namespace LibRyujinx
             device.Gpu.Renderer.Window.ChangeVSyncMode(enabled);
         }
 
+        public static void ApplyGraphicsSettings()
+        {
+            try
+            {
+                if (Renderer != null && Renderer.Window != null)
+                {
+                    // 应用Scaling Filter设置
+                    Renderer.Window.SetScalingFilter((Ryujinx.Graphics.GAL.ScalingFilter)ConfigurationState.Instance.Graphics.ScalingFilter.Value);
+                    
+                    // 应用Scaling Filter Level设置
+                    Renderer.Window.SetScalingFilterLevel(ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value);
+                    
+                    Logger.Info?.Print(LogClass.Application, "Graphics settings applied");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Failed to apply graphics settings: {ex.Message}");
+            }
+        }
+
         public static void RunLoop()
         {
             if (Renderer == null)
             {
                 return;
             }
+            
+            // 应用图形设置
+            ApplyGraphicsSettings();
             
             ARMeilleure.Optimizations.CacheEviction = SwitchDevice!.EnableJitCacheEviction;
             
