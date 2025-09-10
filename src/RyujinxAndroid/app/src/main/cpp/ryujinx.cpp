@@ -387,6 +387,12 @@ void setOboeVolume(float volume) {
     OboeAudioRenderer::getInstance().setVolume(volume);
 }
 
+// =============== 噪声整形控制 C 接口 ===============
+extern "C"
+void setOboeNoiseShapingEnabled(bool enabled) {
+    OboeAudioRenderer::getInstance().setNoiseShapingEnabled(enabled);
+}
+
 extern "C"
 bool isOboeInitialized() {
     return OboeAudioRenderer::getInstance().isInitialized();
