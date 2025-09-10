@@ -6,11 +6,11 @@ plugins {
 android {
     namespace 'org.ryujinx.android'
     compileSdk 35
-    ndkVersion "27.2.12479018" // ✅ 保持最新稳定版
+    ndkVersion "27.2.12479018"
 
     defaultConfig {
         applicationId "org.ryujinx.android"
-        minSdk 30 // ✅ Android 11+ 确保 AAudio 可用
+        minSdk 30
         targetSdk 35
         versionCode 10044
         versionName '1.0.44'
@@ -21,14 +21,11 @@ android {
         }
 
         ndk {
-            abiFilters 'arm64-v8a' // ✅ 专注 64 位性能
+            abiFilters 'arm64-v8a'
         }
 
         externalNativeBuild {
             cmake {
-                // ✅ 移除重复定义，让 CMakeLists.txt 主导（避免冲突）
-                // cppFlags 和 arguments 在 CMakeLists.txt 中统一管理更安全
-                // 只保留必要参数
                 arguments "-DCMAKE_BUILD_TYPE=Release"
             }
         }
@@ -36,19 +33,20 @@ android {
 
     buildTypes {
         release {
+            // ✅ 方法一：使用新 postprocessing DSL + proguard-android.txt（非 -optimize.txt）
             postprocessing {
-                removeUnusedCode false
-                removeUnusedResources false
-                obfuscate false // ✅ 避免 JNI 符号被混淆
+                removeUnusedCode true
+                removeUnusedResources true
+                obfuscate false // ✅ Ryujinx 强烈建议关闭混淆，确保 JNI 100% 稳定
                 optimizeCode true
-                proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+                // ✅ 使用基础规则 + 自定义规则，避免与新 DSL 冲突
+                proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             }
             signingConfig signingConfigs.debug
             debuggable false
             jniDebuggable false
-            // ✅ 启用 LTO（链接时优化）
             ndk {
-                debugSymbolLevel 'FULL' // ✅ 保留调试符号用于崩溃分析
+                debugSymbolLevel 'FULL' // 保留原生调试符号
             }
         }
     }
@@ -75,7 +73,7 @@ android {
 
     packagingOptions {
         jniLibs {
-            keepDebugSymbols += '**/libryujinxjni.so' // ✅ 修正库名（应为 ryujinxjni）
+            keepDebugSymbols += '**/libryujinxjni.so'
             useLegacyPackaging true
         }
         resources {
@@ -91,7 +89,6 @@ android {
     }
 }
 
-// ✅ 确保依赖顺序正确
 tasks.named("preBuild") {
     dependsOn ':libryujinx:assemble'
 }
