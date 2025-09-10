@@ -89,6 +89,125 @@ import org.ryujinx.android.viewmodels.SettingsViewModel
 import org.ryujinx.android.viewmodels.VulkanDriverViewModel
 import kotlin.concurrent.thread
 
+// Constants moved to top level
+const val EXPANSTION_TRANSITION_DURATION = 450
+const val IMPORT_CODE = 12341
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun ExpandableView(
+    onCardArrowClick: () -> Unit,
+    title: String,
+    content: @Composable () -> Unit
+) {
+    val expanded = false
+    val mutableExpanded = remember {
+        mutableStateOf(expanded)
+    }
+    val transitionState = remember {
+        MutableTransitionState(expanded).apply {
+            targetState = !mutableExpanded.value
+        }
+    }
+    val transition = updateTransition(transitionState, label = "transition")
+    val arrowRotationDegree by transition.animateFloat({
+        tween(durationMillis = EXPANSTION_TRANSITION_DURATION)
+    }, label = "rotationDegreeTransition") {
+        if (mutableExpanded.value) 0f else 180f
+    }
+
+    Card(
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                horizontal = 24.dp,
+                vertical = 8.dp
+            )
+    ) {
+        Column {
+            Card(
+                onClick = {
+                    mutableExpanded.value = !mutableExpanded.value
+                    onCardArrowClick()
+                }) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CardTitle(title = title)
+                    CardArrow(
+                        degrees = arrowRotationDegree,
+                    )
+
+                }
+            }
+            ExpandableContent(visible = mutableExpanded.value, content = content)
+        }
+    }
+}
+
+@Composable
+fun CardArrow(
+    degrees: Float,
+) {
+    Icon(
+        Icons.Filled.KeyboardArrowUp,
+        contentDescription = "Expandable Arrow",
+        modifier = Modifier
+            .padding(8.dp)
+            .rotate(degrees),
+    )
+}
+
+@Composable
+fun CardTitle(title: String) {
+    Text(
+        text = title,
+        modifier = Modifier
+            .padding(16.dp),
+        textAlign = TextAlign.Center,
+    )
+}
+
+@Composable
+fun ExpandableContent(
+    visible: Boolean = true,
+    content: @Composable () -> Unit
+) {
+    val enterTransition = remember {
+        expandVertically(
+            expandFrom = Alignment.Top,
+            animationSpec = tween(EXPANSTION_TRANSITION_DURATION)
+        ) + fadeIn(
+            initialAlpha = 0.3f,
+            animationSpec = tween(EXPANSTION_TRANSITION_DURATION)
+        )
+    }
+    val exitTransition = remember {
+        shrinkVertically(
+            // Expand from the top.
+            shrinkTowards = Alignment.Top,
+            animationSpec = tween(EXPANSTION_TRANSITION_DURATION)
+        ) + fadeOut(
+            // Fade in with the initial alpha of 0.3f.
+            animationSpec = tween(EXPANSTION_TRANSITION_DURATION)
+        )
+    }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = enterTransition,
+        exit = exitTransition
+    ) {
+        Column(modifier = Modifier.padding(8.dp)) {
+            content()
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SettingViewsMain(settingsViewModel: SettingsViewModel, mainViewModel: MainViewModel) {
     val loaded = remember {
@@ -455,7 +574,7 @@ fun SettingViewsMain(settingsViewModel: SettingsViewModel, mainViewModel: MainVi
                                 var file by remember { mutableStateOf<DocumentFile?>(null) }
                                 file = settingsViewModel.selectedFirmwareFile
                                 if (file != null) {
-                                    if (file.extension == "xci" || file.extension == "zip") {
+                                    if (file?.extension == "xci" || file?.extension == "zip") {
                                         if (settingsViewModel.selectedFirmwareVersion.isEmpty()) {
                                             Text(text = "Unable to find version in selected file")
                                         } else {
@@ -985,21 +1104,21 @@ Column(modifier = Modifier.fillMaxWidth()) {
                                 .padding(8.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(text = "FSR Sharpening Level")
-                            Slider(
-                                value = scalingFilterLevel.value.toFloat(),
-                                onValueChange = { newValue ->
-                                    scalingFilterLevel.value = newValue.toInt()
-                                    org.ryujinx.android.RyujinxNative.jnaInstance.setScalingFilterLevel(scalingFilterLevel.value)
-                                },
-                                valueRange = 0f..100f,
-                                steps = 100,
-                                modifier = Modifier.width(200.dp)
-                            )
-                            Text(text = "${scalingFilterLevel.value}%")
-                        }
+                    ) {
+                        Text(text = "FSR Sharpening Level")
+                        Slider(
+                            value = scalingFilterLevel.value.toFloat(),
+                            onValueChange = { newValue ->
+                                scalingFilterLevel.value = newValue.toInt()
+                                org.ryujinx.android.RyujinxNative.jnaInstance.setScalingFilterLevel(scalingFilterLevel.value)
+                            },
+                            valueRange = 0f..100f,
+                            steps = 100,
+                            modifier = Modifier.width(200.dp)
+                        )
+                        Text(text = "${scalingFilterLevel.value}%")
                     }
+                }
     
                     Row(
                         modifier = Modifier
@@ -1753,123 +1872,6 @@ Column(modifier = Modifier.fillMaxWidth()) {
                 scalingFilterLevel // 新增：缩放过滤器级别
             )
             settingsViewModel.navController.popBackStack()
-        }
-    }
-}
-
-const val EXPANSTION_TRANSITION_DURATION = 450
-const val IMPORT_CODE = 12341
-
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
-@Composable
-fun ExpandableView(
-    onCardArrowClick: () -> Unit,
-    title: String,
-    content: @Composable () -> Unit
-) {
-    val expanded = false
-    val mutableExpanded = remember {
-        mutableStateOf(expanded)
-    }
-    val transitionState = remember {
-        MutableTransitionState(expanded).apply {
-            targetState = !mutableExpanded.value
-        }
-    }
-    val transition = updateTransition(transitionState, label = "transition")
-    val arrowRotationDegree by transition.animateFloat({
-        tween(durationMillis = EXPANSTION_TRANSITION_DURATION)
-    }, label = "rotationDegreeTransition") {
-        if (mutableExpanded.value) 0f else 180f
-    }
-
-    Card(
-        shape = MaterialTheme.shapes.medium,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(
-                horizontal = 24.dp,
-                vertical = 8.dp
-            )
-    ) {
-        Column {
-            Card(
-                onClick = {
-                    mutableExpanded.value = !mutableExpanded.value
-                    onCardArrowClick()
-                }) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    CardTitle(title = title)
-                    CardArrow(
-                        degrees = arrowRotationDegree,
-                    )
-
-                }
-            }
-            ExpandableContent(visible = mutableExpanded.value, content = content)
-        }
-    }
-}
-
-@Composable
-fun CardArrow(
-    degrees: Float,
-) {
-    Icon(
-        Icons.Filled.KeyboardArrowUp,
-        contentDescription = "Expandable Arrow",
-        modifier = Modifier
-            .padding(8.dp)
-            .rotate(degrees),
-    )
-}
-
-@Composable
-fun CardTitle(title: String) {
-    Text(
-        text = title,
-        modifier = Modifier
-            .padding(16.dp),
-        textAlign = TextAlign.Center,
-    )
-}
-
-@Composable
-fun ExpandableContent(
-    visible: Boolean = true,
-    content: @Composable () -> Unit
-    ) {
-    val enterTransition = remember {
-        expandVertically(
-            expandFrom = Alignment.Top,
-            animationSpec = tween(EXPANSTION_TRANSITION_DURATION)
-        ) + fadeIn(
-            initialAlpha = 0.3f,
-            animationSpec = tween(EXPANSTION_TRANSITION_DURATION)
-        )
-    }
-    val exitTransition = remember {
-        shrinkVertically(
-            // Expand from the top.
-            shrinkTowards = Alignment.Top,
-            animationSpec = tween(EXPANSTION_TRANSITION_DURATION)
-        ) + fadeOut(
-            // Fade in with the initial alpha of 0.3f.
-            animationSpec = tween(EXPANSTION_TRANSITION_DURATION)
-        )
-    }
-
-    AnimatedVisibility(
-        visible = visible,
-        enter = enterTransition,
-        exit = exitTransition
-    ) {
-        Column(modifier = Modifier.padding(8.dp)) {
-            content()
         }
     }
 }
