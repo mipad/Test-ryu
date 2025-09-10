@@ -27,8 +27,7 @@ public:
     void clear();
 };
 
-// 前向声明
-class NoiseShaper;
+// 前向声明 (暂时移除 NoiseShaper)
 class SampleRateConverter;
 
 class OboeAudioRenderer : public oboe::AudioStreamDataCallback,
@@ -67,7 +66,7 @@ private:
 
     std::shared_ptr<oboe::AudioStream> mAudioStream;
     std::unique_ptr<RingBuffer> mRingBuffer;
-    std::unique_ptr<NoiseShaper> mNoiseShaper;
+    // std::unique_ptr<NoiseShaper> mNoiseShaper; // 暂时移除噪声整形器
     std::unique_ptr<SampleRateConverter> mSampleRateConverter;
     std::mutex mInitMutex;
     std::atomic<bool> mIsInitialized{false};
