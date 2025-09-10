@@ -2,9 +2,9 @@ name: Android CI  Fix
 
 on:
   push:
-    branches: [ "音频引擎2" ]
+    branches: [ "破音" ]
   pull_request:
-    branches: [ "音频引擎2" ]
+    branches: [ "破音" ]
 
 jobs:
   build:
@@ -25,7 +25,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: 音频引擎2
+        ref: 破音
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
