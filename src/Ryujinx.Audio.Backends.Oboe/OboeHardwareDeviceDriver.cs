@@ -22,7 +22,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         private static extern void shutdownOboeAudio();
 
         [DllImport("libryujinxjni", EntryPoint = "writeOboeAudio")]
-        private static extern void writeOboeAudio(float[] audioData, int num_frames);
+        private static extern void writeOboeAudio(float[] audioData, int num_frames, int channels);
 
         [DllImport("libryujinxjni", EntryPoint = "setOboeSampleRate")]
         private static extern void setOboeSampleRate(int sample_rate);
@@ -194,7 +194,7 @@ namespace Ryujinx.Audio.Backends.Oboe
 
         private int CalculateBufferSize(uint sampleRate)
         {
-            int latencyMs = IsHighPerformanceDevice() ? 10 : 30;
+            int latencyMs = IsHighPerformanceDevice() ? 20 : 50; // 增加缓冲区大小以减少滋滋声
             return (int)(sampleRate * latencyMs / 1000);
         }
 
@@ -305,7 +305,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                     _driver._tempFloatBuffer = new float[sampleCount];
 
                 ConvertToFloatInPlace(buffer.Data, _driver._tempFloatBuffer, sampleCount, _volume);
-                writeOboeAudio(_driver._tempFloatBuffer, sampleCount / _channelCount);
+                writeOboeAudio(_driver._tempFloatBuffer, sampleCount / _channelCount, _channelCount);
 
                 // 记录缓冲区信息
                 _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, (ulong)sampleCount));
