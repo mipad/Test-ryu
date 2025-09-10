@@ -34,11 +34,11 @@ extern "C" {
     typedef void* (*PFN_vkGetInstanceProcAddr)(void* instance, const char* name);
     typedef int (*PFN_vkCreateAndroidSurfaceKHR)(void* instance, const void* pCreateInfo, const void* pAllocator, void* pSurface);
     
-    // 添加 adrenotools 相关声明
+    // 添加 adrenotools 相关声明 - 使用正确的类型
     void* adrenotools_open_libvulkan(int flags, int driver_type, const char* target_dir,
                                     const char* lib_dir, const char* app_dir, const char* package_name,
                                     const char* dev_dir, const char* hook_dir);
-    void adrenotools_set_turbo(int enable);
+    void adrenotools_set_turbo(bool enable); // 修正为使用 bool 类型
 }
 
 extern "C"
@@ -229,7 +229,7 @@ void debug_break(int code) {
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setTurboMode(JNIEnv *env, jobject thiz, jboolean enable) {
-    adrenotools_set_turbo(enable);
+    adrenotools_set_turbo(enable != JNI_FALSE); // 将 jboolean 转换为 bool
 }
 
 // 简化交换间隔相关函数
@@ -363,7 +363,7 @@ void shutdownOboeAudio() {
 }
 
 extern "C"
-void writeOboeAudio(float* data, int num_frames) {
+void writeOboeAudio(const float* data, int32_t num_frames) { // 修正参数类型以匹配头文件
     if (!data || num_frames <= 0) {
         return;
     }
@@ -371,7 +371,7 @@ void writeOboeAudio(float* data, int num_frames) {
 }
 
 extern "C"
-void setOboeSampleRate(int sample_rate) {
+void setOboeSampleRate(int32_t sample_rate) {
     if (sample_rate < 8000 || sample_rate > 192000) {
         return;
     }
@@ -379,7 +379,7 @@ void setOboeSampleRate(int sample_rate) {
 }
 
 extern "C"
-void setOboeBufferSize(int buffer_size) {
+void setOboeBufferSize(int32_t buffer_size) {
     if (buffer_size < 64 || buffer_size > 8192) {
         return;
     }
@@ -397,8 +397,8 @@ bool isOboeInitialized() {
 }
 
 extern "C"
-int getOboeBufferedFrames() {
-    return static_cast<int>(OboeAudioRenderer::getInstance().getBufferedFrames());
+int32_t getOboeBufferedFrames() {
+    return static_cast<int32_t>(OboeAudioRenderer::getInstance().getBufferedFrames());
 }
 
 // =============== 设备信息获取 C 接口 ===============
