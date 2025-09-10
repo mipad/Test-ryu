@@ -89,6 +89,9 @@ interface RyujinxNativeJna : Library {
     fun setAspectRatio(aspectRatio: Int)
     // 在 RyujinxNativeJna 接口中添加这个方法
     fun setAudioBackend(audioBackend: Int)
+    // 添加设置缩放过滤器的方法
+    fun setScalingFilter(filter: Int)
+    fun setScalingFilterLevel(level: Int)
 }
 
 class RyujinxNative {
