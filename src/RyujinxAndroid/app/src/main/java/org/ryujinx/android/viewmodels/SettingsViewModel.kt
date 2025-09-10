@@ -73,7 +73,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         skipMemoryBarriers: MutableState<Boolean>, // 新增参数
         regionCode: MutableState<Int>, // 新增参数：区域代码
         systemLanguage: MutableState<Int>, // 新增参数：系统语言
-        audioEngineType: MutableState<Int> // 新增音频引擎参数
+        audioEngineType: MutableState<Int>, // 新增音频引擎参数
+        scalingFilter: MutableState<Int>, // 新增：缩放过滤器
+        scalingFilterLevel: MutableState<Int> // 新增：缩放过滤器级别
     ) {
 
         isHostMapped.value = sharedPref.getBoolean("isHostMapped", true)
@@ -98,6 +100,8 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         regionCode.value = sharedPref.getInt("regionCode", RegionCode.USA.ordinal) // 默认USA
         systemLanguage.value = sharedPref.getInt("systemLanguage", SystemLanguage.AmericanEnglish.ordinal) // 默认美式英语
         audioEngineType.value = sharedPref.getInt("audioEngineType", 1) // 默认OpenAL
+        scalingFilter.value = sharedPref.getInt("scalingFilter", 0) // 默认：最近邻
+        scalingFilterLevel.value = sharedPref.getInt("scalingFilterLevel", 80) // 默认级别：80
 
         enableDebugLogs.value = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs.value = sharedPref.getBoolean("enableStubLogs", false)
@@ -140,7 +144,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         skipMemoryBarriers: MutableState<Boolean>, // 新增参数
         regionCode: MutableState<Int>, // 新增参数：区域代码
         systemLanguage: MutableState<Int>, // 新增参数：系统语言
-        audioEngineType: MutableState<Int> // 新增音频引擎参数
+        audioEngineType: MutableState<Int>, // 新增音频引擎参数
+        scalingFilter: MutableState<Int>, // 新增：缩放过滤器
+        scalingFilterLevel: MutableState<Int> // 新增：缩放过滤器级别
     ) {
         val editor = sharedPref.edit()
 
@@ -165,6 +171,8 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.putInt("regionCode", regionCode.value) // 保存区域代码
         editor.putInt("systemLanguage", systemLanguage.value) // 保存系统语言
         editor.putInt("audioEngineType", audioEngineType.value) // 保存音频引擎设置
+        editor.putInt("scalingFilter", scalingFilter.value) // 保存缩放过滤器
+        editor.putInt("scalingFilterLevel", scalingFilterLevel.value) // 保存缩放过滤器级别
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs.value)
         editor.putBoolean("enableStubLogs", enableStubLogs.value)
@@ -184,6 +192,10 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
 
         // 设置画面比例
         RyujinxNative.jnaInstance.setAspectRatio(aspectRatio.value)
+
+        // 设置缩放过滤器和级别
+        RyujinxNative.jnaInstance.setScalingFilter(scalingFilter.value)
+        RyujinxNative.jnaInstance.setScalingFilterLevel(scalingFilterLevel.value)
 
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Debug.ordinal, enableDebugLogs.value)
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Info.ordinal, enableInfoLogs.value)
