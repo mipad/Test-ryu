@@ -1,3 +1,4 @@
+// ryuijnx.cpp (终极优化版：增强日志 + 健壮性，专为配合高质量Oboe音频后端)
 #include "ryuijnx.h"
 #include "pthread.h"
 #include <chrono>
@@ -9,8 +10,16 @@
 #include <cstdlib>
 #include <cstring>
 
+// 使用统一日志标签
+#define LOG_TAG "RyujinxJNI"
+#define LOGD(...) 
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+
 std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
 
+// =============== Vulkan 相关 JNI 函数 ===============
 extern "C" {
 JNIEXPORT jlong JNICALL
 Java_org_ryujinx_android_NativeHelpers_getNativeWindow(
@@ -18,11 +27,13 @@ Java_org_ryujinx_android_NativeHelpers_getNativeWindow(
         jobject instance,
         jobject surface) {
     if (!surface) {
+        LOGE("getNativeWindow: surface is null");
         return -1;
     }
 
     auto nativeWindow = ANativeWindow_fromSurface(env, surface);
     if (nativeWindow == nullptr) {
+        LOGE("getNativeWindow: ANativeWindow_fromSurface failed");
         return -1;
     }
 
@@ -43,17 +54,21 @@ Java_org_ryujinx_android_NativeHelpers_releaseNativeWindow(
 long createSurface(long native_surface, long instance) {
     auto nativeWindow = (ANativeWindow *) native_surface;
     if (nativeWindow == nullptr) {
+        LOGE("createSurface: native_window is null");
         return -1;
     }
 
     VkSurfaceKHR surface = VK_NULL_HANDLE;
     auto vkInstance = (VkInstance) instance;
     if (vkInstance == VK_NULL_HANDLE) {
+        LOGE("createSurface: vkInstance is null");
         return -1;
     }
 
+    // 获取函数指针
     auto vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr)dlsym(RTLD_DEFAULT, "vkGetInstanceProcAddr");
     if (!vkGetInstanceProcAddr) {
+        LOGE("createSurface: Failed to get vkGetInstanceProcAddr");
         return -1;
     }
 
@@ -61,6 +76,7 @@ long createSurface(long native_surface, long instance) {
         vkInstance, "vkCreateAndroidSurfaceKHR");
 
     if (!fpCreateAndroidSurfaceKHR) {
+        LOGE("createSurface: Failed to get vkCreateAndroidSurfaceKHR");
         return -1;
     }
 
@@ -70,6 +86,7 @@ long createSurface(long native_surface, long instance) {
 
     VkResult result = fpCreateAndroidSurfaceKHR(vkInstance, &info, nullptr, &surface);
     if (result != VK_SUCCESS) {
+        LOGE("createSurface: vkCreateAndroidSurfaceKHR failed with code %d", result);
         return -1;
     }
 
@@ -84,11 +101,13 @@ Java_org_ryujinx_android_NativeHelpers_getCreateSurfacePtr(
 }
 }
 
+// =============== 字符串工具函数 ===============
 static char *getStringPointer(JNIEnv *env, jstring jS) {
     if (!jS) return nullptr;
 
     const char *cparam = env->GetStringUTFChars(jS, 0);
     if (!cparam) {
+        LOGE("getStringPointer: GetStringUTFChars failed");
         return nullptr;
     }
 
@@ -96,6 +115,7 @@ static char *getStringPointer(JNIEnv *env, jstring jS) {
     char *s = new char[len + 1];
     if (!s) {
         env->ReleaseStringUTFChars(jS, cparam);
+        LOGE("getStringPointer: Memory allocation failed");
         return nullptr;
     }
 
@@ -121,6 +141,7 @@ jstring createStringFromStdString(JNIEnv *env, std::string s) {
 }
 }
 
+// =============== 渲染线程与VM初始化 ===============
 extern "C"
 void setRenderingThread() {
     auto currentId = pthread_self();
@@ -134,18 +155,21 @@ Java_org_ryujinx_android_MainActivity_initVm(JNIEnv *env, jobject thiz) {
     JavaVM *vm = nullptr;
     auto success = env->GetJavaVM(&vm);
     if (success != JNI_OK) {
+        LOGE("initVm: Failed to get JavaVM, error=%d", success);
         return;
     }
     _vm = vm;
 
     _mainActivity = env->NewGlobalRef(thiz);
     if (!_mainActivity) {
+        LOGE("initVm: Failed to create global ref for MainActivity");
         return;
     }
 
     jclass localClass = env->GetObjectClass(thiz);
     _mainActivityClass = (jclass)env->NewGlobalRef(localClass);
     if (!_mainActivityClass) {
+        LOGE("initVm: Failed to create global ref for MainActivity class");
         env->DeleteGlobalRef(_mainActivity);
         _mainActivity = nullptr;
         return;
@@ -154,6 +178,7 @@ Java_org_ryujinx_android_MainActivity_initVm(JNIEnv *env, jobject thiz) {
     env->DeleteLocalRef(localClass);
 }
 
+// =============== 屏幕旋转与驱动加载 ===============
 bool isInitialOrientationFlipped = true;
 
 extern "C"
@@ -166,10 +191,10 @@ void setCurrentTransform(long native_window, int transform) {
     int32_t nativeTransform = 0;
 
     switch (transform) {
-        case 1: nativeTransform = 0; break;
-        case 2: nativeTransform = 1; break;
-        case 4: nativeTransform = isInitialOrientationFlipped ? 0 : 2; break;
-        case 8: nativeTransform = 3; break;
+        case 1: nativeTransform = 0; break; // 无旋转
+        case 2: nativeTransform = 1; break; // 90度
+        case 4: nativeTransform = isInitialOrientationFlipped ? 0 : 2; break; // 180度
+        case 8: nativeTransform = 3; break; // 270度
         default:
             nativeTransform = 0;
             break;
@@ -189,12 +214,13 @@ Java_org_ryujinx_android_NativeHelpers_loadDriver(JNIEnv *env, jobject thiz,
     auto driverName = getStringPointer(env, driver_name);
 
     if (!libPath || !privateAppsPath || !driverName) {
+        LOGE("loadDriver: Invalid parameters");
         goto cleanup;
     }
 
     auto handle = adrenotools_open_libvulkan(
             RTLD_NOW,
-            1,
+            1, // ADRENOTOOLS_DRIVER_CUSTOM
             nullptr,
             libPath,
             privateAppsPath,
@@ -202,6 +228,10 @@ Java_org_ryujinx_android_NativeHelpers_loadDriver(JNIEnv *env, jobject thiz,
             nullptr,
             nullptr
     );
+
+    if (!handle) {
+        LOGE("loadDriver: adrenotools_open_libvulkan failed");
+    }
 
 cleanup:
     delete[] libPath;
@@ -211,8 +241,12 @@ cleanup:
     return (jlong) handle;
 }
 
+// =============== 调试与Turbo模式 ===============
 extern "C"
 void debug_break(int code) {
+    if (code >= 3) {
+        LOGE("debug_break: Triggered with code %d", code);
+    }
 }
 
 extern "C"
@@ -246,10 +280,13 @@ Java_org_ryujinx_android_NativeHelpers_setIsInitialOrientationFlipped(JNIEnv *en
     isInitialOrientationFlipped = (is_flipped != JNI_FALSE);
 }
 
+// =============== Oboe 音频 JNI 接口 (增强版) ===============
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_initOboeAudio(JNIEnv *env, jobject thiz) {
-    OboeAudioRenderer::getInstance().initialize();
+    if (!OboeAudioRenderer::getInstance().initialize()) {
+        LOGE("initOboeAudio: FAILED to initialize Oboe audio");
+    }
 }
 
 extern "C"
@@ -260,22 +297,24 @@ Java_org_ryujinx_android_NativeHelpers_shutdownOboeAudio(JNIEnv *env, jobject th
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(JNIEnv *env, jobject thiz, jfloatArray audio_data, jint num_frames) {
+Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(JNIEnv *env, jobject thiz, jfloatArray audio_data, jint num_frames, jint input_channels) {
     if (!audio_data || num_frames <= 0) {
         return;
     }
 
     jsize length = env->GetArrayLength(audio_data);
-    if (length < num_frames) {
+    if (length < num_frames * input_channels) {
+        LOGE("writeOboeAudio: Array too small: length=%d, required=%d", length, num_frames * input_channels);
         return;
     }
 
     jfloat* data = env->GetFloatArrayElements(audio_data, nullptr);
     if (!data) {
+        LOGE("writeOboeAudio: GetFloatArrayElements failed");
         return;
     }
 
-    OboeAudioRenderer::getInstance().writeAudio(data, num_frames);
+    OboeAudioRenderer::getInstance().writeAudio(data, num_frames, input_channels);
     env->ReleaseFloatArrayElements(audio_data, data, JNI_ABORT);
 }
 
@@ -283,6 +322,7 @@ extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setOboeSampleRate(JNIEnv *env, jobject thiz, jint sample_rate) {
     if (sample_rate < 8000 || sample_rate > 192000) {
+        LOGE("setOboeSampleRate: Invalid sample rate: %d", sample_rate);
         return;
     }
     OboeAudioRenderer::getInstance().setSampleRate(sample_rate);
@@ -292,6 +332,7 @@ extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setOboeBufferSize(JNIEnv *env, jobject thiz, jint buffer_size) {
     if (buffer_size < 64 || buffer_size > 8192) {
+        LOGE("setOboeBufferSize: Invalid buffer size: %d", buffer_size);
         return;
     }
     OboeAudioRenderer::getInstance().setBufferSize(buffer_size);
@@ -304,6 +345,18 @@ Java_org_ryujinx_android_NativeHelpers_setOboeVolume(JNIEnv *env, jobject thiz, 
 }
 
 extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_setOboeNoiseShapingEnabled(JNIEnv *env, jobject thiz, jboolean enabled) {
+    OboeAudioRenderer::getInstance().setNoiseShapingEnabled(enabled != JNI_FALSE);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_setOboeChannelCount(JNIEnv *env, jobject thiz, jint channel_count) {
+    OboeAudioRenderer::getInstance().setChannelCount(channel_count);
+}
+
+extern "C"
 JNIEXPORT jboolean JNICALL
 Java_org_ryujinx_android_NativeHelpers_isOboeInitialized(JNIEnv *env, jobject thiz) {
     bool initialized = OboeAudioRenderer::getInstance().isInitialized();
@@ -313,10 +366,10 @@ Java_org_ryujinx_android_NativeHelpers_isOboeInitialized(JNIEnv *env, jobject th
 extern "C"
 JNIEXPORT jint JNICALL
 Java_org_ryujinx_android_NativeHelpers_getOboeBufferedFrames(JNIEnv *env, jobject thiz) {
-    int frames = static_cast<jint>(OboeAudioRenderer::getInstance().getBufferedFrames());
-    return frames;
+    return static_cast<jint>(OboeAudioRenderer::getInstance().getBufferedFrames());
 }
 
+// =============== 设备信息获取函数 ===============
 extern "C"
 JNIEXPORT jstring JNICALL
 Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceModel(JNIEnv *env, jobject thiz) {
@@ -333,6 +386,7 @@ Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceBrand(JNIEnv *env, jobjec
     return env->NewStringUTF(brand);
 }
 
+// =============== Oboe Audio C 接口 (for C# P/Invoke) ===============
 extern "C"
 void initOboeAudio() {
     OboeAudioRenderer::getInstance().initialize();
@@ -344,11 +398,16 @@ void shutdownOboeAudio() {
 }
 
 extern "C"
-void writeOboeAudio(float* audioData, int num_frames, int input_channels, int output_channels) {
-    if (!audioData || num_frames <= 0) {
+void writeOboeAudio(const float* data, int32_t num_frames, int32_t input_channels, int32_t output_channels) {
+    if (!data || num_frames <= 0) {
         return;
     }
-    OboeAudioRenderer::getInstance().writeAudio(audioData, num_frames);
+    
+    // 设置输出通道数
+    OboeAudioRenderer::getInstance().setChannelCount(output_channels);
+    
+    // 写入音频数据
+    OboeAudioRenderer::getInstance().writeAudio(data, num_frames, input_channels);
 }
 
 extern "C"
@@ -372,6 +431,7 @@ void setOboeVolume(float volume) {
     OboeAudioRenderer::getInstance().setVolume(volume);
 }
 
+// =============== 噪声整形控制 C 接口 ===============
 extern "C"
 void setOboeNoiseShapingEnabled(bool enabled) {
     OboeAudioRenderer::getInstance().setNoiseShapingEnabled(enabled);
@@ -387,6 +447,7 @@ int32_t getOboeBufferedFrames() {
     return static_cast<int32_t>(OboeAudioRenderer::getInstance().getBufferedFrames());
 }
 
+// =============== 设备信息获取 C 接口 ===============
 extern "C"
 const char* GetAndroidDeviceModel() {
     static char model[PROP_VALUE_MAX] = {0};
@@ -411,6 +472,7 @@ const char* GetAndroidDeviceBrand() {
     return brand;
 }
 
+// =============== ANativeWindow 函数 (Stub) ===============
 extern "C" {
 int32_t ANativeWindow_setBuffersTransform(ANativeWindow* window, int32_t transform) {
     return 0;
