@@ -70,8 +70,10 @@ public:
     void setBufferSize(int32_t bufferSize);
     void setVolume(float volume);
     void setNoiseShapingEnabled(bool enabled);
+    // 设置 Oboe 音频流的输出声道数（例如 2）。输入数据的声道数由 writeAudio 的参数指定。
     void setChannelCount(int32_t channelCount);
 
+    // 写入音频数据。内部会处理输入声道数到输出声道数的转换，以及采样率转换。
     void writeAudio(const float* data, int32_t numFrames, int32_t inputChannels);
     void clearBuffer();
 
@@ -79,6 +81,7 @@ public:
     bool isInitialized() const { return mIsInitialized.load(std::memory_order_acquire); }
     int32_t getSampleRate() const { return mSampleRate.load(std::memory_order_relaxed); }
     int32_t getBufferSize() const { return mBufferSize.load(std::memory_order_relaxed); }
+    // 获取 Oboe 音频流的输出声道数
     int32_t getChannelCount() const { return mChannelCount.load(std::memory_order_relaxed); }
     size_t getBufferedFrames() const;
     size_t getAvailableFrames() const;
@@ -94,6 +97,7 @@ private:
 
     bool openStreamWithFormat(oboe::AudioFormat format);
     void updateStreamParameters();
+    // 将输入数据从 inputChannels 转换到 outputChannels
     void convertChannels(const float* input, float* output, int32_t numFrames, int32_t inputChannels, int32_t outputChannels);
     
     // 辅助函数：解交错和重新交错
@@ -113,6 +117,7 @@ private:
     // 音频参数
     std::atomic<int32_t> mSampleRate{48000};
     std::atomic<int32_t> mBufferSize{1024};
+    // Oboe 音频流的输出声道数
     std::atomic<int32_t> mChannelCount{2};
     std::atomic<float> mVolume{1.0f};
     std::atomic<oboe::AudioFormat> mAudioFormat{oboe::AudioFormat::Float};
