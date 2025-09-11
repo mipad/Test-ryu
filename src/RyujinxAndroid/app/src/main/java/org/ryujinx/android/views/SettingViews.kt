@@ -164,6 +164,8 @@ class SettingViews {
             val audioEngineType = remember { mutableStateOf(1) } // 0=禁用，1=OpenAL, 2=SDL2, 3=Oboe
             val scalingFilter = remember { mutableStateOf(0) } // 0=Bilinear, 1=Nearest, 2=FSR
             val scalingFilterLevel = remember { mutableStateOf(25) } // 默认25%
+            val antiAliasing = remember { mutableStateOf(0) } // 0=None, 1=Fxaa, 2=SmaaLow, 3=SmaaMedium, 4=SmaaHigh, 5=SmaaUltra
+            val showAntiAliasingDialog = remember { mutableStateOf(false) } // 控制抗锯齿对话框显示
 
             // 新增状态变量用于控制选项显示
             val showResScaleOptions = remember { mutableStateOf(false) }
@@ -201,7 +203,8 @@ class SettingViews {
                     systemLanguage, // 新增参数
                     audioEngineType, // 新增参数
                     scalingFilter, // 新增：缩放过滤器
-                    scalingFilterLevel // 新增：缩放过滤器级别
+                    scalingFilterLevel, // 新增：缩放过滤器级别
+                    antiAliasing // 新增：抗锯齿模式
                 )
                 loaded.value = true
             }
@@ -255,7 +258,8 @@ class SettingViews {
                     systemLanguage, // 新增参数
                     audioEngineType, // 新增参数
                     scalingFilter, // 新增：缩放过滤器
-                    scalingFilterLevel // 新增：缩放过滤器级别
+                    scalingFilterLevel, // 新增：缩放过滤器级别
+                    antiAliasing // 新增：抗锯齿模式
                                 )
                                 settingsViewModel.navController.popBackStack()
                             }) {
@@ -626,7 +630,7 @@ class SettingViews {
                                         run {
                                             onFileSelected = callBack
                                             if (requestCode == IMPORT_CODE) {
-                                                val file = files.firstOrNull()
+                                                var file = files.firstOrNull()
                                                 file?.apply {
                                                     if (this.extension == "zip") {
                                                         importFile.value = this
@@ -667,7 +671,7 @@ class SettingViews {
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Button(onClick = {
-                                            val file = importFile.value
+                                            var file = importFile.value
                                             showImportWarning.value = false
                                             importFile.value = null
                                             file?.apply {
@@ -1083,12 +1087,35 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                     // 新增后处理设置部分
 ExpandableView(onCardArrowClick = { }, title = "Post-Processing") {
     Column(modifier = Modifier.fillMaxWidth()) {
+        // 抗锯齿设置
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp)
+                .clickable { showAntiAliasingDialog.value = true },
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "Anti-Aliasing")
+            Text(
+                text = when (antiAliasing.value) {
+                    1 -> "Fxaa"
+                    2 -> "SmaaLow"
+                    3 -> "SmaaMedium"
+                    4 -> "SmaaHigh"
+                    5 -> "SmaaUltra"
+                    else -> "None"
+                },
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        
         // Scaling Filter 设置       
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(8.dp)
-                .clickable { showScalingFilterDialog.value = true },  // 修复：添加 .value
+                .clickable { showScalingFilterDialog.value = true },
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1140,10 +1167,193 @@ ExpandableView(onCardArrowClick = { }, title = "Post-Processing") {
     }
 }
 
-// Scaling Filter 选择对话框
-if (showScalingFilterDialog.value) {  // 修复：添加 .value
+// 抗锯齿选择对话框
+if (showAntiAliasingDialog.value) {
     BasicAlertDialog(
-        onDismissRequest = { showScalingFilterDialog.value = false }  // 修复：添加 .value
+        onDismissRequest = { showAntiAliasingDialog.value = false }
+    ) {
+        Surface(
+            modifier = Modifier
+                .wrapContentWidth()
+                .wrapContentHeight(),
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = AlertDialogDefaults.TonalElevation
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text(
+                    text = "Select Anti-Aliasing",
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                
+                // None 选项
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            antiAliasing.value = 0
+                            showAntiAliasingDialog.value = false
+                        }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = antiAliasing.value == 0,
+                        onClick = {
+                            antiAliasing.value = 0
+                            showAntiAliasingDialog.value = false
+                        }
+                    )
+                    Text(
+                        text = "None",
+                        modifier = Modifier.padding(start = 16.dp)
+                    )
+                }
+                
+                // Fxaa 选项
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            antiAliasing.value = 1
+                            showAntiAliasingDialog.value = false
+                        }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = antiAliasing.value == 1,
+                        onClick = {
+                            antiAliasing.value = 1
+                            showAntiAliasingDialog.value = false
+                        }
+                    )
+                    Text(
+                        text = "Fxaa",
+                        modifier = Modifier.padding(start = 16.dp)
+                    )
+                }
+                
+                // SmaaLow 选项
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            antiAliasing.value = 2
+                            showAntiAliasingDialog.value = false
+                        }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = antiAliasing.value == 2,
+                        onClick = {
+                            antiAliasing.value = 2
+                            showAntiAliasingDialog.value = false
+                        }
+                    )
+                    Text(
+                        text = "SmaaLow",
+                        modifier = Modifier.padding(start = 16.dp)
+                    )
+                }
+                
+                // SmaaMedium 选项
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            antiAliasing.value = 3
+                            showAntiAliasingDialog.value = false
+                        }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = antiAliasing.value == 3,
+                        onClick = {
+                            antiAliasing.value = 3
+                            showAntiAliasingDialog.value = false
+                        }
+                    )
+                    Text(
+                        text = "SmaaMedium",
+                        modifier = Modifier.padding(start = 16.dp)
+                    )
+                }
+                
+                // SmaaHigh 选项
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            antiAliasing.value = 4
+                            showAntiAliasingDialog.value = false
+                        }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = antiAliasing.value == 4,
+                        onClick = {
+                            antiAliasing.value = 4
+                            showAntiAliasingDialog.value = false
+                        }
+                    )
+                    Text(
+                        text = "SmaaHigh",
+                        modifier = Modifier.padding(start = 16.dp)
+                    )
+                }
+                
+                // SmaaUltra 选项
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            antiAliasing.value = 5
+                            showAntiAliasingDialog.value = false
+                        }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = antiAliasing.value == 5,
+                        onClick = {
+                            antiAliasing.value = 5
+                            showAntiAliasingDialog.value = false
+                        }
+                    )
+                    Text(
+                        text = "SmaaUltra",
+                        modifier = Modifier.padding(start = 16.dp)
+                    )
+                }
+                
+                // 添加取消按钮
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = { showAntiAliasingDialog.value = false }
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Scaling Filter 选择对话框
+if (showScalingFilterDialog.value) {
+    BasicAlertDialog(
+        onDismissRequest = { showScalingFilterDialog.value = false }
     ) {
         Surface(
             modifier = Modifier
@@ -1167,7 +1377,7 @@ if (showScalingFilterDialog.value) {  // 修复：添加 .value
                         .fillMaxWidth()
                         .clickable {
                             scalingFilter.value = 0
-                            showScalingFilterDialog.value = false  // 修复：添加 .value
+                            showScalingFilterDialog.value = false
                         }
                         .padding(vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -1176,7 +1386,7 @@ if (showScalingFilterDialog.value) {  // 修复：添加 .value
                         selected = scalingFilter.value == 0,
                         onClick = {
                             scalingFilter.value = 0
-                            showScalingFilterDialog.value = false  // 修复：添加 .value
+                            showScalingFilterDialog.value = false
                         }
                     )
                     Text(
@@ -1191,7 +1401,7 @@ if (showScalingFilterDialog.value) {  // 修复：添加 .value
                         .fillMaxWidth()
                         .clickable {
                             scalingFilter.value = 1
-                            showScalingFilterDialog.value = false  // 修复：添加 .value
+                            showScalingFilterDialog.value = false
                         }
                         .padding(vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -1200,7 +1410,7 @@ if (showScalingFilterDialog.value) {  // 修复：添加 .value
                         selected = scalingFilter.value == 1,
                         onClick = {
                             scalingFilter.value = 1
-                            showScalingFilterDialog.value = false  // 修复：添加 .value
+                            showScalingFilterDialog.value = false
                         }
                     )
                     Text(
@@ -1215,7 +1425,7 @@ if (showScalingFilterDialog.value) {  // 修复：添加 .value
                         .fillMaxWidth()
                         .clickable {
                             scalingFilter.value = 2
-                            showScalingFilterDialog.value = false  // 修复：添加 .value
+                            showScalingFilterDialog.value = false
                         }
                         .padding(vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -1224,7 +1434,7 @@ if (showScalingFilterDialog.value) {  // 修复：添加 .value
                         selected = scalingFilter.value == 2,
                         onClick = {
                             scalingFilter.value = 2
-                            showScalingFilterDialog.value = false  // 修复：添加 .value
+                            showScalingFilterDialog.value = false
                         }
                     )
                     Text(
@@ -1241,7 +1451,7 @@ if (showScalingFilterDialog.value) {  // 修复：添加 .value
                     horizontalArrangement = Arrangement.End
                 ) {
                     TextButton(
-                        onClick = { showScalingFilterDialog.value = false }  // 修复：添加 .value
+                        onClick = { showScalingFilterDialog.value = false }
                     ) {
                         Text("Cancel")
                     }
@@ -1817,7 +2027,8 @@ ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
                         systemLanguage, // 新增参数
                         audioEngineType, // 新增参数
                         scalingFilter, // 新增：缩放过滤器
-                        scalingFilterLevel // 新增：缩放过滤器级别
+                        scalingFilterLevel, // 新增：缩放过滤器级别
+                        antiAliasing // 新增：抗锯齿模式
                     )
                     settingsViewModel.navController.popBackStack()
                 }
