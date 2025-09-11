@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <stdexcept>
+#include <android/audio.h>
 
 #define LOG_TAG "RyujinxJNI"
 #define LOGD(...) 
@@ -420,6 +421,103 @@ Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceBrand(JNIEnv *env, jobjec
     return env->NewStringUTF(brand);
 }
 
+// =============== 新增：获取音频设备信息 JNI 函数 ===============
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_org_ryujinx_android_NativeHelpers_getAudioDevices(JNIEnv *env, jobject thiz, jobject context) {
+    jclass context_class = env->GetObjectClass(context);
+    jmethodID get_system_service = env->GetMethodID(context_class, "getSystemService", 
+                                                    "(Ljava/lang/String;)Ljava/lang/Object;");
+    
+    jstring audio_service = env->NewStringUTF("audio");
+    jobject audio_manager = env->CallObjectMethod(context, get_system_service, audio_service);
+    
+    jclass audio_manager_class = env->FindClass("android/media/AudioManager");
+    jmethodID get_devices = env->GetMethodID(audio_manager_class, "getDevices", "(I)[Landroid/media/AudioDeviceInfo;");
+    
+    jclass audio_device_info_class = env->FindClass("android/media/AudioDeviceInfo");
+    jmethodID get_id = env->GetMethodID(audio_device_info_class, "getId", "()I");
+    jmethodID get_type = env->GetMethodID(audio_device_info_class, "getType", "()I");
+    jmethodID get_product_name = env->GetMethodID(audio_device_info_class, "getProductName", "()Ljava/lang/CharSequence;");
+    jmethodID get_address = env->GetMethodID(audio_device_info_class, "getAddress", "()Ljava/lang/String;");
+    jmethodID get_channel_counts = env->GetMethodID(audio_device_info_class, "getChannelCounts", "()[I");
+    
+    jclass json_array_class = env->FindClass("org/json/JSONArray");
+    jmethodID json_array_ctor = env->GetMethodID(json_array_class, "<init>", "()V");
+    jmethodID json_array_put = env->GetMethodID(json_array_class, "put", "(ILjava/lang/Object;)Lorg/json/JSONArray;");
+    
+    jclass json_object_class = env->FindClass("org/json/JSONObject");
+    jmethodID json_object_ctor = env->GetMethodID(json_object_class, "<init>", "()V");
+    jmethodID json_object_put = env->GetMethodID(json_object_class, "put", 
+                                                "(Ljava/lang/String;Ljava/lang/Object;)Lorg/json/JSONObject;");
+    
+    jobject json_array = env->NewObject(json_array_class, json_array_ctor);
+    
+    // 获取输出设备
+    jobjectArray devices = (jobjectArray)env->CallObjectMethod(audio_manager, get_devices, 
+                                                              static_cast<jint>(2)); // GET_DEVICES_OUTPUTS = 2
+    
+    jsize device_count = env->GetArrayLength(devices);
+    
+    for (jsize i = 0; i < device_count; i++) {
+        jobject device = env->GetObjectArrayElement(devices, i);
+        
+        jobject json_object = env->NewObject(json_object_class, json_object_ctor);
+        
+        // 获取设备ID
+        jint id = env->CallIntMethod(device, get_id);
+        env->CallObjectMethod(json_object, json_object_put, 
+                             env->NewStringUTF("id"), 
+                             env->NewStringUTF(std::to_string(id).c_str()));
+        
+        // 获取设备类型
+        jint type = env->CallIntMethod(device, get_type);
+        env->CallObjectMethod(json_object, json_object_put, 
+                             env->NewStringUTF("type"), 
+                             env->NewStringUTF(std::to_string(type).c_str()));
+        
+        // 获取产品名称
+        jobject product_name = env->CallObjectMethod(device, get_product_name);
+        if (product_name != nullptr) {
+            jclass char_sequence_class = env->FindClass("java/lang/CharSequence");
+            jmethodID to_string = env->GetMethodID(char_sequence_class, "toString", "()Ljava/lang/String;");
+            jstring product_name_str = (jstring)env->CallObjectMethod(product_name, to_string);
+            env->CallObjectMethod(json_object, json_object_put, 
+                                 env->NewStringUTF("productName"), 
+                                 product_name_str);
+        }
+        
+        // 获取设备地址
+        jstring address = (jstring)env->CallObjectMethod(device, get_address);
+        env->CallObjectMethod(json_object, json_object_put, 
+                             env->NewStringUTF("address"), 
+                             address);
+        
+        // 获取通道数
+        jintArray channel_counts = (jintArray)env->CallObjectMethod(device, get_channel_counts);
+        jint* channels = env->GetIntArrayElements(channel_counts, nullptr);
+        jsize channel_count = env->GetArrayLength(channel_counts);
+        jint main_channel_count = channel_count > 0 ? channels[0] : 2;
+        env->ReleaseIntArrayElements(channel_counts, channels, 0);
+        
+        env->CallObjectMethod(json_object, json_object_put, 
+                             env->NewStringUTF("channelCount"), 
+                             env->NewStringUTF(std::to_string(main_channel_count).c_str()));
+        
+        // 将JSON对象添加到数组中
+        env->CallObjectMethod(json_array, json_array_put, i, json_object);
+        
+        env->DeleteLocalRef(device);
+        env->DeleteLocalRef(json_object);
+    }
+    
+    // 转换为字符串
+    jmethodID to_string = env->GetMethodID(json_array_class, "toString", "()Ljava/lang/String;");
+    jstring result = (jstring)env->CallObjectMethod(json_array, to_string);
+    
+    return result;
+}
+
 // =============== Oboe Audio C 接口 (for C# P/Invoke) ===============
 extern "C"
 void initOboeAudio() {
@@ -540,6 +638,31 @@ const char* GetAndroidDeviceBrand() {
         }
     }
     return brand;
+}
+
+// =============== 新增：获取音频设备信息 C 接口 ===============
+extern "C"
+const char* GetAudioDevices(jobject context) {
+    JNIEnv* env;
+    JavaVM* vm = _vm;
+    
+    if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
+        LOGE("GetAudioDevices: Failed to get JNI environment");
+        return strdup("[]");
+    }
+    
+    jclass native_helpers_class = env->FindClass("org/ryujinx/android/NativeHelpers");
+    jmethodID get_audio_devices = env->GetStaticMethodID(native_helpers_class, "getAudioDevices", 
+                                                       "(Landroid/content/Context;)Ljava/lang/String;");
+    
+    jstring result = (jstring)env->CallStaticObjectMethod(native_helpers_class, get_audio_devices, context);
+    
+    const char* result_str = env->GetStringUTFChars(result, nullptr);
+    char* copied_str = strdup(result_str);
+    
+    env->ReleaseStringUTFChars(result, result_str);
+    
+    return copied_str;
 }
 
 // =============== ANativeWindow 函数 (Stub) ===============
