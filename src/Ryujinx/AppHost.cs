@@ -1084,7 +1084,19 @@ namespace Ryujinx.Ava
                 LocaleManager.Instance[LocaleKeys.Game] + $": {Device.Statistics.GetGameFrameRate():00.00} FPS ({Device.Statistics.GetGameFrameTime():00.00} ms)",
                 $"FIFO: {Device.Statistics.GetFifoPercent():00.00} %"));
         }
+        
+        private string FormatGameFrameRate()
+        {
+            string frameRate = Device.Statistics.GetGameFrameRate().ToString("00.00");
+            string frameTime = Device.Statistics.GetGameFrameTime().ToString("00.00");
 
+            return Device.TurboMode
+                ? LocaleManager.GetUnformatted(LocaleKeys.FpsTurboStatusBarText)
+                    .Format(frameRate, frameTime, Device.TickScalar)
+                : LocaleManager.GetUnformatted(LocaleKeys.FpsStatusBarText)
+                    .Format(frameRate, frameTime);
+        }
+        
         public async Task ShowExitPrompt()
         {
             bool shouldExit = !ConfigurationState.Instance.ShowConfirmExit;
