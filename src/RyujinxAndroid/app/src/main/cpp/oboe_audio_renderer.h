@@ -1,4 +1,4 @@
-// oboe_audio_renderer.h (终极修复版：配合高质量采样率转换 + 动态缓冲监控)
+// oboe_audio_renderer.h (终极修复版：支持多通道分别采样率转换)
 #ifndef RYUJINX_OBOE_AUDIO_RENDERER_H
 #define RYUJINX_OBOE_AUDIO_RENDERER_H
 
@@ -95,11 +95,14 @@ private:
     bool openStreamWithFormat(oboe::AudioFormat format);
     void updateStreamParameters();
     void convertChannels(const float* input, float* output, int32_t numFrames, int32_t inputChannels, int32_t outputChannels);
+    
+    // 辅助函数：解交错和重新交错
+    void deinterleave(const float* interleaved, float** deinterleaved, int32_t numFrames, int32_t numChannels);
+    void interleave(float** deinterleaved, float* interleaved, int32_t numFrames, int32_t numChannels);
 
     std::shared_ptr<oboe::AudioStream> mAudioStream;
     std::unique_ptr<RingBuffer> mRingBuffer;
     std::unique_ptr<NoiseShaper> mNoiseShaper;
-    std::unique_ptr<SampleRateConverter> mSampleRateConverter;
     std::mutex mInitMutex;
 
     // 状态标志
@@ -118,6 +121,10 @@ private:
     std::atomic<size_t> mLastBufferLevel{0};
     std::atomic<size_t> mUnderrunCount{0};
     std::atomic<size_t> mTotalFramesWritten{0};
+    
+    // 多通道采样率转换器 (每个通道一个)
+    static const int MAX_CHANNELS = 8;
+    std::unique_ptr<SampleRateConverter> mChannelConverters[MAX_CHANNELS];
 };
 
 #endif // RYUJINX_OBOE_AUDIO_RENDERER_H
