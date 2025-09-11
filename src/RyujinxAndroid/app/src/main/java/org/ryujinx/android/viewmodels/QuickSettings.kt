@@ -24,6 +24,7 @@ class QuickSettings(val activity: Activity) {
     var enableMotion: Boolean
     var enablePerformanceMode: Boolean
     var controllerStickSensitivity: Float
+    var tickScalar: Int // 游戏速度百分比 (0-400)
     var skipMemoryBarriers: Boolean // 新增：跳过内存屏障
     var regionCode: Int // 新增：区域代码
     var systemLanguage: Int // 新增：系统语言
@@ -64,6 +65,7 @@ class QuickSettings(val activity: Activity) {
         enableMotion = sharedPref.getBoolean("enableMotion", true)
         enablePerformanceMode = sharedPref.getBoolean("enablePerformanceMode", true)
         controllerStickSensitivity = sharedPref.getFloat("controllerStickSensitivity", 1.0f)
+        tickScalar = sharedPref.getInt("tickScalar", 100) // 默认100%
         skipMemoryBarriers = sharedPref.getBoolean("skipMemoryBarriers", false) // 初始化
         regionCode = sharedPref.getInt("regionCode", RegionCode.USA.ordinal) // 默认USA
         systemLanguage = sharedPref.getInt("systemLanguage", SystemLanguage.AmericanEnglish.ordinal) // 默认美式英语
@@ -103,6 +105,7 @@ class QuickSettings(val activity: Activity) {
         editor.putBoolean("enableMotion", enableMotion)
         editor.putBoolean("enablePerformanceMode", enablePerformanceMode)
         editor.putFloat("controllerStickSensitivity", controllerStickSensitivity)
+        editor.putInt("tickScalar", tickScalar)
         editor.putBoolean("skipMemoryBarriers", skipMemoryBarriers) // 保存
         editor.putInt("regionCode", regionCode) // 保存区域代码
         editor.putInt("systemLanguage", systemLanguage) // 保存系统语言
