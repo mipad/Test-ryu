@@ -9,9 +9,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Threading;
-using Newtonsoft.Json.Linq;
 using System.Collections.Generic;
-using Android.Content;
 
 namespace Ryujinx.Audio.Backends.Oboe
 {
@@ -219,65 +217,6 @@ namespace Ryujinx.Audio.Backends.Oboe
         {
             int latencyMs = 200;
             return (int)(sampleRate * latencyMs / 1000);
-        }
-
-        // ========== 新增：音频设备发现方法 ==========
-        public static List<AudioDeviceInfo> GetAudioDevices(Context context)
-        {
-            if (context == null)
-                return new List<AudioDeviceInfo>();
-
-            IntPtr contextHandle = JNIEnv.ToJniHandle(context);
-            IntPtr resultPtr = GetAudioDevices(contextHandle);
-            JNIEnv.DeleteLocalRef(contextHandle);
-
-            if (resultPtr == IntPtr.Zero)
-                return new List<AudioDeviceInfo>();
-
-            string json = Marshal.PtrToStringAnsi(resultPtr) ?? "[]";
-            return ParseAudioDevices(json);
-        }
-
-        public static List<AudioDeviceInfo> ParseAudioDevices(string json)
-        {
-            var devices = new List<AudioDeviceInfo>();
-
-            try
-            {
-                var jsonArray = JArray.Parse(json);
-                foreach (var item in jsonArray)
-                {
-                    var device = new AudioDeviceInfo
-                    {
-                        Id = int.TryParse(item["id"]?.ToString(), out int id) ? id : 0,
-                        Type = int.TryParse(item["type"]?.ToString(), out int type) ? type : 0,
-                        ProductName = item["productName"]?.ToString() ?? "Unknown",
-                        Address = item["address"]?.ToString() ?? "",
-                        ChannelCount = int.TryParse(item["channelCount"]?.ToString(), out int channels) ? channels : 2
-                    };
-                    devices.Add(device);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.Audio, $"Failed to parse audio devices: {ex.Message}");
-            }
-
-            return devices;
-        }
-
-        public class AudioDeviceInfo
-        {
-            public int Id { get; set; }
-            public int Type { get; set; }
-            public string ProductName { get; set; }
-            public string Address { get; set; }
-            public int ChannelCount { get; set; }
-
-            public override string ToString()
-            {
-                return $"{ProductName} (Channels: {ChannelCount}, Type: {Type})";
-            }
         }
 
         // ========== 音频会话类 ==========
