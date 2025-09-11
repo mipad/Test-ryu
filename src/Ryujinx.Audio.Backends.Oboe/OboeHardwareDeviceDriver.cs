@@ -21,8 +21,9 @@ namespace Ryujinx.Audio.Backends.Oboe
         [DllImport("libryujinxjni", EntryPoint = "shutdownOboeAudio")]
         private static extern void shutdownOboeAudio();
 
+        // 修改 P/Invoke：移除 output_channels 参数
         [DllImport("libryujinxjni", EntryPoint = "writeOboeAudio")]
-        private static extern void writeOboeAudio(float[] audioData, int num_frames, int input_channels, int output_channels);
+        private static extern void writeOboeAudio(float[] audioData, int num_frames, int input_channels);
 
         [DllImport("libryujinxjni", EntryPoint = "setOboeSampleRate")]
         private static extern void setOboeSampleRate(int sample_rate);
@@ -36,6 +37,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         [DllImport("libryujinxjni", EntryPoint = "setOboeNoiseShapingEnabled")]
         private static extern void setOboeNoiseShapingEnabled(bool enabled);
 
+        // 这个函数现在设置的是 C++ 端 Oboe 输出流的声道数（目标声道数，例如 2）
         [DllImport("libryujinxjni", EntryPoint = "setOboeChannelCount")]
         private static extern void setOboeChannelCount(int channel_count);
 
@@ -175,7 +177,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             IVirtualMemoryManager memoryManager,
             SampleFormat sampleFormat,
             uint sampleRate,
-            uint channelCount)
+            uint channelCount) // 这是输入数据的声道数
         {
             if (direction != IHardwareDeviceDriver.Direction.Output)
                 throw new ArgumentException($"Unsupported direction: {direction}");
@@ -189,11 +191,14 @@ namespace Ryujinx.Audio.Backends.Oboe
             // 延迟初始化
             if (!_isOboeInitialized)
             {
-                // ✅ 修正：CalculateBufferSize 返回的是帧数（不是样本数），无需除以 channelCount
+                // ✅ 设置 C++ 端 Oboe 输出流的参数
                 int bufferSizeInFrames = CalculateBufferSize(sampleRate);
                 setOboeSampleRate((int)sampleRate);
-                setOboeBufferSize(bufferSizeInFrames); // 直接传帧数
-                setOboeChannelCount((int)channelCount); // 设置声道数
+                setOboeBufferSize(bufferSizeInFrames);
+                // 设置 Oboe 输出流的声道数（目标声道数，例如立体声设为2）
+                // 注意：这里硬编码为2，意味着总是下混到立体声。
+                // 更高级的实现可以查询设备支持的最大声道数，但下混到立体声是最兼容的方案。
+                setOboeChannelCount(2);
                 setOboeVolume(_volume);
                 setOboeNoiseShapingEnabled(_noiseShapingEnabled);
 
@@ -203,7 +208,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 if (!_isOboeInitialized)
                     throw new Exception("Oboe audio failed to initialize");
 
-                Logger.Info?.Print(LogClass.Audio, $"Oboe initialized: SR={sampleRate}, BufSize={bufferSizeInFrames}, Channels={channelCount}, NS={(NoiseShapingEnabled ? "ON" : "OFF")}");
+                Logger.Info?.Print(LogClass.Audio, $"Oboe initialized: SR={sampleRate}, BufSize={bufferSizeInFrames}, TargetChannels=2, NS={(NoiseShapingEnabled ? "ON" : "OFF")}");
             }
 
             var session = new OboeAudioSession(this, memoryManager, sampleFormat, sampleRate, channelCount);
@@ -216,8 +221,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         private int CalculateBufferSize(uint sampleRate)
         {
             // ✅ 统一使用 200ms 缓冲，避免设备差异导致的问题
-            // 高性能设备也使用大缓冲，因为滋滋声主要来自欠载，而非延迟
-            int latencyMs = 200; // 200ms 缓冲，足够安全
+            int latencyMs = 200;
             return (int)(sampleRate * latencyMs / 1000);
         }
 
@@ -265,26 +269,26 @@ namespace Ryujinx.Audio.Backends.Oboe
             private ulong _totalPlayedSamples;
             private bool _active;
             private float _volume;
-            private readonly int _channelCount;
-            private readonly int _outputChannelCount;
+            private readonly int _inputChannelCount; // 输入数据的声道数
 
             public OboeAudioSession(
                 OboeHardwareDeviceDriver driver,
                 IVirtualMemoryManager memoryManager,
                 SampleFormat sampleFormat,
                 uint sampleRate,
-                uint channelCount)
-                : base(memoryManager, sampleFormat, sampleRate, channelCount)
+                uint inputChannelCount) // 存储输入声道数
+                : base(memoryManager, sampleFormat, sampleRate, inputChannelCount)
             {
                 _driver = driver;
-                _channelCount = (int)channelCount;
-                _outputChannelCount = (int)channelCount; // 修正：使用传入的channelCount，而不是硬编码为2
+                _inputChannelCount = (int)inputChannelCount; // 存储输入声道数
                 _volume = 1.0f;
             }
 
             public void UpdatePlaybackStatus(int bufferedFrames)
             {
-                ulong playedSamples = _totalWrittenSamples - (ulong)bufferedFrames * (ulong)_outputChannelCount;
+                // C++ 端总是输出2声道（因为我们 setOboeChannelCount(2)）
+                int outputChannels = 2;
+                ulong playedSamples = _totalWrittenSamples - (ulong)bufferedFrames * (ulong)outputChannels;
 
                 ulong availableSampleCount = playedSamples - _totalPlayedSamples;
 
@@ -328,7 +332,9 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
 
                 // 优化：复用临时数组，避免频繁分配
-                int sampleCount = buffer.Data.Length / 2;
+                int sampleCount = buffer.Data.Length / 2; // PCMInt16, 2 bytes per sample
+                int numFrames = sampleCount / _inputChannelCount;
+
                 if (_driver._tempFloatBuffer.Length < sampleCount)
                 {
                     // ✅ 预留10%余量，减少未来扩容
@@ -337,23 +343,21 @@ namespace Ryujinx.Audio.Backends.Oboe
                     Logger.Debug?.Print(LogClass.Audio, $"Resized temp buffer to {newSize} samples");
                 }
 
+                // 1. 转换到 Float32
                 ConvertToFloatInPlace(buffer.Data, _driver._tempFloatBuffer, sampleCount, _volume);
                 
-                // 处理声道数不匹配的情况
-                if (_channelCount != _outputChannelCount)
-                {
-                    float[] convertedData = ConvertChannels(_driver._tempFloatBuffer, _channelCount, _outputChannelCount, sampleCount / _channelCount);
-                    writeOboeAudio(convertedData, convertedData.Length / _outputChannelCount, _channelCount, _outputChannelCount);
-                    sampleCount = convertedData.Length; // 更新样本数量
-                }
-                else
-                {
-                    writeOboeAudio(_driver._tempFloatBuffer, sampleCount / _channelCount, _channelCount, _channelCount);
-                }
+                // 2. 直接调用 C++，传递输入声道数。C++ 端会处理下混和重采样。
+                // 注意：调用修改后的 P/Invoke，移除了 output_channels 参数
+                writeOboeAudio(_driver._tempFloatBuffer, numFrames, _inputChannelCount);
 
-                // 记录缓冲区信息
-                _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, (ulong)sampleCount));
-                _totalWrittenSamples += (ulong)sampleCount;
+                // 3. 记录缓冲区信息
+                // 计算总样本数（C++端处理后写入环形缓冲区的样本数）
+                // 因为我们总是下混到2声道，并且可能重采样，这里无法精确计算。
+                // 使用原始样本数作为一个近似值用于同步，可能会有轻微偏差，但通常可接受。
+                // 更精确的方法需要 C++ 端回调返回实际写入的帧数，但这会增加复杂度。
+                ulong estimatedOutputSamples = (ulong)(numFrames * 2); // 估计：帧数 * 输出声道数(2)
+                _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, estimatedOutputSamples));
+                _totalWrittenSamples += estimatedOutputSamples;
             }
 
             public override bool WasBufferFullyConsumed(AudioBuffer buffer) =>
@@ -392,51 +396,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                     output[i] = sample * scale;
                 }
             }
-
-            private float[] ConvertChannels(float[] input, int inputChannels, int outputChannels, int numFrames)
-            {
-                if (inputChannels == outputChannels)
-                    return input;
-
-                float[] output = new float[numFrames * outputChannels];
-                
-                if (inputChannels == 1 && outputChannels == 2)
-                {
-                    // 单声道转立体声：复制声道
-                    for (int i = 0; i < numFrames; i++)
-                    {
-                        output[i * 2] = input[i];
-                        output[i * 2 + 1] = input[i];
-                    }
-                }
-                else if (inputChannels == 6 && outputChannels == 2)
-                {
-                    // 5.1转立体声：简单混合
-                    for (int i = 0; i < numFrames; i++)
-                    {
-                        int inputIndex = i * 6;
-                        int outputIndex = i * 2;
-                        
-                        // 左声道 = FL + 0.5*C + 0.7*SL
-                        output[outputIndex] = input[inputIndex] + 
-                                             input[inputIndex + 2] * 0.5f + 
-                                             input[inputIndex + 4] * 0.7f;
-                                             
-                        // 右声道 = FR + 0.5*C + 0.7*SR
-                        output[outputIndex + 1] = input[inputIndex + 1] + 
-                                                 input[inputIndex + 2] * 0.5f + 
-                                                 input[inputIndex + 5] * 0.7f;
-                    }
-                }
-                else
-                {
-                    // 默认处理：取第一个声道或静音
-                    Logger.Warning?.Print(LogClass.Audio, $"Unsupported channel conversion: {inputChannels} -> {outputChannels}");
-                    Array.Fill(output, 0f);
-                }
-                
-                return output;
-            }
+            // 移除了 ConvertChannels 方法，因为在 C++ 端处理
         }
 
         // ========== 内部缓冲区类 ==========
