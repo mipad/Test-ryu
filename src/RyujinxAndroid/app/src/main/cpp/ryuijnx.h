@@ -50,15 +50,18 @@ jclass _mainActivityClass = nullptr;
 extern "C" {
     void initOboeAudio();
     void shutdownOboeAudio();
-    void writeOboeAudio(const float* data, int32_t num_frames, int32_t input_channels, int32_t output_channels);
-    void setOboeSampleRate(int32_t sample_rate);
+    void writeOboeAudio(const float* data, int32_t num_frames, int32_t input_channels, int32_t input_sample_rate);
     void setOboeBufferSize(int32_t buffer_size);
     void setOboeVolume(float volume);
     void setOboeNoiseShapingEnabled(bool enabled);
+    void setOboeChannelCount(int32_t channel_count);
     bool isOboeInitialized();
     int32_t getOboeBufferedFrames();
     const char* GetAndroidDeviceModel();
     const char* GetAndroidDeviceBrand();
+    
+    // 新增：获取音频设备信息
+    const char* GetAudioDevices(jobject context);
 }
 
 #endif //RYUJINXNATIVE_RYUIJNX_H
