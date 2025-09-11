@@ -43,6 +43,7 @@ namespace Ryujinx.HLE
         public IHostUIHandler UIHandler { get; }
 
         public bool EnableDeviceVsync { get; set; } = true;
+        public double TargetVSyncInterval { get; set; } = 16.666;
 
         public bool IsFrameAvailable => Gpu.Window.IsFrameAvailable;
 
@@ -75,6 +76,7 @@ namespace Ryujinx.HLE
             System.State.SetRegion(Configuration.Region);
 
             EnableDeviceVsync                       = Configuration.EnableVsync;
+            TargetVSyncInterval                     = Configuration.TargetVSyncInterval;
             System.State.DockedMode                 = Configuration.EnableDockedMode;
             System.PerformanceState.PerformanceMode = System.State.DockedMode ? PerformanceMode.Boost : PerformanceMode.Default;
             System.EnablePtc                        = Configuration.EnablePtc;
