@@ -512,6 +512,16 @@ void setOboeNoiseShapingEnabled(bool enabled) {
     }
 }
 
+// =============== 设置声道数 C 接口 ===============
+extern "C"
+void setOboeChannelCount(int32_t channel_count) {
+    try {
+        OboeAudioRenderer::getInstance().setChannelCount(channel_count);
+    } catch (const std::exception& e) {
+        LOGE("setOboeChannelCount (C): Exception: %s", e.what());
+    }
+}
+
 extern "C"
 bool isOboeInitialized() {
     try {
