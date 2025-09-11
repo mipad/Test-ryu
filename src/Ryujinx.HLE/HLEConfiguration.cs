@@ -99,6 +99,11 @@ namespace Ryujinx.HLE
         internal readonly bool EnablePtc;
 
         /// <summary>
+        /// Control the arbitrary scalar applied to emulated CPU tick timing.
+        /// </summary>
+        public long TickScalar { get; set; }
+        
+        /// <summary>
         /// Control if the JIT cache eviction should be enabled.
         /// </summary>
         internal readonly bool EnableJitCacheEviction;
@@ -188,6 +193,7 @@ namespace Ryujinx.HLE
                                 bool enableVsync,
                                 bool enableDockedMode,
                                 bool enablePtc,
+                                long tickScalar,
                                 bool enableJitCacheEviction,
                                 bool enableInternetAccess,
                                 IntegrityCheckLevel fsIntegrityCheckLevel,
@@ -216,6 +222,7 @@ namespace Ryujinx.HLE
             EnableVsync = enableVsync;
             EnableDockedMode = enableDockedMode;
             EnablePtc = enablePtc;
+            TickScalar = tickScalar;
             EnableJitCacheEviction = enableJitCacheEviction;
             EnableInternetAccess = enableInternetAccess;
             FsIntegrityCheckLevel = fsIntegrityCheckLevel;
