@@ -229,9 +229,11 @@ void OboeAudioRenderer::setNoiseShapingEnabled(bool enabled) {
 
 void OboeAudioRenderer::setChannelCount(int32_t channelCount) {
     mChannelCount.store(channelCount);
-    // 更新所有通道转换器的比率
-    for (int i = 0; i < channelCount && i < MAX_CHANNELS; i++) {
-        mChannelConverters[i]->setRatio(48000.0f, static_cast<float>(mSampleRate.load()));
+    // 只有当采样率不同时才更新转换器比率
+    if (mSampleRate.load() != 48000) {
+        for (int i = 0; i < channelCount && i < MAX_CHANNELS; i++) {
+            mChannelConverters[i]->setRatio(48000.0f, static_cast<float>(mSampleRate.load()));
+        }
     }
 }
 
@@ -277,9 +279,11 @@ void OboeAudioRenderer::updateStreamParameters() {
         mChannelCount.store(mAudioStream->getChannelCount());
         mAudioFormat.store(mAudioStream->getFormat());
 
-        // 更新所有通道转换器的比率
-        for (int i = 0; i < mChannelCount && i < MAX_CHANNELS; i++) {
-            mChannelConverters[i]->setRatio(48000.0f, static_cast<float>(mSampleRate.load()));
+        // 只有当采样率不同时才更新转换器比率
+        if (mSampleRate.load() != 48000) {
+            for (int i = 0; i < mChannelCount && i < MAX_CHANNELS; i++) {
+                mChannelConverters[i]->setRatio(48000.0f, static_cast<float>(mSampleRate.load()));
+            }
         }
     }
 }
@@ -357,9 +361,11 @@ void OboeAudioRenderer::setSampleRate(int32_t sampleRate) {
     }
     mSampleRate.store(sampleRate);
     
-    // 更新所有通道转换器的比率
-    for (int i = 0; i < mChannelCount && i < MAX_CHANNELS; i++) {
-        mChannelConverters[i]->setRatio(48000.0f, static_cast<float>(sampleRate));
+    // 只有当采样率不同时才更新转换器比率
+    if (sampleRate != 48000) {
+        for (int i = 0; i < mChannelCount && i < MAX_CHANNELS; i++) {
+            mChannelConverters[i]->setRatio(48000.0f, static_cast<float>(sampleRate));
+        }
     }
 }
 
@@ -470,8 +476,9 @@ void OboeAudioRenderer::writeAudio(const float* data, int32_t numFrames, int32_t
         outputChannels = inputChannels;
     }
 
-    // 动态采样率转换 - 核心修改：分通道处理
+    // 动态采样率转换 - 核心修改：只在采样率不同时进行转换
     if (mSampleRate.load() != 48000) {
+        LOGI("Performing sample rate conversion: 48000 -> %d", mSampleRate.load());
         try {
             // 1. 解交错：分离各通道数据
             std::vector<float*> deinterleavedInput(outputChannels);
@@ -524,6 +531,7 @@ void OboeAudioRenderer::writeAudio(const float* data, int32_t numFrames, int32_t
         }
     } else {
         // 不需要采样率转换，直接写入
+        LOGI("No sample rate conversion needed, writing directly to ring buffer");
         size_t totalSamples = numFrames * outputChannels;
         if (!mRingBuffer->write(data, totalSamples)) {
             LOGW("RingBuffer write failed for direct data");
