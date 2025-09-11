@@ -33,7 +33,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
         private int _swapInterval;
         private int _swapIntervalDelay;
-        private long _targetVSyncInterval;
+        private double _targetVSyncInterval;
 
         private readonly object _lock = new();
 
