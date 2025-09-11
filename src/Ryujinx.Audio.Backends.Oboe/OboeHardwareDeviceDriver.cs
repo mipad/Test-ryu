@@ -343,7 +343,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 if (_channelCount != _outputChannelCount)
                 {
                     float[] convertedData = ConvertChannels(_driver._tempFloatBuffer, _channelCount, _outputChannelCount, sampleCount / _channelCount);
-                    writeOboeAudio(convertedData, convertedData.Length / _outputChannelCount, _outputChannelCount);
+                    writeOboeAudio(convertedData, convertedData.Length / _outputChannelCount, _channelCount, _outputChannelCount);
                     sampleCount = convertedData.Length; // 更新样本数量
                 }
                 else
