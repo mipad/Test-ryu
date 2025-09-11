@@ -175,6 +175,11 @@ namespace Ryujinx.HLE
         public MultiplayerMode MultiplayerMode { internal get; set; }
 
         /// <summary>
+        /// Control the target vertical synchronization interval in milliseconds.
+        /// </summary>
+        internal readonly double TargetVSyncInterval;
+
+        /// <summary>
         /// An action called when HLE force a refresh of output after docked mode changed.
         /// </summary>
         public Action RefreshInputConfig { internal get; set; }
@@ -206,7 +211,8 @@ namespace Ryujinx.HLE
                                 float audioVolume,
                                 bool useHypervisor,
                                 string multiplayerLanInterfaceId,
-                                MultiplayerMode multiplayerMode)
+                                MultiplayerMode multiplayerMode,
+                                double targetVSyncInterval = 16.666)
         {
             VirtualFileSystem = virtualFileSystem;
             LibHacHorizonManager = libHacHorizonManager;
@@ -236,6 +242,7 @@ namespace Ryujinx.HLE
             UseHypervisor = useHypervisor;
             MultiplayerLanInterfaceId = multiplayerLanInterfaceId;
             MultiplayerMode = multiplayerMode;
+            TargetVSyncInterval = targetVSyncInterval;
         }
     }
 }
