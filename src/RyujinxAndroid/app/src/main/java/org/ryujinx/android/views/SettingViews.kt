@@ -2080,7 +2080,8 @@ ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
                         audioEngineType, // 新增参数
                         scalingFilter, // 新增：缩放过滤器
                         scalingFilterLevel, // 新增：缩放过滤器级别
-                        antiAliasing // 新增：抗锯齿模式
+                        antiAliasing, // 新增：抗锯齿模式
+                        tickScalar //游戏加速
                     )
                     settingsViewModel.navController.popBackStack()
                 }
