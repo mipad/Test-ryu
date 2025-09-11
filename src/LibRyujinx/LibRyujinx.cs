@@ -801,6 +801,7 @@ private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, Integri
                                                                   enableVsync,
                                                                   enableDockedMode,
                                                                   enablePtc,
+                                                                  100L, // tickScalar 参数，这里使用默认值 100
                                                                   enableJitCacheEviction,
                                                                   enableInternetAccess,
                                                                   IntegrityCheckLevel.None,
