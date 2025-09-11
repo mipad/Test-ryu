@@ -76,7 +76,8 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         audioEngineType: MutableState<Int>, // 新增音频引擎参数
         scalingFilter: MutableState<Int>, // 新增：缩放过滤器
         scalingFilterLevel: MutableState<Int>, // 新增：缩放过滤器级别
-        antiAliasing: MutableState<Int> // 新增：抗锯齿模式
+        antiAliasing: MutableState<Int>, // 新增：抗锯齿模式
+        tickScalar: MutableState<Int> // 新增参数：tick scalar
     ) {
 
         isHostMapped.value = sharedPref.getBoolean("isHostMapped", true)
@@ -104,6 +105,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         scalingFilter.value = sharedPref.getInt("scalingFilter", 0) // 默认：最近邻
         scalingFilterLevel.value = sharedPref.getInt("scalingFilterLevel", 80) // 默认级别：80
         antiAliasing.value = sharedPref.getInt("antiAliasing", 0) // 默认关闭
+        tickScalar.value = sharedPref.getInt("tickScalar", 100) // 初始化tick scalar
 
         enableDebugLogs.value = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs.value = sharedPref.getBoolean("enableStubLogs", false)
@@ -149,7 +151,8 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         audioEngineType: MutableState<Int>, // 新增音频引擎参数
         scalingFilter: MutableState<Int>, // 新增：缩放过滤器
         scalingFilterLevel: MutableState<Int>, // 新增：缩放过滤器级别
-        antiAliasing: MutableState<Int> // 新增：抗锯齿模式
+        antiAliasing: MutableState<Int>, // 新增：抗锯齿模式
+        tickScalar: MutableState<Int> // 新增参数：tick scalar
     ) {
         val editor = sharedPref.edit()
 
@@ -177,6 +180,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.putInt("scalingFilter", scalingFilter.value) // 保存缩放过滤器
         editor.putInt("scalingFilterLevel", scalingFilterLevel.value) // 保存缩放过滤器级别
         editor.putInt("antiAliasing", antiAliasing.value) // 保存抗锯齿设置
+        editor.putInt("tickScalar", tickScalar.value) // 保存tick scalar
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs.value)
         editor.putBoolean("enableStubLogs", enableStubLogs.value)
@@ -203,6 +207,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
 
         // 设置抗锯齿
         RyujinxNative.jnaInstance.setAntiAliasing(antiAliasing.value)
+
+        // 设置tick scalar
+        RyujinxNative.jnaInstance.setTickScalar(tickScalar.value)
 
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Debug.ordinal, enableDebugLogs.value)
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Info.ordinal, enableInfoLogs.value)
