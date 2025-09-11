@@ -649,6 +649,14 @@ namespace LibRyujinx
                 Logger.Error?.Print(LogClass.Application, $"Failed to set anti-aliasing: {ex.Message}");
             }
         }
+
+        // 新增：设置Tick标量的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "setTickScalar")]
+        public static void SetTickScalarNative(int scalar)
+        {
+            Logger.Trace?.Print(LogClass.Application, $"Jni Function Call: setTickScalar {scalar}");
+            SetTickScalar(scalar);
+        }
     }
 
     internal static partial class Logcat
