@@ -320,6 +320,11 @@ namespace Ryujinx.UI.Common.Configuration
             /// Enables or disables profiled translation cache persistency
             /// </summary>
             public ReactiveObject<bool> EnablePtc { get; private set; }
+     
+            /// <summary>
+            /// Clock tick scalar, in percent points (100 = 1.0).
+            /// </summary>
+            public ReactiveObject<long> TickScalar { get; set; }
 
             /// <summary>
             /// Enables or disables guest Internet access
@@ -700,6 +705,7 @@ namespace Ryujinx.UI.Common.Configuration
                 EnableMacroHLE = Graphics.EnableMacroHLE,
                 EnableColorSpacePassthrough = Graphics.EnableColorSpacePassthrough,
                 EnablePtc = System.EnablePtc,
+                TickScalar = System.TickScalar,
                 EnableInternetAccess = System.EnableInternetAccess,
                 EnableFsIntegrityChecks = System.EnableFsIntegrityChecks,
                 FsGlobalAccessLogMode = System.FsGlobalAccessLogMode,
@@ -1516,6 +1522,7 @@ namespace Ryujinx.UI.Common.Configuration
             Graphics.EnableMacroHLE.Value = configurationFileFormat.EnableMacroHLE;
             Graphics.EnableColorSpacePassthrough.Value = configurationFileFormat.EnableColorSpacePassthrough;
             System.EnablePtc.Value = configurationFileFormat.EnablePtc;
+            System.TickScalar.Value = configurationFileFormat.TickScalar;
             System.EnableInternetAccess.Value = configurationFileFormat.EnableInternetAccess;
             System.EnableFsIntegrityChecks.Value = configurationFileFormat.EnableFsIntegrityChecks;
             System.FsGlobalAccessLogMode.Value = configurationFileFormat.FsGlobalAccessLogMode;
