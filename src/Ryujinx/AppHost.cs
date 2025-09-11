@@ -43,7 +43,6 @@ using Ryujinx.UI.Common.Helper;
 using Silk.NET.Vulkan;
 using SkiaSharp;
 using SPB.Graphics.Vulkan;
-using Gommon;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -866,6 +865,7 @@ namespace Ryujinx.Ava
                                                  ConfigurationState.Instance.Graphics.EnableVsync,
                                                  ConfigurationState.Instance.System.EnableDockedMode,
                                                  ConfigurationState.Instance.System.EnablePtc,
+                                                 ConfigurationState.Instance.System.TickScalar,
                                                  ConfigurationState.Instance.System.EnableInternetAccess,
                                                  ConfigurationState.Instance.System.EnableFsIntegrityChecks ? IntegrityCheckLevel.ErrorOnInvalid : IntegrityCheckLevel.None,
                                                  ConfigurationState.Instance.System.FsGlobalAccessLogMode,
@@ -1084,7 +1084,19 @@ namespace Ryujinx.Ava
                 LocaleManager.Instance[LocaleKeys.Game] + $": {Device.Statistics.GetGameFrameRate():00.00} FPS ({Device.Statistics.GetGameFrameTime():00.00} ms)",
                 $"FIFO: {Device.Statistics.GetFifoPercent():00.00} %"));
         }
+        
+        private string FormatGameFrameRate()
+        {
+            string frameRate = Device.Statistics.GetGameFrameRate().ToString("00.00");
+            string frameTime = Device.Statistics.GetGameFrameTime().ToString("00.00");
 
+            return Device.TurboMode
+                ? LocaleManager.GetUnformatted(LocaleKeys.FpsTurboStatusBarText)
+                    .Format(frameRate, frameTime, Device.TickScalar)
+                : LocaleManager.GetUnformatted(LocaleKeys.FpsStatusBarText)
+                    .Format(frameRate, frameTime);
+        }
+        
         public async Task ShowExitPrompt()
         {
             bool shouldExit = !ConfigurationState.Instance.ShowConfirmExit;
