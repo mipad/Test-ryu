@@ -11,6 +11,7 @@ using Ryujinx.HLE.UI;
 using Ryujinx.Memory;
 using System;
 using System.IO;
+using Ryujinx.Cpu;
 
 namespace Ryujinx.HLE
 {
