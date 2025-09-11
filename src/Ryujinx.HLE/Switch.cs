@@ -15,13 +15,27 @@ using System.IO;
 namespace Ryujinx.HLE
 {
     public class Switch : IDisposable
-    {
+    {   
+        public static Switch Shared { get; private set; }
         public HLEConfiguration Configuration { get; }
         public IHardwareDeviceDriver AudioDeviceDriver { get; }
         public MemoryBlock Memory { get; }
         public GpuContext Gpu { get; }
         public VirtualFileSystem FileSystem { get; }
         public HOS.Horizon System { get; }
+        
+        public long TickScalar
+        {
+            get => System?.TickSource?.TickScalar ?? ITickSource.RealityTickScalar;
+            set
+        {
+            if (System?.TickSource != null)
+            {
+                System.TickSource.TickScalar = value;
+            }
+        }
+        }
+
         public ProcessLoader Processes { get; }
         public PerformanceStatistics Statistics { get; }
         public Hid Hid { get; }
