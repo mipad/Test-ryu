@@ -9,6 +9,7 @@
 #include <sys/system_properties.h>
 #include <cstdlib>
 #include <cstring>
+#include <stdexcept> // 添加异常处理头文件
 
 // 使用统一日志标签
 #define LOG_TAG "RyujinxJNI"
@@ -287,15 +288,23 @@ Java_org_ryujinx_android_NativeHelpers_setIsInitialOrientationFlipped(JNIEnv *en
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_initOboeAudio(JNIEnv *env, jobject thiz) {
-    if (!OboeAudioRenderer::getInstance().initialize()) {
-        LOGE("initOboeAudio: FAILED to initialize Oboe audio");
+    try {
+        if (!OboeAudioRenderer::getInstance().initialize()) {
+            LOGE("initOboeAudio: FAILED to initialize Oboe audio");
+        }
+    } catch (const std::exception& e) {
+        LOGE("initOboeAudio: Exception: %s", e.what());
     }
 }
 
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_shutdownOboeAudio(JNIEnv *env, jobject thiz) {
-    OboeAudioRenderer::getInstance().shutdown();
+    try {
+        OboeAudioRenderer::getInstance().shutdown();
+    } catch (const std::exception& e) {
+        LOGE("shutdownOboeAudio: Exception: %s", e.what());
+    }
 }
 
 extern "C"
@@ -317,59 +326,94 @@ Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(JNIEnv *env, jobject thiz,
         return;
     }
 
-    OboeAudioRenderer::getInstance().writeAudio(data, num_frames, input_channels);
+    try {
+        OboeAudioRenderer::getInstance().writeAudio(data, num_frames, input_channels);
+    } catch (const std::exception& e) {
+        LOGE("writeOboeAudio: Exception: %s", e.what());
+    }
+
     env->ReleaseFloatArrayElements(audio_data, data, JNI_ABORT);
 }
 
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setOboeSampleRate(JNIEnv *env, jobject thiz, jint sample_rate) {
-    if (sample_rate < 8000 || sample_rate > 192000) {
-        LOGE("setOboeSampleRate: Invalid sample rate: %d", sample_rate);
-        return;
+    try {
+        if (sample_rate < 8000 || sample_rate > 192000) {
+            LOGE("setOboeSampleRate: Invalid sample rate: %d", sample_rate);
+            return;
+        }
+        OboeAudioRenderer::getInstance().setSampleRate(sample_rate);
+    } catch (const std::exception& e) {
+        LOGE("setOboeSampleRate: Exception: %s", e.what());
     }
-    OboeAudioRenderer::getInstance().setSampleRate(sample_rate);
 }
 
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setOboeBufferSize(JNIEnv *env, jobject thiz, jint buffer_size) {
-    if (buffer_size < 64 || buffer_size > 8192) {
-        LOGE("setOboeBufferSize: Invalid buffer size: %d", buffer_size);
-        return;
+    try {
+        if (buffer_size < 64 || buffer_size > 8192) {
+            LOGE("setOboeBufferSize: Invalid buffer size: %d", buffer_size);
+            return;
+        }
+        OboeAudioRenderer::getInstance().setBufferSize(buffer_size);
+    } catch (const std::exception& e) {
+        LOGE("setOboeBufferSize: Exception: %s", e.what());
     }
-    OboeAudioRenderer::getInstance().setBufferSize(buffer_size);
 }
 
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setOboeVolume(JNIEnv *env, jobject thiz, jfloat volume) {
-    OboeAudioRenderer::getInstance().setVolume(volume);
+    try {
+        OboeAudioRenderer::getInstance().setVolume(volume);
+    } catch (const std::exception& e) {
+        LOGE("setOboeVolume: Exception: %s", e.what());
+    }
 }
 
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setOboeNoiseShapingEnabled(JNIEnv *env, jobject thiz, jboolean enabled) {
-    OboeAudioRenderer::getInstance().setNoiseShapingEnabled(enabled != JNI_FALSE);
+    try {
+        OboeAudioRenderer::getInstance().setNoiseShapingEnabled(enabled != JNI_FALSE);
+    } catch (const std::exception& e) {
+        LOGE("setOboeNoiseShapingEnabled: Exception: %s", e.what());
+    }
 }
 
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setOboeChannelCount(JNIEnv *env, jobject thiz, jint channel_count) {
-    OboeAudioRenderer::getInstance().setChannelCount(channel_count);
+    try {
+        OboeAudioRenderer::getInstance().setChannelCount(channel_count);
+    } catch (const std::exception& e) {
+        LOGE("setOboeChannelCount: Exception: %s", e.what());
+    }
 }
 
 extern "C"
 JNIEXPORT jboolean JNICALL
 Java_org_ryujinx_android_NativeHelpers_isOboeInitialized(JNIEnv *env, jobject thiz) {
-    bool initialized = OboeAudioRenderer::getInstance().isInitialized();
-    return initialized ? JNI_TRUE : JNI_FALSE;
+    try {
+        bool initialized = OboeAudioRenderer::getInstance().isInitialized();
+        return initialized ? JNI_TRUE : JNI_FALSE;
+    } catch (const std::exception& e) {
+        LOGE("isOboeInitialized: Exception: %s", e.what());
+        return JNI_FALSE;
+    }
 }
 
 extern "C"
 JNIEXPORT jint JNICALL
 Java_org_ryujinx_android_NativeHelpers_getOboeBufferedFrames(JNIEnv *env, jobject thiz) {
-    return static_cast<jint>(OboeAudioRenderer::getInstance().getBufferedFrames());
+    try {
+        return static_cast<jint>(OboeAudioRenderer::getInstance().getBufferedFrames());
+    } catch (const std::exception& e) {
+        LOGE("getOboeBufferedFrames: Exception: %s", e.what());
+        return 0;
+    }
 }
 
 // =============== 设备信息获取函数 ===============
@@ -392,12 +436,20 @@ Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceBrand(JNIEnv *env, jobjec
 // =============== Oboe Audio C 接口 (for C# P/Invoke) ===============
 extern "C"
 void initOboeAudio() {
-    OboeAudioRenderer::getInstance().initialize();
+    try {
+        OboeAudioRenderer::getInstance().initialize();
+    } catch (const std::exception& e) {
+        LOGE("initOboeAudio (C): Exception: %s", e.what());
+    }
 }
 
 extern "C"
 void shutdownOboeAudio() {
-    OboeAudioRenderer::getInstance().shutdown();
+    try {
+        OboeAudioRenderer::getInstance().shutdown();
+    } catch (const std::exception& e) {
+        LOGE("shutdownOboeAudio (C): Exception: %s", e.what());
+    }
 }
 
 extern "C"
@@ -406,48 +458,78 @@ void writeOboeAudio(const float* data, int32_t num_frames, int32_t input_channel
         return;
     }
     
-    // 设置输出通道数
-    OboeAudioRenderer::getInstance().setChannelCount(output_channels);
-    
-    // 写入音频数据
-    OboeAudioRenderer::getInstance().writeAudio(data, num_frames, input_channels);
+    try {
+        // 设置输出通道数
+        OboeAudioRenderer::getInstance().setChannelCount(output_channels);
+        
+        // 写入音频数据
+        OboeAudioRenderer::getInstance().writeAudio(data, num_frames, input_channels);
+    } catch (const std::exception& e) {
+        LOGE("writeOboeAudio (C): Exception: %s", e.what());
+    }
 }
 
 extern "C"
 void setOboeSampleRate(int32_t sample_rate) {
-    if (sample_rate < 8000 || sample_rate > 192000) {
-        return;
+    try {
+        if (sample_rate < 8000 || sample_rate > 192000) {
+            return;
+        }
+        OboeAudioRenderer::getInstance().setSampleRate(sample_rate);
+    } catch (const std::exception& e) {
+        LOGE("setOboeSampleRate (C): Exception: %s", e.what());
     }
-    OboeAudioRenderer::getInstance().setSampleRate(sample_rate);
 }
 
 extern "C"
 void setOboeBufferSize(int32_t buffer_size) {
-    if (buffer_size < 64 || buffer_size > 8192) {
-        return;
+    try {
+        if (buffer_size < 64 || buffer_size > 8192) {
+            return;
+        }
+        OboeAudioRenderer::getInstance().setBufferSize(buffer_size);
+    } catch (const std::exception& e) {
+        LOGE("setOboeBufferSize (C): Exception: %s", e.what());
     }
-    OboeAudioRenderer::getInstance().setBufferSize(buffer_size);
 }
 
 extern "C"
 void setOboeVolume(float volume) {
-    OboeAudioRenderer::getInstance().setVolume(volume);
+    try {
+        OboeAudioRenderer::getInstance().setVolume(volume);
+    } catch (const std::exception& e) {
+        LOGE("setOboeVolume (C): Exception: %s", e.what());
+    }
 }
 
 // =============== 噪声整形控制 C 接口 ===============
 extern "C"
 void setOboeNoiseShapingEnabled(bool enabled) {
-    OboeAudioRenderer::getInstance().setNoiseShapingEnabled(enabled);
+    try {
+        OboeAudioRenderer::getInstance().setNoiseShapingEnabled(enabled);
+    } catch (const std::exception& e) {
+        LOGE("setOboeNoiseShapingEnabled (C): Exception: %s", e.what());
+    }
 }
 
 extern "C"
 bool isOboeInitialized() {
-    return OboeAudioRenderer::getInstance().isInitialized();
+    try {
+        return OboeAudioRenderer::getInstance().isInitialized();
+    } catch (const std::exception& e) {
+        LOGE("isOboeInitialized (C): Exception: %s", e.what());
+        return false;
+    }
 }
 
 extern "C"
 int32_t getOboeBufferedFrames() {
-    return static_cast<int32_t>(OboeAudioRenderer::getInstance().getBufferedFrames());
+    try {
+        return static_cast<int32_t>(OboeAudioRenderer::getInstance().getBufferedFrames());
+    } catch (const std::exception& e) {
+        LOGE("getOboeBufferedFrames (C): Exception: %s", e.what());
+        return 0;
+    }
 }
 
 // =============== 设备信息获取 C 接口 ===============
