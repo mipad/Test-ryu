@@ -1125,6 +1125,7 @@ ExpandableView(onCardArrowClick = { }, title = "Post-Processing") {
                     0 -> "Bilinear"
                     1 -> "Nearest"
                     2 -> "FSR"
+                    3 -> "Area" // 添加Area
                     else -> "Bilinear"
                 },
                 color = MaterialTheme.colorScheme.primary
@@ -1443,6 +1444,30 @@ if (showScalingFilterDialog.value) {
                     )
                 }
                 
+                // 在这里添加Area选项
+Row(
+    modifier = Modifier
+        .fillMaxWidth()
+        .clickable {
+            scalingFilter.value = 3 // Area 对应的值
+            showScalingFilterDialog.value = false
+        }
+        .padding(vertical = 12.dp),
+    verticalAlignment = Alignment.CenterVertically
+) {
+    RadioButton(
+        selected = scalingFilter.value == 3,
+        onClick = {
+            scalingFilter.value = 3
+            showScalingFilterDialog.value = false
+        }
+    )
+    Text(
+        text = "Area",
+        modifier = Modifier.padding(start = 16.dp)
+    )
+}
+
                 // 添加取消按钮
                 Row(
                     modifier = Modifier
