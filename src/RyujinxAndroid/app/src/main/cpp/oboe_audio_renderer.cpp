@@ -227,6 +227,7 @@ void OboeAudioRenderer::setNoiseShapingEnabled(bool enabled) {
     }
 }
 
+// 设置的是 Oboe 输出流的声道数
 void OboeAudioRenderer::setChannelCount(int32_t channelCount) {
     mChannelCount.store(channelCount);
     // 只有当采样率不同时才更新转换器比率
@@ -255,7 +256,7 @@ bool OboeAudioRenderer::openStreamWithFormat(oboe::AudioFormat format) {
                ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
                ->setSharingMode(oboe::SharingMode::Exclusive)
                ->setFormat(format)
-               ->setChannelCount(mChannelCount.load())
+               ->setChannelCount(mChannelCount.load()) // 使用设置的输出声道数
                ->setSampleRate(mSampleRate.load())
                ->setBufferCapacityInFrames(oboe::DefaultStreamValues::FramesPerBurst * 4) // 增大缓冲
                ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::High)
@@ -276,7 +277,7 @@ void OboeAudioRenderer::updateStreamParameters() {
     if (mAudioStream) {
         mSampleRate.store(mAudioStream->getSampleRate());
         mBufferSize.store(mAudioStream->getBufferSizeInFrames());
-        mChannelCount.store(mAudioStream->getChannelCount());
+        mChannelCount.store(mAudioStream->getChannelCount()); // 更新为设备实际打开的声道数
         mAudioFormat.store(mAudioStream->getFormat());
 
         // 只有当采样率不同时才更新转换器比率
@@ -396,8 +397,18 @@ void OboeAudioRenderer::convertChannels(const float* input, float* output, int32
         for (int i = 0; i < numFrames; i++) {
             output[i] = (input[i * 2] + input[i * 2 + 1]) * 0.5f;
         }
+    } else if (inputChannels == 6 && outputChannels == 2) {
+        // 5.1 转立体声
+        for (int i = 0; i < numFrames; i++) {
+            int inIdx = i * 6;
+            int outIdx = i * 2;
+            // 左 = FL + 0.5*C + 0.7*SL
+            output[outIdx] = input[inIdx] + input[inIdx + 2] * 0.5f + input[inIdx + 4] * 0.7f;
+            // 右 = FR + 0.5*C + 0.7*SR
+            output[outIdx + 1] = input[inIdx + 1] + input[inIdx + 2] * 0.5f + input[inIdx + 5] * 0.7f;
+        }
     } else {
-        // 其他通道转换，简单处理
+        // 其他通道转换，简单处理：取前N个声道或填充0
         int minChannels = std::min(inputChannels, outputChannels);
         for (int i = 0; i < numFrames; i++) {
             for (int j = 0; j < minChannels; j++) {
@@ -408,6 +419,7 @@ void OboeAudioRenderer::convertChannels(const float* input, float* output, int32
                 output[i * outputChannels + j] = 0.0f;
             }
         }
+        LOGW("Unoptimized channel conversion: %d -> %d", inputChannels, outputChannels);
     }
 }
 
@@ -429,6 +441,7 @@ void OboeAudioRenderer::interleave(float** deinterleaved, float* interleaved, in
     }
 }
 
+// 核心修改：处理任意输入，统一在 C++ 端进行转换
 void OboeAudioRenderer::writeAudio(const float* data, int32_t numFrames, int32_t inputChannels) {
     if (!mIsInitialized.load()) {
         if (!initialize()) {
@@ -436,7 +449,7 @@ void OboeAudioRenderer::writeAudio(const float* data, int32_t numFrames, int32_t
         }
     }
 
-    if (!data || numFrames <= 0) {
+    if (!data || numFrames <= 0 || inputChannels <= 0) {
         return;
     }
 
@@ -458,87 +471,91 @@ void OboeAudioRenderer::writeAudio(const float* data, int32_t numFrames, int32_t
         }
     }
 
-    int32_t outputChannels = mChannelCount.load();
-    
-    // 处理通道转换 (如果需要)
-    std::vector<float> convertedData;
+    int32_t outputChannels = mChannelCount.load(); // 获取 Oboe 输出流的声道数
+
+    // 1. 声道数转换 (如果需要)
+    std::vector<float> channelConvertedData;
+    const float* dataToProcess = data;
+    int32_t framesToProcess = numFrames;
+    int32_t channelsAfterChannelConv = inputChannels;
+
     if (inputChannels != outputChannels) {
+        LOGI("Performing channel conversion: %d -> %d", inputChannels, outputChannels);
         try {
-            convertedData.resize(numFrames * outputChannels);
-            convertChannels(data, convertedData.data(), numFrames, inputChannels, outputChannels);
-            data = convertedData.data();
+            channelConvertedData.resize(numFrames * outputChannels);
+            convertChannels(data, channelConvertedData.data(), numFrames, inputChannels, outputChannels);
+            dataToProcess = channelConvertedData.data();
+            channelsAfterChannelConv = outputChannels;
+            // framesToProcess 保持不变
         } catch (const std::exception& e) {
             LOGE("Channel conversion failed: %s", e.what());
             return;
         }
-    } else {
-        // 确保我们使用正确的通道数
-        outputChannels = inputChannels;
     }
 
-    // 动态采样率转换 - 核心修改：只在采样率不同时进行转换
+    // 2. 动态采样率转换 - 只在采样率不同时进行
     if (mSampleRate.load() != 48000) {
         LOGI("Performing sample rate conversion: 48000 -> %d", mSampleRate.load());
         try {
-            // 1. 解交错：分离各通道数据
-            std::vector<float*> deinterleavedInput(outputChannels);
-            std::vector<std::vector<float>> inputChannelsData(outputChannels);
+            // 2.1 解交错：分离各通道数据
+            std::vector<float*> deinterleavedInput(channelsAfterChannelConv);
+            std::vector<std::vector<float>> inputChannelsData(channelsAfterChannelConv);
             
-            for (int ch = 0; ch < outputChannels; ch++) {
-                inputChannelsData[ch].resize(numFrames);
+            for (int ch = 0; ch < channelsAfterChannelConv; ch++) {
+                inputChannelsData[ch].resize(framesToProcess);
                 deinterleavedInput[ch] = inputChannelsData[ch].data();
             }
             
-            deinterleave(data, deinterleavedInput.data(), numFrames, outputChannels);
+            deinterleave(dataToProcess, deinterleavedInput.data(), framesToProcess, channelsAfterChannelConv);
 
-            // 2. 计算输出帧数 (使用最大可能值)
+            // 2.2 计算输出帧数 (使用最大可能值)
             size_t maxOutputFrames = static_cast<size_t>(
-                std::ceil(numFrames * (static_cast<float>(mSampleRate.load()) / 48000.0f))) + 10;
+                std::ceil(framesToProcess * (static_cast<float>(mSampleRate.load()) / 48000.0f))) + 10;
             
-            // 3. 为每个通道分配输出缓冲区
-            std::vector<float*> deinterleavedOutput(outputChannels);
-            std::vector<std::vector<float>> outputChannelsData(outputChannels);
-            std::vector<size_t> outputFramesPerChannel(outputChannels, 0);
+            // 2.3 为每个通道分配输出缓冲区
+            std::vector<float*> deinterleavedOutput(channelsAfterChannelConv);
+            std::vector<std::vector<float>> outputChannelsData(channelsAfterChannelConv);
+            std::vector<size_t> outputFramesPerChannel(channelsAfterChannelConv, 0);
             
-            for (int ch = 0; ch < outputChannels; ch++) {
+            for (int ch = 0; ch < channelsAfterChannelConv; ch++) {
                 outputChannelsData[ch].resize(maxOutputFrames);
                 deinterleavedOutput[ch] = outputChannelsData[ch].data();
                 
-                // 4. 对每个通道单独进行采样率转换
+                // 2.4 对每个通道单独进行采样率转换
                 outputFramesPerChannel[ch] = mChannelConverters[ch]->convert(
-                    inputChannelsData[ch].data(), numFrames, 
+                    inputChannelsData[ch].data(), framesToProcess, 
                     outputChannelsData[ch].data(), maxOutputFrames);
             }
             
-            // 5. 找到最小的输出帧数 (确保所有通道长度一致)
+            // 2.5 找到最小的输出帧数 (确保所有通道长度一致)
             size_t minOutputFrames = *std::min_element(outputFramesPerChannel.begin(), 
                                                      outputFramesPerChannel.end());
             
             if (minOutputFrames > 0) {
-                // 6. 重新交错各通道数据
-                std::vector<float> finalOutput(minOutputFrames * outputChannels);
+                // 2.6 重新交错各通道数据
+                std::vector<float> finalOutput(minOutputFrames * channelsAfterChannelConv);
                 interleave(deinterleavedOutput.data(), finalOutput.data(), 
-                          minOutputFrames, outputChannels);
+                          minOutputFrames, channelsAfterChannelConv);
                 
-                // 7. 写入环形缓冲区
+                // 2.7 写入环形缓冲区
                 if (!mRingBuffer->write(finalOutput.data(), finalOutput.size())) {
                     LOGW("RingBuffer write failed during sample rate conversion");
                 }
+                mTotalFramesWritten += minOutputFrames; // 更新写入的帧数
             }
         } catch (const std::exception& e) {
             LOGE("Per-channel sample rate conversion failed: %s", e.what());
             return;
         }
     } else {
-        // 不需要采样率转换，直接写入
+        // 3. 不需要采样率转换，直接写入
         LOGI("No sample rate conversion needed, writing directly to ring buffer");
-        size_t totalSamples = numFrames * outputChannels;
-        if (!mRingBuffer->write(data, totalSamples)) {
+        size_t totalSamples = framesToProcess * channelsAfterChannelConv;
+        if (!mRingBuffer->write(dataToProcess, totalSamples)) {
             LOGW("RingBuffer write failed for direct data");
         }
+        mTotalFramesWritten += framesToProcess; // 更新写入的帧数
     }
-
-    mTotalFramesWritten += numFrames;
 }
 
 void OboeAudioRenderer::clearBuffer() {
