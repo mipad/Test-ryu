@@ -1663,6 +1663,30 @@ ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
                     
                     ExpandableView(onCardArrowClick = { }, title = "Hack") {
                         Column(modifier = Modifier.fillMaxWidth()) {
+                            // 滑块控制
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            androidx.compose.material3.Slider(
+                value = tickScalar.value.toFloat(),
+                onValueChange = { newValue ->
+                    tickScalar.value = newValue.toInt()
+                },
+                valueRange = 0f..400f,
+                steps = 400,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        Text(
+            text = "Adjust game speed (0-400%). 100% is normal speed.",
+            fontSize = 12.sp,
+            modifier = Modifier.padding(8.dp)
+        )
+        
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
