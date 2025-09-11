@@ -94,6 +94,8 @@ interface RyujinxNativeJna : Library {
     fun setScalingFilterLevel(level: Int)
     // 添加设置抗锯齿的方法
     fun setAntiAliasing(mode: Int)
+    // 在RyujinxNativeJna接口中添加
+    fun setTickScalar(scalar: Int)
 }
 
 class RyujinxNative {
@@ -173,6 +175,12 @@ class RyujinxNative {
         @JvmStatic
         fun setAntiAliasing(mode: Int) {
             jnaInstance.setAntiAliasing(mode)
+        }
+
+        // 在RyujinxNative类中添加
+        @JvmStatic
+        fun setTickScalar(scalar: Int) {
+            jnaInstance.setTickScalar(scalar)
         }
     }
 }
