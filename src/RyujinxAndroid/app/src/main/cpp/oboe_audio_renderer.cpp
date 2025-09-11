@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (终极修复版：高质量采样率转换 + 动态缓冲 + 稳定噪声整形)
+// oboe_audio_renderer.cpp (修复版)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -82,7 +82,7 @@ size_t SampleRateConverter::convert(const float* input, size_t inputSize, float*
     return outputIndex;
 }
 
-// =============== 稳定版噪声整形器 (仅用于 I16 输出) ===============
+// =============== 稳定版噪声整形器 (默认关闭) ===============
 void NoiseShaper::reset() {
     std::lock_guard<std::mutex> lock(mMutex);
     mHistory[0] = mHistory[1] = mHistory[2] = 0.0f;
@@ -111,7 +111,7 @@ float NoiseShaper::process(float input) {
     return quantized;
 }
 
-// =============== RingBuffer 实现 (带动态水位日志) ===============
+// =============== RingBuffer 实现 ===============
 RingBuffer::RingBuffer(size_t capacity)
     : mCapacity(capacity), mBuffer(capacity), mReadIndex(0), mWriteIndex(0)
 {
@@ -197,9 +197,9 @@ void RingBuffer::clear() {
     mWriteIndex.store(0);
 }
 
-// =============== OboeAudioRenderer 实现 (带动态缓冲监控) ===============
+// =============== OboeAudioRenderer 实现 ===============
 OboeAudioRenderer::OboeAudioRenderer()
-    : mRingBuffer(std::make_unique<RingBuffer>((48000 * 2 * 250) / 1000)), // 250ms @ 48kHz stereo
+    : mRingBuffer(std::make_unique<RingBuffer>((48000 * 2 * 250) / 1000)), // 恢复250ms缓冲
       mNoiseShaper(std::make_unique<NoiseShaper>()),
       mSampleRateConverter(std::make_unique<SampleRateConverter>()),
       mLastBufferLevel(0),
@@ -290,6 +290,7 @@ bool OboeAudioRenderer::initialize() {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
 
+        // 恢复为先尝试Float格式
         if (!openStreamWithFormat(oboe::AudioFormat::Float)) {
             if (!openStreamWithFormat(oboe::AudioFormat::I16)) {
                 continue;
@@ -521,7 +522,7 @@ oboe::DataCallbackResult OboeAudioRenderer::onAudioReady(
             std::fill(floatData.begin() + read, floatData.end(), 0.0f);
         }
 
-        // 应用音量 + 噪声整形（仅I16）
+        // 应用音量 + 噪声整形（仅I16，且默认关闭）
         for (size_t i = 0; i < totalSamples; i++) {
             float sample = floatData[i] * volume;
             sample = std::clamp(sample, -1.0f, 1.0f);
