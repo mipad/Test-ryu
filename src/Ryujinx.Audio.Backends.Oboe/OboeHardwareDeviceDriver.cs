@@ -36,7 +36,11 @@ namespace Ryujinx.Audio.Backends.Oboe
         [DllImport("libryujinxjni", EntryPoint = "setOboeNoiseShapingEnabled")]
         private static extern void setOboeNoiseShapingEnabled(bool enabled);
 
+        [DllImport("libryujinxjni", EntryPoint = "setOboeChannelCount")]
+        private static extern void setOboeChannelCount(int channel_count);
+
         [DllImport("libryujinxjni", EntryPoint = "isOboeInitialized")]
+        [return: MarshalAs(UnmanagedType.I1)]
         private static extern bool isOboeInitialized();
 
         [DllImport("libryujinxjni", EntryPoint = "getOboeBufferedFrames")]
@@ -189,6 +193,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 int bufferSizeInFrames = CalculateBufferSize(sampleRate);
                 setOboeSampleRate((int)sampleRate);
                 setOboeBufferSize(bufferSizeInFrames); // 直接传帧数
+                setOboeChannelCount((int)channelCount); // 设置声道数
                 setOboeVolume(_volume);
                 setOboeNoiseShapingEnabled(_noiseShapingEnabled);
 
@@ -198,7 +203,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 if (!_isOboeInitialized)
                     throw new Exception("Oboe audio failed to initialize");
 
-                Logger.Info?.Print(LogClass.Audio, $"Oboe initialized: SR={sampleRate}, BufSize={bufferSizeInFrames}, NS={(NoiseShapingEnabled ? "ON" : "OFF")}");
+                Logger.Info?.Print(LogClass.Audio, $"Oboe initialized: SR={sampleRate}, BufSize={bufferSizeInFrames}, Channels={channelCount}, NS={(NoiseShapingEnabled ? "ON" : "OFF")}");
             }
 
             var session = new OboeAudioSession(this, memoryManager, sampleFormat, sampleRate, channelCount);
@@ -261,6 +266,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             private bool _active;
             private float _volume;
             private readonly int _channelCount;
+            private readonly int _outputChannelCount;
 
             public OboeAudioSession(
                 OboeHardwareDeviceDriver driver,
@@ -272,12 +278,13 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 _driver = driver;
                 _channelCount = (int)channelCount;
+                _outputChannelCount = 2; // Oboe 默认输出为立体声
                 _volume = 1.0f;
             }
 
             public void UpdatePlaybackStatus(int bufferedFrames)
             {
-                ulong playedSamples = _totalWrittenSamples - (ulong)bufferedFrames * (ulong)_channelCount;
+                ulong playedSamples = _totalWrittenSamples - (ulong)bufferedFrames * (ulong)_outputChannelCount;
 
                 ulong availableSampleCount = playedSamples - _totalPlayedSamples;
 
@@ -331,7 +338,18 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
 
                 ConvertToFloatInPlace(buffer.Data, _driver._tempFloatBuffer, sampleCount, _volume);
-                writeOboeAudio(_driver._tempFloatBuffer, sampleCount / _channelCount, _channelCount);
+                
+                // 处理声道数不匹配的情况
+                if (_channelCount != _outputChannelCount)
+                {
+                    float[] convertedData = ConvertChannels(_driver._tempFloatBuffer, _channelCount, _outputChannelCount, sampleCount / _channelCount);
+                    writeOboeAudio(convertedData, convertedData.Length / _outputChannelCount, _outputChannelCount);
+                    sampleCount = convertedData.Length; // 更新样本数量
+                }
+                else
+                {
+                    writeOboeAudio(_driver._tempFloatBuffer, sampleCount / _channelCount, _channelCount);
+                }
 
                 // 记录缓冲区信息
                 _queuedBuffers.Enqueue(new OboeAudioBuffer(buffer.DataPointer, (ulong)sampleCount));
@@ -373,6 +391,51 @@ namespace Ryujinx.Audio.Backends.Oboe
                     short sample = BitConverter.ToInt16(audioData, i * 2);
                     output[i] = sample * scale;
                 }
+            }
+
+            private float[] ConvertChannels(float[] input, int inputChannels, int outputChannels, int numFrames)
+            {
+                if (inputChannels == outputChannels)
+                    return input;
+
+                float[] output = new float[numFrames * outputChannels];
+                
+                if (inputChannels == 1 && outputChannels == 2)
+                {
+                    // 单声道转立体声：复制声道
+                    for (int i = 0; i < numFrames; i++)
+                    {
+                        output[i * 2] = input[i];
+                        output[i * 2 + 1] = input[i];
+                    }
+                }
+                else if (inputChannels == 6 && outputChannels == 2)
+                {
+                    // 5.1转立体声：简单混合
+                    for (int i = 0; i < numFrames; i++)
+                    {
+                        int inputIndex = i * 6;
+                        int outputIndex = i * 2;
+                        
+                        // 左声道 = FL + 0.5*C + 0.7*SL
+                        output[outputIndex] = input[inputIndex] + 
+                                             input[inputIndex + 2] * 0.5f + 
+                                             input[inputIndex + 4] * 0.7f;
+                                             
+                        // 右声道 = FR + 0.5*C + 0.7*SR
+                        output[outputIndex + 1] = input[inputIndex + 1] + 
+                                                 input[inputIndex + 2] * 0.5f + 
+                                                 input[inputIndex + 5] * 0.7f;
+                    }
+                }
+                else
+                {
+                    // 默认处理：取第一个声道或静音
+                    Logger.Warning?.Print(LogClass.Audio, $"Unsupported channel conversion: {inputChannels} -> {outputChannels}");
+                    Array.Fill(output, 0f);
+                }
+                
+                return output;
             }
         }
 
