@@ -348,7 +348,7 @@ namespace Ryujinx.Audio.Backends.Oboe
                 }
                 else
                 {
-                    writeOboeAudio(_driver._tempFloatBuffer, sampleCount / _channelCount, _channelCount);
+                    writeOboeAudio(_driver._tempFloatBuffer, sampleCount / _channelCount, _channelCount, _channelCount);
                 }
 
                 // 记录缓冲区信息
