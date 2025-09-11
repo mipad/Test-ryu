@@ -67,7 +67,7 @@ namespace Ryujinx.HLE
             Memory            = new MemoryBlock(Configuration.MemoryConfiguration.ToDramSize(), memoryAllocationFlags);
             Gpu               = new GpuContext(Configuration.GpuRenderer);
             System            = new HOS.Horizon(this);
-            Statistics        = new PerformanceStatistics();
+            Statistics        = new PerformanceStatistics(this);
             Hid               = new Hid(this, System.HidStorage);
             Processes         = new ProcessLoader(this);
             TamperMachine     = new TamperMachine();
@@ -78,12 +78,28 @@ namespace Ryujinx.HLE
 
             EnableDeviceVsync                       = Configuration.EnableVsync;
             TargetVSyncInterval                     = Configuration.TargetVSyncInterval;
+            
+            // 根据 VSync 设置和间隔计算 TickScalar
+if (!EnableDeviceVsync || !Configuration.EnableVsync)
+{
+    // 如果设备或配置中禁用了 VSync，使用配置的加速倍率
+    TickScalar = Configuration.TickScalar; // 使用配置的加速倍率
+}
+else
+{
+    // 即使启用了 VSync，也允许使用配置的加速倍率，但限制最大值
+    long maxScalar = 2; // 例如，限制最大为 200%
+    TickScalar = Math.Min(Configuration.TickScalar, maxScalar);
+}
+            
             System.State.DockedMode                 = Configuration.EnableDockedMode;
             System.PerformanceState.PerformanceMode = System.State.DockedMode ? PerformanceMode.Boost : PerformanceMode.Default;
             System.EnablePtc                        = Configuration.EnablePtc;
             System.FsIntegrityCheckLevel            = Configuration.FsIntegrityCheckLevel;
             System.GlobalAccessLogMode              = Configuration.FsGlobalAccessLogMode;
 #pragma warning restore IDE0055
+
+        Shared = this;
         }
 
         public bool LoadCart(string exeFsDir, string romFsFile = null)
