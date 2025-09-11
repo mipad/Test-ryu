@@ -92,6 +92,8 @@ interface RyujinxNativeJna : Library {
     // 添加设置缩放过滤器的方法
     fun setScalingFilter(filter: Int)
     fun setScalingFilterLevel(level: Int)
+    // 添加设置抗锯齿的方法
+    fun setAntiAliasing(mode: Int)
 }
 
 class RyujinxNative {
@@ -165,6 +167,12 @@ class RyujinxNative {
                     newSubtitle,
                     newInitialText);
             }
+        }
+        
+        // 添加设置抗锯齿的静态方法
+        @JvmStatic
+        fun setAntiAliasing(mode: Int) {
+            jnaInstance.setAntiAliasing(mode)
         }
     }
 }
