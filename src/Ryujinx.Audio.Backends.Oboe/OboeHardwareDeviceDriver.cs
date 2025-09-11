@@ -22,7 +22,7 @@ namespace Ryujinx.Audio.Backends.Oboe
         private static extern void shutdownOboeAudio();
 
         [DllImport("libryujinxjni", EntryPoint = "writeOboeAudio")]
-        private static extern void writeOboeAudio(float[] audioData, int num_frames, int channels);
+        private static extern void writeOboeAudio(float[] audioData, int num_frames, int input_channels, int output_channels);
 
         [DllImport("libryujinxjni", EntryPoint = "setOboeSampleRate")]
         private static extern void setOboeSampleRate(int sample_rate);
