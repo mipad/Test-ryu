@@ -2,6 +2,7 @@ using Ryujinx.Common;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
 using Ryujinx.Common.PreciseSleep;
+using Ryujinx.Cpu;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Gpu;
 using Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap;
@@ -15,8 +16,6 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 {
     class SurfaceFlinger : IConsumerListener, IDisposable
     {
-        private const int TargetFps = 60;
-
         private readonly Switch _device;
 
         private readonly Dictionary<long, Layer> _layers;
@@ -34,6 +33,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
         private int _swapInterval;
         private int _swapIntervalDelay;
+        private long _targetVSyncInterval;
 
         private readonly object _lock = new();
 
@@ -84,11 +84,14 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             if (_swapInterval == 0)
             {
                 _nextFrameEvent.Set();
-                _ticksPerFrame = 1;
+                // 禁用 VSync 时仍然限制为 60 FPS，但应用 TickScalar
+                _ticksPerFrame = (Stopwatch.Frequency * 100) / (60 * _device.TickScalar);
             }
             else
             {
-                _ticksPerFrame = Stopwatch.Frequency / TargetFps;
+                // 启用 VSync 时使用设备的 TargetVSyncInterval 和 TickScalar
+                _ticksPerFrame = ((Stopwatch.Frequency / _device.TargetVSyncInterval) * 100) / _device.TickScalar;
+                _targetVSyncInterval = _device.TargetVSyncInterval;
             }
         }
 
@@ -378,7 +381,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                             UpdateSwapInterval(0);
                         }
                     }
-                    else if (item.SwapInterval != _swapInterval)
+                    else if (item.SwapInterval != _swapInterval || _device.TargetVSyncInterval != _targetVSyncInterval)
                     {
                         UpdateSwapInterval(item.SwapInterval);
                     }
