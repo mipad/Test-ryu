@@ -208,6 +208,11 @@ namespace Ryujinx.UI.Common.Configuration
         public bool EnablePtc { get; set; }
 
         /// <summary>
+        /// Clock tick scalar, in percent points (100 = 1.0).
+        /// </summary>
+        public long TickScalar { get; set; }
+        
+        /// <summary>
         /// Enables or disables guest Internet access
         /// </summary>
         public bool EnableInternetAccess { get; set; }
