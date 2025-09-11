@@ -1666,6 +1666,21 @@ ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
                     
                     ExpandableView(onCardArrowClick = { }, title = "Hack") {
                         Column(modifier = Modifier.fillMaxWidth()) {
+                        // 显示当前游戏速度百分比
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "Game Speed")
+            Text(
+                text = "${tickScalar.value}%",
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        
                             // 滑块控制
         Row(
             modifier = Modifier
