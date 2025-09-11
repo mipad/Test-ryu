@@ -2,9 +2,9 @@ name: Android CI  Fix
 
 on:
   push:
-    branches: [ "抗锯齿" ]
+    branches: [ "抗锯齿Area" ]
   pull_request:
-    branches: [ "抗锯齿" ]
+    branches: [ "抗锯齿Area" ]
 
 jobs:
   build:
@@ -25,7 +25,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: 抗锯齿
+        ref: 抗锯齿Area
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
