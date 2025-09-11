@@ -366,6 +366,7 @@ namespace LibRyujinx
                     publisher = controlData.Title[(int)desiredTitleLanguage].PublisherString.ToString();
                 }
                 else
+                {
                     titleName = null;
                     publisher = null;
                 }
