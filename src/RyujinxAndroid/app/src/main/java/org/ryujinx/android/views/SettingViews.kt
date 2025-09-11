@@ -165,8 +165,9 @@ class SettingViews {
             val scalingFilter = remember { mutableStateOf(0) } // 0=Bilinear, 1=Nearest, 2=FSR
             val scalingFilterLevel = remember { mutableStateOf(25) } // 默认25%
             val antiAliasing = remember { mutableStateOf(0) } // 0=None, 1=Fxaa, 2=SmaaLow, 3=SmaaMedium, 4=SmaaHigh, 5=SmaaUltra
+            val tickScalar = remember { mutableStateOf(100) } // 默认100%
+            
             val showAntiAliasingDialog = remember { mutableStateOf(false) } // 控制抗锯齿对话框显示
-
             // 新增状态变量用于控制选项显示
             val showResScaleOptions = remember { mutableStateOf(false) }
             val showAspectRatioOptions = remember { mutableStateOf(false) }
@@ -204,7 +205,8 @@ class SettingViews {
                     audioEngineType, // 新增参数
                     scalingFilter, // 新增：缩放过滤器
                     scalingFilterLevel, // 新增：缩放过滤器级别
-                    antiAliasing // 新增：抗锯齿模式
+                    antiAliasing, // 新增：抗锯齿模式
+                    tickScalar // 新增:游戏加速
                 )
                 loaded.value = true
             }
@@ -259,7 +261,8 @@ class SettingViews {
                     audioEngineType, // 新增参数
                     scalingFilter, // 新增：缩放过滤器
                     scalingFilterLevel, // 新增：缩放过滤器级别
-                    antiAliasing // 新增：抗锯齿模式
+                    antiAliasing, // 新增：抗锯齿模式
+                    tickScalar //游戏加速
                                 )
                                 settingsViewModel.navController.popBackStack()
                             }) {
