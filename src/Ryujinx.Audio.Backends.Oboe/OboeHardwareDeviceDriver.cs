@@ -278,7 +278,7 @@ namespace Ryujinx.Audio.Backends.Oboe
             {
                 _driver = driver;
                 _channelCount = (int)channelCount;
-                _outputChannelCount = 2; // Oboe 默认输出为立体声
+                _outputChannelCount = (int)channelCount; // 修正：使用传入的channelCount，而不是硬编码为2
                 _volume = 1.0f;
             }
 
