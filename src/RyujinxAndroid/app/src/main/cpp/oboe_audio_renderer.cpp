@@ -128,6 +128,7 @@ bool RingBuffer::write(const float* data, size_t count) {
                      (mCapacity - writeIndex + readIndex - 1);
 
     if (count > available) {
+        LOGE("RingBuffer: Not enough space. Available: %zu, Requested: %zu", available, count);
         return false;
     }
 
@@ -394,6 +395,12 @@ void OboeAudioRenderer::writeAudio(const float* data, int32_t numFrames, int32_t
         return;
     }
 
+    // 添加安全检查，防止过大帧数导致内存分配失败
+    if (numFrames > 48000 * 2) { // 最大允许2秒的帧数（48000Hz）
+        LOGE("writeAudio: numFrames too large: %d", numFrames);
+        return;
+    }
+
     if (!mIsStreamStarted.load()) {
         std::lock_guard<std::mutex> lock(mInitMutex);
         if (!mIsStreamStarted.load()) {
@@ -412,22 +419,39 @@ void OboeAudioRenderer::writeAudio(const float* data, int32_t numFrames, int32_t
     // 处理通道转换
     std::vector<float> convertedData;
     if (inputChannels != outputChannels) {
-        convertedData.resize(totalSamples);
-        convertChannels(data, convertedData.data(), numFrames, inputChannels, outputChannels);
-        data = convertedData.data();
+        try {
+            convertedData.resize(totalSamples);
+            convertChannels(data, convertedData.data(), numFrames, inputChannels, outputChannels);
+            data = convertedData.data();
+        } catch (const std::exception& e) {
+            LOGE("Channel conversion failed: %s", e.what());
+            return;
+        }
     }
 
     // 动态采样率转换
     if (mSampleRate.load() != 48000) {
-        std::vector<float> convertedSamples(totalSamples * 2); // 预留空间
-        size_t convertedCount = mSampleRateConverter->convert(
-            data, totalSamples, convertedSamples.data(), convertedSamples.size());
+        // 计算最大可能输出样本数，避免分配过大缓冲区
+        size_t maxOutputSamples = static_cast<size_t>(std::ceil(totalSamples * (static_cast<float>(mSampleRate.load()) / 48000.0f))) + 10;
+        
+        try {
+            std::vector<float> convertedSamples(maxOutputSamples);
+            size_t convertedCount = mSampleRateConverter->convert(
+                data, totalSamples, convertedSamples.data(), convertedSamples.size());
 
-        if (convertedCount > 0) {
-            mRingBuffer->write(convertedSamples.data(), convertedCount);
+            if (convertedCount > 0) {
+                if (!mRingBuffer->write(convertedSamples.data(), convertedCount)) {
+                    LOGW("RingBuffer write failed during sample rate conversion");
+                }
+            }
+        } catch (const std::exception& e) {
+            LOGE("Sample rate conversion failed: %s", e.what());
+            return;
         }
     } else {
-        mRingBuffer->write(data, totalSamples);
+        if (!mRingBuffer->write(data, totalSamples)) {
+            LOGW("RingBuffer write failed for direct data");
+        }
     }
 
     mTotalFramesWritten += numFrames;
