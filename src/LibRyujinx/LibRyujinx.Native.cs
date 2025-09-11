@@ -411,7 +411,7 @@ public static bool InitializeGraphicsNative(float resScale,
         [UnmanagedCallersOnly(EntryPoint = "logging_set_enabled")]
         public static void SetLoggingEnabledNative(int logLevel, bool enabled)
         {
-            Logger.SetEnable((LogLevel)logLevel, enabled);
+            Logger.SetEnable(LogLevel)logLevel, enabled);
         }
 
         [UnmanagedCallersOnly(EntryPoint = "logging_enabled_graphics_log")]
@@ -562,6 +562,30 @@ public static bool InitializeGraphicsNative(float resScale,
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Failed to set scaling filter level: {ex.Message}");
+            }
+        }
+
+        // 添加设置抗锯齿的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "setAntiAliasing")]
+        public static void JnaSetAntiAliasing(int mode)
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: setAntiAliasing");
+            try
+            {
+                // 更新配置状态
+                ConfigurationState.Instance.Graphics.AntiAliasing.Value = (AntiAliasing)mode;
+                
+                // 如果渲染器已初始化，直接应用设置
+                if (Renderer != null && Renderer.Window != null)
+                {
+                    Renderer.Window.SetAntiAliasing((Ryujinx.Graphics.GAL.AntiAliasing)mode);
+                }
+                
+                Logger.Info?.Print(LogClass.Application, $"Anti-aliasing set to: {(AntiAliasing)mode}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Failed to set anti-aliasing: {ex.Message}");
             }
         }
     }
