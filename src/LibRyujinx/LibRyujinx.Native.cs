@@ -411,7 +411,7 @@ public static bool InitializeGraphicsNative(float resScale,
         [UnmanagedCallersOnly(EntryPoint = "logging_set_enabled")]
         public static void SetLoggingEnabledNative(int logLevel, bool enabled)
         {
-            Logger.SetEnable(LogLevel)logLevel, enabled);
+            Logger.SetEnable((LogLevel)logLevel, enabled);
         }
 
         [UnmanagedCallersOnly(EntryPoint = "logging_enabled_graphics_log")]
