@@ -90,7 +90,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
     else
     {
         // 启用 VSync 时使用设备的 TargetVSyncInterval 和 TickScalar
-        _ticksPerFrame = ((Stopwatch.Frequency / _device.TargetVSyncInterval) * 100) / _device.TickScalar;
+        _ticksPerFrame = (long)((Stopwatch.Frequency / _device.TargetVSyncInterval) * 100) / _device.TickScalar;
         _targetVSyncInterval = _device.TargetVSyncInterval;
     }
 }
