@@ -1103,7 +1103,14 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// </summary>
         private void UpdateIndexBufferState()
         {
-            var indexBuffer = _state.State.IndexBufferState;
+            var indexBufferNullable = _state?.State.IndexBufferState;
+
+            if (!indexBufferNullable.HasValue)
+            {
+                return;
+            }
+
+            IndexBufferState indexBuffer = indexBufferNullable.Value;
 
             if (_drawState.IndexCount == 0)
             {
