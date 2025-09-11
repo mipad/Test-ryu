@@ -95,6 +95,9 @@ namespace LibRyujinx
             {
                 if (Renderer != null && Renderer.Window != null)
                 {
+                    // 应用抗锯齿设置
+                    Renderer.Window.SetAntiAliasing((Ryujinx.Graphics.GAL.AntiAliasing)ConfigurationState.Instance.Graphics.AntiAliasing.Value);
+                    
                     // 应用Scaling Filter设置
                     Renderer.Window.SetScalingFilter((Ryujinx.Graphics.GAL.ScalingFilter)ConfigurationState.Instance.Graphics.ScalingFilter.Value);
                     
