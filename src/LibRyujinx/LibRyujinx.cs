@@ -99,18 +99,6 @@ namespace LibRyujinx
             return _currentAspectRatio;
         }
 
-        // 添加设置Tick缩放因子的方法
-        public static void SetTickScalar(int scalar)
-        {
-            if (SwitchDevice?.EmulationContext != null)
-            {
-                // 确保数值在合理范围内 (0-400)
-                int clampedScalar = Math.Clamp(scalar, 0, 400);
-                SwitchDevice.EmulationContext.TickScalar = clampedScalar;
-                Logger.Info?.Print(LogClass.Emulation, $"Tick scalar set to: {clampedScalar}%");
-            }
-        }
-
         public static void InitializeAudio()
         {
             AudioDriver = new SDL2HardwareDeviceDriver();
@@ -130,6 +118,18 @@ namespace LibRyujinx
                 GameTime = context.Statistics.GetGameFrameTime()
             };
         }
+
+        // 添加静态方法：设置模拟器运行速度比例
+public static void SetTickScalar(int scalar)
+{
+    if (SwitchDevice?.EmulationContext != null)
+    {
+        // 确保数值在合理范围内 (0-400)
+        int clampedScalar = Math.Clamp(scalar, 0, 400);
+        SwitchDevice.EmulationContext.TickScalar = clampedScalar;
+        Logger.Info?.Print(LogClass.Emulation, $"Tick scalar set to: {clampedScalar}%");
+    }
+}
 
         public static GameInfo? GetGameInfo(string? file)
         {
@@ -608,50 +608,50 @@ namespace LibRyujinx
         }
 
         public static string GetDlcTitleId(string path, string ncaPath)
+{
+    if (File.Exists(path))
+    {
+        using FileStream containerFile = File.OpenRead(path);
+
+        PartitionFileSystem partitionFileSystem = new();
+        partitionFileSystem.Initialize(containerFile.AsStorage()).ThrowIfFailure();
+
+        SwitchDevice.VirtualFileSystem.ImportTickets(partitionFileSystem);
+
+        using UniqueRef<IFile> ncaFile = new();
+
+        partitionFileSystem.OpenFile(ref ncaFile.Ref, ncaPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
+
+        // 修改：使用条件性完整性检查
+        IntegrityCheckLevel checkLevel = SwitchDevice.EnableFsIntegrityChecks ? 
+            IntegrityCheckLevel.ErrorOnInvalid : IntegrityCheckLevel.None;
+        
+        Nca nca = TryOpenNca(ncaFile.Get.AsStorage(), ncaPath, checkLevel);
+        if (nca != null)
         {
-            if (File.Exists(path))
-            {
-                using FileStream containerFile = File.OpenRead(path);
-
-                PartitionFileSystem partitionFileSystem = new();
-                partitionFileSystem.Initialize(containerFile.AsStorage()).ThrowIfFailure();
-
-                SwitchDevice.VirtualFileSystem.ImportTickets(partitionFileSystem);
-
-                using UniqueRef<IFile> ncaFile = new();
-
-                partitionFileSystem.OpenFile(ref ncaFile.Ref, ncaPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
-
-                // 修改：使用条件性完整性检查
-                IntegrityCheckLevel checkLevel = SwitchDevice.EnableFsIntegrityChecks ? 
-                    IntegrityCheckLevel.ErrorOnInvalid : IntegrityCheckLevel.None;
-                
-                Nca nca = TryOpenNca(ncaFile.Get.AsStorage(), ncaPath, checkLevel);
-                if (nca != null)
-                {
-                    return nca.Header.TitleId.ToString("X16");
-                }
-            }
-            return string.Empty;
+            return nca.Header.TitleId.ToString("X16");
         }
+    }
+    return string.Empty;
+}
 
-        // 修改 TryOpenNca 方法以接受完整性检查参数
-        private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, IntegrityCheckLevel checkLevel = IntegrityCheckLevel.None)
-        {
-            try
-            {
-                var nca = new Nca(SwitchDevice.VirtualFileSystem.KeySet, ncaStorage);
-                // 如果需要，可以在这里打开文件系统进行验证
-                // nca.OpenFileSystem(NcaSectionType.Data, checkLevel);
-                return nca;
-            }
-            catch (Exception ex)
-            {
-                // 添加详细的错误日志
-                Logger.Error?.Print(LogClass.Application, $"Failed to open NCA: {ex.Message}");
-            }
-            return null;
-        }
+// 修改 TryOpenNca 方法以接受完整性检查参数
+private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, IntegrityCheckLevel checkLevel = IntegrityCheckLevel.None)
+{
+    try
+    {
+        var nca = new Nca(SwitchDevice.VirtualFileSystem.KeySet, ncaStorage);
+        // 如果需要，可以在这里打开文件系统进行验证
+        // nca.OpenFileSystem(NcaSectionType.Data, checkLevel);
+        return nca;
+    }
+    catch (Exception ex)
+    {
+        // 添加详细的错误日志
+        Logger.Error?.Print(LogClass.Application, $"Failed to open NCA: {ex.Message}");
+    }
+    return null;
+}
 
         public static List<string> GetDlcContentList(string path, ulong titleId)
         {
