@@ -30,6 +30,7 @@ class QuickSettings(val activity: Activity) {
     var audioEngineType: Int // 0=禁用，1=OpenAL
     var scalingFilter: Int // 新增：缩放过滤器
     var scalingFilterLevel: Int // 新增：缩放过滤器级别
+    var antiAliasing: Int // 新增：抗锯齿模式 0=None, 1=Fxaa, 2=SmaaLow, 3=SmaaMedium, 4=SmaaHigh, 5=SmaaUltra
 
     // Logs
     var enableDebugLogs: Boolean
@@ -69,6 +70,7 @@ class QuickSettings(val activity: Activity) {
         audioEngineType = sharedPref.getInt("audioEngineType", 1) // 默认使用OpenAL
         scalingFilter = sharedPref.getInt("scalingFilter", 0) // 默认：最近邻
         scalingFilterLevel = sharedPref.getInt("scalingFilterLevel", 80) // 默认级别：80
+        antiAliasing = sharedPref.getInt("antiAliasing", 0) // 默认关闭
 
         enableDebugLogs = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs = sharedPref.getBoolean("enableStubLogs", false)
@@ -107,6 +109,7 @@ class QuickSettings(val activity: Activity) {
         editor.putInt("audioEngineType", audioEngineType) // 保存音频引擎设置
         editor.putInt("scalingFilter", scalingFilter) // 保存缩放过滤器
         editor.putInt("scalingFilterLevel", scalingFilterLevel) // 保存缩放过滤器级别
+        editor.putInt("antiAliasing", antiAliasing) // 保存抗锯齿设置
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs)
         editor.putBoolean("enableStubLogs", enableStubLogs)
