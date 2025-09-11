@@ -307,6 +307,7 @@ Java_org_ryujinx_android_NativeHelpers_shutdownOboeAudio(JNIEnv *env, jobject th
     }
 }
 
+// 修改 JNI 接口：移除 output_channels 参数，C++ 端会根据设备能力决定输出声道数
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(JNIEnv *env, jobject thiz, jfloatArray audio_data, jint num_frames, jint input_channels) {
@@ -327,6 +328,8 @@ Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(JNIEnv *env, jobject thiz,
     }
 
     try {
+        // 调用 C++ 端方法，只传递输入数据、帧数和输入声道数。
+        // C++ 端的 OboeAudioRenderer 会处理声道下混和重采样。
         OboeAudioRenderer::getInstance().writeAudio(data, num_frames, input_channels);
     } catch (const std::exception& e) {
         LOGE("writeOboeAudio: Exception: %s", e.what());
@@ -383,10 +386,12 @@ Java_org_ryujinx_android_NativeHelpers_setOboeNoiseShapingEnabled(JNIEnv *env, j
     }
 }
 
+// 这个函数现在用于设置 C++ 端渲染器的目标输出声道数，而不是输入声道数。
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setOboeChannelCount(JNIEnv *env, jobject thiz, jint channel_count) {
     try {
+        // 这里设置的是 Oboe 设备输出流的目标声道数（例如 2）
         OboeAudioRenderer::getInstance().setChannelCount(channel_count);
     } catch (const std::exception& e) {
         LOGE("setOboeChannelCount: Exception: %s", e.what());
@@ -434,6 +439,7 @@ Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceBrand(JNIEnv *env, jobjec
 }
 
 // =============== Oboe Audio C 接口 (for C# P/Invoke) ===============
+// 修改 C 接口：移除 output_channels 参数，C++ 端内部处理
 extern "C"
 void initOboeAudio() {
     try {
@@ -452,6 +458,7 @@ void shutdownOboeAudio() {
     }
 }
 
+// 修改 C 接口：移除 output_channels 参数
 extern "C"
 void writeOboeAudio(const float* data, int32_t num_frames, int32_t input_channels, int32_t output_channels) {
     if (!data || num_frames <= 0) {
@@ -459,10 +466,7 @@ void writeOboeAudio(const float* data, int32_t num_frames, int32_t input_channel
     }
     
     try {
-        // 设置输出通道数
-        OboeAudioRenderer::getInstance().setChannelCount(output_channels);
-        
-        // 写入音频数据
+        // C++ 端的 writeAudio 方法现在会处理所有转换
         OboeAudioRenderer::getInstance().writeAudio(data, num_frames, input_channels);
     } catch (const std::exception& e) {
         LOGE("writeOboeAudio (C): Exception: %s", e.what());
@@ -513,6 +517,7 @@ void setOboeNoiseShapingEnabled(bool enabled) {
 }
 
 // =============== 设置声道数 C 接口 ===============
+// 这个 C 接口现在用于设置 C++ 端的目标输出声道数
 extern "C"
 void setOboeChannelCount(int32_t channel_count) {
     try {
