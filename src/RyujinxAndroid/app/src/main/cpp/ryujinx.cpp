@@ -1,4 +1,4 @@
-// ryuijnx.cpp (终极优化版：增强日志 + 健壮性，专为配合高质量Oboe音频后端)
+// ryuijnx.cpp (自适应采样率版本)
 #include "ryuijnx.h"
 #include "pthread.h"
 #include <chrono>
@@ -9,9 +9,8 @@
 #include <sys/system_properties.h>
 #include <cstdlib>
 #include <cstring>
-#include <stdexcept> // 添加异常处理头文件
+#include <stdexcept>
 
-// 使用统一日志标签
 #define LOG_TAG "RyujinxJNI"
 #define LOGD(...) 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -66,7 +65,6 @@ long createSurface(long native_surface, long instance) {
         return -1;
     }
 
-    // 获取函数指针
     auto vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr)dlsym(RTLD_DEFAULT, "vkGetInstanceProcAddr");
     if (!vkGetInstanceProcAddr) {
         LOGE("createSurface: Failed to get vkGetInstanceProcAddr");
@@ -192,10 +190,10 @@ void setCurrentTransform(long native_window, int transform) {
     int32_t nativeTransform = 0;
 
     switch (transform) {
-        case 1: nativeTransform = 0; break; // 无旋转
-        case 2: nativeTransform = 1; break; // 90度
-        case 4: nativeTransform = isInitialOrientationFlipped ? 0 : 2; break; // 180度
-        case 8: nativeTransform = 3; break; // 270度
+        case 1: nativeTransform = 0; break;
+        case 2: nativeTransform = 1; break;
+        case 4: nativeTransform = isInitialOrientationFlipped ? 0 : 2; break;
+        case 8: nativeTransform = 3; break;
         default:
             nativeTransform = 0;
             break;
@@ -221,7 +219,7 @@ Java_org_ryujinx_android_NativeHelpers_loadDriver(JNIEnv *env, jobject thiz,
     } else {
         auto handle = adrenotools_open_libvulkan(
                 RTLD_NOW,
-                1, // ADRENOTOOLS_DRIVER_CUSTOM
+                1,
                 nullptr,
                 libPath,
                 privateAppsPath,
@@ -237,7 +235,6 @@ Java_org_ryujinx_android_NativeHelpers_loadDriver(JNIEnv *env, jobject thiz,
         }
     }
 
-    // 清理内存
     delete[] libPath;
     delete[] privateAppsPath;
     delete[] driverName;
@@ -307,10 +304,10 @@ Java_org_ryujinx_android_NativeHelpers_shutdownOboeAudio(JNIEnv *env, jobject th
     }
 }
 
-// 修改 JNI 接口：移除 output_channels 参数，C++ 端会根据设备能力决定输出声道数
+// 修改 JNI 接口：添加 input_sample_rate 参数
 extern "C"
 JNIEXPORT void JNICALL
-Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(JNIEnv *env, jobject thiz, jfloatArray audio_data, jint num_frames, jint input_channels) {
+Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(JNIEnv *env, jobject thiz, jfloatArray audio_data, jint num_frames, jint input_channels, jint input_sample_rate) {
     if (!audio_data || num_frames <= 0) {
         return;
     }
@@ -328,9 +325,8 @@ Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(JNIEnv *env, jobject thiz,
     }
 
     try {
-        // 调用 C++ 端方法，只传递输入数据、帧数和输入声道数。
-        // C++ 端的 OboeAudioRenderer 会处理声道下混和重采样。
-        OboeAudioRenderer::getInstance().writeAudio(data, num_frames, input_channels);
+        // 调用 C++ 端方法，传递输入数据、帧数、输入声道数和输入采样率
+        OboeAudioRenderer::getInstance().writeAudio(data, num_frames, input_channels, input_sample_rate);
     } catch (const std::exception& e) {
         LOGE("writeOboeAudio: Exception: %s", e.what());
     }
@@ -338,19 +334,7 @@ Java_org_ryujinx_android_NativeHelpers_writeOboeAudio(JNIEnv *env, jobject thiz,
     env->ReleaseFloatArrayElements(audio_data, data, JNI_ABORT);
 }
 
-extern "C"
-JNIEXPORT void JNICALL
-Java_org_ryujinx_android_NativeHelpers_setOboeSampleRate(JNIEnv *env, jobject thiz, jint sample_rate) {
-    try {
-        if (sample_rate < 8000 || sample_rate > 192000) {
-            LOGE("setOboeSampleRate: Invalid sample rate: %d", sample_rate);
-            return;
-        }
-        OboeAudioRenderer::getInstance().setSampleRate(sample_rate);
-    } catch (const std::exception& e) {
-        LOGE("setOboeSampleRate: Exception: %s", e.what());
-    }
-}
+// 移除了 setOboeSampleRate JNI 函数
 
 extern "C"
 JNIEXPORT void JNICALL
@@ -386,12 +370,10 @@ Java_org_ryujinx_android_NativeHelpers_setOboeNoiseShapingEnabled(JNIEnv *env, j
     }
 }
 
-// 这个函数现在用于设置 C++ 端渲染器的目标输出声道数，而不是输入声道数。
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_ryujinx_android_NativeHelpers_setOboeChannelCount(JNIEnv *env, jobject thiz, jint channel_count) {
     try {
-        // 这里设置的是 Oboe 设备输出流的目标声道数（例如 2）
         OboeAudioRenderer::getInstance().setChannelCount(channel_count);
     } catch (const std::exception& e) {
         LOGE("setOboeChannelCount: Exception: %s", e.what());
@@ -439,7 +421,6 @@ Java_org_ryujinx_android_NativeHelpers_getAndroidDeviceBrand(JNIEnv *env, jobjec
 }
 
 // =============== Oboe Audio C 接口 (for C# P/Invoke) ===============
-// 修改 C 接口：移除 output_channels 参数，C++ 端内部处理
 extern "C"
 void initOboeAudio() {
     try {
@@ -458,32 +439,22 @@ void shutdownOboeAudio() {
     }
 }
 
-// 修改 C 接口：移除 output_channels 参数
+// 修改 C 接口：添加 input_sample_rate 参数
 extern "C"
-void writeOboeAudio(const float* data, int32_t num_frames, int32_t input_channels, int32_t output_channels) {
+void writeOboeAudio(const float* data, int32_t num_frames, int32_t input_channels, int32_t input_sample_rate) {
     if (!data || num_frames <= 0) {
         return;
     }
     
     try {
         // C++ 端的 writeAudio 方法现在会处理所有转换
-        OboeAudioRenderer::getInstance().writeAudio(data, num_frames, input_channels);
+        OboeAudioRenderer::getInstance().writeAudio(data, num_frames, input_channels, input_sample_rate);
     } catch (const std::exception& e) {
         LOGE("writeOboeAudio (C): Exception: %s", e.what());
     }
 }
 
-extern "C"
-void setOboeSampleRate(int32_t sample_rate) {
-    try {
-        if (sample_rate < 8000 || sample_rate > 192000) {
-            return;
-        }
-        OboeAudioRenderer::getInstance().setSampleRate(sample_rate);
-    } catch (const std::exception& e) {
-        LOGE("setOboeSampleRate (C): Exception: %s", e.what());
-    }
-}
+// 移除了 setOboeSampleRate C 函数
 
 extern "C"
 void setOboeBufferSize(int32_t buffer_size) {
@@ -517,7 +488,6 @@ void setOboeNoiseShapingEnabled(bool enabled) {
 }
 
 // =============== 设置声道数 C 接口 ===============
-// 这个 C 接口现在用于设置 C++ 端的目标输出声道数
 extern "C"
 void setOboeChannelCount(int32_t channel_count) {
     try {
