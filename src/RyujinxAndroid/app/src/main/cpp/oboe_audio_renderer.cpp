@@ -1,4 +1,4 @@
-// oboe_audio_renderer.cpp (终极修复版：分通道采样率转换)
+// oboe_audio_renderer.cpp (终极修复版：支持多通道分别采样率转换)
 #include "oboe_audio_renderer.h"
 #include <cstring>
 #include <algorithm>
@@ -16,7 +16,7 @@
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
-// =============== 高质量 Cubic 插值采样率转换器 (改为单通道处理) ===============
+// =============== 高质量 Cubic 插值采样率转换器 ===============
 float SampleRateConverter::cubicInterpolate(float y0, float y1, float y2, float y3, float mu) {
     float mu2 = mu * mu;
     float a0 = y3 - y2 - y0 + y1;
@@ -42,7 +42,6 @@ void SampleRateConverter::reset() {
     mHasEnoughSamples = false;
 }
 
-// 修改：此函数现在处理单通道数据
 size_t SampleRateConverter::convert(const float* input, size_t inputSize, float* output, size_t outputSize) {
     if (!input || !output || inputSize == 0 || outputSize == 0 || mRatio <= 0) {
         return 0;
@@ -201,14 +200,12 @@ void RingBuffer::clear() {
 
 // =============== OboeAudioRenderer 实现 ===============
 OboeAudioRenderer::OboeAudioRenderer()
-    : mRingBuffer(std::make_unique<RingBuffer>((48000 * 2 * 250) / 1000)), // 恢复250ms缓冲
-      mNoiseShaper(std::make_unique<NoiseShaper>()),
-      mSampleRateConverter(std::make_unique<SampleRateConverter>()),
+    : mRingBuffer(std::make_unique<RingBuffer>((48000 * 2 * 250) / 1000)), // 250ms缓冲
       mLastBufferLevel(0),
       mUnderrunCount(0),
       mTotalFramesWritten(0)
 {
-    // 为每个通道创建一个采样率转换器
+    // 为每个通道创建采样率转换器
     for (int i = 0; i < MAX_CHANNELS; i++) {
         mChannelConverters[i] = std::make_unique<SampleRateConverter>();
     }
@@ -233,10 +230,8 @@ void OboeAudioRenderer::setNoiseShapingEnabled(bool enabled) {
 void OboeAudioRenderer::setChannelCount(int32_t channelCount) {
     mChannelCount.store(channelCount);
     // 更新所有通道转换器的比率
-    for (int i = 0; i < MAX_CHANNELS; i++) {
-        if (i < channelCount) {
-            mChannelConverters[i]->setRatio(48000.0f, static_cast<float>(mSampleRate.load()));
-        }
+    for (int i = 0; i < channelCount && i < MAX_CHANNELS; i++) {
+        mChannelConverters[i]->setRatio(48000.0f, static_cast<float>(mSampleRate.load()));
     }
 }
 
@@ -283,7 +278,7 @@ void OboeAudioRenderer::updateStreamParameters() {
         mAudioFormat.store(mAudioStream->getFormat());
 
         // 更新所有通道转换器的比率
-        for (int i = 0; i < mChannelCount; i++) {
+        for (int i = 0; i < mChannelCount && i < MAX_CHANNELS; i++) {
             mChannelConverters[i]->setRatio(48000.0f, static_cast<float>(mSampleRate.load()));
         }
     }
@@ -349,9 +344,6 @@ void OboeAudioRenderer::shutdown() {
     if (mNoiseShaper) {
         mNoiseShaper->reset();
     }
-    if (mSampleRateConverter) {
-        mSampleRateConverter->reset();
-    }
     
     // 重置所有通道转换器
     for (int i = 0; i < MAX_CHANNELS; i++) {
@@ -366,7 +358,7 @@ void OboeAudioRenderer::setSampleRate(int32_t sampleRate) {
     mSampleRate.store(sampleRate);
     
     // 更新所有通道转换器的比率
-    for (int i = 0; i < mChannelCount; i++) {
+    for (int i = 0; i < mChannelCount && i < MAX_CHANNELS; i++) {
         mChannelConverters[i]->setRatio(48000.0f, static_cast<float>(sampleRate));
     }
 }
@@ -383,8 +375,38 @@ void OboeAudioRenderer::setVolume(float volume) {
     mVolume.store(clampedVolume);
 }
 
+void OboeAudioRenderer::convertChannels(const float* input, float* output, int32_t numFrames, int32_t inputChannels, int32_t outputChannels) {
+    if (inputChannels == outputChannels) {
+        // 通道数相同，直接复制
+        std::memcpy(output, input, numFrames * inputChannels * sizeof(float));
+    } else if (inputChannels == 1 && outputChannels == 2) {
+        // 单声道转立体声
+        for (int i = 0; i < numFrames; i++) {
+            output[i * 2] = input[i];
+            output[i * 2 + 1] = input[i];
+        }
+    } else if (inputChannels == 2 && outputChannels == 1) {
+        // 立体声转单声道
+        for (int i = 0; i < numFrames; i++) {
+            output[i] = (input[i * 2] + input[i * 2 + 1]) * 0.5f;
+        }
+    } else {
+        // 其他通道转换，简单处理
+        int minChannels = std::min(inputChannels, outputChannels);
+        for (int i = 0; i < numFrames; i++) {
+            for (int j = 0; j < minChannels; j++) {
+                output[i * outputChannels + j] = input[i * inputChannels + j];
+            }
+            // 多余的通道填充0
+            for (int j = minChannels; j < outputChannels; j++) {
+                output[i * outputChannels + j] = 0.0f;
+            }
+        }
+    }
+}
+
 // 辅助函数：解交错
-static void deinterleave(const float* interleaved, float** deinterleaved, int32_t numFrames, int32_t numChannels) {
+void OboeAudioRenderer::deinterleave(const float* interleaved, float** deinterleaved, int32_t numFrames, int32_t numChannels) {
     for (int ch = 0; ch < numChannels; ch++) {
         for (int i = 0; i < numFrames; i++) {
             deinterleaved[ch][i] = interleaved[i * numChannels + ch];
@@ -393,7 +415,7 @@ static void deinterleave(const float* interleaved, float** deinterleaved, int32_
 }
 
 // 辅助函数：重新交错
-static void interleave(float** deinterleaved, float* interleaved, int32_t numFrames, int32_t numChannels) {
+void OboeAudioRenderer::interleave(float** deinterleaved, float* interleaved, int32_t numFrames, int32_t numChannels) {
     for (int i = 0; i < numFrames; i++) {
         for (int ch = 0; ch < numChannels; ch++) {
             interleaved[i * numChannels + ch] = deinterleaved[ch][i];
@@ -518,9 +540,6 @@ void OboeAudioRenderer::clearBuffer() {
     if (mNoiseShaper) {
         mNoiseShaper->reset();
     }
-    if (mSampleRateConverter) {
-        mSampleRateConverter->reset();
-    }
     
     // 清除所有通道转换器的状态
     for (int i = 0; i < MAX_CHANNELS; i++) {
@@ -614,7 +633,6 @@ void OboeAudioRenderer::onErrorAfterClose(oboe::AudioStream* audioStream, oboe::
     mIsStreamStarted.store(false);
     mIsInitialized.store(false);
     if (mNoiseShaper) mNoiseShaper->reset();
-    if (mSampleRateConverter) mSampleRateConverter->reset();
     
     // 重置所有通道转换器
     for (int i = 0; i < MAX_CHANNELS; i++) {
@@ -626,7 +644,6 @@ void OboeAudioRenderer::onErrorBeforeClose(oboe::AudioStream* audioStream, oboe:
     mIsStreamStarted.store(false);
     mIsInitialized.store(false);
     if (mNoiseShaper) mNoiseShaper->reset();
-    if (mSampleRateConverter) mSampleRateConverter->reset();
     
     // 重置所有通道转换器
     for (int i = 0; i < MAX_CHANNELS; i++) {
