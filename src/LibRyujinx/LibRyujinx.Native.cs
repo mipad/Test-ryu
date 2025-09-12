@@ -564,5 +564,48 @@ public static bool InitializeGraphicsNative(float resScale,
                 Logger.Error?.Print(LogClass.Application, $"Failed to set scaling filter level: {ex.Message}");
             }
         }
+
+        // 添加设置FPS缩放因子的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "setFpsScalingFactor")]
+        public static void SetFpsScalingFactorNative(double factor)
+        {
+            try
+            {
+                // 设置 FPS 缩放因子
+                Ryujinx.Core.GlobalConfig.FpsScalingFactor = factor;
+                
+                // 更新 SurfaceFlinger 目标 FPS
+                if (SwitchDevice?.EmulationContext?.Configuration.SurfaceFlingerRegistry != null)
+                {
+                    SwitchDevice.EmulationContext.Configuration.SurfaceFlingerRegistry.UpdateSurfaceFlingerTargetFps();
+                }
+                
+                Logger.Info?.Print(LogClass.Application, $"FPS scaling factor set to: {factor}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Failed to set FPS scaling factor: {ex.Message}");
+            }
+        }
+
+        // 添加更新SurfaceFlinger目标FPS的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "surfaceFlingerUpdateTargetFps")]
+        public static void SurfaceFlingerUpdateTargetFpsNative()
+        {
+            try
+            {
+                // 更新 SurfaceFlinger 目标 FPS
+                if (SwitchDevice?.EmulationContext?.Configuration.SurfaceFlingerRegistry != null)
+                {
+                    SwitchDevice.EmulationContext.Configuration.SurfaceFlingerRegistry.UpdateSurfaceFlingerTargetFps();
+                }
+                
+                Logger.Info?.Print(LogClass.Application, "SurfaceFlinger target FPS updated");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Failed to update SurfaceFlinger target FPS: {ex.Message}");
+            }
+        }
     }
 }
