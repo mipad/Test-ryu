@@ -566,9 +566,9 @@ public static bool InitializeGraphicsNative(float resScale,
         }
 
         // 添加设置FPS缩放因子的JNI方法
-        [UnmanagedCallersOnly(EntryPoint = "setFpsScalingFactor")]
+        [UnmanagedCallersOnly(EntryPoint = "setFpsScalingFactorNative")]
         public static void SetFpsScalingFactorNative(double factor)
-        {
+       {
             try
             {
                 // 设置 FPS 缩放因子
