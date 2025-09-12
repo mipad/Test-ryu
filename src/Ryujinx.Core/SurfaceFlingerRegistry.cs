@@ -6,6 +6,7 @@ namespace Ryujinx.Core
     public class SurfaceFlingerRegistry : ISurfaceFlingerRegistry
     {
         private Action _targetFpsUpdateCallback;
+        private SurfaceFlinger _surfaceFlingerInstance;
 
         public void RegisterTargetFpsUpdateCallback(Action callback)
         {
@@ -15,6 +16,11 @@ namespace Ryujinx.Core
         public void UpdateSurfaceFlingerTargetFps()
         {
             _targetFpsUpdateCallback?.Invoke();
+        }
+
+        public void SetSurfaceFlingerInstance(SurfaceFlinger surfaceFlinger)
+        {
+            _surfaceFlingerInstance = surfaceFlinger;
         }
     }
 }
