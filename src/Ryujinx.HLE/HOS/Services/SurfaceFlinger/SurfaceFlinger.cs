@@ -13,7 +13,7 @@ using System.Threading;
 
 namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 {   
-    public class SurfaceFlinger : IConsumerListener, IDisposable
+    class SurfaceFlinger : IConsumerListener, IDisposable
     {
         private const int BaseTargetFps = 60;
         
