@@ -81,10 +81,10 @@ namespace Ryujinx.HLE
             {
                 // 获取SurfaceFlinger实例
                 var surfaceFlinger = System.SurfaceFlinger;
-                if (surfaceFlinger != null)
+                if (surfaceFlinger != null && Configuration.SurfaceFlingerRegistry != null)
                 {
-                    // 注册到LibRyujinx
-                    LibRyujinx.LibRyujinx.SetSurfaceFlingerInstance(surfaceFlinger);
+                    // 通过接口注册到SurfaceFlingerRegistry
+                    Configuration.SurfaceFlingerRegistry.SetSurfaceFlingerInstance(surfaceFlinger);
                 }
             }
             catch (Exception ex)
