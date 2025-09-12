@@ -11,6 +11,8 @@ using Ryujinx.HLE.UI;
 using Ryujinx.Memory;
 using System;
 using System.IO;
+using Ryujinx.HLE.HOS.Services.SurfaceFlinger;
+using LibRyujinx;
 
 namespace Ryujinx.HLE
 {
@@ -67,6 +69,29 @@ namespace Ryujinx.HLE
             System.FsIntegrityCheckLevel            = Configuration.FsIntegrityCheckLevel;
             System.GlobalAccessLogMode              = Configuration.FsGlobalAccessLogMode;
 #pragma warning restore IDE0055
+
+            // 注册SurfaceFlinger实例到LibRyujinx
+            RegisterSurfaceFlingerInstance();
+        }
+
+        // 添加方法以注册SurfaceFlinger实例
+        private void RegisterSurfaceFlingerInstance()
+        {
+            try
+            {
+                // 获取SurfaceFlinger实例
+                var surfaceFlinger = System.SurfaceFlinger;
+                if (surfaceFlinger != null)
+                {
+                    // 注册到LibRyujinx
+                    LibRyujinx.LibRyujinx.SetSurfaceFlingerInstance(surfaceFlinger);
+                }
+            }
+            catch (Exception ex)
+            {
+                Ryujinx.Common.Logging.Logger.Error?.Print(Ryujinx.Common.Logging.LogClass.Application, 
+                    $"Failed to register SurfaceFlinger instance: {ex.Message}");
+            }
         }
 
         public bool LoadCart(string exeFsDir, string romFsFile = null)
