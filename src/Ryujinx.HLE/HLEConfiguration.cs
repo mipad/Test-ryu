@@ -174,6 +174,11 @@ namespace Ryujinx.HLE
         /// </summary>
         public Action RefreshInputConfig { internal get; set; }
 
+        /// <summary>
+        /// Registry for SurfaceFlinger instances.
+        /// </summary>
+        public Ryujinx.Core.ISurfaceFlingerRegistry SurfaceFlingerRegistry { get; set; }
+
         public HLEConfiguration(VirtualFileSystem virtualFileSystem,
                                 LibHacHorizonManager libHacHorizonManager,
                                 ContentManager contentManager,
