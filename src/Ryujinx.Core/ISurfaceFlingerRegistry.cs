@@ -7,5 +7,6 @@ namespace Ryujinx.Core
     {
         void RegisterTargetFpsUpdateCallback(Action callback);
         void UpdateSurfaceFlingerTargetFps();
+        void SetSurfaceFlingerInstance(SurfaceFlinger surfaceFlinger); // 添加这个方法
     }
 }
