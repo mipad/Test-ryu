@@ -665,6 +665,24 @@ namespace LibRyujinx
                 Logger.Error?.Print(LogClass.Application, $"Failed to set FPS scaling factor: {ex.Message}");
             }
         }
+
+        [UnmanagedCallersOnly(EntryPoint = "surfaceFlingerUpdateTargetFps")]
+        public static void JnaSurfaceFlingerUpdateTargetFps()
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: surfaceFlingerUpdateTargetFps");
+            try
+            {
+                // 获取SurfaceFlinger实例并更新目标FPS
+                if (SurfaceFlingerInstance != null)
+                {
+                    SurfaceFlingerInstance.UpdateTargetFps();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Failed to update SurfaceFlinger target FPS: {ex.Message}");
+            }
+        }
     }
 
     internal static partial class Logcat
