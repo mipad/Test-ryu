@@ -21,10 +21,19 @@ namespace LibRyujinx.NativeSample
         private bool _mousePressed;
         private nint _gamepadIdPtr;
         private string? _gamepadId;
+        private double _fpsScalingFactor = 1.0; // 添加FPS缩放因子字段
 
         public NativeWindow(NativeWindowSettings nativeWindowSettings) : base(nativeWindowSettings)
         {
             _isVulkan = true;
+        }
+
+        // 添加设置FPS缩放因子的方法
+        public void SetFpsScalingFactor(double factor)
+        {
+            _fpsScalingFactor = factor;
+            LibRyujinxInterop.SetFpsScalingFactor(factor);
+            LibRyujinxInterop.SurfaceFlingerUpdateTargetFps();
         }
 
         internal unsafe void Start(string gamePath)
@@ -80,6 +89,9 @@ namespace LibRyujinx.NativeSample
                 LibRyujinxInterop.SetRendererSize(Size.X, Size.Y);
                 Marshal.FreeHGlobal(path);
             }
+
+            // 初始化FPS缩放因子
+            LibRyujinxInterop.SetFpsScalingFactor(_fpsScalingFactor);
 
             _gamepadIdPtr = LibRyujinxInterop.ConnectGamepad(0);
             _gamepadId = Marshal.PtrToStringAnsi(_gamepadIdPtr);
