@@ -29,12 +29,12 @@ namespace Ryujinx.HLE
         {
             get => System?.TickSource?.TickScalar ?? ITickSource.RealityTickScalar;
             set
-        {
-            if (System?.TickSource != null)
             {
-                System.TickSource.TickScalar = value;
+                if (System?.TickSource != null)
+                {
+                    System.TickSource.TickScalar = value;
+                }
             }
-        }
         }
 
         public ProcessLoader Processes { get; }
@@ -44,7 +44,7 @@ namespace Ryujinx.HLE
         public IHostUIHandler UIHandler { get; }
 
         public bool EnableDeviceVsync { get; set; } = true;
-        public double TargetVSyncInterval { get; set; } = 16.666;
+        public double TargetVSyncInterval { get; set; } = 1000.0 / 60.0; // 改为毫秒表示，标准的60Hz VSync间隔
 
         public bool IsFrameAvailable => Gpu.Window.IsFrameAvailable;
 
@@ -79,18 +79,8 @@ namespace Ryujinx.HLE
             EnableDeviceVsync                       = Configuration.EnableVsync;
             TargetVSyncInterval                     = Configuration.TargetVSyncInterval;
             
-            // 根据 VSync 设置和间隔计算 TickScalar
-if (!EnableDeviceVsync || !Configuration.EnableVsync)
-{
-    // 如果设备或配置中禁用了 VSync，使用配置的加速倍率
-    TickScalar = Configuration.TickScalar; // 使用配置的加速倍率
-}
-else
-{
-    // 即使启用了 VSync，也允许使用配置的加速倍率，但限制最大值
-    long maxScalar = 2; // 例如，限制最大为 200%
-    TickScalar = Math.Min(Configuration.TickScalar, maxScalar);
-}
+            // 直接使用配置的TickScalar
+            TickScalar = Configuration.TickScalar;
             
             System.State.DockedMode                 = Configuration.EnableDockedMode;
             System.PerformanceState.PerformanceMode = System.State.DockedMode ? PerformanceMode.Boost : PerformanceMode.Default;
@@ -99,7 +89,7 @@ else
             System.GlobalAccessLogMode              = Configuration.FsGlobalAccessLogMode;
 #pragma warning restore IDE0055
 
-        Shared = this;
+            Shared = this;
         }
 
         public bool LoadCart(string exeFsDir, string romFsFile = null)
