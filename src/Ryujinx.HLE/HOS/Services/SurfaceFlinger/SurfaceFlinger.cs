@@ -17,7 +17,8 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 {   
     class SurfaceFlinger : IConsumerListener, IDisposable, ISurfaceFlinger // 实现 ISurfaceFlinger
     {
-        private const int BaseTargetFps = 60;
+        // 使用全局配置中的基础帧率
+        private int BaseTargetFps => Ryujinx.Core.GlobalConfig.BaseTargetFps;
         
         // 使用全局配置中的帧率缩放因子
         private int TargetFps => (int)(BaseTargetFps * Ryujinx.Core.GlobalConfig.FpsScalingFactor);
@@ -101,8 +102,12 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 // 设置需要重新计算的标志
                 _needsRecalculation = true;
                 
+                // 重置时间计数
+                _ticks = 0;
+                
                 // 唤醒合成线程
                 _event.Set();
+                _nextFrameEvent.Set();
             }
         }
 
@@ -352,7 +357,9 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
                     _device.System?.SignalVsync();
 
-                    _nextFrameEvent.WaitOne(17);
+                    // 使用动态计算的等待时间而不是固定值
+                    int waitTime = (int)(1000.0 / TargetFps);
+                    _nextFrameEvent.WaitOne(Math.Max(1, waitTime));
                     lastTicks = ticks;
                 }
                 else
