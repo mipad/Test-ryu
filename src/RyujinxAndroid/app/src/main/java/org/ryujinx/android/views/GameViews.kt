@@ -18,6 +18,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
@@ -211,7 +214,8 @@ class GameViews {
                             onDismissRequest = { showMore.value = false }) {
                             Surface(
                                 modifier = Modifier.padding(16.dp),
-                                shape = MaterialTheme.shapes.medium
+                                shape = MaterialTheme.shapes.medium,
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f) // 半透明背景
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Row(
@@ -276,20 +280,22 @@ class GameViews {
                                                 contentDescription = "Performance Settings"
                                             )
                                         }
-                                        // FPS缩放图标（使用文字代替）
+                                        // FPS缩放图标（使用新设计的FPS图标）
                                         IconButton(modifier = Modifier.padding(4.dp), onClick = {
                                             showMore.value = false
                                             showFpsScalingDialog.value = true
                                         }) {
-                                            Text(
-                                                text = "FPS",
-                                                color = Color.White,
+                                            Icon(
+                                                imageVector = Icons.fps(),
+                                                contentDescription = "FPS Scaling",
+                                                tint = Color.White,
                                                 modifier = Modifier
+                                                    .size(24.dp)
                                                     .background(
                                                         color = Color.Black.copy(alpha = 0.5f),
                                                         shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                                                     )
-                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                    .padding(4.dp)
                                             )
                                         }
                                     }
@@ -526,6 +532,37 @@ class GameViews {
             }
         }
 
+        // 圆形选择器组件
+        @Composable
+        fun CircleSelector(
+            checked: Boolean,
+            onCheckedChange: (Boolean) -> Unit,
+            modifier: Modifier = Modifier
+        ) {
+            Box(
+                modifier = modifier
+                    .size(24.dp)
+                    .clickable { onCheckedChange(!checked) }
+                    .border(
+                        width = 2.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (checked) {
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.primary,
+                                shape = CircleShape
+                            )
+                    )
+                }
+            }
+        }
+
         @Composable
         fun PerformanceSettingsDialog(
             showStats: androidx.compose.runtime.MutableState<Boolean>,
@@ -568,45 +605,42 @@ class GameViews {
                                 modifier = Modifier.weight(1f),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                // FIFO显示开关
+                                // FIFO显示开关 - 使用圆形选择器
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(text = "FIFO")
-                                    Switch(
+                                    CircleSelector(
                                         checked = showFifo.value,
-                                        onCheckedChange = { showFifo.value = it },
-                                        modifier = Modifier.size(width = 36.dp, height = 24.dp)
+                                        onCheckedChange = { showFifo.value = it }
                                     )
                                 }
                                 
-                                // FPS显示开关
+                                // FPS显示开关 - 使用圆形选择器
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(text = "FPS")
-                                    Switch(
+                                    CircleSelector(
                                         checked = showFps.value,
-                                        onCheckedChange = { showFps.value = it },
-                                        modifier = Modifier.size(width = 36.dp, height = 24.dp)
+                                        onCheckedChange = { showFps.value = it }
                                     )
                                 }
                                 
-                                // 内存显示开关
+                                // 内存显示开关 - 使用圆形选择器
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(text = "RAM")
-                                    Switch(
+                                    CircleSelector(
                                         checked = showRam.value,
-                                        onCheckedChange = { showRam.value = it },
-                                        modifier = Modifier.size(width = 36.dp, height = 24.dp)
+                                        onCheckedChange = { showRam.value = it }
                                     )
                                 }
                             }
@@ -616,31 +650,29 @@ class GameViews {
                                 modifier = Modifier.weight(1f),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                // 电池温度显示开关
+                                // 电池温度显示开关 - 使用圆形选择器
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(text = "Battery Temp")
-                                    Switch(
+                                    CircleSelector(
                                         checked = showBatteryTemperature.value,
-                                        onCheckedChange = { showBatteryTemperature.value = it },
-                                        modifier = Modifier.size(width = 36.dp, height = 24.dp)
+                                        onCheckedChange = { showBatteryTemperature.value = it }
                                     )
                                 }
                                 
-                                // 电池电量显示开关
+                                // 电池电量显示开关 - 使用圆形选择器
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(text = "Level")
-                                    Switch(
+                                    CircleSelector(
                                         checked = showBatteryLevel.value,
-                                        onCheckedChange = { showBatteryLevel.value = it },
-                                        modifier = Modifier.size(width = 36.dp, height = 24.dp)
+                                        onCheckedChange = { showBatteryLevel.value = it }
                                     )
                                 }
                             }
@@ -655,7 +687,7 @@ class GameViews {
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
                         )
                         
-                        // 全局显示/隐藏开关（单独一行）
+                        // 全局显示/隐藏开关（单独一行）- 使用圆形选择器
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -667,10 +699,9 @@ class GameViews {
                                 text = "All Stats",
                                 style = MaterialTheme.typography.bodyLarge
                             )
-                            Switch(
+                            CircleSelector(
                                 checked = showStats.value,
-                                onCheckedChange = { showStats.value = it },
-                                modifier = Modifier.size(width = 36.dp, height = 24.dp)
+                                onCheckedChange = { showStats.value = it }
                             )
                         }
                         
