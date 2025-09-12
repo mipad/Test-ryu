@@ -1,9 +1,8 @@
-// 在LibRyujinx项目中添加
 using Ryujinx.Core;
 
 namespace LibRyujinx
 {
-    public class LibRyujinxAdapter : ISurfaceFlingerRegistry
+    public class SurfaceFlingerRegistryAdapter : ISurfaceFlingerRegistry
     {
         public void SetSurfaceFlingerInstance(object surfaceFlinger)
         {
