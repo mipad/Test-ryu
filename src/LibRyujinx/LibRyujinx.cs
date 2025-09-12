@@ -334,7 +334,7 @@ namespace LibRyujinx
 
                         int assetOffset = reader.ReadInt32();
 
-                        if (Encoding.ASCII.GetString(Read(assetOffset, 4)) == "ASET")
+                        if (Encoding.ASCII.GetString(Read(assetOffset + 8, 0x10)) == "ASET")
                         {
                             byte[] iconSectionInfo = Read(assetOffset + 8, 0x10);
 
@@ -815,34 +815,39 @@ namespace LibRyujinx
                 renderer = new ThreadedRenderer(renderer);
             }
 
-            HLEConfiguration configuration = new HLEConfiguration(VirtualFileSystem,
-                                                                  LibHacHorizonManager,
-                                                                  ContentManager,
-                                                                  AccountManager,
-                                                                  UserChannelPersistence,
-                                                                  renderer,
-                                                                  LibRyujinx.AudioDriver, //Audio
-                                                                  MemoryConfiguration.MemoryConfiguration8GiB,
-                                                                  HostUiHandler,
-                                                                  systemLanguage,
-                                                                  regionCode,
-                                                                  enableVsync,
-                                                                  enableDockedMode,
-                                                                  enablePtc,
-                                                                  enableJitCacheEviction,
-                                                                  enableInternetAccess,
-                                                                  IntegrityCheckLevel.None,
-                                                                  System.IO.Compression.CompressionLevel.Fastest,
-                                                                  0,
-                                                                  timeZone,
-                                                                 // isHostMapped ? MemoryManagerMode.HostMappedUnsafe : MemoryManagerMode.SoftwarePageTable,
-                                                                  MemoryManagerMode.HostMappedUnsafe,
-                                                                  ignoreMissingServices,
-                                                                   LibRyujinx.GetAspectRatio(),  // 使用 GetAspectRatio 方法获取当前画面比例
-                                                                  100,
-                                                                  useHypervisor,
-                                                                  "",
-                                                                  Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled);
+            HLEConfiguration configuration = new HLEConfiguration(
+                VirtualFileSystem,
+                LibHacHorizonManager,
+                ContentManager,
+                AccountManager,
+                UserChannelPersistence,
+                renderer,
+                LibRyujinx.AudioDriver, //Audio
+                MemoryConfiguration.MemoryConfiguration8GiB,
+                HostUiHandler,
+                systemLanguage,
+                regionCode,
+                enableVsync,
+                enableDockedMode,
+                enablePtc,
+                enableJitCacheEviction,
+                enableInternetAccess,
+                IntegrityCheckLevel.None,
+                System.IO.Compression.CompressionLevel.Fastest,
+                0,
+                timeZone,
+                MemoryManagerMode.HostMappedUnsafe,
+                ignoreMissingServices,
+                LibRyujinx.GetAspectRatio(),  // 使用 GetAspectRatio 方法获取当前画面比例
+                100,
+                useHypervisor,
+                "",
+                Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled
+            )
+            {
+                // 设置 SurfaceFlingerRegistry
+                SurfaceFlingerRegistry = new SurfaceFlingerRegistryAdapter()
+            };
 
             EmulationContext = new Switch(configuration);
 
