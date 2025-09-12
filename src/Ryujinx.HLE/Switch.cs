@@ -1,3 +1,4 @@
+// Switch.cs
 using Ryujinx.Audio.Backends.CompatLayer;
 using Ryujinx.Audio.Integration;
 using Ryujinx.Common.Configuration;
@@ -11,7 +12,6 @@ using Ryujinx.HLE.UI;
 using Ryujinx.Memory;
 using System;
 using System.IO;
-using Ryujinx.HLE.HOS.Services.SurfaceFlinger;
 using Ryujinx.Core;
 
 namespace Ryujinx.HLE
@@ -79,8 +79,8 @@ namespace Ryujinx.HLE
         {
             try
             {
-                // 获取SurfaceFlinger实例
-                var surfaceFlinger = System.SurfaceFlinger;
+                // 获取SurfaceFlinger实例，它现在实现了ISurfaceFlinger接口
+                var surfaceFlinger = System.SurfaceFlinger as ISurfaceFlinger;
                 if (surfaceFlinger != null && Configuration.SurfaceFlingerRegistry != null)
                 {
                     // 通过接口注册到SurfaceFlingerRegistry
