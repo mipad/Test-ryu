@@ -79,6 +79,14 @@ namespace LibRyujinx.Sample
         // 添加设置跳过内存屏障的方法
         [DllImport(dll, EntryPoint = "setSkipMemoryBarriers")]
         internal extern static void SetSkipMemoryBarriers(bool skip);
+
+        // 添加设置FPS缩放因子的方法
+        [DllImport(dll, EntryPoint = "setFpsScalingFactor")]
+        internal extern static void SetFpsScalingFactor(double factor);
+
+        // 添加更新SurfaceFlinger目标FPS的方法
+        [DllImport(dll, EntryPoint = "surfaceFlingerUpdateTargetFps")]
+        internal extern static void SurfaceFlingerUpdateTargetFps();
     }
 
     public enum GraphicsBackend
