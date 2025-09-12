@@ -12,7 +12,6 @@ using Ryujinx.Memory;
 using System;
 using System.IO;
 using Ryujinx.HLE.HOS.Services.SurfaceFlinger;
-using LibRyujinx;
 
 namespace Ryujinx.HLE
 {
