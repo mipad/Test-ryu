@@ -334,7 +334,7 @@ namespace LibRyujinx
 
                         int assetOffset = reader.ReadInt32();
 
-                        if (Encoding.ASCII.GetString(Read(assetOffset + 8, 0x10)) == "ASET")
+                        if (Encoding.ASCII.GetString(Read(assetOffset, 4)) == "ASET")
                         {
                             byte[] iconSectionInfo = Read(assetOffset + 8, 0x10);
 
