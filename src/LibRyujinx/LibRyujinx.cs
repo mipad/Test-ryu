@@ -737,6 +737,12 @@ private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, Integri
             
             EnableFsIntegrityChecks = false;
             
+            // 添加 SurfaceFlingerRegistry 初始化
+            if (EmulationContext?.Configuration != null)
+            {
+                EmulationContext.Configuration.SurfaceFlingerRegistry = new Ryujinx.Core.SurfaceFlingerRegistry();
+            }
+
             _firmwareVersion = ContentManager.GetCurrentFirmwareVersion();
 
             if (_firmwareVersion != null)
