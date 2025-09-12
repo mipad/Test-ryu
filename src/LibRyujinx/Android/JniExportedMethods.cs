@@ -354,7 +354,7 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "loggingSetEnabled")]
         public static void JniSetLoggingEnabledNative(int logLevel, bool enabled)
         {
-            Logger.SetEnable(LogLevel)logLevel, enabled);
+            Logger.SetEnable((LogLevel)logLevel, enabled);
         }
 
         [UnmanagedCallersOnly(EntryPoint = "loggingEnabledGraphicsLog")]
