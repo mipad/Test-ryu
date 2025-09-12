@@ -79,6 +79,16 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             _composerThread.Start();
         }
 
+        // 添加公共方法来更新目标帧率
+        public void UpdateTargetFps()
+        {
+            lock (_lock)
+            {
+                // 重新计算目标帧率
+                UpdateSwapInterval(_swapInterval);
+            }
+        }
+
         private void UpdateSwapInterval(int swapInterval)
         {
             _swapInterval = swapInterval;
