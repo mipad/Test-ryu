@@ -1,10 +1,10 @@
-// SurfaceFlingerRegistry.cs
+// SurfaceFlingerRegistry.cs (在 Ryujinx.Core 中)
 namespace Ryujinx.Core
 {
     public class SurfaceFlingerRegistry : ISurfaceFlingerRegistry
     {
         private Action _targetFpsUpdateCallback;
-        private ISurfaceFlinger _surfaceFlingerInstance; // 使用接口类型
+        private ISurfaceFlinger _surfaceFlingerInstance;
 
         public void RegisterTargetFpsUpdateCallback(Action callback)
         {
