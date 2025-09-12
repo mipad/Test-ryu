@@ -42,6 +42,9 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
         private readonly object _lock = new();
 
+        // 添加标志来跟踪是否需要重新计算时间
+        private bool _needsRecalculation = false;
+
         public long RenderLayerId { get; private set; }
 
         private class Layer
@@ -94,6 +97,12 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             {
                 // 强制重新计算帧率，即使 swapInterval 没有改变
                 UpdateSwapInterval(_swapInterval);
+                
+                // 设置需要重新计算的标志
+                _needsRecalculation = true;
+                
+                // 唤醒合成线程
+                _event.Set();
             }
         }
 
@@ -324,6 +333,17 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
             while (_isRunning)
             {
+                // 检查是否需要重新计算时间
+                if (_needsRecalculation)
+                {
+                    lock (_lock)
+                    {
+                        _needsRecalculation = false;
+                        _ticks = 0; // 重置 ticks 计数
+                        lastTicks = PerformanceCounter.ElapsedTicks;
+                    }
+                }
+
                 long ticks = PerformanceCounter.ElapsedTicks;
 
                 if (_swapInterval == 0)
