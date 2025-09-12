@@ -96,6 +96,8 @@ interface RyujinxNativeJna : Library {
     fun setAntiAliasing(mode: Int)
     // 添加设置FPS缩放因子的方法
     fun setFpsScalingFactor(factor: Double)
+    // 添加更新SurfaceFlinger目标FPS的方法
+    fun surfaceFlingerUpdateTargetFps()
 }
 
 class RyujinxNative {
@@ -181,6 +183,12 @@ class RyujinxNative {
         @JvmStatic
         fun setFpsScalingFactor(factor: Double) {
             jnaInstance.setFpsScalingFactor(factor)
+        }
+
+        // 在 RyujinxNative 的 companion object 中添加
+        @JvmStatic
+        fun updateSurfaceFlingerTargetFps() {
+            jnaInstance.surfaceFlingerUpdateTargetFps()
         }
     }
 }
