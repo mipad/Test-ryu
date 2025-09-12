@@ -1,3 +1,4 @@
+// SurfaceFlinger.cs
 using Ryujinx.Common;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
@@ -10,10 +11,11 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
+using Ryujinx.Core; // 添加这个 using
 
 namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 {   
-    class SurfaceFlinger : IConsumerListener, IDisposable
+    class SurfaceFlinger : IConsumerListener, IDisposable, ISurfaceFlinger // 实现 ISurfaceFlinger
     {
         private const int BaseTargetFps = 60;
         
