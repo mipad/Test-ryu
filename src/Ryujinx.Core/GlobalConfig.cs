@@ -1,3 +1,4 @@
+// GlobalConfig.cs
 using System;
 
 namespace Ryujinx.Core
@@ -24,5 +25,7 @@ namespace Ryujinx.Core
                 }
             }
         }
+
+        public static ISurfaceFlingerRegistry SurfaceFlingerRegistry { get; set; }
     }
 }
