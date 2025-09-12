@@ -354,7 +354,7 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "loggingSetEnabled")]
         public static void JniSetLoggingEnabledNative(int logLevel, bool enabled)
         {
-            Logger.SetEnable((LogLevel)logLevel, enabled);
+            Logger.SetEnable(LogLevel)logLevel, enabled);
         }
 
         [UnmanagedCallersOnly(EntryPoint = "loggingEnabledGraphicsLog")]
@@ -650,37 +650,27 @@ namespace LibRyujinx
             }
         }
 
-        // 新增：设置FPS缩放因子的JNI方法
+        // 修改：设置FPS缩放因子的JNI方法
         [UnmanagedCallersOnly(EntryPoint = "setFpsScalingFactor")]
         public static void JnaSetFpsScalingFactor(double factor)
         {
             Logger.Trace?.Print(LogClass.Application, $"Jni Function Call: setFpsScalingFactor to {factor}");
             try
             {
+                // 设置 FPS 缩放因子
                 Ryujinx.Core.GlobalConfig.FpsScalingFactor = factor;
+                
+                // 更新 SurfaceFlinger 目标 FPS
+                if (SwitchDevice?.EmulationContext?.Configuration.SurfaceFlingerRegistry != null)
+                {
+                    SwitchDevice.EmulationContext.Configuration.SurfaceFlingerRegistry.UpdateSurfaceFlingerTargetFps();
+                }
+                
                 Logger.Info?.Print(LogClass.Application, $"FPS scaling factor set to: {factor}");
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Failed to set FPS scaling factor: {ex.Message}");
-            }
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "surfaceFlingerUpdateTargetFps")]
-        public static void JnaSurfaceFlingerUpdateTargetFps()
-        {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: surfaceFlingerUpdateTargetFps");
-            try
-            {
-                // 获取SurfaceFlinger实例并更新目标FPS
-                if (SurfaceFlingerInstance != null)
-                {
-                    SurfaceFlingerInstance.UpdateTargetFps();
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.Application, $"Failed to update SurfaceFlinger target FPS: {ex.Message}");
             }
         }
     }
