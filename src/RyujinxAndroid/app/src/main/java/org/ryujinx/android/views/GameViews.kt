@@ -127,6 +127,8 @@ class GameViews {
                 val showPerformanceSettings = remember {
                     mutableStateOf(false)
                 }
+                val showFpsScalingDialog = remember { mutableStateOf(false) }
+                val fpsScalingFactor = remember { mutableStateOf(1.0f) }
 
                 val showLoading = remember {
                     mutableStateOf(true)
@@ -274,6 +276,22 @@ class GameViews {
                                                 contentDescription = "Performance Settings"
                                             )
                                         }
+                                        // FPS缩放图标（使用文字代替）
+                                        IconButton(modifier = Modifier.padding(4.dp), onClick = {
+                                            showMore.value = false
+                                            showFpsScalingDialog.value = true
+                                        }) {
+                                            Text(
+                                                text = "FPS",
+                                                color = Color.White,
+                                                modifier = Modifier
+                                                    .background(
+                                                        color = Color.Black.copy(alpha = 0.5f),
+                                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                                    )
+                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -290,6 +308,18 @@ class GameViews {
                             showBatteryLevel = showBatteryLevel,
                             showFifo = showFifo,
                             onDismiss = { showPerformanceSettings.value = false }
+                        )
+                    }
+
+                    // FPS缩放对话框
+                    if (showFpsScalingDialog.value) {
+                        FpsScalingDialog(
+                            currentFactor = fpsScalingFactor.value,
+                            onFactorChanged = { newFactor ->
+                                fpsScalingFactor.value = newFactor
+                                RyujinxNative.setFpsScalingFactor(newFactor.toDouble())
+                            },
+                            onDismiss = { showFpsScalingDialog.value = false }
                         )
                     }
                 }
@@ -385,6 +415,85 @@ class GameViews {
                 }
 
                 mainViewModel.activity.uiHandler.Compose()
+            }
+        }
+
+        @Composable
+        fun FpsScalingDialog(
+            currentFactor: Float,
+            onFactorChanged: (Float) -> Unit,
+            onDismiss: () -> Unit
+        ) {
+            val sliderPosition = remember { mutableStateOf(currentFactor * 100) } // 转换为百分比
+            
+            BasicAlertDialog(onDismissRequest = onDismiss) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth(0.8f)
+                        .wrapContentHeight(),
+                    shape = MaterialTheme.shapes.large,
+                    tonalElevation = AlertDialogDefaults.TonalElevation,
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            text = "FPS Scaling",
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier
+                                .padding(bottom = 10.dp)
+                                .align(Alignment.CenterHorizontally)
+                        )
+                        
+                        Text(
+                            text = "${sliderPosition.value.roundToInt()}%",
+                            style = MaterialTheme.typography.headlineMedium,
+                            modifier = Modifier
+                                .padding(vertical = 16.dp)
+                                .align(Alignment.CenterHorizontally)
+                        )
+                        
+                        androidx.compose.material3.Slider(
+                            value = sliderPosition.value,
+                            onValueChange = {
+                                sliderPosition.value = it
+                                onFactorChanged(it / 100f)
+                            },
+                            valueRange = 50f..400f,
+                            steps = 350, // 350 steps for 50-400 range
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                        )
+                        
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                        ) {
+                            Text("50%", style = MaterialTheme.typography.bodySmall)
+                            Text("100%", style = MaterialTheme.typography.bodySmall)
+                            Text("200%", style = MaterialTheme.typography.bodySmall)
+                            Text("300%", style = MaterialTheme.typography.bodySmall)
+                            Text("400%", style = MaterialTheme.typography.bodySmall)
+                        }
+                        
+                        Spacer(modifier = Modifier.padding(8.dp))
+                        
+                        Row(
+                            horizontalArrangement = Arrangement.End,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Button(onClick = onDismiss) {
+                                Text(text = "Close")
+                            }
+                        }
+                    }
+                }
             }
         }
 
