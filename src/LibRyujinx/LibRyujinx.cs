@@ -1,3 +1,4 @@
+using Ryujinx.HLE.HOS.Services.SurfaceFlinger;
 using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE.HOS.Services.Account.Acc;
 using Ryujinx.HLE.HOS;
@@ -48,6 +49,9 @@ namespace LibRyujinx
         // 添加静态字段来存储画面比例
         private static AspectRatio _currentAspectRatio = AspectRatio.Stretched;
 
+        // 添加静态字段来存储SurfaceFlinger实例
+        public static SurfaceFlinger? SurfaceFlingerInstance { get; private set; }
+
         public static bool Initialize(string? basePath)
         {
             if (SwitchDevice != null)
@@ -97,6 +101,27 @@ namespace LibRyujinx
         public static AspectRatio GetAspectRatio()
         {
             return _currentAspectRatio;
+        }
+
+        // 添加设置SurfaceFlinger实例的方法
+        public static void SetSurfaceFlingerInstance(SurfaceFlinger surfaceFlinger)
+        {
+            SurfaceFlingerInstance = surfaceFlinger;
+            Logger.Info?.Print(LogClass.Emulation, "SurfaceFlinger instance set");
+        }
+
+        // 添加更新SurfaceFlinger目标FPS的方法
+        public static void UpdateSurfaceFlingerTargetFps()
+        {
+            if (SurfaceFlingerInstance != null)
+            {
+                SurfaceFlingerInstance.UpdateTargetFps();
+                Logger.Info?.Print(LogClass.Emulation, "SurfaceFlinger target FPS updated");
+            }
+            else
+            {
+                Logger.Warning?.Print(LogClass.Emulation, "SurfaceFlinger instance is null, cannot update target FPS");
+            }
         }
 
         public static void InitializeAudio()
@@ -334,7 +359,6 @@ namespace LibRyujinx
             }
             catch (IOException exception)
             {
-                Logger.Warning?.Print(LogClass.Application, exception.Message);
             }
 
             void ReadControlData(IFileSystem? controlFs, Span<byte> outProperty)
@@ -793,7 +817,7 @@ private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, Integri
                                                                   enableJitCacheEviction,
                                                                   enableInternetAccess,
                                                                   IntegrityCheckLevel.None,
-                                                                  0,
+                                                                  System.IO.Compression.CompressionLevel.Fastest,
                                                                   0,
                                                                   timeZone,
                                                                  // isHostMapped ? MemoryManagerMode.HostMappedUnsafe : MemoryManagerMode.SoftwarePageTable,
