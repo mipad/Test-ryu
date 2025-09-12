@@ -17,32 +17,8 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
     {
         private const int BaseTargetFps = 60;
         
-        // 添加帧率缩放因子字段和属性
-        private static double _fpsScalingFactor = 1.0;
-        private static readonly object _scalingLock = new();
-        
-        public static double FpsScalingFactor
-        {
-            get { lock(_scalingLock) return _fpsScalingFactor; }
-            set
-            {
-                lock(_scalingLock)
-                {
-                    if (value > 0 && value <= 4.0) // 限制在 0.1 到 4.0 之间 (10% 到 400%)
-                    {
-                        _fpsScalingFactor = value;
-                        Logger.Info?.Print(LogClass.SurfaceFlinger, $"FPS Scaling Factor set to: {value} ({value * 100}%)");
-                    }
-                    else
-                    {
-                        Logger.Warning?.Print(LogClass.SurfaceFlinger, $"Invalid FPS scaling factor {value}. Must be between 0.1 and 4.0.");
-                    }
-                }
-            }
-        }
-        
-        // 计算缩放后的目标帧率
-        private int TargetFps => (int)(BaseTargetFps * FpsScalingFactor);
+        // 使用全局配置中的帧率缩放因子
+        private int TargetFps => (int)(BaseTargetFps * Ryujinx.Core.GlobalConfig.FpsScalingFactor);
 
         private readonly Switch _device;
 
@@ -119,7 +95,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 _ticksPerFrame = Stopwatch.Frequency / TargetFps;
                 
                 Logger.Debug?.Print(LogClass.SurfaceFlinger, 
-                    $"Target FPS: {TargetFps} (Base: {BaseTargetFps} * Factor: {FpsScalingFactor})");
+                    $"Target FPS: {TargetFps} (Base: {BaseTargetFps} * Factor: {Ryujinx.Core.GlobalConfig.FpsScalingFactor})");
             }
         }
 
