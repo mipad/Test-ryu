@@ -1,6 +1,6 @@
 using System;
 
-namespace Ryujinx.Common.Configuration
+namespace Ryujinx.Core
 {
     public static class GlobalConfig
     {
