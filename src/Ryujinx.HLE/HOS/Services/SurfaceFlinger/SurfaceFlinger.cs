@@ -92,7 +92,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         {
             lock (_lock)
             {
-                // 重新计算目标帧率
+                // 强制重新计算帧率，即使 swapInterval 没有改变
                 UpdateSwapInterval(_swapInterval);
             }
         }
@@ -101,19 +101,17 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         {
             _swapInterval = swapInterval;
 
-            // If the swap interval is 0, Game VSync is disabled.
+            // 无论 swapInterval 是否为 0，都重新计算 ticksPerFrame
+            // 这样即使 Vsync 关闭，也能正确应用 FPS 缩放
+            _ticksPerFrame = Stopwatch.Frequency / TargetFps;
+            
+            Logger.Debug?.Print(LogClass.SurfaceFlinger, 
+                $"Target FPS: {TargetFps} (Base: {BaseTargetFps} * Factor: {Ryujinx.Core.GlobalConfig.FpsScalingFactor})");
+            
+            // 如果 swapInterval 为 0，确保下一帧事件被设置
             if (_swapInterval == 0)
             {
                 _nextFrameEvent.Set();
-                _ticksPerFrame = 1;
-            }
-            else
-            {
-                // 使用动态计算的 TargetFps 而不是硬编码的 60
-                _ticksPerFrame = Stopwatch.Frequency / TargetFps;
-                
-                Logger.Debug?.Print(LogClass.SurfaceFlinger, 
-                    $"Target FPS: {TargetFps} (Base: {BaseTargetFps} * Factor: {Ryujinx.Core.GlobalConfig.FpsScalingFactor})");
             }
         }
 
