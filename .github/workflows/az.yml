@@ -2,9 +2,9 @@ name: Android CI  Fix
 
 on:
   push:
-    branches: [ "加速帧" ]
+    branches: [ "加速帧fix" ]
   pull_request:
-    branches: [ "加速帧" ]
+    branches: [ "加速帧fix" ]
 
 jobs:
   build:
@@ -25,7 +25,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: 加速帧
+        ref: 加速帧fix
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
