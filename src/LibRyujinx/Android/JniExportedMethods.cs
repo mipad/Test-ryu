@@ -649,6 +649,22 @@ namespace LibRyujinx
                 Logger.Error?.Print(LogClass.Application, $"Failed to set anti-aliasing: {ex.Message}");
             }
         }
+
+        // 新增：设置FPS缩放因子的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "setFpsScalingFactor")]
+        public static void JnaSetFpsScalingFactor(double factor)
+        {
+            Logger.Trace?.Print(LogClass.Application, $"Jni Function Call: setFpsScalingFactor to {factor}");
+            try
+            {
+                Ryujinx.Core.GlobalConfig.FpsScalingFactor = factor;
+                Logger.Info?.Print(LogClass.Application, $"FPS scaling factor set to: {factor}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Failed to set FPS scaling factor: {ex.Message}");
+            }
+        }
     }
 
     internal static partial class Logcat
