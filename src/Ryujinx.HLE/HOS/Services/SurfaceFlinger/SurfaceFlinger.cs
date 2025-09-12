@@ -502,74 +502,115 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         }
 
         public static Format ConvertColorFormat(ColorFormat colorFormat)
-{
-    return colorFormat switch
-    {
-        ColorFormat.R32G32B32A32Float => Format.R32G32B32A32Float,
-        ColorFormat.R32G32B32A32Sint => Format.R32G32B32A32Sint,
-        ColorFormat.R32G32B32A32Uint => Format.R32G32B32A32Uint,
-        ColorFormat.R32G32B32X32Float => Format.R32G32B32A32Float, // X channel replaced with Alpha
-        ColorFormat.R32G32B32X32Sint => Format.R32G32B32A32Sint,   // X channel replaced with Alpha
-        ColorFormat.R32G32B32X32Uint => Format.R32G32B32A32Uint,   // X channel replaced with Alpha
-        ColorFormat.R16G16B16X16Unorm => Format.R16G16B16A16Unorm, // X channel replaced with Alpha
-        ColorFormat.R16G16B16X16Snorm => Format.R16G16B16A16Snorm, // X channel replaced with Alpha
-        ColorFormat.R16G16B16X16Sint => Format.R16G16B16A16Sint,   // X channel replaced with Alpha
-        ColorFormat.R16G16B16X16Uint => Format.R16G16B16A16Uint,   // X channel replaced with Alpha
-        ColorFormat.R16G16B16A16Float => Format.R16G16B16A16Float,
-        ColorFormat.R32G32Float => Format.R32G32Float,
-        ColorFormat.R32G32Sint => Format.R32G32Sint,
-        ColorFormat.R32G32Uint => Format.R32G32Uint,
-        ColorFormat.R16G16B16X16Float => Format.R16G16B16A16Float, // X channel replaced with Alpha
-        ColorFormat.B8G8R8A8Unorm => Format.B8G8R8A8Unorm,
-        ColorFormat.B8G8R8A8Srgb => Format.B8G8R8A8Srgb,
-        ColorFormat.R10G10B10A2Unorm => Format.R10G10B10A2Unorm,
-        ColorFormat.R10G10B10A2Uint => Format.R10G10B10A2Uint,
-        ColorFormat.R8G8B8A8Unorm => Format.R8G8B8A8Unorm,
-        ColorFormat.R8G8B8A8Srgb => Format.R8G8B8A8Srgb,
-        ColorFormat.R8G8B8X8Snorm => Format.R8G8B8A8Snorm,         // X channel replaced with Alpha
-        ColorFormat.R8G8B8X8Sint => Format.R8G8B8A8Sint,           // X channel replaced with Alpha
-        ColorFormat.R8G8B8X8Uint => Format.R8G8B8A8Uint,           // X channel replaced with Alpha
-        ColorFormat.R16G16Unorm => Format.R16G16Unorm,
-        ColorFormat.R16G16Snorm => Format.R16G16Snorm,
-        ColorFormat.R16G16Sint => Format.R16G16Sint,
-        ColorFormat.R16G16Uint => Format.R16G16Uint,
-        ColorFormat.R16G16Float => Format.R16G16Float,
-        ColorFormat.B10G10R10A2Unorm => Format.B10G10R10A2Unorm,
-        ColorFormat.R11G11B10Float => Format.R11G11B10Float,
-        ColorFormat.R32Sint => Format.R32Sint,
-        ColorFormat.R32Uint => Format.R32Uint,
-        ColorFormat.R32Float => Format.R32Float,
-        ColorFormat.B8G8R8X8Unorm => Format.B8G8R8A8Unorm,         // X channel replaced with Alpha
-        ColorFormat.B8G8R8X8Srgb => Format.B8G8R8A8Srgb,           // X channel replaced with Alpha
-        ColorFormat.B5G6R5Unorm => Format.B5G6R5Unorm,
-        ColorFormat.B5G5R5A1Unorm => Format.B5G5R5A1Unorm,
-        ColorFormat.R8G8Unorm => Format.R8G8Unorm,
-        ColorFormat.R8G8Snorm => Format.R8G8Snorm,
-        ColorFormat.R8G8Sint => Format.R8G8Sint,
-        ColorFormat.R8G8Uint => Format.R8G8Uint,
-        ColorFormat.R16Unorm => Format.R16Unorm,
-        ColorFormat.R16Snorm => Format.R16Snorm,
-        ColorFormat.R16Sint => Format.R16Sint,
-        ColorFormat.R16Uint => Format.R16Uint,
-        ColorFormat.R16Float => Format.R16Float,
-        ColorFormat.R8Unorm => Format.R8Unorm,
-        ColorFormat.R8Snorm => Format.R8Snorm,
-        ColorFormat.R8Sint => Format.R8Sint,
-        ColorFormat.R8Uint => Format.R8Uint,
-        ColorFormat.B5G5R5X1Unorm => Format.B5G5R5A1Unorm,         // X channel replaced with Alpha
-        ColorFormat.R8G8B8X8Unorm => Format.R8G8B8A8Unorm,         // X channel replaced with Alpha
-        ColorFormat.R8G8B8X8Srgb => Format.R8G8B8A8Srgb,           // X channel replaced with Alpha
-        
-        // 处理旧的格式名称（兼容性）
-        ColorFormat.A8B8G8R8 => Format.R8G8B8A8Unorm,
-        ColorFormat.X8B8G8R8 => Format.R8G8B8A8Unorm,
-        ColorFormat.R5G6B5 => Format.B5G6R5Unorm,
-        ColorFormat.A8R8G8B8 => Format.B8G8R8A8Unorm,
-        ColorFormat.A4B4G4R4 => Format.R4G4B4A4Unorm,
-        
-        _ => throw new NotImplementedException($"Color Format \"{colorFormat}\" not implemented!"),
-    };
-}
+        {
+            // 提取颜色空间、分量顺序、分量大小和数据类型信息
+            ColorSpace colorSpace = (ColorSpace)((ulong)colorFormat & 0xFF);
+            ColorSwizzle swizzle = (ColorSwizzle)((ulong)colorFormat & 0xFF00);
+            ColorComponent component = (ColorComponent)((ulong)colorFormat & 0xFF0000);
+            ColorDataType dataType = (ColorDataType)((ulong)colorFormat & 0xFF000000);
+            
+            // 处理最常见的格式
+            switch (colorFormat)
+            {
+                case ColorFormat.A8B8G8R8:
+                case ColorFormat.X8B8G8R8:
+                    return Format.R8G8B8A8Unorm;
+                    
+                case ColorFormat.R5G6B5:
+                    return Format.B5G6R5Unorm;
+                    
+                case ColorFormat.A8R8G8B8:
+                    return Format.B8G8R8A8Unorm;
+                    
+                case ColorFormat.A4B4G4R4:
+                    return Format.R4G4B4A4Unorm;
+                    
+                case ColorFormat.R8G8B8A8:
+                    return Format.R8G8B8A8Unorm;
+                    
+                case ColorFormat.B8G8R8A8:
+                    return Format.B8G8R8A8Unorm;
+                    
+                case ColorFormat.R10G10B10A2:
+                    return Format.R10G10B10A2Unorm;
+                    
+                case ColorFormat.B10G10R10A2:
+                    return Format.B10G10R10A2Unorm;
+                    
+                case ColorFormat.R16G16B16A16Float:
+                    return Format.R16G16B16A16Float;
+                    
+                case ColorFormat.R32G32B32A32Float:
+                    return Format.R32G32B32A32Float;
+                    
+                case ColorFormat.R32G32Float:
+                    return Format.R32G32Float;
+                    
+                case ColorFormat.R16Float:
+                    return Format.R16Float;
+                    
+                case ColorFormat.R32Float:
+                    return Format.R32Float;
+                    
+                case ColorFormat.R8Unorm:
+                    return Format.R8Unorm;
+                    
+                case ColorFormat.R8G8Unorm:
+                    return Format.R8G8Unorm;
+                    
+                case ColorFormat.R16Unorm:
+                    return Format.R16Unorm;
+                    
+                case ColorFormat.R16G16Unorm:
+                    return Format.R16G16Unorm;
+                    
+                // 添加更多格式转换...
+                
+                default:
+                    // 对于未明确处理的格式，尝试基于组件信息进行转换
+                    return ConvertColorFormatFromComponents(colorSpace, swizzle, component, dataType);
+            }
+        }
+
+        private static Format ConvertColorFormatFromComponents(ColorSpace colorSpace, ColorSwizzle swizzle, ColorComponent component, ColorDataType dataType)
+        {
+            // 这是一个简化的实现，实际中可能需要更复杂的逻辑
+            // 这里只处理一些常见情况
+            
+            // 检查组件大小和数量
+            if (component == ColorComponent.X8Y8Z8W8)
+            {
+                if (swizzle == ColorSwizzle.WZYX) // ABGR顺序
+                    return Format.R8G8B8A8Unorm;
+                else if (swizzle == ColorSwizzle.XYZW) // RGBA顺序
+                    return Format.R8G8B8A8Unorm;
+                else if (swizzle == ColorSwizzle.ZYXW) // BGRA顺序
+                    return Format.B8G8R8A8Unorm;
+            }
+            else if (component == ColorComponent.X5Y6Z5)
+            {
+                return Format.B5G6R5Unorm;
+            }
+            else if (component == ColorComponent.X4Y4Z4W4)
+            {
+                return Format.R4G4B4A4Unorm;
+            }
+            else if (component == ColorComponent.X16Y16Z16W16)
+            {
+                if (dataType == ColorDataType.Float)
+                    return Format.R16G16B16A16Float;
+                else
+                    return Format.R16G16B16A16Unorm;
+            }
+            else if (component == ColorComponent.X32Y32Z32W32)
+            {
+                if (dataType == ColorDataType.Float)
+                    return Format.R32G32B32A32Float;
+            }
+            
+            // 默认抛出异常
+            throw new NotImplementedException($"Color Format with components (Space: {colorSpace}, Swizzle: {swizzle}, Component: {component}, DataType: {dataType}) not implemented!");
+        }
 
         public void Dispose()
         {
