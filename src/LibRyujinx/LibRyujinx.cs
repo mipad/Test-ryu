@@ -1,4 +1,3 @@
-using Ryujinx.HLE.HOS.Services.SurfaceFlinger;
 using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE.HOS.Services.Account.Acc;
 using Ryujinx.HLE.HOS;
@@ -36,7 +35,6 @@ using System.Collections.Generic;
 using System.Text;
 using Ryujinx.HLE.UI;
 using LibRyujinx.Android;
-using Ryujinx.Core;
 
 namespace LibRyujinx
 {
@@ -49,9 +47,6 @@ namespace LibRyujinx
 
         // 添加静态字段来存储画面比例
         private static AspectRatio _currentAspectRatio = AspectRatio.Stretched;
-
-        // 添加静态字段来存储SurfaceFlinger实例
-        public static SurfaceFlinger? SurfaceFlingerInstance { get; private set; }
 
         public static bool Initialize(string? basePath)
         {
@@ -104,42 +99,6 @@ namespace LibRyujinx
             return _currentAspectRatio;
         }
 
-        // 添加设置SurfaceFlinger实例的方法
-        public static void SetSurfaceFlingerInstance(SurfaceFlinger surfaceFlinger)
-        {
-            SurfaceFlingerInstance = surfaceFlinger;
-            Logger.Info?.Print(LogClass.Emulation, "SurfaceFlinger instance set");
-        }
-
-        // 添加更新SurfaceFlinger目标FPS的方法
-        public static void UpdateSurfaceFlingerTargetFps()
-        {
-            if (SurfaceFlingerInstance != null)
-            {
-                SurfaceFlingerInstance.UpdateTargetFps();
-                Logger.Info?.Print(LogClass.Emulation, "SurfaceFlinger target FPS updated");
-            }
-            else
-            {
-                Logger.Warning?.Print(LogClass.Emulation, "SurfaceFlinger instance is null, cannot update target FPS");
-            }
-        }
-
-        // 添加设置帧率缩放因子的方法
-        public static void SetFpsScalingFactor(double scalingFactor)
-        {
-            // 确保缩放因子在合理范围内
-            scalingFactor = Math.Max(0.1, Math.Min(5.0, scalingFactor));
-            
-            // 设置全局配置中的帧率缩放因子
-            GlobalConfig.FpsScalingFactor = scalingFactor;
-            
-            // 更新 SurfaceFlinger 的目标 FPS
-            UpdateSurfaceFlingerTargetFps();
-            
-            Logger.Info?.Print(LogClass.Application, $"FPS scaling factor set to: {scalingFactor}");
-        }
-
         public static void InitializeAudio()
         {
             AudioDriver = new SDL2HardwareDeviceDriver();
@@ -159,6 +118,7 @@ namespace LibRyujinx
                 GameTime = context.Statistics.GetGameFrameTime()
             };
         }
+
 
         public static GameInfo? GetGameInfo(string? file)
         {
@@ -374,6 +334,7 @@ namespace LibRyujinx
             }
             catch (IOException exception)
             {
+                Logger.Warning?.Print(LogClass.Application, exception.Message);
             }
 
             void ReadControlData(IFileSystem? controlFs, Span<byte> outProperty)
@@ -636,50 +597,50 @@ namespace LibRyujinx
         }
 
         public static string GetDlcTitleId(string path, string ncaPath)
+{
+    if (File.Exists(path))
+    {
+        using FileStream containerFile = File.OpenRead(path);
+
+        PartitionFileSystem partitionFileSystem = new();
+        partitionFileSystem.Initialize(containerFile.AsStorage()).ThrowIfFailure();
+
+        SwitchDevice.VirtualFileSystem.ImportTickets(partitionFileSystem);
+
+        using UniqueRef<IFile> ncaFile = new();
+
+        partitionFileSystem.OpenFile(ref ncaFile.Ref, ncaPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
+
+        // 修改：使用条件性完整性检查
+        IntegrityCheckLevel checkLevel = SwitchDevice.EnableFsIntegrityChecks ? 
+            IntegrityCheckLevel.ErrorOnInvalid : IntegrityCheckLevel.None;
+        
+        Nca nca = TryOpenNca(ncaFile.Get.AsStorage(), ncaPath, checkLevel);
+        if (nca != null)
         {
-            if (File.Exists(path))
-            {
-                using FileStream containerFile = File.OpenRead(path);
-
-                PartitionFileSystem partitionFileSystem = new();
-                partitionFileSystem.Initialize(containerFile.AsStorage()).ThrowIfFailure();
-
-                SwitchDevice.VirtualFileSystem.ImportTickets(partitionFileSystem);
-
-                using UniqueRef<IFile> ncaFile = new();
-
-                partitionFileSystem.OpenFile(ref ncaFile.Ref, ncaPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
-
-                // 修改：使用条件性完整性检查
-                IntegrityCheckLevel checkLevel = SwitchDevice.EnableFsIntegrityChecks ? 
-                    IntegrityCheckLevel.ErrorOnInvalid : IntegrityCheckLevel.None;
-                
-                Nca nca = TryOpenNca(ncaFile.Get.AsStorage(), ncaPath, checkLevel);
-                if (nca != null)
-                {
-                    return nca.Header.TitleId.ToString("X16");
-                }
-            }
-            return string.Empty;
+            return nca.Header.TitleId.ToString("X16");
         }
+    }
+    return string.Empty;
+}
 
-        // 修改 TryOpenNca 方法以接受完整性检查参数
-        private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, IntegrityCheckLevel checkLevel = IntegrityCheckLevel.None)
-        {
-            try
-            {
-                var nca = new Nca(SwitchDevice.VirtualFileSystem.KeySet, ncaStorage);
-                // 如果需要，可以在这里打开文件系统进行验证
-                // nca.OpenFileSystem(NcaSectionType.Data, checkLevel);
-                return nca;
-            }
-            catch (Exception ex)
-            {
-                // 添加详细的错误日志
-                Logger.Error?.Print(LogClass.Application, $"Failed to open NCA: {ex.Message}");
-            }
-            return null;
-        }
+// 修改 TryOpenNca 方法以接受完整性检查参数
+private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, IntegrityCheckLevel checkLevel = IntegrityCheckLevel.None)
+{
+    try
+    {
+        var nca = new Nca(SwitchDevice.VirtualFileSystem.KeySet, ncaStorage);
+        // 如果需要，可以在这里打开文件系统进行验证
+        // nca.OpenFileSystem(NcaSectionType.Data, checkLevel);
+        return nca;
+    }
+    catch (Exception ex)
+    {
+        // 添加详细的错误日志
+        Logger.Error?.Print(LogClass.Application, $"Failed to open NCA: {ex.Message}");
+    }
+    return null;
+}
 
         public static List<string> GetDlcContentList(string path, ulong titleId)
         {
@@ -815,39 +776,34 @@ namespace LibRyujinx
                 renderer = new ThreadedRenderer(renderer);
             }
 
-            HLEConfiguration configuration = new HLEConfiguration(
-                VirtualFileSystem,
-                LibHacHorizonManager,
-                ContentManager,
-                AccountManager,
-                UserChannelPersistence,
-                renderer,
-                LibRyujinx.AudioDriver, //Audio
-                MemoryConfiguration.MemoryConfiguration8GiB,
-                HostUiHandler,
-                systemLanguage,
-                regionCode,
-                enableVsync,
-                enableDockedMode,
-                enablePtc,
-                enableJitCacheEviction,
-                enableInternetAccess,
-                IntegrityCheckLevel.None,
-                System.IO.Compression.CompressionLevel.Fastest,
-                0,
-                timeZone,
-                MemoryManagerMode.HostMappedUnsafe,
-                ignoreMissingServices,
-                LibRyujinx.GetAspectRatio(),  // 使用 GetAspectRatio 方法获取当前画面比例
-                100,
-                useHypervisor,
-                "",
-                Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled
-            )
-            {
-                // 设置 SurfaceFlingerRegistry
-                SurfaceFlingerRegistry = new SurfaceFlingerRegistryAdapter()
-            };
+            HLEConfiguration configuration = new HLEConfiguration(VirtualFileSystem,
+                                                                  LibHacHorizonManager,
+                                                                  ContentManager,
+                                                                  AccountManager,
+                                                                  UserChannelPersistence,
+                                                                  renderer,
+                                                                  LibRyujinx.AudioDriver, //Audio
+                                                                  MemoryConfiguration.MemoryConfiguration8GiB,
+                                                                  HostUiHandler,
+                                                                  systemLanguage,
+                                                                  regionCode,
+                                                                  enableVsync,
+                                                                  enableDockedMode,
+                                                                  enablePtc,
+                                                                  enableJitCacheEviction,
+                                                                  enableInternetAccess,
+                                                                  IntegrityCheckLevel.None,
+                                                                  0,
+                                                                  0,
+                                                                  timeZone,
+                                                                 // isHostMapped ? MemoryManagerMode.HostMappedUnsafe : MemoryManagerMode.SoftwarePageTable,
+                                                                  MemoryManagerMode.HostMappedUnsafe,
+                                                                  ignoreMissingServices,
+                                                                   LibRyujinx.GetAspectRatio(),  // 使用 GetAspectRatio 方法获取当前画面比例
+                                                                  100,
+                                                                  useHypervisor,
+                                                                  "",
+                                                                  Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled);
 
             EmulationContext = new Switch(configuration);
 
