@@ -318,6 +318,8 @@ class GameViews {
                             onFactorChanged = { newFactor ->
                                 fpsScalingFactor.value = newFactor
                                 RyujinxNative.setFpsScalingFactor(newFactor.toDouble())
+                                // 强制更新SurfaceFlinger的目标帧率
+                                RyujinxNative.updateSurfaceFlingerTargetFps()
                             },
                             onDismiss = { showFpsScalingDialog.value = false }
                         )
@@ -427,69 +429,96 @@ class GameViews {
             val sliderPosition = remember { mutableStateOf(currentFactor * 100) } // 转换为百分比
             
             BasicAlertDialog(onDismissRequest = onDismiss) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth(0.8f)
-                        .wrapContentHeight(),
-                    shape = MaterialTheme.shapes.large,
-                    tonalElevation = AlertDialogDefaults.TonalElevation,
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-                ) {
-                    Column(
+                // 透明背景的对话框
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    // 半透明背景
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.3f))
+                    )
+                    
+                    // 对话框内容
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth(0.8f)
+                            .wrapContentHeight(),
+                        shape = MaterialTheme.shapes.large,
+                        tonalElevation = AlertDialogDefaults.TonalElevation,
+                        color = Color.Transparent // 完全透明
                     ) {
-                        Text(
-                            text = "FPS Scaling",
-                            style = MaterialTheme.typography.headlineSmall,
-                            modifier = Modifier
-                                .padding(bottom = 10.dp)
-                                .align(Alignment.CenterHorizontally)
-                        )
-                        
-                        Text(
-                            text = "${sliderPosition.value.roundToInt()}%",
-                            style = MaterialTheme.typography.headlineMedium,
-                            modifier = Modifier
-                                .padding(vertical = 16.dp)
-                                .align(Alignment.CenterHorizontally)
-                        )
-                        
-                        androidx.compose.material3.Slider(
-                            value = sliderPosition.value,
-                            onValueChange = {
-                                sliderPosition.value = it
-                                onFactorChanged(it / 100f)
-                            },
-                            valueRange = 50f..400f,
-                            steps = 350, // 350 steps for 50-400 range
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp)
-                        )
-                        
-                        Row(
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp)
+                                .background(
+                                    color = Color.Black.copy(alpha = 0.8f), // 半透明黑色背景
+                                    shape = MaterialTheme.shapes.large
+                                )
+                                .padding(16.dp)
                         ) {
-                            Text("50%", style = MaterialTheme.typography.bodySmall)
-                            Text("100%", style = MaterialTheme.typography.bodySmall)
-                            Text("200%", style = MaterialTheme.typography.bodySmall)
-                            Text("300%", style = MaterialTheme.typography.bodySmall)
-                            Text("400%", style = MaterialTheme.typography.bodySmall)
-                        }
-                        
-                        Spacer(modifier = Modifier.padding(8.dp))
-                        
-                        Row(
-                            horizontalArrangement = Arrangement.End,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Button(onClick = onDismiss) {
-                                Text(text = "Close")
+                            Text(
+                                text = "FPS Scaling",
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = Color.White,
+                                modifier = Modifier
+                                    .padding(bottom = 10.dp)
+                                    .align(Alignment.CenterHorizontally)
+                            )
+                            
+                            Text(
+                                text = "${sliderPosition.value.roundToInt()}%",
+                                style = MaterialTheme.typography.headlineMedium,
+                                color = Color.White,
+                                modifier = Modifier
+                                    .padding(vertical = 16.dp)
+                                    .align(Alignment.CenterHorizontally)
+                            )
+                            
+                            androidx.compose.material3.Slider(
+                                value = sliderPosition.value,
+                                onValueChange = {
+                                    sliderPosition.value = it
+                                    onFactorChanged(it / 100f)
+                                },
+                                valueRange = 50f..400f,
+                                steps = 350, // 350 steps for 50-400 range
+                                colors = androidx.compose.material3.SliderDefaults.colors(
+                                    thumbColor = MaterialTheme.colorScheme.primary,
+                                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                                    inactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                            )
+                            
+                            Row(
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp)
+                            ) {
+                                Text("50%", style = MaterialTheme.typography.bodySmall.copy(color = Color.White))
+                                Text("100%", style = MaterialTheme.typography.bodySmall.copy(color = Color.White))
+                                Text("200%", style = MaterialTheme.typography.bodySmall.copy(color = Color.White))
+                                Text("300%", style = MaterialTheme.typography.bodySmall.copy(color = Color.White))
+                                Text("400%", style = MaterialTheme.typography.bodySmall.copy(color = Color.White))
+                            }
+                            
+                            Spacer(modifier = Modifier.padding(8.dp))
+                            
+                            Row(
+                                horizontalArrangement = Arrangement.End,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Button(
+                                    onClick = onDismiss,
+                                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                                    )
+                                ) {
+                                    Text(text = "Close", color = Color.White)
+                                }
                             }
                         }
                     }
@@ -650,7 +679,7 @@ class GameViews {
                         Row(
                             horizontalArrangement = Arrangement.End,
                             modifier = Modifier.fillMaxWidth()
-                        ) {
+                            ) {
                             Button(
                                 onClick = onDismiss
                             ) {
