@@ -15,7 +15,34 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 {
     class SurfaceFlinger : IConsumerListener, IDisposable
     {
-        private const int TargetFps = 60;
+        private const int BaseTargetFps = 60;
+        
+        // 添加帧率缩放因子字段和属性
+        private static double _fpsScalingFactor = 1.0;
+        private static readonly object _scalingLock = new();
+        
+        public static double FpsScalingFactor
+        {
+            get { lock(_scalingLock) return _fpsScalingFactor; }
+            set
+            {
+                lock(_scalingLock)
+                {
+                    if (value > 0 && value <= 4.0) // 限制在 0.1 到 4.0 之间 (10% 到 400%)
+                    {
+                        _fpsScalingFactor = value;
+                        Logger.Info?.Print(LogClass.SurfaceFlinger, $"FPS Scaling Factor set to: {value} ({value * 100}%)");
+                    }
+                    else
+                    {
+                        Logger.Warning?.Print(LogClass.SurfaceFlinger, $"Invalid FPS scaling factor {value}. Must be between 0.1 and 4.0.");
+                    }
+                }
+            }
+        }
+        
+        // 计算缩放后的目标帧率
+        private int TargetFps => (int)(BaseTargetFps * FpsScalingFactor);
 
         private readonly Switch _device;
 
@@ -88,7 +115,11 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             }
             else
             {
+                // 使用动态计算的 TargetFps 而不是硬编码的 60
                 _ticksPerFrame = Stopwatch.Frequency / TargetFps;
+                
+                Logger.Debug?.Print(LogClass.SurfaceFlinger, 
+                    $"Target FPS: {TargetFps} (Base: {BaseTargetFps} * Factor: {FpsScalingFactor})");
             }
         }
 
