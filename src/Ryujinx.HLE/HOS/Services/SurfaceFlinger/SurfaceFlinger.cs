@@ -96,6 +96,9 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         {
             lock (_lock)
             {
+                // 保存当前的 Vsync 状态
+                bool wasVsyncEnabled = _device.EnableDeviceVsync;
+                
                 // 强制重新计算帧率，即使 swapInterval 没有改变
                 UpdateSwapInterval(_swapInterval);
                 
@@ -104,6 +107,24 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 
                 // 重置时间计数
                 _ticks = 0;
+                
+                // 如果 Vsync 原本是开启的，先关闭再开启
+                if (wasVsyncEnabled)
+                {
+                    // 先关闭 Vsync
+                    _device.EnableDeviceVsync = false;
+                    UpdateSwapInterval(0);
+                    
+                    // 再开启 Vsync
+                    _device.EnableDeviceVsync = true;
+                    UpdateSwapInterval(1);
+                }
+                else
+                {
+                    // 如果 Vsync 原本是关闭的，直接开启
+                    _device.EnableDeviceVsync = true;
+                    UpdateSwapInterval(1);
+                }
                 
                 // 唤醒合成线程
                 _event.Set();
@@ -499,7 +520,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 frameBufferAddress,
                 frameBufferWidth,
                 frameBufferHeight,
-                0,
+                item.Transform.ToGAL(),
                 false,
                 gobBlocksInY,
                 format,
