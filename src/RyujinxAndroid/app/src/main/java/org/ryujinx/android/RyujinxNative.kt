@@ -94,6 +94,8 @@ interface RyujinxNativeJna : Library {
     fun setScalingFilterLevel(level: Int)
     // 添加设置抗锯齿的方法
     fun setAntiAliasing(mode: Int)
+    // 添加设置FPS缩放因子的方法
+    fun setFpsScalingFactor(factor: Double)
 }
 
 class RyujinxNative {
@@ -173,6 +175,12 @@ class RyujinxNative {
         @JvmStatic
         fun setAntiAliasing(mode: Int) {
             jnaInstance.setAntiAliasing(mode)
+        }
+
+        // 添加设置FPS缩放因子的静态方法
+        @JvmStatic
+        fun setFpsScalingFactor(factor: Double) {
+            jnaInstance.setFpsScalingFactor(factor)
         }
     }
 }
