@@ -502,17 +502,74 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         }
 
         public static Format ConvertColorFormat(ColorFormat colorFormat)
-        {
-            return colorFormat switch
-            {
-                ColorFormat.A8B8G8R8 => Format.R8G8B8A8Unorm,
-                ColorFormat.X8B8G8R8 => Format.R8G8B8A8Unorm,
-                ColorFormat.R5G6B5 => Format.B5G6R5Unorm,
-                ColorFormat.A8R8G8B8 => Format.B8G8R8A8Unorm,
-                ColorFormat.A4B4G4R4 => Format.R4G4B4A4Unorm,
-                _ => throw new NotImplementedException($"Color Format \"{colorFormat}\" not implemented!"),
-            };
-        }
+{
+    return colorFormat switch
+    {
+        ColorFormat.R32G32B32A32Float => Format.R32G32B32A32Float,
+        ColorFormat.R32G32B32A32Sint => Format.R32G32B32A32Sint,
+        ColorFormat.R32G32B32A32Uint => Format.R32G32B32A32Uint,
+        ColorFormat.R32G32B32X32Float => Format.R32G32B32A32Float, // X channel replaced with Alpha
+        ColorFormat.R32G32B32X32Sint => Format.R32G32B32A32Sint,   // X channel replaced with Alpha
+        ColorFormat.R32G32B32X32Uint => Format.R32G32B32A32Uint,   // X channel replaced with Alpha
+        ColorFormat.R16G16B16X16Unorm => Format.R16G16B16A16Unorm, // X channel replaced with Alpha
+        ColorFormat.R16G16B16X16Snorm => Format.R16G16B16A16Snorm, // X channel replaced with Alpha
+        ColorFormat.R16G16B16X16Sint => Format.R16G16B16A16Sint,   // X channel replaced with Alpha
+        ColorFormat.R16G16B16X16Uint => Format.R16G16B16A16Uint,   // X channel replaced with Alpha
+        ColorFormat.R16G16B16A16Float => Format.R16G16B16A16Float,
+        ColorFormat.R32G32Float => Format.R32G32Float,
+        ColorFormat.R32G32Sint => Format.R32G32Sint,
+        ColorFormat.R32G32Uint => Format.R32G32Uint,
+        ColorFormat.R16G16B16X16Float => Format.R16G16B16A16Float, // X channel replaced with Alpha
+        ColorFormat.B8G8R8A8Unorm => Format.B8G8R8A8Unorm,
+        ColorFormat.B8G8R8A8Srgb => Format.B8G8R8A8Srgb,
+        ColorFormat.R10G10B10A2Unorm => Format.R10G10B10A2Unorm,
+        ColorFormat.R10G10B10A2Uint => Format.R10G10B10A2Uint,
+        ColorFormat.R8G8B8A8Unorm => Format.R8G8B8A8Unorm,
+        ColorFormat.R8G8B8A8Srgb => Format.R8G8B8A8Srgb,
+        ColorFormat.R8G8B8X8Snorm => Format.R8G8B8A8Snorm,         // X channel replaced with Alpha
+        ColorFormat.R8G8B8X8Sint => Format.R8G8B8A8Sint,           // X channel replaced with Alpha
+        ColorFormat.R8G8B8X8Uint => Format.R8G8B8A8Uint,           // X channel replaced with Alpha
+        ColorFormat.R16G16Unorm => Format.R16G16Unorm,
+        ColorFormat.R16G16Snorm => Format.R16G16Snorm,
+        ColorFormat.R16G16Sint => Format.R16G16Sint,
+        ColorFormat.R16G16Uint => Format.R16G16Uint,
+        ColorFormat.R16G16Float => Format.R16G16Float,
+        ColorFormat.B10G10R10A2Unorm => Format.B10G10R10A2Unorm,
+        ColorFormat.R11G11B10Float => Format.R11G11B10Float,
+        ColorFormat.R32Sint => Format.R32Sint,
+        ColorFormat.R32Uint => Format.R32Uint,
+        ColorFormat.R32Float => Format.R32Float,
+        ColorFormat.B8G8R8X8Unorm => Format.B8G8R8A8Unorm,         // X channel replaced with Alpha
+        ColorFormat.B8G8R8X8Srgb => Format.B8G8R8A8Srgb,           // X channel replaced with Alpha
+        ColorFormat.B5G6R5Unorm => Format.B5G6R5Unorm,
+        ColorFormat.B5G5R5A1Unorm => Format.B5G5R5A1Unorm,
+        ColorFormat.R8G8Unorm => Format.R8G8Unorm,
+        ColorFormat.R8G8Snorm => Format.R8G8Snorm,
+        ColorFormat.R8G8Sint => Format.R8G8Sint,
+        ColorFormat.R8G8Uint => Format.R8G8Uint,
+        ColorFormat.R16Unorm => Format.R16Unorm,
+        ColorFormat.R16Snorm => Format.R16Snorm,
+        ColorFormat.R16Sint => Format.R16Sint,
+        ColorFormat.R16Uint => Format.R16Uint,
+        ColorFormat.R16Float => Format.R16Float,
+        ColorFormat.R8Unorm => Format.R8Unorm,
+        ColorFormat.R8Snorm => Format.R8Snorm,
+        ColorFormat.R8Sint => Format.R8Sint,
+        ColorFormat.R8Uint => Format.R8Uint,
+        ColorFormat.B5G5R5X1Unorm => Format.B5G5R5A1Unorm,         // X channel replaced with Alpha
+        ColorFormat.R8G8B8X8Unorm => Format.R8G8B8A8Unorm,         // X channel replaced with Alpha
+        ColorFormat.R8G8B8X8Srgb => Format.R8G8B8A8Srgb,           // X channel replaced with Alpha
+        
+        // 处理旧的格式名称（兼容性）
+        ColorFormat.A8B8G8R8 => Format.R8G8B8A8Unorm,
+        ColorFormat.X8B8G8R8 => Format.R8G8B8A8Unorm,
+        ColorFormat.R5G6B5 => Format.B5G6R5Unorm,
+        ColorFormat.A8R8G8B8 => Format.B8G8R8A8Unorm,
+        ColorFormat.A4B4G4R4 => Format.R4G4B4A4Unorm,
+        
+        _ => throw new NotImplementedException($"Color Format \"{colorFormat}\" not implemented!"),
+    };
+}
 
         public void Dispose()
         {
