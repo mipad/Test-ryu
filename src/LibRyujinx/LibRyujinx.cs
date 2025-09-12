@@ -35,7 +35,7 @@ using System.Collections.Generic;
 using System.Text;
 using Ryujinx.HLE.UI;
 using LibRyujinx.Android;
-using Ryujinx.Core; // 添加了 Ryujinx.Core 命名空间
+using Ryujinx.Core;
 
 namespace LibRyujinx
 {
@@ -48,6 +48,9 @@ namespace LibRyujinx
 
         // 添加静态字段来存储画面比例
         private static AspectRatio _currentAspectRatio = AspectRatio.Stretched;
+
+        // 添加 SurfaceFlingerRegistryAdapter 实例
+        private static SurfaceFlingerRegistryAdapter _surfaceFlingerRegistryAdapter = new SurfaceFlingerRegistryAdapter();
 
         public static bool Initialize(string? basePath)
         {
@@ -75,6 +78,12 @@ namespace LibRyujinx
                 Logger.Notice.Print(LogClass.Application, $"Using base path: {AppDataManager.BaseDirPath}");
 
                 SwitchDevice = new SwitchDevice();
+                
+                // 设置 SurfaceFlingerRegistryAdapter 到 SwitchDevice
+                if (SwitchDevice.EmulationContext?.Configuration != null)
+                {
+                    SwitchDevice.EmulationContext.Configuration.SurfaceFlingerRegistry = _surfaceFlingerRegistryAdapter;
+                }
             }
             catch (Exception ex)
             {
@@ -100,17 +109,22 @@ namespace LibRyujinx
             return _currentAspectRatio;
         }
 
-        // 添加设置 SurfaceFlinger 实例的方法
-        public static void SetSurfaceFlingerInstance(SurfaceFlinger surfaceFlinger)
+        // 添加获取 SurfaceFlingerRegistryAdapter 的方法
+        public static SurfaceFlingerRegistryAdapter GetSurfaceFlingerRegistryAdapter()
         {
-            if (SwitchDevice?.EmulationContext?.Configuration != null)
-            {
-                SwitchDevice.EmulationContext.Configuration.SurfaceFlingerRegistry.SetSurfaceFlingerInstance(surfaceFlinger);
-            }
-            else
-            {
-                Logger.Warning?.Print(LogClass.Application, "Cannot set SurfaceFlinger instance: EmulationContext or Configuration is not initialized.");
-            }
+            return _surfaceFlingerRegistryAdapter;
+        }
+
+        // 添加设置 SurfaceFlinger 实例的方法
+        public static void SetSurfaceFlingerInstance(ISurfaceFlinger surfaceFlinger)
+        {
+            _surfaceFlingerRegistryAdapter.SetSurfaceFlingerInstance(surfaceFlinger);
+        }
+
+        // 添加更新 SurfaceFlinger 目标 FPS 的方法
+        public static void UpdateSurfaceFlingerTargetFps()
+        {
+            _surfaceFlingerRegistryAdapter.UpdateSurfaceFlingerTargetFps();
         }
 
         public static void InitializeAudio()
@@ -611,50 +625,50 @@ namespace LibRyujinx
         }
 
         public static string GetDlcTitleId(string path, string ncaPath)
-{
-    if (File.Exists(path))
-    {
-        using FileStream containerFile = File.OpenRead(path);
-
-        PartitionFileSystem partitionFileSystem = new();
-        partitionFileSystem.Initialize(containerFile.AsStorage()).ThrowIfFailure();
-
-        SwitchDevice.VirtualFileSystem.ImportTickets(partitionFileSystem);
-
-        using UniqueRef<IFile> ncaFile = new();
-
-        partitionFileSystem.OpenFile(ref ncaFile.Ref, ncaPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
-
-        // 修改：使用条件性完整性检查
-        IntegrityCheckLevel checkLevel = SwitchDevice.EnableFsIntegrityChecks ? 
-            IntegrityCheckLevel.ErrorOnInvalid : IntegrityCheckLevel.None;
-        
-        Nca nca = TryOpenNca(ncaFile.Get.AsStorage(), ncaPath, checkLevel);
-        if (nca != null)
         {
-            return nca.Header.TitleId.ToString("X16");
-        }
-    }
-    return string.Empty;
-}
+            if (File.Exists(path))
+            {
+                using FileStream containerFile = File.OpenRead(path);
 
-// 修改 TryOpenNca 方法以接受完整性检查参数
-private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, IntegrityCheckLevel checkLevel = IntegrityCheckLevel.None)
-{
-    try
-    {
-        var nca = new Nca(SwitchDevice.VirtualFileSystem.KeySet, ncaStorage);
-        // 如果需要，可以在这里打开文件系统进行验证
-        // nca.OpenFileSystem(NcaSectionType.Data, checkLevel);
-        return nca;
-    }
-    catch (Exception ex)
-    {
-        // 添加详细的错误日志
-        Logger.Error?.Print(LogClass.Application, $"Failed to open NCA: {ex.Message}");
-    }
-    return null;
-}
+                PartitionFileSystem partitionFileSystem = new();
+                partitionFileSystem.Initialize(containerFile.AsStorage()).ThrowIfFailure();
+
+                SwitchDevice.VirtualFileSystem.ImportTickets(partitionFileSystem);
+
+                using UniqueRef<IFile> ncaFile = new();
+
+                partitionFileSystem.OpenFile(ref ncaFile.Ref, ncaPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
+
+                // 修改：使用条件性完整性检查
+                IntegrityCheckLevel checkLevel = SwitchDevice.EnableFsIntegrityChecks ? 
+                    IntegrityCheckLevel.ErrorOnInvalid : IntegrityCheckLevel.None;
+                
+                Nca nca = TryOpenNca(ncaFile.Get.AsStorage(), ncaPath, checkLevel);
+                if (nca != null)
+                {
+                    return nca.Header.TitleId.ToString("X16");
+                }
+            }
+            return string.Empty;
+        }
+
+        // 修改 TryOpenNca 方法以接受完整性检查参数
+        private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, IntegrityCheckLevel checkLevel = IntegrityCheckLevel.None)
+        {
+            try
+            {
+                var nca = new Nca(SwitchDevice.VirtualFileSystem.KeySet, ncaStorage);
+                // 如果需要，可以在这里打开文件系统进行验证
+                // nca.OpenFileSystem(NcaSectionType.Data, checkLevel);
+                return nca;
+            }
+            catch (Exception ex)
+            {
+                // 添加详细的错误日志
+                Logger.Error?.Print(LogClass.Application, $"Failed to open NCA: {ex.Message}");
+            }
+            return null;
+        }
 
         public static List<string> GetDlcContentList(string path, ulong titleId)
         {
@@ -710,6 +724,17 @@ private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, Integri
                 uiHandler.SetResponse(isOkPressed, input);
             }
         }
+
+        // 添加需要 SurfaceFlinger 的方法
+        public static void SomeMethodThatNeedsSurfaceFlinger() 
+        { 
+            var surfaceFlinger = SurfaceFlingerRegistryAdapter.GetSurfaceFlingerInstance(); 
+            if (surfaceFlinger != null) 
+            { 
+                // 使用 surfaceFlinger 
+                surfaceFlinger.UpdateTargetFps(); 
+            }
+        }
     }
 
     public class SwitchDevice : IDisposable
@@ -754,7 +779,7 @@ private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, Integri
             // 添加 SurfaceFlingerRegistry 初始化
             if (EmulationContext?.Configuration != null)
             {
-                EmulationContext.Configuration.SurfaceFlingerRegistry = new Ryujinx.Core.SurfaceFlingerRegistry();
+                EmulationContext.Configuration.SurfaceFlingerRegistry = LibRyujinx.GetSurfaceFlingerRegistryAdapter();
             }
 
             _firmwareVersion = ContentManager.GetCurrentFirmwareVersion();
@@ -826,6 +851,12 @@ private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, Integri
                                                                   Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled);
 
             EmulationContext = new Switch(configuration);
+
+            // 设置 SurfaceFlingerRegistryAdapter 到 EmulationContext
+            if (EmulationContext.Configuration != null)
+            {
+                EmulationContext.Configuration.SurfaceFlingerRegistry = LibRyujinx.GetSurfaceFlingerRegistryAdapter();
+            }
 
             return true;
         }
