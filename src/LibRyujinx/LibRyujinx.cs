@@ -35,6 +35,7 @@ using System.Collections.Generic;
 using System.Text;
 using Ryujinx.HLE.UI;
 using LibRyujinx.Android;
+using Ryujinx.Core; // 添加了 Ryujinx.Core 命名空间
 
 namespace LibRyujinx
 {
@@ -97,6 +98,19 @@ namespace LibRyujinx
         public static AspectRatio GetAspectRatio()
         {
             return _currentAspectRatio;
+        }
+
+        // 添加设置 SurfaceFlinger 实例的方法
+        public static void SetSurfaceFlingerInstance(SurfaceFlinger surfaceFlinger)
+        {
+            if (SwitchDevice?.EmulationContext?.Configuration != null)
+            {
+                SwitchDevice.EmulationContext.Configuration.SurfaceFlingerRegistry.SetSurfaceFlingerInstance(surfaceFlinger);
+            }
+            else
+            {
+                Logger.Warning?.Print(LogClass.Application, "Cannot set SurfaceFlinger instance: EmulationContext or Configuration is not initialized.");
+            }
         }
 
         public static void InitializeAudio()
