@@ -64,6 +64,12 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             _layers = new Dictionary<long, Layer>();
             RenderLayerId = 0;
 
+            // 注册回调
+            if (_device.Configuration?.SurfaceFlingerRegistry != null)
+            {
+                _device.Configuration.SurfaceFlingerRegistry.RegisterTargetFpsUpdateCallback(UpdateTargetFps);
+            }
+
             _composerThread = new Thread(HandleComposition)
             {
                 Name = "SurfaceFlinger.Composer",
