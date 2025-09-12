@@ -220,7 +220,7 @@ class MainActivity : BaseActivity() {
 
     override fun onPause() {
         super.onPause()
-        isActive = false
+        isActive = true
 
         if (isGameRunning) {
             mainViewModel?.performanceManager?.setTurboMode(false)
