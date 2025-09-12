@@ -520,7 +520,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 frameBufferAddress,
                 frameBufferWidth,
                 frameBufferHeight,
-                item.Transform,
+                (int)item.Transform,
                 false,
                 gobBlocksInY,
                 format,
