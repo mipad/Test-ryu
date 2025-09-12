@@ -77,23 +77,25 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         }
 
         private void UpdateSwapInterval(int swapInterval)
-{
-    _swapInterval = swapInterval;
+        {
+            _swapInterval = swapInterval;
 
-    // If the swap interval is 0, Game VSync is disabled.
-    if (_swapInterval == 0)
-    {
-        _nextFrameEvent.Set();
-        // 禁用 VSync 时仍然限制为 60 FPS，但应用 TickScalar
-        _ticksPerFrame = (Stopwatch.Frequency * 100) / (60 * _device.TickScalar);
-    }
-    else
-    {
-        // 启用 VSync 时使用设备的 TargetVSyncInterval 和 TickScalar
-        _ticksPerFrame = (long)((Stopwatch.Frequency / _device.TargetVSyncInterval) * 100) / _device.TickScalar;
-        _targetVSyncInterval = _device.TargetVSyncInterval;
-    }
-}
+            if (_swapInterval == 0)
+            {
+                _nextFrameEvent.Set();
+                // 禁用VSync时不限制帧率
+                _ticksPerFrame = 0;
+            }
+            else
+            {
+                // 修正VSync开启时的计算
+                // 使用正确的公式：每帧的ticks数 = (频率 * 每帧时间) * (100 / TickScalar)
+                // 每帧时间 = 1000.0 / (60.0 * swapInterval) 毫秒，转换为秒是 (1000.0 / (60.0 * swapInterval)) / 1000.0
+                double frameTimeSeconds = (1000.0 / (60.0 * _swapInterval)) / 1000.0;
+                _ticksPerFrame = (long)(Stopwatch.Frequency * frameTimeSeconds * 100.0 / _device.TickScalar);
+                _targetVSyncInterval = 1000.0 / 60.0; // 标准的60Hz VSync间隔
+            }
+        }
 
         public IGraphicBufferProducer CreateLayer(out long layerId, ulong pid, LayerState initialState = LayerState.ManagedClosed)
         {
@@ -312,7 +314,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
                     _device.System?.SignalVsync();
 
-                    _nextFrameEvent.WaitOne(17);
+                    _nextFrameEvent.WaitOne(1); // 使用较短超时避免CPU占用过高
                     lastTicks = ticks;
                 }
                 else
