@@ -205,7 +205,8 @@ namespace Ryujinx.HLE
                                 float audioVolume,
                                 bool useHypervisor,
                                 string multiplayerLanInterfaceId,
-                                MultiplayerMode multiplayerMode)
+                                MultiplayerMode multiplayerMode,
+                                Ryujinx.Core.ISurfaceFlingerRegistry surfaceFlingerRegistry)
         {
             VirtualFileSystem = virtualFileSystem;
             LibHacHorizonManager = libHacHorizonManager;
@@ -234,6 +235,7 @@ namespace Ryujinx.HLE
             UseHypervisor = useHypervisor;
             MultiplayerLanInterfaceId = multiplayerLanInterfaceId;
             MultiplayerMode = multiplayerMode;
+            SurfaceFlingerRegistry = surfaceFlingerRegistry;
         }
     }
 }
