@@ -18,7 +18,8 @@ interface RyujinxNativeJna : Library {
         enableInternetAccess: Boolean,
         timeZone: String,
         ignoreMissingServices: Boolean,
-        audioEngineType: Int // 新增音频引擎参数
+        audioEngineType: Int,  // 新增音频引擎参数
+        memoryConfiguration: Int  // 新增内存配置参数
     ): Boolean
 
     fun graphicsInitialize(
@@ -94,6 +95,8 @@ interface RyujinxNativeJna : Library {
     fun setScalingFilterLevel(level: Int)
     // 添加设置抗锯齿的方法
     fun setAntiAliasing(mode: Int)
+    // 添加设置内存配置的方法
+    fun setMemoryConfiguration(memoryConfiguration: Int)
 }
 
 class RyujinxNative {
@@ -173,6 +176,12 @@ class RyujinxNative {
         @JvmStatic
         fun setAntiAliasing(mode: Int) {
             jnaInstance.setAntiAliasing(mode)
+        }
+        
+        // 添加设置内存配置的静态方法
+        @JvmStatic
+        fun setMemoryConfiguration(memoryConfiguration: Int) {
+            jnaInstance.setMemoryConfiguration(memoryConfiguration)
         }
     }
 }
