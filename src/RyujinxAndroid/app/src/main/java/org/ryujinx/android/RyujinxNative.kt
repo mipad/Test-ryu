@@ -97,6 +97,12 @@ interface RyujinxNativeJna : Library {
     fun setAntiAliasing(mode: Int)
     // 添加设置内存配置的方法
     fun setMemoryConfiguration(memoryConfiguration: Int)
+    
+    // 金手指相关方法
+    fun cheatGetCheats(titleId: String, gamePath: String): Array<String>
+    fun cheatGetEnabledCheats(titleId: String): Array<String>
+    fun cheatSetEnabled(titleId: String, cheatId: String, enabled: Boolean)
+    fun cheatSave(titleId: String)
 }
 
 class RyujinxNative {
@@ -182,6 +188,27 @@ class RyujinxNative {
         @JvmStatic
         fun setMemoryConfiguration(memoryConfiguration: Int) {
             jnaInstance.setMemoryConfiguration(memoryConfiguration)
+        }
+        
+        // 金手指相关静态方法
+        @JvmStatic
+        fun getCheats(titleId: String, gamePath: String): Array<String> {
+            return jnaInstance.cheatGetCheats(titleId, gamePath)
+        }
+
+        @JvmStatic
+        fun getEnabledCheats(titleId: String): Array<String> {
+            return jnaInstance.cheatGetEnabledCheats(titleId)
+        }
+
+        @JvmStatic
+        fun setCheatEnabled(titleId: String, cheatId: String, enabled: Boolean) {
+            jnaInstance.cheatSetEnabled(titleId, cheatId, enabled)
+        }
+
+        @JvmStatic
+        fun saveCheats(titleId: String) {
+            jnaInstance.cheatSave(titleId)
         }
     }
 }
