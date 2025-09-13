@@ -151,7 +151,7 @@ void setCurrentTransform(long native_window, int transform) {
         case 0x20:
             nativeTransform = static_cast<ANativeWindowTransform>(
                     ANativeWindowTransform::ANATIVEWINDOW_TRANSFORM_MIRROR_HORIZONTAL |
-                    ANATIVEWINDOW_TRANSFORM_ROTATE_90);
+                    ANativeWindowTransform::ANATIVEWINDOW_TRANSFORM_ROTATE_90);
             break;
         case 0x40:
             nativeTransform = ANativeWindowTransform::ANATIVEWINDOW_TRANSFORM_MIRROR_VERTICAL;
@@ -159,7 +159,7 @@ void setCurrentTransform(long native_window, int transform) {
         case 0x80:
             nativeTransform = static_cast<ANativeWindowTransform>(
                     ANativeWindowTransform::ANATIVEWINDOW_TRANSFORM_MIRROR_VERTICAL |
-                    ANATIVEWINDOW_TRANSFORM_ROTATE_90);
+                    ANativeWindowTransform::ANATIVEWINDOW_TRANSFORM_ROTATE_90);
             break;
         case 0x100:
             nativeTransform = ANativeWindowTransform::ANATIVEWINDOW_TRANSFORM_IDENTITY;
@@ -210,6 +210,8 @@ Java_org_ryujinx_android_NativeHelpers_setTurboMode(JNIEnv *env, jobject thiz, j
     adrenotools_set_turbo(enable);
 }
 
+/*
+// 注释掉与setSwapInterval相关的函数
 extern "C"
 JNIEXPORT jint JNICALL
 Java_org_ryujinx_android_NativeHelpers_getMaxSwapInterval(JNIEnv *env, jobject thiz,
@@ -236,6 +238,7 @@ Java_org_ryujinx_android_NativeHelpers_setSwapInterval(JNIEnv *env, jobject thiz
 
     return nativeWindow->setSwapInterval(nativeWindow, swap_interval);
 }
+*/
 
 extern "C"
 JNIEXPORT jstring JNICALL
