@@ -5,7 +5,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import org.ryujinx.android.NativeLib
+import org.ryujinx.android.RyujinxNative  // 修改这里：使用 RyujinxNative 而不是 NativeLib
 
 data class CheatItem(
     val id: String, // 格式为 "buildId-cheatName"
@@ -32,9 +32,9 @@ class CheatsViewModel(private val titleId: String, private val gamePath: String)
             try {
                 _isLoading.value = true
                 // 通过JNI调用获取金手指列表
-                val cheatList = NativeLib.getCheats(titleId, gamePath)
+                val cheatList = RyujinxNative.getCheats(titleId, gamePath)  // 修改这里
                 // 获取已启用的金手指列表
-                val enabledCheats = NativeLib.getEnabledCheats(titleId)
+                val enabledCheats = RyujinxNative.getEnabledCheats(titleId)  // 修改这里
                 
                 // 构建CheatItem列表
                 val cheats = cheatList.map { cheatId ->
@@ -58,7 +58,7 @@ class CheatsViewModel(private val titleId: String, private val gamePath: String)
         viewModelScope.launch {
             try {
                 // 通过JNI调用设置金手指启用状态
-                NativeLib.setCheatEnabled(titleId, cheatId, enabled)
+                RyujinxNative.setCheatEnabled(titleId, cheatId, enabled)  // 修改这里
                 
                 // 更新本地列表
                 _cheats.value = _cheats.value.map {
@@ -77,7 +77,7 @@ class CheatsViewModel(private val titleId: String, private val gamePath: String)
     fun saveCheats() {
         viewModelScope.launch {
             try {
-                NativeLib.saveCheats(titleId)
+                RyujinxNative.saveCheats(titleId)  // 修改这里
             } catch (e: Exception) {
                 _errorMessage.value = "Failed to save cheats: ${e.message}"
             }
