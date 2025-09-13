@@ -3,6 +3,7 @@ package org.ryujinx.android.views
 import android.content.res.Configuration
 import android.content.res.Resources
 import android.graphics.BitmapFactory
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.slideInVertically
@@ -1311,6 +1312,15 @@ class HomeViews {
                                             showAppMenu.value = false
                                             openDlcDialog.value = true
                                         })
+                                       DropdownMenuItem(text = {
+                                       Text(text = "Manage Cheats")
+                                        }, onClick = {
+                                     showAppMenu.value = false
+                                     val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
+                                     val gamePath = viewModel.mainViewModel?.selected?.path ?: ""
+                                     // 导航到金手指界面
+                                    navController?.navigate("cheats/$titleId?gamePath=${android.net.Uri.encode(gamePath)}")
+                                    })                                      
                                     }
                                 }
                             }
