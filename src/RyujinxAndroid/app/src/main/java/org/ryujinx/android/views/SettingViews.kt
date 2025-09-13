@@ -165,13 +165,15 @@ class SettingViews {
             val scalingFilter = remember { mutableStateOf(0) } // 0=Bilinear, 1=Nearest, 2=FSR
             val scalingFilterLevel = remember { mutableStateOf(25) } // 默认25%
             val antiAliasing = remember { mutableStateOf(0) } // 0=None, 1=Fxaa, 2=SmaaLow, 3=SmaaMedium, 4=SmaaHigh, 5=SmaaUltra
+            val memoryConfiguration = remember { mutableStateOf(0) } // 新增状态变量：内存配置
+            
             val showAntiAliasingDialog = remember { mutableStateOf(false) } // 控制抗锯齿对话框显示
-
             // 新增状态变量用于控制选项显示
             val showResScaleOptions = remember { mutableStateOf(false) }
             val showAspectRatioOptions = remember { mutableStateOf(false) }
             val showAudioEngineDialog = remember { mutableStateOf(false) } // 控制音频引擎对话框显示
             val showScalingFilterDialog = remember { mutableStateOf(false) } // 控制Scaling Filter对话框显示
+            val showMemoryConfigDialog = remember { mutableStateOf(false) } // 控制内存配置对话框显示
             
 
             if (!loaded.value) {
@@ -204,7 +206,8 @@ class SettingViews {
                     audioEngineType, // 新增参数
                     scalingFilter, // 新增：缩放过滤器
                     scalingFilterLevel, // 新增：缩放过滤器级别
-                    antiAliasing // 新增：抗锯齿模式
+                    antiAliasing, // 新增：抗锯齿模式
+                    memoryConfiguration // 新增DRAM参数
                 )
                 loaded.value = true
             }
@@ -259,7 +262,8 @@ class SettingViews {
                     audioEngineType, // 新增参数
                     scalingFilter, // 新增：缩放过滤器
                     scalingFilterLevel, // 新增：缩放过滤器级别
-                    antiAliasing // 新增：抗锯齿模式
+                    antiAliasing, // 新增：抗锯齿模式
+                    memoryConfiguration // 新增DRAM参数
                                 )
                                 settingsViewModel.navController.popBackStack()
                             }) {
@@ -1663,6 +1667,89 @@ ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
                     
                     ExpandableView(onCardArrowClick = { }, title = "Hack") {
                         Column(modifier = Modifier.fillMaxWidth()) {
+                            // 内存配置设置
+Row(
+    modifier = Modifier
+        .fillMaxWidth()
+        .padding(8.dp)
+        .clickable { showMemoryConfigDialog.value = true },
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically
+) {
+    Text(text = "DRAM Configuration")
+    val memoryConfigNames = listOf("4GB", "4GB Applet Dev", "4GB System Dev", "6GB", "6GB Applet Dev", "8GB")
+    Text(
+        text = memoryConfigNames[memoryConfiguration.value],
+        color = MaterialTheme.colorScheme.primary
+    )
+}
+
+// 内存配置选择对话框
+if (showMemoryConfigDialog.value) {
+    BasicAlertDialog(
+        onDismissRequest = { showMemoryConfigDialog.value = false }
+    ) {
+        Surface(
+            modifier = Modifier
+                .wrapContentWidth()
+                .wrapContentHeight(),
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = AlertDialogDefaults.TonalElevation
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text(
+                    text = "Select Memory Configuration",
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                
+                val memoryOptions = listOf("4GB", "4GB Applet Dev", "4GB System Dev", "6GB", "6GB Applet Dev", "8GB")
+                
+                memoryOptions.forEachIndexed { index, option ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                memoryConfiguration.value = index
+                                showMemoryConfigDialog.value = false
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = memoryConfiguration.value == index,
+                            onClick = {
+                                memoryConfiguration.value = index
+                                showMemoryConfigDialog.value = false
+                            }
+                        )
+                        Text(
+                            text = option,
+                            modifier = Modifier.padding(start = 16.dp)
+                        )
+                    }
+                }
+                
+                // 添加取消按钮
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = { showMemoryConfigDialog.value = false }
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        }
+    }
+}
+
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -2053,7 +2140,8 @@ ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
                         audioEngineType, // 新增参数
                         scalingFilter, // 新增：缩放过滤器
                         scalingFilterLevel, // 新增：缩放过滤器级别
-                        antiAliasing // 新增：抗锯齿模式
+                        antiAliasing, // 新增：抗锯齿模式
+                        memoryConfiguration // 新增DRAM参数
                     )
                     settingsViewModel.navController.popBackStack()
                 }
