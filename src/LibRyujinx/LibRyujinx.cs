@@ -706,6 +706,7 @@ namespace LibRyujinx
 
                     paths.Add(fileEntry.FullPath);
             }
+            }
 
             return paths;
         }
