@@ -472,7 +472,7 @@ namespace LibRyujinx
 
                     if (nca.Header.ContentType == NcaContentType.Program)
                     {
-                        int dataIndex = Nca.GetSectionIndex fromType(NcaSectionType.Data, NcaContentType.Program);
+                        int dataIndex = Nca.GetSectionIndexFromType(NcaSectionType.Data, NcaContentType.Program);
 
                         if (nca.SectionExists(NcaSectionType.Data) && nca.Header.GetFsHeader(dataIndex).IsPatchSection())
                         {
