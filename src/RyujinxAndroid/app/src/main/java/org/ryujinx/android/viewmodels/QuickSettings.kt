@@ -31,6 +31,7 @@ class QuickSettings(val activity: Activity) {
     var scalingFilter: Int // 新增：缩放过滤器
     var scalingFilterLevel: Int // 新增：缩放过滤器级别
     var antiAliasing: Int // 新增：抗锯齿模式 0=None, 1=Fxaa, 2=SmaaLow, 3=SmaaMedium, 4=SmaaHigh, 5=SmaaUltra
+    var memoryConfiguration: Int // 新增：内存配置 0=4GB, 1=4GB Applet Dev, 2=4GB System Dev, 3=6GB, 4=6GB Applet Dev, 5=8GB
 
     // Logs
     var enableDebugLogs: Boolean
@@ -71,6 +72,7 @@ class QuickSettings(val activity: Activity) {
         scalingFilter = sharedPref.getInt("scalingFilter", 0) // 默认：最近邻
         scalingFilterLevel = sharedPref.getInt("scalingFilterLevel", 80) // 默认级别：80
         antiAliasing = sharedPref.getInt("antiAliasing", 0) // 默认关闭
+        memoryConfiguration = sharedPref.getInt("memoryConfiguration", 0) // 默认4GB
 
         enableDebugLogs = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs = sharedPref.getBoolean("enableStubLogs", false)
@@ -110,6 +112,7 @@ class QuickSettings(val activity: Activity) {
         editor.putInt("scalingFilter", scalingFilter) // 保存缩放过滤器
         editor.putInt("scalingFilterLevel", scalingFilterLevel) // 保存缩放过滤器级别
         editor.putInt("antiAliasing", antiAliasing) // 保存抗锯齿设置
+        editor.putInt("memoryConfiguration", memoryConfiguration) // 保存内存配置
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs)
         editor.putBoolean("enableStubLogs", enableStubLogs)
