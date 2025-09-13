@@ -800,7 +800,7 @@ namespace LibRyujinx
                                                                   UserChannelPersistence,
                                                                   renderer,
                                                                   LibRyujinx.AudioDriver, //Audio
-                                                                  MemoryConfiguration.MemoryConfiguration8GiB, // 使用内存配置
+                                                                  memoryConfiguration, // 使用传入的内存配置参数
                                                                   HostUiHandler,
                                                                   systemLanguage,
                                                                   regionCode,
