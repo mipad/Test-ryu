@@ -93,38 +93,48 @@ namespace LibRyujinx
         {
             try
             {
-                if (Renderer != null && Renderer.Window != null)
+                Logger.Info?.Print(LogClass.Application, "Attempting to apply graphics settings...");
+                
+                if (Renderer == null)
                 {
-                    // 应用抗锯齿设置 - 添加详细日志
-                    var antiAliasing = (Ryujinx.Graphics.GAL.AntiAliasing)ConfigurationState.Instance.Graphics.AntiAliasing.Value;
-                    Logger.Info?.Print(LogClass.Application, $"Applying anti-aliasing setting: {antiAliasing}");
-                    Renderer.Window.SetAntiAliasing(antiAliasing);
-                    Logger.Info?.Print(LogClass.Application, $"Anti-aliasing applied successfully: {antiAliasing}");
-                    
-                    // 应用Scaling Filter设置 - 添加详细日志
-                    var scalingFilter = (Ryujinx.Graphics.GAL.ScalingFilter)ConfigurationState.Instance.Graphics.ScalingFilter.Value;
-                    Logger.Info?.Print(LogClass.Application, $"Applying scaling filter: {scalingFilter}");
-                    Renderer.Window.SetScalingFilter(scalingFilter);
-                    Logger.Info?.Print(LogClass.Application, $"Scaling filter applied successfully: {scalingFilter}");
-                    
-                    // 应用Scaling Filter Level设置 - 添加详细日志
-                    var scalingFilterLevel = ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value;
-                    Logger.Info?.Print(LogClass.Application, $"Applying scaling filter level: {scalingFilterLevel}");
-                    Renderer.Window.SetScalingFilterLevel(scalingFilterLevel);
-                    Logger.Info?.Print(LogClass.Application, $"Scaling filter level applied successfully: {scalingFilterLevel}");
-                    
-                    // 添加更多图形设置的详细日志
-                    Logger.Info?.Print(LogClass.Application, $"Resolution scale: {ConfigurationState.Instance.Graphics.ResScale.Value}");
-                    Logger.Info?.Print(LogClass.Application, $"Max anisotropy: {ConfigurationState.Instance.Graphics.MaxAnisotropy.Value}");
-                    Logger.Info?.Print(LogClass.Application, $"Shader cache enabled: {ConfigurationState.Instance.Graphics.EnableShaderCache.Value}");
-                    Logger.Info?.Print(LogClass.Application, $"Texture recompression enabled: {ConfigurationState.Instance.Graphics.EnableTextureRecompression.Value}");
-                    
-                    Logger.Info?.Print(LogClass.Application, "All graphics settings applied successfully");
+                    Logger.Warning?.Print(LogClass.Application, "Renderer is null, cannot apply graphics settings");
+                    return;
                 }
-                else
+
+                if (Renderer.Window == null)
                 {
-                    Logger.Warning?.Print(LogClass.Application, "Renderer or Renderer.Window is null, cannot apply graphics settings");
+                    Logger.Warning?.Print(LogClass.Application, "Renderer.Window is null, cannot apply graphics settings");
+                    return;
                 }
+
+                // 获取当前配置值
+                var antiAliasing = (Ryujinx.Graphics.GAL.AntiAliasing)ConfigurationState.Instance.Graphics.AntiAliasing.Value;
+                var scalingFilter = (Ryujinx.Graphics.GAL.ScalingFilter)ConfigurationState.Instance.Graphics.ScalingFilter.Value;
+                var scalingFilterLevel = ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value;
+                
+                Logger.Info?.Print(LogClass.Application, $"Current graphics settings:");
+                Logger.Info?.Print(LogClass.Application, $"  - AntiAliasing: {antiAliasing}");
+                Logger.Info?.Print(LogClass.Application, $"  - ScalingFilter: {scalingFilter}");
+                Logger.Info?.Print(LogClass.Application, $"  - ScalingFilterLevel: {scalingFilterLevel}");
+                Logger.Info?.Print(LogClass.Application, $"  - ResScale: {ConfigurationState.Instance.Graphics.ResScale.Value}");
+                Logger.Info?.Print(LogClass.Application, $"  - MaxAnisotropy: {ConfigurationState.Instance.Graphics.MaxAnisotropy.Value}");
+
+                // 应用抗锯齿设置
+                Logger.Info?.Print(LogClass.Application, $"Applying anti-aliasing: {antiAliasing}");
+                Renderer.Window.SetAntiAliasing(antiAliasing);
+                Logger.Info?.Print(LogClass.Application, $"Anti-aliasing applied successfully: {antiAliasing}");
+                
+                // 应用Scaling Filter设置
+                Logger.Info?.Print(LogClass.Application, $"Applying scaling filter: {scalingFilter}");
+                Renderer.Window.SetScalingFilter(scalingFilter);
+                Logger.Info?.Print(LogClass.Application, $"Scaling filter applied successfully: {scalingFilter}");
+                
+                // 应用Scaling Filter Level设置
+                Logger.Info?.Print(LogClass.Application, $"Applying scaling filter level: {scalingFilterLevel}");
+                Renderer.Window.SetScalingFilterLevel(scalingFilterLevel);
+                Logger.Info?.Print(LogClass.Application, $"Scaling filter level applied successfully: {scalingFilterLevel}");
+                
+                Logger.Info?.Print(LogClass.Application, "All graphics settings applied successfully");
             }
             catch (Exception ex)
             {
@@ -137,11 +147,16 @@ namespace LibRyujinx
         {
             if (Renderer == null)
             {
+                Logger.Error?.Print(LogClass.Application, "Renderer is null, cannot start run loop");
                 return;
             }
             
-            // 应用图形设置
-            ApplyGraphicsSettings();
+            // 添加渲染器状态检查
+            Logger.Info?.Print(LogClass.Application, $"Renderer type: {Renderer.GetType().Name}");
+            Logger.Info?.Print(LogClass.Application, $"Renderer.Window is null: {Renderer.Window == null}");
+            
+            // 移除这里的 ApplyGraphicsSettings() 调用
+            // 图形设置将在渲染循环内部应用
             
             ARMeilleure.Optimizations.CacheEviction = SwitchDevice!.EnableJitCacheEviction;
             
@@ -161,6 +176,10 @@ namespace LibRyujinx
                 {
                     _gpuDoneEvent.Reset();
                     device.Gpu.SetGpuThread();
+                    
+                    // 在这里应用图形设置，确保渲染器已完全初始化
+                    ApplyGraphicsSettings();
+                    
                     device.Gpu.InitializeShaderCache(_gpuCancellationTokenSource.Token);
 
                     _isActive = true;
