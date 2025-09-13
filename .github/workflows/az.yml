@@ -2,9 +2,9 @@ name: Android CI  Fix
 
 on:
   push:
-    branches: [ "dram" ]
+    branches: [ "金手指1" ]
   pull_request:
-    branches: [ "dram" ]
+    branches: [ "金手指1" ]
 
 jobs:
   build:
@@ -25,7 +25,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: dram
+        ref: 金手指1
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
