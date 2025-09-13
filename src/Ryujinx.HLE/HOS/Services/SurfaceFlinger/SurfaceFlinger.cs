@@ -508,8 +508,8 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             ColorSwizzle swizzle = (ColorSwizzle)((ulong)colorFormat & 0xFF00);
             ColorComponent component = (ColorComponent)((ulong)colorFormat & 0xFF0000);
             ColorDataType dataType = (ColorDataType)((ulong)colorFormat & 0xFF000000);
-            
-            // 处理最常见的格式
+
+            // 首先处理一些特定的颜色格式
             switch (colorFormat)
             {
                 case ColorFormat.A8B8G8R8:
@@ -537,79 +537,78 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 case ColorFormat.B10G10R10A2:
                     return Format.B10G10R10A2Unorm;
                     
-                case ColorFormat.R16G16B16A16Float:
-                    return Format.R16G16B16A16Float;
+                case ColorFormat.B5G6R5:
+                    return Format.B5G6R5Unorm;
                     
-                case ColorFormat.R32G32B32A32Float:
-                    return Format.R32G32B32A32Float;
+                case ColorFormat.B5G5R5A1:
+                    return Format.B5G5R5A1Unorm;
+            }
+
+            // 然后基于组件信息进行通用转换
+            switch (component)
+            {
+                case ColorComponent.X8Y8Z8W8:
+                    // 根据分量顺序决定格式
+                    if (swizzle == ColorSwizzle.WZYX) // ABGR顺序
+                        return dataType == ColorDataType.Float ? Format.R32G32B32A32Float : Format.R8G8B8A8Unorm;
+                    else if (swizzle == ColorSwizzle.XYZW) // RGBA顺序
+                        return dataType == ColorDataType.Float ? Format.R32G32B32A32Float : Format.R8G8B8A8Unorm;
+                    else if (swizzle == ColorSwizzle.ZYXW) // BGRA顺序
+                        return Format.B8G8R8A8Unorm;
+                    else
+                        return Format.R8G8B8A8Unorm; // 默认
                     
-                case ColorFormat.R32G32Float:
-                    return Format.R32G32Float;
+                case ColorComponent.X5Y6Z5:
+                    return Format.B5G6R5Unorm;
                     
-                case ColorFormat.R16Float:
-                    return Format.R16Float;
+                case ColorComponent.X4Y4Z4W4:
+                    return Format.R4G4B4A4Unorm;
                     
-                case ColorFormat.R32Float:
-                    return Format.R32Float;
+                case ColorComponent.X1Y5Z5W5:
+                    return Format.B5G5R5A1Unorm;
                     
-                case ColorFormat.R8Unorm:
-                    return Format.R8Unorm;
+                case ColorComponent.X16Y16Z16W16:
+                    return dataType == ColorDataType.Float ? Format.R16G16B16A16Float : Format.R16G16B16A16Unorm;
                     
-                case ColorFormat.R8G8Unorm:
+                case ColorComponent.X16Y16:
+                    return dataType == ColorDataType.Float ? Format.R16G16Float : Format.R16G16Unorm;
+                    
+                case ColorComponent.X16:
+                    return dataType == ColorDataType.Float ? Format.R16Float : Format.R16Unorm;
+                    
+                case ColorComponent.X8Y8:
                     return Format.R8G8Unorm;
                     
-                case ColorFormat.R16Unorm:
-                    return Format.R16Unorm;
+                case ColorComponent.X8:
+                    return Format.R8Unorm;
                     
-                case ColorFormat.R16G16Unorm:
-                    return Format.R16G16Unorm;
+                case ColorComponent.X10Y10Z10W2:
+                    return Format.R10G10B10A2Unorm;
                     
-                // 添加更多格式转换...
+                case ColorComponent.X11Y11Z10:
+                    return Format.R11G11B10Float;
+                    
+                case ColorComponent.X32:
+                    return dataType == ColorDataType.Float ? Format.R32Float : Format.R32Uint;
+                    
+                // 添加更多组件类型的处理...
                 
                 default:
-                    // 对于未明确处理的格式，尝试基于组件信息进行转换
-                    return ConvertColorFormatFromComponents(colorSpace, swizzle, component, dataType);
+                    // 对于YUV格式，可能需要特殊处理
+                    if (colorSpace == ColorSpace.YCbCr601 || 
+                        colorSpace == ColorSpace.YCbCr601_RR || 
+                        colorSpace == ColorSpace.YCbCr601_ER ||
+                        colorSpace == ColorSpace.YCbCr709 ||
+                        colorSpace == ColorSpace.YCbCr709_ER)
+                    {
+                        // YUV格式通常需要特殊处理，这里返回一个默认格式
+                        // 实际应用中可能需要更复杂的转换逻辑
+                        return Format.R8G8B8A8Unorm;
+                    }
+                    
+                    // 默认抛出异常
+                    throw new NotImplementedException($"Color Format \"{colorFormat}\" (Space: {colorSpace}, Swizzle: {swizzle}, Component: {component}, DataType: {dataType}) not implemented!");
             }
-        }
-
-        private static Format ConvertColorFormatFromComponents(ColorSpace colorSpace, ColorSwizzle swizzle, ColorComponent component, ColorDataType dataType)
-        {
-            // 这是一个简化的实现，实际中可能需要更复杂的逻辑
-            // 这里只处理一些常见情况
-            
-            // 检查组件大小和数量
-            if (component == ColorComponent.X8Y8Z8W8)
-            {
-                if (swizzle == ColorSwizzle.WZYX) // ABGR顺序
-                    return Format.R8G8B8A8Unorm;
-                else if (swizzle == ColorSwizzle.XYZW) // RGBA顺序
-                    return Format.R8G8B8A8Unorm;
-                else if (swizzle == ColorSwizzle.ZYXW) // BGRA顺序
-                    return Format.B8G8R8A8Unorm;
-            }
-            else if (component == ColorComponent.X5Y6Z5)
-            {
-                return Format.B5G6R5Unorm;
-            }
-            else if (component == ColorComponent.X4Y4Z4W4)
-            {
-                return Format.R4G4B4A4Unorm;
-            }
-            else if (component == ColorComponent.X16Y16Z16W16)
-            {
-                if (dataType == ColorDataType.Float)
-                    return Format.R16G16B16A16Float;
-                else
-                    return Format.R16G16B16A16Unorm;
-            }
-            else if (component == ColorComponent.X32Y32Z32W32)
-            {
-                if (dataType == ColorDataType.Float)
-                    return Format.R32G32B32A32Float;
-            }
-            
-            // 默认抛出异常
-            throw new NotImplementedException($"Color Format with components (Space: {colorSpace}, Swizzle: {swizzle}, Component: {component}, DataType: {dataType}) not implemented!");
         }
 
         public void Dispose()
