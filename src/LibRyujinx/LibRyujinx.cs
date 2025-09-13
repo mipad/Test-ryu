@@ -385,7 +385,6 @@ namespace LibRyujinx
                     publisher = controlData.Title[(int)desiredTitleLanguage].PublisherString.ToString();
                 }
                 else
-                {
                     titleName = null;
                     publisher = null;
                 }
@@ -725,6 +724,85 @@ namespace LibRyujinx
             {
                 uiHandler.SetResponse(isOkPressed, input);
             }
+        }
+
+        public static List<string> GetCheats(string titleId, string gamePath)
+        {
+            var cheats = new List<string>();
+            
+            if (SwitchDevice?.VirtualFileSystem == null)
+                return cheats;
+            
+            // 获取金手指目录路径
+            string modsBasePath = ModLoader.GetModsBasePath();
+            string titleModsPath = ModLoader.GetApplicationDir(modsBasePath, titleId);
+            string cheatsPath = Path.Combine(titleModsPath, "cheats");
+            
+            if (!Directory.Exists(cheatsPath))
+                return cheats;
+            
+            // 读取金手指文件
+            foreach (var file in Directory.GetFiles(cheatsPath, "*.txt"))
+            {
+                string buildId = Path.GetFileNameWithoutExtension(file);
+                var cheatInstructions = ModLoader.GetCheatsInFile(new FileInfo(file));
+                
+                foreach (var cheat in cheatInstructions)
+                {
+                    cheats.Add($"{buildId}-{cheat.Name}");
+                }
+            }
+            
+            return cheats;
+        }
+
+        public static List<string> GetEnabledCheats(string titleId)
+        {
+            var enabledCheats = new List<string>();
+            
+            // 获取已启用的金手指列表
+            string modsBasePath = ModLoader.GetModsBasePath();
+            string titleModsPath = ModLoader.GetApplicationDir(modsBasePath, titleId);
+            string enabledCheatsPath = Path.Combine(titleModsPath, "cheats", "enabled.txt");
+            
+            if (File.Exists(enabledCheatsPath))
+            {
+                enabledCheats.AddRange(File.ReadAllLines(enabledCheatsPath));
+            }
+            
+            return enabledCheats;
+        }
+
+        public static void SetCheatEnabled(string titleId, string cheatId, bool enabled)
+        {
+            // 这里需要修改enabled.txt文件，添加或移除金手指ID
+            string modsBasePath = ModLoader.GetModsBasePath();
+            string titleModsPath = ModLoader.GetApplicationDir(modsBasePath, titleId);
+            string enabledCheatsPath = Path.Combine(titleModsPath, "cheats", "enabled.txt");
+            
+            var enabledCheats = new HashSet<string>();
+            if (File.Exists(enabledCheatsPath))
+            {
+                enabledCheats.UnionWith(File.ReadAllLines(enabledCheatsPath));
+            }
+            
+            if (enabled)
+            {
+                enabledCheats.Add(cheatId);
+            }
+            else
+            {
+                enabledCheats.Remove(cheatId);
+            }
+            
+            Directory.CreateDirectory(Path.GetDirectoryName(enabledCheatsPath));
+            File.WriteAllLines(enabledCheatsPath, enabledCheats);
+        }
+
+        public static void SaveCheats(string titleId)
+        {
+            // 如果需要立即生效，可以在这里调用TamperMachine.EnableCheats
+            // 但通常我们会在游戏启动时自动加载，所以这里可能不需要做任何事情
         }
     }
 
