@@ -48,6 +48,9 @@ namespace LibRyujinx
         // 添加静态字段来存储画面比例
         private static AspectRatio _currentAspectRatio = AspectRatio.Stretched;
 
+        // 添加静态字段来存储内存配置
+        private static MemoryConfiguration _currentMemoryConfiguration = MemoryConfiguration.MemoryConfiguration8GiB;
+
         public static bool Initialize(string? basePath)
         {
             if (SwitchDevice != null)
@@ -97,6 +100,19 @@ namespace LibRyujinx
         public static AspectRatio GetAspectRatio()
         {
             return _currentAspectRatio;
+        }
+
+        // 添加设置内存配置的方法
+        public static void SetMemoryConfiguration(MemoryConfiguration memoryConfig)
+        {
+            _currentMemoryConfiguration = memoryConfig;
+            Logger.Info?.Print(LogClass.Emulation, $"Memory configuration set to: {_currentMemoryConfiguration}");
+        }
+
+        // 添加获取内存配置的方法
+        public static MemoryConfiguration GetMemoryConfiguration()
+        {
+            return _currentMemoryConfiguration;
         }
 
         public static void InitializeAudio()
@@ -597,50 +613,50 @@ namespace LibRyujinx
         }
 
         public static string GetDlcTitleId(string path, string ncaPath)
-{
-    if (File.Exists(path))
-    {
-        using FileStream containerFile = File.OpenRead(path);
-
-        PartitionFileSystem partitionFileSystem = new();
-        partitionFileSystem.Initialize(containerFile.AsStorage()).ThrowIfFailure();
-
-        SwitchDevice.VirtualFileSystem.ImportTickets(partitionFileSystem);
-
-        using UniqueRef<IFile> ncaFile = new();
-
-        partitionFileSystem.OpenFile(ref ncaFile.Ref, ncaPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
-
-        // 修改：使用条件性完整性检查
-        IntegrityCheckLevel checkLevel = SwitchDevice.EnableFsIntegrityChecks ? 
-            IntegrityCheckLevel.ErrorOnInvalid : IntegrityCheckLevel.None;
-        
-        Nca nca = TryOpenNca(ncaFile.Get.AsStorage(), ncaPath, checkLevel);
-        if (nca != null)
         {
-            return nca.Header.TitleId.ToString("X16");
-        }
-    }
-    return string.Empty;
-}
+            if (File.Exists(path))
+            {
+                using FileStream containerFile = File.OpenRead(path);
 
-// 修改 TryOpenNca 方法以接受完整性检查参数
-private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, IntegrityCheckLevel checkLevel = IntegrityCheckLevel.None)
-{
-    try
-    {
-        var nca = new Nca(SwitchDevice.VirtualFileSystem.KeySet, ncaStorage);
-        // 如果需要，可以在这里打开文件系统进行验证
-        // nca.OpenFileSystem(NcaSectionType.Data, checkLevel);
-        return nca;
-    }
-    catch (Exception ex)
-    {
-        // 添加详细的错误日志
-        Logger.Error?.Print(LogClass.Application, $"Failed to open NCA: {ex.Message}");
-    }
-    return null;
-}
+                PartitionFileSystem partitionFileSystem = new();
+                partitionFileSystem.Initialize(containerFile.AsStorage()).ThrowIfFailure();
+
+                SwitchDevice.VirtualFileSystem.ImportTickets(partitionFileSystem);
+
+                using UniqueRef<IFile> ncaFile = new();
+
+                partitionFileSystem.OpenFile(ref ncaFile.Ref, ncaPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
+
+                // 修改：使用条件性完整性检查
+                IntegrityCheckLevel checkLevel = SwitchDevice.EnableFsIntegrityChecks ? 
+                    IntegrityCheckLevel.ErrorOnInvalid : IntegrityCheckLevel.None;
+                
+                Nca nca = TryOpenNca(ncaFile.Get.AsStorage(), ncaPath, checkLevel);
+                if (nca != null)
+                {
+                    return nca.Header.TitleId.ToString("X16");
+                }
+            }
+            return string.Empty;
+        }
+
+        // 修改 TryOpenNca 方法以接受完整性检查参数
+        private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, IntegrityCheckLevel checkLevel = IntegrityCheckLevel.None)
+        {
+            try
+            {
+                var nca = new Nca(SwitchDevice.VirtualFileSystem.KeySet, ncaStorage);
+                // 如果需要，可以在这里打开文件系统进行验证
+                // nca.OpenFileSystem(NcaSectionType.Data, checkLevel);
+                return nca;
+            }
+            catch (Exception ex)
+            {
+                // 添加详细的错误日志
+                Logger.Error?.Print(LogClass.Application, $"Failed to open NCA: {ex.Message}");
+            }
+            return null;
+        }
 
         public static List<string> GetDlcContentList(string path, ulong titleId)
         {
@@ -759,7 +775,8 @@ private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, Integri
                                       bool enableJitCacheEviction,
                                       bool enableInternetAccess,
                                       string? timeZone,
-                                      bool ignoreMissingServices)
+                                      bool ignoreMissingServices,
+                                      MemoryConfiguration memoryConfiguration)  // 新增内存配置参数
         {
             if (LibRyujinx.Renderer == null)
             {
@@ -783,7 +800,7 @@ private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, Integri
                                                                   UserChannelPersistence,
                                                                   renderer,
                                                                   LibRyujinx.AudioDriver, //Audio
-                                                                  MemoryConfiguration.MemoryConfiguration8GiB,
+                                                                  memoryConfiguration.ToDramSize(),  // 使用内存配置
                                                                   HostUiHandler,
                                                                   systemLanguage,
                                                                   regionCode,
