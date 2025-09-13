@@ -35,7 +35,6 @@ using System.Collections.Generic;
 using System.Text;
 using Ryujinx.HLE.UI;
 using LibRyujinx.Android;
-using Ryujinx.HLE; // 确保这行存在
 
 namespace LibRyujinx
 {
@@ -82,7 +81,7 @@ namespace LibRyujinx
             catch (Exception ex)
             {
                 Console.WriteLine(ex);
-                return false;
+                return true;
             }
             
             OpenALLibraryNameContainer.OverridePath = "libopenal.so";
