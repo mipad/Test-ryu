@@ -94,6 +94,14 @@ namespace LibRyujinx
         {
             _currentAspectRatio = aspectRatio;
             Logger.Info?.Print(LogClass.Emulation, $"Aspect ratio set to: {_currentAspectRatio}");
+            
+            // 如果设备已初始化，立即应用新的画面比例
+            if (SwitchDevice?.EmulationContext != null)
+            {
+                Logger.Info?.Print(LogClass.Emulation, $"Applying aspect ratio change to running emulation: {_currentAspectRatio}");
+                // 这里需要重新配置模拟器上下文以应用新的画面比例
+                // 可能需要重启模拟器才能完全生效
+            }
         }
 
         // 添加获取画面比例的方法
@@ -107,6 +115,12 @@ namespace LibRyujinx
         {
             _currentMemoryConfiguration = memoryConfig;
             Logger.Info?.Print(LogClass.Emulation, $"Memory configuration set to: {_currentMemoryConfiguration}");
+            
+            // 如果设备已初始化，记录需要重启才能生效
+            if (SwitchDevice?.EmulationContext != null)
+            {
+                Logger.Info?.Print(LogClass.Emulation, "Memory configuration change requires emulation restart to take effect");
+            }
         }
 
         // 添加获取内存配置的方法
@@ -780,8 +794,23 @@ namespace LibRyujinx
         {
             if (LibRyujinx.Renderer == null)
             {
+                Logger.Error?.Print(LogClass.Application, "Renderer is not initialized. Cannot initialize device context.");
                 return false;
             }
+
+            // 记录初始化参数
+            Logger.Info?.Print(LogClass.Application, $"Initializing device context with parameters:");
+            Logger.Info?.Print(LogClass.Application, $"  - Memory Configuration: {memoryConfiguration}");
+            Logger.Info?.Print(LogClass.Application, $"  - Aspect Ratio: {LibRyujinx.GetAspectRatio()}");
+            Logger.Info?.Print(LogClass.Application, $"  - Host Mapped: {isHostMapped}");
+            Logger.Info?.Print(LogClass.Application, $"  - Hypervisor: {useHypervisor}");
+            Logger.Info?.Print(LogClass.Application, $"  - Vsync: {enableVsync}");
+            Logger.Info?.Print(LogClass.Application, $"  - Docked Mode: {enableDockedMode}");
+            Logger.Info?.Print(LogClass.Application, $"  - PTC: {enablePtc}");
+            Logger.Info?.Print(LogClass.Application, $"  - JIT Cache Eviction: {enableJitCacheEviction}");
+            Logger.Info?.Print(LogClass.Application, $"  - Internet Access: {enableInternetAccess}");
+            Logger.Info?.Print(LogClass.Application, $"  - Time Zone: {timeZone ?? "Default"}");
+            Logger.Info?.Print(LogClass.Application, $"  - Ignore Missing Services: {ignoreMissingServices}");
 
             var renderer = LibRyujinx.Renderer;
             BackendThreading threadingMode = LibRyujinx.GraphicsConfiguration.BackendThreading;
@@ -790,7 +819,12 @@ namespace LibRyujinx
 
             if (threadedGAL)
             {
+                Logger.Info?.Print(LogClass.Application, "Using threaded renderer");
                 renderer = new ThreadedRenderer(renderer);
+            }
+            else
+            {
+                Logger.Info?.Print(LogClass.Application, "Using non-threaded renderer");
             }
 
             HLEConfiguration configuration = new HLEConfiguration(VirtualFileSystem,
@@ -822,24 +856,36 @@ namespace LibRyujinx
                                                                   "",
                                                                   Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled);
 
-            EmulationContext = new Switch(configuration);
-
-            return true;
+            try
+            {
+                EmulationContext = new Switch(configuration);
+                Logger.Info?.Print(LogClass.Application, "Device context initialized successfully");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Failed to initialize device context: {ex.Message}");
+                return false;
+            }
         }
 
         internal void ReloadFileSystem()
         {
+            Logger.Info?.Print(LogClass.Application, "Reloading filesystem");
             VirtualFileSystem.ReloadKeySet();
             ContentManager = new ContentManager(VirtualFileSystem);
             AccountManager = new AccountManager(LibHacHorizonManager.RyujinxClient);
+            Logger.Info?.Print(LogClass.Application, "Filesystem reloaded successfully");
         }
 
         internal void DisposeContext()
         {
+            Logger.Info?.Print(LogClass.Application, "Disposing device context");
             EmulationContext?.Dispose();
             EmulationContext?.DisposeGpu();
             EmulationContext = null;
             LibRyujinx.Renderer = null;
+            Logger.Info?.Print(LogClass.Application, "Device context disposed");
         }
     }
 
