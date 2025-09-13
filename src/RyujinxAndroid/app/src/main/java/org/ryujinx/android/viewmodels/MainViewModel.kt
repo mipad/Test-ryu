@@ -171,7 +171,8 @@ class MainViewModel(val activity: MainActivity) {
                     false,
                     "UTC",
                     settings.ignoreMissingServices,
-                    settings.audioEngineType // 新增音频引擎参数
+                    settings.audioEngineType, // 新增音频引擎参数
+                    settings.memoryConfiguration //内存配置
                 )
 
                 semaphore.release()
@@ -276,7 +277,8 @@ class MainViewModel(val activity: MainActivity) {
                     false,
                     "UTC",
                     settings.ignoreMissingServices,
-                    settings.audioEngineType // 新增音频引擎参数
+                    settings.audioEngineType, // 新增音频引擎参数
+                    settings.memoryConfiguration //内存配置
                 )
 
                 semaphore.release()
