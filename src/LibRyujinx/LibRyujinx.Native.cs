@@ -18,6 +18,7 @@ using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Ryujinx.HLE; 
 
 namespace LibRyujinx
 {
@@ -66,27 +67,27 @@ namespace LibRyujinx
                                                   bool enableInternetAccess,
                                                   IntPtr timeZone,
                                                   bool ignoreMissingServices,
-                                                  int audioEngineType)  // 新增音频引擎参数
+                                                  int audioEngineType,
+                                                  int memoryConfiguration)  // 新增内存配置参数
         {
             // 根据音频引擎类型设置音频驱动
-    switch (audioEngineType)
-    {
-        case 0: // 禁用音频
-            AudioDriver = new DummyHardwareDeviceDriver();
-            break;
-        case 1: // OpenAL
-            AudioDriver = new OpenALHardwareDeviceDriver();
-            break;
-        case 2: // SDL2
-            // 添加SDL2音频驱动
-            AudioDriver = new SDL2HardwareDeviceDriver();
-            break;
-        case 3: // Oboe
-            AudioDriver = new OboeHardwareDeviceDriver();
-            break;
-        default: // 默认使用 OpenAL
-            AudioDriver = new OpenALHardwareDeviceDriver();
-            break;
+            switch (audioEngineType)
+            {
+                case 0: // 禁用音频
+                    AudioDriver = new DummyHardwareDeviceDriver();
+                    break;
+                case 1: // OpenAL
+                    AudioDriver = new OpenALHardwareDeviceDriver();
+                    break;
+                case 2: // SDL2
+                    AudioDriver = new SDL2HardwareDeviceDriver();
+                    break;
+                case 3: // Oboe
+                    AudioDriver = new OboeHardwareDeviceDriver();
+                    break;
+                default: // 默认使用 OpenAL
+                    AudioDriver = new OpenALHardwareDeviceDriver();
+                    break;
             }
             
             return InitializeDevice(isHostMapped,
@@ -99,7 +100,8 @@ namespace LibRyujinx
                                     enableJitCacheEviction,
                                     enableInternetAccess,
                                     Marshal.PtrToStringAnsi(timeZone),
-                                    ignoreMissingServices);
+                                    ignoreMissingServices,
+                                    (MemoryConfiguration)memoryConfiguration);  // 传递内存配置
         }
 
         [UnmanagedCallersOnly(EntryPoint = "device_reload_file_system")]
@@ -149,36 +151,36 @@ namespace LibRyujinx
         }
 
         [UnmanagedCallersOnly(EntryPoint = "graphics_initialize")]
-public static bool InitializeGraphicsNative(float resScale,
-    float maxAnisotropy,
-    bool fastGpuTime,
-    bool fast2DCopy,
-    bool enableMacroJit,
-    bool enableMacroHLE,
-    bool enableShaderCache,
-    bool enableTextureRecompression,
-    int backendThreading,
-    int aspectRatio)  // 新增参数：画面比例
-{
-    if (OperatingSystem.IsIOS())
-    {
-        Silk.NET.Core.Loader.SearchPathContainer.Platform = Silk.NET.Core.Loader.UnderlyingPlatform.MacOS;
-    }
-    
-    return InitializeGraphics(new GraphicsConfiguration()
-    {
-        ResScale = resScale,
-        MaxAnisotropy = maxAnisotropy,
-        FastGpuTime = fastGpuTime,
-        Fast2DCopy = fast2DCopy,
-        EnableMacroJit = enableMacroJit,
-        EnableMacroHLE = enableMacroHLE,
-        EnableShaderCache = enableShaderCache,
-        EnableTextureRecompression = enableTextureRecompression,
-        BackendThreading = (BackendThreading)backendThreading,
-        AspectRatio = (AspectRatio)aspectRatio  // 设置画面比例
-    });
-}
+        public static bool InitializeGraphicsNative(float resScale,
+            float maxAnisotropy,
+            bool fastGpuTime,
+            bool fast2DCopy,
+            bool enableMacroJit,
+            bool enableMacroHLE,
+            bool enableShaderCache,
+            bool enableTextureRecompression,
+            int backendThreading,
+            int aspectRatio)  // 新增参数：画面比例
+        {
+            if (OperatingSystem.IsIOS())
+            {
+                Silk.NET.Core.Loader.SearchPathContainer.Platform = Silk.NET.Core.Loader.UnderlyingPlatform.MacOS;
+            }
+            
+            return InitializeGraphics(new GraphicsConfiguration()
+            {
+                ResScale = resScale,
+                MaxAnisotropy = maxAnisotropy,
+                FastGpuTime = fastGpuTime,
+                Fast2DCopy = fast2DCopy,
+                EnableMacroJit = enableMacroJit,
+                EnableMacroHLE = enableMacroHLE,
+                EnableShaderCache = enableShaderCache,
+                EnableTextureRecompression = enableTextureRecompression,
+                BackendThreading = (BackendThreading)backendThreading,
+                AspectRatio = (AspectRatio)aspectRatio  // 设置画面比例
+            });
+        }
 
         [UnmanagedCallersOnly(EntryPoint = "graphics_initialize_renderer")]
         public unsafe static bool InitializeGraphicsRendererNative(GraphicsBackend graphicsBackend, NativeGraphicsInterop nativeGraphicsInterop)
