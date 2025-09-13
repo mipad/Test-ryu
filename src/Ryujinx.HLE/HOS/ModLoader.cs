@@ -370,7 +370,7 @@ namespace Ryujinx.HLE.HOS
             return numMods;
         }
 
-        public static IEnumerable<Cheat> GetCheatsInFile(FileInfo cheatFile)
+        private static IEnumerable<Cheat> GetCheatsInFile(FileInfo cheatFile)
         {
             string cheatName = DefaultCheatName;
             List<string> instructions = [];
@@ -396,7 +396,7 @@ namespace Ryujinx.HLE.HOS
                     // Add the previous section to the list.
                     if (instructions.Count > 0)
                     {
-                        cheats.Add(new Cheat($"<{cheatName} Cheat>", cheatFile, instructions));
+                        cheats.Add(new Cheat(cheatName, cheatFile, instructions));
                     }
 
                     // Start a new cheat section.
@@ -413,7 +413,7 @@ namespace Ryujinx.HLE.HOS
             // Add the last section being processed.
             if (instructions.Count > 0)
             {
-                cheats.Add(new Cheat($"<{cheatName} Cheat>", cheatFile, instructions));
+                cheats.Add(new Cheat(cheatName, cheatFile, instructions));
             }
 
             return cheats;
@@ -736,7 +736,6 @@ namespace Ryujinx.HLE.HOS
             if (tamperInfo?.BuildIds == null || tamperInfo.CodeAddresses == null)
             {
                 Logger.Error?.Print(LogClass.ModLoader, "Unable to install cheat because the associated process is invalid");
-
                 return;
             }
 
@@ -744,6 +743,7 @@ namespace Ryujinx.HLE.HOS
 
             if (!_appMods.TryGetValue(applicationId, out ModCache mods) || mods.Cheats.Count == 0)
             {
+                Logger.Info?.Print(LogClass.ModLoader, "No cheats found for this application");
                 return;
             }
 
@@ -751,22 +751,45 @@ namespace Ryujinx.HLE.HOS
             var processExes = tamperInfo.BuildIds.Zip(tamperInfo.CodeAddresses, (k, v) => new { k, v })
                 .ToDictionary(x => x.k[..Math.Min(Cheat.CheatIdSize, x.k.Length)], x => x.v);
 
+            // 读取启用的金手指列表
+            var contentDirectory = FindApplicationDir(new DirectoryInfo(Path.Combine(GetModsBasePath(), AmsContentsDir)), $"{applicationId:x16}");
+            string enabledCheatsPath = Path.Combine(contentDirectory.FullName, CheatDir, "enabled.txt");
+            HashSet<string> enabledCheats = new HashSet<string>();
+            
+            if (File.Exists(enabledCheatsPath))
+            {
+                var enabledLines = File.ReadAllLines(enabledCheatsPath)
+                              .Where(line => !string.IsNullOrWhiteSpace(line))
+                              .Select(line => line.Trim());
+                enabledCheats.UnionWith(enabledLines);
+                Logger.Info?.Print(LogClass.ModLoader, $"Enabled cheats: {string.Join(", ", enabledCheats)}");
+            }
+
             foreach (var cheat in cheats)
             {
-                string cheatId = Path.GetFileNameWithoutExtension(cheat.Path.Name).ToUpper();
-
-                if (!processExes.TryGetValue(cheatId, out ulong exeAddress))
+                // 使用文件名作为基础 ID，但需要与 enabled.txt 中的格式匹配
+                string cheatFileId = Path.GetFileNameWithoutExtension(cheat.Path.Name).ToUpper();
+                string fullCheatId = $"{cheatFileId}-{cheat.Name}";
+                
+                // 检查这个金手指是否已启用
+                if (!enabledCheats.Contains(fullCheatId))
                 {
-                    Logger.Warning?.Print(LogClass.ModLoader, $"Skipping cheat '{cheat.Name}' because no executable matches its BuildId {cheatId} (check if the game title and version are correct)");
-
+                    Logger.Info?.Print(LogClass.ModLoader, $"Skipping cheat '{cheat.Name}' because it is not enabled");
                     continue;
                 }
 
-                Logger.Info?.Print(LogClass.ModLoader, $"Installing cheat '{cheat.Name}'");
+                if (!processExes.TryGetValue(cheatFileId, out ulong exeAddress))
+                {
+                    Logger.Warning?.Print(LogClass.ModLoader, $"Skipping cheat '{cheat.Name}' because no executable matches its BuildId {cheatFileId} (check if the game title and version are correct)");
+                    continue;
+                }
 
-                tamperMachine.InstallAtmosphereCheat(cheat.Name, cheatId, cheat.Instructions, tamperInfo, exeAddress);
+                Logger.Info?.Print(LogClass.ModLoader, $"Installing cheat '{cheat.Name}' with ID {fullCheatId}");
+
+                tamperMachine.InstallAtmosphereCheat(cheat.Name, cheatFileId, cheat.Instructions, tamperInfo, exeAddress);
             }
 
+            // 即使没有金手指也要调用 EnableCheats，以确保清除之前的金手指
             EnableCheats(applicationId, tamperMachine);
         }
 
