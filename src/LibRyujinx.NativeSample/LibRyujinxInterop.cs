@@ -29,7 +29,8 @@ namespace LibRyujinx.Sample
                                                   bool enableInternetAccess,
                                                   IntPtr timeZone,
                                                   bool ignoreMissingServices,
-                                                  int audioEngineType);
+                                                  int audioEngineType,
+                                                  int memoryConfiguration);  // 新增内存配置参数
 
         [DllImport(dll, EntryPoint = "graphics_initialize_renderer")]
         internal extern static bool InitializeGraphicsRenderer(GraphicsBackend backend, NativeGraphicsInterop nativeGraphicsInterop);
@@ -79,6 +80,10 @@ namespace LibRyujinx.Sample
         // 添加设置跳过内存屏障的方法
         [DllImport(dll, EntryPoint = "setSkipMemoryBarriers")]
         internal extern static void SetSkipMemoryBarriers(bool skip);
+
+        // 添加设置内存配置的方法
+        [DllImport(dll, EntryPoint = "setMemoryConfiguration")]
+        internal extern static void SetMemoryConfiguration(MemoryConfiguration memoryConfig);
     }
 
     public enum GraphicsBackend
@@ -164,6 +169,16 @@ namespace LibRyujinx.Sample
         Fixed21x9,
         Fixed32x9,
         Stretched
+    }
+
+    public enum MemoryConfiguration
+    {
+        MemoryConfiguration4GiB = 0,
+        MemoryConfiguration4GiBAppletDev = 1,
+        MemoryConfiguration4GiBSystemDev = 2,
+        MemoryConfiguration6GiB = 3,
+        MemoryConfiguration6GiBAppletDev = 4,
+        MemoryConfiguration8GiB = 5,
     }
 
     /// <summary>
