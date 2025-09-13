@@ -28,11 +28,16 @@ class MainView {
                         ), mainViewModel
                     )
                 }
-                // 添加金手指界面导航
+                // 添加金手指界面导航，包含 titleId 和 gamePath 参数
                 composable(
-                    "cheats/{titleId}",
+                    "cheats/{titleId}?gamePath={gamePath}",
                     arguments = listOf(
-                        navArgument("titleId") { type = NavType.StringType }
+                        navArgument("titleId") { type = NavType.StringType },
+                        navArgument("gamePath") { 
+                            type = NavType.StringType
+                            defaultValue = ""
+                            nullable = true
+                        }
                     )
                 ) { backStackEntry ->
                     val titleId = backStackEntry.arguments?.getString("titleId") ?: ""
