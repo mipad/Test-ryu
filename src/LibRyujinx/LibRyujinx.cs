@@ -705,7 +705,6 @@ namespace LibRyujinx
                     }
 
                     paths.Add(fileEntry.FullPath);
-                }
             }
 
             return paths;
@@ -732,25 +731,36 @@ namespace LibRyujinx
             var cheats = new List<string>();
             
             if (SwitchDevice?.VirtualFileSystem == null)
+            {
+                Logger.Warning?.Print(LogClass.Application, "VirtualFileSystem not initialized, cannot get cheats");
                 return cheats;
+            }
             
             // 获取金手指目录路径
             string modsBasePath = ModLoader.GetModsBasePath();
             string titleModsPath = ModLoader.GetApplicationDir(modsBasePath, titleId);
             string cheatsPath = Path.Combine(titleModsPath, "cheats");
             
+            Logger.Info?.Print(LogClass.Application, $"Looking for cheats in: {cheatsPath}");
+            
             if (!Directory.Exists(cheatsPath))
+            {
+                Logger.Info?.Print(LogClass.Application, $"Cheats directory does not exist: {cheatsPath}");
                 return cheats;
+            }
             
             // 读取金手指文件
             foreach (var file in Directory.GetFiles(cheatsPath, "*.txt"))
             {
+                if (Path.GetFileName(file) == "enabled.txt") continue;
+                
                 string buildId = Path.GetFileNameWithoutExtension(file);
                 var cheatInstructions = ModLoader.GetCheatsInFile(new FileInfo(file));
                 
                 foreach (var cheat in cheatInstructions)
                 {
-                    cheats.Add($"{buildId}-{cheat.Name}");
+                    string cheatIdentifier = $"{buildId}-{cheat.Name}"; // 直接使用名称，不加 < >
+                    cheats.Add(cheatIdentifier);
                 }
             }
             
@@ -784,7 +794,11 @@ namespace LibRyujinx
             var enabledCheats = new HashSet<string>();
             if (File.Exists(enabledCheatsPath))
             {
-                enabledCheats.UnionWith(File.ReadAllLines(enabledCheatsPath));
+                // 确保读取时去除空行和空白字符
+                var lines = File.ReadAllLines(enabledCheatsPath)
+                              .Where(line => !string.IsNullOrWhiteSpace(line))
+                              .Select(line => line.Trim());
+                enabledCheats.UnionWith(lines);
             }
             
             if (enabled)
@@ -798,6 +812,12 @@ namespace LibRyujinx
             
             Directory.CreateDirectory(Path.GetDirectoryName(enabledCheatsPath));
             File.WriteAllLines(enabledCheatsPath, enabledCheats);
+            
+            // 如果游戏正在运行，可能需要重新加载金手指
+            if (SwitchDevice?.EmulationContext != null)
+            {
+                Logger.Info?.Print(LogClass.Emulation, "Cheat state changed but requires game restart to take effect");
+            }
         }
 
         public static void SaveCheats(string titleId)
