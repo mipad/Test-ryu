@@ -31,6 +31,10 @@ class GameModel(var file: DocumentFile, val context: Context) {
             }
         }
     private var sharedPref: SharedPreferences? = null
+    
+    // 添加 path 属性
+    val path: String
+        get() = file.uri.toString()
 
     init {
         fileName = file.name
