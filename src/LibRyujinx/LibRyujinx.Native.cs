@@ -566,5 +566,76 @@ namespace LibRyujinx
                 Logger.Error?.Print(LogClass.Application, $"Failed to set scaling filter level: {ex.Message}");
             }
         }
+
+        // 添加金手指相关的 JNI 方法
+        [UnmanagedCallersOnly(EntryPoint = "cheatGetCheats")]
+        public static IntPtr CheatGetCheatsNative(IntPtr titleIdPtr, IntPtr gamePathPtr)
+        {
+            try
+            {
+                var titleId = Marshal.PtrToStringAnsi(titleIdPtr);
+                var gamePath = Marshal.PtrToStringAnsi(gamePathPtr);
+                
+                // 获取金手指列表
+                var cheats = GetCheats(titleId, gamePath);
+                
+                return CreateStringArray(cheats);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in CheatGetCheatsNative: {ex.Message}");
+                return IntPtr.Zero;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "cheatGetEnabledCheats")]
+        public static IntPtr CheatGetEnabledCheatsNative(IntPtr titleIdPtr)
+        {
+            try
+            {
+                var titleId = Marshal.PtrToStringAnsi(titleIdPtr);
+                
+                // 获取已启用的金手指列表
+                var enabledCheats = GetEnabledCheats(titleId);
+                
+                return CreateStringArray(enabledCheats);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in CheatGetEnabledCheatsNative: {ex.Message}");
+                return IntPtr.Zero;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "cheatSetEnabled")]
+        public static void CheatSetEnabledNative(IntPtr titleIdPtr, IntPtr cheatIdPtr, bool enabled)
+        {
+            try
+            {
+                var titleId = Marshal.PtrToStringAnsi(titleIdPtr);
+                var cheatId = Marshal.PtrToStringAnsi(cheatIdPtr);
+                
+                SetCheatEnabled(titleId, cheatId, enabled);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in CheatSetEnabledNative: {ex.Message}");
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "cheatSave")]
+        public static void CheatSaveNative(IntPtr titleIdPtr)
+        {
+            try
+            {
+                var titleId = Marshal.PtrToStringAnsi(titleIdPtr);
+                
+                SaveCheats(titleId);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in CheatSaveNative: {ex.Message}");
+            }
+        }
     }
 }
