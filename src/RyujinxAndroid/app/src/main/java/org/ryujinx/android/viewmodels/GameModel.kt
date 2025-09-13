@@ -60,6 +60,18 @@ class GameModel(var file: DocumentFile, val context: Context) {
             titleName = file.name
         }
         
+        // 检测是否有更新版本
+        val updatePid = openUpdate()
+        if (updatePid > 0) {
+            val updateGameInfo = GameInfo()
+            // 更新文件都是NSP格式
+            RyujinxNative.jnaInstance.deviceGetGameInfo(updatePid, "nsp", updateGameInfo)
+            
+            // 使用更新版本的版本信息
+            version = updateGameInfo.Version
+            // 可能需要更新其他信息，如 titleId 等
+        }
+        
         // 初始化SharedPreferences
         sharedPref = PreferenceManager.getDefaultSharedPreferences(context)
         
