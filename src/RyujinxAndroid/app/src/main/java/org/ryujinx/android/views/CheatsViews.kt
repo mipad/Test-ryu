@@ -5,14 +5,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import org.ryujinx.android.viewmodels.CheatsViewModel
+import androidx.compose.ui.Alignment
 
+@OptIn(ExperimentalMaterial3Api::class) // 添加这个注解来处理实验性API警告
 @Composable
 fun CheatsViews(
     navController: NavController,
@@ -50,11 +51,12 @@ fun CheatsViews(
                     }
                 },
                 actions = {
-                    IconButton(
+                    // 使用文字按钮代替图标
+                    TextButton(
                         onClick = { viewModel.saveCheats() },
                         enabled = !isLoading
                     ) {
-                        Icon(Icons.Filled.Save, contentDescription = "Save")
+                        Text("Save")
                     }
                 }
             )
