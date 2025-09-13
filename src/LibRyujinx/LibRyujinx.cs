@@ -115,6 +115,23 @@ namespace LibRyujinx
             return _currentMemoryConfiguration;
         }
 
+        // 添加辅助方法：将MemoryConfiguration转换为DRAM大小
+        private static ulong MemoryConfigToDramSize(MemoryConfiguration configuration)
+        {
+            const ulong GiB = 1024 * 1024 * 1024;
+            
+            return configuration switch
+            {
+                MemoryConfiguration.MemoryConfiguration4GiB or
+                MemoryConfiguration.MemoryConfiguration4GiBAppletDev or
+                MemoryConfiguration.MemoryConfiguration4GiBSystemDev => 4 * GiB,
+                MemoryConfiguration.MemoryConfiguration6GiB or
+                MemoryConfiguration.MemoryConfiguration6GiBAppletDev => 6 * GiB,
+                MemoryConfiguration.MemoryConfiguration8GiB => 8 * GiB,
+                _ => 4 * GiB, // 默认值
+            };
+        }
+
         public static void InitializeAudio()
         {
             AudioDriver = new SDL2HardwareDeviceDriver();
@@ -800,7 +817,7 @@ namespace LibRyujinx
                                                                   UserChannelPersistence,
                                                                   renderer,
                                                                   LibRyujinx.AudioDriver, //Audio
-                                                                  memoryConfiguration.ToDramSize(),  // 使用内存配置
+                                                                  LibRyujinx.MemoryConfigToDramSize(memoryConfiguration),  // 使用辅助方法
                                                                   HostUiHandler,
                                                                   systemLanguage,
                                                                   regionCode,
