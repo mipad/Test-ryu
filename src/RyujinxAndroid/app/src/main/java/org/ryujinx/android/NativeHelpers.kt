@@ -25,7 +25,7 @@ class NativeHelpers {
     external fun setTurboMode(enable: Boolean)
     //external fun getMaxSwapInterval(nativeWindow: Long): Int
     //external fun getMinSwapInterval(nativeWindow: Long): Int
-   // external fun setSwapInterval(nativeWindow: Long, swapInterval: Int): Int
+    external fun setSwapInterval(nativeWindow: Long, swapInterval: Int): Int
     external fun getStringJava(ptr: Long): String
     external fun setIsInitialOrientationFlipped(isFlipped: Boolean)
 }
