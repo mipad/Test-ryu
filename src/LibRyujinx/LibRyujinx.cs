@@ -35,6 +35,7 @@ using System.Collections.Generic;
 using System.Text;
 using Ryujinx.HLE.UI;
 using LibRyujinx.Android;
+using Ryujinx.HLE; // 确保这行存在
 
 namespace LibRyujinx
 {
@@ -471,7 +472,7 @@ namespace LibRyujinx
 
                     if (nca.Header.ContentType == NcaContentType.Program)
                     {
-                        int dataIndex = Nca.GetSectionIndexFromType(NcaSectionType.Data, NcaContentType.Program);
+                        int dataIndex = Nca.GetSectionIndex fromType(NcaSectionType.Data, NcaContentType.Program);
 
                         if (nca.SectionExists(NcaSectionType.Data) && nca.Header.GetFsHeader(dataIndex).IsPatchSection())
                         {
