@@ -370,7 +370,7 @@ namespace Ryujinx.HLE.HOS
             return numMods;
         }
 
-        private static IEnumerable<Cheat> GetCheatsInFile(FileInfo cheatFile)
+        public static IEnumerable<Cheat> GetCheatsInFile(FileInfo cheatFile)
         {
             string cheatName = DefaultCheatName;
             List<string> instructions = [];
