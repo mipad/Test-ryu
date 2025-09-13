@@ -81,7 +81,7 @@ namespace LibRyujinx
             catch (Exception ex)
             {
                 Console.WriteLine(ex);
-                return true;
+                return false;
             }
             
             OpenALLibraryNameContainer.OverridePath = "libopenal.so";
