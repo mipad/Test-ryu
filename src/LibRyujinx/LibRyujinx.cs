@@ -3,6 +3,7 @@ using Ryujinx.HLE.HOS.Services.Account.Acc;
 using Ryujinx.HLE.HOS;
 using Ryujinx.Input.HLE;
 using Ryujinx.HLE;
+using System.Linq;
 using System;
 using System.Runtime.InteropServices;
 using Ryujinx.Common.Configuration;
