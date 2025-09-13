@@ -86,30 +86,31 @@ namespace LibRyujinx
                                                     bool enableInternetAccess,
                                                     IntPtr timeZonePtr,
                                                     bool ignoreMissingServices,
-                                                    int audioEngineType)  // 新增音频引擎参数
+                                                    int audioEngineType,
+                                                    int memoryConfiguration)  // 新增内存配置参数
         {
             debug_break(4);
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             
             // 根据音频引擎类型设置音频驱动
-    switch (audioEngineType)
-{
-    case 0: // 禁用音频
-        AudioDriver = new DummyHardwareDeviceDriver();
-        break;
-    case 1: // OpenAL
-        AudioDriver = new OpenALHardwareDeviceDriver();
-        break;
-    case 2: // SDL2
-        AudioDriver = new SDL2HardwareDeviceDriver();
-        break;
-    case 3: // Oboe
-        AudioDriver = new OboeHardwareDeviceDriver();
-        break;
-    default:
-        AudioDriver = new OpenALHardwareDeviceDriver();
-        break;
-}
+            switch (audioEngineType)
+            {
+                case 0: // 禁用音频
+                    AudioDriver = new DummyHardwareDeviceDriver();
+                    break;
+                case 1: // OpenAL
+                    AudioDriver = new OpenALHardwareDeviceDriver();
+                    break;
+                case 2: // SDL2
+                    AudioDriver = new SDL2HardwareDeviceDriver();
+                    break;
+                case 3: // Oboe
+                    AudioDriver = new OboeHardwareDeviceDriver();
+                    break;
+                default:
+                    AudioDriver = new OpenALHardwareDeviceDriver();
+                    break;
+            }
 
             var timezone = Marshal.PtrToStringAnsi(timeZonePtr);
             return InitializeDevice(isHostMapped,
@@ -122,7 +123,8 @@ namespace LibRyujinx
                                     enableJitCacheEviction,
                                     enableInternetAccess,
                                     timezone,
-                                    ignoreMissingServices);
+                                    ignoreMissingServices,
+                                    (MemoryConfiguration)memoryConfiguration);  // 传递内存配置
         }
 
         [UnmanagedCallersOnly(EntryPoint = "deviceGetGameFifo")]
@@ -576,6 +578,14 @@ namespace LibRyujinx
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             SetAspectRatio((AspectRatio)aspectRatio);
+        }
+
+        // 新增：设置内存配置的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "setMemoryConfiguration")]
+        public static void JnaSetMemoryConfiguration(int memoryConfig)
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: setMemoryConfiguration");
+            SetMemoryConfiguration((MemoryConfiguration)memoryConfig);
         }
 
         // 新增：设置缩放过滤器的JNI方法
