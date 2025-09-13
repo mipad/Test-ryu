@@ -95,21 +95,41 @@ namespace LibRyujinx
             {
                 if (Renderer != null && Renderer.Window != null)
                 {
-                    // 应用抗锯齿设置
-                    Renderer.Window.SetAntiAliasing((Ryujinx.Graphics.GAL.AntiAliasing)ConfigurationState.Instance.Graphics.AntiAliasing.Value);
+                    // 应用抗锯齿设置 - 添加详细日志
+                    var antiAliasing = (Ryujinx.Graphics.GAL.AntiAliasing)ConfigurationState.Instance.Graphics.AntiAliasing.Value;
+                    Logger.Info?.Print(LogClass.Application, $"Applying anti-aliasing setting: {antiAliasing}");
+                    Renderer.Window.SetAntiAliasing(antiAliasing);
+                    Logger.Info?.Print(LogClass.Application, $"Anti-aliasing applied successfully: {antiAliasing}");
                     
-                    // 应用Scaling Filter设置
-                    Renderer.Window.SetScalingFilter((Ryujinx.Graphics.GAL.ScalingFilter)ConfigurationState.Instance.Graphics.ScalingFilter.Value);
+                    // 应用Scaling Filter设置 - 添加详细日志
+                    var scalingFilter = (Ryujinx.Graphics.GAL.ScalingFilter)ConfigurationState.Instance.Graphics.ScalingFilter.Value;
+                    Logger.Info?.Print(LogClass.Application, $"Applying scaling filter: {scalingFilter}");
+                    Renderer.Window.SetScalingFilter(scalingFilter);
+                    Logger.Info?.Print(LogClass.Application, $"Scaling filter applied successfully: {scalingFilter}");
                     
-                    // 应用Scaling Filter Level设置
-                    Renderer.Window.SetScalingFilterLevel(ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value);
+                    // 应用Scaling Filter Level设置 - 添加详细日志
+                    var scalingFilterLevel = ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value;
+                    Logger.Info?.Print(LogClass.Application, $"Applying scaling filter level: {scalingFilterLevel}");
+                    Renderer.Window.SetScalingFilterLevel(scalingFilterLevel);
+                    Logger.Info?.Print(LogClass.Application, $"Scaling filter level applied successfully: {scalingFilterLevel}");
                     
-                    Logger.Info?.Print(LogClass.Application, "Graphics settings applied");
+                    // 添加更多图形设置的详细日志
+                    Logger.Info?.Print(LogClass.Application, $"Resolution scale: {ConfigurationState.Instance.Graphics.ResScale.Value}");
+                    Logger.Info?.Print(LogClass.Application, $"Max anisotropy: {ConfigurationState.Instance.Graphics.MaxAnisotropy.Value}");
+                    Logger.Info?.Print(LogClass.Application, $"Shader cache enabled: {ConfigurationState.Instance.Graphics.EnableShaderCache.Value}");
+                    Logger.Info?.Print(LogClass.Application, $"Texture recompression enabled: {ConfigurationState.Instance.Graphics.EnableTextureRecompression.Value}");
+                    
+                    Logger.Info?.Print(LogClass.Application, "All graphics settings applied successfully");
+                }
+                else
+                {
+                    Logger.Warning?.Print(LogClass.Application, "Renderer or Renderer.Window is null, cannot apply graphics settings");
                 }
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Failed to apply graphics settings: {ex.Message}");
+                Logger.Debug?.Print(LogClass.Application, $"Graphics settings failure stack trace: {ex.StackTrace}");
             }
         }
 
