@@ -3,10 +3,10 @@ using Ryujinx.HLE.Exceptions;
 using Ryujinx.HLE.HOS.Ipc;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Diagnostics.CodeAnalysis;
 
 namespace Ryujinx.HLE.HOS.Services
 {
@@ -24,19 +24,20 @@ namespace Ryujinx.HLE.HOS.Services
 
         public IpcService(ServerBase server = null)
         {
-            CmifCommands = typeof(IpcService).Assembly.GetTypes()
-                .Where(type => type == GetType())
-                .SelectMany(type => type.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public))
+            // Use GetType() instead of Assembly.GetTypes() to avoid trimming warnings
+            Type currentType = GetType();
+            
+            CmifCommands = currentType
+                .GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public)
                 .SelectMany(methodInfo => methodInfo.GetCustomAttributes(typeof(CommandCmifAttribute))
-                .Select(command => (((CommandCmifAttribute)command).Id, methodInfo)))
-                .ToDictionary(command => command.Id, command => command.methodInfo);
+                .Select(command => (((CommandCmifAttribute)command).Id, ((CommandCmifAttribute)command).MethodInfo)))
+                .ToDictionary(command => command.Id, command => command.MethodInfo);
 
-            TipcCommands = typeof(IpcService).Assembly.GetTypes()
-                .Where(type => type == GetType())
-                .SelectMany(type => type.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public))
+            TipcCommands = currentType
+                .GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public)
                 .SelectMany(methodInfo => methodInfo.GetCustomAttributes(typeof(CommandTipcAttribute))
-                .Select(command => (((CommandTipcAttribute)command).Id, methodInfo)))
-                .ToDictionary(command => command.Id, command => command.methodInfo);
+                .Select(command => (((CommandTipcAttribute)command).Id, ((CommandTipcAttribute)command).MethodInfo)))
+                .ToDictionary(command => command.Id, command => command.MethodInfo);
 
             Server = server;
 
@@ -280,6 +281,33 @@ namespace Ryujinx.HLE.HOS.Services
             }
 
             _domainObjects.Clear();
+        }
+    }
+
+    // Add these attributes to store method information
+    [AttributeUsage(AttributeTargets.Method)]
+    internal class CommandCmifAttribute : Attribute
+    {
+        public int Id { get; }
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)]
+        public MethodInfo MethodInfo { get; set; }
+
+        public CommandCmifAttribute(int id)
+        {
+            Id = id;
+        }
+    }
+
+    [AttributeUsage(AttributeTargets.Method)]
+    internal class CommandTipcAttribute : Attribute
+    {
+        public int Id { get; }
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)]
+        public MethodInfo MethodInfo { get; set; }
+
+        public CommandTipcAttribute(int id)
+        {
+            Id = id;
         }
     }
 }
