@@ -12,38 +12,73 @@ namespace Ryujinx.HLE.HOS.Tamper
         public Register(string alias)
         {
             _alias = alias;
+            Logger.Debug?.Print(LogClass.TamperMachine, $"Created register: {_alias}");
         }
 
         public T Get<T>() where T : unmanaged
         {
             // 避免使用动态类型转换
             if (typeof(T) == typeof(byte))
-                return (T)(object)(byte)_register;
+            {
+                byte value = (byte)_register;
+                Logger.Debug?.Print(LogClass.TamperMachine, $"{_alias}.Get<byte>: 0x{value:X2}");
+                return (T)(object)value;
+            }
             else if (typeof(T) == typeof(ushort))
-                return (T)(object)(ushort)_register;
+            {
+                ushort value = (ushort)_register;
+                Logger.Debug?.Print(LogClass.TamperMachine, $"{_alias}.Get<ushort>: 0x{value:X4}");
+                return (T)(object)value;
+            }
             else if (typeof(T) == typeof(uint))
-                return (T)(object)(uint)_register;
+            {
+                uint value = (uint)_register;
+                Logger.Debug?.Print(LogClass.TamperMachine, $"{_alias}.Get<uint>: 0x{value:X8}");
+                return (T)(object)value;
+            }
             else if (typeof(T) == typeof(ulong))
+            {
+                Logger.Debug?.Print(LogClass.TamperMachine, $"{_alias}.Get<ulong>: 0x{_register:X16}");
                 return (T)(object)_register;
+            }
             else
                 throw new NotSupportedException($"Type {typeof(T)} is not supported in Register.Get");
         }
 
         public void Set<T>(T value) where T : unmanaged
         {
-            Logger.Debug?.Print(LogClass.TamperMachine, $"{_alias}: {value}");
-
             // 避免使用动态类型转换
             if (typeof(T) == typeof(byte))
-                _register = (byte)(object)value;
+            {
+                byte byteValue = (byte)(object)value;
+                Logger.Debug?.Print(LogClass.TamperMachine, $"{_alias}.Set<byte>: 0x{_register:X16} -> 0x{byteValue:X2}");
+                _register = byteValue;
+            }
             else if (typeof(T) == typeof(ushort))
-                _register = (ushort)(object)value;
+            {
+                ushort ushortValue = (ushort)(object)value;
+                Logger.Debug?.Print(LogClass.TamperMachine, $"{_alias}.Set<ushort>: 0x{_register:X16} -> 0x{ushortValue:X4}");
+                _register = ushortValue;
+            }
             else if (typeof(T) == typeof(uint))
-                _register = (uint)(object)value;
+            {
+                uint uintValue = (uint)(object)value;
+                Logger.Debug?.Print(LogClass.TamperMachine, $"{_alias}.Set<uint>: 0x{_register:X16} -> 0x{uintValue:X8}");
+                _register = uintValue;
+            }
             else if (typeof(T) == typeof(ulong))
-                _register = (ulong)(object)value;
+            {
+                ulong ulongValue = (ulong)(object)value;
+                Logger.Debug?.Print(LogClass.TamperMachine, $"{_alias}.Set<ulong>: 0x{_register:X16} -> 0x{ulongValue:X16}");
+                _register = ulongValue;
+            }
             else
                 throw new NotSupportedException($"Type {typeof(T)} is not supported in Register.Set");
+        }
+        
+        public override string ToString()
+        {
+            return $"{_alias}=0x{_register:X16}";
         }
     }
 }
