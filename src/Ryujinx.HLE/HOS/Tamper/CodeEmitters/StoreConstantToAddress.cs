@@ -1,3 +1,5 @@
+using Ryujinx.Common.Logging;
+
 namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
 {
     /// <summary>
@@ -32,13 +34,13 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
     // 添加详细日志
     Logger.Debug?.Print(LogClass.TamperMachine, 
         $"StoreConstantToAddress: width={operationWidth}, region={memoryRegion}, " +
-        $"offsetReg=R_{instruction[OffsetRegisterIndex]:X2}, offsetImm=0x{offsetImmediate:X}");
+        $"offsetReg=R_{instruction[OffsetRegisterIndex]:X2}, offsetImm=0x{offsetImmediate:X16}");
 
     Pointer dstMem = MemoryHelper.EmitPointer(memoryRegion, offsetRegister, offsetImmediate, context);
 
     // 添加地址转换日志
     Logger.Debug?.Print(LogClass.TamperMachine, 
-        $"Address conversion: virtual=0x{offsetImmediate:X} -> physical=0x{dstMem.Address:X}");
+        $"StoreConstantToAddress: finalAddress=0x{dstMem.Address:X16}");
 
     int valueImmediateSize = operationWidth <= 4 ? ValueImmediateSize8 : ValueImmediateSize16;
     ulong valueImmediate = InstructionHelper.GetImmediate(instruction, ValueImmediateIndex, valueImmediateSize);
@@ -46,9 +48,9 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
 
     // 添加值日志
     Logger.Debug?.Print(LogClass.TamperMachine, 
-        $"Writing value 0x{valueImmediate:X} to address 0x{dstMem.Address:X}");
+        $"StoreConstantToAddress: writing value 0x{valueImmediate:X16} to address 0x{dstMem.Address:X16}");
 
     InstructionHelper.EmitMov(operationWidth, context, dstMem, storeValue);
-}
+        }
     }
 }
