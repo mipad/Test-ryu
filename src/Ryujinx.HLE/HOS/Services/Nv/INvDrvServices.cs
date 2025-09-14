@@ -16,6 +16,7 @@ using Ryujinx.Memory;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Ryujinx.HLE.HOS.Services.Nv
 {
@@ -290,11 +291,11 @@ namespace Ryujinx.HLE.HOS.Services.Nv
                 errorCode = GetDeviceFileFromFd(fd, out NvDeviceFile deviceFile);
 
                 if (errorCode == NvResult.Success)
-                {
-                    deviceFile.Close();
+                    {
+                        deviceFile.Close();
 
-                    DeviceFileIdRegistry.Delete(fd);
-                }
+                        DeviceFileIdRegistry.Delete(fd);
+                    }
             }
 
             context.ResponseData.Write((uint)errorCode);
