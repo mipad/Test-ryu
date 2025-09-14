@@ -10,6 +10,7 @@ using System.Reflection;
 
 namespace Ryujinx.HLE.HOS.Services
 {
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)]
     abstract class IpcService
     {
         public IReadOnlyDictionary<int, MethodInfo> CmifCommands { get; }
