@@ -8,6 +8,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.Serialization;
 using System.Text;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Ryujinx.HLE.Exceptions
 {
@@ -138,6 +139,7 @@ namespace Ryujinx.HLE.Exceptions
             return sb.ToString();
         }
 
+        [RequiresUnreferencedCode("StackFrame may trim method metadata.")]
         private static (Type, MethodBase) WalkStackTrace(StackTrace trace)
         {
             int i = 0;
