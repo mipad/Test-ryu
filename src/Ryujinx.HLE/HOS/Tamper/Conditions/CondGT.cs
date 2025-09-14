@@ -1,4 +1,5 @@
 using Ryujinx.HLE.HOS.Tamper.Operations;
+using System;
 
 namespace Ryujinx.HLE.HOS.Tamper.Conditions
 {
@@ -15,7 +16,37 @@ namespace Ryujinx.HLE.HOS.Tamper.Conditions
 
         public bool Evaluate()
         {
-            return (dynamic)_lhs.Get<T>() > (dynamic)_rhs.Get<T>();
+            T lhsValue = _lhs.Get<T>();
+            T rhsValue = _rhs.Get<T>();
+            
+            if (typeof(T) == typeof(byte))
+            {
+                byte lhsByte = (byte)(object)lhsValue;
+                byte rhsByte = (byte)(object)rhsValue;
+                return lhsByte > rhsByte;
+            }
+            else if (typeof(T) == typeof(ushort))
+            {
+                ushort lhsUShort = (ushort)(object)lhsValue;
+                ushort rhsUShort = (ushort)(object)rhsValue;
+                return lhsUShort > rhsUShort;
+            }
+            else if (typeof(T) == typeof(uint))
+            {
+                uint lhsUInt = (uint)(object)lhsValue;
+                uint rhsUInt = (uint)(object)rhsValue;
+                return lhsUInt > rhsUInt;
+            }
+            else if (typeof(T) == typeof(ulong))
+            {
+                ulong lhsULong = (ulong)(object)lhsValue;
+                ulong rhsULong = (ulong)(object)rhsValue;
+                return lhsULong > rhsULong;
+            }
+            else
+            {
+                throw new NotSupportedException($"Type {typeof(T)} is not supported for GT condition");
+            }
         }
     }
 }
