@@ -68,6 +68,7 @@ namespace Ryujinx.HLE.HOS.Tamper
         throw new TamperCompilationException($"Error creating instance of {instruction.Name}: {ex.Message}");
     }
 }
+        
         public static ulong GetImmediate(byte[] instruction, int index, int nybbleCount)
         {
             ulong value = 0;
