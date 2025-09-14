@@ -531,6 +531,47 @@
                   Dynamic="Required All" />
             <Type Name="Ryujinx.HLE.HOS.Services.Pcv.Rgltr.IRegulatorManager"
                   Dynamic="Required All" />
+            <!-- 添加解决剪裁警告所需的额外类型 -->
+<Type Name="Ryujinx.HLE.HOS.Services.IpcService" Dynamic="Required All"/>
+<Type Name="Ryujinx.Common.Logging.Formatters.DynamicObjectFormatter" Dynamic="Required All"/>
+<Type Name="Ryujinx.HLE.Exceptions.ServiceNotImplementedException" Dynamic="Required All"/>
+<Type Name="Ryujinx.HLE.HOS.Services.Sm.SmRegistry" Dynamic="Required All"/>
+<Type Name="Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu.NvHostAsGpuDeviceFile" Dynamic="Required All"/>
+<Type Name="Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel.NvHostChannelDeviceFile" Dynamic="Required All"/>
+<Type Name="Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrl.NvHostCtrlDeviceFile" Dynamic="Required All"/>
+<Type Name="Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostCtrlGpu.NvHostCtrlGpuDeviceFile" Dynamic="Required All"/>
+<Type Name="Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostDbgGpu.NvHostDbgGpuDeviceFile" Dynamic="Required All"/>
+<Type Name="Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostProfGpu.NvHostProfGpuDeviceFile" Dynamic="Required All"/>
+<Type Name="Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvMap.NvMapDeviceFile" Dynamic="Required All"/>
+<Type Name="Ryujinx.HLE.HOS.Services.Nv.Types.NvIoctlNotImplementedException" Dynamic="Required All"/>
+<Type Name="Ryujinx.HLE.HOS.Services.Nv.Types.NvQueryEventNotImplementedException" Dynamic="Required All"/>
         </Assembly>
+        <!-- 添加其他程序集的保留 -->
+<Assembly Name="System">
+    <Type Name="System.Diagnostics.StackTrace" Dynamic="Required All"/>
+    <Type Name="System.Diagnostics.StackFrame" Dynamic="Required All"/>
+    <Type Name="System.Reflection.PropertyInfo" Dynamic="Required All"/>
+</Assembly>
+
+<Assembly Name="Ryujinx.Common">
+    <Type Name="Ryujinx.Common.IdDictionary" Dynamic="Required All"/>
+    <Type Name="Ryujinx.Common.ObjectPool`1" Dynamic="Required All"/>
+    <Type Name="Ryujinx.Common.Pools.SharedPools" Dynamic="Required All"/>
+</Assembly>
+
+<Assembly Name="Ryujinx.Horizon.Common">
+    <Type Name="Ryujinx.Horizon.Common.Result" Dynamic="Required All"/>
+</Assembly>
+
+<Assembly Name="Ryujinx.Input">
+    <Type Name="Ryujinx.Input.IGamepadDriver" Dynamic="Required All"/>
+    <Type Name="Ryujinx.Input.IGamepad" Dynamic="Required All"/>
+    <Type Name="Ryujinx.Input.IMouse" Dynamic="Required All"/>
+    <Type Name="Ryujinx.Input.HLE.NpadManager" Dynamic="Required All"/>
+    <Type Name="Ryujinx.Input.HLE.InputManager" Dynamic="Required All"/>
+    <Type Name="Ryujinx.Input.HLE.TouchScreenManager" Dynamic="Required All">
+        <Field Name="_mouse" Dynamic="Required"/>
+    </Type>
+</Assembly>
     </Application>
 </Directives>
