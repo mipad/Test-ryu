@@ -4,21 +4,6 @@
     <TargetFramework>net8.0</TargetFramework>
     <LangVersion>13.0</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    
-    <!-- 启用剪裁 -->
-    <PublishTrimmed>true</PublishTrimmed>
-    
-    <!-- 设置剪裁器行为 -->
-    <TrimmerDefaultAction>link</TrimmerDefaultAction>
-    
-    <!-- 引用剪裁描述文件 -->
-    <TrimmerDescriptors>Ryujinx.HLE.xml</TrimmerDescriptors>
-    
-    <!-- 设置剪裁模式为兼容模式（可选，更保守） -->
-    <TrimMode>copyused</TrimMode>
-    
-    <!-- 启用警告但继续构建（可选） -->
-    <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
   </PropertyGroup>
 
   <ItemGroup>
@@ -54,9 +39,6 @@
     <None Remove="HOS\Applets\SoftwareKeyboard\Resources\Icon_BtnB.png" />
     <None Remove="HOS\Applets\SoftwareKeyboard\Resources\Icon_KeyF6.png" />
     <None Remove="HOS\Services\Account\Acc\DefaultUserImage.jpg" />
-    
-    <!-- 确保 XML 文件被包含在项目中 -->
-    <None Include="Ryujinx.HLE.xml" />
   </ItemGroup>
 
   <ItemGroup>
