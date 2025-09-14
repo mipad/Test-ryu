@@ -533,7 +533,6 @@
                   Dynamic="Required All" />
             <!-- 添加解决剪裁警告所需的额外类型 -->
 <Type Name="Ryujinx.HLE.HOS.Services.IpcService" Dynamic="Required All"/>
-<Type Name="Ryujinx.Common.Logging.Formatters.DynamicObjectFormatter" Dynamic="Required All"/>
 <Type Name="Ryujinx.HLE.Exceptions.ServiceNotImplementedException" Dynamic="Required All"/>
 <Type Name="Ryujinx.HLE.HOS.Services.Sm.SmRegistry" Dynamic="Required All"/>
 <Type Name="Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu.NvHostAsGpuDeviceFile" Dynamic="Required All"/>
