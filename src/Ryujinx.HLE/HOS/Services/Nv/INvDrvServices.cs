@@ -113,5 +113,19 @@ namespace Ryujinx.HLE.HOS.Services.Nv
         }
 
         // ... 其余代码保持不变 ...
+
+        public static void Destroy()
+        {
+            NvHostChannelDeviceFile.Destroy();
+
+            foreach (object entry in DeviceFileIdRegistry.Values)
+            {
+                NvDeviceFile deviceFile = (NvDeviceFile)entry;
+
+                deviceFile.Close();
+            }
+
+            DeviceFileIdRegistry.Clear();
+        }
     }
 }
