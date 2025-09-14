@@ -57,6 +57,20 @@ namespace Ryujinx.HLE.HOS.Tamper
             _ => throw new TamperCompilationException($"Invalid instruction width {width} in Atmosphere cheat"),
         };
         
+        // 特殊处理 OpMov<T> 类型
+        if (realType.IsGenericType && realType.GetGenericTypeDefinition() == typeof(OpMov<>))
+        {
+            // 确保我们有两个参数
+            if (operands.Length == 2)
+            {
+                return Activator.CreateInstance(realType, operands[0], operands[1]);
+            }
+            else
+            {
+                throw new TamperCompilationException($"OpMov requires exactly 2 parameters, got {operands.Length}");
+            }
+        }
+        
         return Activator.CreateInstance(realType, operands);
     }
     catch (MissingMethodException ex)
