@@ -540,9 +540,5 @@
                   <Type Name="Ryujinx.HLE.Exceptions.ServiceNotImplementedException"
                   Dynamic="Required All" />
         </Assembly>
-        <Assembly Name="LibRyujinx">
-                  <Type Name="LibRyujinx.LibRyujinx.Input"
-                  Dynamic="Required All" />
-        </Assembly>
     </Application>
 </Directives>
