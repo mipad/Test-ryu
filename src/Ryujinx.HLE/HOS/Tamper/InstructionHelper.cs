@@ -48,17 +48,47 @@ namespace Ryujinx.HLE.HOS.Tamper
             RegisterConditionFactory(typeof(CondEQ<>));
             RegisterConditionFactory(typeof(CondNE<>));
             
-            // 其他操作类型的工厂方法
+            // 其他操作类型的工厂方法（移除了不存在的 OpDiv<>）
             RegisterOperationFactory(typeof(OpAdd<>));
             RegisterOperationFactory(typeof(OpSub<>));
             RegisterOperationFactory(typeof(OpMul<>));
-            RegisterOperationFactory(typeof(OpDiv<>));
             RegisterOperationFactory(typeof(OpAnd<>));
             RegisterOperationFactory(typeof(OpOr<>));
             RegisterOperationFactory(typeof(OpXor<>));
             RegisterOperationFactory(typeof(OpNot<>));
             RegisterOperationFactory(typeof(OpLsh<>));
             RegisterOperationFactory(typeof(OpRsh<>));
+            
+            // 特殊操作的工厂方法（非泛型）
+            RegisterFactory(typeof(OpLog<>), (width, operands) =>
+            {
+                if (operands.Length < 2)
+                    throw new TamperCompilationException("OpLog requires at least 2 operands");
+                
+                int logId = (int)operands[0];
+                IOperand source = (IOperand)operands[1];
+                
+                return width switch
+                {
+                    1 => new OpLog<byte>(logId, source),
+                    2 => new OpLog<ushort>(logId, source),
+                    4 => new OpLog<uint>(logId, source),
+                    8 => new OpLog<ulong>(logId, source),
+                    _ => throw new TamperCompilationException($"Invalid instruction width {width} for OpLog"),
+                };
+            });
+            
+            // OpProcCtrl 是非泛型操作，单独处理
+            _typeFactories[typeof(OpProcCtrl)] = (width, operands) =>
+            {
+                if (operands.Length < 2)
+                    throw new TamperCompilationException("OpProcCtrl requires at least 2 operands");
+                
+                ITamperedProcess process = (ITamperedProcess)operands[0];
+                bool pause = (bool)operands[1];
+                
+                return new OpProcCtrl(process, pause);
+            };
         }
         
         private static void RegisterConditionFactory(Type conditionType)
@@ -73,33 +103,33 @@ namespace Ryujinx.HLE.HOS.Tamper
                 
                 return width switch
                 {
-                    1 => conditionType == typeof(CondGT<>) ? new CondGT<byte>(lhs, rhs) :
-                          conditionType == typeof(CondGE<>) ? new CondGE<byte>(lhs, rhs) :
-                          conditionType == typeof(CondLT<>) ? new CondLT<byte>(lhs, rhs) :
-                          conditionType == typeof(CondLE<>) ? new CondLE<byte>(lhs, rhs) :
-                          conditionType == typeof(CondEQ<>) ? new CondEQ<byte>(lhs, rhs) :
-                          conditionType == typeof(CondNE<>) ? new CondNE<byte>(lhs, rhs) :
+                    1 => conditionType == typeof(CondGT<>) ? (object)new CondGT<byte>(lhs, rhs) :
+                          conditionType == typeof(CondGE<>) ? (object)new CondGE<byte>(lhs, rhs) :
+                          conditionType == typeof(CondLT<>) ? (object)new CondLT<byte>(lhs, rhs) :
+                          conditionType == typeof(CondLE<>) ? (object)new CondLE<byte>(lhs, rhs) :
+                          conditionType == typeof(CondEQ<>) ? (object)new CondEQ<byte>(lhs, rhs) :
+                          conditionType == typeof(CondNE<>) ? (object)new CondNE<byte>(lhs, rhs) :
                           throw new TamperCompilationException($"Unsupported condition type {conditionType}"),
-                    2 => conditionType == typeof(CondGT<>) ? new CondGT<ushort>(lhs, rhs) :
-                          conditionType == typeof(CondGE<>) ? new CondGE<ushort>(lhs, rhs) :
-                          conditionType == typeof(CondLT<>) ? new CondLT<ushort>(lhs, rhs) :
-                          conditionType == typeof(CondLE<>) ? new CondLE<ushort>(lhs, rhs) :
-                          conditionType == typeof(CondEQ<>) ? new CondEQ<ushort>(lhs, rhs) :
-                          conditionType == typeof(CondNE<>) ? new CondNE<ushort>(lhs, rhs) :
+                    2 => conditionType == typeof(CondGT<>) ? (object)new CondGT<ushort>(lhs, rhs) :
+                          conditionType == typeof(CondGE<>) ? (object)new CondGE<ushort>(lhs, rhs) :
+                          conditionType == typeof(CondLT<>) ? (object)new CondLT<ushort>(lhs, rhs) :
+                          conditionType == typeof(CondLE<>) ? (object)new CondLE<ushort>(lhs, rhs) :
+                          conditionType == typeof(CondEQ<>) ? (object)new CondEQ<ushort>(lhs, rhs) :
+                          conditionType == typeof(CondNE<>) ? (object)new CondNE<ushort>(lhs, rhs) :
                           throw new TamperCompilationException($"Unsupported condition type {conditionType}"),
-                    4 => conditionType == typeof(CondGT<>) ? new CondGT<uint>(lhs, rhs) :
-                          conditionType == typeof(CondGE<>) ? new CondGE<uint>(lhs, rhs) :
-                          conditionType == typeof(CondLT<>) ? new CondLT<uint>(lhs, rhs) :
-                          conditionType == typeof(CondLE<>) ? new CondLE<uint>(lhs, rhs) :
-                          conditionType == typeof(CondEQ<>) ? new CondEQ<uint>(lhs, rhs) :
-                          conditionType == typeof(CondNE<>) ? new CondNE<uint>(lhs, rhs) :
+                    4 => conditionType == typeof(CondGT<>) ? (object)new CondGT<uint>(lhs, rhs) :
+                          conditionType == typeof(CondGE<>) ? (object)new CondGE<uint>(lhs, rhs) :
+                          conditionType == typeof(CondLT<>) ? (object)new CondLT<uint>(lhs, rhs) :
+                          conditionType == typeof(CondLE<>) ? (object)new CondLE<uint>(lhs, rhs) :
+                          conditionType == typeof(CondEQ<>) ? (object)new CondEQ<uint>(lhs, rhs) :
+                          conditionType == typeof(CondNE<>) ? (object)new CondNE<uint>(lhs, rhs) :
                           throw new TamperCompilationException($"Unsupported condition type {conditionType}"),
-                    8 => conditionType == typeof(CondGT<>) ? new CondGT<ulong>(lhs, rhs) :
-                          conditionType == typeof(CondGE<>) ? new CondGE<ulong>(lhs, rhs) :
-                          conditionType == typeof(CondLT<>) ? new CondLT<ulong>(lhs, rhs) :
-                          conditionType == typeof(CondLE<>) ? new CondLE<ulong>(lhs, rhs) :
-                          conditionType == typeof(CondEQ<>) ? new CondEQ<ulong>(lhs, rhs) :
-                          conditionType == typeof(CondNE<>) ? new CondNE<ulong>(lhs, rhs) :
+                    8 => conditionType == typeof(CondGT<>) ? (object)new CondGT<ulong>(lhs, rhs) :
+                          conditionType == typeof(CondGE<>) ? (object)new CondGE<ulong>(lhs, rhs) :
+                          conditionType == typeof(CondLT<>) ? (object)new CondLT<ulong>(lhs, rhs) :
+                          conditionType == typeof(CondLE<>) ? (object)new CondLE<ulong>(lhs, rhs) :
+                          conditionType == typeof(CondEQ<>) ? (object)new CondEQ<ulong>(lhs, rhs) :
+                          conditionType == typeof(CondNE<>) ? (object)new CondNE<ulong>(lhs, rhs) :
                           throw new TamperCompilationException($"Unsupported condition type {conditionType}"),
                     _ => throw new TamperCompilationException($"Invalid instruction width {width} in Atmosphere cheat"),
                 };
@@ -112,49 +142,45 @@ namespace Ryujinx.HLE.HOS.Tamper
             {
                 return width switch
                 {
-                    1 => operationType == typeof(OpAdd<>) ? new OpAdd<byte>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpSub<>) ? new OpSub<byte>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpMul<>) ? new OpMul<byte>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpDiv<>) ? new OpDiv<byte>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpAnd<>) ? new OpAnd<byte>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpOr<>) ? new OpOr<byte>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpXor<>) ? new OpXor<byte>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpNot<>) ? new OpNot<byte>((IOperand)operands[0], (IOperand)operands[1]) :
-                          operationType == typeof(OpLsh<>) ? new OpLsh<byte>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpRsh<>) ? new OpRsh<byte>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                    1 => operationType == typeof(OpAdd<>) ? (object)new OpAdd<byte>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpSub<>) ? (object)new OpSub<byte>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpMul<>) ? (object)new OpMul<byte>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpAnd<>) ? (object)new OpAnd<byte>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpOr<>) ? (object)new OpOr<byte>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpXor<>) ? (object)new OpXor<byte>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpNot<>) ? (object)new OpNot<byte>((IOperand)operands[0], (IOperand)operands[1]) :
+                          operationType == typeof(OpLsh<>) ? (object)new OpLsh<byte>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpRsh<>) ? (object)new OpRsh<byte>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
                           throw new TamperCompilationException($"Unsupported operation type {operationType}"),
-                    2 => operationType == typeof(OpAdd<>) ? new OpAdd<ushort>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpSub<>) ? new OpSub<ushort>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpMul<>) ? new OpMul<ushort>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpDiv<>) ? new OpDiv<ushort>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpAnd<>) ? new OpAnd<ushort>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpOr<>) ? new OpOr<ushort>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpXor<>) ? new OpXor<ushort>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpNot<>) ? new OpNot<ushort>((IOperand)operands[0], (IOperand)operands[1]) :
-                          operationType == typeof(OpLsh<>) ? new OpLsh<ushort>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpRsh<>) ? new OpRsh<ushort>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                    2 => operationType == typeof(OpAdd<>) ? (object)new OpAdd<ushort>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpSub<>) ? (object)new OpSub<ushort>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpMul<>) ? (object)new OpMul<ushort>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpAnd<>) ? (object)new OpAnd<ushort>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpOr<>) ? (object)new OpOr<ushort>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpXor<>) ? (object)new OpXor<ushort>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpNot<>) ? (object)new OpNot<ushort>((IOperand)operands[0], (IOperand)operands[1]) :
+                          operationType == typeof(OpLsh<>) ? (object)new OpLsh<ushort>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpRsh<>) ? (object)new OpRsh<ushort>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
                           throw new TamperCompilationException($"Unsupported operation type {operationType}"),
-                    4 => operationType == typeof(OpAdd<>) ? new OpAdd<uint>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpSub<>) ? new OpSub<uint>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpMul<>) ? new OpMul<uint>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpDiv<>) ? new OpDiv<uint>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpAnd<>) ? new OpAnd<uint>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpOr<>) ? new OpOr<uint>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpXor<>) ? new OpXor<uint>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpNot<>) ? new OpNot<uint>((IOperand)operands[0], (IOperand)operands[1]) :
-                          operationType == typeof(OpLsh<>) ? new OpLsh<uint>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpRsh<>) ? new OpRsh<uint>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                    4 => operationType == typeof(OpAdd<>) ? (object)new OpAdd<uint>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpSub<>) ? (object)new OpSub<uint>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpMul<>) ? (object)new OpMul<uint>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpAnd<>) ? (object)new OpAnd<uint>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpOr<>) ? (object)new OpOr<uint>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpXor<>) ? (object)new OpXor<uint>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpNot<>) ? (object)new OpNot<uint>((IOperand)operands[0], (IOperand)operands[1]) :
+                          operationType == typeof(OpLsh<>) ? (object)new OpLsh<uint>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpRsh<>) ? (object)new OpRsh<uint>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
                           throw new TamperCompilationException($"Unsupported operation type {operationType}"),
-                    8 => operationType == typeof(OpAdd<>) ? new OpAdd<ulong>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpSub<>) ? new OpSub<ulong>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpMul<>) ? new OpMul<ulong>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpDiv<>) ? new OpDiv<ulong>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpAnd<>) ? new OpAnd<ulong>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpOr<>) ? new OpOr<ulong>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpXor<>) ? new OpXor<ulong>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpNot<>) ? new OpNot<ulong>((IOperand)operands[0], (IOperand)operands[1]) :
-                          operationType == typeof(OpLsh<>) ? new OpLsh<ulong>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
-                          operationType == typeof(OpRsh<>) ? new OpRsh<ulong>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                    8 => operationType == typeof(OpAdd<>) ? (object)new OpAdd<ulong>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpSub<>) ? (object)new OpSub<ulong>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpMul<>) ? (object)new OpMul<ulong>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpAnd<>) ? (object)new OpAnd<ulong>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpOr<>) ? (object)new OpOr<ulong>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpXor<>) ? (object)new OpXor<ulong>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpNot<>) ? (object)new OpNot<ulong>((IOperand)operands[0], (IOperand)operands[1]) :
+                          operationType == typeof(OpLsh<>) ? (object)new OpLsh<ulong>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
+                          operationType == typeof(OpRsh<>) ? (object)new OpRsh<ulong>((IOperand)operands[0], (IOperand)operands[1], (IOperand)operands[2]) :
                           throw new TamperCompilationException($"Unsupported operation type {operationType}"),
                     _ => throw new TamperCompilationException($"Invalid instruction width {width} in Atmosphere cheat"),
                 };
