@@ -1,6 +1,7 @@
 using LibHac;
 using LibHac.Common;
 using LibHac.Sf;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.HLE.HOS.Services.Fs.FileSystemProxy
 {
@@ -25,16 +26,41 @@ namespace Ryujinx.HLE.HOS.Services.Fs.FileSystemProxy
                 ulong bufferAddress = context.Request.ReceiveBuff[0].Position;
                 ulong bufferLen = context.Request.ReceiveBuff[0].Size;
 
-                // Use smaller length to avoid overflows.
+                // 添加更多的边界检查
+                if (offset > long.MaxValue)
+                {
+                    Logger.Warning?.Print(LogClass.ServiceFs, $"Invalid offset: {offset}");
+                    return ResultCode.InvalidOffset;
+                }
+
                 if (size > bufferLen)
                 {
                     size = bufferLen;
                 }
 
-                using var region = context.Memory.GetWritableRegion(bufferAddress, (int)bufferLen, true);
-                Result result = _baseStorage.Get.Read((long)offset, new OutBuffer(region.Memory.Span), (long)size);
+                if (size == 0)
+                {
+                    return ResultCode.Success;
+                }
 
-                return (ResultCode)result.Value;
+                try
+                {
+                    using var region = context.Memory.GetWritableRegion(bufferAddress, (int)bufferLen, true);
+                    Result result = _baseStorage.Get.Read((long)offset, new OutBuffer(region.Memory.Span), (long)size);
+
+                    if (result.IsFailure())
+                    {
+                        Logger.Warning?.Print(LogClass.ServiceFs, $"Storage read failed: {result.Value}");
+                        return (ResultCode)result.Value;
+                    }
+
+                    return ResultCode.Success;
+                }
+                catch (System.Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.ServiceFs, $"Exception during storage read: {ex.Message}");
+                    return ResultCode.InvalidOffset;
+                }
             }
 
             return ResultCode.Success;
@@ -45,6 +71,12 @@ namespace Ryujinx.HLE.HOS.Services.Fs.FileSystemProxy
         public ResultCode GetSize(ServiceCtx context)
         {
             Result result = _baseStorage.Get.GetSize(out long size);
+
+            if (result.IsFailure())
+            {
+                Logger.Warning?.Print(LogClass.ServiceFs, $"GetSize failed: {result.Value}");
+                return (ResultCode)result.Value;
+            }
 
             context.ResponseData.Write(size);
 
