@@ -537,6 +537,8 @@
                   Dynamic="Required All" />
                   <Type Name="Ryujinx.HLE.HOS.Services.Sm.IUserInterface"
                   Dynamic="Required All" />
+                  <Type Name="Ryujinx.HLE.Exceptions.ServiceNotImplementedException"
+                  Dynamic="Required All" />
         </Assembly>
     </Application>
 </Directives>
