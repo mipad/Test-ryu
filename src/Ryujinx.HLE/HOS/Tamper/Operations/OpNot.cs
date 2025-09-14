@@ -1,3 +1,5 @@
+using System;
+
 namespace Ryujinx.HLE.HOS.Tamper.Operations
 {
     class OpNot<T> : IOperation where T : unmanaged
@@ -13,7 +15,35 @@ namespace Ryujinx.HLE.HOS.Tamper.Operations
 
         public void Execute()
         {
-            _destination.Set((T)(~(dynamic)_source.Get<T>()));
+            T sourceValue = _source.Get<T>();
+            T result;
+            
+            if (typeof(T) == typeof(byte))
+            {
+                byte sourceByte = (byte)(object)sourceValue;
+                result = (T)(object)(byte)(~sourceByte);
+            }
+            else if (typeof(T) == typeof(ushort))
+            {
+                ushort sourceUShort = (ushort)(object)sourceValue;
+                result = (T)(object)(ushort)(~sourceUShort);
+            }
+            else if (typeof(T) == typeof(uint))
+            {
+                uint sourceUInt = (uint)(object)sourceValue;
+                result = (T)(object)(uint)(~sourceUInt);
+            }
+            else if (typeof(T) == typeof(ulong))
+            {
+                ulong sourceULong = (ulong)(object)sourceValue;
+                result = (T)(object)(ulong)(~sourceULong);
+            }
+            else
+            {
+                throw new NotSupportedException($"Type {typeof(T)} is not supported for NOT operation");
+            }
+            
+            _destination.Set(result);
         }
     }
 }
