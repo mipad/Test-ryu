@@ -30,7 +30,7 @@ namespace Ryujinx.HLE.HOS.Services.Fs.FileSystemProxy
                 if (offset > long.MaxValue)
                 {
                     Logger.Warning?.Print(LogClass.ServiceFs, $"Invalid offset: {offset}");
-                    return ResultCode.InvalidOffset;
+                    return (ResultCode)LibHac.ResultFs.InvalidOffset.Value;
                 }
 
                 if (size > bufferLen)
@@ -59,7 +59,7 @@ namespace Ryujinx.HLE.HOS.Services.Fs.FileSystemProxy
                 catch (System.Exception ex)
                 {
                     Logger.Error?.Print(LogClass.ServiceFs, $"Exception during storage read: {ex.Message}");
-                    return ResultCode.InvalidOffset;
+                    return (ResultCode)LibHac.ResultFs.InvalidOffset.Value;
                 }
             }
 
