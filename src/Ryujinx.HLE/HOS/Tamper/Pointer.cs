@@ -15,6 +15,11 @@ namespace Ryujinx.HLE.HOS.Tamper
             _process = process;
         }
 
+        public IOperand GetPositionOperand()
+        {
+            return _position;
+        }
+
         public T Get<T>() where T : unmanaged
         {
             return _process.ReadMemory<T>(_position.Get<ulong>());
