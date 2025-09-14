@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Directives xmlns="http://schemas.microsoft.com/netfx/2013/01/metadata">
+  <Application>
+    <!-- 保留所有程序集 -->
+    <Assembly Name="Ryujinx.HLE" Dynamic="Required All" />
+    <Assembly Name="Ryujinx.Common" Dynamic="Required All" />
+    <Assembly Name="Ryujinx.Horizon" Dynamic="Required All" />
+    <Assembly Name="Ryujinx.Cpu" Dynamic="Required All" />
+    <Assembly Name="Ryujinx.Memory" Dynamic="Required All" />
+    <Assembly Name="Ryujinx.Graphics.Gpu" Dynamic="Required All" />
+    <Assembly Name="Ryujinx.Audio" Dynamic="Required All" />
+    
+    <!-- 保留 LibHac 和其他关键依赖 -->
+    <Assembly Name="LibHac" Dynamic="Required All" />
+    <Assembly Name="MsgPack" Dynamic="Required All" />
+    
+    <!-- 保留所有系统程序集的关键反射用途 -->
+    <Assembly Name="System.Private.CoreLib">
+      <Type Name="System.Type" Dynamic="Required All" />
+      <Type Name="System.Reflection.Assembly" Dynamic="Required All" />
+      <Type Name="System.Diagnostics.StackFrame" Dynamic="Required All" />
+    </Assembly>
+    
+    <!-- 特别保留 IpcService 使用的类型 -->
+    <Assembly Name="Ryujinx.HLE">
+      <Type Name="Ryujinx.HLE.HOS.Services.IpcService" Dynamic="Required All" />
+      <Type Name="Ryujinx.HLE.HOS.Services.Sm.IUserInterface" Dynamic="Required All" />
+      <Type Name="Ryujinx.HLE.HOS.Services.Nv.INvDrvServices" Dynamic="Required All" />
+      <Type Name="Ryujinx.HLE.Exceptions.ServiceNotImplementedException" Dynamic="Required All" />
+    </Assembly>
+  </Application>
+</Directives>
