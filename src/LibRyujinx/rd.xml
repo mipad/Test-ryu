@@ -553,7 +553,6 @@
 </Assembly>
 
 <Assembly Name="Ryujinx.Common">
-    <Type Name="Ryujinx.Common.IdDictionary" Dynamic="Required All"/>
     <Type Name="Ryujinx.Common.ObjectPool`1" Dynamic="Required All"/>
     <Type Name="Ryujinx.Common.Pools.SharedPools" Dynamic="Required All"/>
 </Assembly>
