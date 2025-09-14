@@ -45,18 +45,29 @@ namespace Ryujinx.HLE.HOS.Tamper
         }
 
         public static Object Create(Type instruction, byte width, params Object[] operands)
+{
+    try
+    {
+        Type realType = width switch
         {
-            Type realType = width switch
-            {
-                1 => instruction.MakeGenericType(typeof(byte)),
-                2 => instruction.MakeGenericType(typeof(ushort)),
-                4 => instruction.MakeGenericType(typeof(uint)),
-                8 => instruction.MakeGenericType(typeof(ulong)),
-                _ => throw new TamperCompilationException($"Invalid instruction width {width} in Atmosphere cheat"),
-            };
-            return Activator.CreateInstance(realType, operands);
-        }
-
+            1 => instruction.MakeGenericType(typeof(byte)),
+            2 => instruction.MakeGenericType(typeof(ushort)),
+            4 => instruction.MakeGenericType(typeof(uint)),
+            8 => instruction.MakeGenericType(typeof(ulong)),
+            _ => throw new TamperCompilationException($"Invalid instruction width {width} in Atmosphere cheat"),
+        };
+        
+        return Activator.CreateInstance(realType, operands);
+    }
+    catch (MissingMethodException ex)
+    {
+        throw new TamperCompilationException($"No suitable constructor found for type {instruction.Name} with {operands.Length} parameters: {ex.Message}");
+    }
+    catch (Exception ex)
+    {
+        throw new TamperCompilationException($"Error creating instance of {instruction.Name}: {ex.Message}");
+    }
+}
         public static ulong GetImmediate(byte[] instruction, int index, int nybbleCount)
         {
             ulong value = 0;
