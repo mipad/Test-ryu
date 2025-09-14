@@ -1,6 +1,7 @@
 using LibHac;
 using LibHac.Common;
 using LibHac.Sf;
+using LibHac.Fs; // 添加这个命名空间
 using Ryujinx.Common.Logging;
 
 namespace Ryujinx.HLE.HOS.Services.Fs.FileSystemProxy
@@ -30,7 +31,7 @@ namespace Ryujinx.HLE.HOS.Services.Fs.FileSystemProxy
                 if (offset > long.MaxValue)
                 {
                     Logger.Warning?.Print(LogClass.ServiceFs, $"Invalid offset: {offset}");
-                    return (ResultCode)LibHac.ResultFs.InvalidOffset.Value;
+                    return ResultCode.InvalidInput; // 使用现有的错误代码
                 }
 
                 if (size > bufferLen)
@@ -59,7 +60,7 @@ namespace Ryujinx.HLE.HOS.Services.Fs.FileSystemProxy
                 catch (System.Exception ex)
                 {
                     Logger.Error?.Print(LogClass.ServiceFs, $"Exception during storage read: {ex.Message}");
-                    return (ResultCode)LibHac.ResultFs.InvalidOffset.Value;
+                    return ResultCode.InvalidInput; // 使用现有的错误代码
                 }
             }
 
