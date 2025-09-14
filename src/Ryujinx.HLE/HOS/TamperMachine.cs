@@ -93,6 +93,9 @@ namespace Ryujinx.HLE.HOS
         {
             Logger.Info?.Print(LogClass.TamperMachine, "TamperMachine thread running");
 
+            // 添加初始延迟，等待游戏完全启动
+            Thread.Sleep(10000); // 延迟10秒
+            
             int sleepCounter = 0;
 
             while (true)
