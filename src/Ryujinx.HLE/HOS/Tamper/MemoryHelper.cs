@@ -113,17 +113,21 @@ namespace Ryujinx.HLE.HOS.Tamper
             return EmitPointer(offsetRegister, offsetImmediate, context);
         }
 
-        public static Pointer EmitPointer(MemoryRegion memoryRegion, Register offsetRegister, ulong offsetImmediate, CompilationContext context)
-        {
-            Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"EmitPointer: region={memoryRegion}, offsetReg={offsetRegister}, offsetImm=0x{offsetImmediate:X16}");
-            
-            ulong baseAddress = GetAddressShift(memoryRegion, context);
-            Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"EmitPointer: baseAddress=0x{baseAddress:X16}, finalAddress=0x{baseAddress + offsetImmediate:X16}");
-            
-            offsetImmediate += baseAddress;
-            return EmitPointer(offsetRegister, offsetImmediate, context);
-        }
+        // 在 MemoryHelper.cs 中的 EmitPointer 方法添加日志
+public static Pointer EmitPointer(MemoryRegion memoryRegion, Register offsetRegister, ulong offsetImmediate, CompilationContext context)
+{
+    Logger.Debug?.Print(LogClass.TamperMachine, 
+        $"EmitPointer: region={memoryRegion}, offsetReg={offsetRegister}, offsetImm=0x{offsetImmediate:X16}");
+    
+    ulong baseAddress = GetAddressShift(memoryRegion, context);
+    Logger.Debug?.Print(LogClass.TamperMachine, 
+        $"EmitPointer: baseAddress=0x{baseAddress:X16}");
+    
+    offsetImmediate += baseAddress;
+    Logger.Debug?.Print(LogClass.TamperMachine, 
+        $"EmitPointer: finalAddress=0x{offsetImmediate:X16}");
+    
+    return EmitPointer(offsetRegister, offsetImmediate, context);
+}
     }
 }
