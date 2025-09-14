@@ -27,23 +27,37 @@ namespace Ryujinx.HLE.HOS.Services
             // Use GetType() instead of Assembly.GetTypes() to avoid trimming warnings
             Type currentType = GetType();
             
-            CmifCommands = currentType
-                .GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public)
-                .SelectMany(methodInfo => methodInfo.GetCustomAttributes<CommandCmifAttribute>()
-                .Select(attribute => (attribute.Id, methodInfo)))
-                .ToDictionary(command => command.Id, command => command.methodInfo);
-
-            TipcCommands = currentType
-                .GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public)
-                .SelectMany(methodInfo => methodInfo.GetCustomAttributes<CommandTipcAttribute>()
-                .Select(attribute => (attribute.Id, methodInfo)))
-                .ToDictionary(command => command.Id, command => command.methodInfo);
+            CmifCommands = BuildCommandDictionary<CommandCmifAttribute>(currentType);
+            TipcCommands = BuildCommandDictionary<CommandTipcAttribute>(currentType);
 
             Server = server;
 
             _parent = this;
             _domainObjects = new IdDictionary();
             _selfId = -1;
+        }
+
+        // 辅助方法，用于构建命令字典
+        private static Dictionary<int, MethodInfo> BuildCommandDictionary<TAttribute>([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type type) 
+            where TAttribute : Attribute
+        {
+            return type
+                .GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public)
+                .SelectMany(methodInfo => methodInfo.GetCustomAttributes<TAttribute>()
+                .Select(attribute => 
+                {
+                    int id = 0;
+                    if (attribute is CommandCmifAttribute cmifAttr)
+                    {
+                        id = cmifAttr.Id;
+                    }
+                    else if (attribute is CommandTipcAttribute tipcAttr)
+                    {
+                        id = tipcAttr.Id;
+                    }
+                    return (id, methodInfo);
+                }))
+                .ToDictionary(command => command.id, command => command.methodInfo);
         }
 
         public int ConvertToDomain()
