@@ -29,15 +29,15 @@ namespace Ryujinx.HLE.HOS.Services
             
             CmifCommands = currentType
                 .GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public)
-                .SelectMany(methodInfo => methodInfo.GetCustomAttributes(typeof(CommandCmifAttribute))
-                .Select(command => (((CommandCmifAttribute)command).Id, ((CommandCmifAttribute)command).MethodInfo)))
-                .ToDictionary(command => command.Id, command => command.MethodInfo);
+                .SelectMany(methodInfo => methodInfo.GetCustomAttributes<CommandCmifAttribute>()
+                .Select(attribute => (attribute.Id, methodInfo)))
+                .ToDictionary(command => command.Id, command => command.methodInfo);
 
             TipcCommands = currentType
                 .GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public)
-                .SelectMany(methodInfo => methodInfo.GetCustomAttributes(typeof(CommandTipcAttribute))
-                .Select(command => (((CommandTipcAttribute)command).Id, ((CommandTipcAttribute)command).MethodInfo)))
-                .ToDictionary(command => command.Id, command => command.MethodInfo);
+                .SelectMany(methodInfo => methodInfo.GetCustomAttributes<CommandTipcAttribute>()
+                .Select(attribute => (attribute.Id, methodInfo)))
+                .ToDictionary(command => command.Id, command => command.methodInfo);
 
             Server = server;
 
@@ -281,33 +281,6 @@ namespace Ryujinx.HLE.HOS.Services
             }
 
             _domainObjects.Clear();
-        }
-    }
-
-    // Add these attributes to store method information
-    [AttributeUsage(AttributeTargets.Method)]
-    internal class CommandCmifAttribute : Attribute
-    {
-        public int Id { get; }
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)]
-        public MethodInfo MethodInfo { get; set; }
-
-        public CommandCmifAttribute(int id)
-        {
-            Id = id;
-        }
-    }
-
-    [AttributeUsage(AttributeTargets.Method)]
-    internal class CommandTipcAttribute : Attribute
-    {
-        public int Id { get; }
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)]
-        public MethodInfo MethodInfo { get; set; }
-
-        public CommandTipcAttribute(int id)
-        {
-            Id = id;
         }
     }
 }
