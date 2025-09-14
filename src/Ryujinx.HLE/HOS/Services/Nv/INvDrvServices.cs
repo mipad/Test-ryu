@@ -32,24 +32,38 @@ namespace Ryujinx.HLE.HOS.Services.Nv
             "/dev/nvhost-prof-gpu",
         };
 
-        private static readonly Dictionary<string, Type> _deviceFileRegistry = new()
-        {
-            { "/dev/nvmap",           typeof(NvMapDeviceFile)         },
-            { "/dev/nvhost-ctrl",     typeof(NvHostCtrlDeviceFile)    },
-            { "/dev/nvhost-ctrl-gpu", typeof(NvHostCtrlGpuDeviceFile) },
-            { "/dev/nvhost-as-gpu",   typeof(NvHostAsGpuDeviceFile)   },
-            { "/dev/nvhost-gpu",      typeof(NvHostGpuDeviceFile)     },
-            //{ "/dev/nvhost-msenc",    typeof(NvHostChannelDeviceFile) },
-            { "/dev/nvhost-nvdec",    typeof(NvHostChannelDeviceFile) },
-            //{ "/dev/nvhost-nvjpg",    typeof(NvHostChannelDeviceFile) },
-            { "/dev/nvhost-vic",      typeof(NvHostChannelDeviceFile) },
-            //{ "/dev/nvhost-display",  typeof(NvHostChannelDeviceFile) },
-            { "/dev/nvhost-dbg-gpu",  typeof(NvHostDbgGpuDeviceFile)  },
-            { "/dev/nvhost-prof-gpu", typeof(NvHostProfGpuDeviceFile) },
-        };
+        // 使用元组存储类型和构造函数信息，避免在运行时使用反射
+        private static readonly Dictionary<string, (Type Type, ConstructorInfo Constructor)> _deviceFileRegistry = new();
 
-        // 添加一个缓存来存储构造函数信息
-        private static readonly Dictionary<Type, ConstructorInfo> _constructorCache = new();
+        // 静态构造函数，预先初始化所有设备文件类型的构造函数信息
+        static INvDrvServices()
+        {
+            // 定义设备文件类型映射
+            var deviceTypes = new Dictionary<string, Type>
+            {
+                { "/dev/nvmap",           typeof(NvMapDeviceFile)         },
+                { "/dev/nvhost-ctrl",     typeof(NvHostCtrlDeviceFile)    },
+                { "/dev/nvhost-ctrl-gpu", typeof(NvHostCtrlGpuDeviceFile) },
+                { "/dev/nvhost-as-gpu",   typeof(NvHostAsGpuDeviceFile)   },
+                { "/dev/nvhost-gpu",      typeof(NvHostGpuDeviceFile)     },
+                { "/dev/nvhost-nvdec",    typeof(NvHostChannelDeviceFile) },
+                { "/dev/nvhost-vic",      typeof(NvHostChannelDeviceFile) },
+                { "/dev/nvhost-dbg-gpu",  typeof(NvHostDbgGpuDeviceFile)  },
+                { "/dev/nvhost-prof-gpu", typeof(NvHostProfGpuDeviceFile) },
+            };
+
+            // 预先获取所有构造函数信息
+            foreach (var entry in deviceTypes)
+            {
+                var constructor = entry.Value.GetConstructor(
+                    BindingFlags.Public | BindingFlags.Instance,
+                    null,
+                    new[] { typeof(ServiceCtx), typeof(IVirtualMemoryManager), typeof(ulong) },
+                    null);
+                
+                _deviceFileRegistry[entry.Key] = (entry.Value, constructor);
+            }
+        }
 
         public static IdDictionary DeviceFileIdRegistry = new();
 
@@ -75,24 +89,11 @@ namespace Ryujinx.HLE.HOS.Services.Nv
                 return NvResult.NotSupported;
             }
 
-            if (_deviceFileRegistry.TryGetValue(path, out Type deviceFileClass))
+            if (_deviceFileRegistry.TryGetValue(path, out var deviceInfo))
             {
-                // 使用缓存的构造函数信息
-                if (!_constructorCache.TryGetValue(deviceFileClass, out ConstructorInfo constructor))
+                if (deviceInfo.Constructor != null)
                 {
-                    // 如果没有缓存，则获取并缓存构造函数
-                    constructor = deviceFileClass.GetConstructor(
-                        BindingFlags.Public | BindingFlags.Instance,
-                        null,
-                        new[] { typeof(ServiceCtx), typeof(IVirtualMemoryManager), typeof(ulong) },
-                        null);
-                    
-                    _constructorCache[deviceFileClass] = constructor;
-                }
-
-                if (constructor != null)
-                {
-                    NvDeviceFile deviceFile = (NvDeviceFile)constructor.Invoke(new object[] { context, _clientMemory, _owner });
+                    NvDeviceFile deviceFile = (NvDeviceFile)deviceInfo.Constructor.Invoke(new object[] { context, _clientMemory, _owner });
 
                     deviceFile.Path = path;
 
