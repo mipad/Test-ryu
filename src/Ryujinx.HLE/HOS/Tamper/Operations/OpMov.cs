@@ -8,17 +8,19 @@ namespace Ryujinx.HLE.HOS.Tamper.Operations
         // 添加无参数构造函数
         public OpMov()
         {
-            // 可以留空或设置默认值
+            Logger.Debug?.Print(LogClass.TamperMachine, $"OpMov<{typeof(T).Name}> no-arg constructor called");
         }
 
         public OpMov(IOperand destination, IOperand source)
         {
+            Logger.Debug?.Print(LogClass.TamperMachine, $"OpMov<{typeof(T).Name}> two-arg constructor called with {destination} and {source}");
             _destination = destination;
             _source = source;
         }
 
         public void Execute()
         {
+            Logger.Debug?.Print(LogClass.TamperMachine, $"OpMov<{typeof(T).Name}> executing");
             _destination.Set(_source.Get<T>());
         }
     }
