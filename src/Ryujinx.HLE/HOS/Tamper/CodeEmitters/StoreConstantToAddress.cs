@@ -1,5 +1,5 @@
 using Ryujinx.Common.Logging;
-using Ryujinx.HLE.HOS.Tamper.Operations; // 添加这行
+using Ryujinx.HLE.HOS.Tamper.Operations;
 
 namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
 {
@@ -37,15 +37,21 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
                 $"StoreConstantToAddress: width={operationWidth}, region={memoryRegion}, " +
                 $"offsetReg=R_{instruction[OffsetRegisterIndex]:X2}, offsetImm=0x{offsetImmediate:X16}");
 
-            Pointer dstMem = MemoryHelper.EmitPointer(memoryRegion, offsetRegister, offsetImmediate, context);
-
-            // 创建一个临时寄存器来存储地址
-            Register tempAddressReg = context.GetRegister(0); // 使用寄存器0作为临时存储
-            context.CurrentOperations.Add(new OpMov<ulong>(tempAddressReg, dstMem.GetPositionOperand()));
-            
-            // 添加地址转换日志
+            // 记录寄存器当前值
             Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"StoreConstantToAddress: finalAddress=0x{tempAddressReg.Get<ulong>():X16}");
+                $"Register R_{instruction[OffsetRegisterIndex]:X2} current value: 0x{offsetRegister.Get<ulong>():X16}");
+
+            // 获取基地址
+            ulong baseAddress = MemoryHelper.GetBaseAddress(memoryRegion, context);
+            Logger.Debug?.Print(LogClass.TamperMachine, 
+                $"Base address for region {memoryRegion}: 0x{baseAddress:X16}");
+
+            // 计算预期地址
+            ulong expectedAddress = baseAddress + offsetRegister.Get<ulong>() + offsetImmediate;
+            Logger.Debug?.Print(LogClass.TamperMachine, 
+                $"Expected address calculation: 0x{baseAddress:X16} + 0x{offsetRegister.Get<ulong>():X16} + 0x{offsetImmediate:X16} = 0x{expectedAddress:X16}");
+
+            Pointer dstMem = MemoryHelper.EmitPointer(memoryRegion, offsetRegister, offsetImmediate, context);
 
             int valueImmediateSize = operationWidth <= 4 ? ValueImmediateSize8 : ValueImmediateSize16;
             ulong valueImmediate = InstructionHelper.GetImmediate(instruction, ValueImmediateIndex, valueImmediateSize);
@@ -53,9 +59,28 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
 
             // 添加值日志
             Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"StoreConstantToAddress: writing value 0x{valueImmediate:X16} to address 0x{tempAddressReg.Get<ulong>():X16}");
+                $"StoreConstantToAddress: writing value 0x{valueImmediate:X16} to calculated address");
+
+            // 添加一个调试操作来记录实际写入的地址
+            context.CurrentOperations.Add(new DebugOperation($"Writing 0x{valueImmediate:X16} to memory address calculated from R_{instruction[OffsetRegisterIndex]:X2} + 0x{offsetImmediate:X16}"));
 
             InstructionHelper.EmitMov(operationWidth, context, dstMem, storeValue);
+        }
+    }
+
+    // 添加一个简单的调试操作类
+    class DebugOperation : IOperation
+    {
+        private readonly string _message;
+
+        public DebugOperation(string message)
+        {
+            _message = message;
+        }
+
+        public void Execute()
+        {
+            Logger.Debug?.Print(LogClass.TamperMachine, _message);
         }
     }
 }
