@@ -1,3 +1,5 @@
+using Ryujinx.Common.Logging;
+
 namespace Ryujinx.HLE.HOS.Tamper.Operations
 {
     class OpMov<T> : IOperation where T : unmanaged
