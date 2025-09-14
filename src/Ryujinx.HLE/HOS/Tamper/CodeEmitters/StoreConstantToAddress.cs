@@ -18,39 +18,43 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
         private const int ValueImmediateSize16 = 16;
 
         public static void Emit(byte[] instruction, CompilationContext context)
-{
-    // 0TMR00AA AAAAAAAA VVVVVVVV (VVVVVVVV)
-    // T: Width of memory write(1, 2, 4, or 8 bytes).
-    // M: Memory region to write to(0 = Main NSO, 1 = Heap).
-    // R: Register to use as an offset from memory region base.
-    // A: Immediate offset to use from memory region base.
-    // V: Value to write.
+        {
+            // 0TMR00AA AAAAAAAA VVVVVVVV (VVVVVVVV)
+            // T: Width of memory write(1, 2, 4, or 8 bytes).
+            // M: Memory region to write to(0 = Main NSO, 1 = Heap).
+            // R: Register to use as an offset from memory region base.
+            // A: Immediate offset to use from memory region base.
+            // V: Value to write.
 
-    byte operationWidth = instruction[OperationWidthIndex];
-    MemoryRegion memoryRegion = (MemoryRegion)instruction[MemoryRegionIndex];
-    Register offsetRegister = context.GetRegister(instruction[OffsetRegisterIndex]);
-    ulong offsetImmediate = InstructionHelper.GetImmediate(instruction, OffsetImmediateIndex, OffsetImmediateSize);
+            byte operationWidth = instruction[OperationWidthIndex];
+            MemoryRegion memoryRegion = (MemoryRegion)instruction[MemoryRegionIndex];
+            Register offsetRegister = context.GetRegister(instruction[OffsetRegisterIndex]);
+            ulong offsetImmediate = InstructionHelper.GetImmediate(instruction, OffsetImmediateIndex, OffsetImmediateSize);
 
-    // 添加详细日志
-    Logger.Debug?.Print(LogClass.TamperMachine, 
-        $"StoreConstantToAddress: width={operationWidth}, region={memoryRegion}, " +
-        $"offsetReg=R_{instruction[OffsetRegisterIndex]:X2}, offsetImm=0x{offsetImmediate:X16}");
+            // 添加详细日志
+            Logger.Debug?.Print(LogClass.TamperMachine, 
+                $"StoreConstantToAddress: width={operationWidth}, region={memoryRegion}, " +
+                $"offsetReg=R_{instruction[OffsetRegisterIndex]:X2}, offsetImm=0x{offsetImmediate:X16}");
 
-    Pointer dstMem = MemoryHelper.EmitPointer(memoryRegion, offsetRegister, offsetImmediate, context);
+            Pointer dstMem = MemoryHelper.EmitPointer(memoryRegion, offsetRegister, offsetImmediate, context);
 
-    // 添加地址转换日志
-    Logger.Debug?.Print(LogClass.TamperMachine, 
-        $"StoreConstantToAddress: finalAddress=0x{dstMem.Address:X16}");
+            // 由于 Pointer 类没有 Address 属性，我们需要创建一个临时的 Value<ulong> 来获取地址
+            Value<ulong> tempAddress = new(0);
+            context.CurrentOperations.Add(new OpMov<ulong>(tempAddress, dstMem.GetPositionOperand()));
+            
+            // 添加地址转换日志
+            Logger.Debug?.Print(LogClass.TamperMachine, 
+                $"StoreConstantToAddress: finalAddress=0x{tempAddress.Get<ulong>():X16}");
 
-    int valueImmediateSize = operationWidth <= 4 ? ValueImmediateSize8 : ValueImmediateSize16;
-    ulong valueImmediate = InstructionHelper.GetImmediate(instruction, ValueImmediateIndex, valueImmediateSize);
-    Value<ulong> storeValue = new(valueImmediate);
+            int valueImmediateSize = operationWidth <= 4 ? ValueImmediateSize8 : ValueImmediateSize16;
+            ulong valueImmediate = InstructionHelper.GetImmediate(instruction, ValueImmediateIndex, valueImmediateSize);
+            Value<ulong> storeValue = new(valueImmediate);
 
-    // 添加值日志
-    Logger.Debug?.Print(LogClass.TamperMachine, 
-        $"StoreConstantToAddress: writing value 0x{valueImmediate:X16} to address 0x{dstMem.Address:X16}");
+            // 添加值日志
+            Logger.Debug?.Print(LogClass.TamperMachine, 
+                $"StoreConstantToAddress: writing value 0x{valueImmediate:X16} to address 0x{tempAddress.Get<ulong>():X16}");
 
-    InstructionHelper.EmitMov(operationWidth, context, dstMem, storeValue);
+            InstructionHelper.EmitMov(operationWidth, context, dstMem, storeValue);
         }
     }
 }
