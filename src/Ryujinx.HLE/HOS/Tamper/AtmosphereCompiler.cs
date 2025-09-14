@@ -16,13 +16,18 @@ namespace Ryujinx.HLE.HOS.Tamper
         private readonly ITamperedProcess _process;
 
         public AtmosphereCompiler(ulong exeAddress, ulong heapAddress, ulong aliasAddress, ulong aslrAddress, ITamperedProcess process)
-        {
-            _exeAddress = exeAddress;
-            _heapAddress = heapAddress;
-            _aliasAddress = aliasAddress;
-            _aslrAddress = aslrAddress;
-            _process = process;
-        }
+{
+    _exeAddress = exeAddress;
+    _heapAddress = heapAddress;
+    _aliasAddress = aliasAddress;
+    _aslrAddress = aslrAddress;
+    _process = process;
+
+    Logger.Debug?.Print(LogClass.TamperMachine, 
+        $"AtmosphereCompiler created with addresses: " +
+        $"Exe=0x{_exeAddress:X16}, Heap=0x{_heapAddress:X16}, " +
+        $"Alias=0x{_aliasAddress:X16}, Aslr=0x{_aslrAddress:X16}");
+}
 
         public ITamperProgram Compile(string name, IEnumerable<string> rawInstructions)
         {
