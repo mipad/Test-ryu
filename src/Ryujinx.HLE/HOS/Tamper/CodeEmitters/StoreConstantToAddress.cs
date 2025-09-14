@@ -1,4 +1,5 @@
 using Ryujinx.Common.Logging;
+using Ryujinx.HLE.HOS.Tamper.Operations; // 添加这行
 
 namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
 {
@@ -38,13 +39,13 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
 
             Pointer dstMem = MemoryHelper.EmitPointer(memoryRegion, offsetRegister, offsetImmediate, context);
 
-            // 由于 Pointer 类没有 Address 属性，我们需要创建一个临时的 Value<ulong> 来获取地址
-            Value<ulong> tempAddress = new(0);
-            context.CurrentOperations.Add(new OpMov<ulong>(tempAddress, dstMem.GetPositionOperand()));
+            // 创建一个临时寄存器来存储地址
+            Register tempAddressReg = context.GetRegister(0); // 使用寄存器0作为临时存储
+            context.CurrentOperations.Add(new OpMov<ulong>(tempAddressReg, dstMem.GetPositionOperand()));
             
             // 添加地址转换日志
             Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"StoreConstantToAddress: finalAddress=0x{tempAddress.Get<ulong>():X16}");
+                $"StoreConstantToAddress: finalAddress=0x{tempAddressReg.Get<ulong>():X16}");
 
             int valueImmediateSize = operationWidth <= 4 ? ValueImmediateSize8 : ValueImmediateSize16;
             ulong valueImmediate = InstructionHelper.GetImmediate(instruction, ValueImmediateIndex, valueImmediateSize);
@@ -52,7 +53,7 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
 
             // 添加值日志
             Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"StoreConstantToAddress: writing value 0x{valueImmediate:X16} to address 0x{tempAddress.Get<ulong>():X16}");
+                $"StoreConstantToAddress: writing value 0x{valueImmediate:X16} to address 0x{tempAddressReg.Get<ulong>():X16}");
 
             InstructionHelper.EmitMov(operationWidth, context, dstMem, storeValue);
         }
