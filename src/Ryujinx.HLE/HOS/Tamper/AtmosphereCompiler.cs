@@ -16,18 +16,18 @@ namespace Ryujinx.HLE.HOS.Tamper
         private readonly ITamperedProcess _process;
 
         public AtmosphereCompiler(ulong exeAddress, ulong heapAddress, ulong aliasAddress, ulong aslrAddress, ITamperedProcess process)
-{
-    _exeAddress = exeAddress;
-    _heapAddress = heapAddress;
-    _aliasAddress = aliasAddress;
-    _aslrAddress = aslrAddress;
-    _process = process;
+        {
+            _exeAddress = exeAddress;
+            _heapAddress = heapAddress;
+            _aliasAddress = aliasAddress;
+            _aslrAddress = aslrAddress;
+            _process = process;
 
-    Logger.Debug?.Print(LogClass.TamperMachine, 
-        $"AtmosphereCompiler created with addresses: " +
-        $"Exe=0x{_exeAddress:X16}, Heap=0x{_heapAddress:X16}, " +
-        $"Alias=0x{_aliasAddress:X16}, Aslr=0x{_aslrAddress:X16}");
-}
+            Logger.Debug?.Print(LogClass.TamperMachine, 
+                $"AtmosphereCompiler created with addresses: " +
+                $"Exe=0x{_exeAddress:X16}, Heap=0x{_heapAddress:X16}, " +
+                $"Alias=0x{_aliasAddress:X16}, Aslr=0x{_aslrAddress:X16}");
+        }
 
         public ITamperProgram Compile(string name, IEnumerable<string> rawInstructions)
         {
@@ -73,64 +73,74 @@ namespace Ryujinx.HLE.HOS.Tamper
                 byte[] instruction = InstructionHelper.ParseRawInstruction(rawInstruction);
                 CodeType codeType = InstructionHelper.GetCodeType(instruction);
 
-                switch (codeType)
+                Logger.Debug?.Print(LogClass.TamperMachine, $"Processing code type: {codeType}");
+
+                try
                 {
-                    case CodeType.StoreConstantToAddress:
-                        StoreConstantToAddress.Emit(instruction, context);
-                        break;
-                    case CodeType.BeginMemoryConditionalBlock:
-                        BeginConditionalBlock.Emit(instruction, context);
-                        break;
-                    case CodeType.EndConditionalBlock:
-                        EndConditionalBlock.Emit(instruction, context);
-                        break;
-                    case CodeType.StartEndLoop:
-                        StartEndLoop.Emit(instruction, context);
-                        break;
-                    case CodeType.LoadRegisterWithContant:
-                        LoadRegisterWithConstant.Emit(instruction, context);
-                        break;
-                    case CodeType.LoadRegisterWithMemory:
-                        LoadRegisterWithMemory.Emit(instruction, context);
-                        break;
-                    case CodeType.StoreConstantToMemory:
-                        StoreConstantToMemory.Emit(instruction, context);
-                        break;
-                    case CodeType.LegacyArithmetic:
-                        LegacyArithmetic.Emit(instruction, context);
-                        break;
-                    case CodeType.BeginKeypressConditionalBlock:
-                        BeginConditionalBlock.Emit(instruction, context);
-                        break;
-                    case CodeType.Arithmetic:
-                        Arithmetic.Emit(instruction, context);
-                        break;
-                    case CodeType.StoreRegisterToMemory:
-                        StoreRegisterToMemory.Emit(instruction, context);
-                        break;
-                    case CodeType.BeginRegisterConditionalBlock:
-                        BeginConditionalBlock.Emit(instruction, context);
-                        break;
-                    case CodeType.SaveOrRestoreRegister:
-                        SaveOrRestoreRegister.Emit(instruction, context);
-                        break;
-                    case CodeType.SaveOrRestoreRegisterWithMask:
-                        SaveOrRestoreRegisterWithMask.Emit(instruction, context);
-                        break;
-                    case CodeType.ReadOrWriteStaticRegister:
-                        ReadOrWriteStaticRegister.Emit(instruction, context);
-                        break;
-                    case CodeType.PauseProcess:
-                        PauseProcess.Emit(instruction, context);
-                        break;
-                    case CodeType.ResumeProcess:
-                        ResumeProcess.Emit(instruction, context);
-                        break;
-                    case CodeType.DebugLog:
-                        DebugLog.Emit(instruction, context);
-                        break;
-                    default:
-                        throw new TamperCompilationException($"Code type {codeType} not implemented in Atmosphere cheat");
+                    switch (codeType)
+                    {
+                        case CodeType.StoreConstantToAddress:
+                            StoreConstantToAddress.Emit(instruction, context);
+                            break;
+                        case CodeType.BeginMemoryConditionalBlock:
+                            BeginConditionalBlock.Emit(instruction, context);
+                            break;
+                        case CodeType.EndConditionalBlock:
+                            EndConditionalBlock.Emit(instruction, context);
+                            break;
+                        case CodeType.StartEndLoop:
+                            StartEndLoop.Emit(instruction, context);
+                            break;
+                        case CodeType.LoadRegisterWithContant:
+                            LoadRegisterWithConstant.Emit(instruction, context);
+                            break;
+                        case CodeType.LoadRegisterWithMemory:
+                            LoadRegisterWithMemory.Emit(instruction, context);
+                            break;
+                        case CodeType.StoreConstantToMemory:
+                            StoreConstantToMemory.Emit(instruction, context);
+                            break;
+                        case CodeType.LegacyArithmetic:
+                            LegacyArithmetic.Emit(instruction, context);
+                            break;
+                        case CodeType.BeginKeypressConditionalBlock:
+                            BeginConditionalBlock.Emit(instruction, context);
+                            break;
+                        case CodeType.Arithmetic:
+                            Arithmetic.Emit(instruction, context);
+                            break;
+                        case CodeType.StoreRegisterToMemory:
+                            StoreRegisterToMemory.Emit(instruction, context);
+                            break;
+                        case CodeType.BeginRegisterConditionalBlock:
+                            BeginConditionalBlock.Emit(instruction, context);
+                            break;
+                        case CodeType.SaveOrRestoreRegister:
+                            SaveOrRestoreRegister.Emit(instruction, context);
+                            break;
+                        case CodeType.SaveOrRestoreRegisterWithMask:
+                            SaveOrRestoreRegisterWithMask.Emit(instruction, context);
+                            break;
+                        case CodeType.ReadOrWriteStaticRegister:
+                            ReadOrWriteStaticRegister.Emit(instruction, context);
+                            break;
+                        case CodeType.PauseProcess:
+                            PauseProcess.Emit(instruction, context);
+                            break;
+                        case CodeType.ResumeProcess:
+                            ResumeProcess.Emit(instruction, context);
+                            break;
+                        case CodeType.DebugLog:
+                            DebugLog.Emit(instruction, context);
+                            break;
+                        default:
+                            throw new TamperCompilationException($"Code type {codeType} not implemented in Atmosphere cheat");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.TamperMachine, $"Error processing instruction {rawInstruction} with code type {codeType}: {ex.Message}");
+                    throw;
                 }
             }
 
@@ -139,16 +149,21 @@ namespace Ryujinx.HLE.HOS.Tamper
             Value<ulong> zero = new(0UL);
             int position = 0;
 
+            Logger.Debug?.Print(LogClass.TamperMachine, $"Initializing {context.Registers.Count} registers");
+
             foreach (Register register in context.Registers.Values)
             {
                 context.CurrentOperations.Insert(position, new OpMov<ulong>(register, zero));
                 position++;
+                Logger.Debug?.Print(LogClass.TamperMachine, $"Initialized register {register} to 0");
             }
 
             if (context.BlockStack.Count != 1)
             {
                 throw new TamperCompilationException("Reached end of compilation with unmatched conditional(s) or loop(s)");
             }
+
+            Logger.Debug?.Print(LogClass.TamperMachine, $"Successfully compiled program '{name}' with {context.CurrentOperations.Count} operations");
 
             return new AtmosphereProgram(name, _process, context.PressedKeys, new Block(context.CurrentOperations));
         }
