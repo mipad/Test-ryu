@@ -1,5 +1,5 @@
 using Ryujinx.Common.Logging;
-using Ryujinx.HLE.Exceptions; // 添加这行
+using Ryujinx.HLE.Exceptions;
 using Ryujinx.HLE.HOS.Tamper.Operations;
 
 namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
@@ -49,7 +49,7 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
                 0 => MemoryRegion.NSO, // MAIN
                 1 => MemoryRegion.Heap, // HEAP
                 2 => MemoryRegion.Alias, // ALIAS
-                3 => MemoryRegion.Asrl, // ASLR (注意这里是 Asrl 而不是 Aslr)
+                3 => MemoryRegion.Asrl, // ASLR
                 _ => throw new TamperCompilationException($"Invalid region code {regionCode} in StoreConstantToAddress instruction")
             };
 
@@ -78,6 +78,16 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
             Pointer dstMem = MemoryHelper.EmitPointer(memoryRegion, offsetRegister, offsetImmediate, context);
 
             int valueImmediateSize = operationWidth <= 4 ? ValueImmediateSize8 : ValueImmediateSize16;
+
+            // 检查是否有足够的半字节可供读取
+            int availableNybbles = instruction.Length * 2 - ValueImmediateIndex;
+            if (valueImmediateSize > availableNybbles)
+            {
+                Logger.Warning?.Print(LogClass.TamperMachine, 
+                    $"Not enough nybbles for value immediate: requested {valueImmediateSize}, available {availableNybbles}. Using available nybbles.");
+                valueImmediateSize = availableNybbles;
+            }
+
             ulong valueImmediate = InstructionHelper.GetImmediate(instruction, ValueImmediateIndex, valueImmediateSize);
             Value<ulong> storeValue = new(valueImmediate);
 
