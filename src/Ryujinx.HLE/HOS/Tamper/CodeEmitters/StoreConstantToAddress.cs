@@ -9,7 +9,6 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
     class StoreConstantToAddress
     {
         private const int OperationWidthIndex = 1;
-        private const int MemoryRegionIndex = 2;
         private const int OffsetRegisterIndex = 3;
         private const int OffsetImmediateIndex = 6;
         private const int ValueImmediateIndex = 16;
@@ -27,8 +26,32 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
             // A: Immediate offset to use from memory region base.
             // V: Value to write.
 
-            byte operationWidth = instruction[OperationWidthIndex];
-            MemoryRegion memoryRegion = (MemoryRegion)instruction[MemoryRegionIndex];
+            byte widthAndRegion = instruction[OperationWidthIndex];
+            
+            // 解析宽度和内存区域
+            byte widthCode = (byte)(widthAndRegion & 0x3); // 低2位表示宽度
+            byte regionCode = (byte)((widthAndRegion >> 2) & 0x3); // 高2位表示内存区域
+            
+            // 将宽度代码转换为实际宽度
+            byte operationWidth = widthCode switch
+            {
+                0 => 1, // 1字节
+                1 => 2, // 2字节
+                2 => 4, // 4字节
+                3 => 8, // 8字节
+                _ => throw new TamperCompilationException($"Invalid width code {widthCode} in StoreConstantToAddress instruction")
+            };
+            
+            // 将区域代码转换为内存区域
+            MemoryRegion memoryRegion = regionCode switch
+            {
+                0 => MemoryRegion.NSO, // MAIN
+                1 => MemoryRegion.Heap, // HEAP
+                2 => MemoryRegion.Alias, // ALIAS
+                3 => MemoryRegion.Aslr, // ASLR
+                _ => throw new TamperCompilationException($"Invalid region code {regionCode} in StoreConstantToAddress instruction")
+            };
+
             Register offsetRegister = context.GetRegister(instruction[OffsetRegisterIndex]);
             ulong offsetImmediate = InstructionHelper.GetImmediate(instruction, OffsetImmediateIndex, OffsetImmediateSize);
 
