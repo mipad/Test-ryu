@@ -9,15 +9,14 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
     /// </summary>
     class StoreConstantToAddress
     {
-        // 半字节索引
-        private const int WidthNibbleIndex = 1;    // 第二个半字节是宽度代码
-        private const int RegionNibbleIndex = 2;   // 第三个半字节是内存区域代码
-        private const int RegisterNibbleIndex = 3; // 第四个半字节是寄存器索引
-        private const int OffsetStartNibbleIndex = 6; // 偏移量从第7个半字节开始
-        private const int ValueStartNibbleIndex = 14; // 值从第15个半字节开始
+        // 字节索引
+        private const int WidthByteIndex = 0;      // 第一个字节包含宽度和类型
+        private const int RegionByteIndex = 1;     // 第二个字节包含区域和寄存器
+        private const int OffsetStartByteIndex = 2; // 偏移量从第三个字节开始
+        private const int ValueStartByteIndex = 6;  // 值从第七个字节开始
 
-        private const int OffsetNibbleSize = 8;   // 偏移量是8个半字节（32位）
-        private const int ValueNibbleSize = 8;    // 值也是8个半字节（32位）
+        private const int OffsetByteSize = 4;      // 偏移量是4个字节（32位）
+        private const int ValueByteSize = 4;       // 值也是4个字节（32位）
 
         public static void Emit(byte[] instruction, CompilationContext context)
         {
@@ -28,18 +27,21 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
             // A: Immediate offset to use from memory region base.
             // V: Value to write.
 
-            // 使用半字节索引提取信息
-            byte widthCode = GetNibble(instruction, WidthNibbleIndex);
-            byte regionCode = GetNibble(instruction, RegionNibbleIndex);
-            byte registerIndex = GetNibble(instruction, RegisterNibbleIndex);
+            // 从第一个字节提取宽度代码（低4位）
+            byte widthCode = (byte)(instruction[WidthByteIndex] & 0x0F);
             
-            // 将宽度代码转换为实际宽度
+            // 从第二个字节提取区域代码（高4位）和寄存器索引（低4位）
+            byte regionCode = (byte)(instruction[RegionByteIndex] >> 4);
+            byte registerIndex = (byte)(instruction[RegionByteIndex] & 0x0F);
+            
+            // 将宽度代码转换为实际宽度（特殊处理：4表示4字节）
             byte operationWidth = widthCode switch
             {
                 0 => 1, // 1字节
                 1 => 2, // 2字节
                 2 => 4, // 4字节
                 3 => 8, // 8字节
+                4 => 4, // 特殊处理：4也表示4字节
                 _ => throw new TamperCompilationException($"Invalid width code {widthCode} in StoreConstantToAddress instruction")
             };
             
@@ -55,8 +57,13 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
 
             Register offsetRegister = context.GetRegister(registerIndex);
             
-            // 使用半字节索引提取偏移量立即值
-            ulong offsetImmediate = GetImmediateFromNibbles(instruction, OffsetStartNibbleIndex, OffsetNibbleSize);
+            // 提取偏移量立即值（4字节，从第三个字节开始）
+            ulong offsetImmediate = 0;
+            for (int i = 0; i < OffsetByteSize; i++)
+            {
+                offsetImmediate <<= 8;
+                offsetImmediate |= instruction[OffsetStartByteIndex + i];
+            }
 
             // 添加详细日志
             Logger.Debug?.Print(LogClass.TamperMachine, 
@@ -79,8 +86,14 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
 
             Pointer dstMem = MemoryHelper.EmitPointer(memoryRegion, offsetRegister, offsetImmediate, context);
 
-            // 使用半字节索引提取值立即值
-            ulong valueImmediate = GetImmediateFromNibbles(instruction, ValueStartNibbleIndex, ValueNibbleSize);
+            // 提取值立即值（4字节，从第七个字节开始）
+            ulong valueImmediate = 0;
+            for (int i = 0; i < ValueByteSize; i++)
+            {
+                valueImmediate <<= 8;
+                valueImmediate |= instruction[ValueStartByteIndex + i];
+            }
+
             Value<ulong> storeValue = new(valueImmediate);
 
             // 添加值日志
@@ -92,38 +105,6 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
                 $"Writing 0x{valueImmediate:X8} to memory address calculated from R_{registerIndex:X1} + 0x{offsetImmediate:X8}"));
 
             InstructionHelper.EmitMov(operationWidth, context, dstMem, storeValue);
-        }
-
-        // 从半字节数组中获取指定半字节的值
-        private static byte GetNibble(byte[] nibbles, int nibbleIndex)
-        {
-            int byteIndex = nibbleIndex / 2;
-            bool isHighNibble = (nibbleIndex % 2) == 0;
-            
-            if (byteIndex >= nibbles.Length)
-            {
-                throw new TamperCompilationException($"Nibble index {nibbleIndex} out of range");
-            }
-            
-            byte value = nibbles[byteIndex];
-            return isHighNibble ? (byte)(value >> 4) : (byte)(value & 0x0F);
-        }
-
-        // 从半字节数组中提取立即值
-        private static ulong GetImmediateFromNibbles(byte[] nibbles, int startNibbleIndex, int nibbleCount)
-        {
-            ulong value = 0;
-
-            for (int i = 0; i < nibbleCount; i++)
-            {
-                value <<= 4;
-                value |= GetNibble(nibbles, startNibbleIndex + i);
-            }
-
-            Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"Extracted immediate value: 0x{value:X} from nibble position {startNibbleIndex} with {nibbleCount} nibbles");
-
-            return value;
         }
     }
 
