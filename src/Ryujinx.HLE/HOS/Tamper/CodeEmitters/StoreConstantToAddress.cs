@@ -1,4 +1,5 @@
 using Ryujinx.Common.Logging;
+using Ryujinx.HLE.Exceptions; // 添加这行
 using Ryujinx.HLE.HOS.Tamper.Operations;
 
 namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
@@ -48,7 +49,7 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
                 0 => MemoryRegion.NSO, // MAIN
                 1 => MemoryRegion.Heap, // HEAP
                 2 => MemoryRegion.Alias, // ALIAS
-                3 => MemoryRegion.Aslr, // ASLR
+                3 => MemoryRegion.Asrl, // ASLR (注意这里是 Asrl 而不是 Aslr)
                 _ => throw new TamperCompilationException($"Invalid region code {regionCode} in StoreConstantToAddress instruction")
             };
 
