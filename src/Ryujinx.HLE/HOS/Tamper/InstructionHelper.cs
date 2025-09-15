@@ -310,25 +310,27 @@ namespace Ryujinx.HLE.HOS.Tamper
         }
 
         public static CodeType GetCodeType(byte[] instruction)
+{
+    // 指令数组的每个元素是一个半字节(0-15)
+    // 操作码通常在第一个半字节
+    int codeType = instruction[CodeTypeIndex]; // 获取第一个半字节
+
+    // 如果操作码大于等于0xC（12），需要读取更多半字节
+    if (codeType >= 0xC)
+    {
+        // 读取第二个半字节
+        codeType = (codeType << 4) | instruction[CodeTypeIndex + 1];
+        
+        // 如果第二个半字节是0xF，需要再读取第三个半字节
+        if (instruction[CodeTypeIndex + 1] == 0xF)
         {
-            int codeType = instruction[CodeTypeIndex];
-
-            if (codeType >= 0xC)
-            {
-                byte extension = instruction[CodeTypeIndex + 1];
-                codeType = (codeType << 4) | extension;
-
-                if (extension == 0xF)
-                {
-                    extension = instruction[CodeTypeIndex + 2];
-                    codeType = (codeType << 4) | extension;
-                }
-            }
-
-            Logger.Debug?.Print(LogClass.TamperMachine, $"Detected code type: {(CodeType)codeType} (0x{codeType:X})");
-
-            return (CodeType)codeType;
+            codeType = (codeType << 4) | instruction[CodeTypeIndex + 2];
         }
+    }
+
+    Logger.Debug?.Print(LogClass.TamperMachine, $"Detected code type: {(CodeType)codeType} (0x{codeType:X})");
+    return (CodeType)codeType;
+}
 
         // 回滚到版本15的ParseRawInstruction实现
         public static byte[] ParseRawInstruction(string rawInstruction)
