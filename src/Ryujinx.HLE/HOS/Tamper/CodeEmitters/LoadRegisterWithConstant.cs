@@ -1,3 +1,4 @@
+using Ryujinx.Common.Logging;
 using Ryujinx.HLE.HOS.Tamper.Operations;
 
 namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
@@ -18,9 +19,15 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
             // R: Register to use.
             // V: Value to load.
 
+            Logger.Debug?.Print(LogClass.TamperMachine, 
+                "Processing LoadRegisterWithConstant instruction");
+
             Register destinationRegister = context.GetRegister(instruction[RegisterIndex]);
             ulong immediate = InstructionHelper.GetImmediate(instruction, ValueImmediateIndex, ValueImmediateSize);
             Value<ulong> sourceValue = new(immediate);
+
+            Logger.Debug?.Print(LogClass.TamperMachine, 
+                $"LoadRegisterWithConstant: Setting R_{instruction[RegisterIndex]:X2} to 0x{immediate:X16}");
 
             context.CurrentOperations.Add(new OpMov<ulong>(destinationRegister, sourceValue));
         }
