@@ -77,15 +77,17 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
 
             Pointer dstMem = MemoryHelper.EmitPointer(memoryRegion, offsetRegister, offsetImmediate, context);
 
+            // 计算值立即数的大小，确保不会超出指令数组的范围
+            int maxAvailableNybbleCount = instruction.Length * 2 - ValueImmediateIndex;
             int valueImmediateSize = operationWidth <= 4 ? ValueImmediateSize8 : ValueImmediateSize16;
-
-            // 检查是否有足够的半字节可供读取
-            int availableNybbles = instruction.Length * 2 - ValueImmediateIndex;
-            if (valueImmediateSize > availableNybbles)
+            
+            // 确保不会读取超出数组范围的半字节
+            if (valueImmediateSize > maxAvailableNybbleCount)
             {
                 Logger.Warning?.Print(LogClass.TamperMachine, 
-                    $"Not enough nybbles for value immediate: requested {valueImmediateSize}, available {availableNybbles}. Using available nybbles.");
-                valueImmediateSize = availableNybbles;
+                    $"Value immediate size {valueImmediateSize} exceeds available nybbles {maxAvailableNybbleCount}. " +
+                    $"Using available nybbles instead.");
+                valueImmediateSize = maxAvailableNybbleCount;
             }
 
             ulong valueImmediate = InstructionHelper.GetImmediate(instruction, ValueImmediateIndex, valueImmediateSize);
