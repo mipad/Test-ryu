@@ -53,7 +53,7 @@ namespace Ryujinx.HLE.HOS.Tamper
             RegisterConditionFactory(typeof(CondEQ<>));
             RegisterConditionFactory(typeof(CondNE<>));
             
-            // 其他操作类型的工厂方法
+            // 注册所有操作类型的工厂方法 - 确保与文件列表匹配
             RegisterOperationFactory(typeof(OpAdd<>));
             RegisterOperationFactory(typeof(OpSub<>));
             RegisterOperationFactory(typeof(OpMul<>));
@@ -293,51 +293,35 @@ namespace Ryujinx.HLE.HOS.Tamper
             throw new TamperCompilationException($"Unsupported instruction type {instruction.Name} with width {width} in Atmosphere cheat");
         }
 
+        // 回滚到版本15的GetImmediate实现
         public static ulong GetImmediate(byte[] instruction, int index, int nybbleCount)
-{
-    ulong value = 0;
-
-    for (int i = 0; i < nybbleCount; i++)
-    {
-        value <<= 4;
-        
-        // 计算当前半字节在字节数组中的位置
-        int byteIndex = (index + i) / 2;
-        
-        // 确保不越界
-        if (byteIndex >= instruction.Length)
         {
-            throw new TamperCompilationException($"Attempted to read beyond instruction bounds: byteIndex={byteIndex}, instruction.Length={instruction.Length}");
+            ulong value = 0;
+
+            for (int i = 0; i < nybbleCount; i++)
+            {
+                value <<= 4;
+                value |= instruction[index + i];
+            }
+
+            Logger.Debug?.Print(LogClass.TamperMachine, $"Extracted immediate value: 0x{value:X} from position {index} with {nybbleCount} nybbles");
+
+            return value;
         }
-        
-        int nibbleOffset = (index + i) % 2;
-        
-        byte currentByte = instruction[byteIndex];
-        byte nibble = (byte)((nibbleOffset == 0) ? (currentByte >> 4) : (currentByte & 0x0F));
-        
-        value |= nibble;
-    }
-
-    Logger.Debug?.Print(LogClass.TamperMachine, $"Extracted immediate value: 0x{value:X} from position {index} with {nybbleCount} nybbles");
-
-    return value;
-}
 
         public static CodeType GetCodeType(byte[] instruction)
         {
-            // 第一个字节的高4位是操作码的主要部分
-            int codeType = instruction[0] >> 4;
+            int codeType = instruction[CodeTypeIndex];
 
-            // 如果操作码大于等于0xC，需要读取更多半字节
             if (codeType >= 0xC)
             {
-                // 读取第一个字节的低4位
-                codeType = (codeType << 4) | (instruction[0] & 0x0F);
-                
-                // 如果低4位是0xF，需要再读取下一个字节的高4位
-                if ((instruction[0] & 0x0F) == 0xF)
+                byte extension = instruction[CodeTypeIndex + 1];
+                codeType = (codeType << 4) | extension;
+
+                if (extension == 0xF)
                 {
-                    codeType = (codeType << 4) | (instruction[1] >> 4);
+                    extension = instruction[CodeTypeIndex + 2];
+                    codeType = (codeType << 4) | extension;
                 }
             }
 
@@ -346,17 +330,17 @@ namespace Ryujinx.HLE.HOS.Tamper
             return (CodeType)codeType;
         }
 
+        // 回滚到版本15的ParseRawInstruction实现
         public static byte[] ParseRawInstruction(string rawInstruction)
         {
-            const int BytesPerWord = sizeof(uint) * 2; // 每个32位字由8个十六进制字符表示
+            const int WordSize = 2 * sizeof(uint); // 每个32位字由8个十六进制字符表示
 
             Logger.Debug?.Print(LogClass.TamperMachine, $"Parsing raw instruction: {rawInstruction}");
 
             var words = rawInstruction.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
 
-            // 计算总字节数：每个字有4个字节
-            byte[] instruction = new byte[words.Length * 4];
-            
+            byte[] instruction = new byte[WordSize * words.Length];
+
             if (words.Length == 0)
             {
                 throw new TamperCompilationException("Empty instruction in Atmosphere cheat");
@@ -366,17 +350,16 @@ namespace Ryujinx.HLE.HOS.Tamper
             {
                 string word = words[wordIndex];
 
-                if (word.Length != BytesPerWord)
+                if (word.Length != WordSize)
                 {
                     throw new TamperCompilationException($"Invalid word length for {word} in Atmosphere cheat");
                 }
 
-                // 将每个字(8个十六进制字符)解析为4个字节
-                for (int byteIndex = 0; byteIndex < 4; byteIndex++)
+                for (int nybbleIndex = 0; nybbleIndex < WordSize; nybbleIndex++)
                 {
-                    int index = wordIndex * 4 + byteIndex;
-                    string byteStr = word.Substring(byteIndex * 2, 2);
-                    instruction[index] = byte.Parse(byteStr, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+                    int index = wordIndex * WordSize + nybbleIndex;
+
+                    instruction[index] = byte.Parse(word.AsSpan(nybbleIndex, 1), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
                 }
             }
 
