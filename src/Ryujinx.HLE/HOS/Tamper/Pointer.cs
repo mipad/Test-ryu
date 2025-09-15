@@ -1,37 +1,50 @@
+[file name]: Pointer.cs
+[file content begin]
 using Ryujinx.Common.Logging;
 using Ryujinx.HLE.HOS.Tamper.Operations;
-using System.Runtime.CompilerServices;
+using System;
 
 namespace Ryujinx.HLE.HOS.Tamper
 {
     class Pointer : IOperand
     {
-        private readonly IOperand _position;
+        private readonly IOperand _address;
         private readonly ITamperedProcess _process;
 
-        public Pointer(IOperand position, ITamperedProcess process)
+        public Pointer(IOperand address, ITamperedProcess process)
         {
-            _position = position;
+            _address = address;
             _process = process;
-        }
-
-        public IOperand GetPositionOperand()
-        {
-            return _position;
         }
 
         public T Get<T>() where T : unmanaged
         {
-            return _process.ReadMemory<T>(_position.Get<ulong>());
+            ulong address = _address.Get<ulong>();
+            T value = _process.ReadMemory<T>(address);
+            
+            Logger.Debug?.Print(LogClass.TamperMachine, 
+                $"Pointer.Get: Read 0x{value:X} from address 0x{address:X16}");
+            
+            return value;
         }
 
         public void Set<T>(T value) where T : unmanaged
         {
-            ulong position = _position.Get<ulong>();
+            ulong address = _address.Get<ulong>();
+            
+            Logger.Debug?.Print(LogClass.TamperMachine, 
+                $"Pointer.Set: Writing 0x{value:X} to address 0x{address:X16}");
+            
+            _process.WriteMemory(address, value);
+            
+            Logger.Debug?.Print(LogClass.TamperMachine, 
+                $"Pointer.Set: Successfully wrote 0x{value:X} to address 0x{address:X16}");
+        }
 
-            Logger.Debug?.Print(LogClass.TamperMachine, $"0x{position:X16}@{Unsafe.SizeOf<T>()}: {value:X}");
-
-            _process.WriteMemory(position, value);
+        public IOperand GetPositionOperand()
+        {
+            return _address;
         }
     }
 }
+[file content end]
