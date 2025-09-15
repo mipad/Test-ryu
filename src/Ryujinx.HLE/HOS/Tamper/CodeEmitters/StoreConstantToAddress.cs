@@ -11,12 +11,11 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
     {
         private const int OperationWidthIndex = 1;
         private const int OffsetRegisterIndex = 3;
-        private const int OffsetImmediateIndex = 6;
-        private const int ValueImmediateIndex = 16;
+        private const int OffsetImmediateIndex = 4; // 从第4个字节开始是偏移量
+        private const int ValueImmediateIndex = 8;  // 从第8个字节开始是值
 
-        private const int OffsetImmediateSize = 10;
-        private const int ValueImmediateSize8 = 8;
-        private const int ValueImmediateSize16 = 16;
+        private const int OffsetImmediateSize = 8;  // 偏移量是4字节（8个半字节）
+        private const int ValueImmediateSize = 8;   // 值也是4字节（8个半字节）
 
         public static void Emit(byte[] instruction, CompilationContext context)
         {
@@ -77,20 +76,7 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
 
             Pointer dstMem = MemoryHelper.EmitPointer(memoryRegion, offsetRegister, offsetImmediate, context);
 
-            // 计算值立即数的大小，确保不会超出指令数组的范围
-            int maxAvailableNybbleCount = instruction.Length * 2 - ValueImmediateIndex;
-            int valueImmediateSize = operationWidth <= 4 ? ValueImmediateSize8 : ValueImmediateSize16;
-            
-            // 确保不会读取超出数组范围的半字节
-            if (valueImmediateSize > maxAvailableNybbleCount)
-            {
-                Logger.Warning?.Print(LogClass.TamperMachine, 
-                    $"Value immediate size {valueImmediateSize} exceeds available nybbles {maxAvailableNybbleCount}. " +
-                    $"Using available nybbles instead.");
-                valueImmediateSize = maxAvailableNybbleCount;
-            }
-
-            ulong valueImmediate = InstructionHelper.GetImmediate(instruction, ValueImmediateIndex, valueImmediateSize);
+            ulong valueImmediate = InstructionHelper.GetImmediate(instruction, ValueImmediateIndex, ValueImmediateSize);
             Value<ulong> storeValue = new(valueImmediate);
 
             // 添加值日志
