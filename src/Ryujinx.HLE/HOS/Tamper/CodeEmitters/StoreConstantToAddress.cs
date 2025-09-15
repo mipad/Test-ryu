@@ -11,11 +11,11 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
     {
         private const int OperationWidthIndex = 1;
         private const int OffsetRegisterIndex = 3;
-        private const int OffsetImmediateIndex = 4; // 从第4个字节开始是偏移量
-        private const int ValueImmediateIndex = 8;  // 从第8个字节开始是值
+        private const int OffsetImmediateIndex = 4;  // 从第4个字节开始是偏移量
+        private const int ValueImmediateIndex = 8;   // 从第8个字节开始是值
 
-        private const int OffsetImmediateSize = 8;  // 偏移量是4字节（8个半字节）
-        private const int ValueImmediateSize = 8;   // 值也是4字节（8个半字节）
+        private const int OffsetImmediateSize = 4;   // 偏移量是4字节
+        private const int ValueImmediateSize = 4;    // 值也是4字节
 
         public static void Emit(byte[] instruction, CompilationContext context)
         {
@@ -53,7 +53,9 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
             };
 
             Register offsetRegister = context.GetRegister(instruction[OffsetRegisterIndex]);
-            ulong offsetImmediate = InstructionHelper.GetImmediate(instruction, OffsetImmediateIndex, OffsetImmediateSize);
+            
+            // 使用字节索引提取立即值
+            ulong offsetImmediate = GetImmediate(instruction, OffsetImmediateIndex, OffsetImmediateSize);
 
             // 添加详细日志
             Logger.Debug?.Print(LogClass.TamperMachine, 
@@ -76,7 +78,8 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
 
             Pointer dstMem = MemoryHelper.EmitPointer(memoryRegion, offsetRegister, offsetImmediate, context);
 
-            ulong valueImmediate = InstructionHelper.GetImmediate(instruction, ValueImmediateIndex, ValueImmediateSize);
+            // 使用字节索引提取值立即值
+            ulong valueImmediate = GetImmediate(instruction, ValueImmediateIndex, ValueImmediateSize);
             Value<ulong> storeValue = new(valueImmediate);
 
             // 添加值日志
@@ -87,6 +90,22 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
             context.CurrentOperations.Add(new DebugOperation($"Writing 0x{valueImmediate:X16} to memory address calculated from R_{instruction[OffsetRegisterIndex]:X2} + 0x{offsetImmediate:X16}"));
 
             InstructionHelper.EmitMov(operationWidth, context, dstMem, storeValue);
+        }
+
+        // 添加一个使用字节索引的 GetImmediate 方法
+        private static ulong GetImmediate(byte[] instruction, int byteIndex, int byteCount)
+        {
+            ulong value = 0;
+
+            for (int i = 0; i < byteCount; i++)
+            {
+                value <<= 8;
+                value |= instruction[byteIndex + i];
+            }
+
+            Logger.Debug?.Print(LogClass.TamperMachine, $"Extracted immediate value: 0x{value:X} from position {byteIndex} with {byteCount} bytes");
+
+            return value;
         }
     }
 
