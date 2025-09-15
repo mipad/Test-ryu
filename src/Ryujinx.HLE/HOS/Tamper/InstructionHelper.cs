@@ -294,27 +294,34 @@ namespace Ryujinx.HLE.HOS.Tamper
         }
 
         public static ulong GetImmediate(byte[] instruction, int index, int nybbleCount)
+{
+    ulong value = 0;
+
+    for (int i = 0; i < nybbleCount; i++)
+    {
+        value <<= 4;
+        
+        // 计算当前半字节在字节数组中的位置
+        int byteIndex = (index + i) / 2;
+        
+        // 确保不越界
+        if (byteIndex >= instruction.Length)
         {
-            ulong value = 0;
-
-            for (int i = 0; i < nybbleCount; i++)
-            {
-                value <<= 4;
-                
-                // 计算当前半字节在字节数组中的位置
-                int byteIndex = (index + i) / 2;
-                int nibbleOffset = (index + i) % 2;
-                
-                byte currentByte = instruction[byteIndex];
-                byte nibble = (byte)((nibbleOffset == 0) ? (currentByte >> 4) : (currentByte & 0x0F));
-                
-                value |= nibble;
-            }
-
-            Logger.Debug?.Print(LogClass.TamperMachine, $"Extracted immediate value: 0x{value:X} from position {index} with {nybbleCount} nybbles");
-
-            return value;
+            throw new TamperCompilationException($"Attempted to read beyond instruction bounds: byteIndex={byteIndex}, instruction.Length={instruction.Length}");
         }
+        
+        int nibbleOffset = (index + i) % 2;
+        
+        byte currentByte = instruction[byteIndex];
+        byte nibble = (byte)((nibbleOffset == 0) ? (currentByte >> 4) : (currentByte & 0x0F));
+        
+        value |= nibble;
+    }
+
+    Logger.Debug?.Print(LogClass.TamperMachine, $"Extracted immediate value: 0x{value:X} from position {index} with {nybbleCount} nybbles");
+
+    return value;
+}
 
         public static CodeType GetCodeType(byte[] instruction)
         {
