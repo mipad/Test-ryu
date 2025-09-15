@@ -317,60 +317,6 @@ namespace Ryujinx.HLE.HOS.Tamper
         return (CodeType)(-1);
     }
     
-    // 金手指代码的第一个半字节表示代码类型
-    int codeTypeValue = instruction[0];
-    
-    Logger.Debug?.Print(LogClass.TamperMachine, $"First nybble: 0x{codeTypeValue:X1}");
-    
-    // 检查基本代码类型 (0x0-0xA)
-    if (codeTypeValue <= 0xA)
-    {
-        Logger.Debug?.Print(LogClass.TamperMachine, $"Detected basic code type: {(CodeType)codeTypeValue} (0x{codeTypeValue:X})");
-        return (CodeType)codeTypeValue;
-    }
-    
-    // 处理扩展代码类型 (>= 0xC)
-    if (codeTypeValue >= 0xC && instruction.Length >= 3)
-    {
-        // 读取第二个半字节
-        codeTypeValue = (codeTypeValue << 4) | instruction[1];
-        
-        Logger.Debug?.Print(LogClass.TamperMachine, $"Extended code type: 0x{codeTypeValue:X2}");
-        
-        // 检查特定的扩展代码类型
-        switch (codeTypeValue)
-        {
-            case 0xC0:
-                Logger.Debug?.Print(LogClass.TamperMachine, "Detected BeginRegisterConditionalBlock (code type 0xC0)");
-                return CodeType.BeginRegisterConditionalBlock;
-            case 0xC1:
-                Logger.Debug?.Print(LogClass.TamperMachine, "Detected SaveOrRestoreRegister (code type 0xC1)");
-                return CodeType.SaveOrRestoreRegister;
-            case 0xC2:
-                Logger.Debug?.Print(LogClass.TamperMachine, "Detected SaveOrRestoreRegisterWithMask (code type 0xC2)");
-                return CodeType.SaveOrRestoreRegisterWithMask;
-            case 0xC3:
-                Logger.Debug?.Print(LogClass.TamperMachine, "Detected ReadOrWriteStaticRegister (code type 0xC3)");
-                return CodeType.ReadOrWriteStaticRegister;
-                
-            // 处理更长的扩展代码类型
-            default:
-                if ((codeTypeValue & 0xF) == 0xF && instruction.Length >= 4)
-                {
-                    // 读取第三个半字节
-                    codeTypeValue = (codeTypeValue << 4) | instruction[2];
-                    Logger.Debug?.Print(LogClass.TamperMachine, $"Further extended code type: 0x{codeTypeValue:X3}");
-                    
-                    if (instruction.Length >= 5)
-                    {
-public static CodeType GetCodeType(byte[] instruction)
-{
-    if (instruction.Length < 2)
-    {
-        Logger.Error?.Print(LogClass.TamperMachine, "Instruction too short to determine code type");
-        return (CodeType)(-1);
-    }
-    
     // 修正：从第一个字节的高4位提取代码类型
     int codeTypeValue = instruction[0] >> 4;  // 获取高4位
     
