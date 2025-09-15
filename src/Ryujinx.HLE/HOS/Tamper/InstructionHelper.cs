@@ -311,20 +311,33 @@ namespace Ryujinx.HLE.HOS.Tamper
 
         public static CodeType GetCodeType(byte[] instruction)
 {
-    // 指令数组的每个元素是一个半字节(0-15)
-    // 操作码通常在第一个半字节
-    int codeType = instruction[CodeTypeIndex]; // 获取第一个半字节
-
-    // 如果操作码大于等于0xC（12），需要读取更多半字节
-    if (codeType >= 0xC)
+    // 金手指指令的操作码通常在前1-2个字节（2-4个半字节）
+    // 我们需要组合这些半字节来形成完整的操作码
+    
+    if (instruction.Length < 2)
     {
-        // 读取第二个半字节
-        codeType = (codeType << 4) | instruction[CodeTypeIndex + 1];
+        Logger.Error?.Print(LogClass.TamperMachine, "Instruction too short to determine code type");
+        return CodeType.Unknown;
+    }
+    
+    // 组合前两个半字节形成第一个字节
+    int codeType = (instruction[0] << 4) | instruction[1];
+    
+    Logger.Debug?.Print(LogClass.TamperMachine, $"First byte of instruction: 0x{codeType:X2}");
+    
+    // 如果操作码大于等于0xC0，可能需要读取更多半字节
+    if (codeType >= 0xC0 && instruction.Length >= 3)
+    {
+        // 读取第三个半字节
+        codeType = (codeType << 4) | instruction[2];
         
-        // 如果第二个半字节是0xF，需要再读取第三个半字节
-        if (instruction[CodeTypeIndex + 1] == 0xF)
+        Logger.Debug?.Print(LogClass.TamperMachine, $"Extended code type: 0x{codeType:X3}");
+        
+        // 如果第三个半字节是0xF，需要再读取第四个半字节
+        if ((codeType & 0xF) == 0xF && instruction.Length >= 4)
         {
-            codeType = (codeType << 4) | instruction[CodeTypeIndex + 2];
+            codeType = (codeType << 4) | instruction[3];
+            Logger.Debug?.Print(LogClass.TamperMachine, $"Further extended code type: 0x{codeType:X4}");
         }
     }
 
