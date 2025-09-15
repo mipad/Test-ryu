@@ -9,9 +9,9 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
     /// </summary>
     class StoreConstantToAddress
     {
-        // 半字节索引而不是字节索引
-        private const int WidthNibbleIndex = 1;  // 第二个半字节是宽度代码
-        private const int RegionNibbleIndex = 2; // 第三个半字节是内存区域代码
+        // 半字节索引
+        private const int WidthNibbleIndex = 1;    // 第二个半字节是宽度代码
+        private const int RegionNibbleIndex = 2;   // 第三个半字节是内存区域代码
         private const int RegisterNibbleIndex = 3; // 第四个半字节是寄存器索引
         private const int OffsetStartNibbleIndex = 6; // 偏移量从第7个半字节开始
         private const int ValueStartNibbleIndex = 14; // 值从第15个半字节开始
@@ -23,7 +23,7 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
         {
             // 0TMR00AA AAAAAAAA VVVVVVVV (VVVVVVVV)
             // T: Width of memory write(1, 2, 4, or 8 bytes).
-            // M: Memory region to write to(0 = Main NSO, 1 = Heap).
+            // M: Memory region to write to(0 = Main NSO, 1 = Heap, 2 = Alias, 3 = Aslr).
             // R: Register to use as an offset from memory region base.
             // A: Immediate offset to use from memory region base.
             // V: Value to write.
@@ -46,10 +46,10 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
             // 将区域代码转换为内存区域
             MemoryRegion memoryRegion = regionCode switch
             {
-                0 => MemoryRegion.NSO, // MAIN
-                1 => MemoryRegion.Heap, // HEAP
+                0 => MemoryRegion.NSO,   // MAIN
+                1 => MemoryRegion.Heap,  // HEAP
                 2 => MemoryRegion.Alias, // ALIAS
-                3 => MemoryRegion.Asrl, // ASLR
+                3 => MemoryRegion.Asrl,  // ASLR
                 _ => throw new TamperCompilationException($"Invalid region code {regionCode} in StoreConstantToAddress instruction")
             };
 
@@ -88,7 +88,8 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
                 $"StoreConstantToAddress: writing value 0x{valueImmediate:X8} to calculated address");
 
             // 添加一个调试操作来记录实际写入的地址
-            context.CurrentOperations.Add(new DebugOperation($"Writing 0x{valueImmediate:X8} to memory address calculated from R_{registerIndex:X1} + 0x{offsetImmediate:X8}"));
+            context.CurrentOperations.Add(new DebugOperation(
+                $"Writing 0x{valueImmediate:X8} to memory address calculated from R_{registerIndex:X1} + 0x{offsetImmediate:X8}"));
 
             InstructionHelper.EmitMov(operationWidth, context, dstMem, storeValue);
         }
@@ -119,7 +120,8 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
                 value |= GetNibble(nibbles, startNibbleIndex + i);
             }
 
-            Logger.Debug?.Print(LogClass.TamperMachine, $"Extracted immediate value: 0x{value:X} from nibble position {startNibbleIndex} with {nibbleCount} nibbles");
+            Logger.Debug?.Print(LogClass.TamperMachine, 
+                $"Extracted immediate value: 0x{value:X} from nibble position {startNibbleIndex} with {nibbleCount} nibbles");
 
             return value;
         }
