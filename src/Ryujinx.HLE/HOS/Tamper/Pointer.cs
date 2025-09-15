@@ -1,5 +1,3 @@
-[file name]: Pointer.cs
-[file content begin]
 using Ryujinx.Common.Logging;
 using Ryujinx.HLE.HOS.Tamper.Operations;
 using System;
@@ -47,4 +45,3 @@ namespace Ryujinx.HLE.HOS.Tamper
         }
     }
 }
-[file content end]
