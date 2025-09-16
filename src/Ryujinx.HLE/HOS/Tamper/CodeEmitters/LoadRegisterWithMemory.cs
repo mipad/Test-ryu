@@ -1,4 +1,4 @@
-using Ryujinx.Common.Logging;
+// LoadRegisterWithMemory.cs
 using Ryujinx.HLE.Exceptions;
 
 namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
@@ -31,19 +31,11 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
             // R: Register to use as base address and to load value into.
             // A: Immediate offset to use from register R.
 
-            Logger.Debug?.Print(LogClass.TamperMachine, 
-                "Processing LoadRegisterWithMemory instruction");
-
             byte operationWidth = instruction[OperationWidthIndex];
             MemoryRegion memoryRegion = (MemoryRegion)instruction[MemoryRegionIndex];
             Register destinationRegister = context.GetRegister(instruction[DestinationRegisterIndex]);
             byte useDestinationAsSourceIndex = instruction[UseDestinationAsSourceIndex];
             ulong address = InstructionHelper.GetImmediate(instruction, OffsetImmediateIndex, OffsetImmediateSize);
-
-            Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"LoadRegisterWithMemory: width={operationWidth}, region={memoryRegion}, " +
-                $"destReg=R_{instruction[DestinationRegisterIndex]:X2}, useDestAsSrc={useDestinationAsSourceIndex}, " +
-                $"offset=0x{address:X16}");
 
             Pointer sourceMemory;
 
