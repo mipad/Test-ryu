@@ -116,7 +116,7 @@ class DoubleCircleButtonView(context: Context, val buttonText: String, val butto
 }
 
 // 可移动按钮视图
-class MovableButtonView(context: Context, val buttonText: String, val buttonId: Int) : View(context) {
+class MovableButtonView(context: Context, val buttonText: String, val buttonId: Int, val controller: GameController) : View(context) {
     private val paint = Paint().apply {
         isAntiAlias = true
         color = Color.argb(200, 80, 80, 80)
@@ -156,7 +156,7 @@ class MovableButtonView(context: Context, val buttonText: String, val buttonId: 
                     invalidate()
                     
                     // 发送按钮按下事件
-                    GameController.sendButtonEvent(buttonId, true)
+                    controller.sendButtonEvent(buttonId, true)
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -170,7 +170,7 @@ class MovableButtonView(context: Context, val buttonText: String, val buttonId: 
                     invalidate()
                     
                     // 发送按钮释放事件
-                    GameController.sendButtonEvent(buttonId, false)
+                    controller.sendButtonEvent(buttonId, false)
                     true
                 }
                 else -> false
@@ -236,7 +236,7 @@ class MovableButtonView(context: Context, val buttonText: String, val buttonId: 
 }
 
 // 可移动的十字方向键
-class MovableDpadView(context: Context) : View(context) {
+class MovableDpadView(context: Context, val controller: GameController) : View(context) {
     private val basePaint = Paint().apply {
         color = Color.argb(180, 100, 100, 100)
         style = Paint.Style.FILL
@@ -249,8 +249,8 @@ class MovableDpadView(context: Context) : View(context) {
         isAntiAlias = true
     }
     
-    private var baseX = 0f
-    private var baseY = 0f
+    var baseX = 0f
+    var baseY = 0f
     private var baseRadius = 80f
     private var directionRadius = 30f
     
@@ -327,9 +327,9 @@ class MovableDpadView(context: Context) : View(context) {
         }
         
         if (pressed) {
-            GameController.sendButtonEvent(buttonId, true)
+            controller.sendButtonEvent(buttonId, true)
         } else {
-            GameController.sendButtonEvent(buttonId, false)
+            controller.sendButtonEvent(buttonId, false)
         }
     }
     
@@ -394,7 +394,7 @@ class MovableDpadView(context: Context) : View(context) {
 }
 
 // 可移动的摇杆
-class MovableJoystickView(context: Context, val stickId: Int, val isLeftStick: Boolean) : View(context) {
+class MovableJoystickView(context: Context, val stickId: Int, val isLeftStick: Boolean, val controller: GameController) : View(context) {
     private val basePaint = Paint().apply {
         color = Color.argb(150, 100, 100, 100)
         style = Paint.Style.FILL
@@ -407,10 +407,10 @@ class MovableJoystickView(context: Context, val stickId: Int, val isLeftStick: B
         isAntiAlias = true
     }
     
-    private var baseX = 0f
-    private var baseY = 0f
-    private var stickX = 0f
-    private var stickY = 0f
+    var baseX = 0f
+    var baseY = 0f
+    var stickX = 0f
+    var stickY = 0f
     private var baseRadius = 80f
     private var stickRadius = 40f
     
@@ -465,7 +465,7 @@ class MovableJoystickView(context: Context, val stickId: Int, val isLeftStick: B
                         stickY = baseY
                         
                         // 发送摇杆回中事件
-                        GameController.sendStickEvent(stickId, 0f, 0f)
+                        controller.sendStickEvent(stickId, 0f, 0f)
                     }
                     
                     isMovingBase = false
@@ -498,7 +498,7 @@ class MovableJoystickView(context: Context, val stickId: Int, val isLeftStick: B
         val xAxis = (stickX - baseX) / baseRadius
         val yAxis = (stickY - baseY) / baseRadius
         
-        GameController.sendStickEvent(stickId, xAxis, yAxis)
+        controller.sendStickEvent(stickId, xAxis, yAxis)
     }
     
     override fun onDraw(canvas: Canvas) {
@@ -566,17 +566,6 @@ class GameController(var activity: Activity) {
         }
     
     companion object {
-        // 添加发送事件的静态方法
-        fun sendButtonEvent(buttonId: Int, pressed: Boolean) {
-            // 这里需要访问controllerId，可能需要修改为实例方法或传递controllerId
-            // 在实际使用时，需要通过某种方式获取controller实例
-            // 这里暂时留空，需要在实例方法中实现
-        }
-        
-        fun sendStickEvent(stickId: Int, xAxis: Float, yAxis: Float) {
-            // 同上，需要在实例方法中实现
-        }
-        
         private fun Create(context: Context, controller: GameController): View {
             val inflator = LayoutInflater.from(context)
             val view = inflator.inflate(R.layout.game_layout, null)
@@ -587,7 +576,7 @@ class GameController(var activity: Activity) {
             val screenHeight = displayMetrics.heightPixels
             
             // 创建左摇杆
-            val leftJoystick = MovableJoystickView(context, 1, true).apply {
+            val leftJoystick = MovableJoystickView(context, 1, true, controller).apply {
                 defaultX = screenWidth * 0.2f
                 defaultY = screenHeight * 0.7f
                 baseX = defaultX
@@ -604,7 +593,7 @@ class GameController(var activity: Activity) {
             view.findViewById<FrameLayout>(R.id.leftcontainer)!!.addView(leftJoystick)
             
             // 创建右摇杆
-            val rightJoystick = MovableJoystickView(context, 2, false).apply {
+            val rightJoystick = MovableJoystickView(context, 2, false, controller).apply {
                 defaultX = screenWidth * 0.8f
                 defaultY = screenHeight * 0.7f
                 baseX = defaultX
@@ -621,7 +610,7 @@ class GameController(var activity: Activity) {
             view.findViewById<FrameLayout>(R.id.rightcontainer)!!.addView(rightJoystick)
             
             // 创建十字键
-            val dpad = MovableDpadView(context).apply {
+            val dpad = MovableDpadView(context, controller).apply {
                 defaultX = screenWidth * 0.2f
                 defaultY = screenHeight * 0.5f
                 baseX = defaultX
@@ -644,7 +633,7 @@ class GameController(var activity: Activity) {
             )
             
             buttonIds.forEachIndexed { index, (id, text) ->
-                val button = MovableButtonView(context, text, id).apply {
+                val button = MovableButtonView(context, text, id, controller).apply {
                     // 设置默认位置
                     defaultX = screenWidth * 0.8f - (index % 2) * 100
                     defaultY = screenHeight * 0.5f - (index / 2) * 100
@@ -670,7 +659,7 @@ class GameController(var activity: Activity) {
             )
             
             shoulderButtonIds.forEachIndexed { index, (id, text) ->
-                val button = MovableButtonView(context, text, id).apply {
+                val button = MovableButtonView(context, text, id, controller).apply {
                     // 设置默认位置
                     defaultX = if (index < 2) screenWidth * 0.2f + index * 100 else screenWidth * 0.2f + (index - 2) * 100
                     defaultY = if (index < 2) screenHeight * 0.2f else screenHeight * 0.1f
@@ -694,7 +683,7 @@ class GameController(var activity: Activity) {
             )
             
             menuButtonIds.forEachIndexed { index, (id, text) ->
-                val button = MovableButtonView(context, text, id).apply {
+                val button = MovableButtonView(context, text, id, controller).apply {
                     // 设置默认位置
                     defaultX = screenWidth * 0.5f - 50 + index * 100
                     defaultY = screenHeight * 0.1f
@@ -717,7 +706,7 @@ class GameController(var activity: Activity) {
                     when (event.action) {
                         MotionEvent.ACTION_DOWN -> {
                             setPressedState(true)
-                            GameController.sendButtonEvent(
+                            controller.sendButtonEvent(
                                 GamePadButtonInputId.LeftStickButton.ordinal,
                                 true
                             )
@@ -725,7 +714,7 @@ class GameController(var activity: Activity) {
                         }
                         MotionEvent.ACTION_UP -> {
                             setPressedState(false)
-                            GameController.sendButtonEvent(
+                            controller.sendButtonEvent(
                                 GamePadButtonInputId.LeftStickButton.ordinal,
                                 false
                             )
@@ -742,7 +731,7 @@ class GameController(var activity: Activity) {
                     when (event.action) {
                         MotionEvent.ACTION_DOWN -> {
                             setPressedState(true)
-                            GameController.sendButtonEvent(
+                            controller.sendButtonEvent(
                                 GamePadButtonInputId.RightStickButton.ordinal,
                                 true
                             )
@@ -750,7 +739,7 @@ class GameController(var activity: Activity) {
                         }
                         MotionEvent.ACTION_UP -> {
                             setPressedState(false)
-                            GameController.sendButtonEvent(
+                            controller.sendButtonEvent(
                                 GamePadButtonInputId.RightStickButton.ordinal,
                                 false
                             )
@@ -829,32 +818,6 @@ class GameController(var activity: Activity) {
     init {
         // 初始化controllerId
         connect()
-        
-        // 重写静态方法以使用实例
-        Companion.sendButtonEvent = { buttonId, pressed ->
-            if (controllerId == -1) return@sendButtonEvent
-            
-            if (pressed) {
-                RyujinxNative.jnaInstance.inputSetButtonPressed(buttonId, controllerId)
-            } else {
-                RyujinxNative.jnaInstance.inputSetButtonReleased(buttonId, controllerId)
-            }
-        }
-        
-        Companion.sendStickEvent = { stickId, xAxis, yAxis ->
-            if (controllerId == -1) return@sendStickEvent
-            
-            val setting = QuickSettings(activity)
-            val clampedX = MathUtils.clamp(xAxis * setting.controllerStickSensitivity, -1f, 1f)
-            val clampedY = MathUtils.clamp(yAxis * setting.controllerStickSensitivity, -1f, 1f)
-            
-            RyujinxNative.jnaInstance.inputSetStickAxis(
-                stickId,
-                clampedX,
-                -clampedY,
-                controllerId
-            )
-        }
     }
 
     fun setVisible(isVisible: Boolean) {
@@ -871,6 +834,33 @@ class GameController(var activity: Activity) {
     fun connect() {
         if (controllerId == -1)
             controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
+    }
+    
+    // 发送按钮事件
+    fun sendButtonEvent(buttonId: Int, pressed: Boolean) {
+        if (controllerId == -1) return
+        
+        if (pressed) {
+            RyujinxNative.jnaInstance.inputSetButtonPressed(buttonId, controllerId)
+        } else {
+            RyujinxNative.jnaInstance.inputSetButtonReleased(buttonId, controllerId)
+        }
+    }
+    
+    // 发送摇杆事件
+    fun sendStickEvent(stickId: Int, xAxis: Float, yAxis: Float) {
+        if (controllerId == -1) return
+        
+        val setting = QuickSettings(activity)
+        val clampedX = MathUtils.clamp(xAxis * setting.controllerStickSensitivity, -1f, 1f)
+        val clampedY = MathUtils.clamp(yAxis * setting.controllerStickSensitivity, -1f, 1f)
+        
+        RyujinxNative.jnaInstance.inputSetStickAxis(
+            stickId,
+            clampedX,
+            -clampedY,
+            controllerId
+        )
     }
     
     // 切换编辑模式
