@@ -1,6 +1,3 @@
-using Ryujinx.Common.Logging;
-using Ryujinx.HLE.Exceptions;
-
 namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
 {
     /// <summary>
@@ -20,10 +17,6 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
 
         public static void Emit(byte[] instruction, CompilationContext context)
         {
-            // 记录原始指令
-            Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"StoreConstantToAddress: 原始指令: {BitConverter.ToString(instruction)}");
-
             // 0TMR00AA AAAAAAAA VVVVVVVV (VVVVVVVV)
             // T: Width of memory write(1, 2, 4, or 8 bytes).
             // M: Memory region to write to(0 = Main NSO, 1 = Heap).
@@ -33,27 +26,8 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
 
             byte operationWidth = instruction[OperationWidthIndex];
             MemoryRegion memoryRegion = (MemoryRegion)instruction[MemoryRegionIndex];
-            byte registerIndex = instruction[OffsetRegisterIndex];
-            Register offsetRegister = context.GetRegister(registerIndex);
+            Register offsetRegister = context.GetRegister(instruction[OffsetRegisterIndex]);
             ulong offsetImmediate = InstructionHelper.GetImmediate(instruction, OffsetImmediateIndex, OffsetImmediateSize);
-
-            // 记录解析的参数
-            Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"StoreConstantToAddress: 操作宽度={operationWidth}, 内存区域={memoryRegion}, " +
-                $"偏移寄存器=R_{registerIndex:X2}, 偏移立即数=0x{offsetImmediate:X}");
-
-            // 记录寄存器当前值（如果可用）
-            try
-            {
-                ulong registerValue = offsetRegister.Get<ulong>();
-                Logger.Debug?.Print(LogClass.TamperMachine, 
-                    $"寄存器 R_{registerIndex:X2} 当前值: 0x{registerValue:X16}");
-            }
-            catch
-            {
-                Logger.Debug?.Print(LogClass.TamperMachine, 
-                    $"无法获取寄存器 R_{registerIndex:X2} 的当前值（可能尚未初始化）");
-            }
 
             Pointer dstMem = MemoryHelper.EmitPointer(memoryRegion, offsetRegister, offsetImmediate, context);
 
@@ -61,18 +35,7 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
             ulong valueImmediate = InstructionHelper.GetImmediate(instruction, ValueImmediateIndex, valueImmediateSize);
             Value<ulong> storeValue = new(valueImmediate);
 
-            // 记录要写入的值和目标地址信息
-            Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"StoreConstantToAddress: 将值 0x{valueImmediate:X} (大小={operationWidth}字节) 写入内存");
-
-            // 添加调试操作以记录实际写入的地址
-            context.CurrentOperations.Add(new Operations.DebugOperation(
-                $"将 0x{valueImmediate:X} 写入内存地址 (区域={memoryRegion}, 寄存器=R_{registerIndex:X2}, 偏移=0x{offsetImmediate:X})"));
-
             InstructionHelper.EmitMov(operationWidth, context, dstMem, storeValue);
-            
-            Logger.Debug?.Print(LogClass.TamperMachine, 
-                "StoreConstantToAddress: 指令处理完成");
         }
     }
 }
