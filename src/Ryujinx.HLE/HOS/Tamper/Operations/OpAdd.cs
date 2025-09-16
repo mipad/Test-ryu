@@ -1,4 +1,5 @@
 using System;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.HLE.HOS.Tamper.Operations
 {
