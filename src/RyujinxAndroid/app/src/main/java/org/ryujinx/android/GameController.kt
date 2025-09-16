@@ -6,7 +6,9 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.util.AttributeSet
 import android.util.TypedValue
+import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
@@ -20,11 +22,28 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.math.MathUtils
 import androidx.core.view.isVisible
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.launch
 import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.QuickSettings
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 // 自定义双圆形按钮视图
-class DoubleCircleButtonView(context: Context, val buttonText: String, val buttonId: Int) : View(context) {
+class DoubleCircleButtonView @JvmOverloads constructor(
+    context: Context, 
+    val buttonText: String, 
+    val buttonId: Int,
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = 0
+) : View(context, attrs, defStyleAttr) {
     private val outerCirclePaint = Paint().apply {
         color = Color.argb(128, 255, 255, 255)
         style = Paint.Style.STROKE
@@ -34,6 +53,12 @@ class DoubleCircleButtonView(context: Context, val buttonText: String, val butto
     
     private val innerCirclePaint = Paint().apply {
         color = Color.argb(64, 200, 200, 200)
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+    
+    private val pressedInnerCirclePaint = Paint().apply {
+        color = Color.argb(128, 150, 150, 150)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
@@ -81,14 +106,15 @@ class DoubleCircleButtonView(context: Context, val buttonText: String, val butto
         val innerRadius = outerRadius * 0.6f
         
         canvas.drawCircle(centerX, centerY, outerRadius, outerCirclePaint)
-        canvas.drawCircle(centerX, centerY, innerRadius, innerCirclePaint)
+        canvas.drawCircle(centerX, centerY, innerRadius, 
+            if (isPressed) pressedInnerCirclePaint else innerCirclePaint)
         
         val textY = centerY - (textPaint.descent() + textPaint.ascent()) / 2
         canvas.drawText(buttonText, centerX, textY, textPaint)
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(70) 
+        val size = dpToPx(70)
         setMeasuredDimension(size, size)
     }
     
@@ -101,125 +127,162 @@ class DoubleCircleButtonView(context: Context, val buttonText: String, val butto
     }
 }
 
-// 整体十字方向键
-class DPadView(context: Context, val controller: GameController) : View(context) {
-    private val basePaint = Paint().apply {
+// 自定义十字方向键视图
+class DPadView @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = 0
+) : View(context, attrs, defStyleAttr) {
+    private val paint = Paint().apply {
+        color = Color.argb(128, 255, 255, 255)
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+    
+    private val pressedPaint = Paint().apply {
+        color = Color.argb(180, 200, 200, 200)
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+    
+    private val centerPaint = Paint().apply {
         color = Color.argb(180, 100, 100, 100)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
-    private val directionPaint = Paint().apply {
-        color = Color.argb(200, 120, 120, 120)
-        style = Paint.Style.FILL
-        isAntiAlias = true
+    private var currentDirection = Direction.NONE
+    
+    enum class Direction {
+        NONE, UP, DOWN, LEFT, RIGHT, UP_LEFT, UP_RIGHT, DOWN_LEFT, DOWN_RIGHT
     }
     
-    private val textPaint = Paint().apply {
-        color = Color.WHITE
-        textSize = 16f
-        textAlign = Paint.Align.CENTER
-        typeface = Typeface.DEFAULT_BOLD
-        isAntiAlias = true
-    }
+    var onDirectionChanged: ((Direction) -> Unit)? = null
     
-    var centerX = 0f
-    var centerY = 0f
-    private var baseRadius = 100f
-    private var directionRadius = 30f
-    
-    private var currentDirection = -1
-    
-    init {
-        setOnTouchListener { _, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                    val x = event.x
-                    val y = event.y
-                    
-                    // 计算方向
-                    val angle = Math.atan2((y - centerY).toDouble(), (x - centerX).toDouble()) * 180 / Math.PI
-                    val normalizedAngle = (angle + 360) % 360
-                    
-                    currentDirection = when {
-                        normalizedAngle >= 45 && normalizedAngle < 135 -> 2 // 下
-                        normalizedAngle >= 135 && normalizedAngle < 225 -> 3 // 左
-                        normalizedAngle >= 225 && normalizedAngle < 315 -> 0 // 上
-                        else -> 1 // 右
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        when (event.action) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                val x = event.x
+                val y = event.y
+                val centerX = width / 2f
+                val centerY = height / 2f
+                
+                val dx = x - centerX
+                val dy = y - centerY
+                val distance = sqrt(dx * dx + dy * dy)
+                
+                if (distance > width / 6f) {
+                    val angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
+                    val newDirection = calculateDirection(angle)
+                    if (newDirection != currentDirection) {
+                        currentDirection = newDirection
+                        onDirectionChanged?.invoke(currentDirection)
                     }
-                    
-                    // 发送方向按下事件
-                    sendDirectionEvent(currentDirection, true)
+                } else {
+                    if (currentDirection != Direction.NONE) {
+                        currentDirection = Direction.NONE
+                        onDirectionChanged?.invoke(Direction.NONE)
+                    }
+                }
+                invalidate()
+                return true
+            }
+            MotionEvent.ACTION_UP -> {
+                if (currentDirection != Direction.NONE) {
+                    currentDirection = Direction.NONE
+                    onDirectionChanged?.invoke(Direction.NONE)
                     invalidate()
-                    true
                 }
-                MotionEvent.ACTION_UP -> {
-                    if (currentDirection != -1) {
-                        sendDirectionEvent(currentDirection, false)
-                        currentDirection = -1
-                        invalidate()
-                    }
-                    true
-                }
-                else -> false
+                return true
             }
         }
+        return super.onTouchEvent(event)
     }
     
-    private fun sendDirectionEvent(direction: Int, pressed: Boolean) {
-        val buttonId = when (direction) {
-            0 -> GamePadButtonInputId.DpadUp.ordinal
-            1 -> GamePadButtonInputId.DpadRight.ordinal
-            2 -> GamePadButtonInputId.DpadDown.ordinal
-            3 -> GamePadButtonInputId.DpadLeft.ordinal
-            else -> return
-        }
-        
-        if (pressed) {
-            controller.sendButtonEvent(buttonId, true)
-        } else {
-            controller.sendButtonEvent(buttonId, false)
+    private fun calculateDirection(angle: Float): Direction {
+        return when {
+            angle in -22.5f..22.5f -> Direction.RIGHT
+            angle in 22.5f..67.5f -> Direction.DOWN_RIGHT
+            angle in 67.5f..112.5f -> Direction.DOWN
+            angle in 112.5f..157.5f -> Direction.DOWN_LEFT
+            angle in 157.5f..180f || angle in -180f..-157.5f -> Direction.LEFT
+            angle in -157.5f..-112.5f -> Direction.UP_LEFT
+            angle in -112.5f..-67.5f -> Direction.UP
+            angle in -67.5f..-22.5f -> Direction.UP_RIGHT
+            else -> Direction.NONE
         }
     }
     
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         
-        // 绘制底座
-        canvas.drawCircle(centerX, centerY, baseRadius, basePaint)
+        val centerX = width / 2f
+        val centerY = height / 2f
+        val radius = width / 3f
+        val armLength = width / 3f
+        val armWidth = width / 4f
         
-        // 绘制方向指示器
-        if (currentDirection != -1) {
-            val angle = when (currentDirection) {
-                0 -> 90f // 上
-                1 -> 0f  // 右
-                2 -> 270f // 下
-                3 -> 180f // 左
-                else -> 0f
+        // Draw center circle
+        canvas.drawCircle(centerX, centerY, radius / 2, centerPaint)
+        
+        // Draw arms based on current direction
+        when (currentDirection) {
+            Direction.UP -> {
+                canvas.drawRect(centerX - armWidth / 2, centerY - armLength, 
+                               centerX + armWidth / 2, centerY, pressedPaint)
             }
-            
-            val rad = Math.toRadians(angle.toDouble())
-            val dirX = centerX + (baseRadius * 0.7f * Math.cos(rad)).toFloat()
-            val dirY = centerY + (baseRadius * 0.7f * Math.sin(rad)).toFloat()
-            
-            canvas.drawCircle(dirX, dirY, directionRadius, directionPaint)
-        }
-        
-        // 绘制方向标记
-        val directions = listOf("↑", "→", "↓", "←")
-        val angles = listOf(90f, 0f, 270f, 180f)
-        
-        for (i in directions.indices) {
-            val rad = Math.toRadians(angles[i].toDouble())
-            val textX = centerX + (baseRadius * 0.85f * Math.cos(rad)).toFloat()
-            val textY = centerY + (baseRadius * 0.85f * Math.sin(rad)).toFloat() - (textPaint.descent() + textPaint.ascent()) / 2
-            
-            canvas.drawText(directions[i], textX, textY, textPaint)
+            Direction.DOWN -> {
+                canvas.drawRect(centerX - armWidth / 2, centerY, 
+                               centerX + armWidth / 2, centerY + armLength, pressedPaint)
+            }
+            Direction.LEFT -> {
+                canvas.drawRect(centerX - armLength, centerY - armWidth / 2, 
+                               centerX, centerY + armWidth / 2, pressedPaint)
+            }
+            Direction.RIGHT -> {
+                canvas.drawRect(centerX, centerY - armWidth / 2, 
+                               centerX + armLength, centerY + armWidth / 2, pressedPaint)
+            }
+            Direction.UP_LEFT -> {
+                canvas.drawRect(centerX - armLength, centerY - armWidth / 2, 
+                               centerX, centerY + armWidth / 2, pressedPaint)
+                canvas.drawRect(centerX - armWidth / 2, centerY - armLength, 
+                               centerX + armWidth / 2, centerY, pressedPaint)
+            }
+            Direction.UP_RIGHT -> {
+                canvas.drawRect(centerX, centerY - armWidth / 2, 
+                               centerX + armLength, centerY + armWidth / 2, pressedPaint)
+                canvas.drawRect(centerX - armWidth / 2, centerY - armLength, 
+                               centerX + armWidth / 2, centerY, pressedPaint)
+            }
+            Direction.DOWN_LEFT -> {
+                canvas.drawRect(centerX - armLength, centerY - armWidth / 2, 
+                               centerX, centerY + armWidth / 2, pressedPaint)
+                canvas.drawRect(centerX - armWidth / 2, centerY, 
+                               centerX + armWidth / 2, centerY + armLength, pressedPaint)
+            }
+            Direction.DOWN_RIGHT -> {
+                canvas.drawRect(centerX, centerY - armWidth / 2, 
+                               centerX + armLength, centerY + armWidth / 2, pressedPaint)
+                canvas.drawRect(centerX - armWidth / 2, centerY, 
+                               centerX + armWidth / 2, centerY + armLength, pressedPaint)
+            }
+            else -> {
+                // Draw all arms in default state
+                canvas.drawRect(centerX - armWidth / 2, centerY - armLength, 
+                               centerX + armWidth / 2, centerY, paint)
+                canvas.drawRect(centerX - armWidth / 2, centerY, 
+                               centerX + armWidth / 2, centerY + armLength, paint)
+                canvas.drawRect(centerX - armLength, centerY - armWidth / 2, 
+                               centerX, centerY + armWidth / 2, paint)
+                canvas.drawRect(centerX, centerY - armWidth / 2, 
+                               centerX + armLength, centerY + armWidth / 2, paint)
+            }
         }
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(200)
+        val size = dpToPx(150)
         setMeasuredDimension(size, size)
     }
     
@@ -232,10 +295,115 @@ class DPadView(context: Context, val controller: GameController) : View(context)
     }
 }
 
-// 整体ABXY按钮组
-class ABXYButtonsView(context: Context, val controller: GameController) : View(context) {
+// 自定义摇杆视图
+class JoystickView @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = 0
+) : View(context, attrs, defStyleAttr) {
+    private val basePaint = Paint().apply {
+        color = Color.argb(128, 100, 100, 100)
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+    
+    private val stickPaint = Paint().apply {
+        color = Color.argb(180, 200, 200, 200)
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+    
+    private var stickX = 0f
+    private var stickY = 0f
+    private var baseRadius = 0f
+    private var stickRadius = 0f
+    private var centerX = 0f
+    private var centerY = 0f
+    
+    var onPositionChanged: ((Float, Float) -> Unit)? = null
+    
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        centerX = w / 2f
+        centerY = h / 2f
+        baseRadius = (w.coerceAtMost(h) / 2f) * 0.8f
+        stickRadius = baseRadius * 0.4f
+        stickX = centerX
+        stickY = centerY
+    }
+    
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        when (event.action) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                val x = event.x
+                val y = event.y
+                
+                val dx = x - centerX
+                val dy = y - centerY
+                val distance = sqrt(dx * dx + dy * dy)
+                
+                if (distance <= baseRadius) {
+                    stickX = x
+                    stickY = y
+                } else {
+                    val angle = atan2(dy, dx)
+                    stickX = centerX + cos(angle) * baseRadius
+                    stickY = centerY + sin(angle) * baseRadius
+                }
+                
+                val normalizedX = (stickX - centerX) / baseRadius
+                val normalizedY = (stickY - centerY) / baseRadius
+                
+                onPositionChanged?.invoke(normalizedX, normalizedY)
+                invalidate()
+                return true
+            }
+            MotionEvent.ACTION_UP -> {
+                stickX = centerX
+                stickY = centerY
+                onPositionChanged?.invoke(0f, 0f)
+                invalidate()
+                return true
+            }
+        }
+        return super.onTouchEvent(event)
+    }
+    
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        
+        canvas.drawCircle(centerX, centerY, baseRadius, basePaint)
+        canvas.drawCircle(stickX, stickY, stickRadius, stickPaint)
+    }
+    
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val size = dpToPx(150)
+        setMeasuredDimension(size, size)
+    }
+    
+    private fun dpToPx(dp: Int): Int {
+        return TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP, 
+            dp.toFloat(), 
+            resources.displayMetrics
+        ).toInt()
+    }
+}
+
+// 自定义ABXY按钮组（圆形排列）
+class ABXYButtonsView @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = 0
+) : View(context, attrs, defStyleAttr) {
     private val buttonPaint = Paint().apply {
-        color = Color.argb(200, 80, 80, 80)
+        color = Color.argb(180, 100, 100, 100)
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+    
+    private val pressedButtonPaint = Paint().apply {
+        color = Color.argb(220, 150, 150, 150)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
@@ -248,121 +416,103 @@ class ABXYButtonsView(context: Context, val controller: GameController) : View(c
         isAntiAlias = true
     }
     
-    private val pressedPaint = Paint().apply {
-        color = Color.argb(100, 255, 255, 255)
-        style = Paint.Style.FILL
-        isAntiAlias = true
+    private val buttons = listOf(
+        ButtonInfo("A", GamePadButtonInputId.A.ordinal, 0f, 1f, Color.argb(180, 0, 180, 0)),
+        ButtonInfo("B", GamePadButtonInputId.B.ordinal, 1f, 0f, Color.argb(180, 200, 0, 0)),
+        ButtonInfo("X", GamePadButtonInputId.X.ordinal, -1f, 0f, Color.argb(180, 0, 0, 200)),
+        ButtonInfo("Y", GamePadButtonInputId.Y.ordinal, 0f, -1f, Color.argb(180, 220, 220, 0))
+    )
+    
+    private var centerX = 0f
+    private var centerY = 0f
+    private var radius = 0f
+    private var buttonRadius = 0f
+    private var pressedButton: ButtonInfo? = null
+    
+    private data class ButtonInfo(
+        val text: String, 
+        val id: Int, 
+        val xMultiplier: Float, 
+        val yMultiplier: Float,
+        val color: Int
+    )
+    
+    var onButtonPressed: ((Int) -> Unit)? = null
+    var onButtonReleased: ((Int) -> Unit)? = null
+    
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        centerX = w / 2f
+        centerY = h / 2f
+        radius = (w.coerceAtMost(h) / 2f) * 0.7f
+        buttonRadius = radius * 0.3f
     }
     
-    private val buttonRadius = 40f
-    private var pressedButton = -1 // -1: 无按钮按下, 0: A, 1: B, 2: X, 3: Y
-    
-    var centerX = 0f
-    var centerY = 0f
-    
-    init {
-        setOnTouchListener { _, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                    val x = event.x
-                    val y = event.y
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        val x = event.x
+        val y = event.y
+        
+        when (event.action) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                var hitButton: ButtonInfo? = null
+                
+                for (button in buttons) {
+                    val buttonX = centerX + button.xMultiplier * radius
+                    val buttonY = centerY + button.yMultiplier * radius
+                    val dx = x - buttonX
+                    val dy = y - buttonY
+                    val distance = sqrt(dx * dx + dy * dy)
                     
-                    // 检查点击了哪个按钮
-                    val buttons = listOf(
-                        Pair(centerX + buttonRadius * 1.5f, centerY), // 右: B
-                        Pair(centerX, centerY - buttonRadius * 1.5f), // 上: Y
-                        Pair(centerX - buttonRadius * 1.5f, centerY), // 左: X
-                        Pair(centerX, centerY + buttonRadius * 1.5f)  // 下: A
-                    )
-                    
-                    var newPressedButton = -1
-                    for (i in buttons.indices) {
-                        val (btnX, btnY) = buttons[i]
-                        val distance = Math.sqrt(
-                            Math.pow((x - btnX).toDouble(), 2.0) + 
-                            Math.pow((y - btnY).toDouble(), 2.0)
-                        )
-                        
-                        if (distance <= buttonRadius) {
-                            newPressedButton = i
-                            break
-                        }
+                    if (distance <= buttonRadius) {
+                        hitButton = button
+                        break
                     }
-                    
-                    if (newPressedButton != pressedButton) {
-                        // 释放之前按下的按钮
-                        if (pressedButton != -1) {
-                            sendButtonEvent(pressedButton, false)
-                        }
-                        
-                        // 按下新按钮
-                        if (newPressedButton != -1) {
-                            sendButtonEvent(newPressedButton, true)
-                        }
-                        
-                        pressedButton = newPressedButton
-                        invalidate()
-                    }
-                    
-                    true
                 }
-                MotionEvent.ACTION_UP -> {
-                    if (pressedButton != -1) {
-                        sendButtonEvent(pressedButton, false)
-                        pressedButton = -1
-                        invalidate()
+                
+                if (hitButton != pressedButton) {
+                    pressedButton?.let {
+                        onButtonReleased?.invoke(it.id)
                     }
-                    true
+                    pressedButton = hitButton
+                    hitButton?.let {
+                        onButtonPressed?.invoke(it.id)
+                    }
+                    invalidate()
                 }
-                else -> false
+                return true
+            }
+            MotionEvent.ACTION_UP -> {
+                pressedButton?.let {
+                    onButtonReleased?.invoke(it.id)
+                    pressedButton = null
+                    invalidate()
+                }
+                return true
             }
         }
-    }
-    
-    private fun sendButtonEvent(buttonIndex: Int, pressed: Boolean) {
-        val buttonId = when (buttonIndex) {
-            0 -> GamePadButtonInputId.B.ordinal // 右: B
-            1 -> GamePadButtonInputId.Y.ordinal // 上: Y
-            2 -> GamePadButtonInputId.X.ordinal // 左: X
-            3 -> GamePadButtonInputId.A.ordinal // 下: A
-            else -> return
-        }
-        
-        if (pressed) {
-            controller.sendButtonEvent(buttonId, true)
-        } else {
-            controller.sendButtonEvent(buttonId, false)
-        }
+        return super.onTouchEvent(event)
     }
     
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         
-        // 绘制四个按钮
-        val buttons = listOf(
-            Pair(centerX + buttonRadius * 1.5f, centerY, "B"), // 右
-            Pair(centerX, centerY - buttonRadius * 1.5f, "Y"), // 上
-            Pair(centerX - buttonRadius * 1.5f, centerY, "X"), // 左
-            Pair(centerX, centerY + buttonRadius * 1.5f, "A")  // 下
-        )
-        
-        for ((i, (x, y, text)) in buttons.withIndex()) {
-            // 绘制按钮
-            canvas.drawCircle(x, y, buttonRadius, buttonPaint)
+        for (button in buttons) {
+            val buttonX = centerX + button.xMultiplier * radius
+            val buttonY = centerY + button.yMultiplier * radius
             
-            // 如果按下，添加高亮效果
-            if (i == pressedButton) {
-                canvas.drawCircle(x, y, buttonRadius, pressedPaint)
-            }
+            val isPressed = button == pressedButton
+            val paint = if (isPressed) pressedButtonPaint else buttonPaint
+            paint.color = button.color
             
-            // 绘制文字
-            val textY = y - (textPaint.descent() + textPaint.ascent()) / 2
-            canvas.drawText(text, x, textY, textPaint)
+            canvas.drawCircle(buttonX, buttonY, buttonRadius, paint)
+            
+            val textY = buttonY - (textPaint.descent() + textPaint.ascent()) / 2
+            canvas.drawText(button.text, buttonX, textY, textPaint)
         }
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(200)
+        val size = dpToPx(150)
         setMeasuredDimension(size, size)
     }
     
@@ -372,384 +522,451 @@ class ABXYButtonsView(context: Context, val controller: GameController) : View(c
             dp.toFloat(), 
             resources.displayMetrics
         ).toInt()
-    }
-}
-
-// 可移动的摇杆
-class MovableJoystickView(context: Context, val stickId: Int, val isLeftStick: Boolean, val controller: GameController) : View(context) {
-    private val basePaint = Paint().apply {
-        color = Color.argb(150, 100, 100, 100)
-        style = Paint.Style.FILL
-        isAntiAlias = true
-    }
-    
-    private val stickPaint = Paint().apply {
-        color = Color.argb(200, 60, 60, 60)
-        style = Paint.Style.FILL
-        isAntiAlias = true
-    }
-    
-    var baseX = 0f
-    var baseY = 0f
-    var stickX = 0f
-    var stickY = 0f
-    private var baseRadius = 80f
-    private var stickRadius = 40f
-    
-    private var isMovingBase = false
-    private var isMovingStick = false
-    
-    var defaultX = 0f
-    var defaultY = 0f
-    
-    init {
-        setOnTouchListener { _, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    val x = event.x
-                    val y = event.y
-                    
-                    val distanceToBase = Math.sqrt(
-                        Math.pow((x - baseX).toDouble(), 2.0) + 
-                        Math.pow((y - baseY).toDouble(), 2.0)
-                    )
-                    
-                    if (distanceToBase <= baseRadius) {
-                        isMovingBase = true
-                    } else if (distanceToBase <= baseRadius + stickRadius) {
-                        isMovingStick = true
-                        updateStickPosition(event.x, event.y)
-                    }
-                    invalidate()
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    if (isMovingBase) {
-                        baseX = event.x
-                        baseY = event.y
-                        stickX = baseX
-                        stickY = baseY
-                    } else if (isMovingStick) {
-                        updateStickPosition(event.x, event.y)
-                    }
-                    invalidate()
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    if (isMovingStick) {
-                        stickX = baseX
-                        stickY = baseY
-                        controller.sendStickEvent(stickId, 0f, 0f)
-                    }
-                    
-                    isMovingBase = false
-                    isMovingStick = false
-                    invalidate()
-                    true
-                }
-                else -> false
-            }
-        }
-    }
-    
-    private fun updateStickPosition(x: Float, y: Float) {
-        val dx = x - baseX
-        val dy = y - baseY
-        val distance = Math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
-        
-        if (distance <= baseRadius) {
-            stickX = x
-            stickY = y
-        } else {
-            val angle = Math.atan2(dy.toDouble(), dx.toDouble())
-            stickX = baseX + (Math.cos(angle) * baseRadius).toFloat()
-            stickY = baseY + (Math.sin(angle) * baseRadius).toFloat()
-        }
-        
-        val xAxis = (stickX - baseX) / baseRadius
-        val yAxis = (stickY - baseY) / baseRadius
-        
-        controller.sendStickEvent(stickId, xAxis, yAxis)
-    }
-    
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        
-        canvas.drawCircle(baseX, baseY, baseRadius, basePaint)
-        canvas.drawCircle(stickX, stickY, stickRadius, stickPaint)
-    }
-    
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(160)
-        setMeasuredDimension(size, size)
-    }
-    
-    private fun dpToPx(dp: Int): Int {
-        return TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP, 
-            dp.toFloat(), 
-            resources.displayMetrics
-        ).toInt()
-    }
-    
-    fun resetPosition() {
-        baseX = defaultX
-        baseY = defaultY
-        stickX = baseX
-        stickY = baseY
-        invalidate()
-    }
-    
-    fun savePosition() {
-        val prefs = context.getSharedPreferences("gamepad_layout", Context.MODE_PRIVATE)
-        prefs.edit().apply {
-            putFloat("joystick_${stickId}_x", baseX)
-            putFloat("joystick_${stickId}_y", baseY)
-            apply()
-        }
-    }
-    
-    fun loadPosition() {
-        val prefs = context.getSharedPreferences("gamepad_layout", Context.MODE_PRIVATE)
-        baseX = prefs.getFloat("joystick_${stickId}_x", defaultX)
-        baseY = prefs.getFloat("joystick_${stickId}_y", defaultY)
-        stickX = baseX
-        stickY = baseY
-        invalidate()
     }
 }
 
 class GameController(var activity: Activity) {
-    private var dpadView: DPadView? = null
-    private var abxyView: ABXYButtonsView? = null
-    private var leftJoystick: MovableJoystickView? = null
-    private var rightJoystick: MovableJoystickView? = null
-    private var l3Button: DoubleCircleButtonView? = null
-    private var r3Button: DoubleCircleButtonView? = null
-    
-    private var shoulderButtons = mutableListOf<DoubleCircleButtonView>()
-    private var menuButtons = mutableListOf<DoubleCircleButtonView>()
-    
+
     companion object {
         private fun Create(context: Context, controller: GameController): View {
             val inflator = LayoutInflater.from(context)
             val view = inflator.inflate(R.layout.game_layout, null)
             
-            val displayMetrics = context.resources.displayMetrics
-            val screenWidth = displayMetrics.widthPixels
-            val screenHeight = displayMetrics.heightPixels
+            val leftContainer = view.findViewById<FrameLayout>(R.id.leftcontainer)!!
+            val rightContainer = view.findViewById<FrameLayout>(R.id.rightcontainer)!!
             
-            // 创建左摇杆
-            val leftJoystick = MovableJoystickView(context, 1, true, controller).apply {
-                defaultX = screenWidth * 0.2f
-                defaultY = screenHeight * 0.7f
-                baseX = defaultX
-                baseY = defaultY
-                stickX = baseX
-                stickY = baseY
-                
-                layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
+            // 添加左侧摇杆
+            val leftStick = JoystickView(context).apply {
+                onPositionChanged = { x, y ->
+                    val setting = QuickSettings(activity)
+                    val clampedX = MathUtils.clamp(x * setting.controllerStickSensitivity, -1f, 1f)
+                    val clampedY = MathUtils.clamp(y * setting.controllerStickSensitivity, -1f, 1f)
+                    RyujinxNative.jnaInstance.inputSetStickAxis(
+                        1,
+                        clampedX,
+                        -clampedY,
+                        controller.controllerId
+                    )
+                }
             }
-            controller.leftJoystick = leftJoystick
-            view.findViewById<FrameLayout>(R.id.leftcontainer)!!.addView(leftJoystick)
             
-            // 创建右摇杆
-            val rightJoystick = MovableJoystickView(context, 2, false, controller).apply {
-                defaultX = screenWidth * 0.8f
-                defaultY = screenHeight * 0.7f
-                baseX = defaultX
-                baseY = defaultY
-                stickX = baseX
-                stickY = baseY
-                
-                layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
+            val leftStickParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
+                bottomMargin = dpToPx(context, 30)
+                leftMargin = dpToPx(context, 30)
             }
-            controller.rightJoystick = rightJoystick
-            view.findViewById<FrameLayout>(R.id.rightcontainer)!!.addView(rightJoystick)
+            leftContainer.addView(leftStick, leftStickParams)
+            controller.leftStick = leftStick
             
-            // 创建整体十字键
-            val dpad = DPadView(context, controller).apply {
-                centerX = screenWidth * 0.2f
-                centerY = screenHeight * 0.5f
-                
-                layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
+            // 添加右侧摇杆
+            val rightStick = JoystickView(context).apply {
+                onPositionChanged = { x, y ->
+                    val setting = QuickSettings(activity)
+                    val clampedX = MathUtils.clamp(x * setting.controllerStickSensitivity, -1f, 1f)
+                    val clampedY = MathUtils.clamp(y * setting.controllerStickSensitivity, -1f, 1f)
+                    RyujinxNative.jnaInstance.inputSetStickAxis(
+                        2,
+                        clampedX,
+                        -clampedY,
+                        controller.controllerId
+                    )
+                }
             }
-            controller.dpadView = dpad
-            view.findViewById<FrameLayout>(R.id.leftcontainer)!!.addView(dpad)
             
-            // 创建整体ABXY按钮
-            val abxy = ABXYButtonsView(context, controller).apply {
-                centerX = screenWidth * 0.8f
-                centerY = screenHeight * 0.5f
-                
-                layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
+            val rightStickParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
+                bottomMargin = dpToPx(context, 30)
+                rightMargin = dpToPx(context, 30)
             }
-            controller.abxyView = abxy
-            view.findViewById<FrameLayout>(R.id.rightcontainer)!!.addView(abxy)
+            rightContainer.addView(rightStick, rightStickParams)
+            controller.rightStick = rightStick
             
-            // 创建L/R/ZL/ZR按钮
-            val shoulderButtonIds = listOf(
-                GamePadButtonInputId.LeftShoulder.ordinal to "L",
-                GamePadButtonInputId.RightShoulder.ordinal to "R",
-                GamePadButtonInputId.LeftTrigger.ordinal to "ZL",
-                GamePadButtonInputId.RightTrigger.ordinal to "ZR"
-            )
-            
-            shoulderButtonIds.forEachIndexed { index, (id, text) ->
-                val button = DoubleCircleButtonView(context, text, id).apply {
-                    val layoutParams = FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        gravity = if (index < 2) android.view.Gravity.TOP or android.view.Gravity.START
-                                 else android.view.Gravity.TOP or android.view.Gravity.END
-                        topMargin = dpToPx(context, if (index < 2) 20 else 20)
-                        if (index < 2) {
-                            leftMargin = dpToPx(context, 20 + index * 80)
-                        } else {
-                            rightMargin = dpToPx(context, 20 + (index - 2) * 80)
+            // 添加十字方向键
+            val dPad = DPadView(context).apply {
+                onDirectionChanged = { direction ->
+                    when (direction) {
+                        DPadView.Direction.UP -> {
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadUp.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadDown.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadLeft.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadRight.ordinal, controller.controllerId)
                         }
-                    }
-                    this.layoutParams = layoutParams
-                    
-                    setOnTouchListener { _, event ->
-                        when (event.action) {
-                            MotionEvent.ACTION_DOWN -> {
-                                setPressedState(true)
-                                controller.sendButtonEvent(id, true)
-                                true
-                            }
-                            MotionEvent.ACTION_UP -> {
-                                setPressedState(false)
-                                controller.sendButtonEvent(id, false)
-                                true
-                            }
-                            else -> false
+                        DPadView.Direction.DOWN -> {
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadUp.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadDown.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadLeft.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadRight.ordinal, controller.controllerId)
+                        }
+                        DPadView.Direction.LEFT -> {
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadUp.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadDown.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadLeft.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadRight.ordinal, controller.controllerId)
+                        }
+                        DPadView.Direction.RIGHT -> {
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadUp.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadDown.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadLeft.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadRight.ordinal, controller.controllerId)
+                        }
+                        DPadView.Direction.UP_LEFT -> {
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadUp.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadDown.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadLeft.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadRight.ordinal, controller.controllerId)
+                        }
+                        DPadView.Direction.UP_RIGHT -> {
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadUp.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadDown.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadLeft.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadRight.ordinal, controller.controllerId)
+                        }
+                        DPadView.Direction.DOWN_LEFT -> {
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadUp.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadDown.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadLeft.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadRight.ordinal, controller.controllerId)
+                        }
+                        DPadView.Direction.DOWN_RIGHT -> {
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadUp.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadDown.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadLeft.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadRight.ordinal, controller.controllerId)
+                        }
+                        else -> {
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadUp.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadDown.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadLeft.ordinal, controller.controllerId)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadRight.ordinal, controller.controllerId)
                         }
                     }
                 }
-                
-                controller.shoulderButtons.add(button)
-                view.findViewById<FrameLayout>(R.id.leftcontainer)!!.addView(button)
             }
             
-            // 创建+/-按钮
-            val menuButtonIds = listOf(
-                GamePadButtonInputId.Minus.ordinal to "-",
-                GamePadButtonInputId.Plus.ordinal to "+"
-            )
+            val dPadParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
+                leftMargin = dpToPx(context, 30)
+            }
+            leftContainer.addView(dPad, dPadParams)
+            controller.dPad = dPad
             
-            menuButtonIds.forEachIndexed { index, (id, text) ->
-                val button = DoubleCircleButtonView(context, text, id).apply {
-                    val layoutParams = FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
-                        topMargin = dpToPx(context, 20)
-                        if (index == 0) {
-                            leftMargin = dpToPx(context, screenWidth / 2 - 100)
-                        } else {
-                            leftMargin = dpToPx(context, screenWidth / 2 + 20)
+            // 添加ABXY按钮
+            val abxyButtons = ABXYButtonsView(context).apply {
+                onButtonPressed = { buttonId ->
+                    RyujinxNative.jnaInstance.inputSetButtonPressed(buttonId, controller.controllerId)
+                }
+                onButtonReleased = { buttonId ->
+                    RyujinxNative.jnaInstance.inputSetButtonReleased(buttonId, controller.controllerId)
+                }
+            }
+            
+            val abxyParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL
+                rightMargin = dpToPx(context, 30)
+            }
+            rightContainer.addView(abxyButtons, abxyParams)
+            controller.abxyButtons = abxyButtons
+            
+            // 添加L按钮
+            val lButton = DoubleCircleButtonView(context, "L", GamePadButtonInputId.LeftShoulder.ordinal).apply {
+                setOnTouchListener { _, event ->
+                    when (event.action) {
+                        MotionEvent.ACTION_DOWN -> {
+                            setPressedState(true)
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(
+                                GamePadButtonInputId.LeftShoulder.ordinal,
+                                controller.controllerId
+                            )
+                            true
                         }
-                    }
-                    this.layoutParams = layoutParams
-                    
-                    setOnTouchListener { _, event ->
-                        when (event.action) {
-                            MotionEvent.ACTION_DOWN -> {
-                                setPressedState(true)
-                                controller.sendButtonEvent(id, true)
-                                true
-                            }
-                            MotionEvent.ACTION_UP -> {
-                                setPressedState(false)
-                                controller.sendButtonEvent(id, false)
-                                true
-                            }
-                            else -> false
+                        MotionEvent.ACTION_UP -> {
+                            setPressedState(false)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(
+                                GamePadButtonInputId.LeftShoulder.ordinal,
+                                controller.controllerId
+                            )
+                            true
                         }
+                        else -> false
                     }
                 }
-                
-                controller.menuButtons.add(button)
-                view.findViewById<FrameLayout>(R.id.leftcontainer)!!.addView(button)
             }
+            
+            val lButtonParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = android.view.Gravity.TOP or android.view.Gravity.START
+                topMargin = dpToPx(context, 30)
+                leftMargin = dpToPx(context, 150)
+            }
+            leftContainer.addView(lButton, lButtonParams)
+            controller.lButton = lButton
+            
+            // 添加R按钮
+            val rButton = DoubleCircleButtonView(context, "R", GamePadButtonInputId.RightShoulder.ordinal).apply {
+                setOnTouchListener { _, event ->
+                    when (event.action) {
+                        MotionEvent.ACTION_DOWN -> {
+                            setPressedState(true)
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(
+                                GamePadButtonInputId.RightShoulder.ordinal,
+                                controller.controllerId
+                            )
+                            true
+                        }
+                        MotionEvent.ACTION_UP -> {
+                            setPressedState(false)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(
+                                GamePadButtonInputId.RightShoulder.ordinal,
+                                controller.controllerId
+                            )
+                            true
+                        }
+                        else -> false
+                    }
+                }
+            }
+            
+            val rButtonParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = android.view.Gravity.TOP or android.view.Gravity.END
+                topMargin = dpToPx(context, 30)
+                rightMargin = dpToPx(context, 150)
+            }
+            rightContainer.addView(rButton, rButtonParams)
+            controller.rButton = rButton
+            
+            // 添加ZL按钮
+            val zlButton = DoubleCircleButtonView(context, "ZL", GamePadButtonInputId.LeftTrigger.ordinal).apply {
+                setOnTouchListener { _, event ->
+                    when (event.action) {
+                        MotionEvent.ACTION_DOWN -> {
+                            setPressedState(true)
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(
+                                GamePadButtonInputId.LeftTrigger.ordinal,
+                                controller.controllerId
+                            )
+                            true
+                        }
+                        MotionEvent.ACTION_UP -> {
+                            setPressedState(false)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(
+                                GamePadButtonInputId.LeftTrigger.ordinal,
+                                controller.controllerId
+                            )
+                            true
+                        }
+                        else -> false
+                    }
+                }
+            }
+            
+            val zlButtonParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = android.view.Gravity.TOP or android.view.Gravity.START
+                topMargin = dpToPx(context, 10)
+                leftMargin = dpToPx(context, 80)
+            }
+            leftContainer.addView(zlButton, zlButtonParams)
+            controller.zlButton = zlButton
+            
+            // 添加ZR按钮
+            val zrButton = DoubleCircleButtonView(context, "ZR", GamePadButtonInputId.RightTrigger.ordinal).apply {
+                setOnTouchListener { _, event ->
+                    when (event.action) {
+                        MotionEvent.ACTION_DOWN -> {
+                            setPressedState(true)
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(
+                                GamePadButtonInputId.RightTrigger.ordinal,
+                                controller.controllerId
+                            )
+                            true
+                        }
+                        MotionEvent.ACTION_UP -> {
+                            setPressedState(false)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(
+                                GamePadButtonInputId.RightTrigger.ordinal,
+                                controller.controllerId
+                            )
+                            true
+                        }
+                        else -> false
+                    }
+                }
+            }
+            
+            val zrButtonParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = android.view.Gravity.TOP or android.view.Gravity.END
+                topMargin = dpToPx(context, 10)
+                rightMargin = dpToPx(context, 80)
+            }
+            rightContainer.addView(zrButton, zrButtonParams)
+            controller.zrButton = zrButton
+            
+            // 添加Minus按钮
+            val minusButton = DoubleCircleButtonView(context, "-", GamePadButtonInputId.Minus.ordinal).apply {
+                setOnTouchListener { _, event ->
+                    when (event.action) {
+                        MotionEvent.ACTION_DOWN -> {
+                            setPressedState(true)
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(
+                                GamePadButtonInputId.Minus.ordinal,
+                                controller.controllerId
+                            )
+                            true
+                        }
+                        MotionEvent.ACTION_UP -> {
+                            setPressedState(false)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(
+                                GamePadButtonInputId.Minus.ordinal,
+                                controller.controllerId
+                            )
+                            true
+                        }
+                        else -> false
+                    }
+                }
+            }
+            
+            val minusButtonParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = android.view.Gravity.TOP or android.view.Gravity.START
+                topMargin = dpToPx(context, 100)
+                leftMargin = dpToPx(context, 220)
+            }
+            leftContainer.addView(minusButton, minusButtonParams)
+            controller.minusButton = minusButton
+            
+            // 添加Plus按钮
+            val plusButton = DoubleCircleButtonView(context, "+", GamePadButtonInputId.Plus.ordinal).apply {
+                setOnTouchListener { _, event ->
+                    when (event.action) {
+                        MotionEvent.ACTION_DOWN -> {
+                            setPressedState(true)
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(
+                                GamePadButtonInputId.Plus.ordinal,
+                                controller.controllerId
+                            )
+                            true
+                        }
+                        MotionEvent.ACTION_UP -> {
+                            setPressedState(false)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(
+                                GamePadButtonInputId.Plus.ordinal,
+                                controller.controllerId
+                            )
+                            true
+                        }
+                        else -> false
+                    }
+                }
+            }
+            
+            val plusButtonParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = android.view.Gravity.TOP or android.view.Gravity.END
+                topMargin = dpToPx(context, 100)
+                rightMargin = dpToPx(context, 220)
+            }
+            rightContainer.addView(plusButton, plusButtonParams)
+            controller.plusButton = plusButton
             
             // 添加L3按钮
             val l3Button = DoubleCircleButtonView(context, "L3", GamePadButtonInputId.LeftStickButton.ordinal).apply {
-                val layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
-                    bottomMargin = dpToPx(context, 30)
-                    leftMargin = dpToPx(context, screenWidth / 4 - 35)
-                }
-                this.layoutParams = layoutParams
-                
                 setOnTouchListener { _, event ->
                     when (event.action) {
                         MotionEvent.ACTION_DOWN -> {
                             setPressedState(true)
-                            controller.sendButtonEvent(GamePadButtonInputId.LeftStickButton.ordinal, true)
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(
+                                GamePadButtonInputId.LeftStickButton.ordinal,
+                                controller.controllerId
+                            )
                             true
                         }
                         MotionEvent.ACTION_UP -> {
                             setPressedState(false)
-                            controller.sendButtonEvent(GamePadButtonInputId.LeftStickButton.ordinal, false)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(
+                                GamePadButtonInputId.LeftStickButton.ordinal,
+                                controller.controllerId
+                            )
                             true
                         }
                         else -> false
                     }
                 }
             }
+            
+            val l3ButtonParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = android.view.Gravity.TOP or android.view.Gravity.START
+                topMargin = dpToPx(context, 30)
+                leftMargin = dpToPx(context, 280)
+            }
+            leftContainer.addView(l3Button, l3ButtonParams)
             controller.l3Button = l3Button
-            view.findViewById<FrameLayout>(R.id.leftcontainer)!!.addView(l3Button)
-
+            
             // 添加R3按钮
             val r3Button = DoubleCircleButtonView(context, "R3", GamePadButtonInputId.RightStickButton.ordinal).apply {
-                val layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
-                    bottomMargin = dpToPx(context, 30)
-                    rightMargin = dpToPx(context, screenWidth / 4 - 35)
-                }
-                this.layoutParams = layoutParams
-                
                 setOnTouchListener { _, event ->
                     when (event.action) {
                         MotionEvent.ACTION_DOWN -> {
                             setPressedState(true)
-                            controller.sendButtonEvent(GamePadButtonInputId.RightStickButton.ordinal, true)
+                            RyujinxNative.jnaInstance.inputSetButtonPressed(
+                                GamePadButtonInputId.RightStickButton.ordinal,
+                                controller.controllerId
+                            )
                             true
                         }
                         MotionEvent.ACTION_UP -> {
                             setPressedState(false)
-                            controller.sendButtonEvent(GamePadButtonInputId.RightStickButton.ordinal, false)
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(
+                                GamePadButtonInputId.RightStickButton.ordinal,
+                                controller.controllerId
+                            )
                             true
                         }
                         else -> false
                     }
                 }
             }
+            
+            val r3ButtonParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = android.view.Gravity.TOP or android.view.Gravity.END
+                topMargin = dpToPx(context, 30)
+                rightMargin = dpToPx(context, 280)
+            }
+            rightContainer.addView(r3Button, r3ButtonParams)
             controller.r3Button = r3Button
-            view.findViewById<FrameLayout>(R.id.rightcontainer)!!.addView(r3Button)
-
+            
             return view
         }
         
@@ -776,6 +993,18 @@ class GameController(var activity: Activity) {
     }
 
     private var controllerView: View? = null
+    var leftStick: JoystickView? = null
+    var rightStick: JoystickView? = null
+    var dPad: DPadView? = null
+    var abxyButtons: ABXYButtonsView? = null
+    var lButton: DoubleCircleButtonView? = null
+    var rButton: DoubleCircleButtonView? = null
+    var zlButton: DoubleCircleButtonView? = null
+    var zrButton: DoubleCircleButtonView? = null
+    var minusButton: DoubleCircleButtonView? = null
+    var plusButton: DoubleCircleButtonView? = null
+    var l3Button: DoubleCircleButtonView? = null
+    var r3Button: DoubleCircleButtonView? = null
     var controllerId: Int = -1
     val isVisible: Boolean
         get() {
@@ -786,12 +1015,23 @@ class GameController(var activity: Activity) {
         }
 
     init {
+        // 初始化时连接游戏手柄
         connect()
     }
 
     fun setVisible(isVisible: Boolean) {
         controllerView?.apply {
             this.isVisible = isVisible
+            leftStick?.isVisible = isVisible
+            rightStick?.isVisible = isVisible
+            dPad?.isVisible = isVisible
+            abxyButtons?.isVisible = isVisible
+            lButton?.isVisible = isVisible
+            rButton?.isVisible = isVisible
+            zlButton?.isVisible = isVisible
+            zrButton?.isVisible = isVisible
+            minusButton?.isVisible = isVisible
+            plusButton?.isVisible = isVisible
             l3Button?.isVisible = isVisible
             r3Button?.isVisible = isVisible
 
@@ -804,29 +1044,13 @@ class GameController(var activity: Activity) {
         if (controllerId == -1)
             controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
     }
-    
-    fun sendButtonEvent(buttonId: Int, pressed: Boolean) {
-        if (controllerId == -1) return
-        
-        if (pressed) {
-            RyujinxNative.jnaInstance.inputSetButtonPressed(buttonId, controllerId)
-        } else {
-            RyujinxNative.jnaInstance.inputSetButtonReleased(buttonId, controllerId)
+}
+
+suspend fun <T> Flow<T>.safeCollect(
+    block: suspend (T) -> Unit
+) {
+    this.catch {}
+        .collect {
+            block(it)
         }
-    }
-    
-    fun sendStickEvent(stickId: Int, xAxis: Float, yAxis: Float) {
-        if (controllerId == -1) return
-        
-        val setting = QuickSettings(activity)
-        val clampedX = MathUtils.clamp(xAxis * setting.controllerStickSensitivity, -1f, 1f)
-        val clampedY = MathUtils.clamp(yAxis * setting.controllerStickSensitivity, -1f, 1f)
-        
-        RyujinxNative.jnaInstance.inputSetStickAxis(
-            stickId,
-            clampedX,
-            -clampedY,
-            controllerId
-        )
-    }
 }
