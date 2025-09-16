@@ -1,6 +1,5 @@
 using Ryujinx.Common.Logging;
 using Ryujinx.HLE.Exceptions;
-using Ryujinx.HLE.HOS.Tamper.Operations;
 
 namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
 {
@@ -9,138 +8,71 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
     /// </summary>
     class StoreConstantToAddress
     {
-        // 半字节索引
-        private const int WidthNibbleIndex = 1;    // 第二个半字节是宽度代码
-        private const int RegionNibbleIndex = 2;   // 第三个半字节是内存区域代码
-        private const int RegisterNibbleIndex = 3; // 第四个半字节是寄存器索引
-        private const int OffsetStartNibbleIndex = 6; // 偏移量从第7个半字节开始
-        private const int ValueStartNibbleIndex = 16; // 值从第17个半字节开始（修正）
+        private const int OperationWidthIndex = 1;
+        private const int MemoryRegionIndex = 2;
+        private const int OffsetRegisterIndex = 3;
+        private const int OffsetImmediateIndex = 6;
+        private const int ValueImmediateIndex = 16;
 
-        private const int OffsetNibbleSize = 10;   // 偏移量是10个半字节（40位）（修正）
-        private const int ValueNibbleSize = 8;     // 值是8个半字节（32位）
+        private const int OffsetImmediateSize = 10;
+        private const int ValueImmediateSize8 = 8;
+        private const int ValueImmediateSize16 = 16;
 
         public static void Emit(byte[] instruction, CompilationContext context)
         {
+            // 记录原始指令
+            Logger.Debug?.Print(LogClass.TamperMachine, 
+                $"StoreConstantToAddress: 原始指令: {BitConverter.ToString(instruction)}");
+
             // 0TMR00AA AAAAAAAA VVVVVVVV (VVVVVVVV)
             // T: Width of memory write(1, 2, 4, or 8 bytes).
-            // M: Memory region to write to(0 = Main NSO, 1 = Heap, 2 = Alias, 3 = Aslr).
+            // M: Memory region to write to(0 = Main NSO, 1 = Heap).
             // R: Register to use as an offset from memory region base.
             // A: Immediate offset to use from memory region base.
             // V: Value to write.
 
-            // 使用半字节索引提取信息
-            byte widthCode = GetNibble(instruction, WidthNibbleIndex);
-            byte regionCode = GetNibble(instruction, RegionNibbleIndex);
-            byte registerIndex = GetNibble(instruction, RegisterNibbleIndex);
-            
-            // 将宽度代码转换为实际宽度
-            byte operationWidth = widthCode switch
-            {
-                0 => 1, // 1字节
-                1 => 2, // 2字节
-                2 => 4, // 4字节
-                3 => 8, // 8字节
-                4 => 4, // 4字节（某些金手指使用4表示4字节宽度）
-                _ => throw new TamperCompilationException($"Invalid width code {widthCode} in StoreConstantToAddress instruction")
-            };
-            
-            // 将区域代码转换为内存区域
-            MemoryRegion memoryRegion = regionCode switch
-            {
-                0 => MemoryRegion.NSO,   // MAIN
-                1 => MemoryRegion.Heap,  // HEAP
-                2 => MemoryRegion.Alias, // ALIAS
-                3 => MemoryRegion.Asrl,  // ASLR
-                _ => throw new TamperCompilationException($"Invalid region code {regionCode} in StoreConstantToAddress instruction")
-            };
-
+            byte operationWidth = instruction[OperationWidthIndex];
+            MemoryRegion memoryRegion = (MemoryRegion)instruction[MemoryRegionIndex];
+            byte registerIndex = instruction[OffsetRegisterIndex];
             Register offsetRegister = context.GetRegister(registerIndex);
-            
-            // 使用半字节索引提取偏移量立即值
-            ulong offsetImmediate = GetImmediateFromNibbles(instruction, OffsetStartNibbleIndex, OffsetNibbleSize);
+            ulong offsetImmediate = InstructionHelper.GetImmediate(instruction, OffsetImmediateIndex, OffsetImmediateSize);
 
-            // 添加详细日志
+            // 记录解析的参数
             Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"StoreConstantToAddress: width={operationWidth}, region={memoryRegion}, " +
-                $"offsetReg=R_{registerIndex:X1}, offsetImm=0x{offsetImmediate:X8}");
+                $"StoreConstantToAddress: 操作宽度={operationWidth}, 内存区域={memoryRegion}, " +
+                $"偏移寄存器=R_{registerIndex:X2}, 偏移立即数=0x{offsetImmediate:X}");
 
-            // 记录寄存器当前值
-            Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"Register R_{registerIndex:X1} current value: 0x{offsetRegister.Get<ulong>():X16}");
-
-            // 获取基地址
-            ulong baseAddress = MemoryHelper.GetBaseAddress(memoryRegion, context);
-            Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"Base address for region {memoryRegion}: 0x{baseAddress:X16}");
-
-            // 计算预期地址
-            ulong expectedAddress = baseAddress + offsetRegister.Get<ulong>() + offsetImmediate;
-            Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"Expected address calculation: 0x{baseAddress:X16} + 0x{offsetRegister.Get<ulong>():X16} + 0x{offsetImmediate:X8} = 0x{expectedAddress:X16}");
+            // 记录寄存器当前值（如果可用）
+            try
+            {
+                ulong registerValue = offsetRegister.Get<ulong>();
+                Logger.Debug?.Print(LogClass.TamperMachine, 
+                    $"寄存器 R_{registerIndex:X2} 当前值: 0x{registerValue:X16}");
+            }
+            catch
+            {
+                Logger.Debug?.Print(LogClass.TamperMachine, 
+                    $"无法获取寄存器 R_{registerIndex:X2} 的当前值（可能尚未初始化）");
+            }
 
             Pointer dstMem = MemoryHelper.EmitPointer(memoryRegion, offsetRegister, offsetImmediate, context);
 
-            // 使用半字节索引提取值立即值
-            ulong valueImmediate = GetImmediateFromNibbles(instruction, ValueStartNibbleIndex, ValueNibbleSize);
+            int valueImmediateSize = operationWidth <= 4 ? ValueImmediateSize8 : ValueImmediateSize16;
+            ulong valueImmediate = InstructionHelper.GetImmediate(instruction, ValueImmediateIndex, valueImmediateSize);
             Value<ulong> storeValue = new(valueImmediate);
 
-            // 添加值日志
+            // 记录要写入的值和目标地址信息
             Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"StoreConstantToAddress: writing value 0x{valueImmediate:X8} to calculated address");
+                $"StoreConstantToAddress: 将值 0x{valueImmediate:X} (大小={operationWidth}字节) 写入内存");
 
-            // 添加一个调试操作来记录实际写入的地址
-            context.CurrentOperations.Add(new DebugOperation(
-                $"Writing 0x{valueImmediate:X8} to memory address calculated from R_{registerIndex:X1} + 0x{offsetImmediate:X8}"));
+            // 添加调试操作以记录实际写入的地址
+            context.CurrentOperations.Add(new Operations.DebugOperation(
+                $"将 0x{valueImmediate:X} 写入内存地址 (区域={memoryRegion}, 寄存器=R_{registerIndex:X2}, 偏移=0x{offsetImmediate:X})"));
 
             InstructionHelper.EmitMov(operationWidth, context, dstMem, storeValue);
-        }
-
-        // 从半字节数组中获取指定半字节的值
-        private static byte GetNibble(byte[] nibbles, int nibbleIndex)
-        {
-            int byteIndex = nibbleIndex / 2;
-            bool isHighNibble = (nibbleIndex % 2) == 0;
             
-            if (byteIndex >= nibbles.Length)
-            {
-                throw new TamperCompilationException($"Nibble index {nibbleIndex} out of range");
-            }
-            
-            byte value = nibbles[byteIndex];
-            return isHighNibble ? (byte)(value >> 4) : (byte)(value & 0x0F);
-        }
-
-        // 从半字节数组中提取立即值
-        private static ulong GetImmediateFromNibbles(byte[] nibbles, int startNibbleIndex, int nibbleCount)
-        {
-            ulong value = 0;
-
-            for (int i = 0; i < nibbleCount; i++)
-            {
-                value <<= 4;
-                value |= GetNibble(nibbles, startNibbleIndex + i);
-            }
-
             Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"Extracted immediate value: 0x{value:X} from nibble position {startNibbleIndex} with {nibbleCount} nibbles");
-
-            return value;
-        }
-    }
-
-    // 添加一个简单的调试操作类
-    class DebugOperation : IOperation
-    {
-        private readonly string _message;
-
-        public DebugOperation(string message)
-        {
-            _message = message;
-        }
-
-        public void Execute()
-        {
-            Logger.Debug?.Print(LogClass.TamperMachine, _message);
+                "StoreConstantToAddress: 指令处理完成");
         }
     }
 }
