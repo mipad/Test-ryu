@@ -1,4 +1,4 @@
-using Ryujinx.Common.Logging;
+// Value.cs
 using Ryujinx.HLE.HOS.Tamper.Operations;
 using System;
 
@@ -7,136 +7,88 @@ namespace Ryujinx.HLE.HOS.Tamper
     class Value<TP> : IOperand where TP : unmanaged
     {
         private TP _value;
-        private readonly string _creationContext;
 
-        public Value(TP value, string creationContext = "")
+        public Value(TP value)
         {
             _value = value;
-            _creationContext = !string.IsNullOrEmpty(creationContext) ? 
-                creationContext : GetCallerContext();
-            
-            Logger.Debug?.Print(LogClass.TamperMachine, 
-                $"Created Value<{typeof(TP).Name}>: 0x{FormatValue(value)} (Context: {_creationContext})");
         }
 
         public T Get<T>() where T : unmanaged
         {
-            try
-            {
-                T result;
-                
-                // 避免使用动态类型转换
-                if (typeof(T) == typeof(byte) && typeof(TP) == typeof(byte))
-                    result = (T)(object)_value;
-                else if (typeof(T) == typeof(ushort) && typeof(TP) == typeof(ushort))
-                    result = (T)(object)_value;
-                else if (typeof(T) == typeof(uint) && typeof(TP) == typeof(uint))
-                    result = (T)(object)_value;
-                else if (typeof(T) == typeof(ulong) && typeof(TP) == typeof(ulong))
-                    result = (T)(object)_value;
-                else if (typeof(T) == typeof(byte) && typeof(TP) == typeof(ushort))
-                    result = (T)(object)(byte)(ushort)(object)_value;
-                else if (typeof(T) == typeof(byte) && typeof(TP) == typeof(uint))
-                    result = (T)(object)(byte)(uint)(object)_value;
-                else if (typeof(T) == typeof(byte) && typeof(TP) == typeof(ulong))
-                    result = (T)(object)(byte)(ulong)(object)_value;
-                else if (typeof(T) == typeof(ushort) && typeof(TP) == typeof(byte))
-                    result = (T)(object)(ushort)(byte)(object)_value;
-                else if (typeof(T) == typeof(ushort) && typeof(TP) == typeof(uint))
-                    result = (T)(object)(ushort)(uint)(object)_value;
-                else if (typeof(T) == typeof(ushort) && typeof(TP) == typeof(ulong))
-                    result = (T)(object)(ushort)(ulong)(object)_value;
-                else if (typeof(T) == typeof(uint) && typeof(TP) == typeof(byte))
-                    result = (T)(object)(uint)(byte)(object)_value;
-                else if (typeof(T) == typeof(uint) && typeof(TP) == typeof(ushort))
-                    result = (T)(object)(uint)(ushort)(object)_value;
-                else if (typeof(T) == typeof(uint) && typeof(TP) == typeof(ulong))
-                    result = (T)(object)(uint)(ulong)(object)_value;
-                else if (typeof(T) == typeof(ulong) && typeof(TP) == typeof(byte))
-                    result = (T)(object)(ulong)(byte)(object)_value;
-                else if (typeof(T) == typeof(ulong) && typeof(TP) == typeof(ushort))
-                    result = (T)(object)(ulong)(ushort)(object)_value;
-                else if (typeof(T) == typeof(ulong) && typeof(TP) == typeof(uint))
-                    result = (T)(object)(ulong)(uint)(object)_value;
-                else
-                    throw new NotSupportedException($"Conversion from {typeof(TP)} to {typeof(T)} is not supported in Value.Get");
-                
-                Logger.Debug?.Print(LogClass.TamperMachine, 
-                    $"Value<{typeof(TP).Name}>.Get<{typeof(T).Name}>: 0x{FormatValue(_value)} -> 0x{FormatValue(result)}");
-                
-                return result;
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.TamperMachine, 
-                    $"Value<{typeof(TP).Name}>.Get<{typeof(T).Name}> failed: {ex.Message}");
-                throw;
-            }
+            // 避免使用动态类型转换
+            if (typeof(T) == typeof(byte) && typeof(TP) == typeof(byte))
+                return (T)(object)_value;
+            else if (typeof(T) == typeof(ushort) && typeof(TP) == typeof(ushort))
+                return (T)(object)_value;
+            else if (typeof(T) == typeof(uint) && typeof(TP) == typeof(uint))
+                return (T)(object)_value;
+            else if (typeof(T) == typeof(ulong) && typeof(TP) == typeof(ulong))
+                return (T)(object)_value;
+            else if (typeof(T) == typeof(byte) && typeof(TP) == typeof(ushort))
+                return (T)(object)(byte)(ushort)(object)_value;
+            else if (typeof(T) == typeof(byte) && typeof(TP) == typeof(uint))
+                return (T)(object)(byte)(uint)(object)_value;
+            else if (typeof(T) == typeof(byte) && typeof(TP) == typeof(ulong))
+                return (T)(object)(byte)(ulong)(object)_value;
+            else if (typeof(T) == typeof(ushort) && typeof(TP) == typeof(byte))
+                return (T)(object)(ushort)(byte)(object)_value;
+            else if (typeof(T) == typeof(ushort) && typeof(TP) == typeof(uint))
+                return (T)(object)(ushort)(uint)(object)_value;
+            else if (typeof(T) == typeof(ushort) && typeof(TP) == typeof(ulong))
+                return (T)(object)(ushort)(ulong)(object)_value;
+            else if (typeof(T) == typeof(uint) && typeof(TP) == typeof(byte))
+                return (T)(object)(uint)(byte)(object)_value;
+            else if (typeof(T) == typeof(uint) && typeof(TP) == typeof(ushort))
+                return (T)(object)(uint)(ushort)(object)_value;
+            else if (typeof(T) == typeof(uint) && typeof(TP) == typeof(ulong))
+                return (T)(object)(uint)(ulong)(object)_value;
+            else if (typeof(T) == typeof(ulong) && typeof(TP) == typeof(byte))
+                return (T)(object)(ulong)(byte)(object)_value;
+            else if (typeof(T) == typeof(ulong) && typeof(TP) == typeof(ushort))
+                return (T)(object)(ulong)(ushort)(object)_value;
+            else if (typeof(T) == typeof(ulong) && typeof(TP) == typeof(uint))
+                return (T)(object)(ulong)(uint)(object)_value;
+            else
+                throw new NotSupportedException($"Conversion from {typeof(TP)} to {typeof(T)} is not supported in Value.Get");
         }
 
         public void Set<T>(T value) where T : unmanaged
         {
-            try
-            {
-                TP oldValue = _value;
-                
-                // 避免使用动态类型转换
-                if (typeof(T) == typeof(byte) && typeof(TP) == typeof(byte))
-                    _value = (TP)(object)(byte)(object)value;
-                else if (typeof(T) == typeof(ushort) && typeof(TP) == typeof(ushort))
-                    _value = (TP)(object)(ushort)(object)value;
-                else if (typeof(T) == typeof(uint) && typeof(TP) == typeof(uint))
-                    _value = (TP)(object)(uint)(object)value;
-                else if (typeof(T) == typeof(ulong) && typeof(TP) == typeof(ulong))
-                    _value = (TP)(object)(ulong)(object)value;
-                else if (typeof(T) == typeof(byte) && typeof(TP) == typeof(ushort))
-                    _value = (TP)(object)(ushort)(byte)(object)value;
-                else if (typeof(T) == typeof(byte) && typeof(TP) == typeof(uint))
-                    _value = (TP)(object)(uint)(byte)(object)value;
-                else if (typeof(T) == typeof(byte) && typeof(TP) == typeof(ulong))
-                    _value = (TP)(object)(ulong)(byte)(object)value;
-                else if (typeof(T) == typeof(ushort) && typeof(TP) == typeof(byte))
-                    _value = (TP)(object)(byte)(ushort)(object)value;
-                else if (typeof(T) == typeof(ushort) && typeof(TP) == typeof(uint))
-                    _value = (TP)(object)(uint)(ushort)(object)value;
-                else if (typeof(T) == typeof(ushort) && typeof(TP) == typeof(ulong))
-                    _value = (TP)(object)(ulong)(ushort)(object)value;
-                else if (typeof(T) == typeof(uint) && typeof(TP) == typeof(byte))
-                    _value = (TP)(object)(byte)(uint)(object)value;
-                else if (typeof(T) == typeof(uint) && typeof(TP) == typeof(ushort))
-                    _value = (TP)(object)(ushort)(uint)(object)value;
-                else if (typeof(T) == typeof(uint) && typeof(TP) == typeof(ulong))
-                    _value = (TP)(object)(ulong)(uint)(object)value;
-                else if (typeof(T) == typeof(ulong) && typeof(TP) == typeof(byte))
-                    _value = (TP)(object)(byte)(ulong)(object)value;
-                else if (typeof(T) == typeof(ulong) && typeof(TP) == typeof(ushort))
-                    _value = (TP)(object)(ushort)(ulong)(object)value;
-                else if (typeof(T) == typeof(ulong) && typeof(TP) == typeof(uint))
-                    _value = (TP)(object)(uint)(ulong)(object)value;
-                else
-                    throw new NotSupportedException($"Conversion from {typeof(T)} to {typeof(TP)} is not supported in Value.Set");
-                
-                Logger.Debug?.Print(LogClass.TamperMachine, 
-                    $"Value<{typeof(TP).Name}>.Set<{typeof(T).Name}>: 0x{FormatValue(oldValue)} -> 0x{FormatValue(_value)}");
-                
-                // 验证设置是否成功
-                if (!oldValue.Equals(_value))
-                {
-                    Logger.Debug?.Print(LogClass.TamperMachine, 
-                        $"Value<{typeof(TP).Name}> changed successfully");
-                }
-                else
-                {
-                    Logger.Warning?.Print(LogClass.TamperMachine, 
-                        $"Value<{typeof(TP).Name}> did not change after Set operation");
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.TamperMachine, 
-                    $"Value<{typeof(TP).Name}>.Set<{typeof(T).Name}> failed: {ex.Message}");
-                throw;
-            }
+            // 避免使用动态类型转换
+            if (typeof(T) == typeof(byte) && typeof(TP) == typeof(byte))
+                _value = (TP)(object)(byte)(object)value;
+            else if (typeof(T) == typeof(ushort) && typeof(TP) == typeof(ushort))
+                _value = (TP)(object)(ushort)(object)value;
+            else if (typeof(T) == typeof(uint) && typeof(TP) == typeof(uint))
+                _value = (TP)(object)(uint)(object)value;
+            else if (typeof(T) == typeof(ulong) && typeof(TP) == typeof(ulong))
+                _value = (TP)(object)(ulong)(object)value;
+            else if (typeof(T) == typeof(byte) && typeof(TP) == typeof(ushort))
+                _value = (TP)(object)(ushort)(byte)(object)value;
+            else if (typeof(T) == typeof(byte) && typeof(TP) == typeof(uint))
+                _value = (TP)(object)(uint)(byte)(object)value;
+            else if (typeof(T) == typeof(byte) && typeof(TP) == typeof(ulong))
+                _value = (TP)(object)(ulong)(byte)(object)value;
+            else if (typeof(T) == typeof(ushort) && typeof(TP) == typeof(byte))
+                _value = (TP)(object)(byte)(ushort)(object)value;
+            else if (typeof(T) == typeof(ushort) && typeof(TP) == typeof(uint))
+                _value = (TP)(object)(uint)(ushort)(object)value;
+            else if (typeof(T) == typeof(ushort) && typeof(TP) == typeof(ulong))
+                _value = (TP)(object)(ulong)(ushort)(object)value;
+            else if (typeof(T) == typeof(uint) && typeof(TP) == typeof(byte))
+                _value = (TP)(object)(byte)(uint)(object)value;
+            else if (typeof(T) == typeof(uint) && typeof(TP) == typeof(ushort))
+                _value = (TP)(object)(ushort)(uint)(object)value;
+            else if (typeof(T) == typeof(uint) && typeof(TP) == typeof(ulong))
+                _value = (TP)(object)(ulong)(uint)(object)value;
+            else if (typeof(T) == typeof(ulong) && typeof(TP) == typeof(byte))
+                _value = (TP)(object)(byte)(ulong)(object)value;
+            else if (typeof(T) == typeof(ulong) && typeof(TP) == typeof(ushort))
+                _value = (TP)(object)(ushort)(ulong)(object)value;
+            else if (typeof(T) == typeof(ulong) && typeof(TP) == typeof(uint))
+                _value = (TP)(object)(uint)(ulong)(object)value;
+            else
+                throw new NotSupportedException($"Conversion from {typeof(T)} to {typeof(TP)} is not supported in Value.Set");
         }
         
         public override string ToString()
@@ -157,28 +109,6 @@ namespace Ryujinx.HLE.HOS.Tamper
                 return $"{(ulong)(object)value:X16}";
             else
                 return value.ToString();
-        }
-        
-        // 获取调用者上下文信息
-        private string GetCallerContext()
-        {
-            try
-            {
-                System.Diagnostics.StackTrace stackTrace = new System.Diagnostics.StackTrace(2, true);
-                System.Diagnostics.StackFrame frame = stackTrace.GetFrame(0);
-                
-                if (frame != null)
-                {
-                    var method = frame.GetMethod();
-                    return $"{method.DeclaringType?.Name}.{method.Name} (line {frame.GetFileLineNumber()})";
-                }
-            }
-            catch
-            {
-                // 忽略获取调用上下文时的错误
-            }
-            
-            return "Unknown context";
         }
     }
 }
