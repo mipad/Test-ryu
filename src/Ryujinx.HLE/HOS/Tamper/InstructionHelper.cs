@@ -1,4 +1,4 @@
-using Ryujinx.Common.Logging;
+// InstructionHelper.cs
 using Ryujinx.HLE.Exceptions;
 using Ryujinx.HLE.HOS.Tamper.Conditions;
 using Ryujinx.HLE.HOS.Tamper.Operations;
@@ -22,13 +22,9 @@ namespace Ryujinx.HLE.HOS.Tamper
         
         private static void InitializeFactories()
         {
-            Logger.Debug?.Print(LogClass.TamperMachine, "Initializing instruction factories");
-            
             // 为每个类型注册工厂方法
             RegisterFactory(typeof(OpMov<>), (width, operands) => 
             {
-                Logger.Debug?.Print(LogClass.TamperMachine, $"Creating OpMov with width {width} and {operands.Length} operands");
-                
                 if (operands.Length < 2)
                     throw new TamperCompilationException("OpMov requires at least 2 operands");
                 
@@ -67,8 +63,6 @@ namespace Ryujinx.HLE.HOS.Tamper
             // 特殊操作的工厂方法（非泛型）
             RegisterFactory(typeof(OpLog<>), (width, operands) =>
             {
-                Logger.Debug?.Print(LogClass.TamperMachine, $"Creating OpLog with width {width} and {operands.Length} operands");
-                
                 if (operands.Length < 2)
                     throw new TamperCompilationException("OpLog requires at least 2 operands");
                 
@@ -88,8 +82,6 @@ namespace Ryujinx.HLE.HOS.Tamper
             // OpProcCtrl 是非泛型操作，单独处理
             _typeFactories[typeof(OpProcCtrl)] = (width, operands) =>
             {
-                Logger.Debug?.Print(LogClass.TamperMachine, $"Creating OpProcCtrl with {operands.Length} operands");
-                
                 if (operands.Length < 2)
                     throw new TamperCompilationException("OpProcCtrl requires at least 2 operands");
                 
@@ -98,16 +90,12 @@ namespace Ryujinx.HLE.HOS.Tamper
                 
                 return new OpProcCtrl(process, pause);
             };
-            
-            Logger.Debug?.Print(LogClass.TamperMachine, "Instruction factories initialized successfully");
         }
         
         private static void RegisterConditionFactory(Type conditionType)
         {
             _typeFactories[conditionType] = (width, operands) =>
             {
-                Logger.Debug?.Print(LogClass.TamperMachine, $"Creating {conditionType.Name} with width {width} and {operands.Length} operands");
-                
                 if (operands.Length < 2)
                     throw new TamperCompilationException("Condition requires at least 2 operands");
                 
@@ -153,8 +141,6 @@ namespace Ryujinx.HLE.HOS.Tamper
         {
             _typeFactories[operationType] = (width, operands) =>
             {
-                Logger.Debug?.Print(LogClass.TamperMachine, $"Creating {operationType.Name} with width {width} and {operands.Length} operands");
-                
                 try
                 {
                     return width switch
@@ -204,8 +190,7 @@ namespace Ryujinx.HLE.HOS.Tamper
                 }
                 catch (Exception ex)
                 {
-                    Logger.Error?.Print(LogClass.TamperMachine, $"Failed to create {operationType.Name} with width {width}: {ex.Message}");
-                    throw;
+                    throw new TamperCompilationException($"Failed to create {operationType.Name} with width {width}: {ex.Message}");
                 }
             };
         }
@@ -213,7 +198,6 @@ namespace Ryujinx.HLE.HOS.Tamper
         private static void RegisterFactory(Type genericType, Func<byte, object[], object> factory)
         {
             _typeFactories[genericType] = factory;
-            Logger.Debug?.Print(LogClass.TamperMachine, $"Registered factory for {genericType.Name}");
         }
 
         public static void Emit(IOperation operation, CompilationContext context)
@@ -223,18 +207,14 @@ namespace Ryujinx.HLE.HOS.Tamper
 
         public static void Emit(Type instruction, byte width, CompilationContext context, params Object[] operands)
         {
-            Logger.Debug?.Print(LogClass.TamperMachine, $"Emitting instruction: {instruction.Name} with width {width}");
-            
             try
             {
                 IOperation operation = (IOperation)Create(instruction, width, operands);
                 Emit(operation, context);
-                Logger.Debug?.Print(LogClass.TamperMachine, $"Successfully emitted instruction: {instruction.Name}");
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.TamperMachine, $"Failed to emit instruction {instruction.Name}: {ex.Message}");
-                throw;
+                throw new TamperCompilationException($"Failed to emit instruction {instruction.Name}: {ex.Message}");
             }
         }
 
@@ -245,11 +225,9 @@ namespace Ryujinx.HLE.HOS.Tamper
 
         public static ICondition CreateCondition(Comparison comparison, byte width, IOperand lhs, IOperand rhs)
         {
-            Logger.Debug?.Print(LogClass.TamperMachine, $"Creating condition: {comparison} with width {width}");
-            
             try
             {
-                ICondition condition = comparison switch
+                return comparison switch
                 {
                     Comparison.Greater => (ICondition)Create(typeof(CondGT<>), width, lhs, rhs),
                     Comparison.GreaterOrEqual => (ICondition)Create(typeof(CondGE<>), width, lhs, rhs),
@@ -259,41 +237,30 @@ namespace Ryujinx.HLE.HOS.Tamper
                     Comparison.NotEqual => (ICondition)Create(typeof(CondNE<>), width, lhs, rhs),
                     _ => throw new TamperCompilationException($"Invalid comparison {comparison} in Atmosphere cheat"),
                 };
-                
-                Logger.Debug?.Print(LogClass.TamperMachine, $"Successfully created condition: {comparison}");
-                return condition;
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.TamperMachine, $"Failed to create condition {comparison}: {ex.Message}");
-                throw;
+                throw new TamperCompilationException($"Failed to create condition {comparison}: {ex.Message}");
             }
         }
 
         public static Object Create(Type instruction, byte width, params Object[] operands)
         {
-            Logger.Debug?.Print(LogClass.TamperMachine, $"Creating instruction: {instruction.Name} with width {width} and {operands.Length} operands");
-            
             if (_typeFactories.TryGetValue(instruction, out var factory))
             {
                 try
                 {
-                    var result = factory(width, operands);
-                    Logger.Debug?.Print(LogClass.TamperMachine, $"Successfully created instruction: {instruction.Name}");
-                    return result;
+                    return factory(width, operands);
                 }
                 catch (Exception ex)
                 {
-                    Logger.Error?.Print(LogClass.TamperMachine, $"Factory failed to create instruction {instruction.Name} with width {width}: {ex.Message}");
                     throw new TamperCompilationException($"Failed to create instruction {instruction.Name} with width {width}: {ex.Message}");
                 }
             }
 
-            Logger.Error?.Print(LogClass.TamperMachine, $"Unsupported instruction type {instruction.Name} with width {width}");
             throw new TamperCompilationException($"Unsupported instruction type {instruction.Name} with width {width} in Atmosphere cheat");
         }
 
-        // 回滚到版本15的GetImmediate实现
         public static ulong GetImmediate(byte[] instruction, int index, int nybbleCount)
         {
             ulong value = 0;
@@ -304,12 +271,9 @@ namespace Ryujinx.HLE.HOS.Tamper
                 value |= instruction[index + i];
             }
 
-            Logger.Debug?.Print(LogClass.TamperMachine, $"Extracted immediate value: 0x{value:X} from position {index} with {nybbleCount} nybbles");
-
             return value;
         }
 
-        // 还原为版本29的GetCodeType实现
         public static CodeType GetCodeType(byte[] instruction)
         {
             int codeType = instruction[CodeTypeIndex];
@@ -329,12 +293,9 @@ namespace Ryujinx.HLE.HOS.Tamper
             return (CodeType)codeType;
         }
 
-        // 回滚到版本15的ParseRawInstruction实现
         public static byte[] ParseRawInstruction(string rawInstruction)
         {
             const int WordSize = 2 * sizeof(uint); // 每个32位字由8个十六进制字符表示
-
-            Logger.Debug?.Print(LogClass.TamperMachine, $"Parsing raw instruction: {rawInstruction}");
 
             var words = rawInstruction.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
 
@@ -361,8 +322,6 @@ namespace Ryujinx.HLE.HOS.Tamper
                     instruction[index] = byte.Parse(word.AsSpan(nybbleIndex, 1), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
                 }
             }
-
-            Logger.Debug?.Print(LogClass.TamperMachine, $"Parsed instruction: {BitConverter.ToString(instruction).Replace("-", " ")}");
 
             return instruction;
         }
