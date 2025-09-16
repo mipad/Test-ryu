@@ -390,7 +390,7 @@ class JoystickView @JvmOverloads constructor(
     }
 }
 
-// 自定义ABXY按钮组（圆形排列）
+// 自定义ABXY按钮组（菱形排列，类似Switch布局）
 class ABXYButtonsView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -416,11 +416,12 @@ class ABXYButtonsView @JvmOverloads constructor(
         isAntiAlias = true
     }
     
+    // 菱形排列的按钮位置（与圆形排列不同）
     private val buttons = listOf(
-        ButtonInfo("A", GamePadButtonInputId.A.ordinal, 0f, 1f, Color.argb(180, 0, 180, 0)),
-        ButtonInfo("B", GamePadButtonInputId.B.ordinal, 1f, 0f, Color.argb(180, 200, 0, 0)),
-        ButtonInfo("X", GamePadButtonInputId.X.ordinal, -1f, 0f, Color.argb(180, 0, 0, 200)),
-        ButtonInfo("Y", GamePadButtonInputId.Y.ordinal, 0f, -1f, Color.argb(180, 220, 220, 0))
+        ButtonInfo("A", GamePadButtonInputId.A.ordinal, 0f, 1f, Color.argb(180, 0, 180, 0)), // 下
+        ButtonInfo("B", GamePadButtonInputId.B.ordinal, 1f, 0f, Color.argb(180, 200, 0, 0)), // 右
+        ButtonInfo("X", GamePadButtonInputId.X.ordinal, -1f, 0f, Color.argb(180, 0, 0, 200)), // 左
+        ButtonInfo("Y", GamePadButtonInputId.Y.ordinal, 0f, -1f, Color.argb(180, 220, 220, 0)) // 上
     )
     
     private var centerX = 0f
@@ -535,10 +536,9 @@ class GameController(var activity: Activity) {
             val leftContainer = view.findViewById<FrameLayout>(R.id.leftcontainer)!!
             val rightContainer = view.findViewById<FrameLayout>(R.id.rightcontainer)!!
             
-            // 添加左侧摇杆
+            // 添加左侧摇杆 - 位置调整到左上角
             val leftStick = JoystickView(context).apply {
                 onPositionChanged = { x, y ->
-                    // 修复：使用controller.activity而不是直接使用activity
                     val setting = QuickSettings(controller.activity)
                     val clampedX = MathUtils.clamp(x * setting.controllerStickSensitivity, -1f, 1f)
                     val clampedY = MathUtils.clamp(y * setting.controllerStickSensitivity, -1f, 1f)
@@ -555,17 +555,16 @@ class GameController(var activity: Activity) {
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
-                bottomMargin = dpToPx(context, 30)
+                gravity = android.view.Gravity.TOP or android.view.Gravity.START
+                topMargin = dpToPx(context, 30)
                 leftMargin = dpToPx(context, 30)
             }
             leftContainer.addView(leftStick, leftStickParams)
             controller.leftStick = leftStick
             
-            // 添加右侧摇杆
+            // 添加右侧摇杆 - 位置调整到右上角
             val rightStick = JoystickView(context).apply {
                 onPositionChanged = { x, y ->
-                    // 修复：使用controller.activity而不是直接使用activity
                     val setting = QuickSettings(controller.activity)
                     val clampedX = MathUtils.clamp(x * setting.controllerStickSensitivity, -1f, 1f)
                     val clampedY = MathUtils.clamp(y * setting.controllerStickSensitivity, -1f, 1f)
@@ -582,14 +581,14 @@ class GameController(var activity: Activity) {
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
-                bottomMargin = dpToPx(context, 30)
+                gravity = android.view.Gravity.TOP or android.view.Gravity.END
+                topMargin = dpToPx(context, 30)
                 rightMargin = dpToPx(context, 30)
             }
             rightContainer.addView(rightStick, rightStickParams)
             controller.rightStick = rightStick
             
-            // 添加十字方向键
+            // 添加十字方向键 - 位置调整到左下角
             val dPad = DPadView(context).apply {
                 onDirectionChanged = { direction ->
                     when (direction) {
@@ -611,7 +610,7 @@ class GameController(var activity: Activity) {
                             RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadLeft.ordinal, controller.controllerId)
                             RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadRight.ordinal, controller.controllerId)
                         }
-                        DPadView.Direction.RIGHT -> {
+                        DPadView.Direction.RRIGHT -> {
                             RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadUp.ordinal, controller.controllerId)
                             RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadDown.ordinal, controller.controllerId)
                             RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadLeft.ordinal, controller.controllerId)
@@ -655,13 +654,14 @@ class GameController(var activity: Activity) {
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
+                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
+                bottomMargin = dpToPx(context, 30)
                 leftMargin = dpToPx(context, 30)
             }
             leftContainer.addView(dPad, dPadParams)
             controller.dPad = dPad
             
-            // 添加ABXY按钮
+            // 添加ABXY按钮 - 位置调整到右下角
             val abxyButtons = ABXYButtonsView(context).apply {
                 onButtonPressed = { buttonId ->
                     RyujinxNative.jnaInstance.inputSetButtonPressed(buttonId, controller.controllerId)
@@ -675,13 +675,14 @@ class GameController(var activity: Activity) {
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                gravity = android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL
+                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
+                bottomMargin = dpToPx(context, 30)
                 rightMargin = dpToPx(context, 30)
             }
             rightContainer.addView(abxyButtons, abxyParams)
             controller.abxyButtons = abxyButtons
             
-            // 添加L按钮
+            // 添加L按钮 - 位置调整到左上角
             val lButton = DoubleCircleButtonView(context, "L", GamePadButtonInputId.LeftShoulder.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
@@ -717,7 +718,7 @@ class GameController(var activity: Activity) {
             leftContainer.addView(lButton, lButtonParams)
             controller.lButton = lButton
             
-            // 添加R按钮
+            // 添加R按钮 - 位置调整到右上角
             val rButton = DoubleCircleButtonView(context, "R", GamePadButtonInputId.RightShoulder.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
@@ -753,7 +754,7 @@ class GameController(var activity: Activity) {
             rightContainer.addView(rButton, rButtonParams)
             controller.rButton = rButton
             
-            // 添加ZL按钮
+            // 添加ZL按钮 - 位置调整到左上角，L按钮下方
             val zlButton = DoubleCircleButtonView(context, "ZL", GamePadButtonInputId.LeftTrigger.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
@@ -783,13 +784,13 @@ class GameController(var activity: Activity) {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.START
-                topMargin = dpToPx(context, 10)
-                leftMargin = dpToPx(context, 80)
+                topMargin = dpToPx(context, 100)
+                leftMargin = dpToPx(context, 150)
             }
             leftContainer.addView(zlButton, zlButtonParams)
             controller.zlButton = zlButton
             
-            // 添加ZR按钮
+            // 添加ZR按钮 - 位置调整到右上角，R按钮下方
             val zrButton = DoubleCircleButtonView(context, "ZR", GamePadButtonInputId.RightTrigger.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
@@ -819,13 +820,13 @@ class GameController(var activity: Activity) {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.END
-                topMargin = dpToPx(context, 10)
-                rightMargin = dpToPx(context, 80)
+                topMargin = dpToPx(context, 100)
+                rightMargin = dpToPx(context, 150)
             }
             rightContainer.addView(zrButton, zrButtonParams)
             controller.zrButton = zrButton
             
-            // 添加Minus按钮
+            // 添加Minus按钮 - 位置调整到左侧中间
             val minusButton = DoubleCircleButtonView(context, "-", GamePadButtonInputId.Minus.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
@@ -854,14 +855,13 @@ class GameController(var activity: Activity) {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
-                gravity = android.view.Gravity.TOP or android.view.Gravity.START
-                topMargin = dpToPx(context, 100)
-                leftMargin = dpToPx(context, 220)
+                gravity = android.view.Gravity.CENTER or android.view.Gravity.START
+                leftMargin = dpToPx(context, 30)
             }
             leftContainer.addView(minusButton, minusButtonParams)
             controller.minusButton = minusButton
             
-            // 添加Plus按钮
+            // 添加Plus按钮 - 位置调整到右侧中间
             val plusButton = DoubleCircleButtonView(context, "+", GamePadButtonInputId.Plus.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
@@ -890,14 +890,13 @@ class GameController(var activity: Activity) {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
-                gravity = android.view.Gravity.TOP or android.view.Gravity.END
-                topMargin = dpToPx(context, 100)
-                rightMargin = dpToPx(context, 220)
+                gravity = android.view.Gravity.CENTER or android.view.Gravity.END
+                rightMargin = dpToPx(context, 30)
             }
             rightContainer.addView(plusButton, plusButtonParams)
             controller.plusButton = plusButton
             
-            // 添加L3按钮
+            // 添加L3按钮 - 位置调整到左侧摇杆下方
             val l3Button = DoubleCircleButtonView(context, "L3", GamePadButtonInputId.LeftStickButton.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
@@ -927,13 +926,13 @@ class GameController(var activity: Activity) {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.START
-                topMargin = dpToPx(context, 30)
-                leftMargin = dpToPx(context, 280)
+                topMargin = dpToPx(context, 180)
+                leftMargin = dpToPx(context, 80)
             }
             leftContainer.addView(l3Button, l3ButtonParams)
             controller.l3Button = l3Button
             
-            // 添加R3按钮
+            // 添加R3按钮 - 位置调整到右侧摇杆下方
             val r3Button = DoubleCircleButtonView(context, "R3", GamePadButtonInputId.RightStickButton.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
@@ -963,8 +962,8 @@ class GameController(var activity: Activity) {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.END
-                topMargin = dpToPx(context, 30)
-                rightMargin = dpToPx(context, 280)
+                topMargin = dpToPx(context, 180)
+                rightMargin = dpToPx(context, 80)
             }
             rightContainer.addView(r3Button, r3ButtonParams)
             controller.r3Button = r3Button
