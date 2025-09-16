@@ -14,10 +14,10 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
         private const int RegionNibbleIndex = 2;   // 第三个半字节是内存区域代码
         private const int RegisterNibbleIndex = 3; // 第四个半字节是寄存器索引
         private const int OffsetStartNibbleIndex = 6; // 偏移量从第7个半字节开始
-        private const int ValueStartNibbleIndex = 14; // 值从第15个半字节开始
+        private const int ValueStartNibbleIndex = 16; // 值从第17个半字节开始（修正）
 
-        private const int OffsetNibbleSize = 8;   // 偏移量是8个半字节（32位）
-        private const int ValueNibbleSize = 8;    // 值也是8个半字节（32位）
+        private const int OffsetNibbleSize = 10;   // 偏移量是10个半字节（40位）（修正）
+        private const int ValueNibbleSize = 8;     // 值是8个半字节（32位）
 
         public static void Emit(byte[] instruction, CompilationContext context)
         {
@@ -111,39 +111,21 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
         }
 
         // 从半字节数组中提取立即值
-// 从半字节数组中提取立即值（支持小端格式）
-private static ulong GetImmediateFromNibbles(byte[] nibbles, int startNibbleIndex, int nibbleCount)
-{
-    ulong value = 0;
-
-    // 对于偏移量，可能需要按小端格式处理
-    if (nibbleCount == 8) // 32位值（8个半字节）
-    {
-        // 按小端格式读取字节
-        for (int i = 0; i < nibbleCount; i += 2)
+        private static ulong GetImmediateFromNibbles(byte[] nibbles, int startNibbleIndex, int nibbleCount)
         {
-            byte lowNibble = GetNibble(nibbles, startNibbleIndex + i);
-            byte highNibble = GetNibble(nibbles, startNibbleIndex + i + 1);
-            byte byteValue = (byte)((highNibble << 4) | lowNibble);
-            
-            value |= (ulong)byteValue << (i * 4);
-        }
-    }
-    else
-    {
-        // 默认的大端格式
-        for (int i = 0; i < nibbleCount; i++)
-        {
-            value <<= 4;
-            value |= GetNibble(nibbles, startNibbleIndex + i);
-        }
-    }
+            ulong value = 0;
 
-    Logger.Debug?.Print(LogClass.TamperMachine, 
-        $"Extracted immediate value: 0x{value:X} from nibble position {startNibbleIndex} with {nibbleCount} nibbles");
+            for (int i = 0; i < nibbleCount; i++)
+            {
+                value <<= 4;
+                value |= GetNibble(nibbles, startNibbleIndex + i);
+            }
 
-    return value;
-}
+            Logger.Debug?.Print(LogClass.TamperMachine, 
+                $"Extracted immediate value: 0x{value:X} from nibble position {startNibbleIndex} with {nibbleCount} nibbles");
+
+            return value;
+        }
     }
 
     // 添加一个简单的调试操作类
