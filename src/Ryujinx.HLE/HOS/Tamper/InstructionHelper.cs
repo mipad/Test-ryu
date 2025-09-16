@@ -309,84 +309,25 @@ namespace Ryujinx.HLE.HOS.Tamper
             return value;
         }
 
+        // 还原为版本29的GetCodeType实现
         public static CodeType GetCodeType(byte[] instruction)
-{
-    if (instruction.Length < 2)
-    {
-        Logger.Error?.Print(LogClass.TamperMachine, "Instruction too short to determine code type");
-        return (CodeType)(-1);
-    }
-    
-    // 修正：从第一个字节的高4位提取代码类型
-    int codeTypeValue = instruction[0] >> 4;  // 获取高4位
-    
-    Logger.Debug?.Print(LogClass.TamperMachine, $"First nybble: 0x{codeTypeValue:X1}");
-    
-    // 检查基本代码类型 (0x0-0xA)
-    if (codeTypeValue <= 0xA)
-    {
-        Logger.Debug?.Print(LogClass.TamperMachine, $"Detected basic code type: {(CodeType)codeTypeValue} (0x{codeTypeValue:X})");
-        return (CodeType)codeTypeValue;
-    }
-    
-    // 处理扩展代码类型 (>= 0xC)
-    if (codeTypeValue >= 0xC && instruction.Length >= 3)
-    {
-        // 读取第二个半字节（第一个字节的低4位和第二个字节的高4位组合）
-        int extendedCodeTypeValue = (codeTypeValue << 4) | (instruction[0] & 0x0F); // 组合高4位和低4位
-        // 注意：扩展代码类型通常需要更多字节，这里需要根据规范调整
-        // 以下示例处理常见扩展类型，您可能需要根据实际规范完善
-        Logger.Debug?.Print(LogClass.TamperMachine, $"Extended code type: 0x{extendedCodeTypeValue:X2}");
-        
-        switch (extendedCodeTypeValue)
         {
-            case 0xC0:
-                Logger.Debug?.Print(LogClass.TamperMachine, "Detected BeginRegisterConditionalBlock (code type 0xC0)");
-                return CodeType.BeginRegisterConditionalBlock;
-            case 0xC1:
-                Logger.Debug?.Print(LogClass.TamperMachine, "Detected SaveOrRestoreRegister (code type 0xC1)");
-                return CodeType.SaveOrRestoreRegister;
-            case 0xC2:
-                Logger.Debug?.Print(LogClass.TamperMachine, "Detected SaveOrRestoreRegisterWithMask (code type 0xC2)");
-                return CodeType.SaveOrRestoreRegisterWithMask;
-            case 0xC3:
-                Logger.Debug?.Print(LogClass.TamperMachine, "Detected ReadOrWriteStaticRegister (code type 0xC3)");
-                return CodeType.ReadOrWriteStaticRegister;
-            // 处理更长的扩展代码类型
-            default:
-                // 如果需要更多字节，可以继续解析
-                if ((extendedCodeTypeValue & 0xF) == 0xF && instruction.Length >= 4)
+            int codeType = instruction[CodeTypeIndex];
+
+            if (codeType >= 0xC)
+            {
+                byte extension = instruction[CodeTypeIndex + 1];
+                codeType = (codeType << 4) | extension;
+
+                if (extension == 0xF)
                 {
-                    // 读取后续字节
-                    int furtherExtended = (extendedCodeTypeValue << 4) | (instruction[1] >> 4);
-                    Logger.Debug?.Print(LogClass.TamperMachine, $"Further extended code type: 0x{furtherExtended:X3}");
-                    
-                    if (instruction.Length >= 5)
-                    {
-                        int fullExtended = (furtherExtended << 4) | (instruction[1] & 0x0F);
-                        Logger.Debug?.Print(LogClass.TamperMachine, $"Full extended code type: 0x{fullExtended:X4}");
-                        
-                        switch (fullExtended)
-                        {
-                            case 0xFF0:
-                                Logger.Debug?.Print(LogClass.TamperMachine, "Detected PauseProcess (code type 0xFF0)");
-                                return CodeType.PauseProcess;
-                            case 0xFF1:
-                                Logger.Debug?.Print(LogClass.TamperMachine, "Detected ResumeProcess (code type 0xFF1)");
-                                return CodeType.ResumeProcess;
-                            case 0xFFF:
-                                Logger.Debug?.Print(LogClass.TamperMachine, "Detected DebugLog (code type 0xFFF)");
-                                return CodeType.DebugLog;
-                        }
-                    }
+                    extension = instruction[CodeTypeIndex + 2];
+                    codeType = (codeType << 4) | extension;
                 }
-                break;
+            }
+
+            return (CodeType)codeType;
         }
-    }
-    
-    Logger.Error?.Print(LogClass.TamperMachine, $"Unknown code type: 0x{codeTypeValue:X}");
-    return (CodeType)(-1);
-}
 
         // 回滚到版本15的ParseRawInstruction实现
         public static byte[] ParseRawInstruction(string rawInstruction)
