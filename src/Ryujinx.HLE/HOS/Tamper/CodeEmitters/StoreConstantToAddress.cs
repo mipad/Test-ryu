@@ -1,5 +1,5 @@
+using System;
 using Ryujinx.Common.Logging;
-using Ryujinx.HLE.Exceptions;
 
 namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
 {
@@ -65,9 +65,9 @@ namespace Ryujinx.HLE.HOS.Tamper.CodeEmitters
             Logger.Debug?.Print(LogClass.TamperMachine, 
                 $"StoreConstantToAddress: 将值 0x{valueImmediate:X} (大小={operationWidth}字节) 写入内存");
 
-            // 添加调试操作以记录实际写入的地址
-            context.CurrentOperations.Add(new Operations.DebugOperation(
-                $"将 0x{valueImmediate:X} 写入内存地址 (区域={memoryRegion}, 寄存器=R_{registerIndex:X2}, 偏移=0x{offsetImmediate:X})"));
+            // 简单的日志记录，不使用 DebugOperation
+            Logger.Debug?.Print(LogClass.TamperMachine, 
+                $"将 0x{valueImmediate:X} 写入内存地址 (区域={memoryRegion}, 寄存器=R_{registerIndex:X2}, 偏移=0x{offsetImmediate:X})");
 
             InstructionHelper.EmitMov(operationWidth, context, dstMem, storeValue);
             
