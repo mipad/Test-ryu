@@ -276,7 +276,7 @@ class DPadView @JvmOverloads constructor(
                 canvas.drawRect(centerX - armLength, centerY - armWidth / 2, 
                                centerX, centerY + armWidth / 2, paint)
                 canvas.drawRect(centerX, centerY - armWidth / 2, 
-                               centerX + armLength, centerY + armWidth / 2, paint)
+                               centerX + armWidth / 2, centerY + armWidth / 2, paint)
             }
         }
     }
@@ -538,7 +538,8 @@ class GameController(var activity: Activity) {
             // 添加左侧摇杆
             val leftStick = JoystickView(context).apply {
                 onPositionChanged = { x, y ->
-                    val setting = QuickSettings(activity)
+                    // 修复：使用controller.activity而不是直接使用activity
+                    val setting = QuickSettings(controller.activity)
                     val clampedX = MathUtils.clamp(x * setting.controllerStickSensitivity, -1f, 1f)
                     val clampedY = MathUtils.clamp(y * setting.controllerStickSensitivity, -1f, 1f)
                     RyujinxNative.jnaInstance.inputSetStickAxis(
@@ -564,7 +565,8 @@ class GameController(var activity: Activity) {
             // 添加右侧摇杆
             val rightStick = JoystickView(context).apply {
                 onPositionChanged = { x, y ->
-                    val setting = QuickSettings(activity)
+                    // 修复：使用controller.activity而不是直接使用activity
+                    val setting = QuickSettings(controller.activity)
                     val clampedX = MathUtils.clamp(x * setting.controllerStickSensitivity, -1f, 1f)
                     val clampedY = MathUtils.clamp(y * setting.controllerStickSensitivity, -1f, 1f)
                     RyujinxNative.jnaInstance.inputSetStickAxis(
