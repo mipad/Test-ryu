@@ -166,7 +166,9 @@ class SettingViews {
             val scalingFilterLevel = remember { mutableStateOf(25) } // 默认25%
             val antiAliasing = remember { mutableStateOf(0) } // 0=None, 1=Fxaa, 2=SmaaLow, 3=SmaaMedium, 4=SmaaHigh, 5=SmaaUltra
             val memoryConfiguration = remember { mutableStateOf(0) } // 新增状态变量：内存配置
+            val controllerType = remember { mutableStateOf(0) } // 0=Pro, 1=JoyConL, 2=JoyConR, 3=Pair, 4=Handheld
             
+            val showControllerTypeDialog = remember { mutableStateOf(false) } // 
             val showAntiAliasingDialog = remember { mutableStateOf(false) } // 控制抗锯齿对话框显示
             // 新增状态变量用于控制选项显示
             val showResScaleOptions = remember { mutableStateOf(false) }
@@ -207,7 +209,8 @@ class SettingViews {
                     scalingFilter, // 新增：缩放过滤器
                     scalingFilterLevel, // 新增：缩放过滤器级别
                     antiAliasing, // 新增：抗锯齿模式
-                    memoryConfiguration // 新增DRAM参数
+                    memoryConfiguration, // 新增DRAM参数
+                    controllerType
                 )
                 loaded.value = true
             }
@@ -263,7 +266,8 @@ class SettingViews {
                     scalingFilter, // 新增：缩放过滤器
                     scalingFilterLevel, // 新增：缩放过滤器级别
                     antiAliasing, // 新增：抗锯齿模式
-                    memoryConfiguration // 新增DRAM参数
+                    memoryConfiguration, // 新增DRAM参数
+                    controllerType
                                 )
                                 settingsViewModel.navController.popBackStack()
                             }) {
@@ -1808,6 +1812,28 @@ if (showMemoryConfigDialog.value) {
                                 })
                             }
 
+                        // 添加控制器类型设置行
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp)
+                .clickable { showControllerTypeDialog = true },
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "Controller Type")
+            Text(
+                text = when (controllerType.value) {
+                    0 -> "Pro Controller"
+                    1 -> "Joy-Con (L)"
+                    2 -> "Joy-Con (R)"
+                    3 -> "Joy-Con Pair"
+                    else -> "Handheld"
+                },
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        
                             val interactionSource: MutableInteractionSource = remember { MutableInteractionSource() }
 
                             Row(
@@ -1975,6 +2001,165 @@ if (showMemoryConfigDialog.value) {
                         }
                     }
                 }
+                
+                // 控制器类型选择对话框
+if (showControllerTypeDialog.value) {
+    BasicAlertDialog(
+        onDismissRequest = { showControllerTypeDialog.value = false }
+    ) {
+        Surface(
+            modifier = Modifier
+                .wrapContentWidth()
+                .wrapContentHeight(),
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = AlertDialogDefaults.TonalElevation
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text(
+                    text = "Select Controller Type",
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                
+                // Pro Controller 选项
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            controllerType.value = 0
+                            showControllerTypeDialog.value = false
+                        }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = controllerType.value == 0,
+                        onClick = {
+                            controllerType.value = 0
+                            showControllerTypeDialog.value = false
+                        }
+                    )
+                    Text(
+                        text = "Pro Controller",
+                        modifier = Modifier.padding(start = 16.dp)
+                    )
+                }
+                
+                // Joy-Con (L) 选项
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            controllerType.value = 1
+                            showControllerTypeDialog.value = false
+                        }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = controllerType.value == 1,
+                        onClick = {
+                            controllerType.value = 1
+                            showControllerTypeDialog.value = false
+                        }
+                    )
+                    Text(
+                        text = "Joy-Con (L)",
+                        modifier = Modifier.padding(start = 16.dp)
+                    )
+                }
+                
+                // Joy-Con (R) 选项
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            controllerType.value = 2
+                            showControllerTypeDialog.value = false
+                        }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = controllerType.value == 2,
+                        onClick = {
+                            controllerType.value = 2
+                            showControllerTypeDialog.value = false
+                        }
+                    )
+                    Text(
+                        text = "Joy-Con (R)",
+                        modifier = Modifier.padding(start = 16.dp)
+                    )
+                }
+                
+                // Joy-Con Pair 选项
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            controllerType.value = 3
+                            showControllerTypeDialog.value = false
+                        }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = controllerType.value == 3,
+                        onClick = {
+                            controllerType.value = 3
+                            showControllerTypeDialog.value = false
+                        }
+                    )
+                    Text(
+                        text = "Joy-Con Pair",
+                        modifier = Modifier.padding(start = 16.dp)
+                    )
+                }
+                
+                // Handheld 选项
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            controllerType.value = 4
+                            showControllerTypeDialog.value = false
+                        }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = controllerType.value == 4,
+                        onClick = {
+                            controllerType.value = 4
+                            showControllerTypeDialog.value = false
+                        }
+                    )
+                    Text(
+                        text = "Handheld",
+                        modifier = Modifier.padding(start = 16.dp)
+                    )
+                }
+                
+                // 添加取消按钮
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = { showControllerTypeDialog.value = false }
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        }
+    }
+}
 
                 // 音频引擎选择对话框
                 if (showAudioEngineDialog.value) {
@@ -2141,7 +2326,8 @@ if (showMemoryConfigDialog.value) {
                         scalingFilter, // 新增：缩放过滤器
                         scalingFilterLevel, // 新增：缩放过滤器级别
                         antiAliasing, // 新增：抗锯齿模式
-                        memoryConfiguration // 新增DRAM参数
+                        memoryConfiguration, // 新增DRAM参数
+                        controllerType
                     )
                     settingsViewModel.navController.popBackStack()
                 }
