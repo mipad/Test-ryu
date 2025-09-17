@@ -418,10 +418,10 @@ class ABXYButtonsView @JvmOverloads constructor(
     
     // 菱形排列的按钮位置
     private val buttons = listOf(
-        ButtonInfo("A", GamePadButtonInputId.A.ordinal, 0f, 1f), // 下
-        ButtonInfo("B", GamePadButtonInputId.B.ordinal, 1f, 0f), // 右
-        ButtonInfo("X", GamePadButtonInputId.X.ordinal, -1f, 0f), // 左
-        ButtonInfo("Y", GamePadButtonInputId.Y.ordinal, 0f, -1f) // 上
+        ButtonInfo("B", GamePadButtonInputId.A.ordinal, 0f, 1f), // 下
+        ButtonInfo("A", GamePadButtonInputId.B.ordinal, 1f, 0f), // 右
+        ButtonInfo("Y", GamePadButtonInputId.X.ordinal, -1f, 0f), // 左
+        ButtonInfo("X", GamePadButtonInputId.Y.ordinal, 0f, -1f) // 上
     )
     
     private var centerX = 0f
