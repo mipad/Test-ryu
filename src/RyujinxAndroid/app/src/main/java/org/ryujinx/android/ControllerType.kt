@@ -1,8 +1,6 @@
+// ControllerType.kt
 package org.ryujinx.android
 
-import kotlinx.serialization.Serializable
-
-@Serializable
 enum class ControllerType {
     PRO_CONTROLLER,
     JOYCON_LEFT,
