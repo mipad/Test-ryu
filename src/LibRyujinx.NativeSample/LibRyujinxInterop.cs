@@ -84,6 +84,10 @@ namespace LibRyujinx.Sample
         // 添加设置内存配置的方法
         [DllImport(dll, EntryPoint = "setMemoryConfiguration")]
         internal extern static void SetMemoryConfiguration(MemoryConfiguration memoryConfig);
+
+        // 添加设置控制器类型的方法
+        [DllImport(dll, EntryPoint = "setControllerType")]
+        internal extern static void SetControllerType(int deviceId, int controllerType);
     }
 
     public enum GraphicsBackend
