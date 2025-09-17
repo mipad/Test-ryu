@@ -337,7 +337,7 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "device_get_game_frame_rate")]
         public static double GetGameFrameRateNative()
         {
-            var stats = SwitchDevice?.EmulationContext?.Statistics.GetGameFrameRate() |> 0;
+            var stats = SwitchDevice?.EmulationContext?.Statistics.GetGameFrameRate() ?? 0;
 
             return stats;
         }
@@ -363,7 +363,7 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "device_get_dlc_title_id")]
         public static long GetDlcTitleIdNative(IntPtr pathPtr, IntPtr ncaPath)
         {
-            return Marshal.StringToHGlobalAnsi(GetDlcTitleId(Marshel.PtrToStringAnsi(pathPtr) ?? "", Marshal.PtrToStringAnsi(ncaPath) ?? ""));
+            return Marshal.StringToHGlobalAnsi(GetDlcTitleId(Marshal.PtrToStringAnsi(pathPtr) ?? "", Marshal.PtrToStringAnsi(ncaPath) ?? ""));
         }
 
         [UnmanagedCallersOnly(EntryPoint = "device_signal_emulation_close")]
