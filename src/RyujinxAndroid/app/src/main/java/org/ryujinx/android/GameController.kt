@@ -40,7 +40,7 @@ class DPadView @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
 
     private val paint = Paint().apply {
-        color = Color.argb(128, 255, 255, 255)
+        color = Color.argb(180, 255, 255, 255)
         style = Paint.Style.FILL_AND_STROKE
         strokeWidth = 4f
         isAntiAlias = true
@@ -147,7 +147,7 @@ class DPadView @JvmOverloads constructor(
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(100)
+        val size = dpToPx(80)
         setMeasuredDimension(size, size)
     }
 
@@ -170,14 +170,14 @@ class GameButtonView @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
 
     private val circlePaint = Paint().apply {
-        color = Color.argb(128, 255, 255, 255)
+        color = Color.argb(180, 255, 255, 255)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val textPaint = Paint().apply {
         color = Color.WHITE
-        textSize = 20f
+        textSize = 18f
         textAlign = Paint.Align.CENTER
         typeface = Typeface.DEFAULT_BOLD
         isAntiAlias = true
@@ -190,7 +190,7 @@ class GameButtonView @JvmOverloads constructor(
     fun setPressedState(pressed: Boolean) {
         isPressed = pressed
         if (pressed) {
-            circlePaint.color = Color.argb(192, 200, 200, 200)
+            circlePaint.color = Color.argb(220, 200, 200, 200)
             val scaleAnimation = ScaleAnimation(
                 1.0f, 0.8f, 1.0f, 0.8f,
                 Animation.RELATIVE_TO_SELF, 0.5f,
@@ -200,7 +200,7 @@ class GameButtonView @JvmOverloads constructor(
             scaleAnimation.fillAfter = true
             startAnimation(scaleAnimation)
         } else {
-            circlePaint.color = Color.argb(128, 255, 255, 255)
+            circlePaint.color = Color.argb(180, 255, 255, 255)
             val scaleAnimation = ScaleAnimation(
                 0.8f, 1.0f, 0.8f, 1.0f,
                 Animation.RELATIVE_TO_SELF, 0.5f,
@@ -242,7 +242,7 @@ class GameButtonView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(60)
+        val size = dpToPx(50)
         setMeasuredDimension(size, size)
     }
     
@@ -269,7 +269,7 @@ class JoystickView @JvmOverloads constructor(
     }
     
     private val stickPaint = Paint().apply {
-        color = Color.argb(192, 255, 255, 255)
+        color = Color.argb(180, 255, 255, 255)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
@@ -346,7 +346,7 @@ class JoystickView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(100)
+        val size = dpToPx(80)
         setMeasuredDimension(size, size)
     }
     
@@ -477,7 +477,9 @@ class GameController(var activity: Activity) {
                 }
             }
 
+            // ABXY 按钮 - 使用更明显的颜色
             val aButton = GameButtonView(context, buttonText = "A", buttonId = GamePadButtonInputId.A.ordinal).apply {
+                circlePaint.color = Color.argb(180, 0, 255, 0) // 绿色
                 onButtonStateChanged = { pressed ->
                     if (controller.controllerId != -1) {
                         if (pressed) {
@@ -490,6 +492,7 @@ class GameController(var activity: Activity) {
             }
 
             val bButton = GameButtonView(context, buttonText = "B", buttonId = GamePadButtonInputId.B.ordinal).apply {
+                circlePaint.color = Color.argb(180, 255, 0, 0) // 红色
                 onButtonStateChanged = { pressed ->
                     if (controller.controllerId != -1) {
                         if (pressed) {
@@ -502,6 +505,7 @@ class GameController(var activity: Activity) {
             }
 
             val xButton = GameButtonView(context, buttonText = "X", buttonId = GamePadButtonInputId.X.ordinal).apply {
+                circlePaint.color = Color.argb(180, 0, 0, 255) // 蓝色
                 onButtonStateChanged = { pressed ->
                     if (controller.controllerId != -1) {
                         if (pressed) {
@@ -514,6 +518,7 @@ class GameController(var activity: Activity) {
             }
 
             val yButton = GameButtonView(context, buttonText = "Y", buttonId = GamePadButtonInputId.Y.ordinal).apply {
+                circlePaint.color = Color.argb(180, 255, 255, 0) // 黄色
                 onButtonStateChanged = { pressed ->
                     if (controller.controllerId != -1) {
                         if (pressed) {
@@ -561,7 +566,7 @@ class GameController(var activity: Activity) {
                 }
             }
 
-            // L3和R3按钮 - 移出来单独放置
+            // L3和R3按钮
             val l3Button = GameButtonView(context, buttonText = "L3", buttonId = GamePadButtonInputId.LeftStickButton.ordinal).apply {
                 onButtonStateChanged = { pressed ->
                     if (controller.controllerId != -1) {
@@ -592,108 +597,107 @@ class GameController(var activity: Activity) {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
 
-            // 左侧布局 - 重新调整位置避免重叠
+            // 左侧布局
             leftStick.layoutParams = layoutParams.apply {
-                gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
-                leftMargin = dpToPx(context, 20)
+                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
+                leftMargin = dpToPx(context, 30)
+                bottomMargin = dpToPx(context, 30)
             }
             leftContainer.addView(leftStick)
 
             dPad.layoutParams = layoutParams.apply {
-                gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.END
-                rightMargin = dpToPx(context, 20)
+                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
+                rightMargin = dpToPx(context, 30)
+                bottomMargin = dpToPx(context, 30)
             }
             leftContainer.addView(dPad)
 
             lButton.layoutParams = layoutParams.apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.START
-                leftMargin = dpToPx(context, 10)
-                topMargin = dpToPx(context, 10)
+                leftMargin = dpToPx(context, 20)
+                topMargin = dpToPx(context, 20)
             }
             leftContainer.addView(lButton)
 
             zlButton.layoutParams = layoutParams.apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.END
-                rightMargin = dpToPx(context, 10)
-                topMargin = dpToPx(context, 10)
+                rightMargin = dpToPx(context, 20)
+                topMargin = dpToPx(context, 20)
             }
             leftContainer.addView(zlButton)
 
             minusButton.layoutParams = layoutParams.apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
-                topMargin = dpToPx(context, 10)
+                topMargin = dpToPx(context, 15)
             }
             leftContainer.addView(minusButton)
 
-            // L3按钮放在左摇杆下方
             l3Button.layoutParams = layoutParams.apply {
-                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
-                leftMargin = dpToPx(context, 40)
-                bottomMargin = dpToPx(context, 20)
+                gravity = android.view.Gravity.CENTER or android.view.Gravity.START
+                leftMargin = dpToPx(context, 60)
             }
             leftContainer.addView(l3Button)
 
-            // 右侧布局 - 重新调整位置避免重叠
+            // 右侧布局 - 确保所有按钮都可见
             rightStick.layoutParams = layoutParams.apply {
-                gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.END
-                rightMargin = dpToPx(context, 20)
+                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
+                rightMargin = dpToPx(context, 30)
+                bottomMargin = dpToPx(context, 30)
             }
             rightContainer.addView(rightStick)
 
-            // ABXY按钮布局 - 菱形排列
+            // ABXY 按钮 - 放在显眼位置
             aButton.layoutParams = layoutParams.apply {
-                gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.END
+                gravity = android.view.Gravity.CENTER or android.view.Gravity.END
                 rightMargin = dpToPx(context, 20)
-                bottomMargin = dpToPx(context, 40)
+                bottomMargin = dpToPx(context, 20)
             }
             rightContainer.addView(aButton)
 
             bButton.layoutParams = layoutParams.apply {
-                gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
+                gravity = android.view.Gravity.CENTER or android.view.Gravity.START
                 leftMargin = dpToPx(context, 20)
-                bottomMargin = dpToPx(context, 40)
+                bottomMargin = dpToPx(context, 20)
             }
             rightContainer.addView(bButton)
 
             xButton.layoutParams = layoutParams.apply {
-                gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.END
+                gravity = android.view.Gravity.CENTER or android.view.Gravity.END
                 rightMargin = dpToPx(context, 20)
-                topMargin = dpToPx(context, 40)
+                topMargin = dpToPx(context, 20)
             }
             rightContainer.addView(xButton)
 
             yButton.layoutParams = layoutParams.apply {
-                gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
+                gravity = android.view.Gravity.CENTER or android.view.Gravity.START
                 leftMargin = dpToPx(context, 20)
-                topMargin = dpToPx(context, 40)
+                topMargin = dpToPx(context, 20)
             }
             rightContainer.addView(yButton)
 
             rButton.layoutParams = layoutParams.apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.START
-                leftMargin = dpToPx(context, 10)
-                topMargin = dpToPx(context, 10)
+                leftMargin = dpToPx(context, 20)
+                topMargin = dpToPx(context, 20)
             }
             rightContainer.addView(rButton)
 
             zrButton.layoutParams = layoutParams.apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.END
-                rightMargin = dpToPx(context, 10)
-                topMargin = dpToPx(context, 10)
+                rightMargin = dpToPx(context, 20)
+                topMargin = dpToPx(context, 20)
             }
             rightContainer.addView(zrButton)
 
             plusButton.layoutParams = layoutParams.apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
-                topMargin = dpToPx(context, 10)
+                topMargin = dpToPx(context, 15)
             }
             rightContainer.addView(plusButton)
 
-            // R3按钮放在右摇杆下方
             r3Button.layoutParams = layoutParams.apply {
-                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
-                rightMargin = dpToPx(context, 40)
-                bottomMargin = dpToPx(context, 20)
+                gravity = android.view.Gravity.CENTER or android.view.Gravity.END
+                rightMargin = dpToPx(context, 60)
             }
             rightContainer.addView(r3Button)
 
