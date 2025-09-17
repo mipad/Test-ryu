@@ -215,8 +215,8 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         // 设置内存配置
         RyujinxNative.jnaInstance.setMemoryConfiguration(memoryConfiguration.value)
 
-        // 设置控制器类型
-        RyujinxNative.jnaInstance.setControllerType(controllerType.value)
+        // 设置控制器类型（虚拟控制器使用设备ID 0）
+        RyujinxNative.jnaInstance.setControllerType(0, controllerType.value)
 
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Debug.ordinal, enableDebugLogs.value)
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Info.ordinal, enableInfoLogs.value)
