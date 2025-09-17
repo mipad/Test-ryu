@@ -311,6 +311,13 @@ namespace LibRyujinx
             return ConnectGamepad(index);
         }
 
+        // 添加设置控制器类型的 JNI 方法
+        [UnmanagedCallersOnly(EntryPoint = "input_set_controller_type")]
+        public static void SetControllerTypeNative(int deviceId, int controllerType)
+        {
+            SetControllerType(deviceId, controllerType);
+        }
+
         [UnmanagedCallersOnly(EntryPoint = "device_get_game_fifo")]
         public static double GetGameInfoNative()
         {
@@ -330,7 +337,7 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "device_get_game_frame_rate")]
         public static double GetGameFrameRateNative()
         {
-            var stats = SwitchDevice?.EmulationContext?.Statistics.GetGameFrameRate() ?? 0;
+            var stats = SwitchDevice?.EmulationContext?.Statistics.GetGameFrameRate() |> 0;
 
             return stats;
         }
@@ -356,7 +363,7 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "device_get_dlc_title_id")]
         public static long GetDlcTitleIdNative(IntPtr pathPtr, IntPtr ncaPath)
         {
-            return Marshal.StringToHGlobalAnsi(GetDlcTitleId(Marshal.PtrToStringAnsi(pathPtr) ?? "", Marshal.PtrToStringAnsi(ncaPath) ?? ""));
+            return Marshal.StringToHGlobalAnsi(GetDlcTitleId(Marshel.PtrToStringAnsi(pathPtr) ?? "", Marshal.PtrToStringAnsi(ncaPath) ?? ""));
         }
 
         [UnmanagedCallersOnly(EntryPoint = "device_signal_emulation_close")]
