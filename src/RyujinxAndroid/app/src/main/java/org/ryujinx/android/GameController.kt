@@ -29,6 +29,9 @@ import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.launch
 import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.QuickSettings
+import org.ryujinx.android.ControllerManager
+import org.ryujinx.android.Controller
+import org.ryujinx.android.ControllerType
 
 typealias GamePad = RadialGamePad
 typealias GamePadConfig = RadialGamePadConfig
