@@ -77,7 +77,8 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         scalingFilter: MutableState<Int>, // 新增：缩放过滤器
         scalingFilterLevel: MutableState<Int>, // 新增：缩放过滤器级别
         antiAliasing: MutableState<Int>, // 新增：抗锯齿模式
-        memoryConfiguration: MutableState<Int> // 新增：内存配置
+        memoryConfiguration: MutableState<Int>, // 新增：内存配置
+        controllerType: MutableState<Int> // 新增：控制器类型
     ) {
 
         isHostMapped.value = sharedPref.getBoolean("isHostMapped", true)
@@ -106,6 +107,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         scalingFilterLevel.value = sharedPref.getInt("scalingFilterLevel", 80) // 默认级别：80
         antiAliasing.value = sharedPref.getInt("antiAliasing", 0) // 默认关闭
         memoryConfiguration.value = sharedPref.getInt("memoryConfiguration", 0) // 默认4GB
+        controllerType.value = sharedPref.getInt("controllerType", 0) // 默认Pro控制器
 
         enableDebugLogs.value = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs.value = sharedPref.getBoolean("enableStubLogs", false)
@@ -152,7 +154,8 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         scalingFilter: MutableState<Int>, // 新增：缩放过滤器
         scalingFilterLevel: MutableState<Int>, // 新增：缩放过滤器级别
         antiAliasing: MutableState<Int>, // 新增：抗锯齿模式
-        memoryConfiguration: MutableState<Int> // 新增：内存配置
+        memoryConfiguration: MutableState<Int>, // 新增：内存配置
+        controllerType: MutableState<Int> // 新增：控制器类型
     ) {
         val editor = sharedPref.edit()
 
@@ -181,6 +184,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.putInt("scalingFilterLevel", scalingFilterLevel.value) // 保存缩放过滤器级别
         editor.putInt("antiAliasing", antiAliasing.value) // 保存抗锯齿设置
         editor.putInt("memoryConfiguration", memoryConfiguration.value) // 保存内存配置
+        editor.putInt("controllerType", controllerType.value) // 保存控制器类型
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs.value)
         editor.putBoolean("enableStubLogs", enableStubLogs.value)
@@ -210,6 +214,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
 
         // 设置内存配置
         RyujinxNative.jnaInstance.setMemoryConfiguration(memoryConfiguration.value)
+
+        // 设置控制器类型
+        RyujinxNative.jnaInstance.setControllerType(controllerType.value)
 
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Debug.ordinal, enableDebugLogs.value)
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Info.ordinal, enableInfoLogs.value)
