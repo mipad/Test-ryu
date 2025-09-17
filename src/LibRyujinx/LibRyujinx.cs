@@ -36,6 +36,7 @@ using System.Collections.Generic;
 using System.Text;
 using Ryujinx.HLE.UI;
 using LibRyujinx.Android;
+using Ryujinx.Common.Configuration.Hid.Controller;
 
 namespace LibRyujinx
 {
@@ -51,6 +52,9 @@ namespace LibRyujinx
 
         // 添加静态字段来存储内存配置
         private static MemoryConfiguration _currentMemoryConfiguration = MemoryConfiguration.MemoryConfiguration8GiB;
+
+        // 添加静态字段来存储控制器类型配置
+        private static Ryujinx.Common.Configuration.Hid.ControllerType[] _controllerTypes = new Ryujinx.Common.Configuration.Hid.ControllerType[4];
 
         public static bool Initialize(string? basePath)
         {
@@ -78,6 +82,12 @@ namespace LibRyujinx
                 Logger.Notice.Print(LogClass.Application, $"Using base path: {AppDataManager.BaseDirPath}");
 
                 SwitchDevice = new SwitchDevice();
+                
+                // 初始化控制器类型为默认值
+                for (int i = 0; i < _controllerTypes.Length; i++)
+                {
+                    _controllerTypes[i] = Ryujinx.Common.Configuration.Hid.ControllerType.ProController;
+                }
             }
             catch (Exception ex)
             {
@@ -128,6 +138,54 @@ namespace LibRyujinx
         public static MemoryConfiguration GetMemoryConfiguration()
         {
             return _currentMemoryConfiguration;
+        }
+
+        // 添加设置控制器类型的方法
+        public static void SetControllerType(int deviceId, int controllerType)
+        {
+            if (deviceId < 0 || deviceId >= _controllerTypes.Length)
+            {
+                Logger.Warning?.Print(LogClass.Application, $"Invalid device ID: {deviceId}");
+                return;
+            }
+
+            _controllerTypes[deviceId] = (Ryujinx.Common.Configuration.Hid.ControllerType)controllerType;
+            Logger.Info?.Print(LogClass.Application, $"Controller type for device {deviceId} set to: {_controllerTypes[deviceId]}");
+
+            // 如果设备已初始化，立即更新控制器配置
+            if (SwitchDevice?.InputManager != null)
+            {
+                UpdateControllerConfiguration(deviceId);
+            }
+        }
+
+        // 添加获取控制器类型的方法
+        public static int GetControllerType(int deviceId)
+        {
+            if (deviceId < 0 || deviceId >= _controllerTypes.Length)
+            {
+                Logger.Warning?.Print(LogClass.Application, $"Invalid device ID: {deviceId}");
+                return (int)Ryujinx.Common.Configuration.Hid.ControllerType.ProController;
+            }
+
+            return (int)_controllerTypes[deviceId];
+        }
+
+        // 更新控制器配置
+        private static void UpdateControllerConfiguration(int deviceId)
+        {
+            if (SwitchDevice?.InputManager == null || _configs == null || deviceId >= _configs.Length)
+            {
+                return;
+            }
+
+            var config = _configs[deviceId];
+            if (config != null)
+            {
+                config.ControllerType = _controllerTypes[deviceId];
+                _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
+                Logger.Info?.Print(LogClass.Application, $"Controller configuration updated for device {deviceId}: {_controllerTypes[deviceId]}");
+            }
         }
 
         public static void InitializeAudio()
