@@ -147,7 +147,7 @@ class DPadView @JvmOverloads constructor(
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(120)
+        val size = dpToPx(100)
         setMeasuredDimension(size, size)
     }
 
@@ -177,7 +177,7 @@ class GameButtonView @JvmOverloads constructor(
     
     private val textPaint = Paint().apply {
         color = Color.WHITE
-        textSize = 24f
+        textSize = 20f
         textAlign = Paint.Align.CENTER
         typeface = Typeface.DEFAULT_BOLD
         isAntiAlias = true
@@ -242,7 +242,7 @@ class GameButtonView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(70)
+        val size = dpToPx(60)
         setMeasuredDimension(size, size)
     }
     
@@ -346,7 +346,7 @@ class JoystickView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(120)
+        val size = dpToPx(100)
         setMeasuredDimension(size, size)
     }
     
@@ -561,7 +561,7 @@ class GameController(var activity: Activity) {
                 }
             }
 
-            // L3和R3按钮
+            // L3和R3按钮 - 移出来单独放置
             val l3Button = GameButtonView(context, buttonText = "L3", buttonId = GamePadButtonInputId.LeftStickButton.ordinal).apply {
                 onButtonStateChanged = { pressed ->
                     if (controller.controllerId != -1) {
@@ -592,108 +592,108 @@ class GameController(var activity: Activity) {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
 
-            // 左侧布局
+            // 左侧布局 - 重新调整位置避免重叠
             leftStick.layoutParams = layoutParams.apply {
-                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
-                leftMargin = dpToPx(context, 30)
-                bottomMargin = dpToPx(context, 30)
+                gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
+                leftMargin = dpToPx(context, 20)
             }
             leftContainer.addView(leftStick)
 
             dPad.layoutParams = layoutParams.apply {
-                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
-                rightMargin = dpToPx(context, 30)
-                bottomMargin = dpToPx(context, 30)
+                gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.END
+                rightMargin = dpToPx(context, 20)
             }
             leftContainer.addView(dPad)
 
             lButton.layoutParams = layoutParams.apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.START
-                leftMargin = dpToPx(context, 30)
-                topMargin = dpToPx(context, 30)
+                leftMargin = dpToPx(context, 10)
+                topMargin = dpToPx(context, 10)
             }
             leftContainer.addView(lButton)
 
             zlButton.layoutParams = layoutParams.apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.END
-                rightMargin = dpToPx(context, 30)
-                topMargin = dpToPx(context, 30)
+                rightMargin = dpToPx(context, 10)
+                topMargin = dpToPx(context, 10)
             }
             leftContainer.addView(zlButton)
 
             minusButton.layoutParams = layoutParams.apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
-                topMargin = dpToPx(context, 20)
+                topMargin = dpToPx(context, 10)
             }
             leftContainer.addView(minusButton)
 
+            // L3按钮放在左摇杆下方
             l3Button.layoutParams = layoutParams.apply {
-                gravity = android.view.Gravity.CENTER
-                leftMargin = dpToPx(context, 80)
-                topMargin = dpToPx(context, 80)
+                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
+                leftMargin = dpToPx(context, 40)
+                bottomMargin = dpToPx(context, 20)
             }
             leftContainer.addView(l3Button)
 
-            // 右侧布局
+            // 右侧布局 - 重新调整位置避免重叠
             rightStick.layoutParams = layoutParams.apply {
-                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
-                rightMargin = dpToPx(context, 30)
-                bottomMargin = dpToPx(context, 30)
+                gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.END
+                rightMargin = dpToPx(context, 20)
             }
             rightContainer.addView(rightStick)
 
+            // ABXY按钮布局 - 菱形排列
             aButton.layoutParams = layoutParams.apply {
-                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
-                leftMargin = dpToPx(context, 30)
-                bottomMargin = dpToPx(context, 30)
+                gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.END
+                rightMargin = dpToPx(context, 20)
+                bottomMargin = dpToPx(context, 40)
             }
             rightContainer.addView(aButton)
 
             bButton.layoutParams = layoutParams.apply {
-                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
-                rightMargin = dpToPx(context, 30)
-                bottomMargin = dpToPx(context, 30)
+                gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
+                leftMargin = dpToPx(context, 20)
+                bottomMargin = dpToPx(context, 40)
             }
             rightContainer.addView(bButton)
 
             xButton.layoutParams = layoutParams.apply {
-                gravity = android.view.Gravity.TOP or android.view.Gravity.START
-                leftMargin = dpToPx(context, 30)
-                topMargin = dpToPx(context, 30)
+                gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.END
+                rightMargin = dpToPx(context, 20)
+                topMargin = dpToPx(context, 40)
             }
             rightContainer.addView(xButton)
 
             yButton.layoutParams = layoutParams.apply {
-                gravity = android.view.Gravity.TOP or android.view.Gravity.END
-                rightMargin = dpToPx(context, 30)
-                topMargin = dpToPx(context, 30)
+                gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
+                leftMargin = dpToPx(context, 20)
+                topMargin = dpToPx(context, 40)
             }
             rightContainer.addView(yButton)
 
             rButton.layoutParams = layoutParams.apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.START
-                leftMargin = dpToPx(context, 30)
-                topMargin = dpToPx(context, 30)
+                leftMargin = dpToPx(context, 10)
+                topMargin = dpToPx(context, 10)
             }
             rightContainer.addView(rButton)
 
             zrButton.layoutParams = layoutParams.apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.END
-                rightMargin = dpToPx(context, 30)
-                topMargin = dpToPx(context, 30)
+                rightMargin = dpToPx(context, 10)
+                topMargin = dpToPx(context, 10)
             }
             rightContainer.addView(zrButton)
 
             plusButton.layoutParams = layoutParams.apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
-                topMargin = dpToPx(context, 20)
+                topMargin = dpToPx(context, 10)
             }
             rightContainer.addView(plusButton)
 
+            // R3按钮放在右摇杆下方
             r3Button.layoutParams = layoutParams.apply {
-                gravity = android.view.Gravity.CENTER
-                rightMargin = dpToPx(context, 80)
-                topMargin = dpToPx(context, 80)
+                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
+                rightMargin = dpToPx(context, 40)
+                bottomMargin = dpToPx(context, 20)
             }
             rightContainer.addView(r3Button)
 
