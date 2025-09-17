@@ -34,7 +34,6 @@ namespace LibRyujinx
         private static TouchScreenManager? _touchScreenManager;
         private static InputConfig[] _configs;
         private static float _aspectRatio = 1.0f;
-        private static Ryujinx.Common.Configuration.Hid.ControllerType[] _controllerTypes = new Ryujinx.Common.Configuration.Hid.ControllerType[4];
 
         public static void InitializeInput(int width, int height)
         {
@@ -46,12 +45,6 @@ namespace LibRyujinx
             _gamepadDriver = new VirtualGamepadDriver(4);
             _configs = new InputConfig[4];
             _virtualTouchScreen = new VirtualTouchScreen();
-            
-            // 初始化所有控制器类型为 ProController
-            for (int i = 0; i < _controllerTypes.Length; i++)
-            {
-                _controllerTypes[i] = Ryujinx.Common.Configuration.Hid.ControllerType.ProController;
-            }
             
             _aspectRatio = width > 0 && height > 0 ? (float)width / height : 1.0f;
             _virtualTouchScreen.ClientSize = new Size(width, height);
@@ -140,27 +133,15 @@ namespace LibRyujinx
                 var config = CreateDefaultInputConfig();
                 config.Id = gamepad.Id;
                 config.PlayerIndex = (Ryujinx.Common.Configuration.Hid.PlayerIndex)index;
-                config.ControllerType = _controllerTypes[index];
+                
+                // 从主 LibRyujinx.cs 获取控制器类型
+                config.ControllerType = (Ryujinx.Common.Configuration.Hid.ControllerType)GetControllerType(index);
+                
                 _configs[index] = config;
             }
 
             _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
             return int.TryParse(gamepad?.Id, out var idInt) ? idInt : -1;
-        }
-
-        public static void SetControllerType(int deviceId, int controllerType)
-        {
-            if (deviceId < 0 || deviceId >= _controllerTypes.Length)
-                return;
-
-            _controllerTypes[deviceId] = (Ryujinx.Common.Configuration.Hid.ControllerType)controllerType;
-
-            // 如果已经连接，立即更新配置
-            if (_configs[deviceId] != null)
-            {
-                _configs[deviceId].ControllerType = _controllerTypes[deviceId];
-                _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
-            }
         }
 
         private static InputConfig CreateDefaultInputConfig()
@@ -236,11 +217,6 @@ namespace LibRyujinx
         {
             _npadManager?.Update(_aspectRatio);
             _touchScreenManager?.Update(_aspectRatio); // 更新触摸屏状态，传递宽高比
-            
-           // if (SwitchDevice?.EmulationContext?.Hid != null)
-           // {
-           //     SwitchDevice.EmulationContext.Hid.Touchscreen.Update();
-          //  }
         }
     }
 
