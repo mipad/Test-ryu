@@ -126,10 +126,26 @@ class PhysicalControllerManager(val activity: MainActivity) {
 
     fun connect(): Int {
         controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
+        
+        // 注册物理控制器到ControllerManager
+        val deviceName = "Physical Controller" // 这里可以根据实际情况获取设备名称
+        val deviceId = "physical_controller_$controllerId"
+        
+        val physicalController = Controller(
+            id = deviceId,
+            name = deviceName,
+            isVirtual = false
+        )
+        ControllerManager.addController(activity, physicalController)
+        
         return controllerId
     }
 
     fun disconnect() {
+        // 从ControllerManager移除控制器
+        val deviceId = "physical_controller_$controllerId"
+        ControllerManager.removeController(deviceId)
+        
         controllerId = -1
     }
 
