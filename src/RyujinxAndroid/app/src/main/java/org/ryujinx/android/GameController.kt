@@ -9,6 +9,7 @@ import android.graphics.Typeface
 import android.util.TypedValue
 import android.view.KeyEvent
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.Animation
@@ -245,14 +246,14 @@ class GameController(var activity: Activity) {
             val inflator = LayoutInflater.from(context)
             val view = inflator.inflate(R.layout.game_layout, null)
             
-            // 创建独立控件
-            val container = view.findViewById<FrameLayout>(R.id.controller_container)!!
+            // 创建独立控件 - 使用现有的容器或者创建新的
+            val container = view.findViewById<FrameLayout>(R.id.leftcontainer) ?: view.findViewById<FrameLayout>(R.id.rightcontainer) ?: view as FrameLayout
             
             // 添加十字方向键
             val dPad = DPadView(context).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
-                        KeyEvent.ACTION_DOWN, KeyEvent.ACTION_MOVE -> {
+                        MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
                             val x = event.x
                             val y = event.y
                             val centerX = width / 2f
@@ -301,7 +302,7 @@ class GameController(var activity: Activity) {
                             
                             true
                         }
-                        KeyEvent.ACTION_UP -> {
+                        MotionEvent.ACTION_UP -> {
                             setDirection(0)
                             // 释放所有方向键
                             RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadUp.ordinal, controller.controllerId)
@@ -331,12 +332,12 @@ class GameController(var activity: Activity) {
             val aButton = DoubleCircleButtonView(context, "A", GamePadButtonInputId.A.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
-                        KeyEvent.ACTION_DOWN -> {
+                        MotionEvent.ACTION_DOWN -> {
                             setPressedState(true)
                             RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.A.ordinal, controller.controllerId)
                             true
                         }
-                        KeyEvent.ACTION_UP -> {
+                        MotionEvent.ACTION_UP -> {
                             setPressedState(false)
                             RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.A.ordinal, controller.controllerId)
                             true
@@ -349,12 +350,12 @@ class GameController(var activity: Activity) {
             val bButton = DoubleCircleButtonView(context, "B", GamePadButtonInputId.B.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
-                        KeyEvent.ACTION_DOWN -> {
+                        MotionEvent.ACTION_DOWN -> {
                             setPressedState(true)
                             RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.B.ordinal, controller.controllerId)
                             true
                         }
-                        KeyEvent.ACTION_UP -> {
+                        MotionEvent.ACTION_UP -> {
                             setPressedState(false)
                             RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.B.ordinal, controller.controllerId)
                             true
@@ -367,12 +368,12 @@ class GameController(var activity: Activity) {
             val xButton = DoubleCircleButtonView(context, "X", GamePadButtonInputId.X.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
-                        KeyEvent.ACTION_DOWN -> {
+                        MotionEvent.ACTION_DOWN -> {
                             setPressedState(true)
                             RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.X.ordinal, controller.controllerId)
                             true
                         }
-                        KeyEvent.ACTION_UP -> {
+                        MotionEvent.ACTION_UP -> {
                             setPressedState(false)
                             RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.X.ordinal, controller.controllerId)
                             true
@@ -385,12 +386,12 @@ class GameController(var activity: Activity) {
             val yButton = DoubleCircleButtonView(context, "Y", GamePadButtonInputId.Y.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
-                        KeyEvent.ACTION_DOWN -> {
+                        MotionEvent.ACTION_DOWN -> {
                             setPressedState(true)
                             RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.Y.ordinal, controller.controllerId)
                             true
                         }
-                        KeyEvent.ACTION_UP -> {
+                        MotionEvent.ACTION_UP -> {
                             setPressedState(false)
                             RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.Y.ordinal, controller.controllerId)
                             true
@@ -444,12 +445,12 @@ class GameController(var activity: Activity) {
             val lButton = DoubleCircleButtonView(context, "L", GamePadButtonInputId.LeftShoulder.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
-                        KeyEvent.ACTION_DOWN -> {
+                        MotionEvent.ACTION_DOWN -> {
                             setPressedState(true)
                             RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.LeftShoulder.ordinal, controller.controllerId)
                             true
                         }
-                        KeyEvent.ACTION_UP -> {
+                        MotionEvent.ACTION_UP -> {
                             setPressedState(false)
                             RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.LeftShoulder.ordinal, controller.controllerId)
                             true
@@ -462,12 +463,12 @@ class GameController(var activity: Activity) {
             val rButton = DoubleCircleButtonView(context, "R", GamePadButtonInputId.RightShoulder.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
-                        KeyEvent.ACTION_DOWN -> {
+                        MotionEvent.ACTION_DOWN -> {
                             setPressedState(true)
                             RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.RightShoulder.ordinal, controller.controllerId)
                             true
                         }
-                        KeyEvent.ACTION_UP -> {
+                        MotionEvent.ACTION_UP -> {
                             setPressedState(false)
                             RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.RightShoulder.ordinal, controller.controllerId)
                             true
@@ -499,12 +500,12 @@ class GameController(var activity: Activity) {
             val zlButton = DoubleCircleButtonView(context, "ZL", GamePadButtonInputId.LeftTrigger.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
-                        KeyEvent.ACTION_DOWN -> {
+                        MotionEvent.ACTION_DOWN -> {
                             setPressedState(true)
                             RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.LeftTrigger.ordinal, controller.controllerId)
                             true
                         }
-                        KeyEvent.ACTION_UP -> {
+                        MotionEvent.ACTION_UP -> {
                             setPressedState(false)
                             RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.LeftTrigger.ordinal, controller.controllerId)
                             true
@@ -517,12 +518,12 @@ class GameController(var activity: Activity) {
             val zrButton = DoubleCircleButtonView(context, "ZR", GamePadButtonInputId.RightTrigger.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
-                        KeyEvent.ACTION_DOWN -> {
+                        MotionEvent.ACTION_DOWN -> {
                             setPressedState(true)
                             RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.RightTrigger.ordinal, controller.controllerId)
                             true
                         }
-                        KeyEvent.ACTION_UP -> {
+                        MotionEvent.ACTION_UP -> {
                             setPressedState(false)
                             RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.RightTrigger.ordinal, controller.controllerId)
                             true
@@ -554,12 +555,12 @@ class GameController(var activity: Activity) {
             val plusButton = DoubleCircleButtonView(context, "+", GamePadButtonInputId.Plus.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
-                        KeyEvent.ACTION_DOWN -> {
+                        MotionEvent.ACTION_DOWN -> {
                             setPressedState(true)
                             RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.Plus.ordinal, controller.controllerId)
                             true
                         }
-                        KeyEvent.ACTION_UP -> {
+                        MotionEvent.ACTION_UP -> {
                             setPressedState(false)
                             RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.Plus.ordinal, controller.controllerId)
                             true
@@ -572,12 +573,12 @@ class GameController(var activity: Activity) {
             val minusButton = DoubleCircleButtonView(context, "-", GamePadButtonInputId.Minus.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
-                        KeyEvent.ACTION_DOWN -> {
+                        MotionEvent.ACTION_DOWN -> {
                             setPressedState(true)
                             RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.Minus.ordinal, controller.controllerId)
                             true
                         }
-                        KeyEvent.ACTION_UP -> {
+                        MotionEvent.ACTION_UP -> {
                             setPressedState(false)
                             RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.Minus.ordinal, controller.controllerId)
                             true
@@ -609,12 +610,12 @@ class GameController(var activity: Activity) {
             val l3Button = DoubleCircleButtonView(context, "L3", GamePadButtonInputId.LeftStickButton.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
-                        KeyEvent.ACTION_DOWN -> {
+                        MotionEvent.ACTION_DOWN -> {
                             setPressedState(true)
                             RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.LeftStickButton.ordinal, controller.controllerId)
                             true
                         }
-                        KeyEvent.ACTION_UP -> {
+                        MotionEvent.ACTION_UP -> {
                             setPressedState(false)
                             RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.LeftStickButton.ordinal, controller.controllerId)
                             true
@@ -628,12 +629,12 @@ class GameController(var activity: Activity) {
             val r3Button = DoubleCircleButtonView(context, "R3", GamePadButtonInputId.RightStickButton.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
-                        KeyEvent.ACTION_DOWN -> {
+                        MotionEvent.ACTION_DOWN -> {
                             setPressedState(true)
                             RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.RightStickButton.ordinal, controller.controllerId)
                             true
                         }
-                        KeyEvent.ACTION_UP -> {
+                        MotionEvent.ACTION_UP -> {
                             setPressedState(false)
                             RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.RightStickButton.ordinal, controller.controllerId)
                             true
