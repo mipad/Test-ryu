@@ -1817,7 +1817,7 @@ if (showMemoryConfigDialog.value) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(8.dp)
-                .clickable { showControllerTypeDialog = true },
+                .clickable { showControllerTypeDialog = 0 },
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
