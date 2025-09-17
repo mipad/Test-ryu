@@ -97,6 +97,8 @@ interface RyujinxNativeJna : Library {
     fun setAntiAliasing(mode: Int)
     // 添加设置内存配置的方法
     fun setMemoryConfiguration(memoryConfiguration: Int)
+    // 添加设置控制器类型的方法
+    fun setControllerType(deviceId: Int, controllerType: Int)
     
     // 金手指相关方法
     fun cheatGetCheats(titleId: String, gamePath: String): Array<String>
@@ -188,6 +190,12 @@ class RyujinxNative {
         @JvmStatic
         fun setMemoryConfiguration(memoryConfiguration: Int) {
             jnaInstance.setMemoryConfiguration(memoryConfiguration)
+        }
+        
+        // 添加设置控制器类型的静态方法
+        @JvmStatic
+        fun setControllerType(deviceId: Int, controllerType: Int) {
+            jnaInstance.setControllerType(deviceId, controllerType)
         }
         
         // 金手指相关静态方法
