@@ -104,7 +104,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         systemLanguage.value = sharedPref.getInt("systemLanguage", SystemLanguage.AmericanEnglish.ordinal) // 默认美式英语
         audioEngineType.value = sharedPref.getInt("audioEngineType", 1) // 默认OpenAL
         scalingFilter.value = sharedPref.getInt("scalingFilter", 0) // 默认：最近邻
-        scalingFilterLevel.value = sharedPref.getInt("scalingFilterLevel", 80) // 默认级别：80
+        scalingFilterLevel.value = sharedPref.getInt("scalingFilterLevel", 0) // 默认级别：0
         antiAliasing.value = sharedPref.getInt("antiAliasing", 0) // 默认关闭
         memoryConfiguration.value = sharedPref.getInt("memoryConfiguration", 0) // 默认4GB
         controllerType.value = sharedPref.getInt("controllerType", 0) // 默认Pro控制器
