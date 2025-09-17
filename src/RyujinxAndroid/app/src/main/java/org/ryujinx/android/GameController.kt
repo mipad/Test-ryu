@@ -45,27 +45,27 @@ class DoubleCircleButtonView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
     private val outerCirclePaint = Paint().apply {
-        color = Color.argb(128, 255, 255, 255)
-        style = Paint.Style.STROKE
+        color = Color.argb(180, 100, 100, 100)
+        style = Paint.Style.FILL
         strokeWidth = 4f
         isAntiAlias = true
     }
     
     private val innerCirclePaint = Paint().apply {
-        color = Color.argb(64, 200, 200, 200)
+        color = Color.argb(220, 60, 60, 60)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val pressedInnerCirclePaint = Paint().apply {
-        color = Color.argb(128, 150, 150, 150)
+        color = Color.argb(220, 120, 120, 120)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val textPaint = Paint().apply {
         color = Color.WHITE
-        textSize = 20f
+        textSize = 24f
         textAlign = Paint.Align.CENTER
         typeface = Typeface.DEFAULT_BOLD
         isAntiAlias = true
@@ -77,7 +77,7 @@ class DoubleCircleButtonView @JvmOverloads constructor(
         isPressed = pressed
         if (pressed) {
             val scaleAnimation = ScaleAnimation(
-                1.0f, 0.8f, 1.0f, 0.8f,
+                1.0f, 0.85f, 1.0f, 0.85f,
                 Animation.RELATIVE_TO_SELF, 0.5f,
                 Animation.RELATIVE_TO_SELF, 0.5f
             )
@@ -86,7 +86,7 @@ class DoubleCircleButtonView @JvmOverloads constructor(
             startAnimation(scaleAnimation)
         } else {
             val scaleAnimation = ScaleAnimation(
-                0.8f, 1.0f, 0.8f, 1.0f,
+                0.85f, 1.0f, 0.85f, 1.0f,
                 Animation.RELATIVE_TO_SELF, 0.5f,
                 Animation.RELATIVE_TO_SELF, 0.5f
             )
@@ -103,7 +103,7 @@ class DoubleCircleButtonView @JvmOverloads constructor(
         val centerX = width / 2f
         val centerY = height / 2f
         val outerRadius = (width.coerceAtMost(height) / 2f) * 0.9f
-        val innerRadius = outerRadius * 0.6f
+        val innerRadius = outerRadius * 0.7f
         
         canvas.drawCircle(centerX, centerY, outerRadius, outerCirclePaint)
         canvas.drawCircle(centerX, centerY, innerRadius, 
@@ -114,7 +114,7 @@ class DoubleCircleButtonView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(70)
+        val size = dpToPx(60)
         setMeasuredDimension(size, size)
     }
     
@@ -127,26 +127,32 @@ class DoubleCircleButtonView @JvmOverloads constructor(
     }
 }
 
-// 自定义十字方向键视图
+// 自定义十字方向键视图 - 修改为截图4的样式
 class DPadView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
-    private val paint = Paint().apply {
-        color = Color.argb(128, 255, 255, 255)
+    private val basePaint = Paint().apply {
+        color = Color.argb(180, 100, 100, 100)
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+    
+    private val armPaint = Paint().apply {
+        color = Color.argb(220, 60, 60, 60)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val pressedPaint = Paint().apply {
-        color = Color.argb(180, 200, 200, 200)
+        color = Color.argb(220, 120, 120, 120)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val centerPaint = Paint().apply {
-        color = Color.argb(180, 100, 100, 100)
+        color = Color.argb(220, 80, 80, 80)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
@@ -171,7 +177,7 @@ class DPadView @JvmOverloads constructor(
                 val dy = y - centerY
                 val distance = sqrt(dx * dx + dy * dy)
                 
-                if (distance > width / 6f) {
+                if (distance > width / 8f) {
                     val angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
                     val newDirection = calculateDirection(angle)
                     if (newDirection != currentDirection) {
@@ -218,71 +224,39 @@ class DPadView @JvmOverloads constructor(
         
         val centerX = width / 2f
         val centerY = height / 2f
-        val radius = width / 3f
+        val baseRadius = width / 3f
         val armLength = width / 3f
         val armWidth = width / 4f
         
+        // Draw base circle
+        canvas.drawCircle(centerX, centerY, baseRadius, basePaint)
+        
         // Draw center circle
-        canvas.drawCircle(centerX, centerY, radius / 2, centerPaint)
+        canvas.drawCircle(centerX, centerY, baseRadius / 2, centerPaint)
         
         // Draw arms based on current direction
-        when (currentDirection) {
-            Direction.UP -> {
-                canvas.drawRect(centerX - armWidth / 2, centerY - armLength, 
-                               centerX + armWidth / 2, centerY, pressedPaint)
-            }
-            Direction.DOWN -> {
-                canvas.drawRect(centerX - armWidth / 2, centerY, 
-                               centerX + armWidth / 2, centerY + armLength, pressedPaint)
-            }
-            Direction.LEFT -> {
-                canvas.drawRect(centerX - armLength, centerY - armWidth / 2, 
-                               centerX, centerY + armWidth / 2, pressedPaint)
-            }
-            Direction.RIGHT -> {
-                canvas.drawRect(centerX, centerY - armWidth / 2, 
-                               centerX + armLength, centerY + armWidth / 2, pressedPaint)
-            }
-            Direction.UP_LEFT -> {
-                canvas.drawRect(centerX - armLength, centerY - armWidth / 2, 
-                               centerX, centerY + armWidth / 2, pressedPaint)
-                canvas.drawRect(centerX - armWidth / 2, centerY - armLength, 
-                               centerX + armWidth / 2, centerY, pressedPaint)
-            }
-            Direction.UP_RIGHT -> {
-                canvas.drawRect(centerX, centerY - armWidth / 2, 
-                               centerX + armLength, centerY + armWidth / 2, pressedPaint)
-                canvas.drawRect(centerX - armWidth / 2, centerY - armLength, 
-                               centerX + armWidth / 2, centerY, pressedPaint)
-            }
-            Direction.DOWN_LEFT -> {
-                canvas.drawRect(centerX - armLength, centerY - armWidth / 2, 
-                               centerX, centerY + armWidth / 2, pressedPaint)
-                canvas.drawRect(centerX - armWidth / 2, centerY, 
-                               centerX + armWidth / 2, centerY + armLength, pressedPaint)
-            }
-            Direction.DOWN_RIGHT -> {
-                canvas.drawRect(centerX, centerY - armWidth / 2, 
-                               centerX + armLength, centerY + armWidth / 2, pressedPaint)
-                canvas.drawRect(centerX - armWidth / 2, centerY, 
-                               centerX + armWidth / 2, centerY + armLength, pressedPaint)
-            }
-            else -> {
-                // Draw all arms in default state
-                canvas.drawRect(centerX - armWidth / 2, centerY - armLength, 
-                               centerX + armWidth / 2, centerY, paint)
-                canvas.drawRect(centerX - armWidth / 2, centerY, 
-                               centerX + armWidth / 2, centerY + armLength, paint)
-                canvas.drawRect(centerX - armLength, centerY - armWidth / 2, 
-                               centerX, centerY + armWidth / 2, paint)
-                canvas.drawRect(centerX, centerY - armWidth / 2, 
-                               centerX + armWidth / 2, centerY + armWidth / 2, paint)
-            }
-        }
+        val paintToUse = if (currentDirection != Direction.NONE) pressedPaint else armPaint
+        
+        // Always draw all arms, but highlight pressed ones
+        canvas.drawRect(centerX - armWidth / 2, centerY - armLength, 
+                       centerX + armWidth / 2, centerY - armWidth / 2, 
+                       if (currentDirection.toString().contains("UP")) pressedPaint else armPaint)
+        
+        canvas.drawRect(centerX - armWidth / 2, centerY + armWidth / 2, 
+                       centerX + armWidth / 2, centerY + armLength, 
+                       if (currentDirection.toString().contains("DOWN")) pressedPaint else armPaint)
+        
+        canvas.drawRect(centerX - armLength, centerY - armWidth / 2, 
+                       centerX - armWidth / 2, centerY + armWidth / 2, 
+                       if (currentDirection.toString().contains("LEFT")) pressedPaint else armPaint)
+        
+        canvas.drawRect(centerX + armWidth / 2, centerY - armWidth / 2, 
+                       centerX + armLength, centerY + armWidth / 2, 
+                       if (currentDirection.toString().contains("RIGHT")) pressedPaint else armPaint)
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(150)
+        val size = dpToPx(120)
         setMeasuredDimension(size, size)
     }
     
@@ -302,13 +276,13 @@ class JoystickView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
     private val basePaint = Paint().apply {
-        color = Color.argb(128, 100, 100, 100)
+        color = Color.argb(180, 100, 100, 100)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val stickPaint = Paint().apply {
-        color = Color.argb(180, 200, 200, 200)
+        color = Color.argb(220, 60, 60, 60)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
@@ -327,7 +301,7 @@ class JoystickView @JvmOverloads constructor(
         centerX = w / 2f
         centerY = h / 2f
         baseRadius = (w.coerceAtMost(h) / 2f) * 0.8f
-        stickRadius = baseRadius * 0.4f
+        stickRadius = baseRadius * 0.5f
         stickX = centerX
         stickY = centerY
     }
@@ -377,7 +351,7 @@ class JoystickView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(150)
+        val size = dpToPx(120)
         setMeasuredDimension(size, size)
     }
     
@@ -390,38 +364,37 @@ class JoystickView @JvmOverloads constructor(
     }
 }
 
-// 自定义ABXY按钮组（菱形排列，类似Switch布局）
+// 自定义ABXY按钮组（圆形排列）- 修改为截图4的样式并添加动画
 class ABXYButtonsView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
     private val buttonPaint = Paint().apply {
-        color = Color.argb(180, 100, 100, 100)
+        color = Color.argb(220, 60, 60, 60)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val pressedButtonPaint = Paint().apply {
-        color = Color.argb(220, 150, 150, 150)
+        color = Color.argb(220, 120, 120, 120)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val textPaint = Paint().apply {
         color = Color.WHITE
-        textSize = 24f
+        textSize = 28f
         textAlign = Paint.Align.CENTER
         typeface = Typeface.DEFAULT_BOLD
         isAntiAlias = true
     }
     
-    // 菱形排列的按钮位置（与圆形排列不同）
     private val buttons = listOf(
-        ButtonInfo("A", GamePadButtonInputId.A.ordinal, 0f, 1f, Color.argb(180, 0, 180, 0)), // 下
-        ButtonInfo("B", GamePadButtonInputId.B.ordinal, 1f, 0f, Color.argb(180, 200, 0, 0)), // 右
-        ButtonInfo("X", GamePadButtonInputId.X.ordinal, -1f, 0f, Color.argb(180, 0, 0, 200)), // 左
-        ButtonInfo("Y", GamePadButtonInputId.Y.ordinal, 0f, -1f, Color.argb(180, 220, 220, 0)) // 上
+        ButtonInfo("A", GamePadButtonInputId.A.ordinal, 0f, 1f),
+        ButtonInfo("B", GamePadButtonInputId.B.ordinal, 1f, 0f),
+        ButtonInfo("X", GamePadButtonInputId.X.ordinal, -1f, 0f),
+        ButtonInfo("Y", GamePadButtonInputId.Y.ordinal, 0f, -1f)
     )
     
     private var centerX = 0f
@@ -434,8 +407,7 @@ class ABXYButtonsView @JvmOverloads constructor(
         val text: String, 
         val id: Int, 
         val xMultiplier: Float, 
-        val yMultiplier: Float,
-        val color: Int
+        val yMultiplier: Float
     )
     
     var onButtonPressed: ((Int) -> Unit)? = null
@@ -446,7 +418,7 @@ class ABXYButtonsView @JvmOverloads constructor(
         centerX = w / 2f
         centerY = h / 2f
         radius = (w.coerceAtMost(h) / 2f) * 0.7f
-        buttonRadius = radius * 0.3f
+        buttonRadius = radius * 0.4f  // 增大按钮尺寸
     }
     
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -473,10 +445,14 @@ class ABXYButtonsView @JvmOverloads constructor(
                 if (hitButton != pressedButton) {
                     pressedButton?.let {
                         onButtonReleased?.invoke(it.id)
+                        // 添加回弹动画
+                        animateButton(it, false)
                     }
                     pressedButton = hitButton
                     hitButton?.let {
                         onButtonPressed?.invoke(it.id)
+                        // 添加按下动画
+                        animateButton(it, true)
                     }
                     invalidate()
                 }
@@ -485,6 +461,8 @@ class ABXYButtonsView @JvmOverloads constructor(
             MotionEvent.ACTION_UP -> {
                 pressedButton?.let {
                     onButtonReleased?.invoke(it.id)
+                    // 添加回弹动画
+                    animateButton(it, false)
                     pressedButton = null
                     invalidate()
                 }
@@ -492,6 +470,23 @@ class ABXYButtonsView @JvmOverloads constructor(
             }
         }
         return super.onTouchEvent(event)
+    }
+    
+    private fun animateButton(button: ButtonInfo, isPressed: Boolean) {
+        val buttonX = centerX + button.xMultiplier * radius
+        val buttonY = centerY + button.yMultiplier * radius
+        
+        val scaleAnimation = ScaleAnimation(
+            if (isPressed) 1.0f else 0.85f,
+            if (isPressed) 0.85f else 1.0f,
+            if (isPressed) 1.0f else 0.85f,
+            if (isPressed) 0.85f else 1.0f,
+            Animation.RELATIVE_TO_SELF, 0.5f,
+            Animation.RELATIVE_TO_SELF, 0.5f
+        )
+        scaleAnimation.duration = 100
+        scaleAnimation.fillAfter = true
+        startAnimation(scaleAnimation)
     }
     
     override fun onDraw(canvas: Canvas) {
@@ -503,7 +498,6 @@ class ABXYButtonsView @JvmOverloads constructor(
             
             val isPressed = button == pressedButton
             val paint = if (isPressed) pressedButtonPaint else buttonPaint
-            paint.color = button.color
             
             canvas.drawCircle(buttonX, buttonY, buttonRadius, paint)
             
@@ -513,7 +507,7 @@ class ABXYButtonsView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(150)
+        val size = dpToPx(140)  // 增大整体尺寸
         setMeasuredDimension(size, size)
     }
     
@@ -536,7 +530,7 @@ class GameController(var activity: Activity) {
             val leftContainer = view.findViewById<FrameLayout>(R.id.leftcontainer)!!
             val rightContainer = view.findViewById<FrameLayout>(R.id.rightcontainer)!!
             
-            // 添加左侧摇杆 - 位置调整到左上角
+            // 添加左侧摇杆
             val leftStick = JoystickView(context).apply {
                 onPositionChanged = { x, y ->
                     val setting = QuickSettings(controller.activity)
@@ -555,14 +549,14 @@ class GameController(var activity: Activity) {
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                gravity = android.view.Gravity.TOP or android.view.Gravity.START
-                topMargin = dpToPx(context, 30)
-                leftMargin = dpToPx(context, 30)
+                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
+                bottomMargin = dpToPx(context, 20)
+                leftMargin = dpToPx(context, 20)
             }
             leftContainer.addView(leftStick, leftStickParams)
             controller.leftStick = leftStick
             
-            // 添加右侧摇杆 - 位置调整到右上角
+            // 添加右侧摇杆
             val rightStick = JoystickView(context).apply {
                 onPositionChanged = { x, y ->
                     val setting = QuickSettings(controller.activity)
@@ -581,14 +575,14 @@ class GameController(var activity: Activity) {
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                gravity = android.view.Gravity.TOP or android.view.Gravity.END
-                topMargin = dpToPx(context, 30)
-                rightMargin = dpToPx(context, 30)
+                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
+                bottomMargin = dpToPx(context, 20)
+                rightMargin = dpToPx(context, 20)
             }
             rightContainer.addView(rightStick, rightStickParams)
             controller.rightStick = rightStick
             
-            // 添加十字方向键 - 位置调整到左下角
+            // 添加十字方向键 - 调整位置
             val dPad = DPadView(context).apply {
                 onDirectionChanged = { direction ->
                     when (direction) {
@@ -654,14 +648,13 @@ class GameController(var activity: Activity) {
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
-                bottomMargin = dpToPx(context, 30)
-                leftMargin = dpToPx(context, 30)
+                gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
+                leftMargin = dpToPx(context, 20)
             }
             leftContainer.addView(dPad, dPadParams)
             controller.dPad = dPad
             
-            // 添加ABXY按钮 - 位置调整到右下角
+            // 添加ABXY按钮 - 调整位置
             val abxyButtons = ABXYButtonsView(context).apply {
                 onButtonPressed = { buttonId ->
                     RyujinxNative.jnaInstance.inputSetButtonPressed(buttonId, controller.controllerId)
@@ -675,14 +668,13 @@ class GameController(var activity: Activity) {
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
-                bottomMargin = dpToPx(context, 30)
-                rightMargin = dpToPx(context, 30)
+                gravity = android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL
+                rightMargin = dpToPx(context, 20)
             }
             rightContainer.addView(abxyButtons, abxyParams)
             controller.abxyButtons = abxyButtons
             
-            // 添加L按钮 - 位置调整到左上角
+            // 添加L按钮 - 调整位置
             val lButton = DoubleCircleButtonView(context, "L", GamePadButtonInputId.LeftShoulder.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
@@ -712,13 +704,13 @@ class GameController(var activity: Activity) {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.START
-                topMargin = dpToPx(context, 30)
-                leftMargin = dpToPx(context, 150)
+                topMargin = dpToPx(context, 20)
+                leftMargin = dpToPx(context, 120)
             }
             leftContainer.addView(lButton, lButtonParams)
             controller.lButton = lButton
             
-            // 添加R按钮 - 位置调整到右上角
+            // 添加R按钮 - 调整位置
             val rButton = DoubleCircleButtonView(context, "R", GamePadButtonInputId.RightShoulder.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
@@ -748,13 +740,13 @@ class GameController(var activity: Activity) {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.END
-                topMargin = dpToPx(context, 30)
-                rightMargin = dpToPx(context, 150)
+                topMargin = dpToPx(context, 20)
+                rightMargin = dpToPx(context, 120)
             }
             rightContainer.addView(rButton, rButtonParams)
             controller.rButton = rButton
             
-            // 添加ZL按钮 - 位置调整到左上角，L按钮下方
+            // 添加ZL按钮 - 调整位置
             val zlButton = DoubleCircleButtonView(context, "ZL", GamePadButtonInputId.LeftTrigger.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
@@ -784,13 +776,13 @@ class GameController(var activity: Activity) {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.START
-                topMargin = dpToPx(context, 100)
-                leftMargin = dpToPx(context, 150)
+                topMargin = dpToPx(context, 10)
+                leftMargin = dpToPx(context, 60)
             }
             leftContainer.addView(zlButton, zlButtonParams)
             controller.zlButton = zlButton
             
-            // 添加ZR按钮 - 位置调整到右上角，R按钮下方
+            // 添加ZR按钮 - 调整位置
             val zrButton = DoubleCircleButtonView(context, "ZR", GamePadButtonInputId.RightTrigger.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
@@ -820,13 +812,13 @@ class GameController(var activity: Activity) {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = android.view.Gravity.TOP or android.view.Gravity.END
-                topMargin = dpToPx(context, 100)
-                rightMargin = dpToPx(context, 150)
+                topMargin = dpToPx(context, 10)
+                rightMargin = dpToPx(context, 60)
             }
             rightContainer.addView(zrButton, zrButtonParams)
             controller.zrButton = zrButton
             
-            // 添加Minus按钮 - 位置调整到左侧中间
+            // 添加Minus按钮 - 调整位置
             val minusButton = DoubleCircleButtonView(context, "-", GamePadButtonInputId.Minus.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
@@ -855,13 +847,14 @@ class GameController(var activity: Activity) {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
-                gravity = android.view.Gravity.CENTER or android.view.Gravity.START
-                leftMargin = dpToPx(context, 30)
+                gravity = android.view.Gravity.TOP or android.view.Gravity.START
+                topMargin = dpToPx(context, 80)
+                leftMargin = dpToPx(context, 180)
             }
             leftContainer.addView(minusButton, minusButtonParams)
             controller.minusButton = minusButton
             
-            // 添加Plus按钮 - 位置调整到右侧中间
+            // 添加Plus按钮 - 调整位置
             val plusButton = DoubleCircleButtonView(context, "+", GamePadButtonInputId.Plus.ordinal).apply {
                 setOnTouchListener { _, event ->
                     when (event.action) {
@@ -890,83 +883,12 @@ class GameController(var activity: Activity) {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
-                gravity = android.view.Gravity.CENTER or android.view.Gravity.END
-                rightMargin = dpToPx(context, 30)
+                gravity = android.view.Gravity.TOP or android.view.Gravity.END
+                topMargin = dpToPx(context, 80)
+                rightMargin = dpToPx(context, 180)
             }
             rightContainer.addView(plusButton, plusButtonParams)
             controller.plusButton = plusButton
-            
-            // 添加L3按钮 - 位置调整到左侧摇杆下方
-            val l3Button = DoubleCircleButtonView(context, "L3", GamePadButtonInputId.LeftStickButton.ordinal).apply {
-                setOnTouchListener { _, event ->
-                    when (event.action) {
-                        MotionEvent.ACTION_DOWN -> {
-                            setPressedState(true)
-                            RyujinxNative.jnaInstance.inputSetButtonPressed(
-                                GamePadButtonInputId.LeftStickButton.ordinal,
-                                controller.controllerId
-                            )
-                            true
-                        }
-                        MotionEvent.ACTION_UP -> {
-                            setPressedState(false)
-                            RyujinxNative.jnaInstance.inputSetButtonReleased(
-                                GamePadButtonInputId.LeftStickButton.ordinal,
-                                controller.controllerId
-                            )
-                            true
-                        }
-                        else -> false
-                    }
-                }
-            }
-            
-            val l3ButtonParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                gravity = android.view.Gravity.TOP or android.view.Gravity.START
-                topMargin = dpToPx(context, 180)
-                leftMargin = dpToPx(context, 80)
-            }
-            leftContainer.addView(l3Button, l3ButtonParams)
-            controller.l3Button = l3Button
-            
-            // 添加R3按钮 - 位置调整到右侧摇杆下方
-            val r3Button = DoubleCircleButtonView(context, "R3", GamePadButtonInputId.RightStickButton.ordinal).apply {
-                setOnTouchListener { _, event ->
-                    when (event.action) {
-                        MotionEvent.ACTION_DOWN -> {
-                            setPressedState(true)
-                            RyujinxNative.jnaInstance.inputSetButtonPressed(
-                                GamePadButtonInputId.RightStickButton.ordinal,
-                                controller.controllerId
-                            )
-                            true
-                        }
-                        MotionEvent.ACTION_UP -> {
-                            setPressedState(false)
-                            RyujinxNative.jnaInstance.inputSetButtonReleased(
-                                GamePadButtonInputId.RightStickButton.ordinal,
-                                controller.controllerId
-                            )
-                            true
-                        }
-                        else -> false
-                    }
-                }
-            }
-            
-            val r3ButtonParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                gravity = android.view.Gravity.TOP or android.view.Gravity.END
-                topMargin = dpToPx(context, 180)
-                rightMargin = dpToPx(context, 80)
-            }
-            rightContainer.addView(r3Button, r3ButtonParams)
-            controller.r3Button = r3Button
             
             return view
         }
@@ -978,22 +900,9 @@ class GameController(var activity: Activity) {
                 context.resources.displayMetrics
             ).toInt()
         }
-
-        @Composable
-        fun Compose(viewModel: MainViewModel): Unit {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(), factory = { context ->
-                    val controller = GameController(viewModel.activity)
-                    val c = Create(context, controller)
-                    controller.controllerView = c
-                    viewModel.setGameController(controller)
-                    controller.setVisible(QuickSettings(viewModel.activity).useVirtualController)
-                    c
-                })
-        }
     }
-
-    private var controllerView: View? = null
+    
+    var controllerId = 0
     var leftStick: JoystickView? = null
     var rightStick: JoystickView? = null
     var dPad: DPadView? = null
@@ -1004,54 +913,113 @@ class GameController(var activity: Activity) {
     var zrButton: DoubleCircleButtonView? = null
     var minusButton: DoubleCircleButtonView? = null
     var plusButton: DoubleCircleButtonView? = null
-    var l3Button: DoubleCircleButtonView? = null
-    var r3Button: DoubleCircleButtonView? = null
-    var controllerId: Int = -1
-    val isVisible: Boolean
-        get() {
-            controllerView?.apply {
-                return this.isVisible
-            }
-            return false
-        }
-
-    init {
-        // 初始化时连接游戏手柄
-        connect()
-    }
-
-    fun setVisible(isVisible: Boolean) {
-        controllerView?.apply {
-            this.isVisible = isVisible
-            leftStick?.isVisible = isVisible
-            rightStick?.isVisible = isVisible
-            dPad?.isVisible = isVisible
-            abxyButtons?.isVisible = isVisible
-            lButton?.isVisible = isVisible
-            rButton?.isVisible = isVisible
-            zlButton?.isVisible = isVisible
-            zrButton?.isVisible = isVisible
-            minusButton?.isVisible = isVisible
-            plusButton?.isVisible = isVisible
-            l3Button?.isVisible = isVisible
-            r3Button?.isVisible = isVisible
-
-            if (isVisible)
-                connect()
-        }
-    }
-
-    fun connect() {
-        if (controllerId == -1)
-            controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
+    
+    fun createView(context: Context): View {
+        return Create(context, this)
     }
 }
 
-suspend fun <T> Flow<T>.safeCollect(
-    block: suspend (T) -> Unit
-) {
-    this.catch {}
-        .collect {
-            block(it)
+// 游戏控制器布局文件 (game_layout.xml)
+/*
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+    
+    <FrameLayout
+        android:id="@+id/leftcontainer"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1" />
+        
+    <FrameLayout
+        android:id="@+id/rightcontainer"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1" />
+        
+</FrameLayout>
+*/
+
+// 在MainActivity中使用
+class MainActivity : AppCompatActivity() {
+    private lateinit var viewModel: MainViewModel
+    private lateinit var gameController: GameController
+    
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        setContent {
+            RyujinxAppTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colors.background
+                ) {
+                    GameControllerView()
+                }
+            }
         }
+        
+        viewModel = ViewModelProvider(this)[MainViewModel::class.java]
+        gameController = GameController(this)
+        
+        lifecycleScope.launch {
+            viewModel.isGameRunning.collect { isRunning ->
+                if (isRunning) {
+                    // 显示游戏控制器
+                    showGameController()
+                } else {
+                    // 隐藏游戏控制器
+                    hideGameController()
+                }
+            }
+        }
+    }
+    
+    @Composable
+    fun GameControllerView() {
+        AndroidView(
+            factory = { context ->
+                gameController.createView(context)
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+    
+    private fun showGameController() {
+        // 显示游戏控制器的逻辑
+    }
+    
+    private fun hideGameController() {
+        // 隐藏游戏控制器的逻辑
+    }
+}
+
+// 游戏按钮输入ID枚举
+enum class GamePadButtonInputId {
+    A, B, X, Y,
+    LeftStick, RightStick,
+    L, R, ZL, ZR,
+    Plus, Minus,
+    DpadUp, DpadDown, DpadLeft, DpadRight
+}
+
+// RyujinxNative类
+object RyujinxNative {
+    val jnaInstance = RyujinxJNA()
+    
+    class RyujinxJNA {
+        fun inputSetButtonPressed(buttonId: Int, controllerId: Int) {
+            // 实现按钮按下逻辑
+        }
+        
+        fun inputSetButtonReleased(buttonId: Int, controllerId: Int) {
+            // 实现按钮释放逻辑
+        }
+        
+        fun inputSetStickAxis(stickId: Int, x: Float, y: Float, controllerId: Int) {
+            // 实现摇杆轴输入逻辑
+        }
+    }
 }
