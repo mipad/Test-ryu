@@ -1,55 +1,57 @@
-// ControllerManager.kt
 package org.ryujinx.android
 
 import android.content.Context
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
-object ControllerManager {
-    private val _connectedControllers = MutableLiveData<List<Controller>>(emptyList())
-    val connectedControllers: LiveData<List<Controller>> = _connectedControllers
+val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "controller_settings")
+
+object ControllerTypeManager {
+    private const val CONTROLLER_TYPES_KEY = "controller_types"
     
-    fun addController(context: Context, controller: Controller) {
-        val currentList = _connectedControllers.value?.toMutableList() ?: mutableListOf()
-        
-        if (!currentList.any { it.id == controller.id }) {
-            currentList.add(controller)
-            _connectedControllers.postValue(currentList)
-            
-            // 尝试加载保存的类型配置
-            CoroutineScope(Dispatchers.IO).launch {
-                val savedType = ControllerTypeManager.loadAllControllerTypes(context)[controller.id]
-                savedType?.let {
-                    val updatedList = currentList.map { 
-                        if (it.id == controller.id) it.copy(controllerType = it) 
-                        else it
-                    }
-                    _connectedControllers.postValue(updatedList)
-                }
-            }
+    suspend fun saveControllerType(context: Context, controllerId: String, type: ControllerType) {
+        val currentMap = loadAllControllerTypes(context).toMutableMap()
+        currentMap[controllerId] = type
+        saveAllControllerTypes(context, currentMap)
+    }
+    
+    fun getControllerType(context: Context, controllerId: String): Flow<ControllerType> {
+        return context.dataStore.data.map { preferences ->
+            val json = preferences[stringPreferencesKey(CONTROLLER_TYPES_KEY)] ?: "{}"
+            val typeMap = Json.decodeFromString<Map<String, ControllerType>>(json)
+            typeMap[controllerId] ?: ControllerType.PRO_CONTROLLER
         }
     }
     
-    fun removeController(controllerId: String) {
-        val currentList = _connectedControllers.value?.toMutableList() ?: return
-        currentList.removeAll { it.id == controllerId }
-        _connectedControllers.postValue(currentList)
+    suspend fun loadAllControllerTypes(context: Context): Map<String, ControllerType> {
+        val preferences = context.dataStore.data.firstOrNull() ?: return emptyMap()
+        val json = preferences[stringPreferencesKey(CONTROLLER_TYPES_KEY)] ?: "{}"
+        return try {
+            Json.decodeFromString(json)
+        } catch (e: Exception) {
+            emptyMap()
+        }
     }
     
-    fun updateControllerType(context: Context, controllerId: String, newType: ControllerType) {
-        val currentList = _connectedControllers.value?.toMutableList() ?: return
-        val updatedList = currentList.map { 
-            if (it.id == controllerId) it.copy(controllerType = newType) 
-            else it 
+    private suspend fun saveAllControllerTypes(context: Context, typeMap: Map<String, ControllerType>) {
+        context.dataStore.edit { preferences ->
+            val json = Json.encodeToString(typeMap)
+            preferences[stringPreferencesKey(CONTROLLER_TYPES_KEY)] = json
         }
-        _connectedControllers.postValue(updatedList)
-        
-        // 保存到持久化存储
-        CoroutineScope(Dispatchers.IO).launch {
-            ControllerTypeManager.saveControllerType(context, controllerId, newType)
-        }
+    }
+    
+    suspend fun removeControllerType(context: Context, controllerId: String) {
+        val currentMap = loadAllControllerTypes(context).toMutableMap()
+        currentMap.remove(controllerId)
+        saveAllControllerTypes(context, currentMap)
     }
 }
