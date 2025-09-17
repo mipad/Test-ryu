@@ -24,7 +24,7 @@ object ControllerManager {
                 val savedType = ControllerTypeManager.loadAllControllerTypes(context)[controller.id]
                 savedType?.let {
                     val updatedList = currentList.map { 
-                        if (it.id == controller.id) it.copy(controllerType = it) 
+                        if (it.id == controller.id) it.copy(controllerType = savedType) 
                         else it
                     }
                     _connectedControllers.postValue(updatedList)
