@@ -52,9 +52,6 @@ namespace LibRyujinx
         // 添加静态字段来存储内存配置
         private static MemoryConfiguration _currentMemoryConfiguration = MemoryConfiguration.MemoryConfiguration8GiB;
 
-        // 添加静态字段来存储控制器类型配置
-        private static int[] _controllerTypes = new int[4] { 0, 0, 0, 0 }; // 默认所有控制器为ProController
-
         public static bool Initialize(string? basePath)
         {
             if (SwitchDevice != null)
@@ -131,32 +128,6 @@ namespace LibRyujinx
         public static MemoryConfiguration GetMemoryConfiguration()
         {
             return _currentMemoryConfiguration;
-        }
-
-        // 添加设置控制器类型的方法
-        public static void SetControllerType(int deviceId, int controllerType)
-        {
-            if (deviceId >= 0 && deviceId < _controllerTypes.Length)
-            {
-                _controllerTypes[deviceId] = controllerType;
-                Logger.Info?.Print(LogClass.Emulation, $"Controller {deviceId} type set to: {controllerType}");
-                
-                // 如果设备已初始化，可能需要重新加载输入配置
-                if (SwitchDevice?.EmulationContext != null)
-                {
-                    Logger.Info?.Print(LogClass.Emulation, "Controller type change may require input configuration reload");
-                }
-            }
-        }
-
-        // 添加获取控制器类型的方法
-        public static int GetControllerType(int deviceId)
-        {
-            if (deviceId >= 0 && deviceId < _controllerTypes.Length)
-            {
-                return _controllerTypes[deviceId];
-            }
-            return 0; // 默认ProController
         }
 
         public static void InitializeAudio()
@@ -920,8 +891,7 @@ namespace LibRyujinx
                                       bool enableInternetAccess,
                                       string? timeZone,
                                       bool ignoreMissingServices,
-                                      MemoryConfiguration memoryConfiguration,
-                                      int[] controllerTypes)  // 新增控制器类型配置参数
+                                      MemoryConfiguration memoryConfiguration)  // 新增内存配置参数
         {
             if (LibRyujinx.Renderer == null)
             {
@@ -933,7 +903,6 @@ namespace LibRyujinx
             Logger.Info?.Print(LogClass.Application, $"Initializing device context with parameters:");
             Logger.Info?.Print(LogClass.Application, $"  - Memory Configuration: {memoryConfiguration}");
             Logger.Info?.Print(LogClass.Application, $"  - Aspect Ratio: {LibRyujinx.GetAspectRatio()}");
-            Logger.Info?.Print(LogClass.Application, $"  - Controller Types: [{string.Join(", ", controllerTypes)}]");
             Logger.Info?.Print(LogClass.Application, $"  - Host Mapped: {isHostMapped}");
             Logger.Info?.Print(LogClass.Application, $"  - Hypervisor: {useHypervisor}");
             Logger.Info?.Print(LogClass.Application, $"  - Vsync: {enableVsync}");
@@ -986,8 +955,7 @@ namespace LibRyujinx
                                                                   100,
                                                                   useHypervisor,
                                                                   "",
-                                                                  Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled,
-                                                                  controllerTypes);  // 传递控制器类型配置
+                                                                  Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled);
 
             try
             {
@@ -1020,123 +988,58 @@ namespace LibRyujinx
             LibRyujinx.Renderer = null;
             Logger.Info?.Print(LogClass.Application, "Device context disposed");
         }
-
-        public void LoadGame(string filePath)
-        {
-            if (EmulationContext == null)
-            {
-                Logger.Error?.Print(LogClass.Application, "Emulation context is not initialized. Cannot load game.");
-                return;
-            }
-
-            Logger.Info?.Print(LogClass.Application, $"Loading game: {filePath}");
-
-            try
-            {
-                EmulationContext.LoadGame(filePath);
-                Logger.Info?.Print(LogClass.Application, "Game loaded successfully");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.Application, $"Failed to load game: {ex.Message}");
-            }
-        }
-
-        public void StartEmulation()
-        {
-            if (EmulationContext == null)
-            {
-                Logger.Error?.Print(LogClass.Application, "Emulation context is not initialized. Cannot start emulation.");
-                return;
-            }
-
-            Logger.Info?.Print(LogClass.Application, "Starting emulation");
-
-            try
-            {
-                EmulationContext.Start();
-                Logger.Info?.Print(LogClass.Application, "Emulation started successfully");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.Application, $"Failed to start emulation: {ex.Message}");
-            }
-        }
-
-        public void StopEmulation()
-        {
-            if (EmulationContext == null)
-            {
-                Logger.Error?.Print(LogClass.Application, "Emulation context is not initialized. Cannot stop emulation.");
-                return;
-            }
-
-            Logger.Info?.Print(LogClass.Application, "Stopping emulation");
-
-            try
-            {
-                EmulationContext.Stop();
-                Logger.Info?.Print(LogClass.Application, "Emulation stopped successfully");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.Application, $"Failed to stop emulation: {ex.Message}");
-            }
-        }
-
-        public void SetVolume(float level)
-        {
-            if (EmulationContext == null)
-            {
-                Logger.Error?.Print(LogClass.Application, "Emulation context is not initialized. Cannot set volume.");
-                return;
-            }
-
-            Logger.Info?.Print(LogClass.Application, $"Setting volume level to: {level}");
-
-            try
-            {
-                EmulationContext.SetVolume(level);
-                Logger.Info?.Print(LogClass.Application, "Volume set successfully");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.Application, $"Failed to set volume: {ex.Message}");
-            }
-        }
-    }
-
-    public class GameStats
-    {
-        public double Fifo { get; set; }
-        public double GameFps { get; set; }
-        public double GameTime { get; set; }
     }
 
     public class GameInfo
     {
-        public double FileSize { get; set; }
-        public string? TitleName { get; set; }
-        public string? TitleId { get; set; }
-        public string? Developer { get; set; }
-        public string? Version { get; set; }
-        public byte[]? Icon { get; set; }
+        public double FileSize;
+        public string? TitleName;
+        public string? TitleId;
+        public string? Developer;
+        public string? Version;
+        public byte[]? Icon;
     }
 
-    public enum AspectRatio
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct GameInfoNative
     {
-        Fixed4x3,
-        Fixed16x9,
-        Fixed16x10,
-        Fixed21x9,
-        Fixed32x9,
-        Stretched
+        public double FileSize;
+        public char* TitleName;
+        public char* TitleId;
+        public char* Developer;
+        public char* Version;
+        public char* Icon;
+
+        public GameInfoNative()
+        {
+
+        }
+
+        public GameInfoNative(double fileSize, string? titleName, string? titleId, string? developer, string? version, byte[]? icon)
+        {
+            FileSize = fileSize;
+            TitleId = (char*)Marshal.StringToHGlobalAnsi(titleId);
+            Version = (char*)Marshal.StringToHGlobalAnsi(version);
+            Developer = (char*)Marshal.StringToHGlobalAnsi(developer);
+            TitleName = (char*)Marshal.StringToHGlobalAnsi(titleName);
+
+            if (icon != null)
+            {
+                Icon = (char*)Marshal.StringToHGlobalAnsi(Convert.ToBase64String(icon));
+            }
+            else
+            {
+                Icon = (char*)0;
+            }
+        }
+
+        public GameInfoNative(GameInfo info) : this(info.FileSize, info.TitleName, info.TitleId, info.Developer, info.Version, info.Icon){}
     }
 
-    public enum MemoryConfiguration
+    public class GameStats
     {
-        MemoryConfiguration4GiB,
-        MemoryConfiguration6GiB,
-        MemoryConfiguration8GiB
+        public double Fifo;
+        public double GameFps;
+        public double GameTime;
     }
 }
