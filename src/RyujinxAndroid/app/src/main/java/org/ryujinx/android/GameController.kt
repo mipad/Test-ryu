@@ -187,10 +187,15 @@ class GameButtonView @JvmOverloads constructor(
     
     var onButtonStateChanged: ((Boolean) -> Unit)? = null
 
+    // 公共方法用于设置按钮颜色
+    fun setButtonColor(color: Int) {
+        circlePaint.color = color
+        invalidate()
+    }
+
     fun setPressedState(pressed: Boolean) {
         isPressed = pressed
         if (pressed) {
-            circlePaint.color = Color.argb(220, 200, 200, 200)
             val scaleAnimation = ScaleAnimation(
                 1.0f, 0.8f, 1.0f, 0.8f,
                 Animation.RELATIVE_TO_SELF, 0.5f,
@@ -200,7 +205,6 @@ class GameButtonView @JvmOverloads constructor(
             scaleAnimation.fillAfter = true
             startAnimation(scaleAnimation)
         } else {
-            circlePaint.color = Color.argb(180, 255, 255, 255)
             val scaleAnimation = ScaleAnimation(
                 0.8f, 1.0f, 0.8f, 1.0f,
                 Animation.RELATIVE_TO_SELF, 0.5f,
@@ -479,7 +483,7 @@ class GameController(var activity: Activity) {
 
             // ABXY 按钮 - 使用更明显的颜色
             val aButton = GameButtonView(context, buttonText = "A", buttonId = GamePadButtonInputId.A.ordinal).apply {
-                circlePaint.color = Color.argb(180, 0, 255, 0) // 绿色
+                setButtonColor(Color.argb(180, 0, 255, 0)) // 绿色
                 onButtonStateChanged = { pressed ->
                     if (controller.controllerId != -1) {
                         if (pressed) {
@@ -492,7 +496,7 @@ class GameController(var activity: Activity) {
             }
 
             val bButton = GameButtonView(context, buttonText = "B", buttonId = GamePadButtonInputId.B.ordinal).apply {
-                circlePaint.color = Color.argb(180, 255, 0, 0) // 红色
+                setButtonColor(Color.argb(180, 255, 0, 0)) // 红色
                 onButtonStateChanged = { pressed ->
                     if (controller.controllerId != -1) {
                         if (pressed) {
@@ -505,7 +509,7 @@ class GameController(var activity: Activity) {
             }
 
             val xButton = GameButtonView(context, buttonText = "X", buttonId = GamePadButtonInputId.X.ordinal).apply {
-                circlePaint.color = Color.argb(180, 0, 0, 255) // 蓝色
+                setButtonColor(Color.argb(180, 0, 0, 255)) // 蓝色
                 onButtonStateChanged = { pressed ->
                     if (controller.controllerId != -1) {
                         if (pressed) {
@@ -518,7 +522,7 @@ class GameController(var activity: Activity) {
             }
 
             val yButton = GameButtonView(context, buttonText = "Y", buttonId = GamePadButtonInputId.Y.ordinal).apply {
-                circlePaint.color = Color.argb(180, 255, 255, 0) // 黄色
+                setButtonColor(Color.argb(180, 255, 255, 0)) // 黄色
                 onButtonStateChanged = { pressed ->
                     if (controller.controllerId != -1) {
                         if (pressed) {
