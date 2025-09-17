@@ -31,11 +31,16 @@ object ControllerTypeManager {
         }
     }
     
-    suspend fun loadAllControllerTypes(context: Context): Map<String, ControllerType> {
-        val preferences = context.dataStore.data.first()
-        val json = preferences[stringPreferencesKey(CONTROLLER_TYPES_KEY)] ?: "{}"
-        return Json.decodeFromString(json)
+    // ControllerTypeManager.kt
+suspend fun loadAllControllerTypes(context: Context): Map<String, ControllerType> {
+    val preferences = context.dataStore.data.firstOrNull() ?: return emptyMap()
+    val json = preferences[stringPreferencesKey(CONTROLLER_TYPES_KEY)] ?: "{}"
+    return try {
+        Json.decodeFromString(json)
+    } catch (e: Exception) {
+        emptyMap()
     }
+}
     
     private suspend fun saveAllControllerTypes(context: Context, typeMap: Map<String, ControllerType>) {
         context.dataStore.edit { preferences ->
