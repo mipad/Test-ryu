@@ -146,7 +146,7 @@ extern PFN_vkCmdUpdateBuffer vkCmdUpdateBuffer;
 extern PFN_vkCmdFillBuffer vkCmdFillBuffer;
 extern PFN_vkCmdClearColorImage vkCmdClearColorImage;
 extern PFN_vkCmdClearDepthStencilImage vkCmdClearDepthStencilImage;
-extern PFN_vkCmdClearAttections vkCmdClearAttachments;
+extern PFN_vkCmdClearAttachments vkCmdClearAttachments;
 extern PFN_vkCmdResolveImage vkCmdResolveImage;
 extern PFN_vkCmdSetEvent vkCmdSetEvent;
 extern PFN_vkCmdResetEvent vkCmdResetEvent;
