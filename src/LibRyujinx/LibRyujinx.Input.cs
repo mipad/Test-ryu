@@ -34,6 +34,9 @@ namespace LibRyujinx
         private static TouchScreenManager? _touchScreenManager;
         private static InputConfig[] _configs;
         private static float _aspectRatio = 1.0f;
+        
+        // 添加控制器类型存储数组
+        private static Ryujinx.Common.Configuration.Hid.ControllerType[] _controllerTypes = new Ryujinx.Common.Configuration.Hid.ControllerType[4];
 
         public static void InitializeInput(int width, int height)
         {
@@ -45,6 +48,12 @@ namespace LibRyujinx
             _gamepadDriver = new VirtualGamepadDriver(4);
             _configs = new InputConfig[4];
             _virtualTouchScreen = new VirtualTouchScreen();
+            
+            // 初始化控制器类型为默认值
+            for (int i = 0; i < _controllerTypes.Length; i++)
+            {
+                _controllerTypes[i] = Ryujinx.Common.Configuration.Hid.ControllerType.ProController;
+            }
             
             _aspectRatio = width > 0 && height > 0 ? (float)width / height : 1.0f;
             _virtualTouchScreen.ClientSize = new Size(width, height);
@@ -134,14 +143,80 @@ namespace LibRyujinx
                 config.Id = gamepad.Id;
                 config.PlayerIndex = (Ryujinx.Common.Configuration.Hid.PlayerIndex)index;
                 
-                // 从主 LibRyujinx.cs 获取控制器类型
-                config.ControllerType = (Ryujinx.Common.Configuration.Hid.ControllerType)GetControllerType(index);
+                // 使用存储的控制器类型而不是调用GetControllerType
+                config.ControllerType = _controllerTypes[index];
                 
                 _configs[index] = config;
+                
+                Logger.Info?.Print(LogClass.Application, $"Connected gamepad {index} as {_controllerTypes[index]}");
             }
 
             _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
             return int.TryParse(gamepad?.Id, out var idInt) ? idInt : -1;
+        }
+        
+        // 新增方法：设置控制器类型
+        public static void SetControllerType(int deviceId, int controllerType)
+        {
+            if (deviceId < 0 || deviceId >= _controllerTypes.Length)
+            {
+                Logger.Warning?.Print(LogClass.Application, $"Invalid device ID: {deviceId}");
+                return;
+            }
+
+            _controllerTypes[deviceId] = (Ryujinx.Common.Configuration.Hid.ControllerType)controllerType;
+            Logger.Info?.Print(LogClass.Application, $"Controller type for device {deviceId} set to: {_controllerTypes[deviceId]}");
+
+            // 如果设备已初始化，立即更新控制器配置
+            if (SwitchDevice?.InputManager != null && _configs != null && deviceId < _configs.Length)
+            {
+                UpdateControllerConfiguration(deviceId);
+            }
+        }
+        
+        // 新增方法：获取控制器类型
+        public static int GetControllerType(int deviceId)
+        {
+            if (deviceId < 0 || deviceId >= _controllerTypes.Length)
+            {
+                Logger.Warning?.Print(LogClass.Application, $"Invalid device ID: {deviceId}");
+                return (int)Ryujinx.Common.Configuration.Hid.ControllerType.ProController;
+            }
+
+            return (int)_controllerTypes[deviceId];
+        }
+        
+        // 新增方法：更新控制器配置
+        private static void UpdateControllerConfiguration(int deviceId)
+        {
+            if (SwitchDevice?.InputManager == null || _configs == null || deviceId >= _configs.Length)
+            {
+                return;
+            }
+
+            var config = _configs[deviceId];
+            if (config != null)
+            {
+                config.ControllerType = _controllerTypes[deviceId];
+                _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
+                Logger.Info?.Print(LogClass.Application, $"Controller configuration updated for device {deviceId}: {_controllerTypes[deviceId]}");
+            }
+            else
+            {
+                // 如果配置不存在，创建新的配置
+                var gamepad = _gamepadDriver?.GetGamepad(deviceId);
+                if (gamepad != null)
+                {
+                    var newConfig = CreateDefaultInputConfig();
+                    newConfig.Id = gamepad.Id;
+                    newConfig.PlayerIndex = (Ryujinx.Common.Configuration.Hid.PlayerIndex)deviceId;
+                    newConfig.ControllerType = _controllerTypes[deviceId];
+                    
+                    _configs[deviceId] = newConfig;
+                    _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
+                    Logger.Info?.Print(LogClass.Application, $"Created new controller configuration for device {deviceId}: {_controllerTypes[deviceId]}");
+                }
+            }
         }
 
         private static InputConfig CreateDefaultInputConfig()
