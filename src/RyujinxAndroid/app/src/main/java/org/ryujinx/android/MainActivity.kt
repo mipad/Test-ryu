@@ -151,6 +151,9 @@ class MainActivity : BaseActivity() {
                 }
             }
         }
+        
+        // 初始化ControllerTypeManager的DataStore
+        // DataStore会在首次访问时自动初始化，这里不需要额外代码
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
