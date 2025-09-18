@@ -173,40 +173,71 @@ class GameController(var activity: Activity) {
             ControllerType.PRO_CONTROLLER -> {
                 // Pro控制器：显示完整的左右虚拟按键
                 setVirtualControllerVisibility(true, true)
-                // 重新生成标准配置
-                leftGamePad.config = generateConfig(true)
-                rightGamePad.config = generateConfig(false)
+                // 重新创建标准配置的游戏手柄
+                recreateGamePads(true, true)
             }
             ControllerType.JOYCON_LEFT -> {
                 // Joy-Con左柄：只显示左虚拟按键，隐藏右虚拟按键
                 setVirtualControllerVisibility(true, false)
-                // 重新生成左柄专用配置
-                leftGamePad.config = generateJoyConLeftConfig()
+                // 重新创建左柄专用配置的游戏手柄
+                recreateGamePads(true, false)
             }
             ControllerType.JOYCON_RIGHT -> {
                 // Joy-Con右柄：只显示右虚拟按键，隐藏左虚拟按键
                 setVirtualControllerVisibility(false, true)
-                // 重新生成右柄专用配置
-                rightGamePad.config = generateJoyConRightConfig()
+                // 重新创建右柄专用配置的游戏手柄
+                recreateGamePads(false, true)
             }
             ControllerType.JOYCON_PAIR -> {
                 // Joy-Con配对：显示完整的左右虚拟按键
                 setVirtualControllerVisibility(true, true)
-                // 重新生成标准配置
-                leftGamePad.config = generateConfig(true)
-                rightGamePad.config = generateConfig(false)
+                // 重新创建标准配置的游戏手柄
+                recreateGamePads(true, true)
             }
             ControllerType.HANDHELD -> {
                 // Handheld模式：显示完整的左右虚拟按键
                 setVirtualControllerVisibility(true, true)
-                // 重新生成标准配置
-                leftGamePad.config = generateConfig(true)
-                rightGamePad.config = generateConfig(false)
+                // 重新创建标准配置的游戏手柄
+                recreateGamePads(true, true)
             }
         }
         
         // 刷新虚拟按键视图
         refreshVirtualControllerView()
+    }
+
+    // 新增方法：重新创建游戏手柄
+    private fun recreateGamePads(createLeft: Boolean, createRight: Boolean) {
+        controllerView?.apply {
+            val leftContainer = findViewById<FrameLayout>(R.id.leftcontainer)
+            val rightContainer = findViewById<FrameLayout>(R.id.rightcontainer)
+            
+            if (createLeft) {
+                leftContainer?.removeAllViews()
+                val newLeftPad = when (currentControllerType) {
+                    ControllerType.JOYCON_LEFT -> GamePad(generateJoyConLeftConfig(), 16f, activity)
+                    else -> GamePad(generateConfig(true), 16f, activity)
+                }
+                newLeftPad.primaryDialMaxSizeDp = 200f
+                newLeftPad.gravityX = -1f
+                newLeftPad.gravityY = 1f
+                leftContainer?.addView(newLeftPad)
+                leftGamePad = newLeftPad
+            }
+            
+            if (createRight) {
+                rightContainer?.removeAllViews()
+                val newRightPad = when (currentControllerType) {
+                    ControllerType.JOYCON_RIGHT -> GamePad(generateJoyConRightConfig(), 16f, activity)
+                    else -> GamePad(generateConfig(false), 16f, activity)
+                }
+                newRightPad.primaryDialMaxSizeDp = 200f
+                newRightPad.gravityX = 1f
+                newRightPad.gravityY = 1f
+                rightContainer?.addView(newRightPad)
+                rightGamePad = newRightPad
+            }
+        }
     }
 
     // 新增方法：设置虚拟控制器可见性
@@ -870,10 +901,3 @@ private fun generateConfig(isLeft: Boolean): GamePadConfig {
         )
     }
 }
-
-// 为 RadialGamePad 添加 config 属性的扩展
-private var RadialGamePad.config: GamePadConfig
-    get() = throw UnsupportedOperationException("Config is write-only")
-    set(value) {
-        this.setConfig(value)
-    }
