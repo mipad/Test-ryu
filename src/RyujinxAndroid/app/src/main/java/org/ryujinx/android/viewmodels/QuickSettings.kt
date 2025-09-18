@@ -3,8 +3,10 @@ package org.ryujinx.android.viewmodels
 import android.app.Activity
 import android.content.SharedPreferences
 import androidx.preference.PreferenceManager
+import org.ryujinx.android.ControllerType
 import org.ryujinx.android.RegionCode
 import org.ryujinx.android.SystemLanguage
+import org.ryujinx.android.RyujinxNative
 
 class QuickSettings(val activity: Activity) {
     var ignoreMissingServices: Boolean
@@ -85,6 +87,9 @@ class QuickSettings(val activity: Activity) {
         enableAccessLogs = sharedPref.getBoolean("enableAccessLogs", false)
         enableTraceLogs = sharedPref.getBoolean("enableStubLogs", false)
         enableGraphicsLogs = sharedPref.getBoolean("enableGraphicsLogs", false)
+        
+        // 初始化时立即应用控制器类型设置
+        applyControllerSettings()
     }
 
     fun save() {
@@ -115,7 +120,7 @@ class QuickSettings(val activity: Activity) {
         editor.putInt("scalingFilterLevel", scalingFilterLevel) // 保存缩放过滤器级别
         editor.putInt("antiAliasing", antiAliasing) // 保存抗锯齿设置
         editor.putInt("memoryConfiguration", memoryConfiguration) // 保存内存配置
-        editor.putInt("controllerType", controllerType) // 新增：保存控制器类型
+        editor.putInt("controllerType", controllerType) // 保存控制器类型
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs)
         editor.putBoolean("enableStubLogs", enableStubLogs)
@@ -128,5 +133,63 @@ class QuickSettings(val activity: Activity) {
         editor.putBoolean("enableGraphicsLogs", enableGraphicsLogs)
 
         editor.apply()
+        
+        // 保存后立即应用控制器设置
+        applyControllerSettings()
+    }
+    
+    // 新增方法：应用控制器设置到Native层
+    fun applyControllerSettings() {
+        try {
+            // 设置虚拟控制器的控制器类型（设备ID 0）
+            RyujinxNative.jnaInstance.setControllerType(0, controllerType)
+            
+            // 记录设置信息
+            android.util.Log.d("QuickSettings", "Controller type set to: ${getControllerTypeName(controllerType)} for device 0")
+        } catch (e: Exception) {
+            android.util.Log.e("QuickSettings", "Failed to apply controller settings", e)
+        }
+    }
+    
+    // 新增方法：获取控制器类型名称
+    fun getControllerTypeName(type: Int): String {
+        return when (type) {
+            0 -> "Pro Controller"
+            1 -> "Joy-Con (L)"
+            2 -> "Joy-Con (R)"
+            3 -> "Joy-Con Pair"
+            4 -> "Handheld"
+            else -> "Unknown"
+        }
+    }
+    
+    // 新增方法：获取当前控制器类型的枚举值
+    fun getCurrentControllerType(): ControllerType {
+        return when (controllerType) {
+            0 -> ControllerType.PRO_CONTROLLER
+            1 -> ControllerType.JOYCON_LEFT
+            2 -> ControllerType.JOYCON_RIGHT
+            3 -> ControllerType.JOYCON_PAIR
+            4 -> ControllerType.HANDHELD
+            else -> ControllerType.PRO_CONTROLLER
+        }
+    }
+    
+    // 新增方法：设置控制器类型并立即应用
+    fun setControllerType(newType: Int) {
+        controllerType = newType
+        applyControllerSettings()
+    }
+    
+    // 新增方法：设置控制器类型通过枚举值
+    fun setControllerType(controllerType: ControllerType) {
+        this.controllerType = when (controllerType) {
+            ControllerType.PRO_CONTROLLER -> 0
+            ControllerType.JOYCON_LEFT -> 1
+            ControllerType.JOYCON_RIGHT -> 2
+            ControllerType.JOYCON_PAIR -> 3
+            ControllerType.HANDHELD -> 4
+        }
+        applyControllerSettings()
     }
 }
