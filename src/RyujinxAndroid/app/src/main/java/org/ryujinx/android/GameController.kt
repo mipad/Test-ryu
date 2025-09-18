@@ -221,8 +221,8 @@ class GameController(var activity: Activity) {
                 leftContainer?.addView(newLeftPad)
                 leftGamePad = newLeftPad
                 
-                // 重新绑定事件监听器 - 使用全局协程范围
-                GlobalScope.launch {
+                // 重新绑定事件监听器 - 使用 activity 的 lifecycleScope
+                activity.lifecycleScope.launch {
                     newLeftPad.events().safeCollect { event ->
                         handleEvent(event)
                     }
@@ -241,8 +241,8 @@ class GameController(var activity: Activity) {
                 rightContainer?.addView(newRightPad)
                 rightGamePad = newRightPad
                 
-                // 重新绑定事件监听器 - 使用全局协程范围
-                GlobalScope.launch {
+                // 重新绑定事件监听器 - 使用 activity 的 lifecycleScope
+                activity.lifecycleScope.launch {
                     newRightPad.events().safeCollect { event ->
                         handleEvent(event)
                     }
@@ -464,7 +464,7 @@ class GameController(var activity: Activity) {
                     distance,
                     ButtonConfig(
                         GamePadButtonInputId.Plus.ordinal,
-                        "+",
+                        "Plus",
                         true,
                         null,
                         "Plus",
