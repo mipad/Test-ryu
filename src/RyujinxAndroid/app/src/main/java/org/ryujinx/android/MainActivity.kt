@@ -15,7 +15,6 @@ import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.preference.PreferenceManager
 import com.anggrayudi.storage.SimpleStorageHelper
 import com.sun.jna.JNIEnv
 import org.ryujinx.android.ui.theme.RyujinxAndroidTheme
@@ -113,15 +112,6 @@ class MainActivity : BaseActivity() {
         _isInit = success
     }
 
-    // 添加应用控制器设置的方法
-    fun applyControllerSettings() {
-        val sharedPref = PreferenceManager.getDefaultSharedPreferences(this)
-        val controllerType = sharedPref.getInt("controllerType", 0)
-        RyujinxNative.jnaInstance.setControllerType(0, controllerType)
-        // 同时应用到虚拟控制器
-        ControllerManager.updateControllerType(this, "virtual_controller_1", ControllerType.values()[controllerType])
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -162,8 +152,8 @@ class MainActivity : BaseActivity() {
             }
         }
         
-        // 初始化时应用控制器设置
-        applyControllerSettings()
+        // 初始化ControllerTypeManager的DataStore
+        // DataStore会在首次访问时自动初始化，这里不需要额外代码
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -229,9 +219,6 @@ class MainActivity : BaseActivity() {
             if (QuickSettings(this).enableMotion)
                 motionSensorManager.register()
         }
-        
-        // 恢复时重新应用控制器设置
-        applyControllerSettings()
     }
 
     override fun onPause() {
