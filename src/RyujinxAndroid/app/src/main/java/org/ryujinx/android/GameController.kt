@@ -657,6 +657,7 @@ class GameController(var activity: Activity) {
     }
 }
 
+
 suspend fun <T> Flow<T>.safeCollect(
     block: suspend (T) -> Unit
 ) {
@@ -666,4 +667,214 @@ suspend fun <T> Flow<T>.safeCollect(
         }
 }
 
-// 原有的 generateConfig 方法保持不变...
+// 生成标准配置
+private fun generateConfig(isLeft: Boolean): GamePadConfig {
+    val distance = 0.3f
+    val buttonScale = 1f
+
+    return if (isLeft) {
+        // 左侧配置
+        GamePadConfig(
+            12,
+            PrimaryDialConfig.Stick(
+                GamePadButtonInputId.LeftStick.ordinal,
+                GamePadButtonInputId.LeftStickButton.ordinal,
+                setOf(),
+                "LeftStick",
+                null
+            ),
+            listOf(
+                SecondaryDialConfig.Cross(
+                    10,
+                    3,
+                    2.5f,
+                    distance,
+                    CrossConfig(
+                        GamePadButtonInputId.DpadUp.ordinal,
+                        CrossConfig.Shape.STANDARD,
+                        null,
+                        setOf(),
+                        CrossContentDescription(),
+                        true,
+                        null
+                    ),
+                    SecondaryDialConfig.RotationProcessor()
+                ),
+                SecondaryDialConfig.SingleButton(
+                    1,
+                    buttonScale,
+                    distance,
+                    ButtonConfig(
+                        GamePadButtonInputId.Minus.ordinal,
+                        "-",
+                        true,
+                        null,
+                        "Minus",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    null,
+                    SecondaryDialConfig.RotationProcessor()
+                ),
+                SecondaryDialConfig.DoubleButton(
+                    2,
+                    distance,
+                    ButtonConfig(
+                        GamePadButtonInputId.LeftShoulder.ordinal,
+                        "L",
+                        true,
+                        null,
+                        "LeftBumper",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    null,
+                    SecondaryDialConfig.RotationProcessor()
+                ),
+                SecondaryDialConfig.SingleButton(
+                    9,
+                    buttonScale,
+                    distance,
+                    ButtonConfig(
+                        GamePadButtonInputId.LeftTrigger.ordinal,
+                        "ZL",
+                        true,
+                        null,
+                        "LeftTrigger",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    null,
+                    SecondaryDialConfig.RotationProcessor()
+                )
+            )
+        )
+    } else {
+        // 右侧配置
+        GamePadConfig(
+            12,
+            PrimaryDialConfig.PrimaryButtons(
+                listOf(
+                    ButtonConfig(
+                        GamePadButtonInputId.A.ordinal,
+                        "A",
+                        true,
+                        null,
+                        "A",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    ButtonConfig(
+                        GamePadButtonInputId.X.ordinal,
+                        "X",
+                        true,
+                        null,
+                        "X",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    ButtonConfig(
+                        GamePadButtonInputId.Y.ordinal,
+                        "Y",
+                        true,
+                        null,
+                        "Y",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    ButtonConfig(
+                        GamePadButtonInputId.B.ordinal,
+                        "B",
+                        true,
+                        null,
+                        "B",
+                        setOf(),
+                        true,
+                        null
+                    )
+                ),
+                null,
+                0f,
+                true,
+                null
+            ),
+            listOf(
+                SecondaryDialConfig.Stick(
+                    7,
+                    2,
+                    2f,
+                    distance,
+                    GamePadButtonInputId.RightStick.ordinal,
+                    GamePadButtonInputId.RightStickButton.ordinal,
+                    null,
+                    setOf(),
+                    "RightStick",
+                    SecondaryDialConfig.RotationProcessor()
+                ),
+                SecondaryDialConfig.SingleButton(
+                    6,
+                    buttonScale,
+                    distance,
+                    ButtonConfig(
+                        GamePadButtonInputId.Plus.ordinal,
+                        "+",
+                        true,
+                        null,
+                        "Plus",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    null,
+                    SecondaryDialConfig.RotationProcessor()
+                ),
+                SecondaryDialConfig.DoubleButton(
+                    3,
+                    distance,
+                    ButtonConfig(
+                        GamePadButtonInputId.RightShoulder.ordinal,
+                        "R",
+                        true,
+                        null,
+                        "RightBumper",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    null,
+                    SecondaryDialConfig.RotationProcessor()
+                ),
+                SecondaryDialConfig.SingleButton(
+                    9,
+                    buttonScale,
+                    distance,
+                    ButtonConfig(
+                        GamePadButtonInputId.RightTrigger.ordinal,
+                        "ZR",
+                        true,
+                        null,
+                        "RightTrigger",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    null,
+                    SecondaryDialConfig.RotationProcessor()
+                )
+            )
+        )
+    }
+}
+
+// 为 RadialGamePad 添加 config 属性的扩展
+private var RadialGamePad.config: GamePadConfig
+    get() = throw UnsupportedOperationException("Config is write-only")
+    set(value) {
+        this.setConfig(value)
+    }
