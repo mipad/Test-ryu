@@ -657,7 +657,6 @@ class GameController(var activity: Activity) {
     }
 }
 
-
 suspend fun <T> Flow<T>.safeCollect(
     block: suspend (T) -> Unit
 ) {
