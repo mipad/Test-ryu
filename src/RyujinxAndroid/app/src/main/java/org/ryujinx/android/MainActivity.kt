@@ -237,8 +237,7 @@ fun applyControllerSettings() {
             if (QuickSettings(this).enableMotion)
                 motionSensorManager.register()
             
-            // 应用恢复时重新应用控制器设置
-            applyControllerSettings()
+            
         }
     }
 
