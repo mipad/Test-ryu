@@ -251,8 +251,8 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
                 else -> ControllerType.PRO_CONTROLLER
             }
             
-            // 更新ControllerManager中的虚拟控制器类型
-            MainActivity.mainViewModel?.gameController?.updateControllerType(controllerTypeEnum)
+            // 使用 physicalControllerManager 来更新控制器类型
+            MainActivity.mainViewModel?.physicalControllerManager?.updateControllerType(controllerTypeEnum)
             
             // 同时更新ControllerManager中的控制器类型
             org.ryujinx.android.ControllerManager.updateControllerType(
