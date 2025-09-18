@@ -660,6 +660,25 @@ namespace LibRyujinx
                 Logger.Error?.Print(LogClass.Application, $"Failed to set anti-aliasing: {ex.Message}");
             }
         }
+
+        // 添加设置控制器类型的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "setControllerType")]
+        public static void JnaSetControllerType(int deviceId, int controllerType)
+        {
+            Logger.Trace?.Print(LogClass.Application, $"Jni Function Call: setControllerType - deviceId: {deviceId}, type: {controllerType}");
+            
+            try
+            {
+                // 调用主库中的设置控制器类型方法
+                SetControllerType(deviceId, controllerType);
+                
+                Logger.Info?.Print(LogClass.Application, $"Controller type set for device {deviceId}: {(Ryujinx.Common.Configuration.Hid.ControllerType)controllerType}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Failed to set controller type: {ex.Message}");
+            }
+        }
     }
 
     internal static partial class Logcat
