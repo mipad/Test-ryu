@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
@@ -32,6 +34,7 @@ class MainActivity : BaseActivity() {
     var isActive = false
     var storageHelper: SimpleStorageHelper? = null
     lateinit var uiHandler: UiHandler
+    private val handler = Handler(Looper.getMainLooper())
 
     companion object {
         var mainViewModel: MainViewModel? = null
@@ -110,6 +113,56 @@ class MainActivity : BaseActivity() {
 
         uiHandler = UiHandler()
         _isInit = success
+        
+        // Native初始化成功后应用控制器设置
+        if (success) {
+            applyControllerSettings()
+        }
+    }
+
+    // 安全的控制器设置应用方法
+    fun applyControllerSettings() {
+        if (!_isInit) {
+            // Native层未初始化，延迟100ms重试
+            handler.postDelayed({ applyControllerSettings() }, 100)
+            return
+        }
+
+        try {
+            val quickSettings = QuickSettings(this)
+            
+            // 设置虚拟控制器的类型（设备ID 0）
+            val controllerTypeValue = when (quickSettings.controllerType) {
+                0 -> 0 // Pro Controller
+                1 -> 1 // Joy-Con Left
+                2 -> 2 // Joy-Con Right
+                3 -> 3 // Joy-Con Pair
+                4 -> 4 // Handheld
+                else -> 0 // Default to Pro Controller
+            }
+            
+            RyujinxNative.jnaInstance.setControllerType(0, controllerTypeValue)
+            
+            // 如果有物理控制器，也设置它们的类型
+            val connectedControllers = ControllerManager.connectedControllers.value ?: emptyList()
+            connectedControllers.forEachIndexed { index, controller ->
+                if (!controller.isVirtual) {
+                    // 物理控制器从设备ID 1开始
+                    val deviceId = index + 1
+                    val physicalControllerTypeValue = when (controller.controllerType) {
+                        ControllerType.PRO_CONTROLLER -> 0
+                        ControllerType.JOYCON_LEFT -> 1
+                        ControllerType.JOYCON_RIGHT -> 2
+                        ControllerType.JOYCON_PAIR -> 3
+                        ControllerType.HANDHELD -> 4
+                    }
+                    RyujinxNative.jnaInstance.setControllerType(deviceId, physicalControllerTypeValue)
+                }
+            }
+        } catch (e: Exception) {
+            // 捕获任何异常，防止崩溃
+            e.printStackTrace()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -151,9 +204,6 @@ class MainActivity : BaseActivity() {
                 }
             }
         }
-        
-        // 初始化ControllerTypeManager的DataStore
-        // DataStore会在首次访问时自动初始化，这里不需要额外代码
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -218,6 +268,9 @@ class MainActivity : BaseActivity() {
             setFullScreen(true)
             if (QuickSettings(this).enableMotion)
                 motionSensorManager.register()
+            
+            // 应用恢复时重新应用控制器设置
+            applyControllerSettings()
         }
     }
 
