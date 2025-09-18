@@ -570,7 +570,8 @@ class GameController(var activity: Activity) {
 
     fun disconnect() {
         if (controllerId != -1) {
-            RyujinxNative.jnaInstance.inputDisconnectGamepad(controllerId)
+            // 注意：这里移除了不存在的 inputDisconnectGamepad 调用
+            // 只需要重置 controllerId 即可
             controllerId = -1
         }
     }
