@@ -24,7 +24,6 @@ import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.QuickSettings
 import org.ryujinx.android.views.MainView
 
-
 class MainActivity : BaseActivity() {
     private var physicalControllerManager: PhysicalControllerManager =
         PhysicalControllerManager(this)
@@ -131,17 +130,8 @@ class MainActivity : BaseActivity() {
         try {
             val quickSettings = QuickSettings(this)
             
-            // 设置虚拟控制器的类型（设备ID 0）
-            val controllerTypeValue = when (quickSettings.controllerType) {
-                0 -> 0 // Pro Controller
-                1 -> 1 // Joy-Con Left
-                2 -> 2 // Joy-Con Right
-                3 -> 3 // Joy-Con Pair
-                4 -> 4 // Handheld
-                else -> 0 // Default to Pro Controller
-            }
-            
-            RyujinxNative.jnaInstance.setControllerType(0, controllerTypeValue)
+            // 直接使用 QuickSettings 中的 controllerType 值（已经是正确的整数值）
+            RyujinxNative.jnaInstance.setControllerType(0, quickSettings.controllerType)
             
             // 如果有物理控制器，也设置它们的类型
             val connectedControllers = ControllerManager.connectedControllers.value ?: emptyList()
@@ -149,6 +139,8 @@ class MainActivity : BaseActivity() {
                 if (!controller.isVirtual) {
                     // 物理控制器从设备ID 1开始
                     val deviceId = index + 1
+                    
+                    // 将 ControllerType 枚举转换为整数值
                     val physicalControllerTypeValue = when (controller.controllerType) {
                         ControllerType.PRO_CONTROLLER -> 0
                         ControllerType.JOYCON_LEFT -> 1
@@ -156,6 +148,7 @@ class MainActivity : BaseActivity() {
                         ControllerType.JOYCON_PAIR -> 3
                         ControllerType.HANDHELD -> 4
                     }
+                    
                     RyujinxNative.jnaInstance.setControllerType(deviceId, physicalControllerTypeValue)
                 }
             }
