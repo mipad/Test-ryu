@@ -130,7 +130,7 @@ extern PFN_vkCmdSetStencilWriteMask vkCmdSetStencilWriteMask;
 extern PFN_vkCmdSetStencilReference vkCmdSetStencilReference;
 extern PFN_vkCmdBindDescriptorSets vkCmdBindDescriptorSets;
 extern PFN_vkCmdBindIndexBuffer vkCmdBindIndexBuffer;
-extern PFN_vkCmdBindVertexBuffers vkBindVertexBuffers2EXT; // 修复：改为正确的函数指针类型
+extern PFN_vkCmdBindVertexBuffers vkCmdBindVertexBuffers;
 extern PFN_vkCmdDraw vkCmdDraw;
 extern PFN_vkCmdDrawIndexed vkCmdDrawIndexed;
 extern PFN_vkCmdDrawIndirect vkCmdDrawIndirect;
@@ -145,7 +145,7 @@ extern PFN_vkCmdCopyImageToBuffer vkCmdCopyImageToBuffer;
 extern PFN_vkCmdUpdateBuffer vkCmdUpdateBuffer;
 extern PFN_vkCmdFillBuffer vkCmdFillBuffer;
 extern PFN_vkCmdClearColorImage vkCmdClearColorImage;
-extern PFN_vkCmdClearDepthStencilImage vkClearDepthStencilImage;
+extern PFN_vkCmdClearDepthStencilImage vkCmdClearDepthStencilImage;
 extern PFN_vkCmdClearAttachments vkCmdClearAttachments;
 extern PFN_vkCmdResolveImage vkCmdResolveImage;
 extern PFN_vkCmdSetEvent vkCmdSetEvent;
@@ -301,13 +301,9 @@ extern PFN_vkGetPhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT vkGetPhysi
 // VK_EXT_attachment_feedback_loop_dynamic_state
 extern PFN_vkCmdSetAttachmentFeedbackLoopEnableEXT vkCmdSetAttachmentFeedbackLoopEnableEXT;
 
-// VK_KHR_portability_subset
-extern PFN_vkGetPhysicalDevicePortabilitySubsetPropertiesKHR vkGetPhysicalDevicePortabilitySubsetPropertiesKHR;
-
-// VK_EXT_fragment_density_map
-extern PFN_vkGetPhysicalDeviceFragmentDensityMapPropertiesEXT vkGetPhysicalDeviceFragmentDensityMapPropertiesEXT;
-
 // 移除不存在的函数指针声明
+// extern PFN_vkGetPhysicalDevicePortabilitySubsetPropertiesKHR vkGetPhysicalDevicePortabilitySubsetPropertiesKHR;
+// extern PFN_vkGetPhysicalDeviceFragmentDensityMapPropertiesEXT vkGetPhysicalDeviceFragmentDensityMapPropertiesEXT;
 // extern PFN_vkGetPhysicalDeviceFragmentDensityMap2PropertiesEXT vkGetPhysicalDeviceFragmentDensityMap2PropertiesEXT;
 
 #endif // VULKAN_WRAPPER_H
