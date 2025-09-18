@@ -160,12 +160,6 @@ class GameController(var activity: Activity) {
         
         // 根据控制器类型更新虚拟按键布局
         updateVirtualLayoutForControllerType(newType)
-        
-        // 重新连接以确保配置生效
-        if (controllerId != -1) {
-            disconnect()
-            connect()
-        }
     }
 
     // 新增方法：根据控制器类型更新虚拟按键布局
@@ -556,6 +550,8 @@ class GameController(var activity: Activity) {
                 connect()
                 // 根据当前控制器类型更新布局
                 updateVirtualLayoutForControllerType(currentControllerType)
+            } else {
+                disconnect()
             }
         }
     }
@@ -564,23 +560,20 @@ class GameController(var activity: Activity) {
         if (controllerId == -1) {
             controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
             // 连接后立即设置控制器类型
-            updateControllerTypeFromSettings()
+            val controllerTypeInt = controllerTypeToInt(currentControllerType)
+            RyujinxNative.jnaInstance.setControllerType(0, controllerTypeInt)
         }
     }
 
     fun disconnect() {
         if (controllerId != -1) {
-            // 注意：这里移除了不存在的 inputDisconnectGamepad 调用
-            // 只需要重置 controllerId 即可
             controllerId = -1
         }
     }
 
     private fun handleEvent(ev: Event) {
         if (controllerId == -1) {
-            controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
-            // 连接后立即设置控制器类型
-            updateControllerTypeFromSettings()
+            connect()
         }
 
         controllerId.apply {
