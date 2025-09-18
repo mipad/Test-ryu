@@ -69,6 +69,10 @@ class GameController(var activity: Activity) {
                     controller.controllerView = c
                     viewModel.setGameController(controller)
                     controller.setVisible(QuickSettings(viewModel.activity).useVirtualController)
+                    
+                    // 初始化时设置控制器类型
+                    controller.updateControllerTypeFromSettings()
+                    
                     c
                 })
         }
@@ -103,9 +107,64 @@ class GameController(var activity: Activity) {
         val virtualController = Controller(
             id = "virtual_controller_1",
             name = "MeloNX Touch Controller",
+            controllerType = getInitialControllerType(), // 使用当前设置的类型
             isVirtual = true
         )
         ControllerManager.addController(activity, virtualController)
+    }
+
+    // 新增方法：获取初始控制器类型
+    private fun getInitialControllerType(): ControllerType {
+        val quickSettings = QuickSettings(activity)
+        return when (quickSettings.controllerType) {
+            0 -> ControllerType.PRO_CONTROLLER
+            1 -> ControllerType.JOYCON_LEFT
+            2 -> ControllerType.JOYCON_RIGHT
+            3 -> ControllerType.JOYCON_PAIR
+            4 -> ControllerType.HANDHELD
+            else -> ControllerType.PRO_CONTROLLER
+        }
+    }
+
+    // 新增方法：从设置更新控制器类型
+    fun updateControllerTypeFromSettings() {
+        val quickSettings = QuickSettings(activity)
+        val newType = when (quickSettings.controllerType) {
+            0 -> ControllerType.PRO_CONTROLLER
+            1 -> ControllerType.JOYCON_LEFT
+            2 -> ControllerType.JOYCON_RIGHT
+            3 -> ControllerType.JOYCON_PAIR
+            4 -> ControllerType.HANDHELD
+            else -> ControllerType.PRO_CONTROLLER
+        }
+        
+        updateControllerType(newType)
+    }
+
+    // 新增方法：更新控制器类型
+    fun updateControllerType(newType: ControllerType) {
+        // 更新ControllerManager中的控制器类型
+        ControllerManager.updateControllerType(activity, "virtual_controller_1", newType)
+        
+        // 设置C++层的控制器类型（设备ID 0对应虚拟控制器）
+        RyujinxNative.jnaInstance.setControllerType(0, controllerTypeToInt(newType))
+        
+        // 重新连接以确保配置生效
+        if (controllerId != -1) {
+            disconnect()
+            connect()
+        }
+    }
+
+    // 新增方法：将ControllerType转换为整数
+    private fun controllerTypeToInt(controllerType: ControllerType): Int {
+        return when (controllerType) {
+            ControllerType.PRO_CONTROLLER -> 0
+            ControllerType.JOYCON_LEFT -> 1
+            ControllerType.JOYCON_RIGHT -> 2
+            ControllerType.JOYCON_PAIR -> 3
+            ControllerType.HANDHELD -> 4
+        }
     }
 
     fun setVisible(isVisible: Boolean) {
@@ -118,13 +177,25 @@ class GameController(var activity: Activity) {
     }
 
     fun connect() {
-        if (controllerId == -1)
+        if (controllerId == -1) {
             controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
+            // 连接后立即设置控制器类型
+            updateControllerTypeFromSettings()
+        }
+    }
+
+    fun disconnect() {
+        if (controllerId != -1) {
+            controllerId = -1
+        }
     }
 
     private fun handleEvent(ev: Event) {
-        if (controllerId == -1)
+        if (controllerId == -1) {
             controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
+            // 连接后立即设置控制器类型
+            updateControllerTypeFromSettings()
+        }
 
         controllerId.apply {
             when (ev) {
@@ -238,16 +309,48 @@ class GameController(var activity: Activity) {
         val physicalController = Controller(
             id = deviceId,
             name = deviceName,
+            controllerType = ControllerType.PRO_CONTROLLER, // 默认类型
             isVirtual = false
         )
         ControllerManager.addController(activity, physicalController)
+        
+        // 设置物理控制器的类型（设备ID从1开始）
+        val deviceIdInt = deviceId.hashCode() % 3 + 1 // 生成1-3的设备ID
+        RyujinxNative.jnaInstance.setControllerType(deviceIdInt, 0) // 默认Pro控制器
     }
     
     // 新增方法：根据控制器类型处理输入
     private fun handleInputBasedOnType(controllerId: String, inputEvent: Event) {
         // 这里可以根据控制器类型进行不同的输入处理
         // 例如Joy-Con左/右柄的特殊映射
-        // 实现逻辑可以参考iOS版本的ControllerType处理
+        val controllerType = ControllerManager.connectedControllers.value?.firstOrNull { it.id == controllerId }?.controllerType
+            ?: ControllerType.PRO_CONTROLLER
+        
+        when (controllerType) {
+            ControllerType.JOYCON_LEFT -> {
+                // Joy-Con左柄的特殊输入处理
+                handleJoyConLeftInput(inputEvent)
+            }
+            ControllerType.JOYCON_RIGHT -> {
+                // Joy-Con右柄的特殊输入处理
+                handleJoyConRightInput(inputEvent)
+            }
+            else -> {
+                // 其他控制器的默认处理
+            }
+        }
+    }
+    
+    // 新增方法：处理Joy-Con左柄输入
+    private fun handleJoyConLeftInput(inputEvent: Event) {
+        // Joy-Con左柄的特殊输入映射
+        // 例如：SL和SR按钮的特殊处理
+    }
+    
+    // 新增方法：处理Joy-Con右柄输入
+    private fun handleJoyConRightInput(inputEvent: Event) {
+        // Joy-Con右柄的特殊输入映射
+        // 例如：SL和SR按钮的特殊处理
     }
 }
 
