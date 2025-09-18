@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.flow.collect
 import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.QuickSettings
 import org.ryujinx.android.ControllerManager
@@ -58,13 +59,19 @@ class GameController(var activity: Activity) {
                     
                     // 使用全局的 CoroutineScope
                     CoroutineScope(Dispatchers.Main).launch {
-                        val events = merge(
-                            controller.leftGamePad.events(),
-                            controller.rightGamePad.events()
-                        )
-                            .shareIn(CoroutineScope(Dispatchers.Main), SharingStarted.Lazily)
-                        events.safeCollect {
-                            controller.handleEvent(it)
+                        val leftEvents = controller.leftGamePad.events()
+                        val rightEvents = controller.rightGamePad.events()
+                        
+                        launch {
+                            leftEvents.collect { event ->
+                                controller.handleEvent(event)
+                            }
+                        }
+                        
+                        launch {
+                            rightEvents.collect { event ->
+                                controller.handleEvent(event)
+                            }
                         }
                     }
                     
@@ -171,31 +178,31 @@ class GameController(var activity: Activity) {
                 // Pro控制器：显示完整的左右虚拟按键
                 setVirtualControllerVisibility(true, true)
                 // 重新创建标准配置的游戏手柄
-                recreateGamePads(true, true)
+                recreateGamePads(true, true, false)
             }
             ControllerType.JOYCON_LEFT -> {
                 // Joy-Con左柄：只显示左虚拟按键，隐藏右虚拟按键
                 setVirtualControllerVisibility(true, false)
                 // 重新创建左柄专用配置的游戏手柄
-                recreateGamePads(true, false)
+                recreateGamePads(true, false, true)
             }
             ControllerType.JOYCON_RIGHT -> {
                 // Joy-Con右柄：只显示右虚拟按键，隐藏左虚拟按键
                 setVirtualControllerVisibility(false, true)
                 // 重新创建右柄专用配置的游戏手柄
-                recreateGamePads(false, true)
+                recreateGamePads(false, true, true)
             }
             ControllerType.JOYCON_PAIR -> {
                 // Joy-Con配对：显示完整的左右虚拟按键
                 setVirtualControllerVisibility(true, true)
                 // 重新创建标准配置的游戏手柄
-                recreateGamePads(true, true)
+                recreateGamePads(true, true, false)
             }
             ControllerType.HANDHELD -> {
                 // Handheld模式：显示完整的左右虚拟按键
                 setVirtualControllerVisibility(true, true)
                 // 重新创建标准配置的游戏手柄
-                recreateGamePads(true, true)
+                recreateGamePads(true, true, false)
             }
         }
         
@@ -204,16 +211,17 @@ class GameController(var activity: Activity) {
     }
 
     // 新增方法：重新创建游戏手柄
-    private fun recreateGamePads(createLeft: Boolean, createRight: Boolean) {
+    private fun recreateGamePads(createLeft: Boolean, createRight: Boolean, isJoyCon: Boolean) {
         controllerView?.apply {
             val leftContainer = findViewById<FrameLayout>(R.id.leftcontainer)
             val rightContainer = findViewById<FrameLayout>(R.id.rightcontainer)
             
             if (createLeft) {
                 leftContainer?.removeAllViews()
-                val newLeftPad = when (currentControllerType) {
-                    ControllerType.JOYCON_LEFT -> GamePad(generateJoyConLeftConfig(), 16f, activity)
-                    else -> GamePad(generateConfig(true), 16f, activity)
+                val newLeftPad = if (isJoyCon && currentControllerType == ControllerType.JOYCON_LEFT) {
+                    GamePad(generateJoyConLeftConfig(), 16f, activity)
+                } else {
+                    GamePad(generateConfig(true), 16f, activity)
                 }
                 newLeftPad.primaryDialMaxSizeDp = 200f
                 newLeftPad.gravityX = -1f
@@ -221,9 +229,9 @@ class GameController(var activity: Activity) {
                 leftContainer?.addView(newLeftPad)
                 leftGamePad = newLeftPad
                 
-                // 重新绑定事件监听器 - 使用全局的 CoroutineScope
+                // 重新绑定事件监听器
                 CoroutineScope(Dispatchers.Main).launch {
-                    newLeftPad.events().safeCollect { event ->
+                    newLeftPad.events().collect { event ->
                         handleEvent(event)
                     }
                 }
@@ -231,9 +239,10 @@ class GameController(var activity: Activity) {
             
             if (createRight) {
                 rightContainer?.removeAllViews()
-                val newRightPad = when (currentControllerType) {
-                    ControllerType.JOYCON_RIGHT -> GamePad(generateJoyConRightConfig(), 16f, activity)
-                    else -> GamePad(generateConfig(false), 16f, activity)
+                val newRightPad = if (isJoyCon && currentControllerType == ControllerType.JOYCON_RIGHT) {
+                    GamePad(generateJoyConRightConfig(), 16f, activity)
+                } else {
+                    GamePad(generateConfig(false), 16f, activity)
                 }
                 newRightPad.primaryDialMaxSizeDp = 200f
                 newRightPad.gravityX = 1f
@@ -241,9 +250,9 @@ class GameController(var activity: Activity) {
                 rightContainer?.addView(newRightPad)
                 rightGamePad = newRightPad
                 
-                // 重新绑定事件监听器 - 使用全局的 CoroutineScope
+                // 重新绑定事件监听器
                 CoroutineScope(Dispatchers.Main).launch {
-                    newRightPad.events().safeCollect { event ->
+                    newRightPad.events().collect { event ->
                         handleEvent(event)
                     }
                 }
@@ -350,41 +359,6 @@ class GameController(var activity: Activity) {
                     ),
                     null,
                     SecondaryDialConfig.RotationProcessor()
-                ),
-                // Joy-Con左柄特有的SL和SR按钮
-                SecondaryDialConfig.SingleButton(
-                    11,
-                    buttonScale,
-                    distance,
-                    ButtonConfig(
-                        GamePadButtonInputId.SL.ordinal,
-                        "SL",
-                        true,
-                        null,
-                        "SL",
-                        setOf(),
-                        true,
-                        null
-                    ),
-                    null,
-                    SecondaryDialConfig.RotationProcessor()
-                ),
-                SecondaryDialConfig.SingleButton(
-                    12,
-                    buttonScale,
-                    distance,
-                    ButtonConfig(
-                        GamePadButtonInputId.SR.ordinal,
-                        "SR",
-                        true,
-                        null,
-                        "SR",
-                        setOf(),
-                        true,
-                        null
-                    ),
-                    null,
-                    SecondaryDialConfig.RotationProcessor()
                 )
             )
         )
@@ -410,6 +384,16 @@ class GameController(var activity: Activity) {
                         null
                     ),
                     ButtonConfig(
+                        GamePadButtonInputId.B.ordinal,
+                        "B",
+                        true,
+                        null,
+                        "B",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    ButtonConfig(
                         GamePadButtonInputId.X.ordinal,
                         "X",
                         true,
@@ -425,16 +409,6 @@ class GameController(var activity: Activity) {
                         true,
                         null,
                         "Y",
-                        setOf(),
-                        true,
-                        null
-                    ),
-                    ButtonConfig(
-                        GamePadButtonInputId.B.ordinal,
-                        "B",
-                        true,
-                        null,
-                        "B",
                         setOf(),
                         true,
                         null
@@ -464,7 +438,7 @@ class GameController(var activity: Activity) {
                     distance,
                     ButtonConfig(
                         GamePadButtonInputId.Plus.ordinal,
-                        "Plus",
+                        "+",
                         true,
                         null,
                         "Plus",
@@ -501,41 +475,6 @@ class GameController(var activity: Activity) {
                         true,
                         null,
                         "RightTrigger",
-                        setOf(),
-                        true,
-                        null
-                    ),
-                    null,
-                    SecondaryDialConfig.RotationProcessor()
-                ),
-                // Joy-Con右柄特有的SL和SR按钮
-                SecondaryDialConfig.SingleButton(
-                    11,
-                    buttonScale,
-                    distance,
-                    ButtonConfig(
-                        GamePadButtonInputId.SL.ordinal,
-                        "SL",
-                        true,
-                        null,
-                        "SL",
-                        setOf(),
-                        true,
-                        null
-                    ),
-                    null,
-                    SecondaryDialConfig.RotationProcessor()
-                ),
-                SecondaryDialConfig.SingleButton(
-                    12,
-                    buttonScale,
-                    distance,
-                    ButtonConfig(
-                        GamePadButtonInputId.SR.ordinal,
-                        "SR",
-                        true,
-                        null,
-                        "SR",
                         setOf(),
                         true,
                         null
@@ -704,15 +643,6 @@ class GameController(var activity: Activity) {
     }
 }
 
-suspend fun <T> Flow<T>.safeCollect(
-    block: suspend (T) -> Unit
-) {
-    this.catch {}
-        .collect {
-            block(it)
-        }
-}
-
 // 生成标准配置
 private fun generateConfig(isLeft: Boolean): GamePadConfig {
     val distance = 0.3f
@@ -815,6 +745,16 @@ private fun generateConfig(isLeft: Boolean): GamePadConfig {
                         null
                     ),
                     ButtonConfig(
+                        GamePadButtonInputId.B.ordinal,
+                        "B",
+                        true,
+                        null,
+                        "B",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    ButtonConfig(
                         GamePadButtonInputId.X.ordinal,
                         "X",
                         true,
@@ -830,16 +770,6 @@ private fun generateConfig(isLeft: Boolean): GamePadConfig {
                         true,
                         null,
                         "Y",
-                        setOf(),
-                        true,
-                        null
-                    ),
-                    ButtonConfig(
-                        GamePadButtonInputId.B.ordinal,
-                        "B",
-                        true,
-                        null,
-                        "B",
                         setOf(),
                         true,
                         null
