@@ -2329,6 +2329,10 @@ if (showControllerTypeDialog.value) {
                         memoryConfiguration, // 新增DRAM参数
                         controllerType
                     )
+
+                    // 添加控制器设置应用
+                    applyControllerSettings()
+    
                     settingsViewModel.navController.popBackStack()
                 }
             }
