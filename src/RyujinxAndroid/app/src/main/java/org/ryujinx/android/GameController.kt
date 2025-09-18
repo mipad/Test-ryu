@@ -12,7 +12,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.math.MathUtils
 import androidx.core.view.isVisible
-import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import com.swordfish.radialgamepad.library.RadialGamePad
 import com.swordfish.radialgamepad.library.config.ButtonConfig
 import com.swordfish.radialgamepad.library.config.CrossConfig
@@ -56,13 +58,13 @@ class GameController(var activity: Activity) {
                     val controller = GameController(viewModel.activity)
                     val c = Create(context, controller)
                     
-                    // 使用 activity 的 lifecycleScope
-                    viewModel.activity.lifecycleScope.launch {
+                    // 使用全局的 CoroutineScope
+                    CoroutineScope(Dispatchers.Main).launch {
                         val events = merge(
                             controller.leftGamePad.events(),
                             controller.rightGamePad.events()
                         )
-                            .shareIn(viewModel.activity.lifecycleScope, SharingStarted.Lazily)
+                            .shareIn(CoroutineScope(Dispatchers.Main), SharingStarted.Lazily)
                         events.safeCollect {
                             controller.handleEvent(it)
                         }
@@ -221,8 +223,8 @@ class GameController(var activity: Activity) {
                 leftContainer?.addView(newLeftPad)
                 leftGamePad = newLeftPad
                 
-                // 重新绑定事件监听器 - 使用 activity 的 lifecycleScope
-                activity.lifecycleScope.launch {
+                // 重新绑定事件监听器 - 使用全局的 CoroutineScope
+                CoroutineScope(Dispatchers.Main).launch {
                     newLeftPad.events().safeCollect { event ->
                         handleEvent(event)
                     }
@@ -241,8 +243,8 @@ class GameController(var activity: Activity) {
                 rightContainer?.addView(newRightPad)
                 rightGamePad = newRightPad
                 
-                // 重新绑定事件监听器 - 使用 activity 的 lifecycleScope
-                activity.lifecycleScope.launch {
+                // 重新绑定事件监听器 - 使用全局的 CoroutineScope
+                CoroutineScope(Dispatchers.Main).launch {
                     newRightPad.events().safeCollect { event ->
                         handleEvent(event)
                     }
