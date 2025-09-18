@@ -120,43 +120,41 @@ class MainActivity : BaseActivity() {
     }
 
     // 安全的控制器设置应用方法
-    fun applyControllerSettings() {
-        if (!_isInit) {
-            // Native层未初始化，延迟100ms重试
-            handler.postDelayed({ applyControllerSettings() }, 100)
-            return
-        }
-
-        try {
-            val quickSettings = QuickSettings(this)
-            
-            // 直接使用 QuickSettings 中的 controllerType 值（已经是正确的整数值）
-            RyujinxNative.jnaInstance.setControllerType(0, quickSettings.controllerType)
-            
-            // 如果有物理控制器，也设置它们的类型
-            val connectedControllers = ControllerManager.connectedControllers.value ?: emptyList()
-            connectedControllers.forEachIndexed { index, controller ->
-                if (!controller.isVirtual) {
-                    // 物理控制器从设备ID 1开始
-                    val deviceId = index + 1
-                    
-                    // 将 ControllerType 枚举转换为整数值
-                    val physicalControllerTypeValue = when (controller.controllerType) {
-                        ControllerType.PRO_CONTROLLER -> 0
-                        ControllerType.JOYCON_LEFT -> 1
-                        ControllerType.JOYCON_RIGHT -> 2
-                        ControllerType.JOYCON_PAIR -> 3
-                        ControllerType.HANDHELD -> 4
-                    }
-                    
-                    RyujinxNative.jnaInstance.setControllerType(deviceId, physicalControllerTypeValue)
-                }
-            }
-        } catch (e: Exception) {
-            // 捕获任何异常，防止崩溃
-            e.printStackTrace()
-        }
+fun applyControllerSettings() {
+    if (!_isInit) {
+        // Native层未初始化，延迟100ms重试
+        handler.postDelayed({ applyControllerSettings() }, 100)
+        return
     }
+
+    try {
+        val quickSettings = QuickSettings(this)
+        
+        // 只设置虚拟控制器（设备ID 0）
+        RyujinxNative.jnaInstance.setControllerType(0, quickSettings.controllerType)
+        
+        /*
+        // 暂时注释掉物理控制器处理，等软件能正常启动后再逐步添加
+        val connectedControllers = ControllerManager.connectedControllers.value ?: emptyList()
+        connectedControllers.forEachIndexed { index, controller ->
+            if (!controller.isVirtual) {
+                val deviceId = index + 1
+                val physicalControllerTypeValue = when (controller.controllerType) {
+                    ControllerType.PRO_CONTROLLER -> 0
+                    ControllerType.JOYCON_LEFT -> 1
+                    ControllerType.JOYCON_RIGHT -> 2
+                    ControllerType.JOYCON_PAIR -> 3
+                    ControllerType.HANDHELD -> 4
+                    else -> 0
+                }
+                RyujinxNative.jnaInstance.setControllerType(deviceId, physicalControllerTypeValue)
+            }
+        }
+        */
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
