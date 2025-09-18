@@ -21,6 +21,7 @@ import com.swordfish.radialgamepad.library.config.PrimaryDialConfig
 import com.swordfish.radialgamepad.library.config.RadialGamePadConfig
 import com.swordfish.radialgamepad.library.config.SecondaryDialConfig
 import com.swordfish.radialgamepad.library.event.Event
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.catch
@@ -54,18 +55,19 @@ class GameController(var activity: Activity) {
                 modifier = Modifier.fillMaxSize(), factory = { context ->
                     val controller = GameController(viewModel.activity)
                     val c = Create(context, controller)
-                    viewModel.activity.lifecycleScope.apply {
-                        viewModel.activity.lifecycleScope.launch {
-                            val events = merge(
-                                controller.leftGamePad.events(),
-                                controller.rightGamePad.events()
-                            )
-                                .shareIn(viewModel.activity.lifecycleScope, SharingStarted.Lazily)
-                            events.safeCollect {
-                                controller.handleEvent(it)
-                            }
+                    
+                    // 使用 activity 的 lifecycleScope
+                    viewModel.activity.lifecycleScope.launch {
+                        val events = merge(
+                            controller.leftGamePad.events(),
+                            controller.rightGamePad.events()
+                        )
+                            .shareIn(viewModel.activity.lifecycleScope, SharingStarted.Lazily)
+                        events.safeCollect {
+                            controller.handleEvent(it)
                         }
                     }
+                    
                     controller.controllerView = c
                     viewModel.setGameController(controller)
                     controller.setVisible(QuickSettings(viewModel.activity).useVirtualController)
@@ -219,7 +221,7 @@ class GameController(var activity: Activity) {
                 leftContainer?.addView(newLeftPad)
                 leftGamePad = newLeftPad
                 
-                // 重新绑定事件监听器
+                // 重新绑定事件监听器 - 使用 activity 的 lifecycleScope
                 activity.lifecycleScope.launch {
                     newLeftPad.events().safeCollect { event ->
                         handleEvent(event)
@@ -239,7 +241,7 @@ class GameController(var activity: Activity) {
                 rightContainer?.addView(newRightPad)
                 rightGamePad = newRightPad
                 
-                // 重新绑定事件监听器
+                // 重新绑定事件监听器 - 使用 activity 的 lifecycleScope
                 activity.lifecycleScope.launch {
                     newRightPad.events().safeCollect { event ->
                         handleEvent(event)
