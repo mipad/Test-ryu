@@ -103,13 +103,16 @@ VK_DEFINE_EXTERN PFN_vkDebugReportMessageEXT vkDebugReportMessageEXT;
 #endif
 
 // === 新增扩展 ===
+// 注意：这些函数在较新版本的Vulkan中可能已经成为核心部分
+// 如果已经在官方头文件中定义，就不需要在这里声明
 
-// VK_KHR_timeline_semaphore
-VK_DEFINE_EXTERN PFN_vkGetPhysicalDeviceFeatures2 vkGetPhysicalDeviceFeatures2KHR;
-VK_DEFINE_EXTERN PFN_vkGetPhysicalDeviceProperties2 vkGetPhysicalDeviceProperties2KHR;
+// 检查是否已经定义了这些函数，如果没有才声明
+#ifndef VK_VERSION_1_1
+// VK_KHR_timeline_semaphore (在Vulkan 1.1中成为核心)
 VK_DEFINE_EXTERN PFN_vkGetSemaphoreCounterValueKHR vkGetSemaphoreCounterValueKHR;
 VK_DEFINE_EXTERN PFN_vkWaitSemaphoresKHR vkWaitSemaphoresKHR;
 VK_DEFINE_EXTERN PFN_vkSignalSemaphoreKHR vkSignalSemaphoreKHR;
+#endif
 
 // VK_EXT_conditional_rendering
 VK_DEFINE_EXTERN PFN_vkCmdBeginConditionalRenderingEXT vkCmdBeginConditionalRenderingEXT;
@@ -162,16 +165,6 @@ VK_DEFINE_EXTERN PFN_vkGetPhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT 
 // VK_EXT_attachment_feedback_loop_dynamic_state
 VK_DEFINE_EXTERN PFN_vkCmdSetAttachmentFeedbackLoopEnableEXT vkCmdSetAttachmentFeedbackLoopEnableEXT;
 
+VK_DEFINE_EXTERN PFN_vkGetPhysicalDeviceFragmentDensityMapPropertiesEXT vkGetPhysicalDeviceFragmentDensityMapPropertiesEXT;
 
-VK_DEFINE_EXTERN PFN_vkGetPhysicalDeviceRobustness2PropertiesEXT vkGetPhysicalDeviceRobustness2PropertiesEXT;
-
- VK_DEFINE_EXTERN PFN_vkGetPhysicalDeviceShaderFloat16Int8FeaturesKHR vkGetPhysicalDeviceShaderFloat16Int8FeaturesKHR;
-
- VK_DEFINE_EXTERN PFN_vkGetPhysicalDeviceCustomBorderColorPropertiesEXT vkGetPhysicalDeviceCustomBorderColorPropertiesEXT;
-
- VK_DEFINE_EXTERN PFN_vkGetPhysicalDevicePortabilitySubsetPropertiesKHR vkGetPhysicalDevicePortabilitySubsetPropertiesKHR;
-
- VK_DEFINE_EXTERN PFN_vkGetPhysicalDeviceFragmentDensityMapPropertiesEXT vkGetPhysicalDeviceFragmentDensityMapPropertiesEXT;
-
- VK_DEFINE_EXTERN PFN_vkGetPhysicalDeviceFragmentDensityMap2PropertiesEXT vkGetPhysicalDeviceFragmentDensityMap2PropertiesEXT;
 #endif // VULKAN_WRAPPER_H
