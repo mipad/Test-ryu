@@ -113,17 +113,12 @@ class MainActivity : BaseActivity() {
         uiHandler = UiHandler()
         _isInit = success
         
-        // Native初始化成功后应用控制器设置
-        if (success) {
-            applyControllerSettings()
-        }
+        
     }
 
     // 安全的控制器设置应用方法
 fun applyControllerSettings() {
     if (!_isInit) {
-        // Native层未初始化，延迟100ms重试
-        handler.postDelayed({ applyControllerSettings() }, 100)
         return
     }
 
@@ -133,24 +128,6 @@ fun applyControllerSettings() {
         // 只设置虚拟控制器（设备ID 0）
         RyujinxNative.jnaInstance.setControllerType(0, quickSettings.controllerType)
         
-        /*
-        // 暂时注释掉物理控制器处理，等软件能正常启动后再逐步添加
-        val connectedControllers = ControllerManager.connectedControllers.value ?: emptyList()
-        connectedControllers.forEachIndexed { index, controller ->
-            if (!controller.isVirtual) {
-                val deviceId = index + 1
-                val physicalControllerTypeValue = when (controller.controllerType) {
-                    ControllerType.PRO_CONTROLLER -> 0
-                    ControllerType.JOYCON_LEFT -> 1
-                    ControllerType.JOYCON_RIGHT -> 2
-                    ControllerType.JOYCON_PAIR -> 3
-                    ControllerType.HANDHELD -> 4
-                    else -> 0
-                }
-                RyujinxNative.jnaInstance.setControllerType(deviceId, physicalControllerTypeValue)
-            }
-        }
-        */
     } catch (e: Exception) {
         e.printStackTrace()
     }
