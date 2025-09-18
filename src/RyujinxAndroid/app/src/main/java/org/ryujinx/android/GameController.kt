@@ -82,6 +82,8 @@ class GameController(var activity: Activity) {
     var leftGamePad: GamePad
     var rightGamePad: GamePad
     var controllerId: Int = -1
+    var currentControllerType: ControllerType = ControllerType.PRO_CONTROLLER // 跟踪当前类型
+    
     val isVisible: Boolean
         get() {
             controllerView?.apply {
@@ -143,17 +145,364 @@ class GameController(var activity: Activity) {
 
     // 新增方法：更新控制器类型
     fun updateControllerType(newType: ControllerType) {
+        if (currentControllerType == newType) {
+            return // 类型相同，不需要更新
+        }
+        
+        currentControllerType = newType
+        
         // 更新ControllerManager中的控制器类型
         ControllerManager.updateControllerType(activity, "virtual_controller_1", newType)
         
         // 设置C++层的控制器类型（设备ID 0对应虚拟控制器）
         RyujinxNative.jnaInstance.setControllerType(0, controllerTypeToInt(newType))
         
+        // 根据控制器类型更新虚拟按键布局
+        updateVirtualLayoutForControllerType(newType)
+        
         // 重新连接以确保配置生效
         if (controllerId != -1) {
             disconnect()
             connect()
         }
+    }
+
+    // 新增方法：根据控制器类型更新虚拟按键布局
+    private fun updateVirtualLayoutForControllerType(controllerType: ControllerType) {
+        when (controllerType) {
+            ControllerType.PRO_CONTROLLER -> {
+                // Pro控制器：显示完整的左右虚拟按键
+                setVirtualControllerVisibility(true, true)
+                // 重新生成标准配置
+                leftGamePad.config = generateConfig(true)
+                rightGamePad.config = generateConfig(false)
+            }
+            ControllerType.JOYCON_LEFT -> {
+                // Joy-Con左柄：只显示左虚拟按键，隐藏右虚拟按键
+                setVirtualControllerVisibility(true, false)
+                // 重新生成左柄专用配置
+                leftGamePad.config = generateJoyConLeftConfig()
+            }
+            ControllerType.JOYCON_RIGHT -> {
+                // Joy-Con右柄：只显示右虚拟按键，隐藏左虚拟按键
+                setVirtualControllerVisibility(false, true)
+                // 重新生成右柄专用配置
+                rightGamePad.config = generateJoyConRightConfig()
+            }
+            ControllerType.JOYCON_PAIR -> {
+                // Joy-Con配对：显示完整的左右虚拟按键
+                setVirtualControllerVisibility(true, true)
+                // 重新生成标准配置
+                leftGamePad.config = generateConfig(true)
+                rightGamePad.config = generateConfig(false)
+            }
+            ControllerType.HANDHELD -> {
+                // Handheld模式：显示完整的左右虚拟按键
+                setVirtualControllerVisibility(true, true)
+                // 重新生成标准配置
+                leftGamePad.config = generateConfig(true)
+                rightGamePad.config = generateConfig(false)
+            }
+        }
+        
+        // 刷新虚拟按键视图
+        refreshVirtualControllerView()
+    }
+
+    // 新增方法：设置虚拟控制器可见性
+    private fun setVirtualControllerVisibility(showLeft: Boolean, showRight: Boolean) {
+        controllerView?.apply {
+            findViewById<FrameLayout>(R.id.leftcontainer)?.isVisible = showLeft
+            findViewById<FrameLayout>(R.id.rightcontainer)?.isVisible = showRight
+        }
+    }
+
+    // 新增方法：刷新虚拟控制器视图
+    private fun refreshVirtualControllerView() {
+        controllerView?.apply {
+            // 强制重新布局
+            requestLayout()
+            invalidate()
+        }
+        leftGamePad.invalidate()
+        rightGamePad.invalidate()
+    }
+
+    // 新增方法：生成Joy-Con左柄专用配置
+    private fun generateJoyConLeftConfig(): GamePadConfig {
+        val distance = 0.3f
+        val buttonScale = 1f
+
+        return GamePadConfig(
+            12,
+            PrimaryDialConfig.Stick(
+                GamePadButtonInputId.LeftStick.ordinal,
+                GamePadButtonInputId.LeftStickButton.ordinal,
+                setOf(),
+                "LeftStick",
+                null
+            ),
+            listOf(
+                SecondaryDialConfig.Cross(
+                    10,
+                    3,
+                    2.5f,
+                    distance,
+                    CrossConfig(
+                        GamePadButtonInputId.DpadUp.ordinal,
+                        CrossConfig.Shape.STANDARD,
+                        null,
+                        setOf(),
+                        CrossContentDescription(),
+                        true,
+                        null
+                    ),
+                    SecondaryDialConfig.RotationProcessor()
+                ),
+                SecondaryDialConfig.SingleButton(
+                    1,
+                    buttonScale,
+                    distance,
+                    ButtonConfig(
+                        GamePadButtonInputId.Minus.ordinal,
+                        "-",
+                        true,
+                        null,
+                        "Minus",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    null,
+                    SecondaryDialConfig.RotationProcessor()
+                ),
+                SecondaryDialConfig.DoubleButton(
+                    2,
+                    distance,
+                    ButtonConfig(
+                        GamePadButtonInputId.LeftShoulder.ordinal,
+                        "L",
+                        true,
+                        null,
+                        "LeftBumper",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    null,
+                    SecondaryDialConfig.RotationProcessor()
+                ),
+                SecondaryDialConfig.SingleButton(
+                    9,
+                    buttonScale,
+                    distance,
+                    ButtonConfig(
+                        GamePadButtonInputId.LeftTrigger.ordinal,
+                        "ZL",
+                        true,
+                        null,
+                        "LeftTrigger",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    null,
+                    SecondaryDialConfig.RotationProcessor()
+                ),
+                // Joy-Con左柄特有的SL和SR按钮
+                SecondaryDialConfig.SingleButton(
+                    11,
+                    buttonScale,
+                    distance,
+                    ButtonConfig(
+                        GamePadButtonInputId.SL.ordinal,
+                        "SL",
+                        true,
+                        null,
+                        "SL",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    null,
+                    SecondaryDialConfig.RotationProcessor()
+                ),
+                SecondaryDialConfig.SingleButton(
+                    12,
+                    buttonScale,
+                    distance,
+                    ButtonConfig(
+                        GamePadButtonInputId.SR.ordinal,
+                        "SR",
+                        true,
+                        null,
+                        "SR",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    null,
+                    SecondaryDialConfig.RotationProcessor()
+                )
+            )
+        )
+    }
+
+    // 新增方法：生成Joy-Con右柄专用配置
+    private fun generateJoyConRightConfig(): GamePadConfig {
+        val distance = 0.3f
+        val buttonScale = 1f
+
+        return GamePadConfig(
+            12,
+            PrimaryDialConfig.PrimaryButtons(
+                listOf(
+                    ButtonConfig(
+                        GamePadButtonInputId.A.ordinal,
+                        "A",
+                        true,
+                        null,
+                        "A",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    ButtonConfig(
+                        GamePadButtonInputId.X.ordinal,
+                        "X",
+                        true,
+                        null,
+                        "X",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    ButtonConfig(
+                        GamePadButtonInputId.Y.ordinal,
+                        "Y",
+                        true,
+                        null,
+                        "Y",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    ButtonConfig(
+                        GamePadButtonInputId.B.ordinal,
+                        "B",
+                        true,
+                        null,
+                        "B",
+                        setOf(),
+                        true,
+                        null
+                    )
+                ),
+                null,
+                0f,
+                true,
+                null
+            ),
+            listOf(
+                SecondaryDialConfig.Stick(
+                    7,
+                    2,
+                    2f,
+                    distance,
+                    GamePadButtonInputId.RightStick.ordinal,
+                    GamePadButtonInputId.RightStickButton.ordinal,
+                    null,
+                    setOf(),
+                    "RightStick",
+                    SecondaryDialConfig.RotationProcessor()
+                ),
+                SecondaryDialConfig.SingleButton(
+                    6,
+                    buttonScale,
+                    distance,
+                    ButtonConfig(
+                        GamePadButtonInputId.Plus.ordinal,
+                        "+",
+                        true,
+                        null,
+                        "Plus",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    null,
+                    SecondaryDialConfig.RotationProcessor()
+                ),
+                SecondaryDialConfig.DoubleButton(
+                    3,
+                    distance,
+                    ButtonConfig(
+                        GamePadButtonInputId.RightShoulder.ordinal,
+                        "R",
+                        true,
+                        null,
+                        "RightBumper",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    null,
+                    SecondaryDialConfig.RotationProcessor()
+                ),
+                SecondaryDialConfig.SingleButton(
+                    9,
+                    buttonScale,
+                    distance,
+                    ButtonConfig(
+                        GamePadButtonInputId.RightTrigger.ordinal,
+                        "ZR",
+                        true,
+                        null,
+                        "RightTrigger",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    null,
+                    SecondaryDialConfig.RotationProcessor()
+                ),
+                // Joy-Con右柄特有的SL和SR按钮
+                SecondaryDialConfig.SingleButton(
+                    11,
+                    buttonScale,
+                    distance,
+                    ButtonConfig(
+                        GamePadButtonInputId.SL.ordinal,
+                        "SL",
+                        true,
+                        null,
+                        "SL",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    null,
+                    SecondaryDialConfig.RotationProcessor()
+                ),
+                SecondaryDialConfig.SingleButton(
+                    12,
+                    buttonScale,
+                    distance,
+                    ButtonConfig(
+                        GamePadButtonInputId.SR.ordinal,
+                        "SR",
+                        true,
+                        null,
+                        "SR",
+                        setOf(),
+                        true,
+                        null
+                    ),
+                    null,
+                    SecondaryDialConfig.RotationProcessor()
+                )
+            )
+        )
     }
 
     // 新增方法：将ControllerType转换为整数
@@ -171,8 +520,11 @@ class GameController(var activity: Activity) {
         controllerView?.apply {
             this.isVisible = isVisible
 
-            if (isVisible)
+            if (isVisible) {
                 connect()
+                // 根据当前控制器类型更新布局
+                updateVirtualLayoutForControllerType(currentControllerType)
+            }
         }
     }
 
@@ -303,55 +655,6 @@ class GameController(var activity: Activity) {
             }
         }
     }
-    
-    // 新增方法：处理物理控制器连接
-    fun handlePhysicalControllerConnected(deviceId: String, deviceName: String) {
-        val physicalController = Controller(
-            id = deviceId,
-            name = deviceName,
-            controllerType = ControllerType.PRO_CONTROLLER, // 默认类型
-            isVirtual = false
-        )
-        ControllerManager.addController(activity, physicalController)
-        
-        // 设置物理控制器的类型（设备ID从1开始）
-        val deviceIdInt = deviceId.hashCode() % 3 + 1 // 生成1-3的设备ID
-        RyujinxNative.jnaInstance.setControllerType(deviceIdInt, 0) // 默认Pro控制器
-    }
-    
-    // 新增方法：根据控制器类型处理输入
-    private fun handleInputBasedOnType(controllerId: String, inputEvent: Event) {
-        // 这里可以根据控制器类型进行不同的输入处理
-        // 例如Joy-Con左/右柄的特殊映射
-        val controllerType = ControllerManager.connectedControllers.value?.firstOrNull { it.id == controllerId }?.controllerType
-            ?: ControllerType.PRO_CONTROLLER
-        
-        when (controllerType) {
-            ControllerType.JOYCON_LEFT -> {
-                // Joy-Con左柄的特殊输入处理
-                handleJoyConLeftInput(inputEvent)
-            }
-            ControllerType.JOYCON_RIGHT -> {
-                // Joy-Con右柄的特殊输入处理
-                handleJoyConRightInput(inputEvent)
-            }
-            else -> {
-                // 其他控制器的默认处理
-            }
-        }
-    }
-    
-    // 新增方法：处理Joy-Con左柄输入
-    private fun handleJoyConLeftInput(inputEvent: Event) {
-        // Joy-Con左柄的特殊输入映射
-        // 例如：SL和SR按钮的特殊处理
-    }
-    
-    // 新增方法：处理Joy-Con右柄输入
-    private fun handleJoyConRightInput(inputEvent: Event) {
-        // Joy-Con右柄的特殊输入映射
-        // 例如：SL和SR按钮的特殊处理
-    }
 }
 
 suspend fun <T> Flow<T>.safeCollect(
@@ -363,204 +666,4 @@ suspend fun <T> Flow<T>.safeCollect(
         }
 }
 
-private fun generateConfig(isLeft: Boolean): GamePadConfig {
-    val distance = 0.3f
-    val buttonScale = 1f
-
-    if (isLeft) {
-        return GamePadConfig(
-            12,
-            PrimaryDialConfig.Stick(
-                GamePadButtonInputId.LeftStick.ordinal,
-                GamePadButtonInputId.LeftStickButton.ordinal,
-                setOf(),
-                "LeftStick",
-                null
-            ),
-            listOf(
-                SecondaryDialConfig.Cross(
-                    10,
-                    3,
-                    2.5f,
-                    distance,
-                    CrossConfig(
-                        GamePadButtonInputId.DpadUp.ordinal,
-                        CrossConfig.Shape.STANDARD,
-                        null,
-                        setOf(),
-                        CrossContentDescription(),
-                        true,
-                        null
-                    ),
-                    SecondaryDialConfig.RotationProcessor()
-                ),
-                SecondaryDialConfig.SingleButton(
-                    1,
-                    buttonScale,
-                    distance,
-                    ButtonConfig(
-                        GamePadButtonInputId.Minus.ordinal,
-                        "-",
-                        true,
-                        null,
-                        "Minus",
-                        setOf(),
-                        true,
-                        null
-                    ),
-                    null,
-                    SecondaryDialConfig.RotationProcessor()
-                ),
-                SecondaryDialConfig.DoubleButton(
-                    2,
-                    distance,
-                    ButtonConfig(
-                        GamePadButtonInputId.LeftShoulder.ordinal,
-                        "L",
-                        true,
-                        null,
-                        "LeftBumper",
-                        setOf(),
-                        true,
-                        null
-                    ),
-                    null,
-                    SecondaryDialConfig.RotationProcessor()
-                ),
-                SecondaryDialConfig.SingleButton(
-                    9,
-                    buttonScale,
-                    distance,
-                    ButtonConfig(
-                        GamePadButtonInputId.LeftTrigger.ordinal,
-                        "ZL",
-                        true,
-                        null,
-                        "LeftTrigger",
-                        setOf(),
-                        true,
-                        null
-                    ),
-                    null,
-                    SecondaryDialConfig.RotationProcessor()
-                ),
-            )
-        )
-    } else {
-        return GamePadConfig(
-            12,
-            PrimaryDialConfig.PrimaryButtons(
-                listOf(
-                    ButtonConfig(
-                        GamePadButtonInputId.A.ordinal,
-                        "A",
-                        true,
-                        null,
-                        "A",
-                        setOf(),
-                        true,
-                        null
-                    ),
-                    ButtonConfig(
-                        GamePadButtonInputId.X.ordinal,
-                        "X",
-                        true,
-                        null,
-                        "X",
-                        setOf(),
-                        true,
-                        null
-                    ),
-                    ButtonConfig(
-                        GamePadButtonInputId.Y.ordinal,
-                        "Y",
-                        true,
-                        null,
-                        "Y",
-                        setOf(),
-                        true,
-                        null
-                    ),
-                    ButtonConfig(
-                        GamePadButtonInputId.B.ordinal,
-                        "B",
-                        true,
-                        null,
-                        "B",
-                        setOf(),
-                        true,
-                        null
-                    )
-                ),
-                null,
-                0f,
-                true,
-                null
-            ),
-            listOf(
-                SecondaryDialConfig.Stick(
-                    7,
-                    2,
-                    2f,
-                    distance,
-                    GamePadButtonInputId.RightStick.ordinal,
-                    GamePadButtonInputId.RightStickButton.ordinal,
-                    null,
-                    setOf(),
-                    "RightStick",
-                    SecondaryDialConfig.RotationProcessor()
-                ),
-                SecondaryDialConfig.SingleButton(
-                    6,
-                    buttonScale,
-                    distance,
-                    ButtonConfig(
-                        GamePadButtonInputId.Plus.ordinal,
-                        "+",
-                        true,
-                        null,
-                        "Plus",
-                        setOf(),
-                        true,
-                        null
-                    ),
-                    null,
-                    SecondaryDialConfig.RotationProcessor()
-                ),
-                SecondaryDialConfig.DoubleButton(
-                    3,
-                    distance,
-                    ButtonConfig(
-                        GamePadButtonInputId.RightShoulder.ordinal,
-                        "R",
-                        true,
-                        null,
-                        "RightBumper",
-                        setOf(),
-                        true,
-                        null
-                    ),
-                    null,
-                    SecondaryDialConfig.RotationProcessor()
-                ),
-                SecondaryDialConfig.SingleButton(
-                    9,
-                    buttonScale,
-                    distance,
-                    ButtonConfig(
-                        GamePadButtonInputId.RightTrigger.ordinal,
-                        "ZR",
-                        true,
-                        null,
-                        "RightTrigger",
-                        setOf(),
-                        true,
-                        null
-                    ),
-                    null,
-                    SecondaryDialConfig.RotationProcessor()
-                )
-            )
-        )
-    }
-}
+// 原有的 generateConfig 方法保持不变...
