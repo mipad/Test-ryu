@@ -70,9 +70,6 @@ class MainActivity : BaseActivity() {
         // 设置跳过内存屏障
         RyujinxNative.jnaInstance.setSkipMemoryBarriers(quickSettings.skipMemoryBarriers)
         
-        // 设置控制器类型
-        RyujinxNative.jnaInstance.setControllerType(quickSettings.controllerType)
-        
         RyujinxNative.jnaInstance.loggingSetEnabled(
             LogLevel.Debug.ordinal,
             quickSettings.enableDebugLogs
@@ -154,9 +151,6 @@ class MainActivity : BaseActivity() {
                 }
             }
         }
-        
-        // 初始化ControllerTypeManager的DataStore
-        // DataStore会在首次访问时自动初始化，这里不需要额外代码
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -233,15 +227,5 @@ class MainActivity : BaseActivity() {
         }
 
         motionSensorManager.unregister()
-    }
-    
-    // 添加返回键处理
-    override fun onBackPressed() {
-        // 如果设置界面正在显示，尝试正常退出设置
-        if (mainViewModel?.isInSettings == true) {
-            mainViewModel?.navigateBackFromSettings()
-        } else {
-            super.onBackPressed()
-        }
     }
 }
