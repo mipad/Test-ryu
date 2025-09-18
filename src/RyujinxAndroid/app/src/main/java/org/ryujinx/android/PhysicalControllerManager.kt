@@ -7,6 +7,21 @@ import org.ryujinx.android.viewmodels.QuickSettings
 
 class PhysicalControllerManager(val activity: MainActivity) {
     private var controllerId: Int = -1
+    private var currentControllerType: ControllerType = ControllerType.PRO_CONTROLLER
+
+    // 新增方法：更新控制器类型
+    fun updateControllerType(controllerType: ControllerType) {
+        currentControllerType = controllerType
+        
+        // 如果控制器已连接，立即应用新的控制器类型
+        if (controllerId != -1) {
+            RyujinxNative.jnaInstance.setControllerType(controllerId, controllerType.ordinal)
+        }
+        
+        // 同时更新ControllerManager中的控制器类型
+        val deviceId = "physical_controller_$controllerId"
+        ControllerManager.updateControllerType(activity, deviceId, controllerType)
+    }
 
     fun onKeyEvent(event: KeyEvent): Boolean {
         val id = getGamePadButtonInputId(event.keyCode)
