@@ -113,25 +113,26 @@ class MainActivity : BaseActivity() {
         uiHandler = UiHandler()
         _isInit = success
         
-        
+        // 初始化后应用控制器设置
+        applyControllerSettings()
     }
 
     // 安全的控制器设置应用方法
-fun applyControllerSettings() {
-    if (!_isInit) {
-        return
-    }
+    fun applyControllerSettings() {
+        if (!_isInit) {
+            return
+        }
 
-    try {
-        val quickSettings = QuickSettings(this)
-        
-        // 只设置虚拟控制器（设备ID 0）
-        RyujinxNative.jnaInstance.setControllerType(0, quickSettings.controllerType)
-        
-    } catch (e: Exception) {
-        e.printStackTrace()
+        try {
+            val quickSettings = QuickSettings(this)
+            
+            // 只设置虚拟控制器（设备ID 0）
+            RyujinxNative.jnaInstance.setControllerType(0, quickSettings.controllerType)
+            
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
-}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -237,7 +238,8 @@ fun applyControllerSettings() {
             if (QuickSettings(this).enableMotion)
                 motionSensorManager.register()
             
-            
+            // 恢复时重新应用控制器设置
+            applyControllerSettings()
         }
     }
 
