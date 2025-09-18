@@ -155,7 +155,8 @@ class GameController(var activity: Activity) {
         ControllerManager.updateControllerType(activity, "virtual_controller_1", newType)
         
         // 设置C++层的控制器类型（设备ID 0对应虚拟控制器）
-        RyujinxNative.jnaInstance.setControllerType(0, controllerTypeToInt(newType))
+        val controllerTypeInt = controllerTypeToInt(newType)
+        RyujinxNative.jnaInstance.setControllerType(0, controllerTypeInt)
         
         // 根据控制器类型更新虚拟按键布局
         updateVirtualLayoutForControllerType(newType)
@@ -569,6 +570,7 @@ class GameController(var activity: Activity) {
 
     fun disconnect() {
         if (controllerId != -1) {
+            RyujinxNative.jnaInstance.inputDisconnectGamepad(controllerId)
             controllerId = -1
         }
     }
