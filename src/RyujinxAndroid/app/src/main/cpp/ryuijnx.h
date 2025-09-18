@@ -14,11 +14,8 @@
 #include <android/log.h>
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
-// 首先包含官方的 Vulkan 头文件
-#include <vulkan/vulkan.h>
-#include <vulkan/vulkan_android.h>
-// 然后包含自定义的 wrapper
 #include "vulkan_wrapper.h"
+#include <vulkan/vulkan_android.h>
 #include <cassert>
 #include <fcntl.h>
 #include "adrenotools/driver.h"
