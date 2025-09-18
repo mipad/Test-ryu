@@ -233,6 +233,8 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Guest.ordinal, enableGuestLogs.value)
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Trace.ordinal, enableTraceLogs.value)
         RyujinxNative.jnaInstance.loggingEnabledGraphicsLog(enableGraphicsLogs.value)
+          // 保存后应用控制器设置
+        activity.applyControllerSettings()
     }
 
     fun openGameFolder() {
