@@ -20,6 +20,8 @@ enum class GamePadButtonInputId {
     DpadRight,
     Minus,
     Plus,
+    SL,  // 新增：Joy-Con SL按钮
+    SR,  // 新增：Joy-Con SR按钮
 
     // Stick
     LeftStick,
