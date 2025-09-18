@@ -175,11 +175,7 @@ class QuickSettings(val activity: Activity) {
         }
     }
     
-    // 新增方法：设置控制器类型并立即应用
-    fun setControllerType(newType: Int) {
-        controllerType = newType
-        applyControllerSettings()
-    }
+    // 删除重复的 setControllerType(Int) 方法，因为属性已经自动生成了setter
     
     // 新增方法：设置控制器类型通过枚举值
     fun setControllerType(controllerType: ControllerType) {
