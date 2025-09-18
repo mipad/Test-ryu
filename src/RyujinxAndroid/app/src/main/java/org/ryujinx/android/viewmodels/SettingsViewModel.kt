@@ -10,6 +10,7 @@ import com.anggrayudi.storage.file.FileFullPath
 import com.anggrayudi.storage.file.copyFileTo
 import com.anggrayudi.storage.file.extension
 import com.anggrayudi.storage.file.getAbsolutePath
+import org.ryujinx.android.ControllerType
 import org.ryujinx.android.LogLevel
 import org.ryujinx.android.MainActivity
 import org.ryujinx.android.RegionCode
@@ -215,8 +216,11 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         // 设置内存配置
         RyujinxNative.jnaInstance.setMemoryConfiguration(memoryConfiguration.value)
 
-        // 设置控制器类型（虚拟控制器使用设备ID 0）
-        //RyujinxNative.jnaInstance.setControllerType(0, controllerType.value)
+        // 设置控制器类型（虚拟控制器使用设备ID 0）- 取消注释这行！
+        RyujinxNative.jnaInstance.setControllerType(0, controllerType.value)
+
+        // 同时更新ControllerManager中的控制器类型
+        updateControllerTypeInManager(controllerType.value)
 
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Debug.ordinal, enableDebugLogs.value)
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Info.ordinal, enableInfoLogs.value)
@@ -233,6 +237,32 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Guest.ordinal, enableGuestLogs.value)
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Trace.ordinal, enableTraceLogs.value)
         RyujinxNative.jnaInstance.loggingEnabledGraphicsLog(enableGraphicsLogs.value)
+    }
+
+    // 新增方法：更新ControllerManager中的控制器类型
+    private fun updateControllerTypeInManager(controllerType: Int) {
+        try {
+            val controllerTypeEnum = when (controllerType) {
+                0 -> ControllerType.PRO_CONTROLLER
+                1 -> ControllerType.JOYCON_LEFT
+                2 -> ControllerType.JOYCON_RIGHT
+                3 -> ControllerType.JOYCON_PAIR
+                4 -> ControllerType.HANDHELD
+                else -> ControllerType.PRO_CONTROLLER
+            }
+            
+            // 更新ControllerManager中的虚拟控制器类型
+            MainActivity.mainViewModel?.gameController?.updateControllerType(controllerTypeEnum)
+            
+            // 同时更新ControllerManager中的控制器类型
+            org.ryujinx.android.ControllerManager.updateControllerType(
+                activity,
+                "virtual_controller_1",
+                controllerTypeEnum
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     fun openGameFolder() {
