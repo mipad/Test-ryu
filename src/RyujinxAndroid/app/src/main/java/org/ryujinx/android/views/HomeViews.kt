@@ -1,5 +1,6 @@
 package org.ryujinx.android.views 
 
+import androidx.compose.foundation.lazy.animateItemPlacement
 import android.content.res.Configuration
 import android.content.res.Resources
 import android.graphics.BitmapFactory
