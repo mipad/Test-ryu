@@ -5,6 +5,7 @@ import com.sun.jna.Library
 import com.sun.jna.Native
 import org.ryujinx.android.viewmodels.GameInfo
 import java.util.Collections
+import java.util.concurrent.atomic.AtomicInteger
 
 interface RyujinxNativeJna : Library {
     fun deviceInitialize(
@@ -115,6 +116,72 @@ class RyujinxNative {
             RyujinxNativeJna::class.java,
             Collections.singletonMap(Library.OPTION_ALLOW_OBJECTS, true)
         )
+        
+        // 设备ID管理
+        private val connectedDeviceIds = mutableSetOf<Int>()
+        private val nextDeviceId = AtomicInteger(0)
+        
+        /**
+         * 获取下一个可用的设备ID
+         * @return 可用的设备ID，如果没有可用ID则返回-1
+         */
+        @JvmStatic
+        fun getNextAvailableDeviceId(): Int {
+            synchronized(connectedDeviceIds) {
+                // 尝试从0到7的ID
+                for (i in 0..7) {
+                    if (!connectedDeviceIds.contains(i)) {
+                        connectedDeviceIds.add(i)
+                        return i
+                    }
+                }
+                return -1 // 没有可用ID
+            }
+        }
+        
+        /**
+         * 释放设备ID
+         * @param deviceId 要释放的设备ID
+         */
+        @JvmStatic
+        fun releaseDeviceId(deviceId: Int) {
+            synchronized(connectedDeviceIds) {
+                connectedDeviceIds.remove(deviceId)
+            }
+        }
+        
+        /**
+         * 连接游戏手柄并返回设备ID
+         * @return 设备ID，如果连接失败返回-1
+         */
+        @JvmStatic
+        fun connectGamepad(): Int {
+            val deviceId = getNextAvailableDeviceId()
+            if (deviceId != -1) {
+                // 调用原生方法连接游戏手柄
+                val result = jnaInstance.inputConnectGamepad(deviceId)
+                if (result == -1) {
+                    // 连接失败，释放设备ID
+                    releaseDeviceId(deviceId)
+                    return -1
+                }
+            }
+            return deviceId
+        }
+        
+        /**
+         * 断开游戏手柄连接
+         * @param deviceId 要断开的设备ID
+         */
+        @JvmStatic
+        fun disconnectGamepad(deviceId: Int) {
+            if (deviceId != -1) {
+                // 释放设备ID
+                releaseDeviceId(deviceId)
+                // 注意：原生层可能没有显式的断开连接方法
+                // 如果需要，可以在这里调用相应的原生方法
+            }
+        }
 
         @JvmStatic
         fun test()
