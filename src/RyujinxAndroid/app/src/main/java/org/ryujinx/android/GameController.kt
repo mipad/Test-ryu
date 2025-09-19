@@ -522,6 +522,8 @@ class GameController(var activity: Activity) {
 
     fun disconnect() {
         if (controllerId != -1) {
+            // 先断开连接
+            RyujinxNative.jnaInstance.inputDisconnectGamepad(controllerId)
             controllerId = -1
         }
     }
