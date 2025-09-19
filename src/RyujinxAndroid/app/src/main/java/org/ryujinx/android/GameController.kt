@@ -494,14 +494,14 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
         )
     }
 
-    // 新增方法：将ControllerType转换为整数
+    // 修改方法：将ControllerType转换为整数，与C#端枚举值匹配
     private fun controllerTypeToInt(controllerType: ControllerType): Int {
         return when (controllerType) {
-            ControllerType.PRO_CONTROLLER -> 0
-            ControllerType.JOYCON_LEFT -> 1
-            ControllerType.JOYCON_RIGHT -> 2
-            ControllerType.JOYCON_PAIR -> 3
-            ControllerType.HANDHELD -> 4
+            ControllerType.PRO_CONTROLLER -> 1  // ProController = 1 << 0
+            ControllerType.JOYCON_LEFT -> 8     // JoyconLeft = 1 << 3
+            ControllerType.JOYCON_RIGHT -> 16   // JoyconRight = 1 << 4
+            ControllerType.JOYCON_PAIR -> 4     // JoyconPair = 1 << 2
+            ControllerType.HANDHELD -> 2        // Handheld = 1 << 1
         }
     }
 
