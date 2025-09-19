@@ -210,8 +210,8 @@ namespace LibRyujinx
             }
         }
 
-        // 新增方法：设置控制器类型
-        public static void SetControllerType(int deviceId, int controllerType)
+        // 修改方法：设置控制器类型，处理位掩码值
+        public static void SetControllerType(int deviceId, int controllerTypeBitmask)
         {
             if (deviceId < 0 || deviceId >= _controllerTypes.Length)
             {
@@ -219,14 +219,32 @@ namespace LibRyujinx
                 return;
             }
 
-            // 确保控制器类型值在有效范围内 (0-4)
-            if (controllerType < 0 || controllerType > 4)
+            // 将位掩码转换为对应的ControllerType枚举值
+            Ryujinx.Common.Configuration.Hid.ControllerType controllerType;
+            switch (controllerTypeBitmask)
             {
-                Logger.Warning?.Print(LogClass.Application, $"Invalid controller type: {controllerType}, using ProController (0)");
-                controllerType = 0; // 默认值
+                case 1: // ProController = 1 << 0
+                    controllerType = Ryujinx.Common.Configuration.Hid.ControllerType.ProController;
+                    break;
+                case 2: // Handheld = 1 << 1
+                    controllerType = Ryujinx.Common.Configuration.Hid.ControllerType.Handheld;
+                    break;
+                case 4: // JoyconPair = 1 << 2
+                    controllerType = Ryujinx.Common.Configuration.Hid.ControllerType.JoyconPair;
+                    break;
+                case 8: // JoyconLeft = 1 << 3
+                    controllerType = Ryujinx.Common.Configuration.Hid.ControllerType.JoyconLeft;
+                    break;
+                case 16: // JoyconRight = 1 << 4
+                    controllerType = Ryujinx.Common.Configuration.Hid.ControllerType.JoyconRight;
+                    break;
+                default:
+                    Logger.Warning?.Print(LogClass.Application, $"Invalid controller type bitmask: {controllerTypeBitmask}, using ProController");
+                    controllerType = Ryujinx.Common.Configuration.Hid.ControllerType.ProController;
+                    break;
             }
 
-            _controllerTypes[deviceId] = (Ryujinx.Common.Configuration.Hid.ControllerType)controllerType;
+            _controllerTypes[deviceId] = controllerType;
             Logger.Info?.Print(LogClass.Application, $"Controller type for device {deviceId} set to: {_controllerTypes[deviceId]}");
 
             // 如果设备已初始化，立即更新控制器配置
@@ -236,16 +254,31 @@ namespace LibRyujinx
             }
         }
         
-        // 新增方法：获取控制器类型
+        // 修改方法：获取控制器类型，返回位掩码值
         public static int GetControllerType(int deviceId)
         {
             if (deviceId < 0 || deviceId >= _controllerTypes.Length)
             {
                 Logger.Warning?.Print(LogClass.Application, $"Invalid device ID: {deviceId}");
-                return (int)Ryujinx.Common.Configuration.Hid.ControllerType.ProController;
+                return 1; // 返回ProController的位掩码值
             }
 
-            return (int)_controllerTypes[deviceId];
+            // 将ControllerType枚举值转换为位掩码
+            switch (_controllerTypes[deviceId])
+            {
+                case Ryujinx.Common.Configuration.Hid.ControllerType.ProController:
+                    return 1; // 1 << 0
+                case Ryujinx.Common.Configuration.Hid.ControllerType.Handheld:
+                    return 2; // 1 << 1
+                case Ryujinx.Common.Configuration.Hid.ControllerType.JoyconPair:
+                    return 4; // 1 << 2
+                case Ryujinx.Common.Configuration.Hid.ControllerType.JoyconLeft:
+                    return 8; // 1 << 3
+                case Ryujinx.Common.Configuration.Hid.ControllerType.JoyconRight:
+                    return 16; // 1 << 4
+                default:
+                    return 1; // 默认返回ProController的位掩码值
+            }
         }
         
         // 新增方法：更新控制器配置
