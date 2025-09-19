@@ -1897,5 +1897,5 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
 data class PlayerSetting(
     val playerNumber: Int,
     var isConnected: Boolean,
-    var controllerType: Int // 0 = Pro Controller, 1 = Joy-Con, 2 = Handheld
+    var controllerType: Int // 0 = Pro Controller, 1 = JOYCON_LEFT, 2 = JOYCON_RIGHT,3=JOYCON_PAIR 4=HANDHELD
 )
