@@ -118,23 +118,34 @@ class MainActivity : BaseActivity() {
     }
 
     // 安全的控制器设置应用方法
-fun applyControllerSettings() {
-    if (!_isInit) {
-        return
-    }
-
-    try {
-        val quickSettings = QuickSettings(this)
-        val player1Setting = quickSettings.getPlayerSetting(1)
-        
-        // 只设置虚拟控制器（设备ID 0）
-        if (player1Setting != null && player1Setting.isConnected) {
-            RyujinxNative.jnaInstance.setControllerType(0, player1Setting.controllerType)
+    fun applyControllerSettings() {
+        if (!_isInit) {
+            return
         }
-    } catch (e: Exception) {
-        e.printStackTrace()
+
+        try {
+            val quickSettings = QuickSettings(this)
+            
+            // 只设置虚拟控制器（设备ID 0）- 玩家1
+            val player1Setting = quickSettings.getPlayerSetting(1)
+            if (player1Setting != null && player1Setting.isConnected) {
+                RyujinxNative.jnaInstance.setControllerType(0, player1Setting.controllerType)
+                android.util.Log.d("MainActivity", "Controller type set for device 0: ${player1Setting.controllerType}")
+            }
+            
+            // 设置其他玩家的控制器类型（设备ID 1-7）
+            for (i in 2..8) {
+                val playerSetting = quickSettings.getPlayerSetting(i)
+                if (playerSetting != null && playerSetting.isConnected) {
+                    val deviceId = i - 1 // 设备ID从1开始（玩家2对应设备ID1，玩家3对应设备ID2，以此类推）
+                    RyujinxNative.jnaInstance.setControllerType(deviceId, playerSetting.controllerType)
+                    android.util.Log.d("MainActivity", "Controller type set for device $deviceId: ${playerSetting.controllerType}")
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Failed to apply controller settings", e)
+        }
     }
-}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
