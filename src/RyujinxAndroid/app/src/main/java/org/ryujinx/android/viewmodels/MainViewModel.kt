@@ -58,6 +58,9 @@ class MainViewModel(val activity: MainActivity) {
 
     // 玩家设置列表
     var playerSettings: MutableList<PlayerSetting> = mutableListOf()
+    
+    // 玩家设备ID映射表
+    private val playerDeviceIds = mutableMapOf<Int, Int>()
 
     init {
         performanceManager = PerformanceManager(activity)
@@ -99,14 +102,41 @@ class MainViewModel(val activity: MainActivity) {
         if (index != -1) {
             playerSettings[index] = playerSetting
             
-            // 如果是玩家1，立即应用设置
-            if (playerSetting.playerNumber == 1 && playerSetting.isConnected) {
-                // 设备ID: 0 对应玩家1
-                RyujinxNative.jnaInstance.setControllerType(0, playerSetting.controllerType)
+            // 如果是已连接的玩家，立即应用设置
+            if (playerSetting.isConnected) {
+                val deviceId = playerDeviceIds[playerSetting.playerNumber]
+                if (deviceId != null) {
+                    RyujinxNative.setControllerType(deviceId, playerSetting.controllerType)
+                }
                 
-                // 更新GameController的布局
-                controller?.updateControllerTypeFromSettings()
+                // 如果是玩家1，更新GameController的布局
+                if (playerSetting.playerNumber == 1) {
+                    controller?.updateControllerTypeFromSettings()
+                }
             }
+        }
+    }
+    
+    // 为玩家分配设备ID
+    fun assignDeviceIdToPlayer(playerNumber: Int): Int {
+        val deviceId = RyujinxNative.getNextAvailableDeviceId()
+        if (deviceId != -1) {
+            playerDeviceIds[playerNumber] = deviceId
+            
+            // 设置控制器类型
+            val playerSetting = getPlayerSetting(playerNumber)
+            if (playerSetting != null && playerSetting.isConnected) {
+                RyujinxNative.setControllerType(deviceId, playerSetting.controllerType)
+            }
+        }
+        return deviceId
+    }
+    
+    // 释放玩家的设备ID
+    fun releaseDeviceIdForPlayer(playerNumber: Int) {
+        val deviceId = playerDeviceIds.remove(playerNumber)
+        if (deviceId != null) {
+            RyujinxNative.releaseDeviceId(deviceId)
         }
     }
 
@@ -117,6 +147,12 @@ class MainViewModel(val activity: MainActivity) {
         motionSensorManager?.unregister()
         physicalControllerManager?.disconnect()
         motionSensorManager?.setControllerId(-1)
+        
+        // 释放所有玩家的设备ID
+        playerDeviceIds.keys.toList().forEach { playerNumber ->
+            releaseDeviceIdForPlayer(playerNumber)
+        }
+        playerDeviceIds.clear()
     }
 
     fun refreshFirmwareVersion() {
@@ -226,13 +262,12 @@ class MainViewModel(val activity: MainActivity) {
                     settings.memoryConfiguration //内存配置
                 )
 
-                // 初始化后设置所有玩家的控制器类型
+                // 为所有连接的玩家分配设备ID并设置控制器类型
                 playerSettings.forEach { playerSetting ->
                     if (playerSetting.isConnected) {
-                        // 设备ID: 0-7 对应玩家1-8
-                        val deviceId = playerSetting.playerNumber - 1
-                        if (deviceId in 0..7) {
-                            RyujinxNative.jnaInstance.setControllerType(deviceId, playerSetting.controllerType)
+                        val deviceId = assignDeviceIdToPlayer(playerSetting.playerNumber)
+                        if (deviceId != -1) {
+                            RyujinxNative.setControllerType(deviceId, playerSetting.controllerType)
                         }
                     }
                 }
@@ -343,13 +378,12 @@ class MainViewModel(val activity: MainActivity) {
                     settings.memoryConfiguration //内存配置
                 )
 
-                // 初始化后设置所有玩家的控制器类型
+                // 为所有连接的玩家分配设备ID并设置控制器类型
                 playerSettings.forEach { playerSetting ->
                     if (playerSetting.isConnected) {
-                        // 设备ID: 0-7 对应玩家1-8
-                        val deviceId = playerSetting.playerNumber - 1
-                        if (deviceId in 0..7) {
-                            RyujinxNative.jnaInstance.setControllerType(deviceId, playerSetting.controllerType)
+                        val deviceId = assignDeviceIdToPlayer(playerSetting.playerNumber)
+                        if (deviceId != -1) {
+                            RyujinxNative.setControllerType(deviceId, playerSetting.controllerType)
                         }
                     }
                 }
