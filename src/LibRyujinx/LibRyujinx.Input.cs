@@ -219,6 +219,13 @@ namespace LibRyujinx
                 return;
             }
 
+            // 确保控制器类型值在有效范围内 (0-4)
+            if (controllerType < 0 || controllerType > 4)
+            {
+                Logger.Warning?.Print(LogClass.Application, $"Invalid controller type: {controllerType}, using ProController (0)");
+                controllerType = 0; // 默认值
+            }
+
             _controllerTypes[deviceId] = (Ryujinx.Common.Configuration.Hid.ControllerType)controllerType;
             Logger.Info?.Print(LogClass.Application, $"Controller type for device {deviceId} set to: {_controllerTypes[deviceId]}");
 
