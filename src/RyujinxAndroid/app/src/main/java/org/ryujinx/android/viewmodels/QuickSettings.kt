@@ -88,8 +88,16 @@ class QuickSettings(val activity: Activity) {
         if (json != null) {
             try {
                 playerSettings = Json.decodeFromString<MutableList<PlayerSetting>>(json).toMutableList()
+                
+                // 确保所有控制器类型值有效
+                playerSettings.forEach { setting ->
+                    if (!setting.controllerType.isValidControllerType()) {
+                        setting.controllerType = 0 // 重置为默认值
+                    }
+                }
             } catch (e: Exception) {
                 // 如果解析失败，使用默认设置
+                android.util.Log.e("QuickSettings", "Failed to parse player settings, using defaults", e)
                 initDefaultPlayerSettings()
             }
         } else {
@@ -182,6 +190,11 @@ class QuickSettings(val activity: Activity) {
     fun updatePlayerSetting(playerSetting: PlayerSetting) {
         val index = playerSettings.indexOfFirst { it.playerNumber == playerSetting.playerNumber }
         if (index != -1) {
+            // 确保控制器类型值有效
+            if (!playerSetting.controllerType.isValidControllerType()) {
+                playerSetting.controllerType = 0 // 重置为默认值
+            }
+            
             playerSettings[index] = playerSetting
             
             // 立即应用设置
@@ -201,10 +214,12 @@ class QuickSettings(val activity: Activity) {
                         playerSetting.playerNumber - 1 // 其他玩家使用设备ID1-7
                     }
                     
-                    RyujinxNative.jnaInstance.setControllerType(deviceId, playerSetting.controllerType)
+                    // 确保控制器类型值有效
+                    val controllerType = playerSetting.controllerType.coerceIn(0, 4)
+                    RyujinxNative.jnaInstance.setControllerType(deviceId, controllerType)
                     
                     // 记录设置信息
-                    android.util.Log.d("QuickSettings", "Controller type set to: ${getControllerTypeName(playerSetting.controllerType)} for device $deviceId (Player ${playerSetting.playerNumber})")
+                    android.util.Log.d("QuickSettings", "Controller type set to: ${getControllerTypeName(controllerType)} for device $deviceId (Player ${playerSetting.playerNumber})")
                 }
             }
         } catch (e: Exception) {
@@ -229,7 +244,7 @@ class QuickSettings(val activity: Activity) {
         val player1Setting = getPlayerSetting(1)
         val type = player1Setting?.controllerType ?: 0
         
-        return when (type) {
+        return when (type.coerceIn(0, 4)) {
             0 -> ControllerType.PRO_CONTROLLER
             1 -> ControllerType.JOYCON_LEFT
             2 -> ControllerType.JOYCON_RIGHT
@@ -254,5 +269,10 @@ class QuickSettings(val activity: Activity) {
             player1Setting.controllerType = typeValue
             updatePlayerSetting(player1Setting)
         }
+    }
+    
+    // 扩展函数：检查控制器类型是否有效
+    private fun Int.isValidControllerType(): Boolean {
+        return this in 0..4
     }
 }
