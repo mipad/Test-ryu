@@ -166,17 +166,31 @@ class SettingViews {
             val scalingFilterLevel = remember { mutableStateOf(25) } // 默认25%
             val antiAliasing = remember { mutableStateOf(0) } // 0=None, 1=Fxaa, 2=SmaaLow, 3=SmaaMedium, 4=SmaaHigh, 5=SmaaUltra
             val memoryConfiguration = remember { mutableStateOf(0) } // 新增状态变量：内存配置
-            val controllerType = remember { mutableStateOf(0) } // 0=Pro, 1=JoyConL, 2=JoyConR, 3=Pair, 4=Handheld
             
-            val showControllerTypeDialog = remember { mutableStateOf(false) } // 
-            val showAntiAliasingDialog = remember { mutableStateOf(false) } // 控制抗锯齿对话框显示
+            // 控制器设置 - 改为存储每个玩家的设置
+            val playerSettings = remember { 
+                mutableStateListOf(
+                    PlayerSetting(1, true, 0), // Player 1 默认开启，Pro Controller
+                    PlayerSetting(2, false, 0), // Player 2-8 默认关闭
+                    PlayerSetting(3, false, 0),
+                    PlayerSetting(4, false, 0),
+                    PlayerSetting(5, false, 0),
+                    PlayerSetting(6, false, 0),
+                    PlayerSetting(7, false, 0),
+                    PlayerSetting(8, false, 0)
+                )
+            }
+            
+            val showPlayerSelectionDialog = remember { mutableStateOf(false) }
+            val showPlayerSettingsDialog = remember { mutableStateOf(-1) } // -1表示不显示，其他值表示玩家编号
+            
             // 新增状态变量用于控制选项显示
             val showResScaleOptions = remember { mutableStateOf(false) }
             val showAspectRatioOptions = remember { mutableStateOf(false) }
             val showAudioEngineDialog = remember { mutableStateOf(false) } // 控制音频引擎对话框显示
             val showScalingFilterDialog = remember { mutableStateOf(false) } // 控制Scaling Filter对话框显示
             val showMemoryConfigDialog = remember { mutableStateOf(false) } // 控制内存配置对话框显示
-            
+            val showAntiAliasingDialog = remember { mutableStateOf(false) } // 控制抗锯齿对话框显示
 
             if (!loaded.value) {
                 settingsViewModel.initializeState(
@@ -210,7 +224,7 @@ class SettingViews {
                     scalingFilterLevel, // 新增：缩放过滤器级别
                     antiAliasing, // 新增：抗锯齿模式
                     memoryConfiguration, // 新增DRAM参数
-                    controllerType
+                    playerSettings[0].controllerType // 使用Player 1的设置作为默认值
                 )
                 loaded.value = true
             }
@@ -267,7 +281,7 @@ class SettingViews {
                     scalingFilterLevel, // 新增：缩放过滤器级别
                     antiAliasing, // 新增：抗锯齿模式
                     memoryConfiguration, // 新增DRAM参数
-                    controllerType
+                    playerSettings[0].controllerType // 使用Player 1的设置
                                 )
                                 settingsViewModel.navController.popBackStack()
                             }) {
@@ -1048,28 +1062,22 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                                                     )
                                                                 }
                                                             }
-
-                                                            driverIndex++
+                                                            driverIndex += 1
                                                         }
                                                     }
                                                     Row(
-                                                        horizontalArrangement = Arrangement.End,
                                                         modifier = Modifier
                                                             .fillMaxWidth()
-                                                            .padding(16.dp)
+                                                            .padding(8.dp),
+                                                        horizontalArrangement = Arrangement.End
                                                     ) {
                                                         Button(onClick = {
-                                                            driverViewModel.removeSelected()
-                                                            refresh.value = true
-                                                        }, modifier = Modifier.padding(8.dp)) {
-                                                            Text(text = "Remove")
-                                                        }
-
-                                                        Button(onClick = {
-                                                            driverViewModel.add(refresh)
-                                                            refresh.value = true
-                                                        }, modifier = Modifier.padding(8.dp)) {
-                                                            Text(text = "Add")
+                                                            isDriverSelectorOpen.value = false
+                                                            if (isChanged.value) {
+                                                                driverViewModel.saveSelected()
+                                                            }
+                                                        }) {
+                                                            Text(text = "OK")
                                                         }
                                                     }
                                                 }
@@ -1077,683 +1085,200 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                         }
                                     }
                                 }
-
-                                TextButton(
-                                    {
-                                        isChanged.value = false
-                                        isDriverSelectorOpen.value = !isDriverSelectorOpen.value
-                                    },
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                ) {
-                                    Text(text = "Drivers")
+                                Button(onClick = {
+                                    refresh.value = true
+                                    drivers = driverViewModel.getAvailableDrivers()
+                                    isDriverSelectorOpen.value = true
+                                }) {
+                                    Text(text = "Select Vulkan Driver")
                                 }
                             }
-
                         }
                     }
-                    
-                    // 新增后处理设置部分
-ExpandableView(onCardArrowClick = { }, title = "Post-Processing") {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        // 抗锯齿设置
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp)
-                .clickable { showAntiAliasingDialog.value = true },
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text = "Anti-Aliasing")
-            Text(
-                text = when (antiAliasing.value) {
-                    1 -> "Fxaa"
-                    2 -> "SmaaLow"
-                    3 -> "SmaaMedium"
-                    4 -> "SmaaHigh"
-                    5 -> "SmaaUltra"
-                    else -> "None"
-                },
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-        
-        // Scaling Filter 设置       
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp)
-                .clickable { showScalingFilterDialog.value = true },
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text = "Scaling Filter")
-            Text(
-                text = when (scalingFilter.value) {
-                    0 -> "Bilinear"
-                    1 -> "Nearest"
-                    2 -> "FSR"
-                    3 -> "Area" // 添加Area
-                    else -> "Bilinear"
-                },
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-        
-        // Scaling Filter Level 设置
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text = "Scaling Filter Level")
-            Text(
-                text = "${scalingFilterLevel.value}%",
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-        
-        // 滑动条
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            androidx.compose.material3.Slider(
-                value = scalingFilterLevel.value.toFloat(),
-                onValueChange = { newValue ->
-                    scalingFilterLevel.value = newValue.toInt()
-                },
-                valueRange = 0f..100f,
-                steps = 20,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-    }
-}
-
-// 抗锯齿选择对话框
-if (showAntiAliasingDialog.value) {
-    BasicAlertDialog(
-        onDismissRequest = { showAntiAliasingDialog.value = false }
-    ) {
-        Surface(
-            modifier = Modifier
-                .wrapContentWidth()
-                .wrapContentHeight(),
-            shape = MaterialTheme.shapes.large,
-            tonalElevation = AlertDialogDefaults.TonalElevation
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
-            ) {
-                Text(
-                    text = "Select Anti-Aliasing",
-                    style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                
-                // None 选项
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            antiAliasing.value = 0
-                            showAntiAliasingDialog.value = false
-                        }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = antiAliasing.value == 0,
-                        onClick = {
-                            antiAliasing.value = 0
-                            showAntiAliasingDialog.value = false
-                        }
-                    )
-                    Text(
-                        text = "None",
-                        modifier = Modifier.padding(start = 16.dp)
-                    )
-                }
-                
-                // Fxaa 选项
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            antiAliasing.value = 1
-                            showAntiAliasingDialog.value = false
-                        }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = antiAliasing.value == 1,
-                        onClick = {
-                            antiAliasing.value = 1
-                            showAntiAliasingDialog.value = false
-                        }
-                    )
-                    Text(
-                        text = "Fxaa",
-                        modifier = Modifier.padding(start = 16.dp)
-                    )
-                }
-                
-                // SmaaLow 选项
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            antiAliasing.value = 2
-                            showAntiAliasingDialog.value = false
-                        }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = antiAliasing.value == 2,
-                        onClick = {
-                            antiAliasing.value = 2
-                            showAntiAliasingDialog.value = false
-                        }
-                    )
-                    Text(
-                        text = "SmaaLow",
-                        modifier = Modifier.padding(start = 16.dp)
-                    )
-                }
-                
-                // SmaaMedium 选项
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            antiAliasing.value = 3
-                            showAntiAliasingDialog.value = false
-                        }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = antiAliasing.value == 3,
-                        onClick = {
-                            antiAliasing.value = 3
-                            showAntiAliasingDialog.value = false
-                        }
-                    )
-                    Text(
-                        text = "SmaaMedium",
-                        modifier = Modifier.padding(start = 16.dp)
-                    )
-                }
-                
-                // SmaaHigh 选项
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            antiAliasing.value = 4
-                            showAntiAliasingDialog.value = false
-                        }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = antiAliasing.value == 4,
-                        onClick = {
-                            antiAliasing.value = 4
-                            showAntiAliasingDialog.value = false
-                        }
-                    )
-                    Text(
-                        text = "SmaaHigh",
-                        modifier = Modifier.padding(start = 16.dp)
-                    )
-                }
-                
-                // SmaaUltra 选项
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            antiAliasing.value = 5
-                            showAntiAliasingDialog.value = false
-                        }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = antiAliasing.value == 5,
-                        onClick = {
-                            antiAliasing.value = 5
-                            showAntiAliasingDialog.value = false
-                        }
-                    )
-                    Text(
-                        text = "SmaaUltra",
-                        modifier = Modifier.padding(start = 16.dp)
-                    )
-                }
-                
-                // 添加取消按钮
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(
-                        onClick = { showAntiAliasingDialog.value = false }
-                    ) {
-                        Text("Cancel")
-                    }
-                }
-            }
-        }
-    }
-}
-
-// Scaling Filter 选择对话框
-if (showScalingFilterDialog.value) {
-    BasicAlertDialog(
-        onDismissRequest = { showScalingFilterDialog.value = false }
-    ) {
-        Surface(
-            modifier = Modifier
-                .wrapContentWidth()
-                .wrapContentHeight(),
-            shape = MaterialTheme.shapes.large,
-            tonalElevation = AlertDialogDefaults.TonalElevation
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
-            ) {
-                Text(
-                    text = "Select Scaling Filter",
-                    style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                
-                // Bilinear 选项
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            scalingFilter.value = 0
-                            showScalingFilterDialog.value = false
-                        }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = scalingFilter.value == 0,
-                        onClick = {
-                            scalingFilter.value = 0
-                            showScalingFilterDialog.value = false
-                        }
-                    )
-                    Text(
-                        text = "Bilinear",
-                        modifier = Modifier.padding(start = 16.dp)
-                    )
-                }
-                
-                // Nearest 选项
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            scalingFilter.value = 1
-                            showScalingFilterDialog.value = false
-                        }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = scalingFilter.value == 1,
-                        onClick = {
-                            scalingFilter.value = 1
-                            showScalingFilterDialog.value = false
-                        }
-                    )
-                    Text(
-                        text = "Nearest",
-                        modifier = Modifier.padding(start = 16.dp)
-                    )
-                }
-                
-                // FSR 选项
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            scalingFilter.value = 2
-                            showScalingFilterDialog.value = false
-                        }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = scalingFilter.value == 2,
-                        onClick = {
-                            scalingFilter.value = 2
-                            showScalingFilterDialog.value = false
-                        }
-                    )
-                    Text(
-                        text = "FSR",
-                        modifier = Modifier.padding(start = 16.dp)
-                    )
-                }
-                
-                // 在这里添加Area选项
-Row(
-    modifier = Modifier
-        .fillMaxWidth()
-        .clickable {
-            scalingFilter.value = 3 // Area 对应的值
-            showScalingFilterDialog.value = false
-        }
-        .padding(vertical = 12.dp),
-    verticalAlignment = Alignment.CenterVertically
-) {
-    RadioButton(
-        selected = scalingFilter.value == 3,
-        onClick = {
-            scalingFilter.value = 3
-            showScalingFilterDialog.value = false
-        }
-    )
-    Text(
-        text = "Area",
-        modifier = Modifier.padding(start = 16.dp)
-    )
-}
-
-                // 添加取消按钮
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(
-                        onClick = { showScalingFilterDialog.value = false }
-                    ) {
-                        Text("Cancel")
-                    }
-                }
-            }
-        }
-    }
-}
-
-                    // 新增音频设置部分
                     ExpandableView(onCardArrowClick = { }, title = "Audio") {
                         Column(modifier = Modifier.fillMaxWidth()) {
-                            // 音频引擎设置
+                            // 音频引擎类型显示
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(8.dp)
-                                    .clickable { showAudioEngineDialog.value = true },
+                                    .padding(8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(text = "Audio Engine")
+                                val audioEngineMap = listOf("Disabled", "OpenAL", "SDL2", "Oboe")
                                 Text(
-                                    text = when (audioEngineType.value) {
-                                        1 -> "OpenAL"
-                                        2 -> "SDL2"
-                                        3 -> "Oboe"
-                                        else -> "Disabled"
-                                    },
-                                    color = MaterialTheme.colorScheme.primary
+                                    text = audioEngineMap[audioEngineType.value],
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) { 
+                                        showAudioEngineDialog.value = !showAudioEngineDialog.value
+                                    }
                                 )
+                            }
+                            
+                            // 音频引擎选项对话框
+                            if (showAudioEngineDialog.value) {
+                                BasicAlertDialog(onDismissRequest = {
+                                    showAudioEngineDialog.value = false
+                                }) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .wrapContentWidth()
+                                            .wrapContentHeight(),
+                                        shape = MaterialTheme.shapes.large,
+                                        tonalElevation = AlertDialogDefaults.TonalElevation
+                                    ) {
+                                        Column(
+                                            modifier = Modifier
+                                                .padding(16.dp)
+                                                .fillMaxWidth()
+                                        ) {
+                                            Text(
+                                                text = "Select Audio Engine",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                modifier = Modifier.padding(bottom = 16.dp)
+                                            )
+                                            
+                                            val audioEngineOptions = listOf("Disabled", "OpenAL", "SDL2", "Oboe")
+                                            audioEngineOptions.forEachIndexed { index, option ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clickable {
+                                                            audioEngineType.value = index
+                                                            showAudioEngineDialog.value = false
+                                                        }
+                                                        .padding(vertical = 12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    RadioButton(
+                                                        selected = audioEngineType.value == index,
+                                                        onClick = {
+                                                            audioEngineType.value = index
+                                                            showAudioEngineDialog.value = false
+                                                        }
+                                                    )
+                                                    Text(
+                                                        text = option,
+                                                        modifier = Modifier.padding(start = 8.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
-                    
-                    // 区域与语言设置 - 使用对话框替代下拉菜单
-ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        // 区域设置 - 保持不变
-        var expandedRegion by remember { mutableStateOf(false) }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expandedRegion = true },
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = "Region")
-                val regionNames = listOf("Japan", "USA", "Europe", "Australia", "China", "Korea", "Taiwan")
-                Text(text = regionNames[regionCode.value])
-                Icon(
-                    imageVector = Icons.Filled.ArrowDropDown,
-                    contentDescription = "Expand region options"
-                )
-            }
-            
-            DropdownMenu(
-                expanded = expandedRegion,
-                onDismissRequest = { expandedRegion = false }
-            ) {
-                val regionOptions = listOf("Japan", "USA", "Europe", "Australia", "China", "Korea", "Taiwan")
-                regionOptions.forEachIndexed { index, option ->
-                    DropdownMenuItem(
-                        text = { Text(option) },
-                        onClick = {
-                            regionCode.value = index
-                            expandedRegion = false
-                        }
-                    )
-                }
-            }
-        }
-        
-        // 语言设置 - 使用BasicAlertDialog替代
-        var showLanguageDialog by remember { mutableStateOf(false) }
-        
-        // 语言选择对话框
-        if (showLanguageDialog) {
-            BasicAlertDialog(
-                onDismissRequest = { showLanguageDialog = false }
-            ) {
-                Surface(
-                    modifier = Modifier
-                        .wrapContentWidth()
-                        .wrapContentHeight(),
-                    shape = MaterialTheme.shapes.large,
-                    tonalElevation = AlertDialogDefaults.TonalElevation
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        Text(
-                            text = "Select Language",
-                            style = MaterialTheme.typography.headlineSmall,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        )
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 400.dp)
-                                .verticalScroll(rememberScrollState())
-                        ) {
-                            val languageOptions = listOf(
-                                "Japanese", "American English", "French", "German", "Italian", 
-                                "Spanish", "Chinese", "Korean", "Dutch", "Portuguese", 
-                                "Russian", "Taiwanese", "British English", "Canadian French", 
-                                "Latin American Spanish", "Simplified Chinese", "Traditional Chinese", 
-                                "Brazilian Portuguese"
-                            )
+                    ExpandableView(onCardArrowClick = { }, title = "Scaling Filter") {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            // Scaling Filter类型显示
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Scaling Filter")
+                                val scalingFilterMap = listOf("Bilinear", "Nearest", "FSR")
+                                Text(
+                                    text = scalingFilterMap[scalingFilter.value],
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) { 
+                                        showScalingFilterDialog.value = !showScalingFilterDialog.value
+                                    }
+                                )
+                            }
                             
-                            languageOptions.forEachIndexed { index, option ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            systemLanguage.value = index
-                                            showLanguageDialog = false
+                            // Scaling Filter选项对话框
+                            if (showScalingFilterDialog.value) {
+                                BasicAlertDialog(onDismissRequest = {
+                                    showScalingFilterDialog.value = false
+                                }) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .wrapContentWidth()
+                                            .wrapContentHeight(),
+                                        shape = MaterialTheme.shapes.large,
+                                        tonalElevation = AlertDialogDefaults.TonalElevation
+                                    ) {
+                                        Column(
+                                            modifier = Modifier
+                                                .padding(16.dp)
+                                                .fillMaxWidth()
+                                        ) {
+                                            Text(
+                                                text = "Select Scaling Filter",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                modifier = Modifier.padding(bottom = 16.dp)
+                                            )
+                                            
+                                            val scalingFilterOptions = listOf("Bilinear", "Nearest", "FSR")
+                                            scalingFilterOptions.forEachIndexed { index, option ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clickable {
+                                                            scalingFilter.value = index
+                                                            showScalingFilterDialog.value = false
+                                                        }
+                                                        .padding(vertical = 12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    RadioButton(
+                                                        selected = scalingFilter.value == index,
+                                                        onClick = {
+                                                            scalingFilter.value = index
+                                                            showScalingFilterDialog.value = false
+                                                        }
+                                                    )
+                                                    Text(
+                                                        text = option,
+                                                        modifier = Modifier.padding(start = 8.dp)
+                                                    )
+                                                }
+                                            }
                                         }
-                                        .padding(vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    RadioButton(
-                                        selected = systemLanguage.value == index,
-                                        onClick = {
-                                            systemLanguage.value = index
-                                            showLanguageDialog = false
-                                        }
-                                    )
-                                    Text(
-                                        text = option,
-                                        modifier = Modifier.padding(start = 16.dp)
+                                    }
+                                }
+                            }
+                            
+                            // 只有当选择了FSR时才显示FSR级别调节
+                            AnimatedVisibility(visible = scalingFilter.value == 2) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(text = "FSR Sharpening")
+                                        Text(text = "${scalingFilterLevel.value}%")
+                                    }
+                                    
+                                    // FSR级别滑块
+                                    androidx.compose.material3.Slider(
+                                        value = scalingFilterLevel.value.toFloat(),
+                                        onValueChange = { scalingFilterLevel.value = it.toInt() },
+                                        valueRange = 0f..100f,
+                                        steps = 20,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp)
                                     )
                                 }
                             }
                         }
-                        // 添加取消按钮
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 16.dp),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            TextButton(
-                                onClick = { showLanguageDialog = false }
-                            ) {
-                                Text("Cancel")
-                            }
-                        }
                     }
-                }
-            }
-        }
-        
-        // 语言选择行
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp)
-                .clickable { showLanguageDialog = true },
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text = "Language")
-            val languageNames = listOf(
-                "Japanese", "American English", "French", "German", "Italian", 
-                "Spanish", "Chinese", "Korean", "Dutch", "Portuguese", 
-                "Russian", "Taiwanese", "British English", "Canadian French", 
-                "Latin American Spanish", "Simplified Chinese", "Traditional Chinese", 
-                "Brazilian Portuguese"
-            )
-            Text(
-                text = languageNames[systemLanguage.value],
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-                    
-                    ExpandableView(onCardArrowClick = { }, title = "Hack") {
+                    ExpandableView(onCardArrowClick = { }, title = "Anti-Aliasing") {
                         Column(modifier = Modifier.fillMaxWidth()) {
-                            // 内存配置设置
-Row(
-    modifier = Modifier
-        .fillMaxWidth()
-        .padding(8.dp)
-        .clickable { showMemoryConfigDialog.value = true },
-    horizontalArrangement = Arrangement.SpaceBetween,
-    verticalAlignment = Alignment.CenterVertically
-) {
-    Text(text = "DRAM Configuration")
-    val memoryConfigNames = listOf("4GB", "4GB Applet Dev", "4GB System Dev", "6GB", "6GB Applet Dev", "8GB")
-    Text(
-        text = memoryConfigNames[memoryConfiguration.value],
-        color = MaterialTheme.colorScheme.primary
-    )
-}
-
-// 内存配置选择对话框
-if (showMemoryConfigDialog.value) {
-    BasicAlertDialog(
-        onDismissRequest = { showMemoryConfigDialog.value = false }
-    ) {
-        Surface(
-            modifier = Modifier
-                .wrapContentWidth()
-                .wrapContentHeight(),
-            shape = MaterialTheme.shapes.large,
-            tonalElevation = AlertDialogDefaults.TonalElevation
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
-            ) {
-                Text(
-                    text = "Select Memory Configuration",
-                    style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                
-                val memoryOptions = listOf("4GB", "4GB Applet Dev", "4GB System Dev", "6GB", "6GB Applet Dev", "8GB")
-                
-                memoryOptions.forEachIndexed { index, option ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                memoryConfiguration.value = index
-                                showMemoryConfigDialog.value = false
-                            }
-                            .padding(vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = memoryConfiguration.value == index,
-                            onClick = {
-                                memoryConfiguration.value = index
-                                showMemoryConfigDialog.value = false
-                            }
-                        )
-                        Text(
-                            text = option,
-                            modifier = Modifier.padding(start = 16.dp)
-                        )
-                    }
-                }
-                
-                // 添加取消按钮
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(
-                        onClick = { showMemoryConfigDialog.value = false }
-                    ) {
-                        Text("Cancel")
-                    }
-                }
-            }
-        }
-    }
-}
-
+                            // 抗锯齿类型显示
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1761,20 +1286,76 @@ if (showMemoryConfigDialog.value) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(text = "Skip Memory Barriers")
-                                Switch(checked = skipMemoryBarriers.value, onCheckedChange = {
-                                    skipMemoryBarriers.value = !skipMemoryBarriers.value
-                                })
+                                Text(text = "Anti-Aliasing")
+                                val antiAliasingMap = listOf("None", "FXAA", "SMAA Low", "SMAA Medium", "SMAA High", "SMAA Ultra")
+                                Text(
+                                    text = antiAliasingMap[antiAliasing.value],
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) { 
+                                        showAntiAliasingDialog.value = !showAntiAliasingDialog.value
+                                    }
+                                )
                             }
-                            Text(
-                                text = "Warning: This may improve performance but can cause instability in some games",
-                                fontSize = 12.sp,
-                                modifier = Modifier.padding(8.dp)
-                            )
+                            
+                            // 抗锯齿选项对话框
+                            if (showAntiAliasingDialog.value) {
+                                BasicAlertDialog(onDismissRequest = {
+                                    showAntiAliasingDialog.value = false
+                                }) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .wrapContentWidth()
+                                            .wrapContentHeight(),
+                                        shape = MaterialTheme.shapes.large,
+                                        tonalElevation = AlertDialogDefaults.TonalElevation
+                                    ) {
+                                        Column(
+                                            modifier = Modifier
+                                                .padding(16.dp)
+                                                .fillMaxWidth()
+                                        ) {
+                                            Text(
+                                                text = "Select Anti-Aliasing",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                modifier = Modifier.padding(bottom = 16.dp)
+                                            )
+                                            
+                                            val antiAliasingOptions = listOf("None", "FXAA", "SMAA Low", "SMAA Medium", "SMAA High", "SMAA Ultra")
+                                            antiAliasingOptions.forEachIndexed { index, option ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clickable {
+                                                            antiAliasing.value = index
+                                                            showAntiAliasingDialog.value = false
+                                                        }
+                                                        .padding(vertical = 12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    RadioButton(
+                                                        selected = antiAliasing.value == index,
+                                                        onClick = {
+                                                            antiAliasing.value = index
+                                                            showAntiAliasingDialog.value = false
+                                                        }
+                                                    )
+                                                    Text(
+                                                        text = option,
+                                                        modifier = Modifier.padding(start = 8.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
-                    ExpandableView(onCardArrowClick = { }, title = "Input") {
+                    ExpandableView(onCardArrowClick = { }, title = "Memory Configuration") {
                         Column(modifier = Modifier.fillMaxWidth()) {
+                            // 内存配置显示
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1782,11 +1363,119 @@ if (showMemoryConfigDialog.value) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(text = "Show virtual controller")
+                                Text(text = "Memory Configuration")
+                                val memoryConfigMap = listOf("4GB", "6GB", "8GB")
+                                Text(
+                                    text = memoryConfigMap[memoryConfiguration.value],
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) { 
+                                        showMemoryConfigDialog.value = !showMemoryConfigDialog.value
+                                    }
+                                )
+                            }
+                            
+                            // 内存配置选项对话框
+                            if (showMemoryConfigDialog.value) {
+                                BasicAlertDialog(onDismissRequest = {
+                                    showMemoryConfigDialog.value = false
+                                }) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .wrapContentWidth()
+                                            .wrapContentHeight(),
+                                        shape = MaterialTheme.shapes.large,
+                                        tonalElevation = AlertDialogDefaults.TonalElevation
+                                    ) {
+                                        Column(
+                                            modifier = Modifier
+                                                .padding(16.dp)
+                                                .fillMaxWidth()
+                                        ) {
+                                            Text(
+                                                text = "Select Memory Configuration",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                modifier = Modifier.padding(bottom = 16.dp)
+                                            )
+                                            
+                                            val memoryConfigOptions = listOf("4GB", "6GB", "8GB")
+                                            memoryConfigOptions.forEachIndexed { index, option ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clickable {
+                                                            memoryConfiguration.value = index
+                                                            showMemoryConfigDialog.value = false
+                                                        }
+                                                        .padding(vertical = 12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    RadioButton(
+                                                        selected = memoryConfiguration.value == index,
+                                                        onClick = {
+                                                            memoryConfiguration.value = index
+                                                            showMemoryConfigDialog.value = false
+                                                        }
+                                                    )
+                                                    Text(
+                                                        text = option,
+                                                        modifier = Modifier.padding(start = 8.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    ExpandableView(onCardArrowClick = { }, title = "Controller") {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            // 手柄设置入口
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp)
+                                    .clickable {
+                                        showPlayerSelectionDialog.value = true
+                                    },
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Controller Settings")
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = "Open Controller Settings"
+                                )
+                            }
+                            
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Use Virtual Controller")
                                 Switch(checked = useVirtualController.value, onCheckedChange = {
                                     useVirtualController.value = !useVirtualController.value
                                 })
                             }
+                            
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Use Switch Layout")
+                                Switch(checked = useSwitchLayout.value, onCheckedChange = {
+                                    useSwitchLayout.value = !useSwitchLayout.value
+                                })
+                            }
+                            
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1799,6 +1488,7 @@ if (showMemoryConfigDialog.value) {
                                     enableMotion.value = !enableMotion.value
                                 })
                             }
+                            
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1806,76 +1496,22 @@ if (showMemoryConfigDialog.value) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(text = "Use Switch Controller Layout")
-                                Switch(checked = useSwitchLayout.value, onCheckedChange = {
-                                    useSwitchLayout.value = !useSwitchLayout.value
-                                })
+                                Text(text = "Stick Sensitivity")
+                                Text(text = "%.1f".format(controllerStickSensitivity.value))
                             }
-
-                        // 添加控制器类型设置行
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp)
-                .clickable { showControllerTypeDialog.value = true },
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text = "Controller Type")
-            Text(
-                text = when (controllerType.value) {
-                    0 -> "Pro Controller"
-                    1 -> "Joy-Con (L)"
-                    2 -> "Joy-Con (R)"
-                    3 -> "Joy-Con Pair"
-                    else -> "Handheld"
-                },
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-        
-                            val interactionSource: MutableInteractionSource = remember { MutableInteractionSource() }
-
-                            Row(
+                            
+                            androidx.compose.material3.Slider(
+                                value = controllerStickSensitivity.value,
+                                onValueChange = { controllerStickSensitivity.value = it },
+                                valueRange = 0.1f..2.0f,
+                                steps = 19,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(text = "Controller Stick Sensitivity")
-                                androidx.compose.material3.Slider(modifier = Modifier.width(250.dp), value = controllerStickSensitivity.value, onValueChange = {
-                                    controllerStickSensitivity.value = it
-                                }, valueRange = 0.1f..2f,
-                                    steps = 20,
-                                    interactionSource = interactionSource,
-                                    thumb = {
-                                        Label(
-                                            label = {
-                                                PlainTooltip(modifier = Modifier
-                                                    .sizeIn(45.dp, 25.dp)
-                                                    .wrapContentWidth()) {
-                                                    Text("%.2f".format(controllerStickSensitivity.value))
-                                                }
-                                            },
-                                            interactionSource = interactionSource
-                                        ) {
-                                            Icon(
-                                                imageVector = org.ryujinx.android.Icons.circle(
-                                                    color = MaterialTheme.colorScheme.primary
-                                                ),
-                                                contentDescription = null,
-                                                modifier = Modifier.size(ButtonDefaults.IconSize),
-                                                tint = MaterialTheme.colorScheme.primary
-                                            )
-                                        }
-                                    }
-                                )
-                            }
-
+                                    .padding(horizontal = 16.dp)
+                            )
                         }
                     }
-                    ExpandableView(onCardArrowClick = { }, title = "Log") {
+                    ExpandableView(onCardArrowClick = { }, title = "Logging") {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             Row(
                                 modifier = Modifier
@@ -1913,7 +1549,7 @@ if (showMemoryConfigDialog.value) {
                                     enableInfoLogs.value = !enableInfoLogs.value
                                 })
                             }
-                           Row(
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(8.dp),
@@ -1980,11 +1616,15 @@ if (showMemoryConfigDialog.value) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(text = "Enable Graphics Debug Logs")
+                                Text(text = "Enable Graphics Logs")
                                 Switch(checked = enableGraphicsLogs.value, onCheckedChange = {
                                     enableGraphicsLogs.value = !enableGraphicsLogs.value
                                 })
                             }
+                        }
+                    }
+                    ExpandableView(onCardArrowClick = { }, title = "Advanced") {
+                        Column(modifier = Modifier.fillMaxWidth()) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1992,461 +1632,270 @@ if (showMemoryConfigDialog.value) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Button(onClick = {
-                                    mainViewModel.logging.requestExport()
-                                }) {
-                                    Text(text = "Send Logs")
+                                Text(text = "Skip Memory Barriers")
+                                Switch(checked = skipMemoryBarriers.value, onCheckedChange = {
+                                    skipMemoryBarriers.value = !skipMemoryBarriers.value
+                                })
+                            }
+                            
+                            // 区域代码显示
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Region Code")
+                                Text(
+                                    text = RegionCode.values()[regionCode.value].name,
+                                    modifier = Modifier.clickable {
+                                        // 这里可以添加区域代码选择对话框
+                                    }
+                                )
+                            }
+                            
+                            // 系统语言显示
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "System Language")
+                                Text(
+                                    text = SystemLanguage.values()[systemLanguage.value].displayName,
+                                    modifier = Modifier.clickable {
+                                        // 这里可以添加系统语言选择对话框
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 玩家选择对话框
+            if (showPlayerSelectionDialog.value) {
+                BasicAlertDialog(
+                    onDismissRequest = { showPlayerSelectionDialog.value = false },
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Scaffold(
+                        topBar = {
+                            TopAppBar(
+                                title = { Text("Controller Settings") },
+                                navigationIcon = {
+                                    IconButton(onClick = { showPlayerSelectionDialog.value = false }) {
+                                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                                    }
+                                }
+                            )
+                        }
+                    ) { contentPadding ->
+                        LazyColumn(
+                            modifier = Modifier
+                                .padding(contentPadding)
+                                .fillMaxSize()
+                        ) {
+                            itemsIndexed(playerSettings) { index, playerSetting ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            showPlayerSettingsDialog.value = playerSetting.playerNumber
+                                        }
+                                        .padding(16.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(text = "Player ${playerSetting.playerNumber}")
+                                    Switch(
+                                        checked = playerSetting.isConnected,
+                                        onCheckedChange = { 
+                                            playerSettings[index] = playerSetting.copy(isConnected = it)
+                                        }
+                                    )
                                 }
                             }
                         }
                     }
                 }
-                
-                // 控制器类型选择对话框
-if (showControllerTypeDialog.value) {
-    BasicAlertDialog(
-        onDismissRequest = { showControllerTypeDialog.value = false }
-    ) {
-        Surface(
-            modifier = Modifier
-                .wrapContentWidth()
-                .wrapContentHeight(),
-            shape = MaterialTheme.shapes.large,
-            tonalElevation = AlertDialogDefaults.TonalElevation
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
-            ) {
-                Text(
-                    text = "Select Controller Type",
-                    style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                
-                // Pro Controller 选项
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            controllerType.value = 0
-                            showControllerTypeDialog.value = false
-                        }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = controllerType.value == 0,
-                        onClick = {
-                            controllerType.value = 0
-                            showControllerTypeDialog.value = false
-                        }
-                    )
-                    Text(
-                        text = "Pro Controller",
-                        modifier = Modifier.padding(start = 16.dp)
-                    )
-                }
-                
-                // Joy-Con (L) 选项
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            controllerType.value = 1
-                            showControllerTypeDialog.value = false
-                        }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = controllerType.value == 1,
-                        onClick = {
-                            controllerType.value = 1
-                            showControllerTypeDialog.value = false
-                        }
-                    )
-                    Text(
-                        text = "Joy-Con (L)",
-                        modifier = Modifier.padding(start = 16.dp)
-                    )
-                }
-                
-                // Joy-Con (R) 选项
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            controllerType.value = 2
-                            showControllerTypeDialog.value = false
-                        }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = controllerType.value == 2,
-                        onClick = {
-                            controllerType.value = 2
-                            showControllerTypeDialog.value = false
-                        }
-                    )
-                    Text(
-                        text = "Joy-Con (R)",
-                        modifier = Modifier.padding(start = 16.dp)
-                    )
-                }
-                
-                // Joy-Con Pair 选项
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            controllerType.value = 3
-                            showControllerTypeDialog.value = false
-                        }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = controllerType.value == 3,
-                        onClick = {
-                            controllerType.value = 3
-                            showControllerTypeDialog.value = false
-                        }
-                    )
-                    Text(
-                        text = "Joy-Con Pair",
-                        modifier = Modifier.padding(start = 16.dp)
-                    )
-                }
-                
-                // Handheld 选项
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            controllerType.value = 4
-                            showControllerTypeDialog.value = false
-                        }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = controllerType.value == 4,
-                        onClick = {
-                            controllerType.value = 4
-                            showControllerTypeDialog.value = false
-                        }
-                    )
-                    Text(
-                        text = "Handheld",
-                        modifier = Modifier.padding(start = 16.dp)
-                    )
-                }
-                
-                // 添加取消按钮
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(
-                        onClick = { showControllerTypeDialog.value = false }
-                    ) {
-                        Text("Cancel")
-                    }
-                }
             }
-        }
-    }
-}
-
-                // 音频引擎选择对话框
-                if (showAudioEngineDialog.value) {
+            
+            // 玩家设置对话框
+            if (showPlayerSettingsDialog.value != -1) {
+                val playerNumber = showPlayerSettingsDialog.value
+                val playerSetting = playerSettings.firstOrNull { it.playerNumber == playerNumber }
+                
+                if (playerSetting != null) {
                     BasicAlertDialog(
-                        onDismissRequest = { showAudioEngineDialog.value = false }
+                        onDismissRequest = { showPlayerSettingsDialog.value = -1 },
+                        modifier = Modifier.fillMaxSize()
                     ) {
-                        Surface(
-                            modifier = Modifier
-                                .wrapContentWidth()
-                                .wrapContentHeight(),
-                            shape = MaterialTheme.shapes.large,
-                            tonalElevation = AlertDialogDefaults.TonalElevation
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp)
-                            ) {
-                                Text(
-                                    text = "Select Audio Engine",
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    modifier = Modifier.padding(bottom = 16.dp)
+                        Scaffold(
+                            topBar = {
+                                TopAppBar(
+                                    title = { Text("Player $playerNumber Settings") },
+                                    navigationIcon = {
+                                        IconButton(onClick = { showPlayerSettingsDialog.value = -1 }) {
+                                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                                        }
+                                    }
                                 )
-                                
-                                // OpenAL选项
+                            }
+                        ) { contentPadding ->
+                            Column(
+                                modifier = Modifier
+                                    .padding(contentPadding)
+                                    .fillMaxSize()
+                                    .padding(16.dp)
+                            ) {
+                                // 连接开关
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable {
-                                            audioEngineType.value = 1
-                                            showAudioEngineDialog.value = false
-                                        }
-                                        .padding(vertical = 12.dp),
+                                        .padding(vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    RadioButton(
-                                        selected = audioEngineType.value == 1,
-                                        onClick = {
-                                            audioEngineType.value = 1
-                                            showAudioEngineDialog.value = false
+                                    Text(text = "Connected")
+                                    Switch(
+                                        checked = playerSetting.isConnected,
+                                        onCheckedChange = { 
+                                            val index = playerSettings.indexOfFirst { it.playerNumber == playerNumber }
+                                            if (index != -1) {
+                                                playerSettings[index] = playerSetting.copy(isConnected = it)
+                                            }
                                         }
-                                    )
-                                    Text(
-                                        text = "OpenAL",
-                                        modifier = Modifier.padding(start = 16.dp)
                                     )
                                 }
                                 
-                                // SDL2选项
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            audioEngineType.value = 2
-                                            showAudioEngineDialog.value = false
-                                        }
-                                        .padding(vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    RadioButton(
-                                        selected = audioEngineType.value == 2,
-                                        onClick = {
-                                            audioEngineType.value = 2
-                                            showAudioEngineDialog.value = false
-                                        }
-                                    )
-                                    Text(
-                                        text = "SDL2",
-                                        modifier = Modifier.padding(start = 16.dp)
-                                    )
-                                }
-                                
-                                // Oboe选项
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            audioEngineType.value = 3
-                                            showAudioEngineDialog.value = false
-                                        }
-                                        .padding(vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    RadioButton(
-                                        selected = audioEngineType.value == 3,
-                                        onClick = {
-                                            audioEngineType.value = 3
-                                            showAudioEngineDialog.value = false
-                                        }
-                                    )
-                                    Text(
-                                        text = "Oboe",
-                                        modifier = Modifier.padding(start = 16.dp)
-                                    )
-                                }
-                                
-                                // 禁用音频选项
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            audioEngineType.value = 0
-                                            showAudioEngineDialog.value = false
-                                        }
-                                        .padding(vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    RadioButton(
-                                        selected = audioEngineType.value == 0,
-                                        onClick = {
-                                            audioEngineType.value = 0
-                                            showAudioEngineDialog.value = false
-                                        }
-                                    )
-                                    Text(
-                                        text = "Disabled",
-                                        modifier = Modifier.padding(start = 16.dp)
-                                    )
-                                }
-                                
-                                // 添加取消按钮
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 16.dp),
-                                    horizontalArrangement = Arrangement.End
-                                ) {
-                                    TextButton(
-                                        onClick = { showAudioEngineDialog.value = false }
+                                // 手柄类型选择（仅在连接开启时显示）
+                                AnimatedVisibility(visible = playerSetting.isConnected) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Text("Cancel")
+                                        Text(
+                                            text = "Controller Type",
+                                            modifier = Modifier.padding(vertical = 8.dp)
+                                        )
+                                        
+                                        val controllerTypes = listOf("Pro Controller", "Joy-Con", "Handheld")
+                                        controllerTypes.forEachIndexed { index, type ->
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable {
+                                                        val playerIndex = playerSettings.indexOfFirst { it.playerNumber == playerNumber }
+                                                        if (playerIndex != -1) {
+                                                            playerSettings[playerIndex] = playerSetting.copy(controllerType = index)
+                                                        }
+                                                    }
+                                                    .padding(vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                RadioButton(
+                                                    selected = playerSetting.controllerType == index,
+                                                    onClick = {
+                                                        val playerIndex = playerSettings.indexOfFirst { it.playerNumber == playerNumber }
+                                                        if (playerIndex != -1) {
+                                                            playerSettings[playerIndex] = playerSetting.copy(controllerType = index)
+                                                        }
+                                                    }
+                                                )
+                                                Text(
+                                                    text = type,
+                                                    modifier = Modifier.padding(start = 8.dp)
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-
-                BackHandler {
-                    settingsViewModel.save(
-                        isHostMapped,
-                        useNce, enableVsync, enableDocked, enablePtc, enableJitCacheEviction, ignoreMissingServices,
-                        enableShaderCache,
-                        enableTextureRecompression,
-                        resScale,
-                        aspectRatio, // 新增参数
-                        useVirtualController,
-                        isGrid,
-                        useSwitchLayout,
-                        enableMotion,
-                        enablePerformanceMode,
-                        controllerStickSensitivity,
-                        enableDebugLogs,
-                        enableStubLogs,
-                        enableInfoLogs,
-                        enableWarningLogs,
-                        enableErrorLogs,
-                        enableGuestLogs,
-                        enableAccessLogs,
-                        enableTraceLogs,
-                        enableGraphicsLogs,
-                        skipMemoryBarriers, // 新增参数
-                        regionCode, // 新增参数
-                        systemLanguage, // 新增参数
-                        audioEngineType, // 新增参数
-                        scalingFilter, // 新增：缩放过滤器
-                        scalingFilterLevel, // 新增：缩放过滤器级别
-                        antiAliasing, // 新增：抗锯齿模式
-                        memoryConfiguration, // 新增DRAM参数
-                        controllerType
-                    )
-                    settingsViewModel.navController.popBackStack()
-                }
             }
         }
 
         @OptIn(ExperimentalMaterial3Api::class)
         @Composable
-        @SuppressLint("UnusedTransitionTargetStateParameter")
         fun ExpandableView(
-            onCardArrowClick: () -> Unit,
+            onCardArrowClick: (Boolean) -> Unit,
             title: String,
             content: @Composable () -> Unit
         ) {
-            val expanded = false
-            val mutableExpanded = remember {
-                mutableStateOf(expanded)
+            var expanded by remember {
+                mutableStateOf(false)
             }
+
             val transitionState = remember {
                 MutableTransitionState(expanded).apply {
-                    targetState = !mutableExpanded.value
+                    targetState = !expanded
                 }
             }
             val transition = updateTransition(transitionState, label = "transition")
+
             val arrowRotationDegree by transition.animateFloat({
                 tween(durationMillis = EXPANSTION_TRANSITION_DURATION)
-            }, label = "rotationDegreeTransition") {
-                if (mutableExpanded.value) 0f else 180f
+            }, label = "rotationDegree") {
+                if (expanded) 180f else 0f
             }
 
             Card(
-                shape = MaterialTheme.shapes.medium,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(
-                        horizontal = 24.dp,
-                        vertical = 8.dp
-                    )
+                    .padding(8.dp),
+                shape = MaterialTheme.shapes.medium
             ) {
-                Column {
-                    Card(
-                        onClick = {
-                            mutableExpanded.value = !mutableExpanded.value
-                            onCardArrowClick()
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                expanded = !expanded
+                                onCardArrowClick(expanded)
+                            },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        IconButton(onClick = {
+                            expanded = !expanded
+                            onCardArrowClick(expanded)
                         }) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            CardTitle(title = title)
-                            CardArrow(
-                                degrees = arrowRotationDegree,
+                            Icon(
+                                Icons.Default.KeyboardArrowUp,
+                                contentDescription = "Expand",
+                                modifier = Modifier.rotate(arrowRotationDegree)
                             )
-
                         }
                     }
-                    ExpandableContent(visible = mutableExpanded.value, content = content)
-                }
-            }
-        }
-
-        @Composable
-        fun CardArrow(
-            degrees: Float,
-        ) {
-            Icon(
-                Icons.Filled.KeyboardArrowUp,
-                contentDescription = "Expandable Arrow",
-                modifier = Modifier
-                    .padding(8.dp)
-                    .rotate(degrees),
-            )
-        }
-
-        @Composable
-        fun CardTitle(title: String) {
-            Text(
-                text = title,
-                modifier = Modifier
-                    .padding(16.dp),
-                textAlign = TextAlign.Center,
-            )
-        }
-
-        @Composable
-        fun ExpandableContent(
-            visible: Boolean = true,
-            content: @Composable () -> Unit
-            ) {
-            val enterTransition = remember {
-                expandVertically(
-                    expandFrom = Alignment.Top,
-                    animationSpec = tween(EXPANSTION_TRANSITION_DURATION)
-                ) + fadeIn(
-                    initialAlpha = 0.3f,
-                    animationSpec = tween(EXPANSTION_TRANSITION_DURATION)
-                )
-            }
-            val exitTransition = remember {
-                shrinkVertically(
-                    // Expand from the top.
-                    shrinkTowards = Alignment.Top,
-                    animationSpec = tween(EXPANSTION_TRANSITION_DURATION)
-                ) + fadeOut(
-                    // Fade in with the initial alpha of 0.3f.
-                    animationSpec = tween(EXPANSTION_TRANSITION_DURATION)
-                )
-            }
-
-            AnimatedVisibility(
-                visible = visible,
-                enter = enterTransition,
-                exit = exitTransition
-            ) {
-                Column(modifier = Modifier.padding(8.dp)) {
-                    content()
+                    transition.AnimatedVisibility(
+                        visible = { it.targetState },
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        content()
+                    }
                 }
             }
         }
     }
 }
+
+// 玩家设置数据类
+data class PlayerSetting(
+    val playerNumber: Int,
+    var isConnected: Boolean,
+    var controllerType: Int // 0 = Pro Controller, 1 = Joy-Con, 2 = Handheld
+)
