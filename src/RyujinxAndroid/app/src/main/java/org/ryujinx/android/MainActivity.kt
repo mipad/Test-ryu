@@ -118,38 +118,54 @@ class MainActivity : BaseActivity() {
     }
 
     // 安全的控制器设置应用方法
-fun applyControllerSettings() {
-    if (!_isInit) {
-        return
+    fun applyControllerSettings() {
+        if (!_isInit) {
+            return
+        }
+
+        try {
+            val quickSettings = QuickSettings(this)
+            
+            // 只设置虚拟控制器（设备ID 0）- 玩家1
+            val player1Setting = quickSettings.getPlayerSetting(1)
+            if (player1Setting != null && player1Setting.isConnected) {
+                // 确保控制器类型值在有效范围内 (0-4)
+                val controllerType = player1Setting.controllerType.coerceIn(0, 4)
+                // 将控制器类型索引转换为位掩码值
+                val controllerTypeBitmask = controllerTypeIndexToBitmask(controllerType)
+                RyujinxNative.jnaInstance.setControllerType(0, controllerTypeBitmask)
+                android.util.Log.d("MainActivity", "Controller type set for device 0: $controllerTypeBitmask")
+            }
+            
+            // 设置其他玩家的控制器类型（设备ID 1-7）
+            for (i in 2..8) {
+                val playerSetting = quickSettings.getPlayerSetting(i)
+                if (playerSetting != null && playerSetting.isConnected) {
+                    val deviceId = i - 1 // 设备ID从1开始
+                    // 确保控制器类型值在有效范围内 (0-4)
+                    val controllerType = playerSetting.controllerType.coerceIn(0, 4)
+                    // 将控制器类型索引转换为位掩码值
+                    val controllerTypeBitmask = controllerTypeIndexToBitmask(controllerType)
+                    RyujinxNative.jnaInstance.setControllerType(deviceId, controllerTypeBitmask)
+                    android.util.Log.d("MainActivity", "Controller type set for device $deviceId: $controllerTypeBitmask")
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Failed to apply controller settings", e)
+        }
     }
 
-    try {
-        val quickSettings = QuickSettings(this)
-        
-        // 只设置虚拟控制器（设备ID 0）- 玩家1
-        val player1Setting = quickSettings.getPlayerSetting(1)
-        if (player1Setting != null && player1Setting.isConnected) {
-            // 确保控制器类型值在有效范围内 (0-4)
-            val controllerType = player1Setting.controllerType.coerceIn(0, 4)
-            RyujinxNative.jnaInstance.setControllerType(0, controllerType)
-            android.util.Log.d("MainActivity", "Controller type set for device 0: $controllerType")
+    // 新增方法：将控制器类型索引转换为位掩码值
+    private fun controllerTypeIndexToBitmask(controllerTypeIndex: Int): Int {
+        return when (controllerTypeIndex) {
+            0 -> 1  // ProController = 1 << 0
+            1 -> 8  // JoyconLeft = 1 << 3
+            2 -> 16 // JoyconRight = 1 << 4
+            3 -> 4  // JoyconPair = 1 << 2
+            4 -> 2  // Handheld = 1 << 1
+            else -> 1 // 默认返回ProController
         }
-        
-        // 设置其他玩家的控制器类型（设备ID 1-7）
-        for (i in 2..8) {
-            val playerSetting = quickSettings.getPlayerSetting(i)
-            if (playerSetting != null && playerSetting.isConnected) {
-                val deviceId = i - 1 // 设备ID从1开始
-                // 确保控制器类型值在有效范围内 (0-4)
-                val controllerType = playerSetting.controllerType.coerceIn(0, 4)
-                RyujinxNative.jnaInstance.setControllerType(deviceId, controllerType)
-                android.util.Log.d("MainActivity", "Controller type set for device $deviceId: $controllerType")
-            }
-        }
-    } catch (e: Exception) {
-        android.util.Log.e("MainActivity", "Failed to apply controller settings", e)
     }
-}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
