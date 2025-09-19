@@ -387,7 +387,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         activity.storageHelper!!.onFileSelected = { _, files ->
             run {
                 activity.storageHelper!!.onFileSelected = previousFileCallback
-                the file = files.firstOrNull()
+                val file = files.firstOrNull()
                 file?.apply {
                     if (extension == "xci" || extension == "zip") {
                         installState.value = FirmwareInstallState.Verifying
