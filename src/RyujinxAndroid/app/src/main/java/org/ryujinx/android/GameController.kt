@@ -169,6 +169,12 @@ class GameController(var activity: Activity) {
         
         // 根据控制器类型更新虚拟按键布局
         updateVirtualLayoutForControllerType(newType)
+        
+        // 重新连接以确保配置生效
+        if (controllerId != -1) {
+            disconnect()
+            connect()
+        }
     }
 
     // 新增方法：根据控制器类型更新虚拟按键布局
@@ -522,7 +528,6 @@ class GameController(var activity: Activity) {
 
     fun disconnect() {
         if (controllerId != -1) {
-            // 先断开连接
             RyujinxNative.jnaInstance.inputDisconnectGamepad(controllerId)
             controllerId = -1
         }
