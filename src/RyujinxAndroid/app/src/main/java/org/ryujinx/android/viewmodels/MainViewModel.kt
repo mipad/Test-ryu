@@ -83,8 +83,8 @@ class MainViewModel(val activity: MainActivity) {
         
         // 尝试从设置中加载保存的玩家设置
         try {
-            val settingsViewModel = SettingsViewModel(navController!!, activity)
-            playerSettings = settingsViewModel.playerSettings.toMutableList()
+            val quickSettings = QuickSettings(activity)
+            playerSettings = quickSettings.playerSettings.toMutableList()
         } catch (e: Exception) {
             // 如果加载失败，保持默认设置
             e.printStackTrace()
@@ -106,7 +106,7 @@ class MainViewModel(val activity: MainActivity) {
             if (playerSetting.isConnected) {
                 val deviceId = playerDeviceIds[playerSetting.playerNumber]
                 if (deviceId != null) {
-                    RyujinxNative.setControllerType(deviceId, playerSetting.controllerType)
+                    RyujinxNative.jnaInstance.setControllerType(deviceId, playerSetting.controllerType)
                 }
                 
                 // 如果是玩家1，更新GameController的布局
@@ -119,25 +119,28 @@ class MainViewModel(val activity: MainActivity) {
     
     // 为玩家分配设备ID
     fun assignDeviceIdToPlayer(playerNumber: Int): Int {
-        val deviceId = RyujinxNative.getNextAvailableDeviceId()
-        if (deviceId != -1) {
-            playerDeviceIds[playerNumber] = deviceId
-            
-            // 设置控制器类型
-            val playerSetting = getPlayerSetting(playerNumber)
-            if (playerSetting != null && playerSetting.isConnected) {
-                RyujinxNative.setControllerType(deviceId, playerSetting.controllerType)
-            }
+        // 玩家1使用设备ID0（虚拟控制器）
+        if (playerNumber == 1) {
+            playerDeviceIds[1] = 0
+            return 0
         }
+        
+        // 其他玩家使用设备ID1-7
+        val deviceId = playerNumber - 1
+        playerDeviceIds[playerNumber] = deviceId
+        
+        // 设置控制器类型
+        val playerSetting = getPlayerSetting(playerNumber)
+        if (playerSetting != null && playerSetting.isConnected) {
+            RyujinxNative.jnaInstance.setControllerType(deviceId, playerSetting.controllerType)
+        }
+        
         return deviceId
     }
     
     // 释放玩家的设备ID
     fun releaseDeviceIdForPlayer(playerNumber: Int) {
-        val deviceId = playerDeviceIds.remove(playerNumber)
-        if (deviceId != null) {
-            RyujinxNative.releaseDeviceId(deviceId)
-        }
+        playerDeviceIds.remove(playerNumber)
     }
 
     fun closeGame() {
@@ -267,7 +270,7 @@ class MainViewModel(val activity: MainActivity) {
                     if (playerSetting.isConnected) {
                         val deviceId = assignDeviceIdToPlayer(playerSetting.playerNumber)
                         if (deviceId != -1) {
-                            RyujinxNative.setControllerType(deviceId, playerSetting.controllerType)
+                            RyujinxNative.jnaInstance.setControllerType(deviceId, playerSetting.controllerType)
                         }
                     }
                 }
@@ -383,7 +386,7 @@ class MainViewModel(val activity: MainActivity) {
                     if (playerSetting.isConnected) {
                         val deviceId = assignDeviceIdToPlayer(playerSetting.playerNumber)
                         if (deviceId != -1) {
-                            RyujinxNative.setControllerType(deviceId, playerSetting.controllerType)
+                            RyujinxNative.jnaInstance.setControllerType(deviceId, playerSetting.controllerType)
                         }
                     }
                 }
