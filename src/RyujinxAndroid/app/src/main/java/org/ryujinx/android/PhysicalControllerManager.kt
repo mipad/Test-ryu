@@ -22,7 +22,7 @@ class PhysicalControllerManager(val activity: MainActivity) {
         
         // 如果控制器已连接，立即应用新的控制器类型
         if (controllerId != -1) {
-            RyujinxNative.jnaInstance.setControllerType(controllerId, controllerType.ordinal)
+            RyujinxNative.setControllerType(controllerId, controllerType.ordinal)
         }
         
         // 同时更新ControllerManager中的控制器类型
@@ -181,7 +181,13 @@ class PhysicalControllerManager(val activity: MainActivity) {
     }
 
     fun connect(): Int {
-        controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
+        // 使用新的设备ID管理方法连接游戏手柄
+        controllerId = RyujinxNative.connectGamepad()
+        
+        if (controllerId == -1) {
+            // 连接失败，没有可用设备ID
+            return -1
+        }
         
         // 从设置加载控制器类型
         loadControllerTypeFromSettings()
@@ -202,11 +208,15 @@ class PhysicalControllerManager(val activity: MainActivity) {
     }
 
     fun disconnect() {
-        // 从ControllerManager移除控制器
-        val deviceId = "physical_controller_$controllerId"
-        ControllerManager.removeController(deviceId)
-        
-        controllerId = -1
+        if (controllerId != -1) {
+            // 从ControllerManager移除控制器
+            val deviceId = "physical_controller_$controllerId"
+            ControllerManager.removeController(deviceId)
+            
+            // 断开游戏手柄连接并释放设备ID
+            RyujinxNative.disconnectGamepad(controllerId)
+            controllerId = -1
+        }
     }
 
     private fun getGamePadButtonInputId(keycode: Int): GamePadButtonInputId {
