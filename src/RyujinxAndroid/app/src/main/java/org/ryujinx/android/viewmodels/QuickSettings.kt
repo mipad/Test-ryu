@@ -3,10 +3,14 @@ package org.ryujinx.android.viewmodels
 import android.app.Activity
 import android.content.SharedPreferences
 import androidx.preference.PreferenceManager
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.ryujinx.android.ControllerType
 import org.ryujinx.android.RegionCode
-import org.ryujinx.android.SystemLanguage
 import org.ryujinx.android.RyujinxNative
+import org.ryujinx.android.SystemLanguage
+import org.ryujinx.android.views.PlayerSetting
 
 class QuickSettings(val activity: Activity) {
     var ignoreMissingServices: Boolean
@@ -34,7 +38,9 @@ class QuickSettings(val activity: Activity) {
     var scalingFilterLevel: Int // 新增：缩放过滤器级别
     var antiAliasing: Int // 新增：抗锯齿模式 0=None, 1=Fxaa, 2=SmaaLow, 3=SmaaMedium, 4=SmaaHigh, 5=SmaaUltra
     var memoryConfiguration: Int // 新增：内存配置 0=4GB, 1=4GB Applet Dev, 2=4GB System Dev, 3=6GB, 4=6GB Applet Dev, 5=8GB
-    var controllerType: Int // 新增：控制器类型 0=Pro, 1=JoyConL, 2=JoyConR, 3=Pair, 4=Handheld
+    
+    // 玩家设置列表（替换原来的单个controllerType）
+    var playerSettings: MutableList<PlayerSetting> = mutableListOf()
 
     // Logs
     var enableDebugLogs: Boolean
@@ -76,7 +82,19 @@ class QuickSettings(val activity: Activity) {
         scalingFilterLevel = sharedPref.getInt("scalingFilterLevel", 80) // 默认级别：80
         antiAliasing = sharedPref.getInt("antiAliasing", 0) // 默认关闭
         memoryConfiguration = sharedPref.getInt("memoryConfiguration", 0) // 默认4GB
-        controllerType = sharedPref.getInt("controllerType", 0) // 默认Pro控制器
+        
+        // 加载玩家设置
+        val json = sharedPref.getString("player_settings", null)
+        if (json != null) {
+            try {
+                playerSettings = Json.decodeFromString<MutableList<PlayerSetting>>(json).toMutableList()
+            } catch (e: Exception) {
+                // 如果解析失败，使用默认设置
+                initDefaultPlayerSettings()
+            }
+        } else {
+            initDefaultPlayerSettings()
+        }
 
         enableDebugLogs = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs = sharedPref.getBoolean("enableStubLogs", false)
@@ -88,8 +106,22 @@ class QuickSettings(val activity: Activity) {
         enableTraceLogs = sharedPref.getBoolean("enableStubLogs", false)
         enableGraphicsLogs = sharedPref.getBoolean("enableGraphicsLogs", false)
         
-        // 初始化时立即应用控制器类型设置
+        // 初始化时立即应用控制器设置（只应用玩家1的设置）
         applyControllerSettings()
+    }
+
+    // 初始化默认玩家设置
+    private fun initDefaultPlayerSettings() {
+        playerSettings = mutableListOf(
+            PlayerSetting(1, true, 0), // Player 1 默认开启，Pro Controller
+            PlayerSetting(2, false, 0), // Player 2-8 默认关闭
+            PlayerSetting(3, false, 0),
+            PlayerSetting(4, false, 0),
+            PlayerSetting(5, false, 0),
+            PlayerSetting(6, false, 0),
+            PlayerSetting(7, false, 0),
+            PlayerSetting(8, false, 0)
+        )
     }
 
     fun save() {
@@ -120,7 +152,10 @@ class QuickSettings(val activity: Activity) {
         editor.putInt("scalingFilterLevel", scalingFilterLevel) // 保存缩放过滤器级别
         editor.putInt("antiAliasing", antiAliasing) // 保存抗锯齿设置
         editor.putInt("memoryConfiguration", memoryConfiguration) // 保存内存配置
-        editor.putInt("controllerType", controllerType) // 保存控制器类型
+        
+        // 保存玩家设置
+        val json = Json.encodeToString(playerSettings)
+        editor.putString("player_settings", json)
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs)
         editor.putBoolean("enableStubLogs", enableStubLogs)
@@ -134,18 +169,39 @@ class QuickSettings(val activity: Activity) {
 
         editor.apply()
         
-        // 保存后立即应用控制器设置
+        // 保存后立即应用控制器设置（只应用玩家1的设置）
         applyControllerSettings()
     }
     
-    // 新增方法：应用控制器设置到Native层
+    // 获取指定玩家的设置
+    fun getPlayerSetting(playerNumber: Int): PlayerSetting? {
+        return playerSettings.find { it.playerNumber == playerNumber }
+    }
+    
+    // 更新玩家设置
+    fun updatePlayerSetting(playerSetting: PlayerSetting) {
+        val index = playerSettings.indexOfFirst { it.playerNumber == playerSetting.playerNumber }
+        if (index != -1) {
+            playerSettings[index] = playerSetting
+            
+            // 如果是玩家1，立即应用设置
+            if (playerSetting.playerNumber == 1 && playerSetting.isConnected) {
+                applyControllerSettings()
+            }
+        }
+    }
+    
+    // 新增方法：应用控制器设置到Native层（只应用玩家1的设置）
     fun applyControllerSettings() {
         try {
-            // 设置虚拟控制器的控制器类型（设备ID 0）
-            RyujinxNative.jnaInstance.setControllerType(0, controllerType)
-            
-            // 记录设置信息
-            android.util.Log.d("QuickSettings", "Controller type set to: ${getControllerTypeName(controllerType)} for device 0")
+            val player1Setting = getPlayerSetting(1)
+            if (player1Setting != null && player1Setting.isConnected) {
+                // 设置虚拟控制器的控制器类型（设备ID 0）
+                RyujinxNative.jnaInstance.setControllerType(0, player1Setting.controllerType)
+                
+                // 记录设置信息
+                android.util.Log.d("QuickSettings", "Controller type set to: ${getControllerTypeName(player1Setting.controllerType)} for device 0")
+            }
         } catch (e: Exception) {
             android.util.Log.e("QuickSettings", "Failed to apply controller settings", e)
         }
@@ -163,9 +219,12 @@ class QuickSettings(val activity: Activity) {
         }
     }
     
-    // 新增方法：获取当前控制器类型的枚举值
+    // 新增方法：获取当前控制器类型的枚举值（玩家1）
     fun getCurrentControllerType(): ControllerType {
-        return when (controllerType) {
+        val player1Setting = getPlayerSetting(1)
+        val type = player1Setting?.controllerType ?: 0
+        
+        return when (type) {
             0 -> ControllerType.PRO_CONTROLLER
             1 -> ControllerType.JOYCON_LEFT
             2 -> ControllerType.JOYCON_RIGHT
@@ -175,17 +234,20 @@ class QuickSettings(val activity: Activity) {
         }
     }
     
-    // 删除重复的 setControllerType(Int) 方法，因为属性已经自动生成了setter
-    
-    // 新增方法：设置控制器类型通过枚举值
+    // 新增方法：设置控制器类型通过枚举值（玩家1）
     fun setControllerType(controllerType: ControllerType) {
-        this.controllerType = when (controllerType) {
-            ControllerType.PRO_CONTROLLER -> 0
-            ControllerType.JOYCON_LEFT -> 1
-            ControllerType.JOYCON_RIGHT -> 2
-            ControllerType.JOYCON_PAIR -> 3
-            ControllerType.HANDHELD -> 4
+        val player1Setting = getPlayerSetting(1)
+        if (player1Setting != null) {
+            val typeValue = when (controllerType) {
+                ControllerType.PRO_CONTROLLER -> 0
+                ControllerType.JOYCON_LEFT -> 1
+                ControllerType.JOYCON_RIGHT -> 2
+                ControllerType.JOYCON_PAIR -> 3
+                ControllerType.HANDHELD -> 4
+            }
+            
+            player1Setting.controllerType = typeValue
+            updatePlayerSetting(player1Setting)
         }
-        applyControllerSettings()
     }
 }
