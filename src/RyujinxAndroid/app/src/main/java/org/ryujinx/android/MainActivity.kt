@@ -118,21 +118,23 @@ class MainActivity : BaseActivity() {
     }
 
     // 安全的控制器设置应用方法
-    fun applyControllerSettings() {
-        if (!_isInit) {
-            return
-        }
-
-        try {
-            val quickSettings = QuickSettings(this)
-            
-            // 只设置虚拟控制器（设备ID 0）
-            RyujinxNative.jnaInstance.setControllerType(0, quickSettings.controllerType)
-            
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+fun applyControllerSettings() {
+    if (!_isInit) {
+        return
     }
+
+    try {
+        val quickSettings = QuickSettings(this)
+        val player1Setting = quickSettings.getPlayerSetting(1)
+        
+        // 只设置虚拟控制器（设备ID 0）
+        if (player1Setting != null && player1Setting.isConnected) {
+            RyujinxNative.jnaInstance.setControllerType(0, player1Setting.controllerType)
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
