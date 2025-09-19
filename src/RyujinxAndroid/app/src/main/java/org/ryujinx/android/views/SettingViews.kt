@@ -224,8 +224,8 @@ class SettingViews {
                     scalingFilter, // 新增：缩放过滤器
                     scalingFilterLevel, // 新增：缩放过滤器级别
                     antiAliasing, // 新增：抗锯齿模式
-                    memoryConfiguration, // 新增DRAM参数
-                    playerSettings[0].controllerType // 使用Player 1的设置作为默认值
+                    memoryConfiguration // 新增DRAM参数
+                    //playerSettings[0].controllerType // 使用Player 1的设置作为默认值
                 )
                 loaded.value = true
             }
@@ -281,8 +281,8 @@ class SettingViews {
                     scalingFilter, // 新增：缩放过滤器
                     scalingFilterLevel, // 新增：缩放过滤器级别
                     antiAliasing, // 新增：抗锯齿模式
-                    memoryConfiguration, // 新增DRAM参数
-                    playerSettings[0].controllerType // 使用Player 1的设置
+                    memoryConfiguration // 新增DRAM参数
+                    //playerSettings[0].controllerType // 使用Player 1的设置
                                 )
                                 settingsViewModel.navController.popBackStack()
                             }) {
@@ -2321,8 +2321,8 @@ if (showMemoryConfigDialog.value) {
                         scalingFilter, // 新增：缩放过滤器
                         scalingFilterLevel, // 新增：缩放过滤器级别
                         antiAliasing, // 新增：抗锯齿模式
-                        memoryConfiguration, // 新增DRAM参数
-                        playerSettings[0].controllerType // 使用Player 1的设置
+                        memoryConfiguration // 新增DRAM参数
+                        //playerSettings[0].controllerType // 使用Player 1的设置
                     )
                     settingsViewModel.navController.popBackStack()
                 }
