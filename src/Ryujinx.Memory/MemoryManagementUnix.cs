@@ -9,6 +9,7 @@ namespace Ryujinx.Memory
 {
     [SupportedOSPlatform("linux")]
     [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("ios")]
     [SupportedOSPlatform("android")]
     static class MemoryManagementUnix
     {
@@ -16,15 +17,15 @@ namespace Ryujinx.Memory
 
         public static IntPtr Allocate(ulong size, bool forJit)
         {
-            return AllocateInternal(size, MmapProts.PROT_READ | MmapProts.PROT_WRITE, forJit);
+            return AllocateInternal(size, MmapProts.PROT_READ | MmapProts.PROT_WRITE, forJit, false);
         }
 
         public static IntPtr Reserve(ulong size, bool forJit)
         {
-            return AllocateInternal(size, MmapProts.PROT_NONE, forJit);
+            return AllocateInternal(size, MmapProts.PROT_NONE, forJit, false);
         }
 
-        private static IntPtr AllocateInternal(ulong size, MmapProts prot, bool forJit, bool shared = false)
+        private static IntPtr AllocateInternal(ulong size, MmapProts prot, bool forJit, bool shared)
         {
             MmapFlags flags = MmapFlags.MAP_ANONYMOUS;
 
@@ -139,10 +140,11 @@ namespace Ryujinx.Memory
         public unsafe static IntPtr CreateSharedMemory(ulong size, bool reserve)
         {
             int fd;
+            Logger.Debug?.Print(LogClass.Cpu, $"Operating System: {RuntimeInformation.OSDescription}");
 
             if (OperatingSystem.IsMacOS())
             {
-                byte[] memName = "Kenji-NX-XXXXXX"u8.ToArray();
+                byte[] memName = "Ryujinx-XXXXXX"u8.ToArray();
 
                 fixed (byte* pMemName = memName)
                 {
@@ -160,7 +162,7 @@ namespace Ryujinx.Memory
             }
             else if (Ryujinx.Common.PlatformInfo.IsBionic)
             {
-                byte[] memName = "Kenji-NX-XXXXXX"u8.ToArray();
+                byte[] memName = "Ryujinx-XXXXXX"u8.ToArray();
 
                 Logger.Debug?.Print(LogClass.Cpu, $"Creating Android SharedMemory of size:{size}");
 
@@ -178,7 +180,7 @@ namespace Ryujinx.Memory
             }
             else
             {
-                byte[] fileName = "/dev/shm/Kenji-NX-XXXXXX"u8.ToArray();
+                byte[] fileName = "/dev/shm/Ryujinx-XXXXXX"u8.ToArray();
 
                 fixed (byte* pFileName = fileName)
                 {
