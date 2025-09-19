@@ -1,6 +1,5 @@
 package org.ryujinx.android.views 
 
-import androidx.compose.foundation.lazy.animateItemPlacement
 import android.content.res.Configuration
 import android.content.res.Resources
 import android.graphics.BitmapFactory
@@ -39,6 +38,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.animateItemPlacement // 添加这个导入
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -226,7 +226,7 @@ class HomeViews {
                                     Image(
                                         bitmap = BitmapFactory.decodeByteArray(pic, 0, pic.size)
                                             .asImageBitmap(),
-                                        contentDescription = gameModel.getDisplayName() + " icon",
+                                    contentDescription = gameModel.getDisplayName() + " icon",
                                         modifier = Modifier
                                             .width(size.roundToInt().dp)
                                             .height(size.roundToInt().dp)
@@ -967,16 +967,16 @@ class HomeViews {
                                     LazyColumn(
                                         modifier = Modifier.fillMaxSize()
                                     ) {
-                                        items(list) {
-                                            if (it.getDisplayName().isNotEmpty() && (query.trim()
-                                                    .isEmpty() || it.getDisplayName().lowercase(
+                                        items(list, key = { it.path ?: "" }) { gameModel ->
+                                            if (gameModel.getDisplayName().isNotEmpty() && (query.trim()
+                                                    .isEmpty() || gameModel.getDisplayName().lowercase(
                                                     Locale.getDefault()
                                                 )
                                                     .contains(query))
                                             ) {
                                                 Box(modifier = Modifier.animateItemPlacement()) {
                                                     ListGameItem(
-                                                        gameModel = it,
+                                                        gameModel = gameModel,
                                                         viewModel = viewModel,
                                                         showAppActions = showAppActions,
                                                         showLoading = showLoading,
@@ -1372,4 +1372,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}}}
+}
