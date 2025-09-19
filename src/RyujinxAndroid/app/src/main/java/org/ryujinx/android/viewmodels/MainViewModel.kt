@@ -189,9 +189,9 @@ class MainViewModel(val activity: MainActivity) {
                 // 初始化后设置所有玩家的控制器类型
                 playerSettings.forEach { playerSetting ->
                     if (playerSetting.isConnected) {
-                        // 设备ID: 0-3 对应玩家1-4
+                        // 设备ID: 0-7 对应玩家1-8
                         val deviceId = playerSetting.playerNumber - 1
-                        if (deviceId in 0..3) {
+                        if (deviceId in 0..7) {
                             RyujinxNative.jnaInstance.setControllerType(deviceId, playerSetting.controllerType)
                         }
                     }
@@ -306,9 +306,9 @@ class MainViewModel(val activity: MainActivity) {
                 // 初始化后设置所有玩家的控制器类型
                 playerSettings.forEach { playerSetting ->
                     if (playerSetting.isConnected) {
-                        // 设备ID: 0-3 对应玩家1-4
+                        // 设备ID: 0-7 对应玩家1-8
                         val deviceId = playerSetting.playerNumber - 1
-                        if (deviceId in 0..3) {
+                        if (deviceId in 0..7) {
                             RyujinxNative.jnaInstance.setControllerType(deviceId, playerSetting.controllerType)
                         }
                     }
