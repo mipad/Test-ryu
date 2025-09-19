@@ -37,6 +37,9 @@ namespace LibRyujinx
         
         // 修改：将控制器类型存储数组从4个增加到8个，以支持多玩家设置
         private static Ryujinx.Common.Configuration.Hid.ControllerType[] _controllerTypes = new Ryujinx.Common.Configuration.Hid.ControllerType[8];
+        
+        // 设备ID跟踪
+        private static HashSet<int> _connectedDeviceIds = new HashSet<int>();
 
         public static void InitializeInput(int width, int height)
         {
@@ -137,6 +140,13 @@ namespace LibRyujinx
             if (index < 0 || index >= _configs.Length) 
                 return -1;
 
+            // 检查设备ID是否已被占用
+            if (_connectedDeviceIds.Contains(index))
+            {
+                Logger.Warning?.Print(LogClass.Application, $"Device ID {index} is already connected");
+                return -1;
+            }
+
             var gamepad = _gamepadDriver?.GetGamepad(index);
             if (gamepad != null)
             {
@@ -148,14 +158,58 @@ namespace LibRyujinx
                 config.ControllerType = _controllerTypes[index];
                 
                 _configs[index] = config;
+                _connectedDeviceIds.Add(index);
                 
                 Logger.Info?.Print(LogClass.Application, $"Connected gamepad {index} as {_controllerTypes[index]}");
             }
 
             _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
-            return int.TryParse(gamepad?.Id, out var idInt) ? idInt : -1;
+            return index;
         }
         
+        public static void DisconnectGamepad(int deviceId)
+        {
+            if (deviceId < 0 || deviceId >= _configs.Length)
+                return;
+                
+            if (_connectedDeviceIds.Contains(deviceId))
+            {
+                _connectedDeviceIds.Remove(deviceId);
+                _configs[deviceId] = null;
+                Logger.Info?.Print(LogClass.Application, $"Disconnected gamepad {deviceId}");
+                
+                _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
+            }
+        }
+        
+        // 新增方法：获取下一个可用的设备ID
+        public static int GetNextAvailableDeviceId()
+        {
+            for (int i = 0; i < _configs.Length; i++)
+            {
+                if (!_connectedDeviceIds.Contains(i))
+                {
+                    return i;
+                }
+            }
+            return -1; // 没有可用ID
+        }
+        
+        // 新增方法：检查设备ID是否可用
+        public static bool IsDeviceIdAvailable(int deviceId)
+        {
+            return deviceId >= 0 && deviceId < _configs.Length && !_connectedDeviceIds.Contains(deviceId);
+        }
+        
+        // 新增方法：释放设备ID
+        public static void ReleaseDeviceId(int deviceId)
+        {
+            if (deviceId >= 0 && deviceId < _configs.Length)
+            {
+                _connectedDeviceIds.Remove(deviceId);
+            }
+        }
+
         // 新增方法：设置控制器类型
         public static void SetControllerType(int deviceId, int controllerType)
         {
