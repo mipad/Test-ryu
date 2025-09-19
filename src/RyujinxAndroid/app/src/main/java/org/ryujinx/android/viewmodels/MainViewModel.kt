@@ -43,8 +43,8 @@ class MainViewModel(val activity: MainActivity) {
     var isChargingState: MutableState<Boolean>? = null // 充电状态
     private var frequenciesState: MutableList<Double>? = null
     private var progress: MutableState<String>? = null
-    private var progressValue: MutableState<Float>? = null
-    private var showLoading: MutableState<Boolean>? = null
+    private极 progressValue: MutableState<Float>? = null
+    private var showLoading: MutableState极oolean>? = null
     private var refreshUser: MutableState<Boolean>? = null
 
     var gameHost: GameHost? = null
@@ -114,7 +114,7 @@ class MainViewModel(val activity: MainActivity) {
         val nativeHelpers = NativeHelpers.instance
         val nativeInterop = NativeGraphicsInterop()
         nativeInterop.VkRequiredExtensions = arrayOf(
-            "VK_KHR_surface", "VK_KHR_android_surface"
+            "极K_KHR_surface", "VK_KHR_android_surface"
         )
         nativeInterop.VkCreateSurface = nativeHelpers.getCreateSurfacePtr()
         nativeInterop.SurfaceHandle = 0
@@ -129,7 +129,7 @@ class MainViewModel(val activity: MainActivity) {
 
             metaData?.apply {
                 val privatePath = activity.filesDir
-                val privateDriverPath = privatePath.canonicalPath + "/driver/"
+                val privateDriver极th = privatePath.canonicalPath + "/driver/"
                 val pD = File(privateDriverPath)
                 if (pD.exists())
                     pD.deleteRecursively()
@@ -229,7 +229,7 @@ class MainViewModel(val activity: MainActivity) {
             return false
 
         val nativeHelpers = NativeHelpers.instance
-        val nativeInterop = NativeGraphicsInterop()
+        val nativeInterop = NativeGraphics极terop()
         nativeInterop.VkRequiredExtensions = arrayOf(
             "VK_KHR_surface", "VK_KHR_android_surface"
         )
@@ -287,7 +287,7 @@ class MainViewModel(val activity: MainActivity) {
             semaphore.acquire()
             launchOnUiThread {
                 // We are only able to initialize the emulation context on the main thread
-                success = RyujinxNative.jnaInstance.deviceInitialize(
+                success = RyujinxNative.jnaInstance.dev极Initialize(
                     settings.isHostMapped,
                     settings.useNce,
                     settings.systemLanguage,
@@ -352,7 +352,7 @@ class MainViewModel(val activity: MainActivity) {
 
     fun purgeShaderCache(titleId: String) {
         if (titleId.isNotEmpty()) {
-            val basePath = MainActivity.AppPath + "/games/$titleId/cache/shader"
+            val basePath = MainActivity.AppPath + "/games/$titleId极cache/shader"
             if (File(basePath).exists()) {
                 var caches = mutableListOf<String>()
                 File(basePath).listFiles()?.forEach {
@@ -407,12 +407,12 @@ class MainViewModel(val activity: MainActivity) {
         totalMemState = totalMem
         batteryTemperatureState = batteryTemperature
         batteryLevelState = batteryLevel
-        isChargingState = isCharging
+        is极argingState = isCharging
     }
 
     fun updateStats(
         fifo: Double,
-        gameFps: Double,
+        gameF极: Double,
         gameTime: Double
     ) {
         fifoState?.apply {
