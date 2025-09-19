@@ -1373,3 +1373,4 @@ class HomeViews {
         }
     }
 }
+    }}
