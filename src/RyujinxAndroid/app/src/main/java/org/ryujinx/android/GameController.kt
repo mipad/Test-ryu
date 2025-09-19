@@ -34,6 +34,7 @@ import org.ryujinx.android.viewmodels.QuickSettings
 import org.ryujinx.android.ControllerManager
 import org.ryujinx.android.Controller
 import org.ryujinx.android.ControllerType
+import org.ryujinx.android.viewmodels.SettingsViewModel
 
 typealias GamePad = RadialGamePad
 typealias GamePadConfig = RadialGamePadConfig
@@ -77,10 +78,13 @@ class GameController(var activity: Activity) {
                     
                     controller.controllerView = c
                     viewModel.setGameController(controller)
-                    controller.setVisible(QuickSettings(viewModel.activity).useVirtualController)
+                    
+                    // 获取SettingsViewModel来访问玩家设置
+                    val settingsViewModel = SettingsViewModel(viewModel.navController!!, viewModel.activity)
+                    controller.setVisible(settingsViewModel.getPlayerSetting(1)?.isConnected ?: true)
                     
                     // 初始化时设置控制器类型
-                    controller.updateControllerTypeFromSettings()
+                    controller.updateControllerTypeFromSettings(settingsViewModel)
                     
                     c
                 })
@@ -118,38 +122,30 @@ class GameController(var activity: Activity) {
         val virtualController = Controller(
             id = "virtual_controller_1",
             name = "MeloNX Touch Controller",
-            controllerType = getInitialControllerType(), // 使用当前设置的类型
+            controllerType = ControllerType.PRO_CONTROLLER, // 使用默认类型，稍后从设置更新
             isVirtual = true
         )
         ControllerManager.addController(activity, virtualController)
     }
 
-    // 新增方法：获取初始控制器类型
-    private fun getInitialControllerType(): ControllerType {
-        val quickSettings = QuickSettings(activity)
-        return when (quickSettings.controllerType) {
-            0 -> ControllerType.PRO_CONTROLLER
-            1 -> ControllerType.JOYCON_LEFT
-            2 -> ControllerType.JOYCON_RIGHT
-            3 -> ControllerType.JOYCON_PAIR
-            4 -> ControllerType.HANDHELD
-            else -> ControllerType.PRO_CONTROLLER
+    // 修改方法：从设置更新控制器类型
+    fun updateControllerTypeFromSettings(settingsViewModel: SettingsViewModel) {
+        val player1Setting = settingsViewModel.getPlayerSetting(1)
+        if (player1Setting != null && player1Setting.isConnected) {
+            val newType = when (player1Setting.controllerType) {
+                0 -> ControllerType.PRO_CONTROLLER
+                1 -> ControllerType.JOYCON_LEFT
+                2 -> ControllerType.JOYCON_RIGHT
+                3 -> ControllerType.JOYCON_PAIR
+                4 -> ControllerType.HANDHELD
+                else -> ControllerType.PRO_CONTROLLER
+            }
+            
+            updateControllerType(newType)
+        } else {
+            // 如果玩家1未连接，隐藏虚拟控制器
+            setVisible(false)
         }
-    }
-
-    // 新增方法：从设置更新控制器类型
-    fun updateControllerTypeFromSettings() {
-        val quickSettings = QuickSettings(activity)
-        val newType = when (quickSettings.controllerType) {
-            0 -> ControllerType.PRO_CONTROLLER
-            1 -> ControllerType.JOYCON_LEFT
-            2 -> ControllerType.JOYCON_RIGHT
-            3 -> ControllerType.JOYCON_PAIR
-            4 -> ControllerType.HANDHELD
-            else -> ControllerType.PRO_CONTROLLER
-        }
-        
-        updateControllerType(newType)
     }
 
     // 新增方法：更新控制器类型
@@ -169,12 +165,6 @@ class GameController(var activity: Activity) {
         
         // 根据控制器类型更新虚拟按键布局
         updateVirtualLayoutForControllerType(newType)
-        
-        // 重新连接以确保配置生效
-        if (controllerId != -1) {
-            disconnect()
-            connect()
-        }
     }
 
     // 新增方法：根据控制器类型更新虚拟按键布局
@@ -395,9 +385,7 @@ class GameController(var activity: Activity) {
                         true,
                         null,
                         "B",
-                        setOf(),
-                        true,
-                        null
+                        set极
                     ),
                     ButtonConfig(
                         GamePadButtonInputId.X.ordinal,
@@ -528,7 +516,6 @@ class GameController(var activity: Activity) {
 
     fun disconnect() {
         if (controllerId != -1) {
-            RyujinxNative.jnaInstance.inputDisconnectGamepad(controllerId)
             controllerId = -1
         }
     }
@@ -548,12 +535,12 @@ class GameController(var activity: Activity) {
             is Event.Button -> {
                 val action = ev.action
                 when (action) {
-                    KeyEvent.ACTION_UP -> {
+                    Key极.ACTION_UP -> {
                         RyujinxNative.jnaInstance.inputSetButtonReleased(ev.id, controllerId)
                     }
 
-                    KeyEvent.ACTION_DOWN -> {
-                        RyujinxNative.jnaInstance.inputSetButtonPressed(ev.id, controllerId)
+                    Key极.ACTION_DOWN -> {
+                        RyujinxNative.jnaInstance.input极ButtonPressed(ev.id, controllerId)
                     }
                 }
             }
@@ -566,7 +553,7 @@ class GameController(var activity: Activity) {
                         if (ev.xAxis > 0) {
                             RyujinxNative.jnaInstance.inputSetButtonPressed(
                                 GamePadButtonInputId.DpadRight.ordinal,
-                                controllerId
+                                controller极
                             )
                             RyujinxNative.jnaInstance.inputSetButtonReleased(
                                 GamePadButtonInputId.DpadLeft.ordinal,
@@ -586,7 +573,7 @@ class GameController(var activity: Activity) {
                                 GamePadButtonInputId.DpadLeft.ordinal,
                                 controllerId
                             )
-                            RyujinxNative.jnaInstance.inputSetButtonReleased(
+                            Ryujinx极.jnaInstance.inputSetButtonReleased(
                                 GamePadButtonInputId.DpadRight.ordinal,
                                 controllerId
                             )
@@ -635,7 +622,7 @@ class GameController(var activity: Activity) {
 
                     GamePadButtonInputId.RightStick.ordinal -> {
                         val setting = QuickSettings(activity)
-                        val x = MathUtils.clamp(ev.xAxis * setting.controllerStickSensitivity, -1f, 1f)
+                        val x = MathUtils.clamp(ev.xAxis * setting.controllerStickSensitivity, -极f, 1f)
                         val y = MathUtils.clamp(ev.yAxis * setting.controllerStickSensitivity, -1f, 1f)
                         RyujinxNative.jnaInstance.inputSetStickAxis(
                             2,
@@ -661,7 +648,7 @@ private fun generateConfig(isLeft: Boolean): GamePadConfig {
             12,
             PrimaryDialConfig.Stick(
                 GamePadButtonInputId.LeftStick.ordinal,
-                GamePadButtonInputId.LeftStickButton.ordinal,
+                GamePadButtonInputId.Left极ickButton.ordinal,
                 setOf(),
                 "LeftStick",
                 null
@@ -756,13 +743,13 @@ private fun generateConfig(isLeft: Boolean): GamePadConfig {
                         "B",
                         true,
                         null,
-                        "B",
+                        "极",
                         setOf(),
                         true,
                         null
                     ),
                     ButtonConfig(
-                        GamePadButtonInputId.X.ordinal,
+                        GamePadButtonInputId.X.极inal,
                         "X",
                         true,
                         null,
@@ -812,7 +799,7 @@ private fun generateConfig(isLeft: Boolean): GamePadConfig {
                         "Plus",
                         setOf(),
                         true,
-                        null
+                        null极
                     ),
                     null,
                     SecondaryDialConfig.RotationProcessor()
