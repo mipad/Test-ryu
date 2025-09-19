@@ -284,7 +284,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         // 设置玩家1的控制器类型（虚拟控制器使用设备ID 0）
         val player1Setting = getPlayerSetting(1)
         if (player1Setting != null && player1Setting.isConnected) {
-            RyujinxNative.jnaInstance.setControllerType(0, player1Setting.controllerType)
+            // 将控制器类型索引转换为位掩码值
+            val controllerTypeBitmask = controllerTypeIndexToBitmask(player1Setting.controllerType)
+            RyujinxNative.jnaInstance.setControllerType(0, controllerTypeBitmask)
             updateControllerTypeInManager(player1Setting.controllerType)
         }
 
@@ -305,10 +307,22 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         RyujinxNative.jnaInstance.loggingEnabledGraphicsLog(enableGraphicsLogs.value)
     }
 
+    // 新增方法：将控制器类型索引转换为位掩码值
+    private fun controllerTypeIndexToBitmask(controllerTypeIndex: Int): Int {
+        return when (controllerTypeIndex) {
+            0 -> 1  // ProController = 1 << 0
+            1 -> 8  // JoyconLeft = 1 << 3
+            2 -> 16 // JoyconRight = 1 << 4
+            3 -> 4  // JoyconPair = 1 << 2
+            4 -> 2  // Handheld = 1 << 1
+            else -> 1 // 默认返回ProController
+        }
+    }
+
     // 新增方法：更新ControllerManager中的控制器类型
-    private fun updateControllerTypeInManager(controllerType: Int) {
+    private fun updateControllerTypeInManager(controllerTypeIndex: Int) {
         try {
-            val controllerTypeEnum = when (controllerType) {
+            val controllerTypeEnum = when (controllerTypeIndex) {
                 0 -> ControllerType.PRO_CONTROLLER
                 1 -> ControllerType.JOYCON_LEFT
                 2 -> ControllerType.JOYCON_RIGHT
@@ -373,7 +387,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         activity.storageHelper!!.onFileSelected = { _, files ->
             run {
                 activity.storageHelper!!.onFileSelected = previousFileCallback
-                val file = files.firstOrNull()
+                the file = files.firstOrNull()
                 file?.apply {
                     if (extension == "xci" || extension == "zip") {
                         installState.value = FirmwareInstallState.Verifying
