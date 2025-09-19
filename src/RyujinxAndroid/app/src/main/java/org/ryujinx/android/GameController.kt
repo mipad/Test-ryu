@@ -169,9 +169,11 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
         // 更新ControllerManager中的控制器类型
         ControllerManager.updateControllerType(activity, "virtual_controller_1", newType)
         
-        // 设置C++层的控制器类型（设备ID 0对应虚拟控制器）
-        val controllerTypeInt = controllerTypeToInt(newType)
-        RyujinxNative.jnaInstance.setControllerType(0, controllerTypeInt)
+        // 如果已连接，设置C++层的控制器类型
+        if (controllerId != -1) {
+            val controllerTypeInt = controllerTypeToInt(newType)
+            RyujinxNative.setControllerType(controllerId, controllerTypeInt)
+        }
         
         // 根据控制器类型更新虚拟按键布局
         updateVirtualLayoutForControllerType(newType)
@@ -519,16 +521,27 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
 
     fun connect() {
         if (controllerId == -1) {
-            controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
-            // 连接后立即设置控制器类型
-            val controllerTypeInt = controllerTypeToInt(currentControllerType)
-            RyujinxNative.jnaInstance.setControllerType(0, controllerTypeInt)
+            // 使用新的设备ID管理方法
+            controllerId = RyujinxNative.connectGamepad()
+            if (controllerId != -1) {
+                // 连接后立即设置控制器类型
+                val controllerTypeInt = controllerTypeToInt(currentControllerType)
+                RyujinxNative.setControllerType(controllerId, controllerTypeInt)
+                
+                // 更新ControllerManager中的控制器ID
+                ControllerManager.updateControllerId(activity, "virtual_controller_1", controllerId)
+            }
         }
     }
 
     fun disconnect() {
         if (controllerId != -1) {
+            // 使用新的设备ID管理方法
+            RyujinxNative.disconnectGamepad(controllerId)
             controllerId = -1
+            
+            // 更新ControllerManager中的控制器ID
+            ControllerManager.updateControllerId(activity, "virtual_controller_1", -1)
         }
     }
 
