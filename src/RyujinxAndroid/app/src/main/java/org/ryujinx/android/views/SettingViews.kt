@@ -2446,9 +2446,3 @@ if (showMemoryConfigDialog.value) {
     }
 }
 
-// 玩家设置数据类
-data class PlayerSetting(
-    val playerNumber: Int,
-    var isConnected: Boolean,
-    var controllerType: Int // 0 = Pro Controller, 1 = JOYCON_LEFT, 2 = JOYCON_RIGHT,3=JOYCON_PAIR 4=HANDHELD
-)
