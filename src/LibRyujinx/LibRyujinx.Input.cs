@@ -230,7 +230,7 @@ namespace LibRyujinx
                     controllerType = Ryujinx.Common.Configuration.Hid.ControllerType.Handheld;
                     break;
                 case 4: // JoyconPair = 1 << 2
-                    controllerType = Ryujinx.Common.Configuration.Hid.ControllerType.JoyconPair;
+                    controllerType = Ryujixin.Common.Configuration.Hid.ControllerType.JoyconPair;
                     break;
                 case 8: // JoyconLeft = 1 << 3
                     controllerType = Ryujinx.Common.Configuration.Hid.ControllerType.JoyconLeft;
