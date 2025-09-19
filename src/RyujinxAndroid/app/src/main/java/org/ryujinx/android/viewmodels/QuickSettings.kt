@@ -216,14 +216,30 @@ class QuickSettings(val activity: Activity) {
                     
                     // 确保控制器类型值有效
                     val controllerType = playerSetting.controllerType.coerceIn(0, 4)
-                    RyujinxNative.jnaInstance.setControllerType(deviceId, controllerType)
+                    
+                    // 将控制器类型索引转换为位掩码值
+                    val controllerTypeBitmask = controllerTypeIndexToBitmask(controllerType)
+                    
+                    RyujinxNative.jnaInstance.setControllerType(deviceId, controllerTypeBitmask)
                     
                     // 记录设置信息
-                    android.util.Log.d("QuickSettings", "Controller type set to: ${getControllerTypeName(controllerType)} for device $deviceId (Player ${playerSetting.playerNumber})")
+                    android.util.Log.d("QuickSettings", "Controller type set to: ${getControllerTypeName(controllerType)} (bitmask: $controllerTypeBitmask) for device $deviceId (Player ${playerSetting.playerNumber})")
                 }
             }
         } catch (e: Exception) {
             android.util.Log.e("QuickSettings", "Failed to apply controller settings", e)
+        }
+    }
+    
+    // 新增方法：将控制器类型索引转换为位掩码值
+    private fun controllerTypeIndexToBitmask(controllerTypeIndex: Int): Int {
+        return when (controllerTypeIndex) {
+            0 -> 1  // ProController = 1 << 0
+            1 -> 8  // JoyconLeft = 1 << 3
+            2 -> 16 // JoyconRight = 1 << 4
+            3 -> 4  // JoyconPair = 1 << 2
+            4 -> 2  // Handheld = 1 << 1
+            else -> 1 // 默认返回ProController
         }
     }
     
