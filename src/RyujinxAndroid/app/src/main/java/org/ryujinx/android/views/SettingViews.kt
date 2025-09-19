@@ -2254,7 +2254,7 @@ if (showMemoryConfigDialog.value) {
                                                 modifier = Modifier.padding(vertical = 8.dp)
                                             )
                                             
-                                            val controllerTypes = listOf("Pro Controller", "Joy-Con", "Handheld")
+                                            val controllerTypes = listOf("Pro Controller", "Joy-Con (L)", "Joy-Con (R)", "Joy-Con Pair", "Handheld")
                                             controllerTypes.forEachIndexed { index, type ->
                                                 Row(
                                                     modifier = Modifier
