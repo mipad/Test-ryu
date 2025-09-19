@@ -97,7 +97,7 @@ dependencies {
     androidTestImplementation platform('androidx.compose:compose-bom:2024.08.00')
     runtimeOnly project(":libryujinx")
     implementation 'androidx.core:core-ktx:1.16.0'
-    implementation platform('org.jetbrains.kotlin:kotlin-bom:1.9.25')
+    implementation platform('org.jetbrains.kotlin:kotlin-bom:2.0.0-RC1')
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.9.0'
     implementation "androidx.navigation:navigation-compose:2.9.0"
     implementation 'androidx.activity:activity-compose:1.10.1'
@@ -123,7 +123,7 @@ dependencies {
     implementation "androidx.datastore:datastore-preferences:1.1.1"
     
     // 新增：Kotlin序列化依赖 - 用于ControllerType的序列化
-    implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3"
+    implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.0"
     
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
