@@ -39,7 +39,7 @@ import org.ryujinx.android.viewmodels.SettingsViewModel
 typealias GamePad = RadialGamePad
 typealias GamePadConfig = RadialGamePadConfig
 
-class GameController(var activity: Activity) {
+class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
 
     companion object {
         private fun Create(context: Context, controller: GameController): View {
@@ -55,7 +55,7 @@ class GameController(var activity: Activity) {
         fun Compose(viewModel: MainViewModel): Unit {
             AndroidView(
                 modifier = Modifier.fillMaxSize(), factory = { context ->
-                    val controller = GameController(viewModel.activity)
+                    val controller = GameController(viewModel.activity, viewModel)
                     val c = Create(context, controller)
                     
                     // 使用全局的 CoroutineScope
@@ -79,12 +79,12 @@ class GameController(var activity: Activity) {
                     controller.controllerView = c
                     viewModel.setGameController(controller)
                     
-                    // 获取SettingsViewModel来访问玩家设置
-                    val settingsViewModel = SettingsViewModel(viewModel.navController!!, viewModel.activity)
-                    controller.setVisible(settingsViewModel.getPlayerSetting(1)?.isConnected ?: true)
+                    // 从设置中获取虚拟控制器是否启用
+                    val quickSettings = QuickSettings(viewModel.activity)
+                    controller.setVisible(quickSettings.useVirtualController)
                     
                     // 初始化时设置控制器类型
-                    controller.updateControllerTypeFromSettings(settingsViewModel)
+                    controller.updateControllerTypeFromSettings()
                     
                     c
                 })
@@ -122,30 +122,40 @@ class GameController(var activity: Activity) {
         val virtualController = Controller(
             id = "virtual_controller_1",
             name = "MeloNX Touch Controller",
-            controllerType = ControllerType.PRO_CONTROLLER, // 使用默认类型，稍后从设置更新
+            controllerType = getInitialControllerType(), // 使用当前设置的类型
             isVirtual = true
         )
         ControllerManager.addController(activity, virtualController)
     }
 
-    // 修改方法：从设置更新控制器类型
-    fun updateControllerTypeFromSettings(settingsViewModel: SettingsViewModel) {
-        val player1Setting = settingsViewModel.getPlayerSetting(1)
-        if (player1Setting != null && player1Setting.isConnected) {
-            val newType = when (player1Setting.controllerType) {
-                0 -> ControllerType.PRO_CONTROLLER
-                1 -> ControllerType.JOYCON_LEFT
-                2 -> ControllerType.JOYCON_RIGHT
-                3 -> ControllerType.JOYCON_PAIR
-                4 -> ControllerType.HANDHELD
-                else -> ControllerType.PRO_CONTROLLER
-            }
-            
-            updateControllerType(newType)
-        } else {
-            // 如果玩家1未连接，隐藏虚拟控制器
-            setVisible(false)
+    // 新增方法：获取初始控制器类型
+    private fun getInitialControllerType(): ControllerType {
+        // 从主视图模型的玩家设置中获取玩家1的设置
+        val player1Setting = mainViewModel.playerSettings.find { it.playerNumber == 1 }
+        return when (player1Setting?.controllerType ?: 0) {
+            0 -> ControllerType.PRO_CONTROLLER
+            1 -> ControllerType.JOYCON_LEFT
+            2 -> ControllerType.JOYCON_RIGHT
+            3 -> ControllerType.JOYCON_PAIR
+            4 -> ControllerType.HANDHELD
+            else -> ControllerType.PRO_CONTROLLER
         }
+    }
+
+    // 新增方法：从设置更新控制器类型
+    fun updateControllerTypeFromSettings() {
+        // 从主视图模型的玩家设置中获取玩家1的设置
+        val player1Setting = mainViewModel.playerSettings.find { it.playerNumber == 1 }
+        val newType = when (player1Setting?.controllerType ?: 0) {
+            0 -> ControllerType.PRO_CONTROLLER
+            1 -> ControllerType.JOYCON_LEFT
+            2 -> ControllerType.JOYCON_RIGHT
+            3 -> ControllerType.JOYCON_PAIR
+            4 -> ControllerType.HANDHELD
+            else -> ControllerType.PRO_CONTROLLER
+        }
+        
+        updateControllerType(newType)
     }
 
     // 新增方法：更新控制器类型
@@ -385,7 +395,9 @@ class GameController(var activity: Activity) {
                         true,
                         null,
                         "B",
-                        set极
+                        setOf(),
+                        true,
+                        null
                     ),
                     ButtonConfig(
                         GamePadButtonInputId.X.ordinal,
@@ -535,12 +547,12 @@ class GameController(var activity: Activity) {
             is Event.Button -> {
                 val action = ev.action
                 when (action) {
-                    Key极.ACTION_UP -> {
+                    KeyEvent.ACTION_UP -> {
                         RyujinxNative.jnaInstance.inputSetButtonReleased(ev.id, controllerId)
                     }
 
-                    Key极.ACTION_DOWN -> {
-                        RyujinxNative.jnaInstance.input极ButtonPressed(ev.id, controllerId)
+                    KeyEvent.ACTION_DOWN -> {
+                        RyujinxNative.jnaInstance.inputSetButtonPressed(ev.id, controllerId)
                     }
                 }
             }
@@ -553,7 +565,7 @@ class GameController(var activity: Activity) {
                         if (ev.xAxis > 0) {
                             RyujinxNative.jnaInstance.inputSetButtonPressed(
                                 GamePadButtonInputId.DpadRight.ordinal,
-                                controller极
+                                controllerId
                             )
                             RyujinxNative.jnaInstance.inputSetButtonReleased(
                                 GamePadButtonInputId.DpadLeft.ordinal,
@@ -573,7 +585,7 @@ class GameController(var activity: Activity) {
                                 GamePadButtonInputId.DpadLeft.ordinal,
                                 controllerId
                             )
-                            Ryujinx极.jnaInstance.inputSetButtonReleased(
+                            RyujinxNative.jnaInstance.inputSetButtonReleased(
                                 GamePadButtonInputId.DpadRight.ordinal,
                                 controllerId
                             )
@@ -622,7 +634,7 @@ class GameController(var activity: Activity) {
 
                     GamePadButtonInputId.RightStick.ordinal -> {
                         val setting = QuickSettings(activity)
-                        val x = MathUtils.clamp(ev.xAxis * setting.controllerStickSensitivity, -极f, 1f)
+                        val x = MathUtils.clamp(ev.xAxis * setting.controllerStickSensitivity, -1f, 1f)
                         val y = MathUtils.clamp(ev.yAxis * setting.controllerStickSensitivity, -1f, 1f)
                         RyujinxNative.jnaInstance.inputSetStickAxis(
                             2,
@@ -648,7 +660,7 @@ private fun generateConfig(isLeft: Boolean): GamePadConfig {
             12,
             PrimaryDialConfig.Stick(
                 GamePadButtonInputId.LeftStick.ordinal,
-                GamePadButtonInputId.Left极ickButton.ordinal,
+                GamePadButtonInputId.LeftStickButton.ordinal,
                 setOf(),
                 "LeftStick",
                 null
@@ -743,13 +755,13 @@ private fun generateConfig(isLeft: Boolean): GamePadConfig {
                         "B",
                         true,
                         null,
-                        "极",
+                        "B",
                         setOf(),
                         true,
                         null
                     ),
                     ButtonConfig(
-                        GamePadButtonInputId.X.极inal,
+                        GamePadButtonInputId.X.ordinal,
                         "X",
                         true,
                         null,
@@ -799,7 +811,7 @@ private fun generateConfig(isLeft: Boolean): GamePadConfig {
                         "Plus",
                         setOf(),
                         true,
-                        null极
+                        null
                     ),
                     null,
                     SecondaryDialConfig.RotationProcessor()
