@@ -18,6 +18,7 @@ import org.ryujinx.android.PhysicalControllerManager
 import org.ryujinx.android.RegionCode
 import org.ryujinx.android.RyujinxNative
 import org.ryujinx.android.SystemLanguage
+import org.ryujinx.android.views.PlayerSetting
 import java.io.File
 
 @SuppressLint("WrongConstant")
@@ -55,8 +56,18 @@ class MainViewModel(val activity: MainActivity) {
 
     var homeViewModel: HomeViewModel = HomeViewModel(activity, this)
 
+    // 玩家设置列表
+    private var playerSettings: MutableList<PlayerSetting> = mutableListOf()
+
     init {
         performanceManager = PerformanceManager(activity)
+        loadPlayerSettings()
+    }
+
+    // 加载玩家设置
+    private fun loadPlayerSettings() {
+        val settingsViewModel = SettingsViewModel(navController!!, activity)
+        playerSettings = settingsViewModel.playerSettings.toMutableList()
     }
 
     fun closeGame() {
@@ -175,6 +186,17 @@ class MainViewModel(val activity: MainActivity) {
                     settings.memoryConfiguration //内存配置
                 )
 
+                // 初始化后设置所有玩家的控制器类型
+                playerSettings.forEach { playerSetting ->
+                    if (playerSetting.isConnected) {
+                        // 设备ID: 0-3 对应玩家1-4
+                        val deviceId = playerSetting.playerNumber - 1
+                        if (deviceId in 0..3) {
+                            RyujinxNative.jnaInstance.setControllerType(deviceId, playerSetting.controllerType)
+                        }
+                    }
+                }
+
                 semaphore.release()
             }
             semaphore.acquire()
@@ -280,6 +302,17 @@ class MainViewModel(val activity: MainActivity) {
                     settings.audioEngineType, // 新增音频引擎参数
                     settings.memoryConfiguration //内存配置
                 )
+
+                // 初始化后设置所有玩家的控制器类型
+                playerSettings.forEach { playerSetting ->
+                    if (playerSetting.isConnected) {
+                        // 设备ID: 0-3 对应玩家1-4
+                        val deviceId = playerSetting.playerNumber - 1
+                        if (deviceId in 0..3) {
+                            RyujinxNative.jnaInstance.setControllerType(deviceId, playerSetting.controllerType)
+                        }
+                    }
+                }
 
                 semaphore.release()
             }
