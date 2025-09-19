@@ -10,12 +10,16 @@ import com.anggrayudi.storage.file.FileFullPath
 import com.anggrayudi.storage.file.copyFileTo
 import com.anggrayudi.storage.file.extension
 import com.anggrayudi.storage.file.getAbsolutePath
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.ryujinx.android.ControllerType
 import org.ryujinx.android.LogLevel
 import org.ryujinx.android.MainActivity
 import org.ryujinx.android.RegionCode
 import org.ryujinx.android.RyujinxNative
 import org.ryujinx.android.SystemLanguage
+import org.ryujinx.android.views.PlayerSetting
 import java.io.File
 import kotlin.concurrent.thread
 
@@ -25,6 +29,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
     private var previousFolderCallback: ((requestCode: Int, folder: DocumentFile) -> Unit)?
     private var sharedPref: SharedPreferences
     var selectedFirmwareFile: DocumentFile? = null
+
+    // 玩家设置列表
+    var playerSettings: MutableList<PlayerSetting> = mutableListOf()
 
     init {
         sharedPref = getPreferences()
@@ -38,10 +45,67 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
                 editor?.apply()
             }
         }
+        
+        // 初始化玩家设置
+        loadPlayerSettings()
     }
 
     private fun getPreferences(): SharedPreferences {
         return PreferenceManager.getDefaultSharedPreferences(activity)
+    }
+
+    // 加载玩家设置
+    private fun loadPlayerSettings() {
+        val json = sharedPref.getString("player_settings", null)
+        if (json != null) {
+            try {
+                playerSettings = Json.decodeFromString<MutableList<PlayerSetting>>(json).toMutableList()
+            } catch (e: Exception) {
+                // 如果解析失败，使用默认设置
+                initDefaultPlayerSettings()
+            }
+        } else {
+            initDefaultPlayerSettings()
+        }
+    }
+
+    // 初始化默认玩家设置
+    private fun initDefaultPlayerSettings() {
+        playerSettings = mutableListOf(
+            PlayerSetting(1, true, 0), // Player 1 默认开启，Pro Controller
+            PlayerSetting(2, false, 0), // Player 2-8 默认关闭
+            PlayerSetting(3, false, 0),
+            PlayerSetting(4, false, 0),
+            PlayerSetting(5, false, 0),
+            PlayerSetting(6, false, 0),
+            PlayerSetting(7, false, 0),
+            PlayerSetting(8, false, 0)
+        )
+    }
+
+    // 保存玩家设置
+    private fun savePlayerSettings() {
+        val json = Json.encodeToString(playerSettings)
+        sharedPref.edit().putString("player_settings", json).apply()
+    }
+
+    // 获取指定玩家的设置
+    fun getPlayerSetting(playerNumber: Int): PlayerSetting? {
+        return playerSettings.find { it.playerNumber == playerNumber }
+    }
+
+    // 更新玩家设置
+    fun updatePlayerSetting(playerSetting: PlayerSetting) {
+        val index = playerSettings.indexOfFirst { it.playerNumber == playerSetting.playerNumber }
+        if (index != -1) {
+            playerSettings[index] = playerSetting
+            savePlayerSettings()
+            
+            // 如果是玩家1，立即应用设置
+            if (playerSetting.playerNumber == 1 && playerSetting.isConnected) {
+                updateControllerTypeInManager(playerSetting.controllerType)
+            }
+        }
     }
 
     fun initializeState(
@@ -55,7 +119,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableShaderCache: MutableState<Boolean>,
         enableTextureRecompression: MutableState<Boolean>,
         resScale: MutableState<Float>,
-        aspectRatio: MutableState<Int>, // 新增参数：画面比例
+        aspectRatio: MutableState<Int>,
         useVirtualController: MutableState<Boolean>,
         isGrid: MutableState<Boolean>,
         useSwitchLayout: MutableState<Boolean>,
@@ -71,15 +135,14 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableAccessLogs: MutableState<Boolean>,
         enableTraceLogs: MutableState<Boolean>,
         enableGraphicsLogs: MutableState<Boolean>,
-        skipMemoryBarriers: MutableState<Boolean>, // 新增参数
-        regionCode: MutableState<Int>, // 新增参数：区域代码
-        systemLanguage: MutableState<Int>, // 新增参数：系统语言
-        audioEngineType: MutableState<Int>, // 新增音频引擎参数
-        scalingFilter: MutableState<Int>, // 新增：缩放过滤器
-        scalingFilterLevel: MutableState<Int>, // 新增：缩放过滤器级别
-        antiAliasing: MutableState<Int>, // 新增：抗锯齿模式
-        memoryConfiguration: MutableState<Int>, // 新增：内存配置
-        controllerType: MutableState<Int> // 新增：控制器类型
+        skipMemoryBarriers: MutableState<Boolean>,
+        regionCode: MutableState<Int>,
+        systemLanguage: MutableState<Int>,
+        audioEngineType: MutableState<Int>,
+        scalingFilter: MutableState<Int>,
+        scalingFilterLevel: MutableState<Int>,
+        antiAliasing: MutableState<Int>,
+        memoryConfiguration: MutableState<Int>
     ) {
 
         isHostMapped.value = sharedPref.getBoolean("isHostMapped", true)
@@ -93,22 +156,21 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableTextureRecompression.value =
             sharedPref.getBoolean("enableTextureRecompression", false)
         resScale.value = sharedPref.getFloat("resScale", 1f)
-        aspectRatio.value = sharedPref.getInt("aspect_ratio", 1) // 默认使用16:9
+        aspectRatio.value = sharedPref.getInt("aspect_ratio", 1)
         useVirtualController.value = sharedPref.getBoolean("useVirtualController", true)
         isGrid.value = sharedPref.getBoolean("isGrid", true)
         useSwitchLayout.value = sharedPref.getBoolean("useSwitchLayout", true)
         enableMotion.value = sharedPref.getBoolean("enableMotion", true)
         enablePerformanceMode.value = sharedPref.getBoolean("enablePerformanceMode", false)
         controllerStickSensitivity.value = sharedPref.getFloat("controllerStickSensitivity", 1.0f)
-        skipMemoryBarriers.value = sharedPref.getBoolean("skipMemoryBarriers", false) // 初始化
-        regionCode.value = sharedPref.getInt("regionCode", RegionCode.USA.ordinal) // 默认USA
-        systemLanguage.value = sharedPref.getInt("systemLanguage", SystemLanguage.AmericanEnglish.ordinal) // 默认美式英语
-        audioEngineType.value = sharedPref.getInt("audioEngineType", 1) // 默认OpenAL
-        scalingFilter.value = sharedPref.getInt("scalingFilter", 0) // 默认：最近邻
-        scalingFilterLevel.value = sharedPref.getInt("scalingFilterLevel", 0) // 默认级别：0
-        antiAliasing.value = sharedPref.getInt("antiAliasing", 0) // 默认关闭
-        memoryConfiguration.value = sharedPref.getInt("memoryConfiguration", 0) // 默认4GB
-        controllerType.value = sharedPref.getInt("controllerType", 0) // 默认Pro控制器
+        skipMemoryBarriers.value = sharedPref.getBoolean("skipMemoryBarriers", false)
+        regionCode.value = sharedPref.getInt("regionCode", RegionCode.USA.ordinal)
+        systemLanguage.value = sharedPref.getInt("systemLanguage", SystemLanguage.AmericanEnglish.ordinal)
+        audioEngineType.value = sharedPref.getInt("audioEngineType", 1)
+        scalingFilter.value = sharedPref.getInt("scalingFilter", 0)
+        scalingFilterLevel.value = sharedPref.getInt("scalingFilterLevel", 0)
+        antiAliasing.value = sharedPref.getInt("antiAliasing", 0)
+        memoryConfiguration.value = sharedPref.getInt("memoryConfiguration", 0)
 
         enableDebugLogs.value = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs.value = sharedPref.getBoolean("enableStubLogs", false)
@@ -119,6 +181,8 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableAccessLogs.value = sharedPref.getBoolean("enableAccessLogs", false)
         enableTraceLogs.value = sharedPref.getBoolean("enableStubLogs", false)
         enableGraphicsLogs.value = sharedPref.getBoolean("enableGraphicsLogs", false)
+        
+        // 玩家设置已经在init中加载，不需要再次初始化
     }
 
     fun save(
@@ -132,7 +196,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableShaderCache: MutableState<Boolean>,
         enableTextureRecompression: MutableState<Boolean>,
         resScale: MutableState<Float>,
-        aspectRatio: MutableState<Int>, // 新增参数：画面比例
+        aspectRatio: MutableState<Int>,
         useVirtualController: MutableState<Boolean>,
         isGrid: MutableState<Boolean>,
         useSwitchLayout: MutableState<Boolean>,
@@ -148,15 +212,14 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableAccessLogs: MutableState<Boolean>,
         enableTraceLogs: MutableState<Boolean>,
         enableGraphicsLogs: MutableState<Boolean>,
-        skipMemoryBarriers: MutableState<Boolean>, // 新增参数
-        regionCode: MutableState<Int>, // 新增参数：区域代码
-        systemLanguage: MutableState<Int>, // 新增参数：系统语言
-        audioEngineType: MutableState<Int>, // 新增音频引擎参数
-        scalingFilter: MutableState<Int>, // 新增：缩放过滤器
-        scalingFilterLevel: MutableState<Int>, // 新增：缩放过滤器级别
-        antiAliasing: MutableState<Int>, // 新增：抗锯齿模式
-        memoryConfiguration: MutableState<Int>, // 新增：内存配置
-        controllerType: MutableState<Int> // 新增：控制器类型
+        skipMemoryBarriers: MutableState<Boolean>,
+        regionCode: MutableState<Int>,
+        systemLanguage: MutableState<Int>,
+        audioEngineType: MutableState<Int>,
+        scalingFilter: MutableState<Int>,
+        scalingFilterLevel: MutableState<Int>,
+        antiAliasing: MutableState<Int>,
+        memoryConfiguration: MutableState<Int>
     ) {
         val editor = sharedPref.edit()
 
@@ -170,22 +233,21 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.putBoolean("enableShaderCache", enableShaderCache.value)
         editor.putBoolean("enableTextureRecompression", enableTextureRecompression.value)
         editor.putFloat("resScale", resScale.value)
-        editor.putInt("aspect_ratio", aspectRatio.value) // 保存画面比例设置
+        editor.putInt("aspect_ratio", aspectRatio.value)
         editor.putBoolean("useVirtualController", useVirtualController.value)
         editor.putBoolean("isGrid", isGrid.value)
         editor.putBoolean("useSwitchLayout", useSwitchLayout.value)
         editor.putBoolean("enableMotion", enableMotion.value)
         editor.putBoolean("enablePerformanceMode", enablePerformanceMode.value)
         editor.putFloat("controllerStickSensitivity", controllerStickSensitivity.value)
-        editor.putBoolean("skipMemoryBarriers", skipMemoryBarriers.value) // 保存
-        editor.putInt("regionCode", regionCode.value) // 保存区域代码
-        editor.putInt("systemLanguage", systemLanguage.value) // 保存系统语言
-        editor.putInt("audioEngineType", audioEngineType.value) // 保存音频引擎设置
-        editor.putInt("scalingFilter", scalingFilter.value) // 保存缩放过滤器
-        editor.putInt("scalingFilterLevel", scalingFilterLevel.value) // 保存缩放过滤器级别
-        editor.putInt("antiAliasing", antiAliasing.value) // 保存抗锯齿设置
-        editor.putInt("memoryConfiguration", memoryConfiguration.value) // 保存内存配置
-        editor.putInt("controllerType", controllerType.value) // 保存控制器类型
+        editor.putBoolean("skipMemoryBarriers", skipMemoryBarriers.value)
+        editor.putInt("regionCode", regionCode.value)
+        editor.putInt("systemLanguage", systemLanguage.value)
+        editor.putInt("audioEngineType", audioEngineType.value)
+        editor.putInt("scalingFilter", scalingFilter.value)
+        editor.putInt("scalingFilterLevel", scalingFilterLevel.value)
+        editor.putInt("antiAliasing", antiAliasing.value)
+        editor.putInt("memoryConfiguration", memoryConfiguration.value)
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs.value)
         editor.putBoolean("enableStubLogs", enableStubLogs.value)
@@ -199,6 +261,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
 
         editor.apply()
         activity.storageHelper!!.onFolderSelected = previousFolderCallback
+
+        // 保存玩家设置
+        savePlayerSettings()
 
         // 设置跳过内存屏障
         RyujinxNative.jnaInstance.setSkipMemoryBarriers(skipMemoryBarriers.value)
@@ -216,11 +281,12 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         // 设置内存配置
         RyujinxNative.jnaInstance.setMemoryConfiguration(memoryConfiguration.value)
 
-        // 设置控制器类型（虚拟控制器使用设备ID 0）- 取消注释这行！
-        RyujinxNative.jnaInstance.setControllerType(0, controllerType.value)
-
-        // 同时更新ControllerManager中的控制器类型
-        updateControllerTypeInManager(controllerType.value)
+        // 设置玩家1的控制器类型（虚拟控制器使用设备ID 0）
+        val player1Setting = getPlayerSetting(1)
+        if (player1Setting != null && player1Setting.isConnected) {
+            RyujinxNative.jnaInstance.setControllerType(0, player1Setting.controllerType)
+            updateControllerTypeInManager(player1Setting.controllerType)
+        }
 
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Debug.ordinal, enableDebugLogs.value)
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Info.ordinal, enableInfoLogs.value)
