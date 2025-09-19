@@ -106,7 +106,7 @@ class QuickSettings(val activity: Activity) {
         enableTraceLogs = sharedPref.getBoolean("enableStubLogs", false)
         enableGraphicsLogs = sharedPref.getBoolean("enableGraphicsLogs", false)
         
-        // 初始化时立即应用控制器设置（只应用玩家1的设置）
+        // 初始化时立即应用控制器设置
         applyControllerSettings()
     }
 
@@ -169,7 +169,7 @@ class QuickSettings(val activity: Activity) {
 
         editor.apply()
         
-        // 保存后立即应用控制器设置（只应用玩家1的设置）
+        // 保存后立即应用控制器设置
         applyControllerSettings()
     }
     
@@ -184,30 +184,35 @@ class QuickSettings(val activity: Activity) {
         if (index != -1) {
             playerSettings[index] = playerSetting
             
-            // 如果是玩家1，立即应用设置
-            if (playerSetting.playerNumber == 1 && playerSetting.isConnected) {
-                applyControllerSettings()
-            }
+            // 立即应用设置
+            applyControllerSettings()
         }
     }
     
-    // 新增方法：应用控制器设置到Native层（只应用玩家1的设置）
+    // 应用控制器设置到Native层
     fun applyControllerSettings() {
         try {
-            val player1Setting = getPlayerSetting(1)
-            if (player1Setting != null && player1Setting.isConnected) {
-                // 设置虚拟控制器的控制器类型（设备ID 0）
-                RyujinxNative.jnaInstance.setControllerType(0, player1Setting.controllerType)
-                
-                // 记录设置信息
-                android.util.Log.d("QuickSettings", "Controller type set to: ${getControllerTypeName(player1Setting.controllerType)} for device 0")
+            // 设置所有玩家的控制器类型
+            for (playerSetting in playerSettings) {
+                if (playerSetting.isConnected) {
+                    val deviceId = if (playerSetting.playerNumber == 1) {
+                        0 // 玩家1使用设备ID0
+                    } else {
+                        playerSetting.playerNumber - 1 // 其他玩家使用设备ID1-7
+                    }
+                    
+                    RyujinxNative.jnaInstance.setControllerType(deviceId, playerSetting.controllerType)
+                    
+                    // 记录设置信息
+                    android.util.Log.d("QuickSettings", "Controller type set to: ${getControllerTypeName(playerSetting.controllerType)} for device $deviceId (Player ${playerSetting.playerNumber})")
+                }
             }
         } catch (e: Exception) {
             android.util.Log.e("QuickSettings", "Failed to apply controller settings", e)
         }
     }
     
-    // 新增方法：获取控制器类型名称
+    // 获取控制器类型名称
     fun getControllerTypeName(type: Int): String {
         return when (type) {
             0 -> "Pro Controller"
@@ -219,7 +224,7 @@ class QuickSettings(val activity: Activity) {
         }
     }
     
-    // 新增方法：获取当前控制器类型的枚举值（玩家1）
+    // 获取当前控制器类型的枚举值（玩家1）
     fun getCurrentControllerType(): ControllerType {
         val player1Setting = getPlayerSetting(1)
         val type = player1Setting?.controllerType ?: 0
@@ -234,7 +239,7 @@ class QuickSettings(val activity: Activity) {
         }
     }
     
-    // 新增方法：设置控制器类型通过枚举值（玩家1）
+    // 设置控制器类型通过枚举值（玩家1）
     fun setControllerType(controllerType: ControllerType) {
         val player1Setting = getPlayerSetting(1)
         if (player1Setting != null) {
