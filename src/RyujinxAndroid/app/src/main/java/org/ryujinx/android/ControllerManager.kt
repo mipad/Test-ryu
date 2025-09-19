@@ -53,17 +53,12 @@ object ControllerManager {
         }
     }
     
-    // 添加缺失的 updateControllerId 方法
+    // 新增方法：更新控制器的设备ID
     fun updateControllerId(context: Context, controllerId: String, newId: Int) {
         val currentList = _connectedControllers.value?.toMutableList() ?: return
         val updatedList = currentList.map { 
-            if (it.id == controllerId) {
-                // 注意：Controller 类需要有一个 deviceId 字段
-                // 如果 Controller 类没有 deviceId 字段，您需要先添加它
-                it.copy(deviceId = newId)
-            } else {
-                it
-            }
+            if (it.id == controllerId) it.copy(deviceId = newId) 
+            else it 
         }
         _connectedControllers.postValue(updatedList)
     }
