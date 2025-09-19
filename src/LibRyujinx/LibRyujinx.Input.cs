@@ -35,8 +35,8 @@ namespace LibRyujinx
         private static InputConfig[] _configs;
         private static float _aspectRatio = 1.0f;
         
-        // 添加控制器类型存储数组
-        private static Ryujinx.Common.Configuration.Hid.ControllerType[] _controllerTypes = new Ryujinx.Common.Configuration.Hid.ControllerType[4];
+        // 修改：将控制器类型存储数组从4个增加到8个，以支持多玩家设置
+        private static Ryujinx.Common.Configuration.Hid.ControllerType[] _controllerTypes = new Ryujinx.Common.Configuration.Hid.ControllerType[8];
 
         public static void InitializeInput(int width, int height)
         {
@@ -45,8 +45,9 @@ namespace LibRyujinx
                 throw new InvalidOperationException("Input is already initialized");
             }
 
-            _gamepadDriver = new VirtualGamepadDriver(4);
-            _configs = new InputConfig[4];
+            // 修改：将游戏手柄驱动从4个增加到8个，以支持多玩家设置
+            _gamepadDriver = new VirtualGamepadDriver(8);
+            _configs = new InputConfig[8];
             _virtualTouchScreen = new VirtualTouchScreen();
             
             // 初始化控制器类型为默认值
