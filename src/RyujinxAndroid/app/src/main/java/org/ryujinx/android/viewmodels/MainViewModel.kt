@@ -43,8 +43,8 @@ class MainViewModel(val activity: MainActivity) {
     var isChargingState: MutableState<Boolean>? = null // 充电状态
     private var frequenciesState: MutableList<Double>? = null
     private var progress: MutableState<String>? = null
-    private极 progressValue: MutableState<Float>? = null
-    private var showLoading: MutableState极oolean>? = null
+    private var progressValue: MutableState<Float>? = null
+    private var showLoading: MutableState<Boolean>? = null
     private var refreshUser: MutableState<Boolean>? = null
 
     var gameHost: GameHost? = null
@@ -57,7 +57,7 @@ class MainViewModel(val activity: MainActivity) {
     var homeViewModel: HomeViewModel = HomeViewModel(activity, this)
 
     // 玩家设置列表
-    private var playerSettings: MutableList<PlayerSetting> = mutableListOf()
+    var playerSettings: MutableList<PlayerSetting> = mutableListOf()
 
     init {
         performanceManager = PerformanceManager(activity)
@@ -66,8 +66,48 @@ class MainViewModel(val activity: MainActivity) {
 
     // 加载玩家设置
     private fun loadPlayerSettings() {
-        val settingsViewModel = SettingsViewModel(navController!!, activity)
-        playerSettings = settingsViewModel.playerSettings.toMutableList()
+        // 初始化默认玩家设置
+        playerSettings = mutableListOf(
+            PlayerSetting(1, true, 0), // Player 1 默认开启，Pro Controller
+            PlayerSetting(2, false, 0), // Player 2-8 默认关闭
+            PlayerSetting(3, false, 0),
+            PlayerSetting(4, false, 0),
+            PlayerSetting(5, false, 0),
+            PlayerSetting(6, false, 0),
+            PlayerSetting(7, false, 0),
+            PlayerSetting(8, false, 0)
+        )
+        
+        // 尝试从设置中加载保存的玩家设置
+        try {
+            val settingsViewModel = SettingsViewModel(navController!!, activity)
+            playerSettings = settingsViewModel.playerSettings.toMutableList()
+        } catch (e: Exception) {
+            // 如果加载失败，保持默认设置
+            e.printStackTrace()
+        }
+    }
+
+    // 获取指定玩家的设置
+    fun getPlayerSetting(playerNumber: Int): PlayerSetting? {
+        return playerSettings.find { it.playerNumber == playerNumber }
+    }
+
+    // 更新玩家设置
+    fun updatePlayerSetting(playerSetting: PlayerSetting) {
+        val index = playerSettings.indexOfFirst { it.playerNumber == playerSetting.playerNumber }
+        if (index != -1) {
+            playerSettings[index] = playerSetting
+            
+            // 如果是玩家1，立即应用设置
+            if (playerSetting.playerNumber == 1 && playerSetting.isConnected) {
+                // 设备ID: 0 对应玩家1
+                RyujinxNative.jnaInstance.setControllerType(0, playerSetting.controllerType)
+                
+                // 更新GameController的布局
+                controller?.updateControllerTypeFromSettings()
+            }
+        }
     }
 
     fun closeGame() {
@@ -114,7 +154,7 @@ class MainViewModel(val activity: MainActivity) {
         val nativeHelpers = NativeHelpers.instance
         val nativeInterop = NativeGraphicsInterop()
         nativeInterop.VkRequiredExtensions = arrayOf(
-            "极K_KHR_surface", "VK_KHR_android_surface"
+            "VK_KHR_surface", "VK_KHR_android_surface"
         )
         nativeInterop.VkCreateSurface = nativeHelpers.getCreateSurfacePtr()
         nativeInterop.SurfaceHandle = 0
@@ -129,7 +169,7 @@ class MainViewModel(val activity: MainActivity) {
 
             metaData?.apply {
                 val privatePath = activity.filesDir
-                val privateDriver极th = privatePath.canonicalPath + "/driver/"
+                val privateDriverPath = privatePath.canonicalPath + "/driver/"
                 val pD = File(privateDriverPath)
                 if (pD.exists())
                     pD.deleteRecursively()
@@ -229,7 +269,7 @@ class MainViewModel(val activity: MainActivity) {
             return false
 
         val nativeHelpers = NativeHelpers.instance
-        val nativeInterop = NativeGraphics极terop()
+        val nativeInterop = NativeGraphicsInterop()
         nativeInterop.VkRequiredExtensions = arrayOf(
             "VK_KHR_surface", "VK_KHR_android_surface"
         )
@@ -287,7 +327,7 @@ class MainViewModel(val activity: MainActivity) {
             semaphore.acquire()
             launchOnUiThread {
                 // We are only able to initialize the emulation context on the main thread
-                success = RyujinxNative.jnaInstance.dev极Initialize(
+                success = RyujinxNative.jnaInstance.deviceInitialize(
                     settings.isHostMapped,
                     settings.useNce,
                     settings.systemLanguage,
@@ -352,7 +392,7 @@ class MainViewModel(val activity: MainActivity) {
 
     fun purgeShaderCache(titleId: String) {
         if (titleId.isNotEmpty()) {
-            val basePath = MainActivity.AppPath + "/games/$titleId极cache/shader"
+            val basePath = MainActivity.AppPath + "/games/$titleId/cache/shader"
             if (File(basePath).exists()) {
                 var caches = mutableListOf<String>()
                 File(basePath).listFiles()?.forEach {
@@ -407,12 +447,12 @@ class MainViewModel(val activity: MainActivity) {
         totalMemState = totalMem
         batteryTemperatureState = batteryTemperature
         batteryLevelState = batteryLevel
-        is极argingState = isCharging
+        isChargingState = isCharging
     }
 
     fun updateStats(
         fifo: Double,
-        gameF极: Double,
+        gameFps: Double,
         gameTime: Double
     ) {
         fifoState?.apply {
