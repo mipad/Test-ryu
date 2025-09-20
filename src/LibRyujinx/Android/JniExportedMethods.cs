@@ -427,45 +427,45 @@ namespace LibRyujinx
         }
 
         [UnmanagedCallersOnly(EntryPoint = "inputSetButtonPressed")]
-        public static void JnaSetButtonPressed(int button, int id)
+        public static void JnaSetButtonPressed(int button, int playerNumber)
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            SetButtonPressed((GamepadButtonInputId)button, id);
+            SetButtonPressed((GamepadButtonInputId)button, playerNumber);
         }
 
         [UnmanagedCallersOnly(EntryPoint = "inputSetButtonReleased")]
-        public static void JnaSetButtonReleased(int button, int id)
+        public static void JnaSetButtonReleased(int button, int playerNumber)
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            SetButtonReleased((GamepadButtonInputId)button, id);
+            SetButtonReleased((GamepadButtonInputId)button, playerNumber);
         }
 
         [UnmanagedCallersOnly(EntryPoint = "inputSetAccelerometerData")]
-        public static void JniSetAccelerometerData(float x, float y, float z, int id)
+        public static void JniSetAccelerometerData(float x, float y, float z, int playerNumber)
         {
             var accel = new Vector3(x, y, z);
-            SetAccelerometerData(accel, id);
+            SetAccelerometerData(accel, playerNumber);
         }
 
         [UnmanagedCallersOnly(EntryPoint = "inputSetGyroData")]
-        public static void JniSetGyroData(float x, float y, float z, int id)
+        public static void JniSetGyroData(float x, float y, float z, int playerNumber)
         {
             var gyro = new Vector3(x, y, z);
-            SetGyroData(gyro, id);
+            SetGyroData(gyro, playerNumber);
         }
 
         [UnmanagedCallersOnly(EntryPoint = "inputSetStickAxis")]
-        public static void JnaSetStickAxis(int stick, float x, float y, int id)
+        public static void JnaSetStickAxis(int stick, float x, float y, int playerNumber)
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            SetStickAxis((StickInputId)stick, new Vector2(float.IsNaN(x) ? 0 : x, float.IsNaN(y) ? 0 : y), id);
+            SetStickAxis((StickInputId)stick, new Vector2(float.IsNaN(x) ? 0 : x, float.IsNaN(y) ? 0 : y), playerNumber);
         }
 
         [UnmanagedCallersOnly(EntryPoint = "inputConnectGamepad")]
-        public static int JnaConnectGamepad(int index)
+        public static int JnaConnectGamepad(int playerNumber)
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            return ConnectGamepad(index);
+            return ConnectGamepad(playerNumber);
         }
 
         [UnmanagedCallersOnly(EntryPoint = "userGetOpenedUser")]
@@ -661,18 +661,18 @@ namespace LibRyujinx
             }
         }
 
-        // 添加设置控制器类型的JNI方法
+        // 修改：设置控制器类型的JNI方法，使用玩家编号而不是设备ID
         [UnmanagedCallersOnly(EntryPoint = "setControllerType")]
-        public static void JnaSetControllerType(int deviceId, int controllerType)
+        public static void JnaSetControllerType(int playerNumber, int controllerType)
         {
-            Logger.Trace?.Print(LogClass.Application, $"Jni Function Call: setControllerType - deviceId: {deviceId}, type: {controllerType}");
+            Logger.Trace?.Print(LogClass.Application, $"Jni Function Call: setControllerType - playerNumber: {playerNumber}, type: {controllerType}");
             
             try
             {
-                // 调用主库中的设置控制器类型方法
-                SetControllerType(deviceId, controllerType);
+                // 调用主库中的设置控制器类型方法，使用玩家编号而不是设备ID
+                SetControllerType(playerNumber, controllerType);
                 
-                Logger.Info?.Print(LogClass.Application, $"Controller type set for device {deviceId}: {(Ryujinx.Common.Configuration.Hid.ControllerType)controllerType}");
+                Logger.Info?.Print(LogClass.Application, $"Controller type set for player {playerNumber}: {(Ryujinx.Common.Configuration.Hid.ControllerType)controllerType}");
             }
             catch (Exception ex)
             {
