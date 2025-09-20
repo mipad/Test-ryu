@@ -16,6 +16,7 @@ import org.ryujinx.android.RegionCode
 import org.ryujinx.android.RyujinxNative
 import org.ryujinx.android.SystemLanguage
 import java.io.File
+import java.util.Calendar
 import kotlin.concurrent.thread
 
 class SettingsViewModel(var navController: NavHostController, val activity: MainActivity) {
@@ -77,7 +78,15 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         scalingFilter: MutableState<Int>, // 新增：缩放过滤器
         scalingFilterLevel: MutableState<Int>, // 新增：缩放过滤器级别
         antiAliasing: MutableState<Int>, // 新增：抗锯齿模式
-        memoryConfiguration: MutableState<Int> // 新增：内存配置
+        memoryConfiguration: MutableState<Int>, // 新增：内存配置
+        systemTimeOffset: MutableState<Long>, // 新增：系统时间偏移
+        customTimeEnabled: MutableState<Boolean>,
+        customTimeYear: MutableState<Int>,
+        customTimeMonth: MutableState<Int>,
+        customTimeDay: MutableState<Int>,
+        customTimeHour: MutableState<Int>,
+        customTimeMinute: MutableState<Int>,
+        customTimeSecond: MutableState<Int>
     ) {
 
         isHostMapped.value = sharedPref.getBoolean("isHostMapped", true)
@@ -106,6 +115,16 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         scalingFilterLevel.value = sharedPref.getInt("scalingFilterLevel", 80) // 默认级别：80
         antiAliasing.value = sharedPref.getInt("antiAliasing", 0) // 默认关闭
         memoryConfiguration.value = sharedPref.getInt("memoryConfiguration", 0) // 默认4GB
+        systemTimeOffset.value = sharedPref.getLong("systemTimeOffset", 0) // 默认0秒偏移
+        
+        // 初始化自定义时间设置
+        customTimeEnabled.value = sharedPref.getBoolean("customTimeEnabled", false)
+        customTimeYear.value = sharedPref.getInt("customTimeYear", 2023)
+        customTimeMonth.value = sharedPref.getInt("customTimeMonth", 9)
+        customTimeDay.value = sharedPref.getInt("customTimeDay", 12)
+        customTimeHour.value = sharedPref.getInt("customTimeHour", 10)
+        customTimeMinute.value = sharedPref.getInt("customTimeMinute", 27)
+        customTimeSecond.value = sharedPref.getInt("customTimeSecond", 0)
 
         enableDebugLogs.value = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs.value = sharedPref.getBoolean("enableStubLogs", false)
@@ -152,7 +171,15 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         scalingFilter: MutableState<Int>, // 新增：缩放过滤器
         scalingFilterLevel: MutableState<Int>, // 新增：缩放过滤器级别
         antiAliasing: MutableState<Int>, // 新增：抗锯齿模式
-        memoryConfiguration: MutableState<Int> // 新增：内存配置
+        memoryConfiguration: MutableState<Int>, // 新增：内存配置
+        systemTimeOffset: MutableState<Long>, // 新增：系统时间偏移
+        customTimeEnabled: MutableState<Boolean>,
+        customTimeYear: MutableState<Int>,
+        customTimeMonth: MutableState<Int>,
+        customTimeDay: MutableState<Int>,
+        customTimeHour: MutableState<Int>,
+        customTimeMinute: MutableState<Int>,
+        customTimeSecond: MutableState<Int>
     ) {
         val editor = sharedPref.edit()
 
@@ -181,6 +208,16 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.putInt("scalingFilterLevel", scalingFilterLevel.value) // 保存缩放过滤器级别
         editor.putInt("antiAliasing", antiAliasing.value) // 保存抗锯齿设置
         editor.putInt("memoryConfiguration", memoryConfiguration.value) // 保存内存配置
+        editor.putLong("systemTimeOffset", systemTimeOffset.value) // 保存系统时间偏移
+        
+        // 保存自定义时间设置
+        editor.putBoolean("customTimeEnabled", customTimeEnabled.value)
+        editor.putInt("customTimeYear", customTimeYear.value)
+        editor.putInt("customTimeMonth", customTimeMonth.value)
+        editor.putInt("customTimeDay", customTimeDay.value)
+        editor.putInt("customTimeHour", customTimeHour.value)
+        editor.putInt("customTimeMinute", customTimeMinute.value)
+        editor.putInt("customTimeSecond", customTimeSecond.value)
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs.value)
         editor.putBoolean("enableStubLogs", enableStubLogs.value)
@@ -210,6 +247,25 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
 
         // 设置内存配置
         RyujinxNative.jnaInstance.setMemoryConfiguration(memoryConfiguration.value)
+
+        // 计算并设置系统时间偏移
+        if (customTimeEnabled.value) {
+            // 创建Calendar实例并设置自定义时间
+            val calendar = Calendar.getInstance()
+            calendar.set(customTimeYear.value, customTimeMonth.value - 1, customTimeDay.value, 
+                        customTimeHour.value, customTimeMinute.value, customTimeSecond.value)
+            
+            // 计算自定义时间与当前时间的偏移量（秒）
+            val customTimeMillis = calendar.timeInMillis
+            val currentTimeMillis = System.currentTimeMillis()
+            val timeOffset = (customTimeMillis - currentTimeMillis) / 1000
+            
+            // 设置系统时间偏移
+            RyujinxNative.jnaInstance.setSystemTimeOffset(timeOffset)
+        } else {
+            // 如果不使用自定义时间，则使用之前设置的系统时间偏移
+            RyujinxNative.jnaInstance.setSystemTimeOffset(systemTimeOffset.value)
+        }
 
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Debug.ordinal, enableDebugLogs.value)
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Info.ordinal, enableInfoLogs.value)
