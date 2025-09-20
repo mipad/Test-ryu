@@ -530,22 +530,7 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
                 
                 // 更新ControllerManager中的控制器ID
                 ControllerManager.updateControllerId(activity, "virtual_controller_1", controllerId)
-                
-                // 确保输入系统已初始化
-                ensureInputInitialized()
             }
-        }
-    }
-    
-    // 新增方法：确保输入系统已初始化
-    private fun ensureInputInitialized() {
-        if (MainActivity.mainViewModel?.gameHost?.width != null && 
-            MainActivity.mainViewModel?.gameHost?.height != null) {
-            val width = MainActivity.mainViewModel?.gameHost?.width ?: 1280
-            val height = MainActivity.mainViewModel?.gameHost?.height ?: 720
-            
-            // 确保输入系统已初始化
-            RyujinxNative.jnaInstance.inputInitialize(width, height)
         }
     }
 
