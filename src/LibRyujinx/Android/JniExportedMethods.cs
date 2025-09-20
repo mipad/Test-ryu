@@ -88,7 +88,8 @@ namespace LibRyujinx
                                                     IntPtr timeZonePtr,
                                                     bool ignoreMissingServices,
                                                     int audioEngineType,
-                                                    int memoryConfiguration)  // 新增内存配置参数
+                                                    int memoryConfiguration,
+                                                    long systemTimeOffset)  // 新增系统时间偏移参数
         {
             debug_break(4);
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
@@ -125,7 +126,8 @@ namespace LibRyujinx
                                     enableInternetAccess,
                                     timezone,
                                     ignoreMissingServices,
-                                    (MemoryConfiguration)memoryConfiguration);  // 传递内存配置
+                                    (MemoryConfiguration)memoryConfiguration,
+                                    systemTimeOffset);  // 传递系统时间偏移参数
         }
 
         [UnmanagedCallersOnly(EntryPoint = "deviceGetGameFifo")]
@@ -587,6 +589,14 @@ namespace LibRyujinx
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call: setMemoryConfiguration");
             SetMemoryConfiguration((MemoryConfiguration)memoryConfig);
+        }
+
+        // 新增：设置系统时间偏移的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "setSystemTimeOffset")]
+        public static void JnaSetSystemTimeOffset(long offset)
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: setSystemTimeOffset");
+            SetSystemTimeOffset(offset);
         }
 
         // 新增：设置缩放过滤器的JNI方法
