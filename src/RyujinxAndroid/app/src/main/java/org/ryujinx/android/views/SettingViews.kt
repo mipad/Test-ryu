@@ -166,7 +166,15 @@ class SettingViews {
             val scalingFilterLevel = remember { mutableStateOf(25) } // 默认25%
             val antiAliasing = remember { mutableStateOf(0) } // 0=None, 1=Fxaa, 2=SmaaLow, 3=SmaaMedium, 4=SmaaHigh, 5=SmaaUltra
             val memoryConfiguration = remember { mutableStateOf(0) } // 新增状态变量：内存配置
-            
+           val customTimeEnabled = remember { mutableStateOf(false) }
+           val customTimeYear = remember { mutableStateOf(2023) }
+           val customTimeMonth = remember { mutableStateOf(9) }
+           val customTimeDay = remember { mutableStateOf(12) }
+           val customTimeHour = remember { mutableStateOf(10) }
+           val customTimeMinute = remember { mutableStateOf(27) }
+           val customTimeSecond = remember { mutableStateOf(0) }
+           
+           val showCustomTimeDialog = remember { mutableStateOf(false) }          
             val showAntiAliasingDialog = remember { mutableStateOf(false) } // 控制抗锯齿对话框显示
             // 新增状态变量用于控制选项显示
             val showResScaleOptions = remember { mutableStateOf(false) }
@@ -207,7 +215,14 @@ class SettingViews {
                     scalingFilter, // 新增：缩放过滤器
                     scalingFilterLevel, // 新增：缩放过滤器级别
                     antiAliasing, // 新增：抗锯齿模式
-                    memoryConfiguration // 新增DRAM参数
+                    memoryConfiguration, // 新增DRAM参数
+                    customTimeEnabled,
+        customTimeYear,
+        customTimeMonth,
+        customTimeDay,
+        customTimeHour,
+        customTimeMinute,
+        customTimeSecond
                 )
                 loaded.value = true
             }
@@ -263,7 +278,14 @@ class SettingViews {
                     scalingFilter, // 新增：缩放过滤器
                     scalingFilterLevel, // 新增：缩放过滤器级别
                     antiAliasing, // 新增：抗锯齿模式
-                    memoryConfiguration // 新增DRAM参数
+                    memoryConfiguration, // 新增DRAM参数
+                    customTimeEnabled,
+        customTimeYear,
+        customTimeMonth,
+        customTimeDay,
+        customTimeHour,
+        customTimeMinute,
+        customTimeSecond
                                 )
                                 settingsViewModel.navController.popBackStack()
                             }) {
@@ -1662,6 +1684,64 @@ ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
                 overflow = TextOverflow.Ellipsis
             )
         }
+        
+        // 自定义时间开关
+Row(
+    modifier = Modifier
+        .fillMaxWidth()
+        .padding(8.dp),
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically
+) {
+    Text(text = "Custom System Time")
+    Switch(
+        checked = customTimeEnabled.value,
+        onCheckedChange = { customTimeEnabled.value = it }
+    )
+}
+
+// 当自定义时间开关打开时，显示时间设置选项
+AnimatedVisibility(visible = customTimeEnabled.value) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // 显示当前设置的时间
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp)
+                .clickable { showCustomTimeDialog.value = true },
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "Set Custom Time")
+            Text(
+                text = "${customTimeYear.value}-${customTimeMonth.value.toString().padStart(2, '0')}-${customTimeDay.value.toString().padStart(2, '0')} ${customTimeHour.value.toString().padStart(2, '0')}:${customTimeMinute.value.toString().padStart(2, '0')}:${customTimeSecond.value.toString().padStart(2, '0')}",
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+// 自定义时间设置对话框
+if (showCustomTimeDialog.value) {
+    CustomTimeDialog(
+        currentYear = customTimeYear.value,
+        currentMonth = customTimeMonth.value,
+        currentDay = customTimeDay.value,
+        currentHour = customTimeHour.value,
+        currentMinute = customTimeMinute.value,
+        currentSecond = customTimeSecond.value,
+        onDismiss = { showCustomTimeDialog.value = false },
+        onTimeSet = { year, month, day, hour, minute, second ->
+            customTimeYear.value = year
+            customTimeMonth.value = month
+            customTimeDay.value = day
+            customTimeHour.value = hour
+            customTimeMinute.value = minute
+            customTimeSecond.value = second
+            showCustomTimeDialog.value = false
+        }
+    )
+}
     }
 }
                     
@@ -2141,7 +2221,14 @@ if (showMemoryConfigDialog.value) {
                         scalingFilter, // 新增：缩放过滤器
                         scalingFilterLevel, // 新增：缩放过滤器级别
                         antiAliasing, // 新增：抗锯齿模式
-                        memoryConfiguration // 新增DRAM参数
+                        memoryConfiguration, // 新增DRAM参数
+                        customTimeEnabled,
+    customTimeYear,
+    customTimeMonth,
+    customTimeDay,
+    customTimeHour,
+    customTimeMinute,
+    customTimeSecond
                     )
                     settingsViewModel.navController.popBackStack()
                 }
