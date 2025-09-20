@@ -59,8 +59,8 @@ class MainViewModel(val activity: MainActivity) {
     // 玩家设置列表
     var playerSettings: MutableList<PlayerSetting> = mutableListOf()
     
-    // 玩家设备ID映射表
-    private val playerDeviceIds = mutableMapOf<Int, Int>()
+    // 玩家设备ID映射表 - 已移除，不再使用设备ID
+    // private val playerDeviceIds = mutableMapOf<Int, Int>()
 
     init {
         performanceManager = PerformanceManager(activity)
@@ -104,12 +104,10 @@ class MainViewModel(val activity: MainActivity) {
             
             // 如果是已连接的玩家，立即应用设置
             if (playerSetting.isConnected) {
-                val deviceId = playerDeviceIds[playerSetting.playerNumber]
-                if (deviceId != null) {
-                    // 将控制器类型索引转换为位掩码值
-                    val controllerTypeBitmask = controllerTypeIndexToBitmask(playerSetting.controllerType)
-                    RyujinxNative.jnaInstance.setControllerType(deviceId, controllerTypeBitmask)
-                }
+                // 使用玩家编号而不是设备ID
+                // 将控制器类型索引转换为位掩码值
+                val controllerTypeBitmask = controllerTypeIndexToBitmask(playerSetting.controllerType)
+                RyujinxNative.jnaInstance.setControllerType(playerSetting.playerNumber, controllerTypeBitmask)
                 
                 // 如果是玩家1，更新GameController的布局
                 if (playerSetting.playerNumber == 1) {
@@ -119,33 +117,33 @@ class MainViewModel(val activity: MainActivity) {
         }
     }
     
-    // 为玩家分配设备ID
-    fun assignDeviceIdToPlayer(playerNumber: Int): Int {
-        // 玩家1使用设备ID0（虚拟控制器）
-        if (playerNumber == 1) {
-            playerDeviceIds[1] = 0
-            return 0
-        }
-        
-        // 其他玩家使用设备ID1-7
-        val deviceId = playerNumber - 1
-        playerDeviceIds[playerNumber] = deviceId
-        
-        // 设置控制器类型
-        val playerSetting = getPlayerSetting(playerNumber)
-        if (playerSetting != null && playerSetting.isConnected) {
-            // 将控制器类型索引转换为位掩码值
-            val controllerTypeBitmask = controllerTypeIndexToBitmask(playerSetting.controllerType)
-            RyujinxNative.jnaInstance.setControllerType(deviceId, controllerTypeBitmask)
-        }
-        
-        return deviceId
-    }
+    // 为玩家分配设备ID - 已移除，不再使用设备ID
+    // fun assignDeviceIdToPlayer(playerNumber: Int): Int {
+    //     // 玩家1使用设备ID0（虚拟控制器）
+    //     if (playerNumber == 1) {
+    //         playerDeviceIds[1] = 0
+    //         return 0
+    //     }
+    //     
+    //     // 其他玩家使用设备ID1-7
+    //     val deviceId = playerNumber - 1
+    //     playerDeviceIds[playerNumber] = deviceId
+    //     
+    //     // 设置控制器类型
+    //     val playerSetting = getPlayerSetting(playerNumber)
+    //     if (playerSetting != null && playerSetting.isConnected) {
+    //         // 将控制器类型索引转换为位掩码值
+    //         val controllerTypeBitmask = controllerTypeIndexToBitmask(playerSetting.controllerType)
+    //         RyujinxNative.jnaInstance.setControllerType(deviceId, controllerTypeBitmask)
+    //     }
+    //     
+    //     return deviceId
+    // }
     
-    // 释放玩家的设备ID
-    fun releaseDeviceIdForPlayer(playerNumber: Int) {
-        playerDeviceIds.remove(playerNumber)
-    }
+    // 释放玩家的设备ID - 已移除，不再使用设备ID
+    // fun releaseDeviceIdForPlayer(playerNumber: Int) {
+    //     playerDeviceIds.remove(playerNumber)
+    // }
 
     // 新增方法：将控制器类型索引转换为位掩码值
     private fun controllerTypeIndexToBitmask(controllerTypeIndex: Int): Int {
@@ -167,11 +165,11 @@ class MainViewModel(val activity: MainActivity) {
         physicalControllerManager?.disconnect()
         motionSensorManager?.setControllerId(-1)
         
-        // 释放所有玩家的设备ID
-        playerDeviceIds.keys.toList().forEach { playerNumber ->
-            releaseDeviceIdForPlayer(playerNumber)
-        }
-        playerDeviceIds.clear()
+        // 释放所有玩家的设备ID - 已移除，不再使用设备ID
+        // playerDeviceIds.keys.toList().forEach { playerNumber ->
+        //     releaseDeviceIdForPlayer(playerNumber)
+        // }
+        // playerDeviceIds.clear()
     }
 
     fun refreshFirmwareVersion() {
@@ -281,15 +279,13 @@ class MainViewModel(val activity: MainActivity) {
                     settings.memoryConfiguration //内存配置
                 )
 
-                // 为所有连接的玩家分配设备ID并设置控制器类型
+                // 为所有连接的玩家设置控制器类型 - 使用玩家编号而不是设备ID
                 playerSettings.forEach { playerSetting ->
                     if (playerSetting.isConnected) {
-                        val deviceId = assignDeviceIdToPlayer(playerSetting.playerNumber)
-                        if (deviceId != -1) {
-                            // 将控制器类型索引转换为位掩码值
-                            val controllerTypeBitmask = controllerTypeIndexToBitmask(playerSetting.controllerType)
-                            RyujinxNative.jnaInstance.setControllerType(deviceId, controllerTypeBitmask)
-                        }
+                        // 将控制器类型索引转换为位掩码值
+                        val controllerTypeBitmask = controllerTypeIndexToBitmask(playerSetting.controllerType)
+                        // 使用玩家编号而不是设备ID
+                        RyujinxNative.jnaInstance.setControllerType(playerSetting.playerNumber, controllerTypeBitmask)
                     }
                 }
 
@@ -376,7 +372,7 @@ class MainViewModel(val activity: MainActivity) {
             driverHandle
         )
         if (!success)
-            return false
+        return false
 
         val semaphore = Semaphore(1, 0)
         runBlocking {
@@ -399,15 +395,13 @@ class MainViewModel(val activity: MainActivity) {
                     settings.memoryConfiguration //内存配置
                 )
 
-                // 为所有连接的玩家分配设备ID并设置控制器类型
+                // 为所有连接的玩家设置控制器类型 - 使用玩家编号而不是设备ID
                 playerSettings.forEach { playerSetting ->
                     if (playerSetting.isConnected) {
-                        val deviceId = assignDeviceIdToPlayer(playerSetting.playerNumber)
-                        if (deviceId != -1) {
-                            // 将控制器类型索引转换为位掩码值
-                            val controllerTypeBitmask = controllerTypeIndexToBitmask(playerSetting.controllerType)
-                            RyujinxNative.jnaInstance.setControllerType(deviceId, controllerTypeBitmask)
-                        }
+                        // 将控制器类型索引转换为位掩码值
+                        val controllerTypeBitmask = controllerTypeIndexToBitmask(playerSetting.controllerType)
+                        // 使用玩家编号而不是设备ID
+                        RyujinxNative.jnaInstance.setControllerType(playerSetting.playerNumber, controllerTypeBitmask)
                     }
                 }
 
