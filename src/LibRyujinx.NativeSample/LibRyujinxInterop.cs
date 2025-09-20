@@ -26,11 +26,13 @@ namespace LibRyujinx.Sample
                                                   bool enableVsync,
                                                   bool enableDockedMode,
                                                   bool enablePtc,
+                                                  bool enableJitCacheEviction,
                                                   bool enableInternetAccess,
                                                   IntPtr timeZone,
                                                   bool ignoreMissingServices,
                                                   int audioEngineType,
-                                                  int memoryConfiguration);  // 新增内存配置参数
+                                                  int memoryConfiguration,
+                                                  long systemTimeOffset);  // 新增系统时间偏移参数
 
         [DllImport(dll, EntryPoint = "graphics_initialize_renderer")]
         internal extern static bool InitializeGraphicsRenderer(GraphicsBackend backend, NativeGraphicsInterop nativeGraphicsInterop);
@@ -84,6 +86,14 @@ namespace LibRyujinx.Sample
         // 添加设置内存配置的方法
         [DllImport(dll, EntryPoint = "setMemoryConfiguration")]
         internal extern static void SetMemoryConfiguration(MemoryConfiguration memoryConfig);
+
+        // 添加设置系统时间偏移的方法
+        [DllImport(dll, EntryPoint = "setSystemTimeOffset")]
+        internal extern static void SetSystemTimeOffset(long offset);
+
+        // 添加获取系统时间偏移的方法
+        [DllImport(dll, EntryPoint = "getSystemTimeOffset")]
+        internal extern static long GetSystemTimeOffset();
     }
 
     public enum GraphicsBackend
