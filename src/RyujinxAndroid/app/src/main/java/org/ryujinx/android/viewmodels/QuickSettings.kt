@@ -202,28 +202,23 @@ class QuickSettings(val activity: Activity) {
         }
     }
     
-    // 应用控制器设置到Native层
+    // 应用控制器设置到Native层 - 修改为使用玩家编号而不是设备ID
     fun applyControllerSettings() {
         try {
-            // 设置所有玩家的控制器类型
+            // 设置所有玩家的控制器类型，使用玩家编号而不是设备ID
             for (playerSetting in playerSettings) {
                 if (playerSetting.isConnected) {
-                    val deviceId = if (playerSetting.playerNumber == 1) {
-                        0 // 玩家1使用设备ID0
-                    } else {
-                        playerSetting.playerNumber - 1 // 其他玩家使用设备ID1-7
-                    }
-                    
                     // 确保控制器类型值有效
                     val controllerType = playerSetting.controllerType.coerceIn(0, 4)
                     
                     // 将控制器类型索引转换为位掩码值
                     val controllerTypeBitmask = controllerTypeIndexToBitmask(controllerType)
                     
-                    RyujinxNative.jnaInstance.setControllerType(deviceId, controllerTypeBitmask)
+                    // 使用玩家编号而不是设备ID
+                    RyujinxNative.jnaInstance.setControllerType(playerSetting.playerNumber, controllerTypeBitmask)
                     
                     // 记录设置信息
-                    android.util.Log.d("QuickSettings", "Controller type set to: ${getControllerTypeName(controllerType)} (bitmask: $controllerTypeBitmask) for device $deviceId (Player ${playerSetting.playerNumber})")
+                    android.util.Log.d("QuickSettings", "Controller type set to: ${getControllerTypeName(controllerType)} (bitmask: $controllerTypeBitmask) for player ${playerSetting.playerNumber}")
                 }
             }
         } catch (e: Exception) {
