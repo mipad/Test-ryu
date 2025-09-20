@@ -32,6 +32,16 @@ class QuickSettings(val activity: Activity) {
     var scalingFilterLevel: Int // 新增：缩放过滤器级别
     var antiAliasing: Int // 新增：抗锯齿模式 0=None, 1=Fxaa, 2=SmaaLow, 3=SmaaMedium, 4=SmaaHigh, 5=SmaaUltra
     var memoryConfiguration: Int // 新增：内存配置 0=4GB, 1=4GB Applet Dev, 2=4GB System Dev, 3=6GB, 4=6GB Applet Dev, 5=8GB
+    var systemTimeOffset: Long // 新增：系统时间偏移（秒）
+    
+    // 新增：自定义时间相关字段
+    var customTimeEnabled: Boolean // 新增：自定义时间开关
+    var customTimeYear: Int // 新增：自定义时间-年
+    var customTimeMonth: Int // 新增：自定义时间-月
+    var customTimeDay: Int // 新增：自定义时间-日
+    var customTimeHour: Int // 新增：自定义时间-时
+    var customTimeMinute: Int // 新增：自定义时间-分
+    var customTimeSecond: Int // 新增：自定义时间-秒
 
     // Logs
     var enableDebugLogs: Boolean
@@ -73,6 +83,16 @@ class QuickSettings(val activity: Activity) {
         scalingFilterLevel = sharedPref.getInt("scalingFilterLevel", 80) // 默认级别：80
         antiAliasing = sharedPref.getInt("antiAliasing", 0) // 默认关闭
         memoryConfiguration = sharedPref.getInt("memoryConfiguration", 0) // 默认4GB
+        systemTimeOffset = sharedPref.getLong("systemTimeOffset", 0) // 默认0秒偏移
+        
+        // 初始化自定义时间字段
+        customTimeEnabled = sharedPref.getBoolean("customTimeEnabled", false)
+        customTimeYear = sharedPref.getInt("customTimeYear", 2023)
+        customTimeMonth = sharedPref.getInt("customTimeMonth", 9)
+        customTimeDay = sharedPref.getInt("customTimeDay", 12)
+        customTimeHour = sharedPref.getInt("customTimeHour", 10)
+        customTimeMinute = sharedPref.getInt("customTimeMinute", 27)
+        customTimeSecond = sharedPref.getInt("customTimeSecond", 0)
 
         enableDebugLogs = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs = sharedPref.getBoolean("enableStubLogs", false)
@@ -113,6 +133,16 @@ class QuickSettings(val activity: Activity) {
         editor.putInt("scalingFilterLevel", scalingFilterLevel) // 保存缩放过滤器级别
         editor.putInt("antiAliasing", antiAliasing) // 保存抗锯齿设置
         editor.putInt("memoryConfiguration", memoryConfiguration) // 保存内存配置
+        editor.putLong("systemTimeOffset", systemTimeOffset) // 保存系统时间偏移
+        
+        // 保存自定义时间字段
+        editor.putBoolean("customTimeEnabled", customTimeEnabled)
+        editor.putInt("customTimeYear", customTimeYear)
+        editor.putInt("customTimeMonth", customTimeMonth)
+        editor.putInt("customTimeDay", customTimeDay)
+        editor.putInt("customTimeHour", customTimeHour)
+        editor.putInt("customTimeMinute", customTimeMinute)
+        editor.putInt("customTimeSecond", customTimeSecond)
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs)
         editor.putBoolean("enableStubLogs", enableStubLogs)
