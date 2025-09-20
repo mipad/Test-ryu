@@ -281,13 +281,22 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         // 设置内存配置
         RyujinxNative.jnaInstance.setMemoryConfiguration(memoryConfiguration.value)
 
-        // 设置玩家1的控制器类型（虚拟控制器使用设备ID 0）
-        val player1Setting = getPlayerSetting(1)
-        if (player1Setting != null && player1Setting.isConnected) {
-            // 将控制器类型索引转换为位掩码值
-            val controllerTypeBitmask = controllerTypeIndexToBitmask(player1Setting.controllerType)
-            RyujinxNative.jnaInstance.setControllerType(0, controllerTypeBitmask)
-            updateControllerTypeInManager(player1Setting.controllerType)
+        // 设置所有已连接玩家的控制器类型，使用玩家编号而不是设备ID
+        for (playerNumber in 1..8) {
+            val playerSetting = getPlayerSetting(playerNumber)
+            if (playerSetting != null && playerSetting.isConnected) {
+                // 将控制器类型索引转换为位掩码值
+                val controllerTypeBitmask = controllerTypeIndexToBitmask(playerSetting.controllerType)
+                // 使用玩家编号而不是设备ID
+                RyujinxNative.jnaInstance.setControllerType(playerNumber, controllerTypeBitmask)
+                
+                // 如果是玩家1，同时更新ControllerManager中的控制器类型
+                if (playerNumber == 1) {
+                    updateControllerTypeInManager(playerSetting.controllerType)
+                }
+                
+                android.util.Log.d("SettingsViewModel", "Controller type set for player $playerNumber: $controllerTypeBitmask")
+            }
         }
 
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Debug.ordinal, enableDebugLogs.value)
