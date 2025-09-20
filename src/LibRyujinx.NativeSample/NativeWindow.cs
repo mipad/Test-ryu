@@ -44,7 +44,6 @@ namespace LibRyujinx.NativeSample
             });
             var vkExtensions = GLFW.GetRequiredInstanceExtensions();
 
-
             var pointers = new IntPtr[vkExtensions.Length];
             for (int i = 0; i < vkExtensions.Length; i++)
             {
@@ -60,8 +59,12 @@ namespace LibRyujinx.NativeSample
                     VkRequiredExtensionsCount = pointers.Length,
                     VkCreateSurface = createSurface
                 };
+                
                 var success = LibRyujinxInterop.InitializeGraphicsRenderer(_isVulkan ? GraphicsBackend.Vulkan : GraphicsBackend.OpenGl, nativeGraphicsInterop);
+                
                 var timeZone = Marshal.StringToHGlobalAnsi("UTC");
+                
+                // 更新 InitializeDevice 调用，添加系统时间偏移参数
                 success = LibRyujinxInterop.InitializeDevice(true,
                     false,
                     SystemLanguage.AmericanEnglish,
@@ -70,8 +73,13 @@ namespace LibRyujinx.NativeSample
                     true,
                     true,
                     false,
+                    true, // enableInternetAccess
                     timeZone,
-                    false);
+                    false, // ignoreMissingServices
+                    1, // audioEngineType (OpenAL)
+                    5, // memoryConfiguration (8GiB)
+                    0); // systemTimeOffset (0 seconds)
+                
                 LibRyujinxInterop.InitializeInput(ClientSize.X, ClientSize.Y);
                 Marshal.FreeHGlobal(timeZone);
 
@@ -116,13 +124,6 @@ namespace LibRyujinx.NativeSample
 
                 Context.SwapInterval = 0;
             }
-
-           /* Task.Run(async () =>
-            {
-                await Task.Delay(1000);
-
-                LibRyujinxInterop.SetVsyncState(true);
-            });*/
 
             LibRyujinxInterop.RunLoop();
 
