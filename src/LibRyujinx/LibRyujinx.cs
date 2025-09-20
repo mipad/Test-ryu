@@ -52,6 +52,9 @@ namespace LibRyujinx
         // 添加静态字段来存储内存配置
         private static MemoryConfiguration _currentMemoryConfiguration = MemoryConfiguration.MemoryConfiguration8GiB;
 
+        // 添加静态字段来存储系统时间偏移
+        private static long _systemTimeOffset = 0;
+
         public static bool Initialize(string? basePath)
         {
             if (SwitchDevice != null)
@@ -128,6 +131,25 @@ namespace LibRyujinx
         public static MemoryConfiguration GetMemoryConfiguration()
         {
             return _currentMemoryConfiguration;
+        }
+
+        // 添加设置系统时间偏移的方法
+        public static void SetSystemTimeOffset(long offset)
+        {
+            _systemTimeOffset = offset;
+            Logger.Info?.Print(LogClass.Emulation, $"System time offset set to: {offset} seconds");
+            
+            // 如果设备已初始化，记录需要重启才能生效
+            if (SwitchDevice?.EmulationContext != null)
+            {
+                Logger.Info?.Print(LogClass.Emulation, "System time offset change requires emulation restart to take effect");
+            }
+        }
+
+        // 添加获取系统时间偏移的方法
+        public static long GetSystemTimeOffset()
+        {
+            return _systemTimeOffset;
         }
 
         public static void InitializeAudio()
@@ -332,8 +354,8 @@ namespace LibRyujinx
                             long iconOffset = BitConverter.ToInt64(iconSectionInfo, 0);
                             long iconSize = BitConverter.ToInt64(iconSectionInfo, 8);
 
-                            ulong nacpOffset = reader.ReadUInt64();
-                            ulong nacpSize = reader.ReadUInt64();
+                            ulong nacpOffset = reader.ReadU64();
+                            ulong nacpSize = reader.ReadU64();
 
                             // Reads and stores game icon as byte array
                             if (iconSize > 0)
@@ -891,7 +913,8 @@ namespace LibRyujinx
                                       bool enableInternetAccess,
                                       string? timeZone,
                                       bool ignoreMissingServices,
-                                      MemoryConfiguration memoryConfiguration)  // 新增内存配置参数
+                                      MemoryConfiguration memoryConfiguration,
+                                      long systemTimeOffset)  // 新增系统时间偏移参数
         {
             if (LibRyujinx.Renderer == null)
             {
@@ -902,6 +925,7 @@ namespace LibRyujinx
             // 记录初始化参数
             Logger.Info?.Print(LogClass.Application, $"Initializing device context with parameters:");
             Logger.Info?.Print(LogClass.Application, $"  - Memory Configuration: {memoryConfiguration}");
+            Logger.Info?.Print(LogClass.Application, $"  - System Time Offset: {systemTimeOffset} seconds");
             Logger.Info?.Print(LogClass.Application, $"  - Aspect Ratio: {LibRyujinx.GetAspectRatio()}");
             Logger.Info?.Print(LogClass.Application, $"  - Host Mapped: {isHostMapped}");
             Logger.Info?.Print(LogClass.Application, $"  - Hypervisor: {useHypervisor}");
@@ -946,7 +970,7 @@ namespace LibRyujinx
                                                                   enableInternetAccess,
                                                                   IntegrityCheckLevel.None,
                                                                   0,
-                                                                  0,
+                                                                  systemTimeOffset,  // 传递系统时间偏移
                                                                   timeZone,
                                                                  // isHostMapped ? MemoryManagerMode.HostMappedUnsafe : MemoryManagerMode.SoftwarePageTable,
                                                                   MemoryManagerMode.HostMappedUnsafe,
