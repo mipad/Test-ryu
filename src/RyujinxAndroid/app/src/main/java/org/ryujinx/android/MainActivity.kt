@@ -117,7 +117,7 @@ class MainActivity : BaseActivity() {
         applyControllerSettings()
     }
 
-    // 安全的控制器设置应用方法
+    // 安全的控制器设置应用方法 - 修改为使用玩家编号而不是设备ID
     fun applyControllerSettings() {
         if (!_isInit) {
             return
@@ -126,28 +126,17 @@ class MainActivity : BaseActivity() {
         try {
             val quickSettings = QuickSettings(this)
             
-            // 只设置虚拟控制器（设备ID 0）- 玩家1
-            val player1Setting = quickSettings.getPlayerSetting(1)
-            if (player1Setting != null && player1Setting.isConnected) {
-                // 确保控制器类型值在有效范围内 (0-4)
-                val controllerType = player1Setting.controllerType.coerceIn(0, 4)
-                // 将控制器类型索引转换为位掩码值
-                val controllerTypeBitmask = controllerTypeIndexToBitmask(controllerType)
-                RyujinxNative.jnaInstance.setControllerType(0, controllerTypeBitmask)
-                android.util.Log.d("MainActivity", "Controller type set for device 0: $controllerTypeBitmask")
-            }
-            
-            // 设置其他玩家的控制器类型（设备ID 1-7）
-            for (i in 2..8) {
-                val playerSetting = quickSettings.getPlayerSetting(i)
+            // 设置所有玩家的控制器类型，使用玩家编号而不是设备ID
+            for (playerNumber in 1..8) {
+                val playerSetting = quickSettings.getPlayerSetting(playerNumber)
                 if (playerSetting != null && playerSetting.isConnected) {
-                    val deviceId = i - 1 // 设备ID从1开始
                     // 确保控制器类型值在有效范围内 (0-4)
                     val controllerType = playerSetting.controllerType.coerceIn(0, 4)
                     // 将控制器类型索引转换为位掩码值
                     val controllerTypeBitmask = controllerTypeIndexToBitmask(controllerType)
-                    RyujinxNative.jnaInstance.setControllerType(deviceId, controllerTypeBitmask)
-                    android.util.Log.d("MainActivity", "Controller type set for device $deviceId: $controllerTypeBitmask")
+                    // 使用玩家编号而不是设备ID
+                    RyujinxNative.jnaInstance.setControllerType(playerNumber, controllerTypeBitmask)
+                    android.util.Log.d("MainActivity", "Controller type set for player $playerNumber: $controllerTypeBitmask")
                 }
             }
         } catch (e: Exception) {
