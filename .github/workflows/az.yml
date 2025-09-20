@@ -2,9 +2,9 @@ name: Android CI  Fix
 
 on:
   push:
-    branches: [ "金手指jit" ]
+    branches: [ "自定义时间" ]
   pull_request:
-    branches: [ "金手指jit" ]
+    branches: [ "自定义时间" ]
 
 jobs:
   build:
@@ -25,7 +25,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: 金手指jit
+        ref: 自定义时间
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
