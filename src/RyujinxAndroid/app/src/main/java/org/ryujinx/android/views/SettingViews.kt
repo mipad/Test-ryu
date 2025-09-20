@@ -166,6 +166,7 @@ class SettingViews {
             val scalingFilterLevel = remember { mutableStateOf(25) } // 默认25%
             val antiAliasing = remember { mutableStateOf(0) } // 0=None, 1=Fxaa, 2=SmaaLow, 3=SmaaMedium, 4=SmaaHigh, 5=SmaaUltra
             val memoryConfiguration = remember { mutableStateOf(0) } // 新增状态变量：内存配置
+            val systemTimeOffset = remember { mutableStateOf(0L) }
            val customTimeEnabled = remember { mutableStateOf(false) }
            val customTimeYear = remember { mutableStateOf(2023) }
            val customTimeMonth = remember { mutableStateOf(9) }
@@ -216,6 +217,7 @@ class SettingViews {
                     scalingFilterLevel, // 新增：缩放过滤器级别
                     antiAliasing, // 新增：抗锯齿模式
                     memoryConfiguration, // 新增DRAM参数
+                    systemTimeOffset,
                     customTimeEnabled,
         customTimeYear,
         customTimeMonth,
@@ -279,6 +281,7 @@ class SettingViews {
                     scalingFilterLevel, // 新增：缩放过滤器级别
                     antiAliasing, // 新增：抗锯齿模式
                     memoryConfiguration, // 新增DRAM参数
+                    systemTimeOffset,
                     customTimeEnabled,
         customTimeYear,
         customTimeMonth,
@@ -2222,6 +2225,7 @@ if (showMemoryConfigDialog.value) {
                         scalingFilterLevel, // 新增：缩放过滤器级别
                         antiAliasing, // 新增：抗锯齿模式
                         memoryConfiguration, // 新增DRAM参数
+                        systemTimeOffset,
                         customTimeEnabled,
     customTimeYear,
     customTimeMonth,
