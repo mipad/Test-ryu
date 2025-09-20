@@ -19,7 +19,8 @@ interface RyujinxNativeJna : Library {
         timeZone: String,
         ignoreMissingServices: Boolean,
         audioEngineType: Int,  // 新增音频引擎参数
-        memoryConfiguration: Int  // 新增内存配置参数
+        memoryConfiguration: Int,  // 新增内存配置参数
+        systemTimeOffset: Long  // 新增系统时间偏移参数
     ): Boolean
 
     fun graphicsInitialize(
@@ -97,6 +98,10 @@ interface RyujinxNativeJna : Library {
     fun setAntiAliasing(mode: Int)
     // 添加设置内存配置的方法
     fun setMemoryConfiguration(memoryConfiguration: Int)
+    // 添加设置系统时间偏移的方法
+    fun setSystemTimeOffset(offset: Long)
+    // 添加获取系统时间偏移的方法
+    fun getSystemTimeOffset(): Long
     
     // 金手指相关方法
     fun cheatGetCheats(titleId: String, gamePath: String): Array<String>
@@ -188,6 +193,18 @@ class RyujinxNative {
         @JvmStatic
         fun setMemoryConfiguration(memoryConfiguration: Int) {
             jnaInstance.setMemoryConfiguration(memoryConfiguration)
+        }
+        
+        // 添加设置系统时间偏移的静态方法
+        @JvmStatic
+        fun setSystemTimeOffset(offset: Long) {
+            jnaInstance.setSystemTimeOffset(offset)
+        }
+        
+        // 添加获取系统时间偏移的静态方法
+        @JvmStatic
+        fun getSystemTimeOffset(): Long {
+            return jnaInstance.getSystemTimeOffset()
         }
         
         // 金手指相关静态方法
