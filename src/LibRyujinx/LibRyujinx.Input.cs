@@ -38,8 +38,8 @@ namespace LibRyujinx
         // 修改：将控制器类型存储数组从4个增加到8个，以支持多玩家设置
         private static Ryujinx.Common.Configuration.Hid.ControllerType[] _controllerTypes = new Ryujinx.Common.Configuration.Hid.ControllerType[8];
         
-        // 设备ID跟踪
-        private static HashSet<int> _connectedDeviceIds = new HashSet<int>();
+        // 玩家编号跟踪
+        private static HashSet<int> _connectedPlayers = new HashSet<int>();
 
         public static void InitializeInput(int width, int height)
         {
@@ -110,112 +110,117 @@ namespace LibRyujinx
             _touchScreenManager?.ReleaseTouch(); // 通知触摸屏管理器
         }
 
-        public static void SetButtonPressed(GamepadButtonInputId button, int id)
+        public static void SetButtonPressed(GamepadButtonInputId button, int playerNumber)
         {
-            _gamepadDriver?.SetButtonPressed(button, id);
+            // 使用玩家编号而不是设备ID
+            _gamepadDriver?.SetButtonPressed(button, playerNumber);
         }
 
-        public static void SetButtonReleased(GamepadButtonInputId button, int id)
+        public static void SetButtonReleased(GamepadButtonInputId button, int playerNumber)
         {
-            _gamepadDriver?.SetButtonReleased(button, id);
+            // 使用玩家编号而不是设备ID
+            _gamepadDriver?.SetButtonReleased(button, playerNumber);
         }
 
-        public static void SetAccelerometerData(Vector3 accel, int id)
+        public static void SetAccelerometerData(Vector3 accel, int playerNumber)
         {
-            _gamepadDriver?.SetAccelerometerData(accel, id);
+            // 使用玩家编号而不是设备ID
+            _gamepadDriver?.SetAccelerometerData(accel, playerNumber);
         }
 
-        public static void SetGyroData(Vector3 gyro, int id)
+        public static void SetGyroData(Vector3 gyro, int playerNumber)
         {
-            _gamepadDriver?.SetGyroData(gyro, id);
+            // 使用玩家编号而不是设备ID
+            _gamepadDriver?.SetGyroData(gyro, playerNumber);
         }
 
-        public static void SetStickAxis(StickInputId stick, Vector2 axes, int deviceId)
+        public static void SetStickAxis(StickInputId stick, Vector2 axes, int playerNumber)
         {
-            _gamepadDriver?.SetStickAxis(stick, axes, deviceId);
+            // 使用玩家编号而不是设备ID
+            _gamepadDriver?.SetStickAxis(stick, axes, playerNumber);
         }
 
-        public static int ConnectGamepad(int index)
+        public static int ConnectGamepad(int playerNumber)
         {
-            if (index < 0 || index >= _configs.Length) 
+            if (playerNumber < 1 || playerNumber > 8) 
                 return -1;
 
-            // 检查设备ID是否已被占用
-            if (_connectedDeviceIds.Contains(index))
+            // 检查玩家是否已连接
+            if (_connectedPlayers.Contains(playerNumber))
             {
-                Logger.Warning?.Print(LogClass.Application, $"Device ID {index} is already connected");
+                Logger.Warning?.Print(LogClass.Application, $"Player {playerNumber} is already connected");
                 return -1;
             }
 
-            var gamepad = _gamepadDriver?.GetGamepad(index);
+            var gamepad = _gamepadDriver?.GetGamepad(playerNumber);
             if (gamepad != null)
             {
                 var config = CreateDefaultInputConfig();
                 config.Id = gamepad.Id;
-                config.PlayerIndex = (Ryujinx.Common.Configuration.Hid.PlayerIndex)index;
+                config.PlayerIndex = (Ryujinx.Common.Configuration.Hid.PlayerIndex)playerNumber;
                 
-                // 使用存储的控制器类型而不是调用GetControllerType
-                config.ControllerType = _controllerTypes[index];
+                // 使用存储的控制器类型
+                config.ControllerType = _controllerTypes[playerNumber - 1];
                 
-                _configs[index] = config;
-                _connectedDeviceIds.Add(index);
+                _configs[playerNumber - 1] = config;
+                _connectedPlayers.Add(playerNumber);
                 
-                Logger.Info?.Print(LogClass.Application, $"Connected gamepad {index} as {_controllerTypes[index]}");
+                Logger.Info?.Print(LogClass.Application, $"Connected player {playerNumber} as {_controllerTypes[playerNumber - 1]}");
             }
 
             _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
-            return index;
+            return playerNumber;
         }
         
-        public static void DisconnectGamepad(int deviceId)
+        public static void DisconnectGamepad(int playerNumber)
         {
-            if (deviceId < 0 || deviceId >= _configs.Length)
+            if (playerNumber < 1 || playerNumber > 8)
                 return;
                 
-            if (_connectedDeviceIds.Contains(deviceId))
+            if (_connectedPlayers.Contains(playerNumber))
             {
-                _connectedDeviceIds.Remove(deviceId);
-                _configs[deviceId] = null;
-                Logger.Info?.Print(LogClass.Application, $"Disconnected gamepad {deviceId}");
+                _connectedPlayers.Remove(playerNumber);
+                _configs[playerNumber - 1] = null;
+                Logger.Info?.Print(LogClass.Application, $"Disconnected player {playerNumber}");
                 
                 _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
             }
         }
         
-        // 新增方法：获取下一个可用的设备ID
-        public static int GetNextAvailableDeviceId()
+        // 新增方法：获取下一个可用的玩家编号
+        public static int GetNextAvailablePlayer()
         {
-            for (int i = 0; i < _configs.Length; i++)
+            for (int i = 1; i <= 8; i++)
             {
-                if (!_connectedDeviceIds.Contains(i))
+                if (!_connectedPlayers.Contains(i))
                 {
                     return i;
                 }
             }
-            return -1; // 没有可用ID
+            return -1; // 没有可用玩家编号
         }
         
-        // 新增方法：检查设备ID是否可用
-        public static bool IsDeviceIdAvailable(int deviceId)
+        // 新增方法：检查玩家编号是否可用
+        public static bool IsPlayerAvailable(int playerNumber)
         {
-            return deviceId >= 0 && deviceId < _configs.Length && !_connectedDeviceIds.Contains(deviceId);
+            return playerNumber >= 1 && playerNumber <= 8 && !_connectedPlayers.Contains(playerNumber);
         }
         
-        // 新增方法：释放设备ID
-        public static void ReleaseDeviceId(int deviceId)
+        // 新增方法：释放玩家编号
+        public static void ReleasePlayer(int playerNumber)
         {
-            if (deviceId >= 0 && deviceId < _configs.Length)
+            if (playerNumber >= 1 && playerNumber <= 8)
             {
-                _connectedDeviceIds.Remove(deviceId);
+                _connectedPlayers.Remove(playerNumber);
             }
         }
 
-        // 修改方法：设置控制器类型，处理位掩码值
-        public static void SetControllerType(int deviceId, int controllerTypeBitmask)
+        // 修改方法：设置控制器类型，使用玩家编号而不是设备ID
+        public static void SetControllerType(int playerNumber, int controllerTypeBitmask)
         {
-            if (deviceId < 0 || deviceId >= _controllerTypes.Length)
+            if (playerNumber < 1 || playerNumber > 8)
             {
-                Logger.Warning?.Print(LogClass.Application, $"Invalid device ID: {deviceId}");
+                Logger.Warning?.Print(LogClass.Application, $"Invalid player number: {playerNumber}");
                 return;
             }
 
@@ -244,27 +249,27 @@ namespace LibRyujinx
                     break;
             }
 
-            _controllerTypes[deviceId] = controllerType;
-            Logger.Info?.Print(LogClass.Application, $"Controller type for device {deviceId} set to: {_controllerTypes[deviceId]}");
+            _controllerTypes[playerNumber - 1] = controllerType;
+            Logger.Info?.Print(LogClass.Application, $"Controller type for player {playerNumber} set to: {_controllerTypes[playerNumber - 1]}");
 
-            // 如果设备已初始化，立即更新控制器配置
-            if (SwitchDevice?.InputManager != null && _configs != null && deviceId < _configs.Length)
+            // 如果玩家已连接，立即更新控制器配置
+            if (SwitchDevice?.InputManager != null && _configs != null && _connectedPlayers.Contains(playerNumber))
             {
-                UpdateControllerConfiguration(deviceId);
+                UpdateControllerConfiguration(playerNumber);
             }
         }
         
-        // 修改方法：获取控制器类型，返回位掩码值
-        public static int GetControllerType(int deviceId)
+        // 修改方法：获取控制器类型，使用玩家编号而不是设备ID
+        public static int GetControllerType(int playerNumber)
         {
-            if (deviceId < 0 || deviceId >= _controllerTypes.Length)
+            if (playerNumber < 1 || playerNumber > 8)
             {
-                Logger.Warning?.Print(LogClass.Application, $"Invalid device ID: {deviceId}");
+                Logger.Warning?.Print(LogClass.Application, $"Invalid player number: {playerNumber}");
                 return 1; // 返回ProController的位掩码值
             }
 
             // 将ControllerType枚举值转换为位掩码
-            switch (_controllerTypes[deviceId])
+            switch (_controllerTypes[playerNumber - 1])
             {
                 case Ryujinx.Common.Configuration.Hid.ControllerType.ProController:
                     return 1; // 1 << 0
@@ -281,35 +286,35 @@ namespace LibRyujinx
             }
         }
         
-        // 新增方法：更新控制器配置
-        private static void UpdateControllerConfiguration(int deviceId)
+        // 新增方法：更新控制器配置，使用玩家编号而不是设备ID
+        private static void UpdateControllerConfiguration(int playerNumber)
         {
-            if (SwitchDevice?.InputManager == null || _configs == null || deviceId >= _configs.Length)
+            if (SwitchDevice?.InputManager == null || _configs == null || playerNumber < 1 || playerNumber > 8)
             {
                 return;
             }
 
-            var config = _configs[deviceId];
+            var config = _configs[playerNumber - 1];
             if (config != null)
             {
-                config.ControllerType = _controllerTypes[deviceId];
+                config.ControllerType = _controllerTypes[playerNumber - 1];
                 _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
-                Logger.Info?.Print(LogClass.Application, $"Controller configuration updated for device {deviceId}: {_controllerTypes[deviceId]}");
+                Logger.Info?.Print(LogClass.Application, $"Controller configuration updated for player {playerNumber}: {_controllerTypes[playerNumber - 1]}");
             }
             else
             {
                 // 如果配置不存在，创建新的配置
-                var gamepad = _gamepadDriver?.GetGamepad(deviceId);
+                var gamepad = _gamepadDriver?.GetGamepad(playerNumber);
                 if (gamepad != null)
                 {
                     var newConfig = CreateDefaultInputConfig();
                     newConfig.Id = gamepad.Id;
-                    newConfig.PlayerIndex = (Ryujinx.Common.Configuration.Hid.PlayerIndex)deviceId;
-                    newConfig.ControllerType = _controllerTypes[deviceId];
+                    newConfig.PlayerIndex = (Ryujinx.Common.Configuration.Hid.PlayerIndex)playerNumber;
+                    newConfig.ControllerType = _controllerTypes[playerNumber - 1];
                     
-                    _configs[deviceId] = newConfig;
+                    _configs[playerNumber - 1] = newConfig;
                     _npadManager?.ReloadConfiguration(_configs.Where(x => x != null).ToList(), false, false);
-                    Logger.Info?.Print(LogClass.Application, $"Created new controller configuration for device {deviceId}: {_controllerTypes[deviceId]}");
+                    Logger.Info?.Print(LogClass.Application, $"Created new controller configuration for player {playerNumber}: {_controllerTypes[playerNumber - 1]}");
                 }
             }
         }
@@ -490,7 +495,7 @@ namespace LibRyujinx
         public VirtualGamepadDriver(int controllerCount)
         {
             _gamePads = new Dictionary<int, VirtualGamepad>();
-            for (int i = 0; i < controllerCount; i++)
+            for (int i = 1; i <= controllerCount; i++)
             {
                 _gamePads[i] = new VirtualGamepad(this, i);
                 OnGamepadConnected?.Invoke(i.ToString());
@@ -511,44 +516,44 @@ namespace LibRyujinx
         public IGamepad GetGamepad(string id)
             => int.TryParse(id, out int idInt) && _gamePads.TryGetValue(idInt, out var gamePad) ? gamePad : null;
 
-        public IGamepad GetGamepad(int index)
-            => _gamePads.TryGetValue(index, out var gamePad) ? gamePad : null;
+        public IGamepad GetGamepad(int playerNumber)
+            => _gamePads.TryGetValue(playerNumber, out var gamePad) ? gamePad : null;
 
-        public void SetStickAxis(StickInputId stick, Vector2 axes, int deviceId)
+        public void SetStickAxis(StickInputId stick, Vector2 axes, int playerNumber)
         {
-            if (_gamePads.TryGetValue(deviceId, out var gamePad))
+            if (_gamePads.TryGetValue(playerNumber, out var gamePad))
             {
                 gamePad.StickInputs[(int)stick] = axes;
             }
         }
 
-        public void SetButtonPressed(GamepadButtonInputId button, int deviceId)
+        public void SetButtonPressed(GamepadButtonInputId button, int playerNumber)
         {
-            if (_gamePads.TryGetValue(deviceId, out var gamePad))
+            if (_gamePads.TryGetValue(playerNumber, out var gamePad))
             {
                 gamePad.ButtonInputs[(int)button] = true;
             }
         }
 
-        public void SetButtonReleased(GamepadButtonInputId button, int deviceId)
+        public void SetButtonReleased(GamepadButtonInputId button, int playerNumber)
         {
-            if (_gamePads.TryGetValue(deviceId, out var gamePad))
+            if (_gamePads.TryGetValue(playerNumber, out var gamePad))
             {
                 gamePad.ButtonInputs[(int)button] = false;
             }
         }
 
-        public void SetAccelerometerData(Vector3 accel, int deviceId)
+        public void SetAccelerometerData(Vector3 accel, int playerNumber)
         {
-            if (_gamePads.TryGetValue(deviceId, out var gamePad))
+            if (_gamePads.TryGetValue(playerNumber, out var gamePad))
             {
                 gamePad.Accelerometer = accel;
             }
         }
 
-        public void SetGyroData(Vector3 gyro, int deviceId)
+        public void SetGyroData(Vector3 gyro, int playerNumber)
         {
-            if (_gamePads.TryGetValue(deviceId, out var gamePad))
+            if (_gamePads.TryGetValue(playerNumber, out var gamePad))
             {
                 gamePad.Gyro = gyro;
             }
@@ -565,18 +570,18 @@ namespace LibRyujinx
         public Vector3 Gyro { get; internal set; }
 
         public string Id { get; }
-        public int IdInt { get; }
+        public int PlayerNumber { get; }
         public string Name => $"Virtual Gamepad {Id}";
         public bool IsConnected { get; private set; } = true;
         public GamepadFeaturesFlag Features { get; } = GamepadFeaturesFlag.Motion;
 
-        public VirtualGamepad(VirtualGamepadDriver driver, int id)
+        public VirtualGamepad(VirtualGamepadDriver driver, int playerNumber)
         {
             _driver = driver;
             ButtonInputs = new bool[(int)GamepadButtonInputId.Count];
             StickInputs = new Vector2[(int)StickInputId.Count];
-            Id = id.ToString();
-            IdInt = id;
+            Id = playerNumber.ToString();
+            PlayerNumber = playerNumber;
         }
 
         public void Dispose() { }
