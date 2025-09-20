@@ -55,15 +55,15 @@ namespace LibRyujinx
             return _skipMemoryBarriers;
         }
 
-        // 添加设置系统时间偏移的 JNI 方法
-        [UnmanagedCallersOnly(EntryPoint = "setSystemTimeOffset")]
+        // 添加设置系统时间偏移的 JNI 方法 - 修改 EntryPoint 名称以避免冲突
+        [UnmanagedCallersOnly(EntryPoint = "setSystemTimeOffsetNative")]
         public static void SetSystemTimeOffsetNative(long offset)
         {
             SetSystemTimeOffset(offset);
         }
 
         // 添加获取系统时间偏移的 JNI 方法
-        [UnmanagedCallersOnly(EntryPoint = "getSystemTimeOffset")]
+        [UnmanagedCallersOnly(EntryPoint = "getSystemTimeOffsetNative")]
         public static long GetSystemTimeOffsetNative()
         {
             return GetSystemTimeOffset();
