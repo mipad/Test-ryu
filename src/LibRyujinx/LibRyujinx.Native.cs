@@ -55,6 +55,20 @@ namespace LibRyujinx
             return _skipMemoryBarriers;
         }
 
+        // 添加设置系统时间偏移的 JNI 方法
+        [UnmanagedCallersOnly(EntryPoint = "setSystemTimeOffset")]
+        public static void SetSystemTimeOffsetNative(long offset)
+        {
+            SetSystemTimeOffset(offset);
+        }
+
+        // 添加获取系统时间偏移的 JNI 方法
+        [UnmanagedCallersOnly(EntryPoint = "getSystemTimeOffset")]
+        public static long GetSystemTimeOffsetNative()
+        {
+            return GetSystemTimeOffset();
+        }
+
         [UnmanagedCallersOnly(EntryPoint = "device_initialize")]
         public static bool InitializeDeviceNative(bool isHostMapped,
                                                   bool useHypervisor,
@@ -68,7 +82,8 @@ namespace LibRyujinx
                                                   IntPtr timeZone,
                                                   bool ignoreMissingServices,
                                                   int audioEngineType,
-                                                  int memoryConfiguration)  // 新增内存配置参数
+                                                  int memoryConfiguration,
+                                                  long systemTimeOffset)  // 新增系统时间偏移参数
         {
             // 根据音频引擎类型设置音频驱动
             switch (audioEngineType)
@@ -101,7 +116,8 @@ namespace LibRyujinx
                                     enableInternetAccess,
                                     Marshal.PtrToStringAnsi(timeZone),
                                     ignoreMissingServices,
-                                    (MemoryConfiguration)memoryConfiguration);  // 传递内存配置
+                                    (MemoryConfiguration)memoryConfiguration,
+                                    systemTimeOffset);  // 传递系统时间偏移参数
         }
 
         [UnmanagedCallersOnly(EntryPoint = "device_reload_file_system")]
