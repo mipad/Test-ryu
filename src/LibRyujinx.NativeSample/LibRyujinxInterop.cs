@@ -87,12 +87,12 @@ namespace LibRyujinx.Sample
         [DllImport(dll, EntryPoint = "setMemoryConfiguration")]
         internal extern static void SetMemoryConfiguration(MemoryConfiguration memoryConfig);
 
-        // 添加设置系统时间偏移的方法
-        [DllImport(dll, EntryPoint = "setSystemTimeOffset")]
+        // 添加设置系统时间偏移的方法 - 更新 EntryPoint 名称
+        [DllImport(dll, EntryPoint = "setSystemTimeOffsetNative")]
         internal extern static void SetSystemTimeOffset(long offset);
 
-        // 添加获取系统时间偏移的方法
-        [DllImport(dll, EntryPoint = "getSystemTimeOffset")]
+        // 添加获取系统时间偏移的方法 - 更新 EntryPoint 名称
+        [DllImport(dll, EntryPoint = "getSystemTimeOffsetNative")]
         internal extern static long GetSystemTimeOffset();
     }
 
