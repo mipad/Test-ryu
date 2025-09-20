@@ -172,7 +172,8 @@ class MainViewModel(val activity: MainActivity) {
                     "UTC",
                     settings.ignoreMissingServices,
                     settings.audioEngineType, // 新增音频引擎参数
-                    settings.memoryConfiguration //内存配置
+                    settings.memoryConfiguration, // 内存配置
+                    settings.systemTimeOffset // 新增系统时间偏移参数
                 )
 
                 semaphore.release()
@@ -278,7 +279,8 @@ class MainViewModel(val activity: MainActivity) {
                     "UTC",
                     settings.ignoreMissingServices,
                     settings.audioEngineType, // 新增音频引擎参数
-                    settings.memoryConfiguration //内存配置
+                    settings.memoryConfiguration, // 内存配置
+                    settings.systemTimeOffset // 新增系统时间偏移参数
                 )
 
                 semaphore.release()
