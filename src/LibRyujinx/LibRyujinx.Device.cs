@@ -7,7 +7,7 @@ using Ryujinx.HLE.HOS.SystemState;
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
-using Ryujinx.HLE; // 添加这行
+using Ryujinx.HLE; 
 
 namespace LibRyujinx
 {
@@ -24,7 +24,8 @@ namespace LibRyujinx
                                             bool enableInternetAccess,
                                             string? timeZone,
                                             bool ignoreMissingServices,
-                                            MemoryConfiguration memoryConfiguration) // 添加这个参数
+                                            MemoryConfiguration memoryConfiguration,
+                                            long systemTimeOffset) // 新增系统时间偏移参数
         {
             if (SwitchDevice == null)
             {
@@ -42,7 +43,8 @@ namespace LibRyujinx
                                                   enableInternetAccess,
                                                   timeZone,
                                                   ignoreMissingServices,
-                                                  memoryConfiguration); // 传递这个参数
+                                                  memoryConfiguration,
+                                                  systemTimeOffset); // 传递系统时间偏移参数
         }
 
         public static void InstallFirmware(Stream stream, bool isXci)
