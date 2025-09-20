@@ -66,16 +66,16 @@ namespace LibRyujinx.Sample
         internal extern static void UpdateInput();
 
         [DllImport(dll, EntryPoint = "input_set_button_pressed")]
-        public extern static void SetButtonPressed(GamepadButtonInputId button, IntPtr idPtr);
+        public extern static void SetButtonPressed(GamepadButtonInputId button, int playerNumber); // 修改：使用玩家编号而不是设备ID指针
 
         [DllImport(dll, EntryPoint = "input_set_button_released")]
-        public extern static void SetButtonReleased(GamepadButtonInputId button, IntPtr idPtr);
+        public extern static void SetButtonReleased(GamepadButtonInputId button, int playerNumber); // 修改：使用玩家编号而不是设备ID指针
 
         [DllImport(dll, EntryPoint = "input_set_stick_axis")]
-        public extern static void SetStickAxis(StickInputId stick, Vector2 axes, IntPtr idPtr);
+        public extern static void SetStickAxis(StickInputId stick, Vector2 axes, int playerNumber); // 修改：使用玩家编号而不是设备ID指针
 
         [DllImport(dll, EntryPoint = "input_connect_gamepad")]
-        public extern static IntPtr ConnectGamepad(int index);
+        public extern static int ConnectGamepad(int playerNumber); // 修改：使用玩家编号而不是设备ID，返回玩家编号
 
         // 添加设置跳过内存屏障的方法
         [DllImport(dll, EntryPoint = "setSkipMemoryBarriers")]
@@ -85,9 +85,9 @@ namespace LibRyujinx.Sample
         [DllImport(dll, EntryPoint = "setMemoryConfiguration")]
         internal extern static void SetMemoryConfiguration(MemoryConfiguration memoryConfig);
 
-        // 添加设置控制器类型的方法
+        // 添加设置控制器类型的方法 - 修改为使用玩家编号而不是设备ID
         [DllImport(dll, EntryPoint = "setControllerType")]
-        internal extern static void SetControllerType(int deviceId, int controllerType);
+        internal extern static void SetControllerType(int playerNumber, int controllerType);
     }
 
     public enum GraphicsBackend
