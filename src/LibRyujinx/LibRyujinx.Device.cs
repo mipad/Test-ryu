@@ -8,6 +8,7 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using Ryujinx.HLE; 
+using Ryujinx.UI.Common.Configuration;
 
 namespace LibRyujinx
 {
