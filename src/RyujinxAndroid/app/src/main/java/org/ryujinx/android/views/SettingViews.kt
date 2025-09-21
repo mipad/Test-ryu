@@ -1174,6 +1174,7 @@ ExpandableView(onCardArrowClick = { }, title = "Post-Processing") {
         }
         
         // Scaling Filter Level 设置
+// Scaling Filter Level 设置
 Row(
     modifier = Modifier
         .fillMaxWidth()
@@ -1219,15 +1220,15 @@ Row(
                         shape = RectangleShape
                     )
             )
-        }
-        track = { active ->
+        },
+        track = { sliderState ->
             // 圆角矩形轨道
             Box(
                 modifier = Modifier
                     .height(6.dp)
                     .fillMaxWidth()
                     .background(
-                        color = if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
+                        color = if (sliderState.active) MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
                         else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
                         shape = RoundedCornerShape(3.dp)
                     )
@@ -2448,4 +2449,4 @@ if (showMemoryConfigDialog.value) {
             }
         }
     }
-}}
+}
