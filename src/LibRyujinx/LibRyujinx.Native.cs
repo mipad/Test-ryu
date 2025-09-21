@@ -55,15 +55,15 @@ namespace LibRyujinx
             return _skipMemoryBarriers;
         }
 
-        // 添加设置系统时间偏移的 JNI 方法 - 修改 EntryPoint 名称以避免冲突
-        [UnmanagedCallersOnly(EntryPoint = "setSystemTimeOffsetNative")]
+        // 添加设置系统时间偏移的 JNI 方法
+        [UnmanagedCallersOnly(EntryPoint = "setSystemTimeOffset")]
         public static void SetSystemTimeOffsetNative(long offset)
         {
             SetSystemTimeOffset(offset);
         }
 
         // 添加获取系统时间偏移的 JNI 方法
-        [UnmanagedCallersOnly(EntryPoint = "getSystemTimeOffsetNative")]
+        [UnmanagedCallersOnly(EntryPoint = "getSystemTimeOffset")]
         public static long GetSystemTimeOffsetNative()
         {
             return GetSystemTimeOffset();
@@ -652,6 +652,28 @@ namespace LibRyujinx
             {
                 Logger.Error?.Print(LogClass.Application, $"Error in CheatSaveNative: {ex.Message}");
             }
+        }
+
+        // 添加时区相关的 JNI 方法
+        [UnmanagedCallersOnly(EntryPoint = "device_get_time_zone_list")]
+        public static IntPtr GetTimeZoneListNative()
+        {
+            var timeZones = GetTimeZoneList();
+            return CreateStringArray(timeZones.ToList());
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "device_set_time_zone")]
+        public static void SetTimeZoneNative(IntPtr timeZonePtr)
+        {
+            var timeZone = Marshal.PtrToStringAnsi(timeZonePtr);
+            SetTimeZone(timeZone);
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "device_get_current_time_zone")]
+        public static IntPtr GetCurrentTimeZoneNative()
+        {
+            var timeZone = GetCurrentTimeZone();
+            return Marshal.StringToHGlobalAnsi(timeZone);
         }
     }
 }
