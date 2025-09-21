@@ -80,14 +80,14 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         antiAliasing: MutableState<Int>, // 新增：抗锯齿模式
         memoryConfiguration: MutableState<Int>, // 新增：内存配置
         systemTimeOffset: MutableState<Long>, // 新增：系统时间偏移
-        timeZone: MutableState<String>, // 新增：时区设置
         customTimeEnabled: MutableState<Boolean>,
         customTimeYear: MutableState<Int>,
         customTimeMonth: MutableState<Int>,
         customTimeDay: MutableState<Int>,
         customTimeHour: MutableState<Int>,
         customTimeMinute: MutableState<Int>,
-        customTimeSecond: MutableState<Int>
+        customTimeSecond: MutableState<Int>,
+        timeZone: MutableState<String>
     ) {
 
         isHostMapped.value = sharedPref.getBoolean("isHostMapped", true)
@@ -175,14 +175,14 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         antiAliasing: MutableState<Int>, // 新增：抗锯齿模式
         memoryConfiguration: MutableState<Int>, // 新增：内存配置
         systemTimeOffset: MutableState<Long>, // 新增：系统时间偏移
-        timeZone: MutableState<String>, // 新增：时区设置
         customTimeEnabled: MutableState<Boolean>,
         customTimeYear: MutableState<Int>,
         customTimeMonth: MutableState<Int>,
         customTimeDay: MutableState<Int>,
         customTimeHour: MutableState<Int>,
         customTimeMinute: MutableState<Int>,
-        customTimeSecond: MutableState<Int>
+        customTimeSecond: MutableState<Int>,
+        timeZone: MutableState<String>
     ) {
         val editor = sharedPref.edit()
 
@@ -212,7 +212,6 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.putInt("antiAliasing", antiAliasing.value) // 保存抗锯齿设置
         editor.putInt("memoryConfiguration", memoryConfiguration.value) // 保存内存配置
         editor.putLong("systemTimeOffset", systemTimeOffset.value) // 保存系统时间偏移
-        editor.putString("timeZone", timeZone.value) // 新增：保存时区设置
         
         // 保存自定义时间设置
         editor.putBoolean("customTimeEnabled", customTimeEnabled.value)
@@ -222,7 +221,8 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.putInt("customTimeHour", customTimeHour.value)
         editor.putInt("customTimeMinute", customTimeMinute.value)
         editor.putInt("customTimeSecond", customTimeSecond.value)
-
+        editor.putString("timeZone", timeZone.value) // 新增：保存时区设置
+        
         editor.putBoolean("enableDebugLogs", enableDebugLogs.value)
         editor.putBoolean("enableStubLogs", enableStubLogs.value)
         editor.putBoolean("enableInfoLogs", enableInfoLogs.value)
