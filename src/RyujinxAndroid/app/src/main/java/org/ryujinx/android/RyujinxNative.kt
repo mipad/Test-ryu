@@ -109,10 +109,10 @@ interface RyujinxNativeJna : Library {
     fun cheatSetEnabled(titleId: String, cheatId: String, enabled: Boolean)
     fun cheatSave(titleId: String)
     
-    // 时区相关方法
-    fun deviceGetTimeZoneList(): Array<String>
+    // 添加时区相关方法
     fun setTimeZone(timeZone: String)
     fun getCurrentTimeZone(): String
+    fun deviceGetTimeZoneList(): Array<String>
 }
 
 class RyujinxNative {
@@ -233,20 +233,20 @@ class RyujinxNative {
             jnaInstance.cheatSave(titleId)
         }
         
-        // 时区相关静态方法
-        @JvmStatic
-        fun getTimeZoneList(): Array<String> {
-            return jnaInstance.deviceGetTimeZoneList()
-        }
-
+        // 添加时区相关的静态方法
         @JvmStatic
         fun setTimeZone(timeZone: String) {
             jnaInstance.setTimeZone(timeZone)
         }
-
+        
         @JvmStatic
         fun getCurrentTimeZone(): String {
             return jnaInstance.getCurrentTimeZone()
+        }
+        
+        @JvmStatic
+        fun getTimeZoneList(): Array<String> {
+            return jnaInstance.deviceGetTimeZoneList()
         }
     }
 }
