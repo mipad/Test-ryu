@@ -32,6 +32,12 @@ namespace LibRyujinx
                 return false;
             }
 
+            // 确保时区设置被正确传递到配置中
+            if (!string.IsNullOrEmpty(timeZone))
+            {
+                ConfigurationState.Instance.System.TimeZone.Value = timeZone;
+            }
+
             return SwitchDevice.InitializeContext(isHostMapped,
                                                   useHypervisor,
                                                   systemLanguage,
