@@ -22,7 +22,7 @@ using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading;
-using Ryujinx.HLE; // 添加这行
+using Ryujinx.HLE; 
 
 namespace LibRyujinx
 {
@@ -669,6 +669,33 @@ namespace LibRyujinx
             {
                 Logger.Error?.Print(LogClass.Application, $"Failed to set anti-aliasing: {ex.Message}");
             }
+        }
+
+        // 新增：设置时区的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "deviceSetTimeZone")]
+        public static void JniSetTimeZone(IntPtr timeZonePtr)
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: deviceSetTimeZone");
+            var timeZone = Marshal.PtrToStringAnsi(timeZonePtr);
+            SetTimeZone(timeZone);
+        }
+
+        // 新增：获取当前时区的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "deviceGetCurrentTimeZone")]
+        public static IntPtr JniGetCurrentTimeZone()
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: deviceGetCurrentTimeZone");
+            var timeZone = GetCurrentTimeZone();
+            return Marshal.StringToHGlobalAnsi(timeZone);
+        }
+
+        // 新增：获取时区列表的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "deviceGetTimeZoneList")]
+        public static IntPtr JniGetTimeZoneList()
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: deviceGetTimeZoneList");
+            var timeZones = GetTimeZoneList();
+            return CreateStringArray(timeZones.ToList());
         }
     }
 
