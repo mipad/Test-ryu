@@ -174,7 +174,9 @@ class SettingViews {
            val customTimeHour = remember { mutableStateOf(10) }
            val customTimeMinute = remember { mutableStateOf(27) }
            val customTimeSecond = remember { mutableStateOf(0) }
-           
+           // 在状态变量部分添加
+           val timeZone = remember { mutableStateOf("UTC") } // 默认时区
+
            val showCustomTimeDialog = remember { mutableStateOf(false) }          
             val showAntiAliasingDialog = remember { mutableStateOf(false) } // 控制抗锯齿对话框显示
             // 新增状态变量用于控制选项显示
@@ -224,7 +226,8 @@ class SettingViews {
         customTimeDay,
         customTimeHour,
         customTimeMinute,
-        customTimeSecond
+        customTimeSecond,
+        timeZone
                 )
                 loaded.value = true
             }
@@ -288,7 +291,8 @@ class SettingViews {
         customTimeDay,
         customTimeHour,
         customTimeMinute,
-        customTimeSecond
+        customTimeSecond,
+        timeZone
                                 )
                                 settingsViewModel.navController.popBackStack()
                             }) {
@@ -1688,6 +1692,25 @@ ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
             )
         }
         
+        // 时区设置 - 新增
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp)
+                .clickable {
+                    // 导航到时区选择界面
+                    settingsViewModel.navController.navigate("timezone")
+                },
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "Time Zone")
+            Text(
+                text = timeZone.value,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        
         // 自定义时间开关
 Row(
     modifier = Modifier
@@ -2232,7 +2255,8 @@ if (showMemoryConfigDialog.value) {
     customTimeDay,
     customTimeHour,
     customTimeMinute,
-    customTimeSecond
+    customTimeSecond,
+    timeZone
                     )
                     settingsViewModel.navController.popBackStack()
                 }
