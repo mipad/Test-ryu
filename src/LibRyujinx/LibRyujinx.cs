@@ -455,8 +455,8 @@ namespace LibRyujinx
                             long iconOffset = BitConverter.ToInt64(iconSectionInfo, 0);
                             long iconSize = BitConverter.ToInt64(iconSectionInfo, 8);
 
-                            ulong nacpOffset = reader.ReadU64();
-                            ulong nacpSize = reader.ReadU64();
+                            ulong nacpOffset = reader.ReadUInt64();
+                            ulong nacpSize = reader.ReadUInt64();
                             
                             // Reads and stores game icon as byte array
                             if (iconSize > 0)
