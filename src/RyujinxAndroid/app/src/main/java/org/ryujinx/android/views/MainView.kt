@@ -1,8 +1,6 @@
 package org.ryujinx.android.views
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -23,7 +21,6 @@ class MainView {
                 composable("user") { UserViews.Main(mainViewModel) }
                 composable("game") { GameViews.Main() }
                 composable("settings") {
-                    // 移除 timeZone 参数
                     SettingViews.Main(
                         SettingsViewModel(
                             navController,
@@ -47,16 +44,7 @@ class MainView {
                     val gamePath = backStackEntry.arguments?.getString("gamePath") ?: ""
                     CheatsViews(navController, titleId, gamePath)
                 }
-                // 添加时区选择界面导航
-                composable("timezone") {
-                    TimeZoneView(
-                        onBack = { navController.popBackStack() },
-                        onTimeZoneSelected = { selectedTimeZone ->
-                            // 这里需要找到其他方式来更新时区设置
-                            // 可能需要通过 ViewModel 或其他状态管理方式
-                        }
-                    )
-                }
+                // 移除 timezone 路由
             }
         }
     }
