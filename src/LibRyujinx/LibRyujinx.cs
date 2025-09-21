@@ -163,20 +163,17 @@ namespace LibRyujinx
             {
                 _currentTimeZone = timeZone;
                 
+                // 更新配置状态
+                ConfigurationState.Instance.System.TimeZone.Value = timeZone;
+                
+                // 如果设备已初始化，尝试通知系统服务时区已更改
                 if (SwitchDevice?.EmulationContext != null)
                 {
-                    // 更新配置状态
-                    ConfigurationState.Instance.System.TimeZone.Value = timeZone;
-                    
-                    // 通知系统服务时区已更改
-                    SwitchDevice.EmulationContext.System.TimeZone = timeZone;
-                    
-                    Logger.Info?.Print(LogClass.Application, $"Time zone set to: {timeZone}");
+                    // 通过配置状态更新时区，而不是直接访问 Horizon
+                    Logger.Info?.Print(LogClass.Application, $"Time zone set to: {timeZone} (emulation running)");
                 }
                 else
                 {
-                    // 如果模拟器未运行，只更新配置
-                    ConfigurationState.Instance.System.TimeZone.Value = timeZone;
                     Logger.Info?.Print(LogClass.Application, $"Time zone configuration updated to: {timeZone} (emulator not running)");
                 }
             }
@@ -191,14 +188,8 @@ namespace LibRyujinx
         {
             try
             {
-                if (SwitchDevice?.EmulationContext != null)
-                {
-                    return SwitchDevice.EmulationContext.System.TimeZone;
-                }
-                else
-                {
-                    return ConfigurationState.Instance.System.TimeZone.Value;
-                }
+                // 直接返回配置状态中的时区设置
+                return ConfigurationState.Instance.System.TimeZone.Value;
             }
             catch (Exception ex)
             {
