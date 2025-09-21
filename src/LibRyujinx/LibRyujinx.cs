@@ -36,7 +36,8 @@ using System.Collections.Generic;
 using System.Text;
 using Ryujinx.HLE.UI;
 using LibRyujinx.Android;
-using LibHac.Tools.FsSystem; // 添加时区管理器所需的命名空间
+using LibHac.Tools.FsSystem;
+using Ryujinx.HLE.HOS.Services.Time.TimeZone; // 添加时区管理器所需的命名空间
 
 namespace LibRyujinx
 {
@@ -46,6 +47,9 @@ namespace LibRyujinx
 
         private static readonly TitleUpdateMetadataJsonSerializerContext _titleSerializerContext = new(JsonHelper.GetDefaultSerializerOptions());
         public static SwitchDevice? SwitchDevice { get; set; }
+
+        // 添加静态字段来存储配置路径
+        public static string ConfigurationPath { get; set; }
 
         // 添加静态字段来存储画面比例
         private static AspectRatio _currentAspectRatio = AspectRatio.Stretched;
@@ -225,14 +229,14 @@ namespace LibRyujinx
         // 添加设置时区的方法
         public static void SetTimeZone(string timeZone)
         {
-            if (SwitchDevice?.EmulationContext?.TimeManager != null)
+            if (SwitchDevice?.EmulationContext?.System.TimeManager != null)
             {
                 // 设置时区
-                SwitchDevice.EmulationContext.TimeManager.SetTimeZone(timeZone);
+                SwitchDevice.EmulationContext.System.TimeManager.SetTimeZone(timeZone);
                 
                 // 保存到时区配置
                 ConfigurationState.Instance.System.TimeZone.Value = timeZone;
-                ConfigurationState.Instance.ToFileFormat().SaveConfig(Program.ConfigurationPath);
+                ConfigurationState.Instance.ToFileFormat().SaveConfig(ConfigurationPath);
             }
         }
 
