@@ -31,6 +31,7 @@ class MainViewModel(val activity: MainActivity) {
     var isMiiEditorLaunched = false
     val userViewModel = UserViewModel()
     val logging = Logging(this)
+    val timeZoneViewModel = TimeZoneViewModel() // 添加时区ViewModel
     var firmwareVersion = ""
     var fifoState: MutableState<Double>? = null
     var gameFpsState: MutableState<Double>? = null
@@ -169,7 +170,7 @@ class MainViewModel(val activity: MainActivity) {
                     settings.enablePtc,
                     settings.enableJitCacheEviction,
                     false,
-                    "UTC",
+                    settings.timeZone, // 使用设置中的时区而不是硬编码的"UTC"
                     settings.ignoreMissingServices,
                     settings.audioEngineType, // 新增音频引擎参数
                     settings.memoryConfiguration, // 内存配置
@@ -276,7 +277,7 @@ class MainViewModel(val activity: MainActivity) {
                     settings.enablePtc,
                     settings.enableJitCacheEviction,
                     false,
-                    "UTC",
+                    settings.timeZone, // 使用设置中的时区而不是硬编码的"UTC"
                     settings.ignoreMissingServices,
                     settings.audioEngineType, // 新增音频引擎参数
                     settings.memoryConfiguration, // 内存配置
