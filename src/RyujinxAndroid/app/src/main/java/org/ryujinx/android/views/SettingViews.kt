@@ -87,6 +87,8 @@ import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.SettingsViewModel
 import org.ryujinx.android.viewmodels.VulkanDriverViewModel
 import kotlin.concurrent.thread
+import androidx.compose.material3.AlertDialog
+import org.ryujinx.android.viewmodels.TimeZoneViewModel
 
 class SettingViews {
     companion object {
@@ -176,6 +178,9 @@ class SettingViews {
            val customTimeSecond = remember { mutableStateOf(0) }
            // 在状态变量部分添加
            val timeZone = remember { mutableStateOf("UTC") } // 默认时区
+           val timeZoneViewModel = TimeZoneViewModel()
+           
+           val showTimeZoneDialog = remember { mutableStateOf(false) }
 
            val showCustomTimeDialog = remember { mutableStateOf(false) }          
             val showAntiAliasingDialog = remember { mutableStateOf(false) } // 控制抗锯齿对话框显示
@@ -1692,24 +1697,52 @@ ExpandableView(onCardArrowClick = { }, title = "Region & Language") {
             )
         }
         
-        // 时区设置 - 新增
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp)
-                .clickable {
-                    // 导航到时区选择界面
-                    settingsViewModel.navController.navigate("timezone")
-                },
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text = "Time Zone")
-            Text(
-                text = timeZone.value,
-                color = MaterialTheme.colorScheme.primary
-            )
+        // 修改时区设置行
+Row(
+    modifier = Modifier
+        .fillMaxWidth()
+        .padding(8.dp)
+        .clickable { showTimeZoneDialog.value = true }, // 点击显示对话框
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically
+) {
+    Text(text = "Time Zone")
+    Text(
+        text = timeZone.value,
+        color = MaterialTheme.colorScheme.primary
+    )
+}
+
+// 添加时区选择对话框
+if (showTimeZoneDialog.value) {
+    AlertDialog(
+        onDismissRequest = { showTimeZoneDialog.value = false },
+        title = { Text("Select Time Zone") },
+        text = {
+            // 使用 LazyColumn 显示时区列表
+            LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
+                items(timeZoneViewModel.getTimeZoneList()) { tz ->
+                    Text(
+                        text = tz,
+                        modifier = Modifier
+                            .clickable {
+                                timeZoneViewModel.setTimeZone(tz)
+                                timeZone.value = tz
+                                showTimeZoneDialog.value = false
+                            }
+                            .padding(16.dp)
+                            .fillMaxWidth()
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { showTimeZoneDialog.value = false }) {
+                Text("Cancel")
+            }
         }
+    )
+}
         
         // 自定义时间开关
 Row(
