@@ -671,11 +671,11 @@ namespace LibRyujinx
             }
         }
 
-        // 新增：设置时区的JNI方法
-        [UnmanagedCallersOnly(EntryPoint = "deviceSetTimeZone")]
+        // 修改：将EntryPoint从"deviceSetTimeZone"改为"setTimeZone"
+        [UnmanagedCallersOnly(EntryPoint = "setTimeZone")]
         public static void JniSetTimeZone(IntPtr timeZonePtr)
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: deviceSetTimeZone");
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: setTimeZone");
             var timeZone = Marshal.PtrToStringAnsi(timeZonePtr);
             SetTimeZone(timeZone);
         }
