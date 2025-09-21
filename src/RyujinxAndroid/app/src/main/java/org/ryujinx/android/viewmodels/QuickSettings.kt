@@ -33,6 +33,7 @@ class QuickSettings(val activity: Activity) {
     var antiAliasing: Int // 新增：抗锯齿模式 0=None, 1=Fxaa, 2=SmaaLow, 3=SmaaMedium, 4=SmaaHigh, 5=SmaaUltra
     var memoryConfiguration: Int // 新增：内存配置 0=4GB, 1=4GB Applet Dev, 2=4GB System Dev, 3=6GB, 4=6GB Applet Dev, 5=8GB
     var systemTimeOffset: Long // 新增：系统时间偏移（秒）
+    var timeZone: String // 新增：时区设置
     
     // 新增：自定义时间相关字段
     var customTimeEnabled: Boolean // 新增：自定义时间开关
@@ -84,6 +85,7 @@ class QuickSettings(val activity: Activity) {
         antiAliasing = sharedPref.getInt("antiAliasing", 0) // 默认关闭
         memoryConfiguration = sharedPref.getInt("memoryConfiguration", 0) // 默认4GB
         systemTimeOffset = sharedPref.getLong("systemTimeOffset", 0) // 默认0秒偏移
+        timeZone = sharedPref.getString("timeZone", "UTC") ?: "UTC" // 新增：时区设置，默认UTC
         
         // 初始化自定义时间字段
         customTimeEnabled = sharedPref.getBoolean("customTimeEnabled", false)
@@ -134,6 +136,7 @@ class QuickSettings(val activity: Activity) {
         editor.putInt("antiAliasing", antiAliasing) // 保存抗锯齿设置
         editor.putInt("memoryConfiguration", memoryConfiguration) // 保存内存配置
         editor.putLong("systemTimeOffset", systemTimeOffset) // 保存系统时间偏移
+        editor.putString("timeZone", timeZone) // 新增：保存时区设置
         
         // 保存自定义时间字段
         editor.putBoolean("customTimeEnabled", customTimeEnabled)
