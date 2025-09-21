@@ -78,7 +78,7 @@ namespace LibRyujinx.NativeSample
                     false, // ignoreMissingServices
                     1, // audioEngineType (OpenAL)
                     5, // memoryConfiguration (8GiB)
-                    0); // systemTimeOffset (0 seconds)
+                    systemTimeOffset); // systemTimeOffset (0 seconds)
                 
                 LibRyujinxInterop.InitializeInput(ClientSize.X, ClientSize.Y);
                 Marshal.FreeHGlobal(timeZone);
