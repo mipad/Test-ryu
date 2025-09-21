@@ -157,19 +157,68 @@ namespace LibRyujinx
         public static string[] GetTimeZoneList()
         {
             if (SwitchDevice?.VirtualFileSystem == null || SwitchDevice.ContentManager == null)
+            {
+                Logger.Warning?.Print(LogClass.Application, "VirtualFileSystem or ContentManager not initialized, returning default UTC timezone");
                 return new[] { "UTC" };
+            }
 
             try
             {
                 // 获取TimeZoneContentManager实例
                 var timeZoneManager = new TimeZoneContentManager();
-                timeZoneManager.InitializeInstance(SwitchDevice.VirtualFileSystem, SwitchDevice.ContentManager, IntegrityCheckLevel.None);
-                return timeZoneManager.LocationNameCache;
+                
+                // 使用虚拟文件系统和内容管理器初始化实例
+                timeZoneManager.InitializeInstance(
+                    SwitchDevice.VirtualFileSystem,
+                    SwitchDevice.ContentManager,
+                    IntegrityCheckLevel.None
+                );
+                
+                // 检查是否有时区二进制标题
+                if (!timeZoneManager.HasTimeZoneBinaryTitle())
+                {
+                    Logger.Warning?.Print(LogClass.Application, "TimeZoneBinary system title not found in firmware");
+                    return new[] { "UTC" };
+                }
+                
+                // 返回时区位置名称缓存
+                return timeZoneManager.LocationNameCache ?? new[] { "UTC" };
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Failed to get time zone list: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Failed to get time zone list from firmware: {ex.Message}");
                 return new[] { "UTC" };
+            }
+        }
+
+        // 添加一个方法来获取带有时区偏移量的详细信息
+        public static List<(int Offset, string Location, string Abbr)> GetTimeZoneOffsets()
+        {
+            var result = new List<(int, string, string)>();
+            
+            if (SwitchDevice?.VirtualFileSystem == null || SwitchDevice.ContentManager == null)
+            {
+                Logger.Warning?.Print(LogClass.Application, "VirtualFileSystem or ContentManager not initialized");
+                result.Add((0, "UTC", "UTC"));
+                return result;
+            }
+
+            try
+            {
+                var timeZoneManager = new TimeZoneContentManager();
+                timeZoneManager.InitializeInstance(
+                    SwitchDevice.VirtualFileSystem,
+                    SwitchDevice.ContentManager,
+                    IntegrityCheckLevel.None
+                );
+                
+                return timeZoneManager.ParseTzOffsets().ToList();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Failed to get time zone offsets: {ex.Message}");
+                result.Add((0, "UTC", "UTC"));
+                return result;
             }
         }
 
@@ -395,9 +444,9 @@ namespace LibRyujinx
                             long iconOffset = BitConverter.ToInt64(iconSectionInfo, 0);
                             long iconSize = BitConverter.ToInt64(iconSectionInfo, 8);
 
-                            ulong nacpOffset = reader.ReadUInt64();
-                            ulong nacpSize = reader.ReadUInt64();
-                            
+                            ulong nacpOffset = reader.ReadU64();
+                            ulong nacpSize = reader.ReadU64();
+
                             // Reads and stores game icon as byte array
                             if (iconSize > 0)
                             {
