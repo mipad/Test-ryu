@@ -36,6 +36,7 @@ using System.Collections.Generic;
 using System.Text;
 using Ryujinx.HLE.UI;
 using LibRyujinx.Android;
+using LibHac.Tools.FsSystem; // 添加时区管理器所需的命名空间
 
 namespace LibRyujinx
 {
@@ -150,6 +151,46 @@ namespace LibRyujinx
         public static long GetSystemTimeOffset()
         {
             return _systemTimeOffset;
+        }
+
+        // 添加获取时区列表的方法
+        public static string[] GetTimeZoneList()
+        {
+            if (SwitchDevice?.VirtualFileSystem == null || SwitchDevice.ContentManager == null)
+                return new[] { "UTC" };
+
+            try
+            {
+                // 获取TimeZoneContentManager实例
+                var timeZoneManager = new TimeZoneContentManager();
+                timeZoneManager.InitializeInstance(SwitchDevice.VirtualFileSystem, SwitchDevice.ContentManager, IntegrityCheckLevel.None);
+                return timeZoneManager.LocationNameCache;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Failed to get time zone list: {ex.Message}");
+                return new[] { "UTC" };
+            }
+        }
+
+        // 添加设置时区的方法
+        public static void SetTimeZone(string timeZone)
+        {
+            if (SwitchDevice?.EmulationContext?.TimeManager != null)
+            {
+                // 设置时区
+                SwitchDevice.EmulationContext.TimeManager.SetTimeZone(timeZone);
+                
+                // 保存到时区配置
+                ConfigurationState.Instance.System.TimeZone.Value = timeZone;
+                ConfigurationState.Instance.ToFileFormat().SaveConfig(Program.ConfigurationPath);
+            }
+        }
+
+        // 添加获取当前时区的方法
+        public static string GetCurrentTimeZone()
+        {
+            return ConfigurationState.Instance.System.TimeZone.Value;
         }
 
         public static void InitializeAudio()
@@ -354,8 +395,8 @@ namespace LibRyujinx
                             long iconOffset = BitConverter.ToInt64(iconSectionInfo, 0);
                             long iconSize = BitConverter.ToInt64(iconSectionInfo, 8);
 
-                            ulong nacpOffset = reader.ReadUInt64();
-                            ulong nacpSize = reader.ReadUInt64();
+                            ulong nacpOffset = reader.ReadU64();
+                            ulong nacpSize = reader.ReadU64();
 
                             // Reads and stores game icon as byte array
                             if (iconSize > 0)
