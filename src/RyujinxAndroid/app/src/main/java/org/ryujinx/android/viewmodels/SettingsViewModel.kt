@@ -80,6 +80,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         antiAliasing: MutableState<Int>, // 新增：抗锯齿模式
         memoryConfiguration: MutableState<Int>, // 新增：内存配置
         systemTimeOffset: MutableState<Long>, // 新增：系统时间偏移
+        timeZone: MutableState<String>, // 新增：时区设置
         customTimeEnabled: MutableState<Boolean>,
         customTimeYear: MutableState<Int>,
         customTimeMonth: MutableState<Int>,
@@ -116,6 +117,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         antiAliasing.value = sharedPref.getInt("antiAliasing", 0) // 默认关闭
         memoryConfiguration.value = sharedPref.getInt("memoryConfiguration", 0) // 默认4GB
         systemTimeOffset.value = sharedPref.getLong("systemTimeOffset", 0) // 默认0秒偏移
+        timeZone.value = sharedPref.getString("timeZone", "UTC") ?: "UTC" // 新增：时区设置，默认UTC
         
         // 初始化自定义时间设置
         customTimeEnabled.value = sharedPref.getBoolean("customTimeEnabled", false)
@@ -173,6 +175,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         antiAliasing: MutableState<Int>, // 新增：抗锯齿模式
         memoryConfiguration: MutableState<Int>, // 新增：内存配置
         systemTimeOffset: MutableState<Long>, // 新增：系统时间偏移
+        timeZone: MutableState<String>, // 新增：时区设置
         customTimeEnabled: MutableState<Boolean>,
         customTimeYear: MutableState<Int>,
         customTimeMonth: MutableState<Int>,
@@ -209,6 +212,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.putInt("antiAliasing", antiAliasing.value) // 保存抗锯齿设置
         editor.putInt("memoryConfiguration", memoryConfiguration.value) // 保存内存配置
         editor.putLong("systemTimeOffset", systemTimeOffset.value) // 保存系统时间偏移
+        editor.putString("timeZone", timeZone.value) // 新增：保存时区设置
         
         // 保存自定义时间设置
         editor.putBoolean("customTimeEnabled", customTimeEnabled.value)
@@ -247,6 +251,9 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
 
         // 设置内存配置
         RyujinxNative.jnaInstance.setMemoryConfiguration(memoryConfiguration.value)
+
+        // 设置时区
+        RyujinxNative.jnaInstance.setTimeZone(timeZone.value)
 
         // 计算并设置系统时间偏移
         if (customTimeEnabled.value) {
