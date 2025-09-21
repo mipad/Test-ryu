@@ -1,6 +1,8 @@
 package org.ryujinx.android.views
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -15,6 +17,9 @@ class MainView {
         fun Main(mainViewModel: MainViewModel) {
             val navController = rememberNavController()
             mainViewModel.navController = navController
+            
+            // 添加时区状态
+            val timeZone = remember { mutableStateOf("UTC") }
 
             NavHost(navController = navController, startDestination = "home") {
                 composable("home") { HomeViews.Home(mainViewModel.homeViewModel, navController) }
@@ -25,7 +30,8 @@ class MainView {
                         SettingsViewModel(
                             navController,
                             mainViewModel.activity
-                        ), mainViewModel
+                        ), mainViewModel,
+                        timeZone // 传递时区状态
                     )
                 }
                 // 添加金手指界面导航，包含 titleId 和 gamePath 参数
@@ -43,6 +49,15 @@ class MainView {
                     val titleId = backStackEntry.arguments?.getString("titleId") ?: ""
                     val gamePath = backStackEntry.arguments?.getString("gamePath") ?: ""
                     CheatsViews(navController, titleId, gamePath)
+                }
+                // 添加时区选择界面导航
+                composable("timezone") {
+                    TimeZoneView(
+                        onBack = { navController.popBackStack() },
+                        onTimeZoneSelected = { selectedTimeZone ->
+                            timeZone.value = selectedTimeZone
+                        }
+                    )
                 }
             }
         }
