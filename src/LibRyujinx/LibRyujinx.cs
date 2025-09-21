@@ -37,7 +37,8 @@ using System.Text;
 using Ryujinx.HLE.UI;
 using LibRyujinx.Android;
 using LibHac.Tools.FsSystem;
-using Ryujinx.HLE.HOS.Services.Time.TimeZone; // 添加时区管理器所需的命名空间
+using Ryujinx.HLE.HOS.Services.Time.TimeZone;
+using Ryujinx.HLE.HOS.Services.Time; // 添加 TimeManager 的命名空间
 
 namespace LibRyujinx
 {
@@ -229,14 +230,20 @@ namespace LibRyujinx
         // 添加设置时区的方法
         public static void SetTimeZone(string timeZone)
         {
-            if (SwitchDevice?.EmulationContext?.System.TimeManager != null)
+            // 使用 TimeManager 的单例实例而不是通过 Horizon 访问
+            var timeManager = TimeManager.Instance;
+            if (timeManager != null)
             {
                 // 设置时区
-                SwitchDevice.EmulationContext.System.TimeManager.SetTimeZone(timeZone);
+                timeManager.SetTimeZone(timeZone);
                 
                 // 保存到时区配置
                 ConfigurationState.Instance.System.TimeZone.Value = timeZone;
                 ConfigurationState.Instance.ToFileFormat().SaveConfig(ConfigurationPath);
+            }
+            else
+            {
+                Logger.Error?.Print(LogClass.Application, "TimeManager instance is not available");
             }
         }
 
@@ -448,8 +455,8 @@ namespace LibRyujinx
                             long iconOffset = BitConverter.ToInt64(iconSectionInfo, 0);
                             long iconSize = BitConverter.ToInt64(iconSectionInfo, 8);
 
-                            ulong nacpOffset = reader.ReadUInt64();
-                            ulong nacpSize = reader.ReadUInt64();
+                            ulong nacpOffset = reader.ReadU64();
+                            ulong nacpSize = reader.ReadU64();
                             
                             // Reads and stores game icon as byte array
                             if (iconSize > 0)
