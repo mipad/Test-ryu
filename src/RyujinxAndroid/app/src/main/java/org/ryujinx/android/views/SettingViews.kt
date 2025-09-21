@@ -1219,7 +1219,7 @@ Row(
                         shape = RectangleShape
                     )
             )
-        },
+        }
         track = { active ->
             // 圆角矩形轨道
             Box(
