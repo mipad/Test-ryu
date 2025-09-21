@@ -15,21 +15,17 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import org.ryujinx.android.viewmodels.TimeZoneViewModel
+import org.ryujinx.android.RyujinxNative
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TimeZoneView(onBack: () -> Unit, onTimeZoneSelected: (String) -> Unit) {
-    val viewModel: TimeZoneViewModel = viewModel()
-    val timeZones by remember { mutableStateOf(viewModel.getTimeZoneList()) }
-    val currentTimeZone by remember { mutableStateOf(viewModel.getCurrentTimeZone()) }
+    val timeZones = remember { mutableStateOf(RyujinxNative.getTimeZoneList()) }
+    val currentTimeZone = remember { mutableStateOf(RyujinxNative.getCurrentTimeZone()) }
 
     Scaffold(
         topBar = {
@@ -45,12 +41,12 @@ fun TimeZoneView(onBack: () -> Unit, onTimeZoneSelected: (String) -> Unit) {
     ) { paddingValues ->
         Column(modifier = Modifier.padding(paddingValues)) {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(timeZones) { timeZone ->
+                items(timeZones.value) { timeZone ->
                     Text(
                         text = timeZone,
                         modifier = Modifier
                             .clickable {
-                                viewModel.setTimeZone(timeZone)
+                                RyujinxNative.setTimeZone(timeZone)
                                 onTimeZoneSelected(timeZone)
                                 onBack()
                             }
