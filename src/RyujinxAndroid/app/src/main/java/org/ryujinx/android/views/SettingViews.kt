@@ -192,40 +192,41 @@ class SettingViews {
             val showMemoryConfigDialog = remember { mutableStateOf(false) } // 控制内存配置对话框显示
             
 
-            if (!loaded.value) {
-                settingsViewModel.initializeState(
-                    isHostMapped,
-                    useNce,
-                    enableVsync, enableDocked, enablePtc, enableJitCacheEviction, ignoreMissingServices,
-                    enableShaderCache,
-                    enableTextureRecompression,
-                    resScale,
-                    aspectRatio, // 新增参数
-                    useVirtualController,
-                    isGrid,
-                    useSwitchLayout,
-                    enableMotion,
-                    enablePerformanceMode,
-                    controllerStickSensitivity,
-                    enableDebugLogs,
-                    enableStubLogs,
-                    enableInfoLogs,
-                    enableWarningLogs,
-                    enableErrorLogs,
-                    enableGuestLogs,
-                    enableAccessLogs,
-                    enableTraceLogs,
-                    enableGraphicsLogs,
-                    skipMemoryBarriers, // 新增参数
-                    regionCode, // 新增参数
-                    systemLanguage, // 新增参数
-                    audioEngineType, // 新增参数
-                    scalingFilter, // 新增：缩放过滤器
-                    scalingFilterLevel, // 新增：缩放过滤器级别
-                    antiAliasing, // 新增：抗锯齿模式
-                    memoryConfiguration, // 新增DRAM参数
-                    systemTimeOffset,
-                    customTimeEnabled,
+            // 在 initializeState 调用处
+if (!loaded.value) {
+    settingsViewModel.initializeState(
+        isHostMapped,
+        useNce,
+        enableVsync, enableDocked, enablePtc, enableJitCacheEviction, ignoreMissingServices,
+        enableShaderCache,
+        enableTextureRecompression,
+        resScale,
+        aspectRatio,
+        useVirtualController,
+        isGrid,
+        useSwitchLayout,
+        enableMotion,
+        enablePerformanceMode,
+        controllerStickSensitivity,
+        enableDebugLogs,
+        enableStubLogs,
+        enableInfoLogs,
+        enableWarningLogs,
+        enableErrorLogs,
+        enableGuestLogs,
+        enableAccessLogs,
+        enableTraceLogs,
+        enableGraphicsLogs,
+        skipMemoryBarriers,
+        regionCode,
+        systemLanguage,
+        audioEngineType,
+        scalingFilter,
+        scalingFilterLevel,
+        antiAliasing,
+        memoryConfiguration,
+        systemTimeOffset,
+        customTimeEnabled,
         customTimeYear,
         customTimeMonth,
         customTimeDay,
@@ -233,9 +234,9 @@ class SettingViews {
         customTimeMinute,
         customTimeSecond,
         timeZone
-                )
-                loaded.value = true
-            }
+    )
+    loaded.value = true
+}
             
             // 当NCE状态改变时，自动设置JIT Cache Eviction的状态
             if (useNce.value) {
@@ -254,43 +255,43 @@ class SettingViews {
                         modifier = Modifier.padding(top = 16.dp),
                         navigationIcon = {
                             IconButton(onClick = {
-                                settingsViewModel.save(
-                                    isHostMapped,
-                                    useNce,
-                                    enableVsync,
-                                    enableDocked,
-                                    enablePtc,
-                                    enableJitCacheEviction,
-                                    ignoreMissingServices,
-                                    enableShaderCache,
-                                    enableTextureRecompression,
-                                    resScale,
-                    aspectRatio, // 新增参数
-                    useVirtualController,
-                    isGrid,
-                    useSwitchLayout,
-                    enableMotion,
-                    enablePerformanceMode,
-                    controllerStickSensitivity,
-                    enableDebugLogs,
-                    enableStubLogs,
-                    enableInfoLogs,
-                    enableWarningLogs,
-                    enableErrorLogs,
-                    enableGuestLogs,
-                    enableAccessLogs,
-                    enableTraceLogs,
-                    enableGraphicsLogs,
-                    skipMemoryBarriers, // 新增参数
-                    regionCode, // 新增参数
-                    systemLanguage, // 新增参数
-                    audioEngineType, // 新增参数
-                    scalingFilter, // 新增：缩放过滤器
-                    scalingFilterLevel, // 新增：缩放过滤器级别
-                    antiAliasing, // 新增：抗锯齿模式
-                    memoryConfiguration, // 新增DRAM参数
-                    systemTimeOffset,
-                    customTimeEnabled,
+    settingsViewModel.save(
+        isHostMapped,
+        useNce,
+        enableVsync,
+        enableDocked,
+        enablePtc,
+        enableJitCacheEviction,
+        ignoreMissingServices,
+        enableShaderCache,
+        enableTextureRecompression,
+        resScale,
+        aspectRatio,
+        useVirtualController,
+        isGrid,
+        useSwitchLayout,
+        enableMotion,
+        enablePerformanceMode,
+        controllerStickSensitivity,
+        enableDebugLogs,
+        enableStubLogs,
+        enableInfoLogs,
+        enableWarningLogs,
+        enableErrorLogs,
+        enableGuestLogs,
+        enableAccessLogs,
+        enableTraceLogs,
+        enableGraphicsLogs,
+        skipMemoryBarriers,
+        regionCode,
+        systemLanguage,
+        audioEngineType,
+        scalingFilter,
+        scalingFilterLevel,
+        antiAliasing,
+        memoryConfiguration,
+        systemTimeOffset,
+        customTimeEnabled,
         customTimeYear,
         customTimeMonth,
         customTimeDay,
@@ -298,11 +299,11 @@ class SettingViews {
         customTimeMinute,
         customTimeSecond,
         timeZone
-                                )
-                                settingsViewModel.navController.popBackStack()
-                            }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                            }
+    )
+    settingsViewModel.navController.popBackStack()
+}) {
+    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+}
                         })
                 }) { contentPadding ->
                 Column(
@@ -1713,7 +1714,7 @@ Row(
     )
 }
 
-// 添加时区选择对话框
+// 修改时区对话框部分
 if (showTimeZoneDialog.value) {
     AlertDialog(
         onDismissRequest = { showTimeZoneDialog.value = false },
@@ -1721,7 +1722,9 @@ if (showTimeZoneDialog.value) {
         text = {
             // 使用 LazyColumn 显示时区列表
             LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
-                items(timeZoneViewModel.getTimeZoneList()) { tz ->
+                val timeZones = timeZoneViewModel.getTimeZoneList()
+                items(timeZones.size) { index ->
+                    val tz = timeZones[index]
                     Text(
                         text = tz,
                         modifier = Modifier
@@ -2251,48 +2254,53 @@ if (showMemoryConfigDialog.value) {
                 }
 
                 BackHandler {
-                    settingsViewModel.save(
-                        isHostMapped,
-                        useNce, enableVsync, enableDocked, enablePtc, enableJitCacheEviction, ignoreMissingServices,
-                        enableShaderCache,
-                        enableTextureRecompression,
-                        resScale,
-                        aspectRatio, // 新增参数
-                        useVirtualController,
-                        isGrid,
-                        useSwitchLayout,
-                        enableMotion,
-                        enablePerformanceMode,
-                        controllerStickSensitivity,
-                        enableDebugLogs,
-                        enableStubLogs,
-                        enableInfoLogs,
-                        enableWarningLogs,
-                        enableErrorLogs,
-                        enableGuestLogs,
-                        enableAccessLogs,
-                        enableTraceLogs,
-                        enableGraphicsLogs,
-                        skipMemoryBarriers, // 新增参数
-                        regionCode, // 新增参数
-                        systemLanguage, // 新增参数
-                        audioEngineType, // 新增参数
-                        scalingFilter, // 新增：缩放过滤器
-                        scalingFilterLevel, // 新增：缩放过滤器级别
-                        antiAliasing, // 新增：抗锯齿模式
-                        memoryConfiguration, // 新增DRAM参数
-                        systemTimeOffset,
-                        customTimeEnabled,
-    customTimeYear,
-    customTimeMonth,
-    customTimeDay,
-    customTimeHour,
-    customTimeMinute,
-    customTimeSecond,
-    timeZone
-                    )
-                    settingsViewModel.navController.popBackStack()
-                }
+    settingsViewModel.save(
+        isHostMapped,
+        useNce,
+        enableVsync,
+        enableDocked,
+        enablePtc,
+        enableJitCacheEviction,
+        ignoreMissingServices,
+        enableShaderCache,
+        enableTextureRecompression,
+        resScale,
+        aspectRatio,
+        useVirtualController,
+        isGrid,
+        useSwitchLayout,
+        enableMotion,
+        enablePerformanceMode,
+        controllerStickSensitivity,
+        enableDebugLogs,
+        enableStubLogs,
+        enableInfoLogs,
+        enableWarningLogs,
+        enableErrorLogs,
+        enableGuestLogs,
+        enableAccessLogs,
+        enableTraceLogs,
+        enableGraphicsLogs,
+        skipMemoryBarriers,
+        regionCode,
+        systemLanguage,
+        audioEngineType,
+        scalingFilter,
+        scalingFilterLevel,
+        antiAliasing,
+        memoryConfiguration,
+        systemTimeOffset,
+        customTimeEnabled,
+        customTimeYear,
+        customTimeMonth,
+        customTimeDay,
+        customTimeHour,
+        customTimeMinute,
+        customTimeSecond,
+        timeZone
+    )
+    settingsViewModel.navController.popBackStack()
+}
             }
         }
 
