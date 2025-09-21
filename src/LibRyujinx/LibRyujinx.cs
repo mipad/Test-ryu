@@ -36,9 +36,7 @@ using System.Collections.Generic;
 using System.Text;
 using Ryujinx.HLE.UI;
 using LibRyujinx.Android;
-using LibHac.Tools.FsSystem;
-using Ryujinx.HLE.HOS.Services.Time.TimeZone;
-using Ryujinx.HLE.HOS.Services.Time; // 添加 TimeManager 的命名空间
+using System.Collections.ObjectModel;
 
 namespace LibRyujinx
 {
@@ -49,9 +47,6 @@ namespace LibRyujinx
         private static readonly TitleUpdateMetadataJsonSerializerContext _titleSerializerContext = new(JsonHelper.GetDefaultSerializerOptions());
         public static SwitchDevice? SwitchDevice { get; set; }
 
-        // 添加静态字段来存储配置路径
-        public static string ConfigurationPath { get; set; }
-
         // 添加静态字段来存储画面比例
         private static AspectRatio _currentAspectRatio = AspectRatio.Stretched;
 
@@ -60,6 +55,9 @@ namespace LibRyujinx
 
         // 添加静态字段来存储系统时间偏移
         private static long _systemTimeOffset = 0;
+
+        // 添加静态字段来存储当前时区
+        private static string _currentTimeZone = "UTC";
 
         public static bool Initialize(string? basePath)
         {
@@ -158,99 +156,77 @@ namespace LibRyujinx
             return _systemTimeOffset;
         }
 
-        // 添加获取时区列表的方法
-        public static string[] GetTimeZoneList()
-        {
-            if (SwitchDevice?.VirtualFileSystem == null || SwitchDevice.ContentManager == null)
-            {
-                Logger.Warning?.Print(LogClass.Application, "VirtualFileSystem or ContentManager not initialized, returning default UTC timezone");
-                return new[] { "UTC" };
-            }
-
-            try
-            {
-                // 获取TimeZoneContentManager实例
-                var timeZoneManager = new TimeZoneContentManager();
-                
-                // 使用虚拟文件系统和内容管理器初始化实例
-                timeZoneManager.InitializeInstance(
-                    SwitchDevice.VirtualFileSystem,
-                    SwitchDevice.ContentManager,
-                    IntegrityCheckLevel.None
-                );
-                
-                // 检查是否有时区二进制标题
-                if (!timeZoneManager.HasTimeZoneBinaryTitle())
-                {
-                    Logger.Warning?.Print(LogClass.Application, "TimeZoneBinary system title not found in firmware");
-                    return new[] { "UTC" };
-                }
-                
-                // 返回时区位置名称缓存
-                return timeZoneManager.LocationNameCache ?? new[] { "UTC" };
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.Application, $"Failed to get time zone list from firmware: {ex.Message}");
-                return new[] { "UTC" };
-            }
-        }
-
-        // 添加一个方法来获取带有时区偏移量的详细信息
-        public static List<(int Offset, string Location, string Abbr)> GetTimeZoneOffsets()
-        {
-            var result = new List<(int, string, string)>();
-            
-            if (SwitchDevice?.VirtualFileSystem == null || SwitchDevice.ContentManager == null)
-            {
-                Logger.Warning?.Print(LogClass.Application, "VirtualFileSystem or ContentManager not initialized");
-                result.Add((0, "UTC", "UTC"));
-                return result;
-            }
-
-            try
-            {
-                var timeZoneManager = new TimeZoneContentManager();
-                timeZoneManager.InitializeInstance(
-                    SwitchDevice.VirtualFileSystem,
-                    SwitchDevice.ContentManager,
-                    IntegrityCheckLevel.None
-                );
-                
-                return timeZoneManager.ParseTzOffsets().ToList();
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.Application, $"Failed to get time zone offsets: {ex.Message}");
-                result.Add((0, "UTC", "UTC"));
-                return result;
-            }
-        }
-
         // 添加设置时区的方法
         public static void SetTimeZone(string timeZone)
         {
-            // 使用 TimeManager 的单例实例而不是通过 Horizon 访问
-            var timeManager = TimeManager.Instance;
-            if (timeManager != null)
+            try
             {
-                // 设置时区
-                timeManager.SetTimeZone(timeZone);
+                _currentTimeZone = timeZone;
                 
-                // 保存到时区配置
-                ConfigurationState.Instance.System.TimeZone.Value = timeZone;
-                ConfigurationState.Instance.ToFileFormat().SaveConfig(ConfigurationPath);
+                if (SwitchDevice?.EmulationContext != null)
+                {
+                    // 更新配置状态
+                    ConfigurationState.Instance.System.TimeZone.Value = timeZone;
+                    
+                    // 通知系统服务时区已更改
+                    SwitchDevice.EmulationContext.System.TimeZone = timeZone;
+                    
+                    Logger.Info?.Print(LogClass.Application, $"Time zone set to: {timeZone}");
+                }
+                else
+                {
+                    // 如果模拟器未运行，只更新配置
+                    ConfigurationState.Instance.System.TimeZone.Value = timeZone;
+                    Logger.Info?.Print(LogClass.Application, $"Time zone configuration updated to: {timeZone} (emulator not running)");
+                }
             }
-            else
+            catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, "TimeManager instance is not available");
+                Logger.Error?.Print(LogClass.Application, $"Failed to set time zone: {ex.Message}");
             }
         }
 
         // 添加获取当前时区的方法
         public static string GetCurrentTimeZone()
         {
-            return ConfigurationState.Instance.System.TimeZone.Value;
+            try
+            {
+                if (SwitchDevice?.EmulationContext != null)
+                {
+                    return SwitchDevice.EmulationContext.System.TimeZone;
+                }
+                else
+                {
+                    return ConfigurationState.Instance.System.TimeZone.Value;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Failed to get current time zone: {ex.Message}");
+                return "UTC";
+            }
+        }
+
+        // 添加获取时区列表的方法
+        public static IReadOnlyCollection<string> GetTimeZoneList()
+        {
+            // 返回常见的时区列表
+            return new ReadOnlyCollection<string>(new List<string>
+            {
+                "UTC",
+                "America/New_York",
+                "America/Chicago",
+                "America/Denver",
+                "America/Los_Angeles",
+                "Europe/London",
+                "Europe/Paris",
+                "Europe/Berlin",
+                "Asia/Tokyo",
+                "Asia/Shanghai",
+                "Asia/Seoul",
+                "Australia/Sydney"
+                // 可以根据需要添加更多时区
+            });
         }
 
         public static void InitializeAudio()
@@ -457,7 +433,7 @@ namespace LibRyujinx
 
                             ulong nacpOffset = reader.ReadUInt64();
                             ulong nacpSize = reader.ReadUInt64();
-                            
+
                             // Reads and stores game icon as byte array
                             if (iconSize > 0)
                             {
