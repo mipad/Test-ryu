@@ -1233,7 +1233,7 @@ Row(
                     )
             )
         }
-        }
+    )
 }
 
 // 抗锯齿选择对话框
@@ -2448,4 +2448,4 @@ if (showMemoryConfigDialog.value) {
             }
         }
     }
-}
+}}
