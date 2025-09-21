@@ -1200,7 +1200,7 @@ ExpandableView(onCardArrowClick = { }, title = "Post-Processing") {
                     scalingFilterLevel.value = newValue.toInt()
                 },
                 valueRange = 0f..100f,
-                steps = 20,
+                steps = 99,
                 modifier = Modifier.fillMaxWidth()
             )
         }
