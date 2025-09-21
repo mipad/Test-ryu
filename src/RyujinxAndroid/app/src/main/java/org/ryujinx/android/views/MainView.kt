@@ -17,21 +17,18 @@ class MainView {
         fun Main(mainViewModel: MainViewModel) {
             val navController = rememberNavController()
             mainViewModel.navController = navController
-            
-            // 添加时区状态
-            val timeZone = remember { mutableStateOf("UTC") }
 
             NavHost(navController = navController, startDestination = "home") {
                 composable("home") { HomeViews.Home(mainViewModel.homeViewModel, navController) }
                 composable("user") { UserViews.Main(mainViewModel) }
                 composable("game") { GameViews.Main() }
                 composable("settings") {
+                    // 移除 timeZone 参数
                     SettingViews.Main(
                         SettingsViewModel(
                             navController,
                             mainViewModel.activity
-                        ), mainViewModel,
-                        timeZone // 传递时区状态
+                        ), mainViewModel
                     )
                 }
                 // 添加金手指界面导航，包含 titleId 和 gamePath 参数
@@ -55,7 +52,8 @@ class MainView {
                     TimeZoneView(
                         onBack = { navController.popBackStack() },
                         onTimeZoneSelected = { selectedTimeZone ->
-                            timeZone.value = selectedTimeZone
+                            // 这里需要找到其他方式来更新时区设置
+                            // 可能需要通过 ViewModel 或其他状态管理方式
                         }
                     )
                 }
