@@ -62,6 +62,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -1172,39 +1174,66 @@ ExpandableView(onCardArrowClick = { }, title = "Post-Processing") {
         }
         
         // Scaling Filter Level 设置
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text = "Scaling Filter Level")
-            Text(
-                text = "${scalingFilterLevel.value}%",
-                color = MaterialTheme.colorScheme.primary
+Row(
+    modifier = Modifier
+        .fillMaxWidth()
+        .padding(8.dp),
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically
+) {
+    Text(text = "Scaling Filter Level")
+    Text(
+        text = "${scalingFilterLevel.value}%",
+        color = MaterialTheme.colorScheme.primary
+    )
+}
+
+// 滑动条 - 修改后的版本
+Row(
+    modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 16.dp, vertical = 8.dp),
+    horizontalArrangement = Arrangement.Center,
+    verticalAlignment = Alignment.CenterVertically
+) {
+    androidx.compose.material3.Slider(
+        value = scalingFilterLevel.value.toFloat(),
+        onValueChange = { newValue ->
+            scalingFilterLevel.value = newValue.toInt()
+        },
+        valueRange = 0f..100f,
+        steps = 100, // 步进改为1 (0-100共101个值，steps=100表示有100个间隔)
+        modifier = Modifier.fillMaxWidth(),
+        colors = SliderDefaults.colors(
+            thumbColor = MaterialTheme.colorScheme.primary,
+            activeTrackColor = MaterialTheme.colorScheme.primary,
+            inactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+        ),
+        thumb = {
+            // 竖线滑块
+            Box(
+                modifier = Modifier
+                    .size(width = 2.dp, height = 20.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = RectangleShape
+                    )
+            )
+        },
+        track = { active ->
+            // 圆角矩形轨道
+            Box(
+                modifier = Modifier
+                    .height(6.dp)
+                    .fillMaxWidth()
+                    .background(
+                        color = if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
+                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                        shape = RoundedCornerShape(3.dp)
+                    )
             )
         }
-        
-        // 滑动条
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            androidx.compose.material3.Slider(
-                value = scalingFilterLevel.value.toFloat(),
-                onValueChange = { newValue ->
-                    scalingFilterLevel.value = newValue.toInt()
-                },
-                valueRange = 0f..100f,
-                steps = 99,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-    }
+    )
 }
 
 // 抗锯齿选择对话框
