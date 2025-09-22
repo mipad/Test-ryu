@@ -28,6 +28,51 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                     }
                 }
 
+                // ===== 缓冲区溢出恢复机制开始 =====
+                // 当已获取的缓冲区数量超过最大允许数量时，尝试恢复
+                if (numAcquiredBuffers > Core.MaxAcquiredBufferCount)
+                {
+                    Logger.Warning?.Print(LogClass.SurfaceFlinger, 
+                        $"Buffer overflow detected: {numAcquiredBuffers}/{Core.MaxAcquiredBufferCount}, attempting recovery");
+                    
+                    // 寻找最旧的已获取缓冲区进行释放
+                    int oldestSlot = -1;
+                    ulong oldestFrameNumber = ulong.MaxValue;
+                    
+                    for (int i = 0; i < Core.Slots.Length; i++)
+                    {
+                        if (Core.Slots[i].BufferState == BufferState.Acquired && 
+                            Core.Slots[i].FrameNumber < oldestFrameNumber)
+                        {
+                            oldestSlot = i;
+                            oldestFrameNumber = Core.Slots[i].FrameNumber;
+                        }
+                    }
+                    
+                    // 如果找到最旧的缓冲区，则释放它
+                    if (oldestSlot != -1)
+                    {
+                        Core.Slots[oldestSlot].BufferState = BufferState.Free;
+                        Core.Slots[oldestSlot].FrameNumber = 0;
+                        Core.Slots[oldestSlot].Fence = AndroidFence.NoFence;
+                        
+                        Logger.Warning?.Print(LogClass.SurfaceFlinger, 
+                            $"Recovered by releasing buffer in slot {oldestSlot}");
+                        
+                        // 重新计算已获取缓冲区数量
+                        numAcquiredBuffers = 0;
+                        for (int i = 0; i < Core.MaxBufferCountCached; i++)
+                        {
+                            if (Core.Slots[i].BufferState == BufferState.Acquired)
+                            {
+                                numAcquiredBuffers++;
+                            }
+                        }
+                    }
+                }
+                // ===== 缓冲区溢出恢复机制结束 =====
+
+                // 检查恢复后是否仍然超过最大限制
                 if (numAcquiredBuffers > Core.MaxAcquiredBufferCount)
                 {
                     bufferItem = null;
