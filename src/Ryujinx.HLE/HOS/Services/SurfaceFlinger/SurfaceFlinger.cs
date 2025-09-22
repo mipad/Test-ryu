@@ -129,7 +129,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 {
                     ProducerBinderId = HOSBinderDriverServer.RegisterBinderObject(producer),
                     Producer = producer,
-                    Consumer = new BufferItemConsumer(_device, consumer, 0, -1, false, this),
+                    Consumer = new BufferItemConsumer(_device, consumer, 0, 2, false, this), // 将缓冲区数量从-1改为2，允许同时处理更多缓冲区
                     Core = core,
                     Owner = pid,
                     State = initialState,
@@ -385,10 +385,124 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
                     PostFrameBuffer(layer, item);
                 }
-                else if (acquireStatus != Status.NoBufferAvailaible && acquireStatus != Status.InvalidOperation)
+                else if (acquireStatus == Status.InvalidOperation)
                 {
-                    throw new InvalidOperationException();
+                    // 新增：处理缓冲区数量超过限制的情况
+                    Logger.Warning?.Print(LogClass.SurfaceFlinger, 
+                        $"AcquireBuffer failed: Max acquired buffer count reached. Attempting to recover...");
+                    
+                    // 尝试强制释放一个缓冲区来恢复
+                    if (TryRecoverFromBufferOverflow(layer))
+                    {
+                        // 恢复成功后重试获取缓冲区
+                        acquireStatus = layer.Consumer.AcquireBuffer(out item, 0);
+                        if (acquireStatus == Status.Success)
+                        {
+                            PostFrameBuffer(layer, item);
+                        }
+                        else
+                        {
+                            Logger.Error?.Print(LogClass.SurfaceFlinger, 
+                                $"Recovery failed: AcquireBuffer returned {acquireStatus} after recovery attempt");
+                        }
+                    }
                 }
+                else if (acquireStatus != Status.NoBufferAvailaible)
+                {
+                    throw new InvalidOperationException($"AcquireBuffer failed with status: {acquireStatus}");
+                }
+            }
+        }
+
+        // 新增方法：处理缓冲区溢出恢复
+        private bool TryRecoverFromBufferOverflow(Layer layer)
+        {
+            try
+            {
+                Logger.Info?.Print(LogClass.SurfaceFlinger, "Attempting buffer overflow recovery...");
+
+                // 方法1: 尝试释放队列中最旧的缓冲区
+                if (layer.Core.Queue.Count > 0)
+                {
+                    var oldestItem = layer.Core.Queue[0];
+                    AndroidFence fence = AndroidFence.NoFence;
+                    var result = layer.Consumer.ReleaseBuffer(oldestItem, ref fence);
+                    if (result == Status.Success)
+                    {
+                        layer.Core.Queue.RemoveAt(0);
+                        Logger.Info?.Print(LogClass.SurfaceFlinger, "Recovered by releasing oldest queued buffer");
+                        return true;
+                    }
+                }
+                
+                // 方法2: 如果队列为空，尝试查找并释放已获取但未释放的缓冲区
+                else
+                {
+                    for (int i = 0; i < layer.Core.Slots.Length; i++)
+                    {
+                        if (layer.Core.Slots[i].BufferState == BufferState.Acquired)
+                        {
+                            // 创建一个虚拟的 BufferItem 来释放这个槽位
+                            BufferItem dummyItem = new BufferItem
+                            {
+                                Slot = i,
+                                FrameNumber = layer.Core.Slots[i].FrameNumber,
+                                GraphicBuffer = layer.Core.Slots[i].GraphicBuffer
+                            };
+                            
+                            AndroidFence fence = AndroidFence.NoFence;
+                            var result = layer.Consumer.ReleaseBuffer(dummyItem, ref fence);
+                            if (result == Status.Success)
+                            {
+                                Logger.Info?.Print(LogClass.SurfaceFlinger, $"Recovered by releasing acquired buffer in slot {i}");
+                                return true;
+                            }
+                        }
+                    }
+                }
+
+                // 方法3: 如果以上方法都失败，尝试重置缓冲区状态
+                Logger.Warning?.Print(LogClass.SurfaceFlinger, "Standard recovery methods failed, attempting buffer state reset");
+                return ForceResetBufferStates(layer);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.SurfaceFlinger, $"Buffer recovery failed: {ex.Message}");
+                return false;
+            }
+        }
+
+        // 新增方法：强制重置缓冲区状态
+        private bool ForceResetBufferStates(Layer layer)
+        {
+            try
+            {
+                int resetCount = 0;
+                
+                // 遍历所有缓冲区槽位，将已获取的缓冲区状态重置为自由状态
+                for (int i = 0; i < layer.Core.Slots.Length; i++)
+                {
+                    if (layer.Core.Slots[i].BufferState == BufferState.Acquired)
+                    {
+                        layer.Core.Slots[i].BufferState = BufferState.Free;
+                        layer.Core.Slots[i].AcquireCalled = false;
+                        layer.Core.Slots[i].NeedsCleanupOnRelease = false;
+                        resetCount++;
+                    }
+                }
+
+                if (resetCount > 0)
+                {
+                    Logger.Info?.Print(LogClass.SurfaceFlinger, $"Reset {resetCount} acquired buffers to free state");
+                    return true;
+                }
+                
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.SurfaceFlinger, $"Buffer state reset failed: {ex.Message}");
+                return false;
             }
         }
 
