@@ -33,6 +33,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         public uint BufferHistoryPosition;
         public bool EnableExternalEvent;
         public int MaxBufferCountCached;
+        public int DynamicAdjustmentCount;
 
         public readonly object Lock = new();
 
@@ -80,6 +81,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             BufferHistory = new BufferInfo[BufferHistoryArraySize];
             EnableExternalEvent = true;
             MaxBufferCountCached = 0;
+            DynamicAdjustmentCount = 0;
         }
 
         public int GetMinUndequeuedBufferCountLocked(bool async)
