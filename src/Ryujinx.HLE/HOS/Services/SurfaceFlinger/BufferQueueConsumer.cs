@@ -9,6 +9,10 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
     {
         public BufferQueueCore Core { get; }
 
+        // 在Consumer类内部维护恢复状态
+        private int _recoveryCount = 0;
+        private DateTime _lastRecoveryLogTime = DateTime.MinValue;
+
         public BufferQueueConsumer(BufferQueueCore core)
         {
             Core = core;
@@ -28,38 +32,90 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                     }
                 }
 
-                // ===== 动态缓冲区限制调整机制 =====
-                // 当系统需要2个缓冲区但当前限制为1时，自动扩展限制
+                // ===== 缓冲区溢出恢复机制 =====
+                // 当已获取缓冲区数量超过限制时，尝试恢复
                 if (numAcquiredBuffers > Core.MaxAcquiredBufferCount)
                 {
-                    // 检查是否需要动态调整缓冲区限制
-                    if (Core.MaxAcquiredBufferCount == 1 && numAcquiredBuffers == 2)
+                    // 限制日志频率，避免刷屏
+                    if ((DateTime.Now - _lastRecoveryLogTime).TotalSeconds > 5)
                     {
-                        Logger.Info?.Print(LogClass.SurfaceFlinger, 
-                            $"Dynamically adjusting buffer limit from {Core.MaxAcquiredBufferCount} to 2 to accommodate system needs");
-                        
-                        Core.MaxAcquiredBufferCount = 2;
-                        
-                        // 记录调整次数用于监控
-                        Core.DynamicAdjustmentCount++;
+                        Logger.Warning?.Print(LogClass.SurfaceFlinger, 
+                            $"Buffer overflow detected: {numAcquiredBuffers}/{Core.MaxAcquiredBufferCount}, attempting recovery");
+                        _lastRecoveryLogTime = DateTime.Now;
                     }
-                    else
+                    
+                    // 寻找最旧的已获取缓冲区进行释放
+                    int oldestSlot = -1;
+                    ulong oldestFrameNumber = ulong.MaxValue;
+                    
+                    for (int i = 0; i < Core.Slots.Length; i++)
                     {
-                        // 如果调整后仍然超出限制，则返回错误
+                        if (Core.Slots[i].BufferState == BufferState.Acquired && 
+                            Core.Slots[i].FrameNumber < oldestFrameNumber)
+                        {
+                            oldestSlot = i;
+                            oldestFrameNumber = Core.Slots[i].FrameNumber;
+                        }
+                    }
+                    
+                    // 如果找到最旧的缓冲区，则完整释放它
+                    if (oldestSlot != -1)
+                    {
+                        // 记录被释放的缓冲区信息
+                        var releasedFrameNumber = Core.Slots[oldestSlot].FrameNumber;
+                        
+                        // 完整模拟ReleaseBuffer流程
+                        Core.Slots[oldestSlot].BufferState = BufferState.Free;
+                        Core.Slots[oldestSlot].Fence = AndroidFence.NoFence;
+                        
+                        // 重要：释放NvMap引用计数
+                        if (!Core.Slots[oldestSlot].GraphicBuffer.IsNull)
+                        {
+                            Core.Slots[oldestSlot].GraphicBuffer.Object.DecrementNvMapHandleRefCount(Core.Owner);
+                        }
+                        
+                        // 更新缓冲区历史记录
+                        for (int i = 0; i < Core.BufferHistory.Length; i++)
+                        {
+                            if (Core.BufferHistory[i].FrameNumber == releasedFrameNumber)
+                            {
+                                Core.BufferHistory[i].State = BufferState.Free;
+                                break;
+                            }
+                        }
+                        
+                        _recoveryCount++;
+                        
+                        Logger.Warning?.Print(LogClass.SurfaceFlinger, 
+                            $"Recovered by releasing buffer in slot {oldestSlot} (frame: {releasedFrameNumber}) - Total recoveries: {_recoveryCount}");
+                        
+                        // 重新计算已获取缓冲区数量
+                        numAcquiredBuffers = 0;
+                        for (int i = 0; i < Core.MaxBufferCountCached; i++)
+                        {
+                            if (Core.Slots[i].BufferState == BufferState.Acquired)
+                            {
+                                numAcquiredBuffers++;
+                            }
+                        }
+                    }
+                    
+                    // 如果恢复后仍然超出限制，返回错误
+                    if (numAcquiredBuffers > Core.MaxAcquiredBufferCount)
+                    {
                         bufferItem = null;
 
                         Logger.Error?.Print(LogClass.SurfaceFlinger, 
-                            $"Max acquired buffer count reached: {numAcquiredBuffers} (max: {Core.MaxAcquiredBufferCount})");
+                            $"Critical buffer overflow after recovery: {numAcquiredBuffers}/{Core.MaxAcquiredBufferCount}");
 
                         return Status.InvalidOperation;
                     }
                 }
-                // ===== 动态调整机制结束 =====
+                // ===== 缓冲区溢出恢复机制结束 =====
 
                 if (Core.Queue.Count == 0)
                 {
                     bufferItem = null;
-
                     return Status.NoBufferAvailaible;
                 }
 
@@ -85,7 +141,6 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                         if (Core.BufferHistory[i].FrameNumber == targetFrameNumber)
                         {
                             Core.BufferHistory[i].State = BufferState.Acquired;
-
                             break;
                         }
                     }
@@ -122,7 +177,6 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 if (!Core.Slots[slot].RequestBufferCalled)
                 {
                     Logger.Error?.Print(LogClass.SurfaceFlinger, $"Slot {slot} was detached without requesting a buffer");
-
                     return Status.BadValue;
                 }
 
@@ -156,7 +210,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                     }
                 }
 
-                // 使用动态调整后的限制进行检查
+                // 使用当前限制进行检查
                 if (numAcquiredBuffers > Core.MaxAcquiredBufferCount + 1)
                 {
                     slot = BufferSlotArray.InvalidBufferSlot;
@@ -169,7 +223,6 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 if (freeSlot == BufferSlotArray.InvalidBufferSlot)
                 {
                     slot = BufferSlotArray.InvalidBufferSlot;
-
                     return Status.NoMemory;
                 }
 
@@ -224,7 +277,6 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 else if (Core.Slots[slot].NeedsCleanupOnRelease)
                 {
                     Core.Slots[slot].NeedsCleanupOnRelease = false;
-
                     return Status.StaleBufferSlot;
                 }
                 else
@@ -233,6 +285,16 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 }
 
                 Core.Slots[slot].GraphicBuffer.Object.DecrementNvMapHandleRefCount(Core.Owner);
+
+                // 更新缓冲区历史记录
+                for (int i = 0; i < Core.BufferHistory.Length; i++)
+                {
+                    if (Core.BufferHistory[i].FrameNumber == frameNumber)
+                    {
+                        Core.BufferHistory[i].State = BufferState.Free;
+                        break;
+                    }
+                }
 
                 Core.CheckSystemEventsLocked(Core.GetMaxBufferCountLocked(true));
                 Core.SignalDequeueEvent();
@@ -370,8 +432,8 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
                 Core.MaxAcquiredBufferCount = maxAcquiredBufferCount;
                 
-                // 重置动态调整计数
-                Core.DynamicAdjustmentCount = 0;
+                // 重置恢复计数
+                _recoveryCount = 0;
             }
 
             return Status.Success;
@@ -431,7 +493,6 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                     if (Core.BufferHistory[i].FrameNumber == frameNumber)
                     {
                         Core.BufferHistory[i].PresentationTime = presentationTime;
-
                         break;
                     }
                 }
