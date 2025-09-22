@@ -28,59 +28,33 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                     }
                 }
 
-                // ===== 缓冲区溢出恢复机制开始 =====
-                // 当已获取的缓冲区数量超过最大允许数量时，尝试恢复
+                // ===== 动态缓冲区限制调整机制 =====
+                // 当系统需要2个缓冲区但当前限制为1时，自动扩展限制
                 if (numAcquiredBuffers > Core.MaxAcquiredBufferCount)
                 {
-                    Logger.Warning?.Print(LogClass.SurfaceFlinger, 
-                        $"Buffer overflow detected: {numAcquiredBuffers}/{Core.MaxAcquiredBufferCount}, attempting recovery");
-                    
-                    // 寻找最旧的已获取缓冲区进行释放
-                    int oldestSlot = -1;
-                    ulong oldestFrameNumber = ulong.MaxValue;
-                    
-                    for (int i = 0; i < Core.Slots.Length; i++)
+                    // 检查是否需要动态调整缓冲区限制
+                    if (Core.MaxAcquiredBufferCount == 1 && numAcquiredBuffers == 2)
                     {
-                        if (Core.Slots[i].BufferState == BufferState.Acquired && 
-                            Core.Slots[i].FrameNumber < oldestFrameNumber)
-                        {
-                            oldestSlot = i;
-                            oldestFrameNumber = Core.Slots[i].FrameNumber;
-                        }
+                        Logger.Info?.Print(LogClass.SurfaceFlinger, 
+                            $"Dynamically adjusting buffer limit from {Core.MaxAcquiredBufferCount} to 2 to accommodate system needs");
+                        
+                        Core.MaxAcquiredBufferCount = 2;
+                        
+                        // 记录调整次数用于监控
+                        Core.DynamicAdjustmentCount++;
                     }
-                    
-                    // 如果找到最旧的缓冲区，则释放它
-                    if (oldestSlot != -1)
+                    else
                     {
-                        Core.Slots[oldestSlot].BufferState = BufferState.Free;
-                        Core.Slots[oldestSlot].FrameNumber = 0;
-                        Core.Slots[oldestSlot].Fence = AndroidFence.NoFence;
-                        
-                        Logger.Warning?.Print(LogClass.SurfaceFlinger, 
-                            $"Recovered by releasing buffer in slot {oldestSlot}");
-                        
-                        // 重新计算已获取缓冲区数量
-                        numAcquiredBuffers = 0;
-                        for (int i = 0; i < Core.MaxBufferCountCached; i++)
-                        {
-                            if (Core.Slots[i].BufferState == BufferState.Acquired)
-                            {
-                                numAcquiredBuffers++;
-                            }
-                        }
+                        // 如果调整后仍然超出限制，则返回错误
+                        bufferItem = null;
+
+                        Logger.Error?.Print(LogClass.SurfaceFlinger, 
+                            $"Max acquired buffer count reached: {numAcquiredBuffers} (max: {Core.MaxAcquiredBufferCount})");
+
+                        return Status.InvalidOperation;
                     }
                 }
-                // ===== 缓冲区溢出恢复机制结束 =====
-
-                // 检查恢复后是否仍然超过最大限制
-                if (numAcquiredBuffers > Core.MaxAcquiredBufferCount)
-                {
-                    bufferItem = null;
-
-                    Logger.Debug?.Print(LogClass.SurfaceFlinger, $"Max acquired buffer count reached: {numAcquiredBuffers} (max: {Core.MaxAcquiredBufferCount})");
-
-                    return Status.InvalidOperation;
-                }
+                // ===== 动态调整机制结束 =====
 
                 if (Core.Queue.Count == 0)
                 {
@@ -182,6 +156,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                     }
                 }
 
+                // 使用动态调整后的限制进行检查
                 if (numAcquiredBuffers > Core.MaxAcquiredBufferCount + 1)
                 {
                     slot = BufferSlotArray.InvalidBufferSlot;
@@ -394,6 +369,9 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                 }
 
                 Core.MaxAcquiredBufferCount = maxAcquiredBufferCount;
+                
+                // 重置动态调整计数
+                Core.DynamicAdjustmentCount = 0;
             }
 
             return Status.Success;
