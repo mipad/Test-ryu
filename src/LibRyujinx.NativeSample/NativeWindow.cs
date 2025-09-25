@@ -19,8 +19,7 @@ namespace LibRyujinx.NativeSample
         private bool _isVulkan;
         private Vector2 _lastPosition;
         private bool _mousePressed;
-        private nint _gamepadIdPtr;
-        private string? _gamepadId;
+        private int _playerIndex; // 修改：使用整数玩家索引而不是指针
 
         public NativeWindow(NativeWindowSettings nativeWindowSettings) : base(nativeWindowSettings)
         {
@@ -43,7 +42,6 @@ namespace LibRyujinx.NativeSample
                 return surface.Handle;
             });
             var vkExtensions = GLFW.GetRequiredInstanceExtensions();
-
 
             var pointers = new IntPtr[vkExtensions.Length];
             for (int i = 0; i < vkExtensions.Length; i++)
@@ -81,8 +79,8 @@ namespace LibRyujinx.NativeSample
                 Marshal.FreeHGlobal(path);
             }
 
-            _gamepadIdPtr = LibRyujinxInterop.ConnectGamepad(0);
-            _gamepadId = Marshal.PtrToStringAnsi(_gamepadIdPtr);
+            // 修改：ConnectGamepad 现在返回整数索引而不是指针
+            _playerIndex = LibRyujinxInterop.ConnectGamepad(0); // 使用玩家索引 0
 
             if (!_isVulkan)
             {
@@ -102,7 +100,7 @@ namespace LibRyujinx.NativeSample
                 Marshal.FreeHGlobal(ptr);
             }
 
-            Marshal.FreeHGlobal(_gamepadIdPtr);
+            // 修改：不再需要释放指针，因为现在使用整数索引
         }
 
         public void RunLoop()
@@ -181,24 +179,18 @@ namespace LibRyujinx.NativeSample
         {
             base.OnKeyUp(e);
 
-            if (_gamepadIdPtr != IntPtr.Zero)
-            {
-                var key = GetKeyMapping(e.Key);
-
-                LibRyujinxInterop.SetButtonReleased(key, _gamepadIdPtr);
-            }
+            // 修改：使用整数玩家索引而不是指针
+            var key = GetKeyMapping(e.Key);
+            LibRyujinxInterop.SetButtonReleased(key, _playerIndex);
         }
 
         protected override void OnKeyDown(KeyboardKeyEventArgs e)
         {
             base.OnKeyDown(e);
 
-            if (_gamepadIdPtr != IntPtr.Zero)
-            {
-                var key = GetKeyMapping(e.Key);
-
-                LibRyujinxInterop.SetButtonPressed(key, _gamepadIdPtr);
-            }
+            // 修改：使用整数玩家索引而不是指针
+            var key = GetKeyMapping(e.Key);
+            LibRyujinxInterop.SetButtonPressed(key, _playerIndex);
         }
 
         public void UpdateLoop()
