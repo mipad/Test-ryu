@@ -427,45 +427,47 @@ namespace LibRyujinx
         }
 
         [UnmanagedCallersOnly(EntryPoint = "inputSetButtonPressed")]
-        public static void JnaSetButtonPressed(int button, int playerNumber)
+        public static void JnaSetButtonPressed(int button, int playerIndex)  // 改为 playerIndex
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            SetButtonPressed((GamepadButtonInputId)button, playerNumber);
+            Logger.Trace?.Print(LogClass.Application, $"Jni Function Call: SetButtonPressed for player index {playerIndex}");
+            SetButtonPressed((GamepadButtonInputId)button, playerIndex);  // 直接传递 0-based 索引
         }
 
         [UnmanagedCallersOnly(EntryPoint = "inputSetButtonReleased")]
-        public static void JnaSetButtonReleased(int button, int playerNumber)
+        public static void JnaSetButtonReleased(int button, int playerIndex)  // 改为 playerIndex
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            SetButtonReleased((GamepadButtonInputId)button, playerNumber);
+            Logger.Trace?.Print(LogClass.Application, $"Jni Function Call: SetButtonReleased for player index {playerIndex}");
+            SetButtonReleased((GamepadButtonInputId)button, playerIndex);  // 直接传递 0-based 索引
         }
 
         [UnmanagedCallersOnly(EntryPoint = "inputSetAccelerometerData")]
-        public static void JniSetAccelerometerData(float x, float y, float z, int playerNumber)
+        public static void JniSetAccelerometerData(float x, float y, float z, int playerIndex)  // 改为 playerIndex
         {
+            Logger.Trace?.Print(LogClass.Application, $"Jni Function Call: SetAccelerometerData for player index {playerIndex}");
             var accel = new Vector3(x, y, z);
-            SetAccelerometerData(accel, playerNumber);
+            SetAccelerometerData(accel, playerIndex);  // 直接传递 0-based 索引
         }
 
         [UnmanagedCallersOnly(EntryPoint = "inputSetGyroData")]
-        public static void JniSetGyroData(float x, float y, float z, int playerNumber)
+        public static void JniSetGyroData(float x, float y, float z, int playerIndex)  // 改为 playerIndex
         {
+            Logger.Trace?.Print(LogClass.Application, $"Jni Function Call: SetGyroData for player index {playerIndex}");
             var gyro = new Vector3(x, y, z);
-            SetGyroData(gyro, playerNumber);
+            SetGyroData(gyro, playerIndex);  // 直接传递 0-based 索引
         }
 
         [UnmanagedCallersOnly(EntryPoint = "inputSetStickAxis")]
-        public static void JnaSetStickAxis(int stick, float x, float y, int playerNumber)
+        public static void JnaSetStickAxis(int stick, float x, float y, int playerIndex)  // 改为 playerIndex
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            SetStickAxis((StickInputId)stick, new Vector2(float.IsNaN(x) ? 0 : x, float.IsNaN(y) ? 0 : y), playerNumber);
+            Logger.Trace?.Print(LogClass.Application, $"Jni Function Call: SetStickAxis for player index {playerIndex}");
+            SetStickAxis((StickInputId)stick, new Vector2(float.IsNaN(x) ? 0 : x, float.IsNaN(y) ? 0 : y), playerIndex);  // 直接传递 0-based 索引
         }
 
         [UnmanagedCallersOnly(EntryPoint = "inputConnectGamepad")]
-        public static int JnaConnectGamepad(int playerNumber)
+        public static int JnaConnectGamepad(int playerIndex)  // 改为 playerIndex
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
-            return ConnectGamepad(playerNumber);
+            Logger.Trace?.Print(LogClass.Application, $"Jni Function Call: ConnectGamepad for player index {playerIndex}");
+            return ConnectGamepad(playerIndex);  // 直接传递 0-based 索引
         }
 
         [UnmanagedCallersOnly(EntryPoint = "userGetOpenedUser")]
@@ -661,18 +663,18 @@ namespace LibRyujinx
             }
         }
 
-        // 修改：设置控制器类型的JNI方法，使用玩家编号而不是设备ID
+        // 修改：设置控制器类型的JNI方法，使用玩家索引而不是玩家编号
         [UnmanagedCallersOnly(EntryPoint = "setControllerType")]
-        public static void JnaSetControllerType(int playerNumber, int controllerType)
+        public static void JnaSetControllerType(int playerIndex, int controllerType)  // 改为 playerIndex
         {
-            Logger.Trace?.Print(LogClass.Application, $"Jni Function Call: setControllerType - playerNumber: {playerNumber}, type: {controllerType}");
+            Logger.Trace?.Print(LogClass.Application, $"Jni Function Call: setControllerType - playerIndex: {playerIndex}, type: {controllerType}");
             
             try
             {
-                // 调用主库中的设置控制器类型方法，使用玩家编号而不是设备ID
-                SetControllerType(playerNumber, controllerType);
+                // 调用主库中的设置控制器类型方法，使用玩家索引而不是玩家编号
+                SetControllerType(playerIndex, controllerType);
                 
-                Logger.Info?.Print(LogClass.Application, $"Controller type set for player {playerNumber}: {(Ryujinx.Common.Configuration.Hid.ControllerType)controllerType}");
+                Logger.Info?.Print(LogClass.Application, $"Controller type set for player index {playerIndex}: bitmask {controllerType}");
             }
             catch (Exception ex)
             {
