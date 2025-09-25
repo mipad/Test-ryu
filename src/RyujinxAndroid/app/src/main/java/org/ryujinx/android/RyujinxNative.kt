@@ -140,6 +140,16 @@ class RyujinxNative {
         // 玩家索引管理 (0-7)
         private val connectedPlayerIndices = mutableSetOf<Int>()
         
+        // 玩家索引相关的常量
+        const val PLAYER_1 = 0
+        const val PLAYER_2 = 1
+        const val PLAYER_3 = 2
+        const val PLAYER_4 = 3
+        const val PLAYER_5 = 4
+        const val PLAYER_6 = 5
+        const val PLAYER_7 = 6
+        const val PLAYER_8 = 7
+        
         /**
          * 获取下一个可用的玩家索引 (0-7)
          * @return 可用的玩家索引，如果没有可用索引则返回-1
@@ -166,6 +176,20 @@ class RyujinxNative {
         fun releasePlayerIndex(playerIndex: Int) {
             synchronized(connectedPlayerIndices) {
                 connectedPlayerIndices.remove(playerIndex)
+            }
+        }
+        
+        /**
+         * 获取玩家显示名称
+         * @param playerIndex 玩家索引 (0-7)
+         * @return 显示名称，如 "Player 1"
+         */
+        @JvmStatic
+        fun getPlayerDisplayName(playerIndex: Int): String {
+            return if (playerIndex in 0..7) {
+                "Player ${playerIndex + 1}"
+            } else {
+                "Unknown Player"
             }
         }
         
@@ -349,32 +373,6 @@ class RyujinxNative {
         @JvmStatic
         fun setGyroData(x: Float, y: Float, z: Float, playerIndex: Int) {
             jnaInstance.inputSetGyroData(x, y, z, playerIndex)
-        }
-    }
-    
-    // 玩家索引相关的枚举和常量
-    companion object PlayerIndex {
-        const val PLAYER_1 = 0
-        const val PLAYER_2 = 1
-        const val PLAYER_3 = 2
-        const val PLAYER_4 = 3
-        const val PLAYER_5 = 4
-        const val PLAYER_6 = 5
-        const val PLAYER_7 = 6
-        const val PLAYER_8 = 7
-        
-        /**
-         * 获取玩家显示名称
-         * @param playerIndex 玩家索引 (0-7)
-         * @return 显示名称，如 "Player 1"
-         */
-        @JvmStatic
-        fun getPlayerDisplayName(playerIndex: Int): String {
-            return if (playerIndex in 0..7) {
-                "Player ${playerIndex + 1}"
-            } else {
-                "Unknown Player"
-            }
         }
     }
 }
