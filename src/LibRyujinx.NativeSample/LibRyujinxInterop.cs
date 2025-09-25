@@ -65,17 +65,29 @@ namespace LibRyujinx.Sample
         [DllImport(dll, EntryPoint = "input_update")]
         internal extern static void UpdateInput();
 
+        // 修改：使用玩家索引而不是玩家编号，0-based (0-7)
         [DllImport(dll, EntryPoint = "input_set_button_pressed")]
-        public extern static void SetButtonPressed(GamepadButtonInputId button, int playerNumber); // 修改：使用玩家编号而不是设备ID指针
+        public extern static void SetButtonPressed(GamepadButtonInputId button, int playerIndex);
 
+        // 修改：使用玩家索引而不是玩家编号，0-based (0-7)
         [DllImport(dll, EntryPoint = "input_set_button_released")]
-        public extern static void SetButtonReleased(GamepadButtonInputId button, int playerNumber); // 修改：使用玩家编号而不是设备ID指针
+        public extern static void SetButtonReleased(GamepadButtonInputId button, int playerIndex);
 
+        // 修改：使用玩家索引而不是玩家编号，0-based (0-7)
         [DllImport(dll, EntryPoint = "input_set_stick_axis")]
-        public extern static void SetStickAxis(StickInputId stick, Vector2 axes, int playerNumber); // 修改：使用玩家编号而不是设备ID指针
+        public extern static void SetStickAxis(StickInputId stick, Vector2 axes, int playerIndex);
 
+        // 修改：使用玩家索引而不是玩家编号，0-based (0-7)
         [DllImport(dll, EntryPoint = "input_connect_gamepad")]
-        public extern static int ConnectGamepad(int playerNumber); // 修改：使用玩家编号而不是设备ID，返回玩家编号
+        public extern static int ConnectGamepad(int playerIndex);
+
+        // 修改：使用玩家索引而不是玩家编号，0-based (0-7)
+        [DllImport(dll, EntryPoint = "input_set_accelerometer_data")]
+        public extern static void SetAccelerometerData(Vector3 accel, int playerIndex);
+
+        // 修改：使用玩家索引而不是玩家编号，0-based (0-7)
+        [DllImport(dll, EntryPoint = "input_set_gyro_data")]
+        public extern static void SetGyroData(Vector3 gyro, int playerIndex);
 
         // 添加设置跳过内存屏障的方法
         [DllImport(dll, EntryPoint = "setSkipMemoryBarriers")]
@@ -85,9 +97,25 @@ namespace LibRyujinx.Sample
         [DllImport(dll, EntryPoint = "setMemoryConfiguration")]
         internal extern static void SetMemoryConfiguration(MemoryConfiguration memoryConfig);
 
-        // 添加设置控制器类型的方法 - 修改为使用玩家编号而不是设备ID
+        // 修改：设置控制器类型的方法 - 使用玩家索引而不是玩家编号，0-based (0-7)
         [DllImport(dll, EntryPoint = "setControllerType")]
-        internal extern static void SetControllerType(int playerNumber, int controllerType);
+        internal extern static void SetControllerType(int playerIndex, int controllerType);
+
+        // 添加设置画面比例的方法
+        [DllImport(dll, EntryPoint = "setAspectRatio")]
+        internal extern static void SetAspectRatio(AspectRatio aspectRatio);
+
+        // 添加设置缩放过滤器的方法
+        [DllImport(dll, EntryPoint = "setScalingFilter")]
+        internal extern static void SetScalingFilter(ScalingFilter filter);
+
+        // 添加设置缩放过滤器级别的方法
+        [DllImport(dll, EntryPoint = "setScalingFilterLevel")]
+        internal extern static void SetScalingFilterLevel(int level);
+
+        // 添加设置抗锯齿的方法
+        [DllImport(dll, EntryPoint = "setAntiAliasing")]
+        internal extern static void SetAntiAliasing(AntiAliasing mode);
     }
 
     public enum GraphicsBackend
@@ -121,6 +149,7 @@ namespace LibRyujinx.Sample
         {
         }
     }
+
     public enum SystemLanguage
     {
         Japanese,
@@ -142,6 +171,7 @@ namespace LibRyujinx.Sample
         TraditionalChinese,
         BrazilianPortuguese,
     }
+
     public enum RegionCode
     {
         Japan,
@@ -183,6 +213,23 @@ namespace LibRyujinx.Sample
         MemoryConfiguration6GiB = 3,
         MemoryConfiguration6GiBAppletDev = 4,
         MemoryConfiguration8GiB = 5,
+    }
+
+    public enum ScalingFilter
+    {
+        Bilinear,
+        NearestNeighbor,
+        Fsr
+    }
+
+    public enum AntiAliasing
+    {
+        None,
+        Fxaa,
+        SmaaLow,
+        SmaaMedium,
+        SmaaHigh,
+        SmaaUltra
     }
 
     /// <summary>
