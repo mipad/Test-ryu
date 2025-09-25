@@ -30,7 +30,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
     private var sharedPref: SharedPreferences
     var selectedFirmwareFile: DocumentFile? = null
 
-    // 玩家设置列表
+    // 玩家设置列表（使用 0-based 索引）
     var playerSettings: MutableList<PlayerSetting> = mutableListOf()
 
     init {
@@ -60,6 +60,14 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         if (json != null) {
             try {
                 playerSettings = Json.decodeFromString<MutableList<PlayerSetting>>(json).toMutableList()
+                
+                // 确保所有玩家设置使用正确的索引
+                playerSettings.forEach { setting ->
+                    if (setting.playerIndex > 7) {
+                        // 如果发现旧的 1-based 编号，转换为 0-based 索引
+                        setting.playerIndex = setting.playerIndex - 1
+                    }
+                }
             } catch (e: Exception) {
                 // 如果解析失败，使用默认设置
                 initDefaultPlayerSettings()
@@ -69,17 +77,17 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         }
     }
 
-    // 初始化默认玩家设置
+    // 初始化默认玩家设置（使用 0-based 索引）
     private fun initDefaultPlayerSettings() {
         playerSettings = mutableListOf(
-            PlayerSetting(1, true, 0), // Player 1 默认开启，Pro Controller
-            PlayerSetting(2, false, 0), // Player 2-8 默认关闭
-            PlayerSetting(3, false, 0),
-            PlayerSetting(4, false, 0),
-            PlayerSetting(5, false, 0),
-            PlayerSetting(6, false, 0),
-            PlayerSetting(7, false, 0),
-            PlayerSetting(8, false, 0)
+            PlayerSetting(0, true, 0), // Player 1 (索引0) 默认开启，Pro Controller
+            PlayerSetting(1, false, 0), // Player 2 (索引1) 默认关闭
+            PlayerSetting(2, false, 0), // Player 3 (索引2) 默认关闭
+            PlayerSetting(3, false, 0), // Player 4 (索引3) 默认关闭
+            PlayerSetting(4, false, 0), // Player 5 (索引4) 默认关闭
+            PlayerSetting(5, false, 0), // Player 6 (索引5) 默认关闭
+            PlayerSetting(6, false, 0), // Player 7 (索引6) 默认关闭
+            PlayerSetting(7, false, 0)  // Player 8 (索引7) 默认关闭
         )
     }
 
@@ -89,20 +97,20 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         sharedPref.edit().putString("player_settings", json).apply()
     }
 
-    // 获取指定玩家的设置
-    fun getPlayerSetting(playerNumber: Int): PlayerSetting? {
-        return playerSettings.find { it.playerNumber == playerNumber }
+    // 获取指定玩家的设置（使用 0-based 索引）
+    fun getPlayerSetting(playerIndex: Int): PlayerSetting? {
+        return playerSettings.find { it.playerIndex == playerIndex }
     }
 
     // 更新玩家设置
     fun updatePlayerSetting(playerSetting: PlayerSetting) {
-        val index = playerSettings.indexOfFirst { it.playerNumber == playerSetting.playerNumber }
+        val index = playerSettings.indexOfFirst { it.playerIndex == playerSetting.playerIndex }
         if (index != -1) {
             playerSettings[index] = playerSetting
             savePlayerSettings()
             
-            // 如果是玩家1，立即应用设置
-            if (playerSetting.playerNumber == 1 && playerSetting.isConnected) {
+            // 如果是玩家1（索引0），立即应用设置
+            if (playerSetting.playerIndex == 0 && playerSetting.isConnected) {
                 updateControllerTypeInManager(playerSetting.controllerType)
             }
         }
@@ -281,21 +289,21 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         // 设置内存配置
         RyujinxNative.jnaInstance.setMemoryConfiguration(memoryConfiguration.value)
 
-        // 设置所有已连接玩家的控制器类型，使用玩家编号而不是设备ID
-        for (playerNumber in 1..8) {
-            val playerSetting = getPlayerSetting(playerNumber)
+        // 设置所有已连接玩家的控制器类型，使用 0-based 玩家索引
+        for (playerIndex in 0..7) {
+            val playerSetting = getPlayerSetting(playerIndex)
             if (playerSetting != null && playerSetting.isConnected) {
                 // 将控制器类型索引转换为位掩码值
                 val controllerTypeBitmask = controllerTypeIndexToBitmask(playerSetting.controllerType)
-                // 使用玩家编号而不是设备ID
-                RyujinxNative.jnaInstance.setControllerType(playerNumber, controllerTypeBitmask)
+                // 使用 0-based 玩家索引
+                RyujinxNative.jnaInstance.setControllerType(playerIndex, controllerTypeBitmask)
                 
-                // 如果是玩家1，同时更新ControllerManager中的控制器类型
-                if (playerNumber == 1) {
+                // 如果是玩家1（索引0），同时更新ControllerManager中的控制器类型
+                if (playerIndex == 0) {
                     updateControllerTypeInManager(playerSetting.controllerType)
                 }
                 
-                android.util.Log.d("SettingsViewModel", "Controller type set for player $playerNumber: $controllerTypeBitmask")
+                android.util.Log.d("SettingsViewModel", "Controller type set for player index $playerIndex: $controllerTypeBitmask")
             }
         }
 
@@ -460,6 +468,40 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         selectedFirmwareFile = null
         selectedFirmwareVersion = ""
         installState.value = FirmwareInstallState.None
+    }
+    
+    // 新增方法：获取玩家显示名称（用于UI显示）
+    fun getPlayerDisplayName(playerIndex: Int): String {
+        return "Player ${playerIndex + 1}" // 显示为 Player 1, Player 2, ...
+    }
+    
+    // 新增方法：检查玩家索引是否有效
+    fun isValidPlayerIndex(playerIndex: Int): Boolean {
+        return playerIndex in 0..7
+    }
+    
+    // 新增方法：连接玩家
+    fun connectPlayer(playerIndex: Int) {
+        if (isValidPlayerIndex(playerIndex)) {
+            val setting = getPlayerSetting(playerIndex)
+            if (setting != null && !setting.isConnected) {
+                setting.isConnected = true
+                updatePlayerSetting(setting)
+                android.util.Log.d("SettingsViewModel", "Connected player index: $playerIndex")
+            }
+        }
+    }
+    
+    // 新增方法：断开玩家连接
+    fun disconnectPlayer(playerIndex: Int) {
+        if (isValidPlayerIndex(playerIndex)) {
+            val setting = getPlayerSetting(playerIndex)
+            if (setting != null && setting.isConnected) {
+                setting.isConnected = false
+                updatePlayerSetting(setting)
+                android.util.Log.d("SettingsViewModel", "Disconnected player index: $playerIndex")
+            }
+        }
     }
 }
 
