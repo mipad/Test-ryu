@@ -68,7 +68,7 @@ class MainActivity : BaseActivity() {
         var quickSettings = QuickSettings(this)
         
         // 设置跳过内存屏障
-        RyujinxNative.jnaInstance.setSkipMemoryBarriers(quickSettings.skipMemoryBarriers)
+       // RyujinxNative.jnaInstance.setSkipMemoryBarriers(quickSettings.skipMemoryBarriers)
         
         RyujinxNative.jnaInstance.loggingSetEnabled(
             LogLevel.Debug.ordinal,
