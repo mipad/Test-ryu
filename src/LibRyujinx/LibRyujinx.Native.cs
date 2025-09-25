@@ -311,13 +311,6 @@ namespace LibRyujinx
             return ConnectGamepad(playerIndex);
         }
 
-        // 修改：设置控制器类型的 JNI 方法 - 修正 EntryPoint 名称和参数名
-        [UnmanagedCallersOnly(EntryPoint = "setControllerType")]  // 修正：改为正确的 EntryPoint
-        public static void SetControllerTypeNative(int playerIndex, int controllerType)  // 修改：参数名改为 playerIndex
-        {
-            SetControllerType(playerIndex, controllerType);
-        }
-
         [UnmanagedCallersOnly(EntryPoint = "device_get_game_fifo")]
         public static double GetGameInfoNative()
         {
