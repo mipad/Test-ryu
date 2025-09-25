@@ -169,17 +169,17 @@ class SettingViews {
             
             // 控制器设置 - 改为存储每个玩家的设置
             val playerSettings = remember { 
-                mutableStateListOf(
-                    PlayerSetting(1, true, 0), // Player 1 默认开启，Pro Controller
-                    PlayerSetting(2, false, 0), // Player 2-8 默认关闭
-                    PlayerSetting(3, false, 0),
-                    PlayerSetting(4, false, 0),
-                    PlayerSetting(5, false, 0),
-                    PlayerSetting(6, false, 0),
-                    PlayerSetting(7, false, 0),
-                    PlayerSetting(8, false, 0)
-                )
-            }
+    mutableStateListOf(
+        PlayerSetting(0, true, 0), // Player 1 (索引0) 默认开启，Pro Controller
+        PlayerSetting(1, false, 0), // Player 2 (索引1) 默认关闭
+        PlayerSetting(2, false, 0), // Player 3 (索引2) 默认关闭
+        PlayerSetting(3, false, 0), // Player 4 (索引3) 默认关闭
+        PlayerSetting(4, false, 0), // Player 5 (索引4) 默认关闭
+        PlayerSetting(5, false, 0), // Player 6 (索引5) 默认关闭
+        PlayerSetting(6, false, 0), // Player 7 (索引6) 默认关闭
+        PlayerSetting(7, false, 0)  // Player 8 (索引7) 默认关闭
+    )
+}
             
             val showPlayerSelectionDialog = remember { mutableStateOf(false) }
             val showPlayerSettingsDialog = remember { mutableStateOf(-1) } // -1表示不显示，其他值表示玩家编号
@@ -2176,13 +2176,13 @@ if (showMemoryConfigDialog.value) {
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clickable {
-                                                showPlayerSettingsDialog.value = playerSetting.playerNumber
+                                                showPlayerSettingsDialog.value = playerSetting.playerIndex
                                             }
                                             .padding(16.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(text = "Player ${playerSetting.playerNumber}")
+                                        Text(text = "Player ${playerSetting.playerIndex + 1}")
                                         Switch(
                                             checked = playerSetting.isConnected,
                                             onCheckedChange = { 
@@ -2198,8 +2198,8 @@ if (showMemoryConfigDialog.value) {
                 
                 // 玩家设置对话框
                 if (showPlayerSettingsDialog.value != -1) {
-                    val playerNumber = showPlayerSettingsDialog.value
-                    val playerSetting = playerSettings.firstOrNull { it.playerNumber == playerNumber }
+                    val playerIndex = showPlayerSettingsDialog.value
+                    val playerSetting = playerSettings.firstOrNull { it.playerIndex == playerIndex }
                     
                     if (playerSetting != null) {
                         BasicAlertDialog(
@@ -2209,7 +2209,7 @@ if (showMemoryConfigDialog.value) {
                             Scaffold(
                                 topBar = {
                                     TopAppBar(
-                                        title = { Text("Player $playerNumber Settings") },
+                                       title = { Text("Player ${playerNumber + 1} Settings") },
                                         navigationIcon = {
                                             IconButton(onClick = { showPlayerSettingsDialog.value = -1 }) {
                                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -2236,7 +2236,7 @@ if (showMemoryConfigDialog.value) {
                                         Switch(
                                             checked = playerSetting.isConnected,
                                             onCheckedChange = { 
-                                                val index = playerSettings.indexOfFirst { it.playerNumber == playerNumber }
+                                                val index = playerSettings.indexOfFirst { it.playerIndex == playerIndex }
                                                 if (index != -1) {
                                                     playerSettings[index] = playerSetting.copy(isConnected = it)
                                                 }
@@ -2260,7 +2260,7 @@ if (showMemoryConfigDialog.value) {
                                                     modifier = Modifier
                                                         .fillMaxWidth()
                                                         .clickable {
-                                                            val playerIndex = playerSettings.indexOfFirst { it.playerNumber == playerNumber }
+                                                            val index = playerSettings.indexOfFirst { it.playerIndex == playerIndex }
                                                             if (playerIndex != -1) {
                                                                 playerSettings[playerIndex] = playerSetting.copy(controllerType = index)
                                                             }
@@ -2271,7 +2271,7 @@ if (showMemoryConfigDialog.value) {
                                                     RadioButton(
                                                         selected = playerSetting.controllerType == index,
                                                         onClick = {
-                                                            val playerIndex = playerSettings.indexOfFirst { it.playerNumber == playerNumber }
+                                                            val index = playerSettings.indexOfFirst { it.playerIndex == playerIndex }
                                                             if (playerIndex != -1) {
                                                                 playerSettings[playerIndex] = playerSetting.copy(controllerType = index)
                                                             }
