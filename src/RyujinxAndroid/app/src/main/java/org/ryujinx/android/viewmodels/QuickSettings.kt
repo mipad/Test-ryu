@@ -39,7 +39,7 @@ class QuickSettings(val activity: Activity) {
     var antiAliasing: Int // 新增：抗锯齿模式 0=None, 1=Fxaa, 2=SmaaLow, 3=SmaaMedium, 4=SmaaHigh, 5=SmaaUltra
     var memoryConfiguration: Int // 新增：内存配置 0=4GB, 1=4GB Applet Dev, 2=4GB System Dev, 3=6GB, 4=6GB Applet Dev, 5=8GB
     
-    // 玩家设置列表（替换原来的单个controllerType）
+    // 玩家设置列表（使用 0-based 索引，与 PlayerIndex 枚举保持一致）
     var playerSettings: MutableList<PlayerSetting> = mutableListOf()
 
     // Logs
@@ -118,17 +118,17 @@ class QuickSettings(val activity: Activity) {
         applyControllerSettings()
     }
 
-    // 初始化默认玩家设置
+    // 初始化默认玩家设置（使用 0-based 索引）
     private fun initDefaultPlayerSettings() {
         playerSettings = mutableListOf(
-            PlayerSetting(1, true, 0), // Player 1 默认开启，Pro Controller
-            PlayerSetting(2, false, 0), // Player 2-8 默认关闭
-            PlayerSetting(3, false, 0),
-            PlayerSetting(4, false, 0),
-            PlayerSetting(5, false, 0),
-            PlayerSetting(6, false, 0),
-            PlayerSetting(7, false, 0),
-            PlayerSetting(8, false, 0)
+            PlayerSetting(0, true, 0), // Player 1 (索引0) 默认开启，Pro Controller
+            PlayerSetting(1, false, 0), // Player 2 (索引1) 默认关闭
+            PlayerSetting(2, false, 0), // Player 3 (索引2) 默认关闭
+            PlayerSetting(3, false, 0), // Player 4 (索引3) 默认关闭
+            PlayerSetting(4, false, 0), // Player 5 (索引4) 默认关闭
+            PlayerSetting(5, false, 0), // Player 6 (索引5) 默认关闭
+            PlayerSetting(6, false, 0), // Player 7 (索引6) 默认关闭
+            PlayerSetting(7, false, 0)  // Player 8 (索引7) 默认关闭
         )
     }
 
@@ -181,14 +181,14 @@ class QuickSettings(val activity: Activity) {
         applyControllerSettings()
     }
     
-    // 获取指定玩家的设置
-    fun getPlayerSetting(playerNumber: Int): PlayerSetting? {
-        return playerSettings.find { it.playerNumber == playerNumber }
+    // 获取指定玩家的设置（使用 0-based 索引）
+    fun getPlayerSetting(playerIndex: Int): PlayerSetting? {
+        return playerSettings.find { it.playerIndex == playerIndex }
     }
     
     // 更新玩家设置
     fun updatePlayerSetting(playerSetting: PlayerSetting) {
-        val index = playerSettings.indexOfFirst { it.playerNumber == playerSetting.playerNumber }
+        val index = playerSettings.indexOfFirst { it.playerIndex == playerSetting.playerIndex }
         if (index != -1) {
             // 确保控制器类型值有效
             if (!playerSetting.controllerType.isValidControllerType()) {
@@ -202,10 +202,10 @@ class QuickSettings(val activity: Activity) {
         }
     }
     
-    // 应用控制器设置到Native层 - 修改为使用玩家编号而不是设备ID
+    // 应用控制器设置到Native层 - 使用 0-based 玩家索引
     fun applyControllerSettings() {
         try {
-            // 设置所有玩家的控制器类型，使用玩家编号而不是设备ID
+            // 设置所有玩家的控制器类型，使用 0-based 玩家索引
             for (playerSetting in playerSettings) {
                 if (playerSetting.isConnected) {
                     // 确保控制器类型值有效
@@ -214,11 +214,11 @@ class QuickSettings(val activity: Activity) {
                     // 将控制器类型索引转换为位掩码值
                     val controllerTypeBitmask = controllerTypeIndexToBitmask(controllerType)
                     
-                    // 使用玩家编号而不是设备ID
-                    RyujinxNative.jnaInstance.setControllerType(playerSetting.playerNumber, controllerTypeBitmask)
+                    // 使用 0-based 玩家索引
+                    RyujinxNative.jnaInstance.setControllerType(playerSetting.playerIndex, controllerTypeBitmask)
                     
                     // 记录设置信息
-                    android.util.Log.d("QuickSettings", "Controller type set to: ${getControllerTypeName(controllerType)} (bitmask: $controllerTypeBitmask) for player ${playerSetting.playerNumber}")
+                    android.util.Log.d("QuickSettings", "Controller type set to: ${getControllerTypeName(controllerType)} (bitmask: $controllerTypeBitmask) for player index ${playerSetting.playerIndex}")
                 }
             }
         } catch (e: Exception) {
@@ -250,9 +250,9 @@ class QuickSettings(val activity: Activity) {
         }
     }
     
-    // 获取当前控制器类型的枚举值（玩家1）
+    // 获取当前控制器类型的枚举值（玩家1，索引0）
     fun getCurrentControllerType(): ControllerType {
-        val player1Setting = getPlayerSetting(1)
+        val player1Setting = getPlayerSetting(0)
         val type = player1Setting?.controllerType ?: 0
         
         return when (type.coerceIn(0, 4)) {
@@ -265,9 +265,9 @@ class QuickSettings(val activity: Activity) {
         }
     }
     
-    // 设置控制器类型通过枚举值（玩家1）
+    // 设置控制器类型通过枚举值（玩家1，索引0）
     fun setControllerType(controllerType: ControllerType) {
-        val player1Setting = getPlayerSetting(1)
+        val player1Setting = getPlayerSetting(0)
         if (player1Setting != null) {
             val typeValue = when (controllerType) {
                 ControllerType.PRO_CONTROLLER -> 0
@@ -285,5 +285,44 @@ class QuickSettings(val activity: Activity) {
     // 扩展函数：检查控制器类型是否有效
     private fun Int.isValidControllerType(): Boolean {
         return this in 0..4
+    }
+    
+    // 新增方法：获取玩家显示名称（用于UI显示）
+    fun getPlayerDisplayName(playerIndex: Int): String {
+        return "Player ${playerIndex + 1}" // 显示为 Player 1, Player 2, ...
+    }
+    
+    // 新增方法：检查玩家索引是否有效
+    fun isValidPlayerIndex(playerIndex: Int): Boolean {
+        return playerIndex in 0..7
+    }
+    
+    // 新增方法：获取所有已连接的玩家索引
+    fun getConnectedPlayerIndices(): List<Int> {
+        return playerSettings.filter { it.isConnected }.map { it.playerIndex }
+    }
+    
+    // 新增方法：连接玩家
+    fun connectPlayer(playerIndex: Int) {
+        if (isValidPlayerIndex(playerIndex)) {
+            val setting = getPlayerSetting(playerIndex)
+            if (setting != null && !setting.isConnected) {
+                setting.isConnected = true
+                updatePlayerSetting(setting)
+                android.util.Log.d("QuickSettings", "Connected player index: $playerIndex")
+            }
+        }
+    }
+    
+    // 新增方法：断开玩家连接
+    fun disconnectPlayer(playerIndex: Int) {
+        if (isValidPlayerIndex(playerIndex)) {
+            val setting = getPlayerSetting(playerIndex)
+            if (setting != null && setting.isConnected) {
+                setting.isConnected = false
+                updatePlayerSetting(setting)
+                android.util.Log.d("QuickSettings", "Disconnected player index: $playerIndex")
+            }
+        }
     }
 }
