@@ -276,46 +276,46 @@ namespace LibRyujinx
         }
 
         [UnmanagedCallersOnly(EntryPoint = "input_set_button_pressed")]
-        public static void SetButtonPressedNative(GamepadButtonInputId button, int id)
+        public static void SetButtonPressedNative(GamepadButtonInputId button, int playerIndex)  // 修改：参数名改为 playerIndex
         {
-            SetButtonPressed(button, id);
+            SetButtonPressed(button, playerIndex);
         }
 
         [UnmanagedCallersOnly(EntryPoint = "input_set_button_released")]
-        public static void SetButtonReleasedNative(GamepadButtonInputId button, int id)
+        public static void SetButtonReleasedNative(GamepadButtonInputId button, int playerIndex)  // 修改：参数名改为 playerIndex
         {
-            SetButtonReleased(button, id);
+            SetButtonReleased(button, playerIndex);
         }
 
         [UnmanagedCallersOnly(EntryPoint = "input_set_accelerometer_data")]
-        public static void SetAccelerometerDataNative(Vector3 accel, int id)
+        public static void SetAccelerometerDataNative(Vector3 accel, int playerIndex)  // 修改：参数名改为 playerIndex
         {
-            SetAccelerometerData(accel, id);
+            SetAccelerometerData(accel, playerIndex);
         }
 
         [UnmanagedCallersOnly(EntryPoint = "input_set_gyro_data")]
-        public static void SetGyroDataNative(Vector3 gyro, int id)
+        public static void SetGyroDataNative(Vector3 gyro, int playerIndex)  // 修改：参数名改为 playerIndex
         {
-            SetGyroData(gyro, id);
+            SetGyroData(gyro, playerIndex);
         }
 
         [UnmanagedCallersOnly(EntryPoint = "input_set_stick_axis")]
-        public static void SetStickAxisNative(StickInputId stick, Vector2 axes, int id)
+        public static void SetStickAxisNative(StickInputId stick, Vector2 axes, int playerIndex)  // 修改：参数名改为 playerIndex
         {
-            SetStickAxis(stick, axes, id);
+            SetStickAxis(stick, axes, playerIndex);
         }
 
         [UnmanagedCallersOnly(EntryPoint = "input_connect_gamepad")]
-        public static IntPtr ConnectGamepadNative(int index)
+        public static IntPtr ConnectGamepadNative(int playerIndex)  // 修改：参数名改为 playerIndex
         {
-            return ConnectGamepad(index);
+            return ConnectGamepad(playerIndex);
         }
 
-        // 添加设置控制器类型的 JNI 方法
-        [UnmanagedCallersOnly(EntryPoint = "input_set_controller_type")]
-        public static void SetControllerTypeNative(int deviceId, int controllerType)
+        // 修改：设置控制器类型的 JNI 方法 - 修正 EntryPoint 名称和参数名
+        [UnmanagedCallersOnly(EntryPoint = "setControllerType")]  // 修正：改为正确的 EntryPoint
+        public static void SetControllerTypeNative(int playerIndex, int controllerType)  // 修改：参数名改为 playerIndex
         {
-            SetControllerType(deviceId, controllerType);
+            SetControllerType(playerIndex, controllerType);
         }
 
         [UnmanagedCallersOnly(EntryPoint = "device_get_game_fifo")]
