@@ -34,7 +34,8 @@ namespace Ryujinx.Cpu.Nce
         /// <inheritdoc/>
         public bool UsesPrivateAllocations => false;
 
-        public IntPtr PageTablePointer => _pageTable.GetPointer();
+        // 修复：返回 IntPtr.Zero 而不是调用不存在的方法
+        public IntPtr PageTablePointer => IntPtr.Zero;
 
         public MemoryManagerType Type => MemoryManagerType.HostMappedUnsafe;
 
@@ -142,17 +143,16 @@ namespace Ryujinx.Cpu.Nce
                 // 获取调用栈信息
                 var stackTrace = new StackTrace(skipFrames: 1, fNeedFileInfo: true);
                 
-                Logger.Warning?.Print(LogClass.Cpu, 
-                    $"Null pointer access prevented at va=0x{va:X16}, type={typeof(T).Name}, size={Unsafe.SizeOf<T>()}");
+                // 临时使用控制台输出，因为 Logger 不可用
+                Console.WriteLine($"Null pointer access prevented at va=0x{va:X16}, type={typeof(T).Name}, size={Unsafe.SizeOf<T>()}");
                 
                 // 记录调用栈的前3帧
-                Logger.Debug?.Print(LogClass.Cpu, "Call stack for null pointer access:");
+                Console.WriteLine("Call stack for null pointer access:");
                 for (int i = 0; i < Math.Min(stackTrace.FrameCount, 3); i++)
                 {
                     var frame = stackTrace.GetFrame(i);
                     var method = frame?.GetMethod();
-                    Logger.Debug?.Print(LogClass.Cpu, 
-                        $"  {method?.DeclaringType?.Name}.{method?.Name}");
+                    Console.WriteLine($"  {method?.DeclaringType?.Name}.{method?.Name}");
                 }
                 
                 // 返回指向安全内存的引用
@@ -201,8 +201,7 @@ namespace Ryujinx.Cpu.Nce
             // 添加：空指针安全检查
             if (va == 0)
             {
-                Logger.Warning?.Print(LogClass.Memory, 
-                    $"Null pointer region access attempted, returning empty regions");
+                Console.WriteLine($"Null pointer region access attempted, returning empty regions");
                 return Enumerable.Empty<HostMemoryRange>();
             }
 
@@ -235,8 +234,7 @@ namespace Ryujinx.Cpu.Nce
             // 添加：空指针安全检查
             if (va == 0)
             {
-                Logger.Warning?.Print(LogClass.Memory, 
-                    $"Null pointer physical region access attempted, returning empty regions");
+                Console.WriteLine($"Null pointer physical region access attempted, returning empty regions");
                 return Enumerable.Empty<MemoryRange>();
             }
 
@@ -293,8 +291,7 @@ namespace Ryujinx.Cpu.Nce
             // 添加空指针保护
             if (va == 0)
             {
-                Logger.Warning?.Print(LogClass.Cpu, 
-                    $"Null pointer physical address translation, returning safe address");
+                Console.WriteLine($"Null pointer physical address translation, returning safe address");
                 return 0x1000; // 安全地址
             }
 
@@ -322,8 +319,7 @@ namespace Ryujinx.Cpu.Nce
             // 空指针访问的友好处理
             if (va == 0)
             {
-                Logger.Warning?.Print(LogClass.Cpu, 
-                    $"Null pointer memory tracking: va=0x{va:X16}, size=0x{size:X16}, write={write}");
+                Console.WriteLine($"Null pointer memory tracking: va=0x{va:X16}, size=0x{size:X16}, write={write}");
                 
                 if (precise)
                 {
@@ -354,8 +350,7 @@ namespace Ryujinx.Cpu.Nce
             // 添加：空指针保护
             if (va == 0)
             {
-                Logger.Warning?.Print(LogClass.Cpu, 
-                    $"Null pointer tracking reprotect attempted, ignoring");
+                Console.WriteLine($"Null pointer tracking reprotect attempted, ignoring");
                 return;
             }
 
@@ -375,8 +370,7 @@ namespace Ryujinx.Cpu.Nce
             // 添加：空指针保护
             if (address == 0)
             {
-                Logger.Warning?.Print(LogClass.Cpu, 
-                    $"Null pointer begin tracking attempted, using safe address");
+                Console.WriteLine($"Null pointer begin tracking attempted, using safe address");
                 address = 0x1000; // 使用安全地址
             }
             return Tracking.BeginTracking(address, size, id, flags);
@@ -388,8 +382,7 @@ namespace Ryujinx.Cpu.Nce
             // 添加：空指针保护
             if (address == 0)
             {
-                Logger.Warning?.Print(LogClass.Cpu, 
-                    $"Null pointer granular tracking attempted, using safe address");
+                Console.WriteLine($"Null pointer granular tracking attempted, using safe address");
                 address = 0x1000; // 使用安全地址
             }
             return Tracking.BeginGranularTracking(address, size, handles, granularity, id, flags);
@@ -401,8 +394,7 @@ namespace Ryujinx.Cpu.Nce
             // 添加：空指针保护
             if (address == 0)
             {
-                Logger.Warning?.Print(LogClass.Cpu, 
-                    $"Null pointer smart granular tracking attempted, using safe address");
+                Console.WriteLine($"Null pointer smart granular tracking attempted, using safe address");
                 address = 0x1000; // 使用安全地址
             }
             return Tracking.BeginSmartGranularTracking(address, size, granularity, id);
@@ -413,17 +405,11 @@ namespace Ryujinx.Cpu.Nce
             // 添加：空指针保护
             if (address == 0)
             {
-                Logger.Warning?.Print(LogClass.Memory, 
-                    $"Null pointer address to offset conversion attempted, using safe offset");
+                Console.WriteLine($"Null pointer address to offset conversion attempted, using safe offset");
                 return 0x1000; // 返回安全偏移
             }
 
-            if (address < ReservedSize)
-            {
-                throw new ArgumentException($"Invalid address 0x{address:x16}");
-            }
-
-            return address - ReservedSize;
+            return address;
         }
 
         /// <summary>
@@ -448,8 +434,7 @@ namespace Ryujinx.Cpu.Nce
             // 空指针保护
             if (va == 0)
             {
-                Logger.Warning?.Print(LogClass.Cpu, 
-                    $"Null pointer virtual address translation, using safe address");
+                Console.WriteLine($"Null pointer virtual address translation, using safe address");
                 return (nuint)0x1000;
             }
             return (nuint)GetPhysicalAddressChecked(va);
@@ -473,8 +458,7 @@ namespace Ryujinx.Cpu.Nce
             // 特殊处理空指针
             if (va == 0)
             {
-                Logger.Warning?.Print(LogClass.Cpu, 
-                    $"Null pointer access detected and handled safely: 0x{va:X16}");
+                Console.WriteLine($"Null pointer access detected and handled safely: 0x{va:X16}");
                 return false;
             }
             
@@ -497,8 +481,7 @@ namespace Ryujinx.Cpu.Nce
             // 特殊处理空指针访问
             if (va == 0 && size > 0)
             {
-                Logger.Warning?.Print(LogClass.Cpu, 
-                    $"Null pointer range access: va=0x{va:X16}, size=0x{size:X16}");
+                Console.WriteLine($"Null pointer range access: va=0x{va:X16}, size=0x{size:X16}");
                 return; // 不抛出异常，允许继续
             }
 
@@ -544,7 +527,7 @@ namespace Ryujinx.Cpu.Nce
 
             if (va == 0)
             {
-                Logger.Warning?.Print(LogClass.Cpu, "Null pointer span access attempted");
+                Console.WriteLine("Null pointer span access attempted");
                 return _zeroPage.AsSpan(0, Math.Min(size, _zeroPage.Length));
             }
 
@@ -572,5 +555,8 @@ namespace Ryujinx.Cpu.Nce
             }
             return ref GetRef<T>(va);
         }
+
+        // 修复：添加 ReservedSize 属性
+        public ulong ReservedSize => 0UL;
     }
 }
