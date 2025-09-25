@@ -2209,7 +2209,7 @@ if (showMemoryConfigDialog.value) {
                             Scaffold(
                                 topBar = {
                                     TopAppBar(
-                                       title = { Text("Player ${playerNumber + 1} Settings") },
+                                       title = { Text("Player ${playerIndex + 1} Settings") },
                                         navigationIcon = {
                                             IconButton(onClick = { showPlayerSettingsDialog.value = -1 }) {
                                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -2322,7 +2322,6 @@ if (showMemoryConfigDialog.value) {
                         scalingFilterLevel, // 新增：缩放过滤器级别
                         antiAliasing, // 新增：抗锯齿模式
                         memoryConfiguration // 新增DRAM参数
-                        //playerSettings[0].controllerType // 使用Player 1的设置
                     )
                     settingsViewModel.navController.popBackStack()
                 }
