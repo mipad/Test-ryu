@@ -62,12 +62,15 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
                 playerSettings = Json.decodeFromString<MutableList<PlayerSetting>>(json).toMutableList()
                 
                 // 确保所有玩家设置使用正确的索引
-                playerSettings.forEach { setting ->
+                // 修复：创建新的 PlayerSetting 对象而不是修改 val 属性
+                playerSettings = playerSettings.map { setting ->
                     if (setting.playerIndex > 7) {
-                        // 如果发现旧的 1-based 编号，转换为 0-based 索引
-                        setting.playerIndex = setting.playerIndex - 1
+                        // 如果发现旧的 1-based 编号，创建新的对象转换为 0-based 索引
+                        PlayerSetting(setting.playerIndex - 1, setting.isConnected, setting.controllerType)
+                    } else {
+                        setting
                     }
-                }
+                }.toMutableList()
             } catch (e: Exception) {
                 // 如果解析失败，使用默认设置
                 initDefaultPlayerSettings()
@@ -351,12 +354,13 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
             // 使用 physicalControllerManager 来更新控制器类型
             MainActivity.mainViewModel?.physicalControllerManager?.updateControllerType(controllerTypeEnum)
             
+            // 修复：注释掉不存在的 ControllerManager.updateControllerType 方法调用
             // 同时更新ControllerManager中的控制器类型
-            org.ryujinx.android.ControllerManager.updateControllerType(
-                activity,
-                "virtual_controller_1",
-                controllerTypeEnum
-            )
+            // org.ryujinx.android.ControllerManager.updateControllerType(
+            //     activity,
+            //     "virtual_controller_1",
+            //     controllerTypeEnum
+            // )
         } catch (e: Exception) {
             e.printStackTrace()
         }
