@@ -56,11 +56,8 @@ class MainViewModel(val activity: MainActivity) {
 
     var homeViewModel: HomeViewModel = HomeViewModel(activity, this)
 
-    // 玩家设置列表
+    // 玩家设置列表（使用 0-based 索引）
     var playerSettings: MutableList<PlayerSetting> = mutableListOf()
-    
-    // 玩家设备ID映射表 - 已移除，不再使用设备ID
-    // private val playerDeviceIds = mutableMapOf<Int, Int>()
 
     init {
         performanceManager = PerformanceManager(activity)
@@ -69,16 +66,16 @@ class MainViewModel(val activity: MainActivity) {
 
     // 加载玩家设置
     private fun loadPlayerSettings() {
-        // 初始化默认玩家设置
+        // 初始化默认玩家设置（使用 0-based 索引）
         playerSettings = mutableListOf(
-            PlayerSetting(1, true, 0), // Player 1 默认开启，Pro Controller
-            PlayerSetting(2, false, 0), // Player 2-8 默认关闭
-            PlayerSetting(3, false, 0),
-            PlayerSetting(4, false, 0),
-            PlayerSetting(5, false, 0),
-            PlayerSetting(6, false, 0),
-            PlayerSetting(7, false, 0),
-            PlayerSetting(8, false, 0)
+            PlayerSetting(0, true, 0), // Player 1 (索引0) 默认开启，Pro Controller
+            PlayerSetting(1, false, 0), // Player 2 (索引1) 默认关闭
+            PlayerSetting(2, false, 0), // Player 3 (索引2) 默认关闭
+            PlayerSetting(3, false, 0), // Player 4 (索引3) 默认关闭
+            PlayerSetting(4, false, 0), // Player 5 (索引4) 默认关闭
+            PlayerSetting(5, false, 0), // Player 6 (索引5) 默认关闭
+            PlayerSetting(6, false, 0), // Player 7 (索引6) 默认关闭
+            PlayerSetting(7, false, 0)  // Player 8 (索引7) 默认关闭
         )
         
         // 尝试从设置中加载保存的玩家设置
@@ -91,60 +88,32 @@ class MainViewModel(val activity: MainActivity) {
         }
     }
 
-    // 获取指定玩家的设置
-    fun getPlayerSetting(playerNumber: Int): PlayerSetting? {
-        return playerSettings.find { it.playerNumber == playerNumber }
+    // 获取指定玩家的设置（使用 0-based 索引）
+    fun getPlayerSetting(playerIndex: Int): PlayerSetting? {
+        return playerSettings.find { it.playerIndex == playerIndex }
     }
 
     // 更新玩家设置
     fun updatePlayerSetting(playerSetting: PlayerSetting) {
-        val index = playerSettings.indexOfFirst { it.playerNumber == playerSetting.playerNumber }
+        val index = playerSettings.indexOfFirst { it.playerIndex == playerSetting.playerIndex }
         if (index != -1) {
             playerSettings[index] = playerSetting
             
             // 如果是已连接的玩家，立即应用设置
             if (playerSetting.isConnected) {
-                // 使用玩家编号而不是设备ID
                 // 将控制器类型索引转换为位掩码值
                 val controllerTypeBitmask = controllerTypeIndexToBitmask(playerSetting.controllerType)
-                RyujinxNative.jnaInstance.setControllerType(playerSetting.playerNumber, controllerTypeBitmask)
+                // 使用 0-based 玩家索引
+                RyujinxNative.jnaInstance.setControllerType(playerSetting.playerIndex, controllerTypeBitmask)
                 
-                // 如果是玩家1，更新GameController的布局
-                if (playerSetting.playerNumber == 1) {
+                // 如果是玩家1（索引0），更新GameController的布局
+                if (playerSetting.playerIndex == 0) {
                     controller?.updateControllerTypeFromSettings()
                 }
             }
         }
     }
     
-    // 为玩家分配设备ID - 已移除，不再使用设备ID
-    // fun assignDeviceIdToPlayer(playerNumber: Int): Int {
-    //     // 玩家1使用设备ID0（虚拟控制器）
-    //     if (playerNumber == 1) {
-    //         playerDeviceIds[1] = 0
-    //         return 0
-    //     }
-    //     
-    //     // 其他玩家使用设备ID1-7
-    //     val deviceId = playerNumber - 1
-    //     playerDeviceIds[playerNumber] = deviceId
-    //     
-    //     // 设置控制器类型
-    //     val playerSetting = getPlayerSetting(playerNumber)
-    //     if (playerSetting != null && playerSetting.isConnected) {
-    //         // 将控制器类型索引转换为位掩码值
-    //         val controllerTypeBitmask = controllerTypeIndexToBitmask(playerSetting.controllerType)
-    //         RyujinxNative.jnaInstance.setControllerType(deviceId, controllerTypeBitmask)
-    //     }
-    //     
-    //     return deviceId
-    // }
-    
-    // 释放玩家的设备ID - 已移除，不再使用设备ID
-    // fun releaseDeviceIdForPlayer(playerNumber: Int) {
-    //     playerDeviceIds.remove(playerNumber)
-    // }
-
     // 新增方法：将控制器类型索引转换为位掩码值
     private fun controllerTypeIndexToBitmask(controllerTypeIndex: Int): Int {
         return when (controllerTypeIndex) {
@@ -164,12 +133,6 @@ class MainViewModel(val activity: MainActivity) {
         motionSensorManager?.unregister()
         physicalControllerManager?.disconnect()
         motionSensorManager?.setControllerId(-1)
-        
-        // 释放所有玩家的设备ID - 已移除，不再使用设备ID
-        // playerDeviceIds.keys.toList().forEach { playerNumber ->
-        //     releaseDeviceIdForPlayer(playerNumber)
-        // }
-        // playerDeviceIds.clear()
     }
 
     fun refreshFirmwareVersion() {
@@ -279,13 +242,13 @@ class MainViewModel(val activity: MainActivity) {
                     settings.memoryConfiguration //内存配置
                 )
 
-                // 为所有连接的玩家设置控制器类型 - 使用玩家编号而不是设备ID
+                // 为所有连接的玩家设置控制器类型 - 使用 0-based 玩家索引
                 playerSettings.forEach { playerSetting ->
                     if (playerSetting.isConnected) {
                         // 将控制器类型索引转换为位掩码值
                         val controllerTypeBitmask = controllerTypeIndexToBitmask(playerSetting.controllerType)
-                        // 使用玩家编号而不是设备ID
-                        RyujinxNative.jnaInstance.setControllerType(playerSetting.playerNumber, controllerTypeBitmask)
+                        // 使用 0-based 玩家索引
+                        RyujinxNative.jnaInstance.setControllerType(playerSetting.playerIndex, controllerTypeBitmask)
                     }
                 }
 
@@ -395,13 +358,13 @@ class MainViewModel(val activity: MainActivity) {
                     settings.memoryConfiguration //内存配置
                 )
 
-                // 为所有连接的玩家设置控制器类型 - 使用玩家编号而不是设备ID
+                // 为所有连接的玩家设置控制器类型 - 使用 0-based 玩家索引
                 playerSettings.forEach { playerSetting ->
                     if (playerSetting.isConnected) {
                         // 将控制器类型索引转换为位掩码值
                         val controllerTypeBitmask = controllerTypeIndexToBitmask(playerSetting.controllerType)
-                        // 使用玩家编号而不是设备ID
-                        RyujinxNative.jnaInstance.setControllerType(playerSetting.playerNumber, controllerTypeBitmask)
+                        // 使用 0-based 玩家索引
+                        RyujinxNative.jnaInstance.setControllerType(playerSetting.playerIndex, controllerTypeBitmask)
                     }
                 }
 
@@ -561,5 +524,39 @@ class MainViewModel(val activity: MainActivity) {
         this.progressValue = progressValue
         this.progress = progress
         gameHost?.setProgressStates(showLoading, progressValue, progress)
+    }
+    
+    // 新增方法：获取玩家显示名称（用于UI显示）
+    fun getPlayerDisplayName(playerIndex: Int): String {
+        return "Player ${playerIndex + 1}" // 显示为 Player 1, Player 2, ...
+    }
+    
+    // 新增方法：检查玩家索引是否有效
+    fun isValidPlayerIndex(playerIndex: Int): Boolean {
+        return playerIndex in 0..7
+    }
+    
+    // 新增方法：连接玩家
+    fun connectPlayer(playerIndex: Int) {
+        if (isValidPlayerIndex(playerIndex)) {
+            val setting = getPlayerSetting(playerIndex)
+            if (setting != null && !setting.isConnected) {
+                setting.isConnected = true
+                updatePlayerSetting(setting)
+                android.util.Log.d("MainViewModel", "Connected player index: $playerIndex")
+            }
+        }
+    }
+    
+    // 新增方法：断开玩家连接
+    fun disconnectPlayer(playerIndex: Int) {
+        if (isValidPlayerIndex(playerIndex)) {
+            val setting = getPlayerSetting(playerIndex)
+            if (setting != null && setting.isConnected) {
+                setting.isConnected = false
+                updatePlayerSetting(setting)
+                android.util.Log.d("MainViewModel", "Disconnected player index: $playerIndex")
+            }
+        }
     }
 }
