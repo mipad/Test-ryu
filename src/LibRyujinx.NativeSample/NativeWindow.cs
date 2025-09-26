@@ -20,10 +20,24 @@ namespace LibRyujinx.NativeSample
         private Vector2 _lastPosition;
         private bool _mousePressed;
         private int _playerIndex; // 修改：使用整数玩家索引而不是指针
+        private int _controllerType; // 新增：存储当前控制器类型
 
         public NativeWindow(NativeWindowSettings nativeWindowSettings) : base(nativeWindowSettings)
         {
             _isVulkan = true;
+            _controllerType = 1; // 默认使用ProController (1 << 0)
+        }
+
+        // 新增方法：设置控制器类型
+        public void SetControllerType(int controllerType)
+        {
+            _controllerType = controllerType;
+            // 如果已经连接了游戏手柄，需要重新连接以应用新的控制器类型
+            if (_playerIndex != -1)
+            {
+                DisconnectGamepad();
+                ConnectGamepad();
+            }
         }
 
         internal unsafe void Start(string gamePath)
@@ -79,8 +93,8 @@ namespace LibRyujinx.NativeSample
                 Marshal.FreeHGlobal(path);
             }
 
-            // 修改：ConnectGamepad 现在返回整数索引而不是指针
-            _playerIndex = LibRyujinxInterop.ConnectGamepad(0); // 使用玩家索引 0
+            // 修改：根据控制器类型选择玩家索引
+            ConnectGamepad();
 
             if (!_isVulkan)
             {
@@ -103,6 +117,33 @@ namespace LibRyujinx.NativeSample
             // 修改：不再需要释放指针，因为现在使用整数索引
         }
 
+        // 新增方法：连接游戏手柄
+        private void ConnectGamepad()
+        {
+            // 根据控制器类型决定使用哪个玩家索引
+            // 如果是掌机模式（Handheld），使用玩家索引8
+            // 否则使用玩家索引0（玩家1）
+            int playerIndexToUse = (_controllerType == 2) ? 8 : 0; // 2是Handheld的位掩码值 (1 << 1)
+            
+            _playerIndex = LibRyujinxInterop.ConnectGamepad(playerIndexToUse);
+            
+            if (_playerIndex != -1)
+            {
+                // 设置控制器类型
+                LibRyujinxInterop.SetControllerType(_playerIndex, _controllerType);
+            }
+        }
+
+        // 新增方法：断开游戏手柄连接
+        private void DisconnectGamepad()
+        {
+            if (_playerIndex != -1)
+            {
+                // 这里可以添加断开连接的逻辑（如果需要）
+                _playerIndex = -1;
+            }
+        }
+
         public void RunLoop()
         {
             del = Marshal.GetFunctionPointerForDelegate<SwapBuffersCallback>(SwapBuffers);
@@ -114,13 +155,6 @@ namespace LibRyujinx.NativeSample
 
                 Context.SwapInterval = 0;
             }
-
-           /* Task.Run(async () =>
-            {
-                await Task.Delay(1000);
-
-                LibRyujinxInterop.SetVsyncState(true);
-            });*/
 
             LibRyujinxInterop.RunLoop();
 
@@ -180,8 +214,11 @@ namespace LibRyujinx.NativeSample
             base.OnKeyUp(e);
 
             // 修改：使用整数玩家索引而不是指针
-            var key = GetKeyMapping(e.Key);
-            LibRyujinxInterop.SetButtonReleased(key, _playerIndex);
+            if (_playerIndex != -1)
+            {
+                var key = GetKeyMapping(e.Key);
+                LibRyujinxInterop.SetButtonReleased(key, _playerIndex);
+            }
         }
 
         protected override void OnKeyDown(KeyboardKeyEventArgs e)
@@ -189,8 +226,11 @@ namespace LibRyujinx.NativeSample
             base.OnKeyDown(e);
 
             // 修改：使用整数玩家索引而不是指针
-            var key = GetKeyMapping(e.Key);
-            LibRyujinxInterop.SetButtonPressed(key, _playerIndex);
+            if (_playerIndex != -1)
+            {
+                var key = GetKeyMapping(e.Key);
+                LibRyujinxInterop.SetButtonPressed(key, _playerIndex);
+            }
         }
 
         public void UpdateLoop()
