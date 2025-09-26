@@ -30,7 +30,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
     private var sharedPref: SharedPreferences
     var selectedFirmwareFile: DocumentFile? = null
 
-    // 玩家设置列表（使用 0-based 索引）
+    // 玩家设置列表（使用 0-based 索引，0-7为普通玩家，8为掌机模式）
     var playerSettings: MutableList<PlayerSetting> = mutableListOf()
 
     init {
@@ -54,25 +54,50 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         return PreferenceManager.getDefaultSharedPreferences(activity)
     }
 
-    // 加载玩家设置
+    // 加载玩家设置（包括掌机模式）
     private fun loadPlayerSettings() {
         val json = sharedPref.getString("player_settings", null)
-        if (json != null) {
+        val handheldJson = sharedPref.getString("handheld_setting", null)
+        
+        if (json != null || handheldJson != null) {
             try {
-                playerSettings = Json.decodeFromString<MutableList<PlayerSetting>>(json).toMutableList()
+                // 先初始化默认设置
+                initDefaultPlayerSettings()
                 
-                // 确保所有玩家设置使用正确的索引
-                // 修复：创建新的 PlayerSetting 对象而不是修改 val 属性
-                playerSettings = playerSettings.map { setting ->
-                    if (setting.playerIndex > 7) {
-                        // 如果发现旧的 1-based 编号，创建新的对象转换为 0-based 索引
-                        PlayerSetting(setting.playerIndex - 1, setting.isConnected, setting.controllerType)
-                    } else {
-                        setting
+                // 如果有保存的设置，则加载
+                if (json != null) {
+                    val savedSettings = Json.decodeFromString<MutableList<PlayerSetting>>(json)
+                    
+                    // 更新普通玩家设置 (0-7)
+                    savedSettings.forEach { savedSetting ->
+                        val index = playerSettings.indexOfFirst { it.playerIndex == savedSetting.playerIndex }
+                        if (index != -1 && savedSetting.playerIndex in 0..7) {
+                            playerSettings[index] = savedSetting
+                        }
                     }
-                }.toMutableList()
+                }
+                
+                // 加载掌机模式设置
+                if (handheldJson != null) {
+                    val handheldSetting = Json.decodeFromString<PlayerSetting>(handheldJson)
+                    val index = playerSettings.indexOfFirst { it.playerIndex == 8 }
+                    if (index != -1) {
+                        playerSettings[index] = handheldSetting
+                    } else {
+                        // 如果列表中没有掌机模式设置，添加它
+                        playerSettings.add(handheldSetting)
+                    }
+                }
+                
+                // 确保所有控制器类型值有效
+                playerSettings.forEach { setting ->
+                    if (!setting.controllerType.isValidControllerType()) {
+                        setting.controllerType = if (setting.playerIndex == 8) 4 else 0 // 掌机模式默认Handheld，其他默认Pro
+                    }
+                }
             } catch (e: Exception) {
                 // 如果解析失败，使用默认设置
+                android.util.Log.e("SettingsViewModel", "Failed to parse player settings, using defaults", e)
                 initDefaultPlayerSettings()
             }
         } else {
@@ -80,7 +105,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         }
     }
 
-    // 初始化默认玩家设置（使用 0-based 索引）
+    // 初始化默认玩家设置（使用 0-based 索引，包括掌机模式）
     private fun initDefaultPlayerSettings() {
         playerSettings = mutableListOf(
             PlayerSetting(0, true, 0), // Player 1 (索引0) 默认开启，Pro Controller
@@ -90,32 +115,77 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
             PlayerSetting(4, false, 0), // Player 5 (索引4) 默认关闭
             PlayerSetting(5, false, 0), // Player 6 (索引5) 默认关闭
             PlayerSetting(6, false, 0), // Player 7 (索引6) 默认关闭
-            PlayerSetting(7, false, 0)  // Player 8 (索引7) 默认关闭
+            PlayerSetting(7, false, 0), // Player 8 (索引7) 默认关闭
+            PlayerSetting(8, false, 4)  // Handheld (索引8) 默认关闭，控制器类型为Handheld
         )
     }
 
-    // 保存玩家设置
+    // 保存玩家设置（包括掌机模式）
     private fun savePlayerSettings() {
-        val json = Json.encodeToString(playerSettings)
-        sharedPref.edit().putString("player_settings", json).apply()
+        try {
+            // 分离普通玩家设置和掌机模式设置
+            val regularPlayers = playerSettings.filter { it.playerIndex in 0..7 }
+            val handheldSetting = playerSettings.find { it.playerIndex == 8 } ?: PlayerSetting(8, false, 4)
+            
+            val regularJson = Json.encodeToString(regularPlayers)
+            val handheldJson = Json.encodeToString(handheldSetting)
+            
+            sharedPref.edit()
+                .putString("player_settings", regularJson)
+                .putString("handheld_setting", handheldJson)
+                .apply()
+        } catch (e: Exception) {
+            android.util.Log.e("SettingsViewModel", "Failed to save player settings", e)
+        }
     }
 
-    // 获取指定玩家的设置（使用 0-based 索引）
+    // 获取指定玩家的设置（使用 0-based 索引，0-8）
     fun getPlayerSetting(playerIndex: Int): PlayerSetting? {
         return playerSettings.find { it.playerIndex == playerIndex }
     }
 
-    // 更新玩家设置
+    // 更新玩家设置（包括掌机模式）
     fun updatePlayerSetting(playerSetting: PlayerSetting) {
         val index = playerSettings.indexOfFirst { it.playerIndex == playerSetting.playerIndex }
         if (index != -1) {
+            // 确保控制器类型值有效
+            if (!playerSetting.controllerType.isValidControllerType()) {
+                playerSetting.controllerType = if (playerSetting.playerIndex == 8) 4 else 0
+            }
+            
             playerSettings[index] = playerSetting
             savePlayerSettings()
             
-            // 如果是玩家1（索引0），立即应用设置
-            if (playerSetting.playerIndex == 0 && playerSetting.isConnected) {
-                updateControllerTypeInManager(playerSetting.controllerType)
+            // 如果是已连接的玩家，立即应用设置
+            if (playerSetting.isConnected) {
+                applyPlayerSettingToNative(playerSetting)
             }
+            
+            // 如果是玩家1（索引0）或掌机模式（索引8），更新ControllerManager中的控制器类型
+            if (playerSetting.playerIndex == 0 || playerSetting.playerIndex == 8) {
+                updateControllerTypeInManager(playerSetting.controllerType, playerSetting.playerIndex)
+            }
+        }
+    }
+    
+    // 应用玩家设置到Native层
+    private fun applyPlayerSettingToNative(playerSetting: PlayerSetting) {
+        try {
+            // 将控制器类型索引转换为位掩码值
+            val controllerTypeBitmask = controllerTypeIndexToBitmask(playerSetting.controllerType)
+            
+            // 对于掌机模式，使用玩家索引8，其他使用正常索引
+            val targetPlayerIndex = if (playerSetting.playerIndex == 8) {
+                8 // 掌机模式使用索引8
+            } else {
+                playerSetting.playerIndex // 其他玩家使用正常索引
+            }
+            
+            RyujinxNative.jnaInstance.setControllerType(targetPlayerIndex, controllerTypeBitmask)
+            
+            android.util.Log.d("SettingsViewModel", "Applied controller setting: playerIndex=$targetPlayerIndex, controllerType=${playerSetting.controllerType}, bitmask=$controllerTypeBitmask")
+        } catch (e: Exception) {
+            android.util.Log.e("SettingsViewModel", "Failed to apply player setting to native", e)
         }
     }
 
@@ -292,21 +362,12 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         // 设置内存配置
         RyujinxNative.jnaInstance.setMemoryConfiguration(memoryConfiguration.value)
 
-        // 设置所有已连接玩家的控制器类型，使用 0-based 玩家索引
-        for (playerIndex in 0..7) {
+        // 设置所有已连接玩家的控制器类型，使用 0-based 玩家索引 (0-8)
+        for (playerIndex in 0..8) {
             val playerSetting = getPlayerSetting(playerIndex)
             if (playerSetting != null && playerSetting.isConnected) {
-                // 将控制器类型索引转换为位掩码值
-                val controllerTypeBitmask = controllerTypeIndexToBitmask(playerSetting.controllerType)
-                // 使用 0-based 玩家索引
-                RyujinxNative.jnaInstance.setControllerType(playerIndex, controllerTypeBitmask)
-                
-                // 如果是玩家1（索引0），同时更新ControllerManager中的控制器类型
-                if (playerIndex == 0) {
-                    updateControllerTypeInManager(playerSetting.controllerType)
-                }
-                
-                android.util.Log.d("SettingsViewModel", "Controller type set for player index $playerIndex: $controllerTypeBitmask")
+                applyPlayerSettingToNative(playerSetting)
+                android.util.Log.d("SettingsViewModel", "Controller type set for player index $playerIndex")
             }
         }
 
@@ -340,7 +401,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
     }
 
     // 新增方法：更新ControllerManager中的控制器类型
-    private fun updateControllerTypeInManager(controllerTypeIndex: Int) {
+    private fun updateControllerTypeInManager(controllerTypeIndex: Int, playerIndex: Int) {
         try {
             val controllerTypeEnum = when (controllerTypeIndex) {
                 0 -> ControllerType.PRO_CONTROLLER
@@ -351,18 +412,17 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
                 else -> ControllerType.PRO_CONTROLLER
             }
             
-            // 使用 physicalControllerManager 来更新控制器类型
-            MainActivity.mainViewModel?.physicalControllerManager?.updateControllerType(controllerTypeEnum)
+            // 使用 physicalControllerManager 来更新控制器类型（针对玩家0）
+            if (playerIndex == 0) {
+                MainActivity.mainViewModel?.physicalControllerManager?.updateControllerType(controllerTypeEnum)
+            }
             
-            // 修复：注释掉不存在的 ControllerManager.updateControllerType 方法调用
-            // 同时更新ControllerManager中的控制器类型
-            // org.ryujinx.android.ControllerManager.updateControllerType(
-            //     activity,
-            //     "virtual_controller_1",
-            //     controllerTypeEnum
-            // )
+            // 如果是掌机模式，确保控制器类型正确
+            if (playerIndex == 8 && controllerTypeIndex != 4) {
+                android.util.Log.w("SettingsViewModel", "Handheld mode should use Handheld controller type, but got: $controllerTypeIndex")
+            }
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("SettingsViewModel", "Failed to update controller type in manager", e)
         }
     }
 
@@ -476,15 +536,19 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
     
     // 新增方法：获取玩家显示名称（用于UI显示）
     fun getPlayerDisplayName(playerIndex: Int): String {
-        return "Player ${playerIndex + 1}" // 显示为 Player 1, Player 2, ...
+        return when (playerIndex) {
+            in 0..7 -> "Player ${playerIndex + 1}"
+            8 -> "Handheld" // 掌机模式
+            else -> "Unknown Player"
+        }
     }
     
-    // 新增方法：检查玩家索引是否有效
+    // 新增方法：检查玩家索引是否有效（包括掌机模式）
     fun isValidPlayerIndex(playerIndex: Int): Boolean {
-        return playerIndex in 0..7
+        return playerIndex in 0..8 // 现在包括掌机模式索引8
     }
     
-    // 新增方法：连接玩家
+    // 新增方法：连接玩家（包括掌机模式）
     fun connectPlayer(playerIndex: Int) {
         if (isValidPlayerIndex(playerIndex)) {
             val setting = getPlayerSetting(playerIndex)
@@ -496,7 +560,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         }
     }
     
-    // 新增方法：断开玩家连接
+    // 新增方法：断开玩家连接（包括掌机模式）
     fun disconnectPlayer(playerIndex: Int) {
         if (isValidPlayerIndex(playerIndex)) {
             val setting = getPlayerSetting(playerIndex)
@@ -505,6 +569,159 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
                 updatePlayerSetting(setting)
                 android.util.Log.d("SettingsViewModel", "Disconnected player index: $playerIndex")
             }
+        }
+    }
+    
+    // 新增方法：连接掌机模式
+    fun connectHandheld() {
+        val handheldSetting = getPlayerSetting(8)
+        if (handheldSetting != null && !handheldSetting.isConnected) {
+            handheldSetting.isConnected = true
+            updatePlayerSetting(handheldSetting)
+            android.util.Log.d("SettingsViewModel", "Connected handheld mode")
+        }
+    }
+    
+    // 新增方法：断开掌机模式连接
+    fun disconnectHandheld() {
+        val handheldSetting = getPlayerSetting(8)
+        if (handheldSetting != null && handheldSetting.isConnected) {
+            handheldSetting.isConnected = false
+            updatePlayerSetting(handheldSetting)
+            android.util.Log.d("SettingsViewModel", "Disconnected handheld mode")
+        }
+    }
+    
+    // 新增方法：检查掌机模式是否连接
+    fun isHandheldConnected(): Boolean {
+        val handheldSetting = getPlayerSetting(8)
+        return handheldSetting?.isConnected ?: false
+    }
+    
+    // 新增方法：获取所有已连接的玩家索引（包括掌机模式）
+    fun getConnectedPlayerIndices(): List<Int> {
+        return playerSettings.filter { it.isConnected }.map { it.playerIndex }
+    }
+    
+    // 新增方法：切换掌机模式状态
+    fun toggleHandheldMode() {
+        if (isHandheldConnected()) {
+            disconnectHandheld()
+        } else {
+            connectHandheld()
+        }
+    }
+    
+    // 新增方法：设置掌机模式控制器类型为Handheld（确保正确）
+    fun ensureHandheldControllerType() {
+        val handheldSetting = getPlayerSetting(8)
+        if (handheldSetting != null && handheldSetting.controllerType != 4) {
+            handheldSetting.controllerType = 4
+            updatePlayerSetting(handheldSetting)
+        }
+    }
+    
+    // 新增方法：获取掌机模式设置
+    fun getHandheldSetting(): PlayerSetting? {
+        return getPlayerSetting(8)
+    }
+    
+    // 新增方法：更新掌机模式设置
+    fun updateHandheldSetting(setting: PlayerSetting) {
+        if (setting.playerIndex == 8) {
+            updatePlayerSetting(setting)
+        }
+    }
+    
+    // 新增方法：检查是否为掌机模式索引
+    fun isHandheldIndex(playerIndex: Int): Boolean {
+        return playerIndex == 8
+    }
+    
+    // 新增方法：获取掌机模式索引
+    fun getHandheldIndex(): Int {
+        return 8
+    }
+    
+    // 新增方法：获取普通玩家设置（不包括掌机模式）
+    fun getRegularPlayerSettings(): List<PlayerSetting> {
+        return playerSettings.filter { it.playerIndex in 0..7 }
+    }
+    
+    // 新增方法：获取所有玩家设置（包括掌机模式）
+    fun getAllPlayerSettings(): List<PlayerSetting> {
+        return playerSettings.toList()
+    }
+    
+    // 新增方法：应用所有已连接玩家的设置到Native层
+    fun applyAllConnectedPlayerSettings() {
+        playerSettings.forEach { setting ->
+            if (setting.isConnected) {
+                applyPlayerSettingToNative(setting)
+            }
+        }
+    }
+    
+    // 扩展函数：检查控制器类型是否有效
+    private fun Int.isValidControllerType(): Boolean {
+        return this in 0..4
+    }
+    
+    // 新增方法：获取控制器类型名称
+    fun getControllerTypeName(type: Int): String {
+        return when (type) {
+            0 -> "Pro Controller"
+            1 -> "Joy-Con (L)"
+            2 -> "Joy-Con (R)"
+            3 -> "Joy-Con Pair"
+            4 -> "Handheld"
+            else -> "Unknown"
+        }
+    }
+    
+    // 新增方法：获取控制器类型枚举
+    fun getControllerTypeEnum(controllerTypeIndex: Int): ControllerType {
+        return when (controllerTypeIndex) {
+            0 -> ControllerType.PRO_CONTROLLER
+            1 -> ControllerType.JOYCON_LEFT
+            2 -> ControllerType.JOYCON_RIGHT
+            3 -> ControllerType.JOYCON_PAIR
+            4 -> ControllerType.HANDHELD
+            else -> ControllerType.PRO_CONTROLLER
+        }
+    }
+    
+    // 新增方法：从控制器类型枚举获取索引
+    fun getControllerTypeIndex(controllerType: ControllerType): Int {
+        return when (controllerType) {
+            ControllerType.PRO_CONTROLLER -> 0
+            ControllerType.JOYCON_LEFT -> 1
+            ControllerType.JOYCON_RIGHT -> 2
+            ControllerType.JOYCON_PAIR -> 3
+            ControllerType.HANDHELD -> 4
+        }
+    }
+    
+    // 新增方法：重新加载玩家设置
+    fun reloadPlayerSettings() {
+        loadPlayerSettings()
+    }
+    
+    // 新增方法：重置玩家设置为默认值
+    fun resetPlayerSettingsToDefault() {
+        initDefaultPlayerSettings()
+        savePlayerSettings()
+    }
+    
+    // 新增方法：检查设置是否已更改
+    fun hasPlayerSettingsChanged(originalSettings: List<PlayerSetting>): Boolean {
+        if (playerSettings.size != originalSettings.size) return true
+        
+        return playerSettings.any { currentSetting ->
+            val originalSetting = originalSettings.find { it.playerIndex == currentSetting.playerIndex }
+            originalSetting == null || 
+            originalSetting.isConnected != currentSetting.isConnected || 
+            originalSetting.controllerType != currentSetting.controllerType
         }
     }
 }
