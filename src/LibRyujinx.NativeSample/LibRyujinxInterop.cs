@@ -65,27 +65,27 @@ namespace LibRyujinx.Sample
         [DllImport(dll, EntryPoint = "input_update")]
         internal extern static void UpdateInput();
 
-        // 修改：使用玩家索引而不是玩家编号，0-based (0-7)
+        // 修改：使用玩家索引而不是玩家编号，0-based (0-8，其中8为掌机模式)
         [DllImport(dll, EntryPoint = "input_set_button_pressed")]
         public extern static void SetButtonPressed(GamepadButtonInputId button, int playerIndex);
 
-        // 修改：使用玩家索引而不是玩家编号，0-based (0-7)
+        // 修改：使用玩家索引而不是玩家编号，0-based (0-8，其中8为掌机模式)
         [DllImport(dll, EntryPoint = "input_set_button_released")]
         public extern static void SetButtonReleased(GamepadButtonInputId button, int playerIndex);
 
-        // 修改：使用玩家索引而不是玩家编号，0-based (0-7)
+        // 修改：使用玩家索引而不是玩家编号，0-based (0-8，其中8为掌机模式)
         [DllImport(dll, EntryPoint = "input_set_stick_axis")]
         public extern static void SetStickAxis(StickInputId stick, Vector2 axes, int playerIndex);
 
-        // 修改：使用玩家索引而不是玩家编号，0-based (0-7)
+        // 修改：使用玩家索引而不是玩家编号，0-based (0-8，其中8为掌机模式)
         [DllImport(dll, EntryPoint = "input_connect_gamepad")]
         public extern static int ConnectGamepad(int playerIndex);
 
-        // 修改：使用玩家索引而不是玩家编号，0-based (0-7)
+        // 修改：使用玩家索引而不是玩家编号，0-based (0-8，其中8为掌机模式)
         [DllImport(dll, EntryPoint = "input_set_accelerometer_data")]
         public extern static void SetAccelerometerData(Vector3 accel, int playerIndex);
 
-        // 修改：使用玩家索引而不是玩家编号，0-based (0-7)
+        // 修改：使用玩家索引而不是玩家编号，0-based (0-8，其中8为掌机模式)
         [DllImport(dll, EntryPoint = "input_set_gyro_data")]
         public extern static void SetGyroData(Vector3 gyro, int playerIndex);
 
@@ -97,7 +97,7 @@ namespace LibRyujinx.Sample
         [DllImport(dll, EntryPoint = "setMemoryConfiguration")]
         internal extern static void SetMemoryConfiguration(MemoryConfiguration memoryConfig);
 
-        // 修改：设置控制器类型的方法 - 使用玩家索引而不是玩家编号，0-based (0-7)
+        // 修改：设置控制器类型的方法 - 使用玩家索引而不是玩家编号，0-based (0-8，其中8为掌机模式)
         [DllImport(dll, EntryPoint = "setControllerType")]
         internal extern static void SetControllerType(int playerIndex, int controllerType);
 
