@@ -1,4 +1,3 @@
-// LibRyujinx.Input.cs
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Configuration.Hid;
 using Ryujinx.Common.Configuration.Hid.Controller;
@@ -35,10 +34,10 @@ namespace LibRyujinx
         private static InputConfig[] _configs;
         private static float _aspectRatio = 1.0f;
         
-        // 修改：将控制器类型存储数组从4个增加到8个，以支持多玩家设置
-        private static Ryujinx.Common.Configuration.Hid.ControllerType[] _controllerTypes = new Ryujinx.Common.Configuration.Hid.ControllerType[8];
+        // 修改：将控制器类型存储数组从8个增加到9个，以支持掌机模式（索引8）
+        private static Ryujinx.Common.Configuration.Hid.ControllerType[] _controllerTypes = new Ryujinx.Common.Configuration.Hid.ControllerType[9];
         
-        // 玩家索引跟踪 (0-7，与 PlayerIndex 枚举保持一致)
+        // 玩家索引跟踪 (0-8，与 PlayerIndex 枚举保持一致，8为掌机模式)
         private static HashSet<int> _connectedPlayers = new HashSet<int>();
 
         public static void InitializeInput(int width, int height)
@@ -48,9 +47,9 @@ namespace LibRyujinx
                 throw new InvalidOperationException("Input is already initialized");
             }
 
-            // 修改：将游戏手柄驱动从4个增加到8个，以支持多玩家设置
-            _gamepadDriver = new VirtualGamepadDriver(8);
-            _configs = new InputConfig[8];
+            // 修改：将游戏手柄驱动从8个增加到9个，以支持掌机模式
+            _gamepadDriver = new VirtualGamepadDriver(9);
+            _configs = new InputConfig[9];
             _virtualTouchScreen = new VirtualTouchScreen();
             
             // 初始化控制器类型为默认值
@@ -112,38 +111,38 @@ namespace LibRyujinx
 
         public static void SetButtonPressed(GamepadButtonInputId button, int playerIndex)
         {
-            // 使用玩家索引而不是设备ID (0-7)
+            // 使用玩家索引而不是设备ID (0-8，其中8为掌机模式)
             _gamepadDriver?.SetButtonPressed(button, playerIndex);
         }
 
         public static void SetButtonReleased(GamepadButtonInputId button, int playerIndex)
         {
-            // 使用玩家索引而不是设备ID (0-7)
+            // 使用玩家索引而不是设备ID (0-8，其中8为掌机模式)
             _gamepadDriver?.SetButtonReleased(button, playerIndex);
         }
 
         public static void SetAccelerometerData(Vector3 accel, int playerIndex)
         {
-            // 使用玩家索引而不是设备ID (0-7)
+            // 使用玩家索引而不是设备ID (0-8，其中8为掌机模式)
             _gamepadDriver?.SetAccelerometerData(accel, playerIndex);
         }
 
         public static void SetGyroData(Vector3 gyro, int playerIndex)
         {
-            // 使用玩家索引而不是设备ID (0-7)
+            // 使用玩家索引而不是设备ID (0-8，其中8为掌机模式)
             _gamepadDriver?.SetGyroData(gyro, playerIndex);
         }
 
         public static void SetStickAxis(StickInputId stick, Vector2 axes, int playerIndex)
         {
-            // 使用玩家索引而不是设备ID (0-7)
+            // 使用玩家索引而不是设备ID (0-8，其中8为掌机模式)
             _gamepadDriver?.SetStickAxis(stick, axes, playerIndex);
         }
 
         public static int ConnectGamepad(int playerIndex)
         {
-            // 修改：使用 0-based 索引 (0-7)
-            if (playerIndex < 0 || playerIndex > 7) 
+            // 修改：使用 0-based 索引 (0-8，其中8为掌机模式)
+            if (playerIndex < 0 || playerIndex > 8) 
                 return -1;
 
             // 检查玩家是否已连接
@@ -175,8 +174,8 @@ namespace LibRyujinx
         
         public static void DisconnectGamepad(int playerIndex)
         {
-            // 修改：使用 0-based 索引 (0-7)
-            if (playerIndex < 0 || playerIndex > 7)
+            // 修改：使用 0-based 索引 (0-8，其中8为掌机模式)
+            if (playerIndex < 0 || playerIndex > 8)
                 return;
                 
             if (_connectedPlayers.Contains(playerIndex))
@@ -189,10 +188,10 @@ namespace LibRyujinx
             }
         }
         
-        // 新增方法：获取下一个可用的玩家索引 (0-7)
+        // 新增方法：获取下一个可用的玩家索引 (0-8)
         public static int GetNextAvailablePlayer()
         {
-            for (int i = 0; i < 8; i++)
+            for (int i = 0; i < 9; i++)
             {
                 if (!_connectedPlayers.Contains(i))
                 {
@@ -202,26 +201,26 @@ namespace LibRyujinx
             return -1; // 没有可用玩家索引
         }
         
-        // 新增方法：检查玩家索引是否可用 (0-7)
+        // 新增方法：检查玩家索引是否可用 (0-8)
         public static bool IsPlayerAvailable(int playerIndex)
         {
-            return playerIndex >= 0 && playerIndex <= 7 && !_connectedPlayers.Contains(playerIndex);
+            return playerIndex >= 0 && playerIndex <= 8 && !_connectedPlayers.Contains(playerIndex);
         }
         
-        // 新增方法：释放玩家索引 (0-7)
+        // 新增方法：释放玩家索引 (0-8)
         public static void ReleasePlayer(int playerIndex)
         {
-            if (playerIndex >= 0 && playerIndex <= 7)
+            if (playerIndex >= 0 && playerIndex <= 8)
             {
                 _connectedPlayers.Remove(playerIndex);
             }
         }
 
-        // 修改方法：设置控制器类型，使用玩家索引而不是设备ID (0-7)
+        // 修改方法：设置控制器类型，使用玩家索引而不是设备ID (0-8)
         public static void SetControllerType(int playerIndex, int controllerTypeBitmask)
         {
-            // 修改：使用 0-based 索引 (0-7)
-            if (playerIndex < 0 || playerIndex > 7)
+            // 修改：使用 0-based 索引 (0-8，其中8为掌机模式)
+            if (playerIndex < 0 || playerIndex > 8)
             {
                 Logger.Warning?.Print(LogClass.Application, $"Invalid player index: {playerIndex}");
                 return;
@@ -262,11 +261,11 @@ namespace LibRyujinx
             }
         }
         
-        // 修改方法：获取控制器类型，使用玩家索引而不是设备ID (0-7)
+        // 修改方法：获取控制器类型，使用玩家索引而不是设备ID (0-8)
         public static int GetControllerType(int playerIndex)
         {
-            // 修改：使用 0-based 索引 (0-7)
-            if (playerIndex < 0 || playerIndex > 7)
+            // 修改：使用 0-based 索引 (0-8，其中8为掌机模式)
+            if (playerIndex < 0 || playerIndex > 8)
             {
                 Logger.Warning?.Print(LogClass.Application, $"Invalid player index: {playerIndex}");
                 return 1; // 返回ProController的位掩码值
@@ -290,11 +289,11 @@ namespace LibRyujinx
             }
         }
         
-        // 新增方法：更新控制器配置，使用玩家索引而不是设备ID (0-7)
+        // 新增方法：更新控制器配置，使用玩家索引而不是设备ID (0-8)
         private static void UpdateControllerConfiguration(int playerIndex)
         {
-            // 修改：使用 0-based 索引 (0-7)
-            if (SwitchDevice?.InputManager == null || _configs == null || playerIndex < 0 || playerIndex > 7)
+            // 修改：使用 0-based 索引 (0-8，其中8为掌机模式)
+            if (SwitchDevice?.InputManager == null || _configs == null || playerIndex < 0 || playerIndex > 8)
             {
                 return;
             }
@@ -500,7 +499,7 @@ namespace LibRyujinx
         public VirtualGamepadDriver(int controllerCount)
         {
             _gamePads = new Dictionary<int, VirtualGamepad>();
-            // 修改：使用 0-based 索引 (0-7)
+            // 修改：使用 0-based 索引 (0-8，其中8为掌机模式)
             for (int i = 0; i < controllerCount; i++)
             {
                 _gamePads[i] = new VirtualGamepad(this, i);
@@ -576,7 +575,7 @@ namespace LibRyujinx
         public Vector3 Gyro { get; internal set; }
 
         public string Id { get; }
-        public int PlayerIndex { get; }  // 修改：改为 PlayerIndex (0-7)
+        public int PlayerIndex { get; }  // 修改：改为 PlayerIndex (0-8，其中8为掌机模式)
         public string Name => $"Virtual Gamepad {Id}";
         public bool IsConnected { get; private set; } = true;
         public GamepadFeaturesFlag Features { get; } = GamepadFeaturesFlag.Motion;
