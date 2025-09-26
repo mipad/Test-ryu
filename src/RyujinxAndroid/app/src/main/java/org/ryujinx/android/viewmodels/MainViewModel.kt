@@ -86,8 +86,12 @@ class MainViewModel(val activity: MainActivity) {
             // 加载普通玩家设置 (0-7)
             playerSettings = quickSettings.playerSettings.toMutableList()
             
-            // 添加掌机模式设置 (索引8)
-            playerSettings.add(quickSettings.handheldSetting)
+            // 添加掌机模式设置 (索引8) - 使用getAllPlayerSettings方法
+            val allSettings = quickSettings.getAllPlayerSettings()
+            val handheldSetting = allSettings.find { it.playerIndex == 8 }
+            if (handheldSetting != null) {
+                playerSettings.add(handheldSetting)
+            }
         } catch (e: Exception) {
             // 如果加载失败，保持默认设置
             e.printStackTrace()
@@ -640,7 +644,7 @@ class MainViewModel(val activity: MainActivity) {
         }
     }
     
-    // 新增方法：保存玩家设置到QuickSettings
+    // 修改方法：保存玩家设置到QuickSettings - 使用公共方法
     fun savePlayerSettingsToQuickSettings() {
         try {
             val quickSettings = QuickSettings(activity)
@@ -649,10 +653,10 @@ class MainViewModel(val activity: MainActivity) {
             val regularPlayers = playerSettings.filter { it.playerIndex in 0..7 }
             quickSettings.playerSettings = regularPlayers.toMutableList()
             
-            // 保存掌机模式设置 (索引8)
+            // 保存掌机模式设置 (索引8) - 使用updateHandheldSetting方法
             val handheldSetting = playerSettings.find { it.playerIndex == 8 }
             if (handheldSetting != null) {
-                quickSettings.handheldSetting = handheldSetting
+                quickSettings.updateHandheldSetting(handheldSetting)
             }
             
             quickSettings.save()
@@ -661,7 +665,7 @@ class MainViewModel(val activity: MainActivity) {
         }
     }
     
-    // 新增方法：从QuickSettings加载玩家设置
+    // 修改方法：从QuickSettings加载玩家设置 - 使用公共方法
     fun loadPlayerSettingsFromQuickSettings() {
         try {
             val quickSettings = QuickSettings(activity)
@@ -672,19 +676,23 @@ class MainViewModel(val activity: MainActivity) {
             // 加载普通玩家设置 (0-7)
             playerSettings.addAll(quickSettings.playerSettings)
             
-            // 加载掌机模式设置 (索引8)
-            playerSettings.add(quickSettings.handheldSetting)
+            // 加载掌机模式设置 (索引8) - 使用getAllPlayerSettings方法
+            val allSettings = quickSettings.getAllPlayerSettings()
+            val handheldSetting = allSettings.find { it.playerIndex == 8 }
+            if (handheldSetting != null) {
+                playerSettings.add(handheldSetting)
+            }
         } catch (e: Exception) {
             android.util.Log.e("MainViewModel", "Failed to load player settings from QuickSettings", e)
         }
     }
     
-    // 新增方法：获取掌机模式设置
+    // 修改方法：获取掌机模式设置 - 使用本地playerSettings
     fun getHandheldSetting(): PlayerSetting? {
         return getPlayerSetting(8)
     }
     
-    // 新增方法：更新掌机模式设置
+    // 修改方法：更新掌机模式设置 - 使用本地playerSettings
     fun updateHandheldSetting(setting: PlayerSetting) {
         if (setting.playerIndex == 8) {
             updatePlayerSetting(setting)
