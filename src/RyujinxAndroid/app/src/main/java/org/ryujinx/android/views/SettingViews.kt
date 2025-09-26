@@ -2182,10 +2182,25 @@ if (showMemoryConfigDialog.value) {
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clickable {
-                                                // 切换掌机模式状态
-                                                val newConnectedState = !handheldSetting.isConnected
-                                                
-                                                // 更新掌机模式设置
+                                                // 修改：点击后打开详细设置对话框，而不是直接切换开关
+                                                showPlayerSettingsDialog.value = 8 // 掌机模式的索引
+                                            }
+                                            .padding(16.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(text = "Handheld Mode", style = MaterialTheme.typography.titleMedium)
+                                            Text(
+                                                text = "Use handheld controller layout (for games like Pokémon Let's Go)",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                            )
+                                        }
+                                        Switch(
+                                            checked = handheldSetting.isConnected,
+                                            onCheckedChange = { newConnectedState ->
+                                                // 修改：开关变化时只更新连接状态，不打开对话框
                                                 val index = playerSettings.indexOfFirst { it.playerIndex == 8 }
                                                 if (index != -1) {
                                                     playerSettings[index] = handheldSetting.copy(isConnected = newConnectedState)
@@ -2209,21 +2224,6 @@ if (showMemoryConfigDialog.value) {
                                                 settingsViewModel.updatePlayerSetting(playerSettings.firstOrNull { it.playerIndex == 8 } 
                                                     ?: PlayerSetting(8, newConnectedState, 4))
                                             }
-                                            .padding(16.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column {
-                                            Text(text = "Handheld Mode", style = MaterialTheme.typography.titleMedium)
-                                            Text(
-                                                text = "Use handheld controller layout (for games like Pokémon Let's Go)",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                                            )
-                                        }
-                                        Switch(
-                                            checked = handheldSetting.isConnected,
-                                            onCheckedChange = null // 通过点击Row来处理，避免双重触发
                                         )
                                     }
                                     
@@ -2325,8 +2325,7 @@ if (showMemoryConfigDialog.value) {
                                         Text(text = "Connected")
                                         Switch(
                                             checked = playerSetting.isConnected,
-                                            onCheckedChange = { 
-                                                val newConnectedState = it
+                                            onCheckedChange = { newConnectedState ->
                                                 val index = playerSettings.indexOfFirst { it.playerIndex == playerIndex }
                                                 if (index != -1) {
                                                     playerSettings[index] = playerSetting.copy(isConnected = newConnectedState)
