@@ -39,8 +39,11 @@ class QuickSettings(val activity: Activity) {
     var antiAliasing: Int // 新增：抗锯齿模式 0=None, 1=Fxaa, 2=SmaaLow, 3=SmaaMedium, 4=SmaaHigh, 5=SmaaUltra
     var memoryConfiguration: Int // 新增：内存配置 0=4GB, 1=4GB Applet Dev, 2=4GB System Dev, 3=6GB, 4=6GB Applet Dev, 5=8GB
     
-    // 玩家设置列表（使用 0-based 索引，与 PlayerIndex 枚举保持一致）
+    // 玩家设置列表（使用 0-based 索引，0-7为普通玩家，8为掌机模式）
     var playerSettings: MutableList<PlayerSetting> = mutableListOf()
+    
+    // 掌机模式设置（单独存储，因为掌机模式是特殊的玩家索引8）
+    var handheldSetting: PlayerSetting = PlayerSetting(8, false, 4) // 索引8，默认关闭，控制器类型为Handheld
 
     // Logs
     var enableDebugLogs: Boolean
@@ -103,6 +106,21 @@ class QuickSettings(val activity: Activity) {
         } else {
             initDefaultPlayerSettings()
         }
+        
+        // 加载掌机模式设置
+        val handheldJson = sharedPref.getString("handheld_setting", null)
+        if (handheldJson != null) {
+            try {
+                handheldSetting = Json.decodeFromString<PlayerSetting>(handheldJson)
+                // 确保控制器类型值有效
+                if (!handheldSetting.controllerType.isValidControllerType()) {
+                    handheldSetting.controllerType = 4 // 重置为Handheld
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("QuickSettings", "Failed to parse handheld setting, using default", e)
+                handheldSetting = PlayerSetting(8, false, 4) // 默认掌机模式设置
+            }
+        }
 
         enableDebugLogs = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs = sharedPref.getBoolean("enableStubLogs", false)
@@ -164,6 +182,10 @@ class QuickSettings(val activity: Activity) {
         // 保存玩家设置
         val json = Json.encodeToString(playerSettings)
         editor.putString("player_settings", json)
+        
+        // 保存掌机模式设置
+        val handheldJson = Json.encodeToString(handheldSetting)
+        editor.putString("handheld_setting", handheldJson)
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs)
         editor.putBoolean("enableStubLogs", enableStubLogs)
@@ -183,29 +205,39 @@ class QuickSettings(val activity: Activity) {
     
     // 获取指定玩家的设置（使用 0-based 索引）
     fun getPlayerSetting(playerIndex: Int): PlayerSetting? {
-        return playerSettings.find { it.playerIndex == playerIndex }
+        return if (playerIndex == 8) {
+            // 掌机模式
+            handheldSetting
+        } else {
+            playerSettings.find { it.playerIndex == playerIndex }
+        }
     }
     
     // 更新玩家设置
     fun updatePlayerSetting(playerSetting: PlayerSetting) {
-        val index = playerSettings.indexOfFirst { it.playerIndex == playerSetting.playerIndex }
-        if (index != -1) {
-            // 确保控制器类型值有效
-            if (!playerSetting.controllerType.isValidControllerType()) {
-                playerSetting.controllerType = 0 // 重置为默认值
+        if (playerSetting.playerIndex == 8) {
+            // 更新掌机模式设置
+            handheldSetting = playerSetting
+        } else {
+            val index = playerSettings.indexOfFirst { it.playerIndex == playerSetting.playerIndex }
+            if (index != -1) {
+                // 确保控制器类型值有效
+                if (!playerSetting.controllerType.isValidControllerType()) {
+                    playerSetting.controllerType = 0 // 重置为默认值
+                }
+                
+                playerSettings[index] = playerSetting
             }
-            
-            playerSettings[index] = playerSetting
-            
-            // 立即应用设置
-            applyControllerSettings()
         }
+        
+        // 立即应用设置
+        applyControllerSettings()
     }
     
     // 应用控制器设置到Native层 - 使用 0-based 玩家索引
     fun applyControllerSettings() {
         try {
-            // 设置所有玩家的控制器类型，使用 0-based 玩家索引
+            // 设置所有玩家的控制器类型，使用 0-based 玩家索引 (0-7)
             for (playerSetting in playerSettings) {
                 if (playerSetting.isConnected) {
                     // 确保控制器类型值有效
@@ -220,6 +252,25 @@ class QuickSettings(val activity: Activity) {
                     // 记录设置信息
                     android.util.Log.d("QuickSettings", "Controller type set to: ${getControllerTypeName(controllerType)} (bitmask: $controllerTypeBitmask) for player index ${playerSetting.playerIndex}")
                 }
+            }
+            
+            // 单独设置掌机模式（玩家索引8）
+            if (handheldSetting.isConnected) {
+                // 确保控制器类型值有效（掌机模式应该为Handheld）
+                val controllerType = if (handheldSetting.controllerType.isValidControllerType()) {
+                    handheldSetting.controllerType
+                } else {
+                    4 // 强制设置为Handheld
+                }
+                
+                // 将控制器类型索引转换为位掩码值
+                val controllerTypeBitmask = controllerTypeIndexToBitmask(controllerType)
+                
+                // 使用掌机模式索引8
+                RyujinxNative.jnaInstance.setControllerType(8, controllerTypeBitmask)
+                
+                // 记录设置信息
+                android.util.Log.d("QuickSettings", "Handheld controller type set to: ${getControllerTypeName(controllerType)} (bitmask: $controllerTypeBitmask) for player index 8")
             }
         } catch (e: Exception) {
             android.util.Log.e("QuickSettings", "Failed to apply controller settings", e)
@@ -282,6 +333,20 @@ class QuickSettings(val activity: Activity) {
         }
     }
     
+    // 设置掌机模式控制器类型
+    fun setHandheldControllerType(controllerType: ControllerType) {
+        val typeValue = when (controllerType) {
+            ControllerType.PRO_CONTROLLER -> 0
+            ControllerType.JOYCON_LEFT -> 1
+            ControllerType.JOYCON_RIGHT -> 2
+            ControllerType.JOYCON_PAIR -> 3
+            ControllerType.HANDHELD -> 4
+        }
+        
+        handheldSetting.controllerType = typeValue
+        updatePlayerSetting(handheldSetting)
+    }
+    
     // 扩展函数：检查控制器类型是否有效
     private fun Int.isValidControllerType(): Boolean {
         return this in 0..4
@@ -289,17 +354,25 @@ class QuickSettings(val activity: Activity) {
     
     // 新增方法：获取玩家显示名称（用于UI显示）
     fun getPlayerDisplayName(playerIndex: Int): String {
-        return "Player ${playerIndex + 1}" // 显示为 Player 1, Player 2, ...
+        return when (playerIndex) {
+            in 0..7 -> "Player ${playerIndex + 1}"
+            8 -> "Handheld" // 掌机模式
+            else -> "Unknown Player"
+        }
     }
     
     // 新增方法：检查玩家索引是否有效
     fun isValidPlayerIndex(playerIndex: Int): Boolean {
-        return playerIndex in 0..7
+        return playerIndex in 0..8 // 现在包括掌机模式索引8
     }
     
-    // 新增方法：获取所有已连接的玩家索引
+    // 新增方法：获取所有已连接的玩家索引（包括掌机模式）
     fun getConnectedPlayerIndices(): List<Int> {
-        return playerSettings.filter { it.isConnected }.map { it.playerIndex }
+        val connectedPlayers = playerSettings.filter { it.isConnected }.map { it.playerIndex }.toMutableList()
+        if (handheldSetting.isConnected) {
+            connectedPlayers.add(8) // 添加掌机模式
+        }
+        return connectedPlayers
     }
     
     // 新增方法：连接玩家
@@ -323,6 +396,81 @@ class QuickSettings(val activity: Activity) {
                 updatePlayerSetting(setting)
                 android.util.Log.d("QuickSettings", "Disconnected player index: $playerIndex")
             }
+        }
+    }
+    
+    // 新增方法：连接掌机模式
+    fun connectHandheld() {
+        if (!handheldSetting.isConnected) {
+            handheldSetting.isConnected = true
+            updatePlayerSetting(handheldSetting)
+            android.util.Log.d("QuickSettings", "Connected handheld mode")
+        }
+    }
+    
+    // 新增方法：断开掌机模式连接
+    fun disconnectHandheld() {
+        if (handheldSetting.isConnected) {
+            handheldSetting.isConnected = false
+            updatePlayerSetting(handheldSetting)
+            android.util.Log.d("QuickSettings", "Disconnected handheld mode")
+        }
+    }
+    
+    // 新增方法：检查掌机模式是否连接
+    fun isHandheldConnected(): Boolean {
+        return handheldSetting.isConnected
+    }
+    
+    // 新增方法：获取掌机模式设置
+    fun getHandheldSetting(): PlayerSetting {
+        return handheldSetting
+    }
+    
+    // 新增方法：更新掌机模式设置
+    fun updateHandheldSetting(setting: PlayerSetting) {
+        if (setting.playerIndex == 8) {
+            handheldSetting = setting
+            updatePlayerSetting(handheldSetting)
+        }
+    }
+    
+    // 新增方法：获取所有玩家设置（包括掌机模式）
+    fun getAllPlayerSettings(): List<PlayerSetting> {
+        val allSettings = playerSettings.toMutableList()
+        allSettings.add(handheldSetting)
+        return allSettings
+    }
+    
+    // 新增方法：获取普通玩家设置（不包括掌机模式）
+    fun getRegularPlayerSettings(): List<PlayerSetting> {
+        return playerSettings.toList()
+    }
+    
+    // 新增方法：检查是否为掌机模式索引
+    fun isHandheldIndex(playerIndex: Int): Boolean {
+        return playerIndex == 8
+    }
+    
+    // 新增方法：获取掌机模式索引
+    fun getHandheldIndex(): Int {
+        return 8
+    }
+    
+    // 新增方法：切换掌机模式状态
+    fun toggleHandheldMode() {
+        if (handheldSetting.isConnected) {
+            disconnectHandheld()
+        } else {
+            connectHandheld()
+        }
+    }
+    
+    // 新增方法：设置掌机模式控制器类型为Handheld（确保正确）
+    fun ensureHandheldControllerType() {
+        if (handheldSetting.controllerType != 4) {
+            handheldSetting.controllerType = 4
+            updatePlayerSetting(handheldSetting)
         }
     }
 }
