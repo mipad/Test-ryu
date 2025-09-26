@@ -22,7 +22,7 @@ using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading;
-using Ryujinx.HLE; // 添加这行
+using Ryujinx.HLE; 
 
 namespace LibRyujinx
 {
