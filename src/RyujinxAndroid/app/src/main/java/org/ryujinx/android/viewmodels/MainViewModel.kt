@@ -56,7 +56,7 @@ class MainViewModel(val activity: MainActivity) {
 
     var homeViewModel: HomeViewModel = HomeViewModel(activity, this)
 
-    // 玩家设置列表（使用 0-based 索引）
+    // 玩家设置列表（使用 0-based 索引，0-7为普通玩家，8为掌机模式）
     var playerSettings: MutableList<PlayerSetting> = mutableListOf()
 
     init {
@@ -64,7 +64,7 @@ class MainViewModel(val activity: MainActivity) {
         loadPlayerSettings()
     }
 
-    // 加载玩家设置
+    // 加载玩家设置（包括掌机模式）
     private fun loadPlayerSettings() {
         // 初始化默认玩家设置（使用 0-based 索引）
         playerSettings = mutableListOf(
@@ -75,25 +75,31 @@ class MainViewModel(val activity: MainActivity) {
             PlayerSetting(4, false, 0), // Player 5 (索引4) 默认关闭
             PlayerSetting(5, false, 0), // Player 6 (索引5) 默认关闭
             PlayerSetting(6, false, 0), // Player 7 (索引6) 默认关闭
-            PlayerSetting(7, false, 0)  // Player 8 (索引7) 默认关闭
+            PlayerSetting(7, false, 0), // Player 8 (索引7) 默认关闭
+            PlayerSetting(8, false, 4)  // Handheld (索引8) 默认关闭，控制器类型为Handheld
         )
         
-        // 尝试从设置中加载保存的玩家设置
+        // 尝试从设置中加载保存的玩家设置（包括掌机模式）
         try {
             val quickSettings = QuickSettings(activity)
+            
+            // 加载普通玩家设置 (0-7)
             playerSettings = quickSettings.playerSettings.toMutableList()
+            
+            // 添加掌机模式设置 (索引8)
+            playerSettings.add(quickSettings.handheldSetting)
         } catch (e: Exception) {
             // 如果加载失败，保持默认设置
             e.printStackTrace()
         }
     }
 
-    // 获取指定玩家的设置（使用 0-based 索引）
+    // 获取指定玩家的设置（使用 0-based 索引，0-8）
     fun getPlayerSetting(playerIndex: Int): PlayerSetting? {
         return playerSettings.find { it.playerIndex == playerIndex }
     }
 
-    // 更新玩家设置
+    // 更新玩家设置（包括掌机模式）
     fun updatePlayerSetting(playerSetting: PlayerSetting) {
         val index = playerSettings.indexOfFirst { it.playerIndex == playerSetting.playerIndex }
         if (index != -1) {
@@ -103,11 +109,18 @@ class MainViewModel(val activity: MainActivity) {
             if (playerSetting.isConnected) {
                 // 将控制器类型索引转换为位掩码值
                 val controllerTypeBitmask = controllerTypeIndexToBitmask(playerSetting.controllerType)
-                // 使用 0-based 玩家索引
-                RyujinxNative.jnaInstance.setControllerType(playerSetting.playerIndex, controllerTypeBitmask)
                 
-                // 如果是玩家1（索引0），更新GameController的布局
-                if (playerSetting.playerIndex == 0) {
+                // 对于掌机模式，使用玩家索引8，其他使用正常索引
+                val targetPlayerIndex = if (playerSetting.playerIndex == 8) {
+                    8 // 掌机模式使用索引8
+                } else {
+                    playerSetting.playerIndex // 其他玩家使用正常索引
+                }
+                
+                RyujinxNative.jnaInstance.setControllerType(targetPlayerIndex, controllerTypeBitmask)
+                
+                // 如果是玩家1（索引0）或掌机模式（索引8），更新GameController的布局
+                if (playerSetting.playerIndex == 0 || playerSetting.playerIndex == 8) {
                     controller?.updateControllerTypeFromSettings()
                 }
             }
@@ -242,13 +255,20 @@ class MainViewModel(val activity: MainActivity) {
                     settings.memoryConfiguration //内存配置
                 )
 
-                // 为所有连接的玩家设置控制器类型 - 使用 0-based 玩家索引
+                // 为所有连接的玩家设置控制器类型 - 使用 0-based 玩家索引 (0-8)
                 playerSettings.forEach { playerSetting ->
                     if (playerSetting.isConnected) {
                         // 将控制器类型索引转换为位掩码值
                         val controllerTypeBitmask = controllerTypeIndexToBitmask(playerSetting.controllerType)
-                        // 使用 0-based 玩家索引
-                        RyujinxNative.jnaInstance.setControllerType(playerSetting.playerIndex, controllerTypeBitmask)
+                        
+                        // 对于掌机模式，使用玩家索引8，其他使用正常索引
+                        val targetPlayerIndex = if (playerSetting.playerIndex == 8) {
+                            8 // 掌机模式使用索引8
+                        } else {
+                            playerSetting.playerIndex // 其他玩家使用正常索引
+                        }
+                        
+                        RyujinxNative.jnaInstance.setControllerType(targetPlayerIndex, controllerTypeBitmask)
                     }
                 }
 
@@ -358,13 +378,20 @@ class MainViewModel(val activity: MainActivity) {
                     settings.memoryConfiguration //内存配置
                 )
 
-                // 为所有连接的玩家设置控制器类型 - 使用 0-based 玩家索引
+                // 为所有连接的玩家设置控制器类型 - 使用 0-based 玩家索引 (0-8)
                 playerSettings.forEach { playerSetting ->
                     if (playerSetting.isConnected) {
                         // 将控制器类型索引转换为位掩码值
                         val controllerTypeBitmask = controllerTypeIndexToBitmask(playerSetting.controllerType)
-                        // 使用 0-based 玩家索引
-                        RyujinxNative.jnaInstance.setControllerType(playerSetting.playerIndex, controllerTypeBitmask)
+                        
+                        // 对于掌机模式，使用玩家索引8，其他使用正常索引
+                        val targetPlayerIndex = if (playerSetting.playerIndex == 8) {
+                            8 // 掌机模式使用索引8
+                        } else {
+                            playerSetting.playerIndex // 其他玩家使用正常索引
+                        }
+                        
+                        RyujinxNative.jnaInstance.setControllerType(targetPlayerIndex, controllerTypeBitmask)
                     }
                 }
 
@@ -528,15 +555,19 @@ class MainViewModel(val activity: MainActivity) {
     
     // 新增方法：获取玩家显示名称（用于UI显示）
     fun getPlayerDisplayName(playerIndex: Int): String {
-        return "Player ${playerIndex + 1}" // 显示为 Player 1, Player 2, ...
+        return when (playerIndex) {
+            in 0..7 -> "Player ${playerIndex + 1}"
+            8 -> "Handheld" // 掌机模式
+            else -> "Unknown Player"
+        }
     }
     
-    // 新增方法：检查玩家索引是否有效
+    // 新增方法：检查玩家索引是否有效（包括掌机模式）
     fun isValidPlayerIndex(playerIndex: Int): Boolean {
-        return playerIndex in 0..7
+        return playerIndex in 0..8 // 现在包括掌机模式索引8
     }
     
-    // 新增方法：连接玩家
+    // 新增方法：连接玩家（包括掌机模式）
     fun connectPlayer(playerIndex: Int) {
         if (isValidPlayerIndex(playerIndex)) {
             val setting = getPlayerSetting(playerIndex)
@@ -548,7 +579,7 @@ class MainViewModel(val activity: MainActivity) {
         }
     }
     
-    // 新增方法：断开玩家连接
+    // 新增方法：断开玩家连接（包括掌机模式）
     fun disconnectPlayer(playerIndex: Int) {
         if (isValidPlayerIndex(playerIndex)) {
             val setting = getPlayerSetting(playerIndex)
@@ -558,5 +589,125 @@ class MainViewModel(val activity: MainActivity) {
                 android.util.Log.d("MainViewModel", "Disconnected player index: $playerIndex")
             }
         }
+    }
+    
+    // 新增方法：连接掌机模式
+    fun connectHandheld() {
+        val handheldSetting = getPlayerSetting(8)
+        if (handheldSetting != null && !handheldSetting.isConnected) {
+            handheldSetting.isConnected = true
+            updatePlayerSetting(handheldSetting)
+            android.util.Log.d("MainViewModel", "Connected handheld mode")
+        }
+    }
+    
+    // 新增方法：断开掌机模式连接
+    fun disconnectHandheld() {
+        val handheldSetting = getPlayerSetting(8)
+        if (handheldSetting != null && handheldSetting.isConnected) {
+            handheldSetting.isConnected = false
+            updatePlayerSetting(handheldSetting)
+            android.util.Log.d("MainViewModel", "Disconnected handheld mode")
+        }
+    }
+    
+    // 新增方法：检查掌机模式是否连接
+    fun isHandheldConnected(): Boolean {
+        val handheldSetting = getPlayerSetting(8)
+        return handheldSetting?.isConnected ?: false
+    }
+    
+    // 新增方法：获取所有已连接的玩家索引（包括掌机模式）
+    fun getConnectedPlayerIndices(): List<Int> {
+        return playerSettings.filter { it.isConnected }.map { it.playerIndex }
+    }
+    
+    // 新增方法：切换掌机模式状态
+    fun toggleHandheldMode() {
+        if (isHandheldConnected()) {
+            disconnectHandheld()
+        } else {
+            connectHandheld()
+        }
+    }
+    
+    // 新增方法：设置掌机模式控制器类型为Handheld（确保正确）
+    fun ensureHandheldControllerType() {
+        val handheldSetting = getPlayerSetting(8)
+        if (handheldSetting != null && handheldSetting.controllerType != 4) {
+            handheldSetting.controllerType = 4
+            updatePlayerSetting(handheldSetting)
+        }
+    }
+    
+    // 新增方法：保存玩家设置到QuickSettings
+    fun savePlayerSettingsToQuickSettings() {
+        try {
+            val quickSettings = QuickSettings(activity)
+            
+            // 保存普通玩家设置 (0-7)
+            val regularPlayers = playerSettings.filter { it.playerIndex in 0..7 }
+            quickSettings.playerSettings = regularPlayers.toMutableList()
+            
+            // 保存掌机模式设置 (索引8)
+            val handheldSetting = playerSettings.find { it.playerIndex == 8 }
+            if (handheldSetting != null) {
+                quickSettings.handheldSetting = handheldSetting
+            }
+            
+            quickSettings.save()
+        } catch (e: Exception) {
+            android.util.Log.e("MainViewModel", "Failed to save player settings to QuickSettings", e)
+        }
+    }
+    
+    // 新增方法：从QuickSettings加载玩家设置
+    fun loadPlayerSettingsFromQuickSettings() {
+        try {
+            val quickSettings = QuickSettings(activity)
+            
+            // 清空当前设置
+            playerSettings.clear()
+            
+            // 加载普通玩家设置 (0-7)
+            playerSettings.addAll(quickSettings.playerSettings)
+            
+            // 加载掌机模式设置 (索引8)
+            playerSettings.add(quickSettings.handheldSetting)
+        } catch (e: Exception) {
+            android.util.Log.e("MainViewModel", "Failed to load player settings from QuickSettings", e)
+        }
+    }
+    
+    // 新增方法：获取掌机模式设置
+    fun getHandheldSetting(): PlayerSetting? {
+        return getPlayerSetting(8)
+    }
+    
+    // 新增方法：更新掌机模式设置
+    fun updateHandheldSetting(setting: PlayerSetting) {
+        if (setting.playerIndex == 8) {
+            updatePlayerSetting(setting)
+        }
+    }
+    
+    // 新增方法：检查是否为掌机模式索引
+    fun isHandheldIndex(playerIndex: Int): Boolean {
+        return playerIndex == 8
+    }
+    
+    // 新增方法：获取掌机模式索引
+    fun getHandheldIndex(): Int {
+        return 8
+    }
+    
+    // 新增方法：获取普通玩家设置（不包括掌机模式）
+    fun getRegularPlayerSettings(): List<PlayerSetting> {
+        return playerSettings.filter { it.playerIndex in 0..7 }
+    }
+    
+    // 新增方法：获取所有玩家设置（包括掌机模式）
+    fun getAllPlayerSettings(): List<PlayerSetting> {
+        return playerSettings.toList()
     }
 }
