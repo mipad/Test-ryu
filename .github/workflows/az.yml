@@ -2,9 +2,9 @@ name: Android CI  Fix
 
 on:
   push:
-    branches: [ "手柄" ]
+    branches: [ "手柄fix" ]
   pull_request:
-    branches: [ "手柄" ]
+    branches: [ "手柄fix" ]
 
 jobs:
   build:
@@ -25,7 +25,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: 手柄
+        ref: 手柄fix
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
