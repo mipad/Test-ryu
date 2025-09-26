@@ -167,19 +167,20 @@ class SettingViews {
             val antiAliasing = remember { mutableStateOf(0) } // 0=None, 1=Fxaa, 2=SmaaLow, 3=SmaaMedium, 4=SmaaHigh, 5=SmaaUltra
             val memoryConfiguration = remember { mutableStateOf(0) } // 新增状态变量：内存配置
             
-            // 控制器设置 - 改为存储每个玩家的设置
+            // 控制器设置 - 包含掌机模式（索引8）
             val playerSettings = remember { 
-    mutableStateListOf(
-        PlayerSetting(0, true, 0), // Player 1 (索引0) 默认开启，Pro Controller
-        PlayerSetting(1, false, 0), // Player 2 (索引1) 默认关闭
-        PlayerSetting(2, false, 0), // Player 3 (索引2) 默认关闭
-        PlayerSetting(3, false, 0), // Player 4 (索引3) 默认关闭
-        PlayerSetting(4, false, 0), // Player 5 (索引4) 默认关闭
-        PlayerSetting(5, false, 0), // Player 6 (索引5) 默认关闭
-        PlayerSetting(6, false, 0), // Player 7 (索引6) 默认关闭
-        PlayerSetting(7, false, 0)  // Player 8 (索引7) 默认关闭
-    )
-}
+                mutableStateListOf(
+                    PlayerSetting(0, true, 0),  // Player 1 (索引0) 默认开启，Pro Controller
+                    PlayerSetting(1, false, 0), // Player 2 (索引1) 默认关闭
+                    PlayerSetting(2, false, 0), // Player 3 (索引2) 默认关闭
+                    PlayerSetting(3, false, 0), // Player 4 (索引3) 默认关闭
+                    PlayerSetting(4, false, 0), // Player 5 (索引4) 默认关闭
+                    PlayerSetting(5, false, 0), // Player 6 (索引5) 默认关闭
+                    PlayerSetting(6, false, 0), // Player 7 (索引6) 默认关闭
+                    PlayerSetting(7, false, 0), // Player 8 (索引7) 默认关闭
+                    PlayerSetting(8, false, 4)  // Handheld mode (索引8，默认关闭，Handheld类型)
+                )
+            }
             
             val showPlayerSelectionDialog = remember { mutableStateOf(false) }
             val showPlayerSettingsDialog = remember { mutableStateOf(-1) } // -1表示不显示，其他值表示玩家编号
@@ -2148,7 +2149,7 @@ if (showMemoryConfigDialog.value) {
                     }
                 }
 
-                // 玩家选择对话框
+                // 玩家选择对话框 - 修改为包含掌机模式
                 if (showPlayerSelectionDialog.value) {
                     BasicAlertDialog(
                         onDismissRequest = { showPlayerSelectionDialog.value = false },
@@ -2171,7 +2172,73 @@ if (showMemoryConfigDialog.value) {
                                     .padding(contentPadding)
                                     .fillMaxSize()
                             ) {
-                                itemsIndexed(playerSettings) { index, playerSetting ->
+                                // 首先显示掌机模式选项
+                                item {
+                                    // 获取掌机模式设置
+                                    val handheldSetting = playerSettings.firstOrNull { it.playerIndex == 8 } 
+                                        ?: PlayerSetting(8, false, 4)
+                                    
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                // 切换掌机模式状态
+                                                val newConnectedState = !handheldSetting.isConnected
+                                                
+                                                // 更新掌机模式设置
+                                                val index = playerSettings.indexOfFirst { it.playerIndex == 8 }
+                                                if (index != -1) {
+                                                    playerSettings[index] = handheldSetting.copy(isConnected = newConnectedState)
+                                                    
+                                                    // 如果开启掌机模式，自动关闭玩家1
+                                                    if (newConnectedState) {
+                                                        val player1Index = playerSettings.indexOfFirst { it.playerIndex == 0 }
+                                                        if (player1Index != -1) {
+                                                            val player1Setting = playerSettings[player1Index]
+                                                            if (player1Setting.isConnected) {
+                                                                playerSettings[player1Index] = player1Setting.copy(isConnected = false)
+                                                            }
+                                                        }
+                                                    }
+                                                } else {
+                                                    // 如果列表中没有掌机模式设置，添加它
+                                                    playerSettings.add(handheldSetting.copy(isConnected = newConnectedState))
+                                                }
+                                                
+                                                // 立即保存设置
+                                                settingsViewModel.updatePlayerSetting(playerSettings.firstOrNull { it.playerIndex == 8 } 
+                                                    ?: PlayerSetting(8, newConnectedState, 4))
+                                            }
+                                            .padding(16.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(text = "Handheld Mode", style = MaterialTheme.typography.titleMedium)
+                                            Text(
+                                                text = "Use handheld controller layout (for games like Pokémon Let's Go)",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                            )
+                                        }
+                                        Switch(
+                                            checked = handheldSetting.isConnected,
+                                            onCheckedChange = null // 通过点击Row来处理，避免双重触发
+                                        )
+                                    }
+                                    
+                                    // 分隔线
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(1.dp)
+                                            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                                            .padding(horizontal = 16.dp)
+                                    )
+                                }
+                                
+                                // 然后显示普通玩家选项
+                                itemsIndexed(playerSettings.filter { it.playerIndex in 0..7 }) { index, playerSetting ->
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -2186,7 +2253,25 @@ if (showMemoryConfigDialog.value) {
                                         Switch(
                                             checked = playerSetting.isConnected,
                                             onCheckedChange = { 
-                                                playerSettings[index] = playerSetting.copy(isConnected = it)
+                                                val newConnectedState = it
+                                                val settingIndex = playerSettings.indexOfFirst { it.playerIndex == playerSetting.playerIndex }
+                                                if (settingIndex != -1) {
+                                                    playerSettings[settingIndex] = playerSetting.copy(isConnected = newConnectedState)
+                                                    
+                                                    // 如果开启玩家1，自动关闭掌机模式
+                                                    if (newConnectedState && playerSetting.playerIndex == 0) {
+                                                        val handheldIndex = playerSettings.indexOfFirst { it.playerIndex == 8 }
+                                                        if (handheldIndex != -1) {
+                                                            val handheldSetting = playerSettings[handheldIndex]
+                                                            if (handheldSetting.isConnected) {
+                                                                playerSettings[handheldIndex] = handheldSetting.copy(isConnected = false)
+                                                            }
+                                                        }
+                                                    }
+                                                    
+                                                    // 立即保存设置
+                                                    settingsViewModel.updatePlayerSetting(playerSettings[settingIndex])
+                                                }
                                             }
                                         )
                                     }
@@ -2196,7 +2281,7 @@ if (showMemoryConfigDialog.value) {
                     }
                 }
                 
-                // 玩家设置对话框
+                // 玩家设置对话框 - 修改为支持掌机模式
                 if (showPlayerSettingsDialog.value != -1) {
                     val playerIndex = showPlayerSettingsDialog.value
                     val playerSetting = playerSettings.firstOrNull { it.playerIndex == playerIndex }
@@ -2209,7 +2294,12 @@ if (showMemoryConfigDialog.value) {
                             Scaffold(
                                 topBar = {
                                     TopAppBar(
-                                       title = { Text("Player ${playerIndex + 1} Settings") },
+                                        title = { 
+                                            Text(
+                                                if (playerIndex == 8) "Handheld Mode Settings" 
+                                                else "Player ${playerIndex + 1} Settings"
+                                            )
+                                        },
                                         navigationIcon = {
                                             IconButton(onClick = { showPlayerSettingsDialog.value = -1 }) {
                                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -2236,60 +2326,133 @@ if (showMemoryConfigDialog.value) {
                                         Switch(
                                             checked = playerSetting.isConnected,
                                             onCheckedChange = { 
+                                                val newConnectedState = it
                                                 val index = playerSettings.indexOfFirst { it.playerIndex == playerIndex }
                                                 if (index != -1) {
-                                                    playerSettings[index] = playerSetting.copy(isConnected = it)
+                                                    playerSettings[index] = playerSetting.copy(isConnected = newConnectedState)
+                                                    
+                                                    // 互斥逻辑：掌机模式和玩家1不能同时开启
+                                                    if (newConnectedState) {
+                                                        if (playerIndex == 8) {
+                                                            // 开启掌机模式时，关闭玩家1
+                                                            val player1Index = playerSettings.indexOfFirst { it.playerIndex == 0 }
+                                                            if (player1Index != -1) {
+                                                                val player1Setting = playerSettings[player1Index]
+                                                                if (player1Setting.isConnected) {
+                                                                    playerSettings[player1Index] = player1Setting.copy(isConnected = false)
+                                                                    settingsViewModel.updatePlayerSetting(playerSettings[player1Index])
+                                                                }
+                                                            }
+                                                        } else if (playerIndex == 0) {
+                                                            // 开启玩家1时，关闭掌机模式
+                                                            val handheldIndex = playerSettings.indexOfFirst { it.playerIndex == 8 }
+                                                            if (handheldIndex != -1) {
+                                                                val handheldSetting = playerSettings[handheldIndex]
+                                                                if (handheldSetting.isConnected) {
+                                                                    playerSettings[handheldIndex] = handheldSetting.copy(isConnected = false)
+                                                                    settingsViewModel.updatePlayerSetting(playerSettings[handheldIndex])
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    
+                                                    // 保存当前设置
+                                                    settingsViewModel.updatePlayerSetting(playerSettings[index])
                                                 }
                                             }
                                         )
                                     }
                                     
+                                    // 手柄类型选择（仅在连接开启时显示）
+                                    AnimatedVisibility(visible = playerSetting.isConnected) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(
+                                                text = "Controller Type",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                modifier = Modifier.padding(vertical = 16.dp)
+                                            )
+                                            
+                                            // 对于掌机模式，默认且推荐使用Handheld类型
+                                            if (playerIndex == 8) {
+                                                Text(
+                                                    text = "Recommended: Handheld (for Pokémon Let's Go compatibility)",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.padding(bottom = 8.dp)
+                                                )
+                                            }
+                                            
+                                            val controllerTypes = if (playerIndex == 8) {
+                                                // 掌机模式可用的控制器类型
+                                                listOf("Pro Controller", "Joy-Con Pair", "Handheld")
+                                            } else {
+                                                // 普通玩家可用的控制器类型
+                                                listOf("Pro Controller", "Joy-Con (L)", "Joy-Con (R)", "Joy-Con Pair", "Handheld")
+                                            }
+                                            
+                                            val controllerTypeValues = if (playerIndex == 8) {
+                                                listOf(0, 3, 4) // Pro, JoyconPair, Handheld
+                                            } else {
+                                                listOf(0, 1, 2, 3, 4) // 所有类型
+                                            }
+                                            
+                                            controllerTypes.forEachIndexed { typeIndex, type ->
+                                                val actualTypeIndex = controllerTypeValues[typeIndex]
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clickable {
+                                                            val settingIndex = playerSettings.indexOfFirst { it.playerIndex == playerIndex }
+                                                            if (settingIndex != -1) {
+                                                                playerSettings[settingIndex] = playerSetting.copy(controllerType = actualTypeIndex)
+                                                                // 立即保存设置
+                                                                settingsViewModel.updatePlayerSetting(playerSettings[settingIndex])
+                                                            }
+                                                        }
+                                                        .padding(vertical = 12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    RadioButton(
+                                                        selected = playerSetting.controllerType == actualTypeIndex,
+                                                        onClick = {
+                                                            val settingIndex = playerSettings.indexOfFirst { it.playerIndex == playerIndex }
+                                                            if (settingIndex != -1) {
+                                                                playerSettings[settingIndex] = playerSetting.copy(controllerType = actualTypeIndex)
+                                                                // 立即保存设置
+                                                                settingsViewModel.updatePlayerSetting(playerSettings[settingIndex])
+                                                            }
+                                                        }
+                                                    )
+                                                    Column(modifier = Modifier.padding(start = 8.dp)) {
+                                                        Text(
+                                                            text = type,
+                                                            style = MaterialTheme.typography.bodyLarge
+                                                        )
+                                                        // 为掌机模式添加说明
+                                                        if (playerIndex == 8 && actualTypeIndex == 4) {
+                                                            Text(
+                                                                text = "Best compatibility for handheld-only games",
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                     
-// 手柄类型选择（仅在连接开启时显示）
-AnimatedVisibility(visible = playerSetting.isConnected) {
-    Column(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            text = "Controller Type",
-            modifier = Modifier.padding(vertical = 8.dp)
-        )
-        
-        val controllerTypes = listOf("Pro Controller", "Joy-Con (L)", "Joy-Con (R)", "Joy-Con Pair", "Handheld")
-        controllerTypes.forEachIndexed { typeIndex, type ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        val settingIndex = playerSettings.indexOfFirst { it.playerIndex == playerIndex }
-                        if (settingIndex != -1) {
-                            playerSettings[settingIndex] = playerSetting.copy(controllerType = typeIndex)
-                            // 立即保存设置
-                            settingsViewModel.updatePlayerSetting(playerSettings[settingIndex])
-                        }
-                    }
-                    .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RadioButton(
-                    selected = playerSetting.controllerType == typeIndex,
-                    onClick = {
-                        val settingIndex = playerSettings.indexOfFirst { it.playerIndex == playerIndex }
-                        if (settingIndex != -1) {
-                            playerSettings[settingIndex] = playerSetting.copy(controllerType = typeIndex)
-                            // 立即保存设置
-                            settingsViewModel.updatePlayerSetting(playerSettings[settingIndex])
-                        }
-                    }
-                )
-                Text(
-                    text = type,
-                    modifier = Modifier.padding(start = 8.dp)
-                )
-            }
-        }
-    }
-}
+                                    // 添加说明文本
+                                    if (playerIndex == 8) {
+                                        Text(
+                                            text = "Handheld mode uses player index 8 and is required for games like Pokémon: Let's Go Pikachu/Eevee that only support handheld mode.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                            modifier = Modifier.padding(top = 16.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -2299,7 +2462,8 @@ AnimatedVisibility(visible = playerSetting.isConnected) {
                 BackHandler {
                     settingsViewModel.save(
                         isHostMapped,
-                        useNce, enableVsync, enableDocked, enablePtc, enableJitCacheEviction, ignoreMissingServices,
+                        useNce,
+                        enableVsync, enableDocked, enablePtc, enableJitCacheEviction, ignoreMissingServices,
                         enableShaderCache,
                         enableTextureRecompression,
                         resScale,
@@ -2449,4 +2613,3 @@ AnimatedVisibility(visible = playerSetting.isConnected) {
         }
     }
 }
-
