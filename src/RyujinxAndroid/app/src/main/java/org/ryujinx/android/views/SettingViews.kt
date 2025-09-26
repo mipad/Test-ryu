@@ -2244,47 +2244,52 @@ if (showMemoryConfigDialog.value) {
                                         )
                                     }
                                     
-                                    // 手柄类型选择（仅在连接开启时显示）
-                                    AnimatedVisibility(visible = playerSetting.isConnected) {
-                                        Column(
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Text(
-                                                text = "Controller Type",
-                                                modifier = Modifier.padding(vertical = 8.dp)
-                                            )
-                                            
-                                            val controllerTypes = listOf("Pro Controller", "Joy-Con (L)", "Joy-Con (R)", "Joy-Con Pair", "Handheld")
-                                            controllerTypes.forEachIndexed { index, type ->
-                                                Row(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .clickable {
-                                                            val index = playerSettings.indexOfFirst { it.playerIndex == playerIndex }
-                                                            if (playerIndex != -1) {
-                                                                playerSettings[playerIndex] = playerSetting.copy(controllerType = index)
-                                                            }
-                                                        }
-                                                        .padding(vertical = 8.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    RadioButton(
-                                                        selected = playerSetting.controllerType == index,
-                                                        onClick = {
-                                                            val index = playerSettings.indexOfFirst { it.playerIndex == playerIndex }
-                                                            if (playerIndex != -1) {
-                                                                playerSettings[playerIndex] = playerSetting.copy(controllerType = index)
-                                                            }
-                                                        }
-                                                    )
-                                                    Text(
-                                                        text = type,
-                                                        modifier = Modifier.padding(start = 8.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
+                                    
+// 手柄类型选择（仅在连接开启时显示）
+AnimatedVisibility(visible = playerSetting.isConnected) {
+    Column(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = "Controller Type",
+            modifier = Modifier.padding(vertical = 8.dp)
+        )
+        
+        val controllerTypes = listOf("Pro Controller", "Joy-Con (L)", "Joy-Con (R)", "Joy-Con Pair", "Handheld")
+        controllerTypes.forEachIndexed { typeIndex, type ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        val settingIndex = playerSettings.indexOfFirst { it.playerIndex == playerIndex }
+                        if (settingIndex != -1) {
+                            playerSettings[settingIndex] = playerSetting.copy(controllerType = typeIndex)
+                            // 立即保存设置
+                            settingsViewModel.updatePlayerSetting(playerSettings[settingIndex])
+                        }
+                    }
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = playerSetting.controllerType == typeIndex,
+                    onClick = {
+                        val settingIndex = playerSettings.indexOfFirst { it.playerIndex == playerIndex }
+                        if (settingIndex != -1) {
+                            playerSettings[settingIndex] = playerSetting.copy(controllerType = typeIndex)
+                            // 立即保存设置
+                            settingsViewModel.updatePlayerSetting(playerSettings[settingIndex])
+                        }
+                    }
+                )
+                Text(
+                    text = type,
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            }
+        }
+    }
+}
                                 }
                             }
                         }
