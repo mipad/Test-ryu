@@ -137,7 +137,7 @@ class RyujinxNative {
             Collections.singletonMap(Library.OPTION_ALLOW_OBJECTS, true)
         )
         
-        // 玩家索引管理 (0-8，其中8为掌机模式)
+        // 玩家索引管理 (0-7)
         private val connectedPlayerIndices = mutableSetOf<Int>()
         
         // 玩家索引相关的常量
@@ -149,17 +149,16 @@ class RyujinxNative {
         const val PLAYER_6 = 5
         const val PLAYER_7 = 6
         const val PLAYER_8 = 7
-        const val HANDHELD = 8  // 新增：掌机模式索引
         
         /**
-         * 获取下一个可用的玩家索引 (0-8)
+         * 获取下一个可用的玩家索引 (0-7)
          * @return 可用的玩家索引，如果没有可用索引则返回-1
          */
         @JvmStatic
         fun getNextAvailablePlayerIndex(): Int {
             synchronized(connectedPlayerIndices) {
-                // 尝试从0到8的索引（包括掌机模式）
-                for (i in 0..8) {
+                // 尝试从0到7的索引
+                for (i in 0..7) {
                     if (!connectedPlayerIndices.contains(i)) {
                         connectedPlayerIndices.add(i)
                         return i
@@ -171,7 +170,7 @@ class RyujinxNative {
         
         /**
          * 释放玩家索引
-         * @param playerIndex 要释放的玩家索引 (0-8)
+         * @param playerIndex 要释放的玩家索引 (0-7)
          */
         @JvmStatic
         fun releasePlayerIndex(playerIndex: Int) {
@@ -182,21 +181,21 @@ class RyujinxNative {
         
         /**
          * 获取玩家显示名称
-         * @param playerIndex 玩家索引 (0-8)
-         * @return 显示名称，如 "Player 1" 或 "Handheld"
+         * @param playerIndex 玩家索引 (0-7)
+         * @return 显示名称，如 "Player 1"
          */
         @JvmStatic
         fun getPlayerDisplayName(playerIndex: Int): String {
-            return when (playerIndex) {
-                in 0..7 -> "Player ${playerIndex + 1}"
-                8 -> "Handheld"  // 掌机模式
-                else -> "Unknown Player"
+            return if (playerIndex in 0..7) {
+                "Player ${playerIndex + 1}"
+            } else {
+                "Unknown Player"
             }
         }
         
         /**
          * 连接游戏手柄并返回玩家索引
-         * @return 玩家索引 (0-8)，如果连接失败返回-1
+         * @return 玩家索引 (0-7)，如果连接失败返回-1
          */
         @JvmStatic
         fun connectGamepad(): Int {
@@ -216,11 +215,11 @@ class RyujinxNative {
         
         /**
          * 断开游戏手柄连接
-         * @param playerIndex 要断开的玩家索引 (0-8)
+         * @param playerIndex 要断开的玩家索引 (0-7)
          */
         @JvmStatic
         fun disconnectGamepad(playerIndex: Int) {
-            if (playerIndex in 0..8) {
+            if (playerIndex in 0..7) {
                 // 释放玩家索引
                 releasePlayerIndex(playerIndex)
                 android.util.Log.d("RyujinxNative", "Disconnected gamepad with player index: $playerIndex")
@@ -234,7 +233,7 @@ class RyujinxNative {
          */
         @JvmStatic
         fun isPlayerIndexAvailable(playerIndex: Int): Boolean {
-            return playerIndex in 0..8 && !connectedPlayerIndices.contains(playerIndex)
+            return playerIndex in 0..7 && !connectedPlayerIndices.contains(playerIndex)
         }
         
         /**
@@ -374,49 +373,6 @@ class RyujinxNative {
         @JvmStatic
         fun setGyroData(x: Float, y: Float, z: Float, playerIndex: Int) {
             jnaInstance.inputSetGyroData(x, y, z, playerIndex)
-        }
-        
-        // 新增：专门为掌机模式设置控制器类型的便捷方法
-        @JvmStatic
-        fun setHandheldControllerType(controllerType: Int) {
-            setControllerType(HANDHELD, controllerType)
-        }
-        
-        // 新增：检查是否为掌机模式
-        @JvmStatic
-        fun isHandheldMode(playerIndex: Int): Boolean {
-            return playerIndex == HANDHELD
-        }
-        
-        // 新增：获取掌机模式的索引
-        @JvmStatic
-        fun getHandheldIndex(): Int {
-            return HANDHELD
-        }
-        
-        // 新增：连接掌机模式
-        @JvmStatic
-        fun connectHandheld(): Boolean {
-            val playerIndex = HANDHELD
-            if (!connectedPlayerIndices.contains(playerIndex)) {
-                val result = jnaInstance.inputConnectGamepad(playerIndex)
-                if (result != -1) {
-                    connectedPlayerIndices.add(playerIndex)
-                    android.util.Log.d("RyujinxNative", "Connected handheld mode with player index: $playerIndex")
-                    return true
-                }
-            }
-            return false
-        }
-        
-        // 新增：断开掌机模式连接
-        @JvmStatic
-        fun disconnectHandheld() {
-            val playerIndex = HANDHELD
-            if (connectedPlayerIndices.contains(playerIndex)) {
-                connectedPlayerIndices.remove(playerIndex)
-                android.util.Log.d("RyujinxNative", "Disconnected handheld mode with player index: $playerIndex")
-            }
         }
     }
 }
