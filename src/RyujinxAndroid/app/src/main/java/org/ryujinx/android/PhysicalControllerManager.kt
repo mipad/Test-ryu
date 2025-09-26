@@ -4,15 +4,81 @@ import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import org.ryujinx.android.viewmodels.QuickSettings
+import org.ryujinx.android.viewmodels.SettingsViewModel
 
 class PhysicalControllerManager(val activity: MainActivity) {
     private var controllerId: Int = -1
+    private var currentControllerType: ControllerType = ControllerType.PRO_CONTROLLER
+    private var settingsViewModel: SettingsViewModel? = null
+    
+    // 设置SettingsViewModel引用
+    fun setSettingsViewModel(viewModel: SettingsViewModel) {
+        this.settingsViewModel = viewModel
+    }
+
+    // 新增方法：更新控制器类型
+    fun updateControllerType(controllerType: ControllerType) {
+        currentControllerType = controllerType
+        
+        // 如果控制器已连接，立即应用新的控制器类型
+        if (controllerId != -1) {
+            // 将控制器类型转换为位掩码值
+            val controllerTypeBitmask = controllerTypeToBitmask(controllerType)
+            RyujinxNative.jnaInstance.setControllerType(controllerId, controllerTypeBitmask)
+        }
+        
+        // 同时更新ControllerManager中的控制器类型
+        val deviceId = "physical_controller_$controllerId"
+        ControllerManager.updateControllerType(activity, deviceId, controllerType)
+        
+        // 更新设置中的控制器类型（针对玩家0，即原来的玩家1）
+        settingsViewModel?.getPlayerSetting(0)?.let { playerSetting ->
+            val newType = when (controllerType) {
+                ControllerType.PRO_CONTROLLER -> 0
+                ControllerType.JOYCON_LEFT -> 1
+                ControllerType.JOYCON_RIGHT -> 2
+                ControllerType.JOYCON_PAIR -> 3
+                ControllerType.HANDHELD -> 4
+            }
+            val updatedSetting = playerSetting.copy(controllerType = newType)
+            settingsViewModel?.updatePlayerSetting(updatedSetting)
+        }
+    }
+    
+    // 新增方法：将控制器类型转换为位掩码值
+    private fun controllerTypeToBitmask(controllerType: ControllerType): Int {
+        return when (controllerType) {
+            ControllerType.PRO_CONTROLLER -> 1  // 1 << 0
+            ControllerType.JOYCON_LEFT -> 8     // 1 << 3
+            ControllerType.JOYCON_RIGHT -> 16   // 1 << 4
+            ControllerType.JOYCON_PAIR -> 4     // 1 << 2
+            ControllerType.HANDHELD -> 2        // 1 << 1
+        }
+    }
+    
+    // 新增方法：从设置加载控制器类型
+    fun loadControllerTypeFromSettings() {
+        // 修改：使用 0-based 索引（玩家0）
+        settingsViewModel?.getPlayerSetting(0)?.let { playerSetting ->
+            if (playerSetting.isConnected) {
+                val controllerType = when (playerSetting.controllerType) {
+                    0 -> ControllerType.PRO_CONTROLLER
+                    1 -> ControllerType.JOYCON_LEFT
+                    2 -> ControllerType.JOYCON_RIGHT
+                    3 -> ControllerType.JOYCON_PAIR
+                    4 -> ControllerType.HANDHELD
+                    else -> ControllerType.PRO_CONTROLLER
+                }
+                updateControllerType(controllerType)
+            }
+        }
+    }
 
     fun onKeyEvent(event: KeyEvent): Boolean {
         val id = getGamePadButtonInputId(event.keyCode)
         if (id != GamePadButtonInputId.None) {
             val isNotFallback = (event.flags and KeyEvent.FLAG_FALLBACK) == 0
-            if (/*controllerId != -1 &&*/ isNotFallback) {
+            if (controllerId != -1 && isNotFallback) {
                 when (event.action) {
                     KeyEvent.ACTION_UP -> {
                         RyujinxNative.jnaInstance.inputSetButtonReleased(id.ordinal, controllerId)
@@ -32,22 +98,26 @@ class PhysicalControllerManager(val activity: MainActivity) {
     }
 
     fun onMotionEvent(ev: MotionEvent) {
-        if (true) {
+        if (controllerId != -1) {
             if (ev.action == MotionEvent.ACTION_MOVE) {
                 val leftStickX = ev.getAxisValue(MotionEvent.AXIS_X)
                 val leftStickY = ev.getAxisValue(MotionEvent.AXIS_Y)
                 val rightStickX = ev.getAxisValue(MotionEvent.AXIS_Z)
                 val rightStickY = ev.getAxisValue(MotionEvent.AXIS_RZ)
+                
+                val quickSettings = QuickSettings(activity)
+                val sensitivity = quickSettings.controllerStickSensitivity
+                
                 RyujinxNative.jnaInstance.inputSetStickAxis(
                     1,
-                    leftStickX,
-                    -leftStickY,
+                    leftStickX * sensitivity,
+                    -leftStickY * sensitivity,
                     controllerId
                 )
                 RyujinxNative.jnaInstance.inputSetStickAxis(
                     2,
-                    rightStickX,
-                    -rightStickY,
+                    rightStickX * sensitivity,
+                    -rightStickY * sensitivity,
                     controllerId
                 )
 
@@ -125,12 +195,42 @@ class PhysicalControllerManager(val activity: MainActivity) {
     }
 
     fun connect(): Int {
-        controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
+        // 使用新的设备ID管理方法连接游戏手柄
+        controllerId = RyujinxNative.connectGamepad()
+        
+        if (controllerId == -1) {
+            // 连接失败，没有可用设备ID
+            return -1
+        }
+        
+        // 从设置加载控制器类型
+        loadControllerTypeFromSettings()
+        
+        // 注册物理控制器到ControllerManager
+        val deviceName = "Physical Controller" // 这里可以根据实际情况获取设备名称
+        val deviceId = "physical_controller_$controllerId"
+        
+        val physicalController = Controller(
+            id = deviceId,
+            name = deviceName,
+            controllerType = currentControllerType,
+            isVirtual = false
+        )
+        ControllerManager.addController(activity, physicalController)
+        
         return controllerId
     }
 
     fun disconnect() {
-        controllerId = -1
+        if (controllerId != -1) {
+            // 从ControllerManager移除控制器
+            val deviceId = "physical_controller_$controllerId"
+            ControllerManager.removeController(deviceId)
+            
+            // 断开游戏手柄连接并释放设备ID
+            RyujinxNative.disconnectGamepad(controllerId)
+            controllerId = -1
+        }
     }
 
     private fun getGamePadButtonInputId(keycode: Int): GamePadButtonInputId {
@@ -153,6 +253,40 @@ class PhysicalControllerManager(val activity: MainActivity) {
             KeyEvent.KEYCODE_BUTTON_START -> GamePadButtonInputId.Plus
             KeyEvent.KEYCODE_BUTTON_SELECT -> GamePadButtonInputId.Minus
             else -> GamePadButtonInputId.None
+        }
+    }
+    
+    // 新增方法：获取控制器显示名称
+    fun getControllerDisplayName(): String {
+        return when (currentControllerType) {
+            ControllerType.PRO_CONTROLLER -> "Pro Controller"
+            ControllerType.JOYCON_LEFT -> "Joy-Con (L)"
+            ControllerType.JOYCON_RIGHT -> "Joy-Con (R)"
+            ControllerType.JOYCON_PAIR -> "Joy-Con Pair"
+            ControllerType.HANDHELD -> "Handheld"
+        }
+    }
+    
+    // 新增方法：检查控制器是否连接
+    fun isConnected(): Boolean {
+        return controllerId != -1
+    }
+    
+    // 新增方法：获取控制器ID
+    fun getControllerId(): Int {
+        return controllerId
+    }
+    
+    // 新增方法：获取当前控制器类型
+    fun getCurrentControllerType(): ControllerType {
+        return currentControllerType
+    }
+    
+    // 新增方法：重新连接控制器（用于设置更改后重新应用）
+    fun reconnect() {
+        if (isConnected()) {
+            disconnect()
+            connect()
         }
     }
 }
