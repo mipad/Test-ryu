@@ -42,9 +42,11 @@ class QuickSettings(val activity: Activity) {
     // 玩家设置列表（使用 0-based 索引，0-7为普通玩家，8为掌机模式）
     var playerSettings: MutableList<PlayerSetting> = mutableListOf()
     
-    // 掌机模式设置（单独存储，因为掌机模式是特殊的玩家索引8）
-    var handheldSetting: PlayerSetting = PlayerSetting(8, false, 4) // 索引8，默认关闭，控制器类型为Handheld
-
+    // 修改：使用自定义getter替代单独的方法
+    var handheldSetting: PlayerSetting = PlayerSetting(8, false, 4)
+        get() = field
+        private set
+    
     // Logs
     var enableDebugLogs: Boolean
     var enableStubLogs: Boolean
@@ -422,10 +424,8 @@ class QuickSettings(val activity: Activity) {
         return handheldSetting.isConnected
     }
     
-    // 新增方法：获取掌机模式设置
-    fun getHandheldSetting(): PlayerSetting {
-        return handheldSetting
-    }
+    // 修改：删除冲突的方法，直接使用属性即可
+    // fun getHandheldSetting(): PlayerSetting
     
     // 新增方法：更新掌机模式设置
     fun updateHandheldSetting(setting: PlayerSetting) {
