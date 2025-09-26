@@ -68,7 +68,7 @@ set(ALSOFT_AMBIENT_CHANNELS 0 CACHE STRING "Ambient channels") # 减少环境声
 
 # 针对低延迟优化
 set(ALSOFT_DEFAULT_CFG "" CACHE STRING "Default config file")
-set(ALSOFT_CONFIG "" CACHE STRING "Config file")
+set(ALSOFT_INSTALL_CONFIG "" CACHE STRING "Config file")
 set(ALSOFT_DEFAULT_REVERB OFF CACHE BOOL "Disable default reverb")
 set(ALSOFT_DEFAULT_ECHO OFF CACHE BOOL "Disable default echo")
 set(ALSOFT_DEFAULT_MODULATION OFF CACHE BOOL "Disable default modulation")
