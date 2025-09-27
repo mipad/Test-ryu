@@ -147,7 +147,7 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
         // 为玩家1创建虚拟控制器
         val player1Controller = Controller(
             id = "virtual_controller_0",
-            name = "MeloNX Touch Controller - Player 1",
+            name = "Ryujinx Touch Controller - Player 1",
             controllerType = getControllerTypeForPlayer(0),
             isVirtual = true
         )
@@ -157,7 +157,7 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
         // 为掌机模式创建虚拟控制器
         val handheldController = Controller(
             id = "virtual_controller_8", 
-            name = "MeloNX Touch Controller - Handheld",
+            name = "Ryujinx Touch Controller - Handheld",
             controllerType = ControllerType.HANDHELD,
             isVirtual = true
         )
