@@ -19,6 +19,7 @@ import org.ryujinx.android.RegionCode
 import org.ryujinx.android.RyujinxNative
 import org.ryujinx.android.SystemLanguage
 import java.io.File
+import java.util.TimeZone
 
 @SuppressLint("WrongConstant")
 class MainViewModel(val activity: MainActivity) {
@@ -159,6 +160,7 @@ class MainViewModel(val activity: MainActivity) {
             semaphore.acquire()
             launchOnUiThread {
                 // We are only able to initialize the emulation context on the main thread
+                val tzId = TimeZone.getDefault().id
                 success = RyujinxNative.jnaInstance.deviceInitialize(
                     settings.isHostMapped,
                     settings.useNce,
@@ -169,7 +171,7 @@ class MainViewModel(val activity: MainActivity) {
                     settings.enablePtc,
                     settings.enableJitCacheEviction,
                     false,
-                    "UTC",
+                    tzId, // <<< Pass through Android device time zone
                     settings.ignoreMissingServices,
                     settings.audioEngineType, // 新增音频引擎参数
                     settings.memoryConfiguration, // 内存配置
@@ -266,6 +268,7 @@ class MainViewModel(val activity: MainActivity) {
             semaphore.acquire()
             launchOnUiThread {
                 // We are only able to initialize the emulation context on the main thread
+                val tzId = TimeZone.getDefault().id
                 success = RyujinxNative.jnaInstance.deviceInitialize(
                     settings.isHostMapped,
                     settings.useNce,
@@ -276,7 +279,7 @@ class MainViewModel(val activity: MainActivity) {
                     settings.enablePtc,
                     settings.enableJitCacheEviction,
                     false,
-                    "UTC",
+                    tzId, // <<< Pass through Android device time zone
                     settings.ignoreMissingServices,
                     settings.audioEngineType, // 新增音频引擎参数
                     settings.memoryConfiguration, // 内存配置
