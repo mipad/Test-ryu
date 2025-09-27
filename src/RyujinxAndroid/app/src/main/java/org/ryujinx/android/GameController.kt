@@ -105,6 +105,10 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
         get() = field
         private set
     
+    // 新增：支持多个虚拟控制器（玩家0和玩家8）
+    private var virtualControllers: MutableMap<Int, Controller> = mutableMapOf()
+    private var currentActivePlayerIndex: Int = 0
+    
     val isVisible: Boolean
         get() {
             controllerView?.apply {
@@ -125,20 +129,124 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
         rightGamePad.gravityX = 1f
         rightGamePad.gravityY = 1f
         
-        // 初始化时注册虚拟控制器到ControllerManager
-        val virtualController = Controller(
-            id = "virtual_controller_0",
-            name = "MeloNX Touch Controller",
-            controllerType = getInitialControllerType(),
-            isVirtual = true
-        )
-        ControllerManager.addController(activity, virtualController)
+        // 修改：初始化时创建所有需要的虚拟控制器
+        initializeVirtualControllers()
         
         // 初始化时从设置获取玩家索引
         updatePlayerIndexFromSettings()
+        
+        // 设置初始激活玩家
+        currentActivePlayerIndex = getCurrentActivePlayerIndex()
+        connectVirtualController(currentActivePlayerIndex)
+        
+        android.util.Log.d("GameController", "Initialized with active player: $currentActivePlayerIndex")
     }
 
-    // 新增方法：从设置更新玩家索引
+    // 新增方法：初始化虚拟控制器
+    private fun initializeVirtualControllers() {
+        // 为玩家1创建虚拟控制器
+        val player1Controller = Controller(
+            id = "virtual_controller_0",
+            name = "MeloNX Touch Controller - Player 1",
+            controllerType = getControllerTypeForPlayer(0),
+            isVirtual = true
+        )
+        virtualControllers[0] = player1Controller
+        ControllerManager.addController(activity, player1Controller)
+        
+        // 为掌机模式创建虚拟控制器
+        val handheldController = Controller(
+            id = "virtual_controller_8", 
+            name = "MeloNX Touch Controller - Handheld",
+            controllerType = ControllerType.HANDHELD,
+            isVirtual = true
+        )
+        virtualControllers[8] = handheldController
+        ControllerManager.addController(activity, handheldController)
+        
+        android.util.Log.d("GameController", "Initialized virtual controllers for player 0 and player 8")
+    }
+
+    // 新增方法：获取当前激活的玩家索引
+    fun getCurrentActivePlayerIndex(): Int {
+        // 优先检查掌机模式是否连接
+        val handheldSetting = mainViewModel.getPlayerSetting(8)
+        val isHandheldConnected = handheldSetting?.isConnected ?: false
+        
+        // 检查玩家1是否连接
+        val player1Setting = mainViewModel.getPlayerSetting(0)
+        val isPlayer1Connected = player1Setting?.isConnected ?: true
+        
+        return when {
+            isHandheldConnected -> 8
+            isPlayer1Connected -> 0
+            else -> 0 // 默认回退到玩家1
+        }
+    }
+
+    // 新增方法：根据玩家索引获取控制器类型
+    private fun getControllerTypeForPlayer(playerIndex: Int): ControllerType {
+        val playerSetting = mainViewModel.getPlayerSetting(playerIndex)
+        return when (playerSetting?.controllerType ?: 0) {
+            0 -> ControllerType.PRO_CONTROLLER
+            1 -> ControllerType.JOYCON_LEFT
+            2 -> ControllerType.JOYCON_RIGHT
+            3 -> ControllerType.JOYCON_PAIR
+            4 -> ControllerType.HANDHELD
+            else -> ControllerType.PRO_CONTROLLER
+        }
+    }
+
+    // 新增方法：更新当前激活的玩家
+    fun updateActivePlayer() {
+        val newActivePlayer = getCurrentActivePlayerIndex()
+        if (currentActivePlayerIndex != newActivePlayer) {
+            android.util.Log.d("GameController", "Switching active player from $currentActivePlayerIndex to $newActivePlayer")
+            
+            // 断开当前玩家的连接
+            disconnectVirtualController(currentActivePlayerIndex)
+            
+            // 连接新玩家
+            currentActivePlayerIndex = newActivePlayer
+            connectVirtualController(currentActivePlayerIndex)
+            
+            // 更新控制器类型
+            updateControllerTypeForActivePlayer()
+        }
+    }
+
+    // 新增方法：连接指定玩家的虚拟控制器
+    private fun connectVirtualController(playerIndex: Int) {
+        if (controllerId != -1) {
+            disconnect()
+        }
+        
+        controllerId = playerIndex
+        currentPlayerIndex = playerIndex
+        
+        val controllerTypeInt = controllerTypeToInt(getControllerTypeForPlayer(playerIndex))
+        RyujinxNative.setControllerType(playerIndex, controllerTypeInt)
+        
+        ControllerManager.updateControllerId(activity, "virtual_controller_$playerIndex", controllerId)
+        
+        android.util.Log.d("GameController", "Connected virtual controller for player $playerIndex")
+    }
+
+    // 新增方法：断开指定玩家的虚拟控制器
+    private fun disconnectVirtualController(playerIndex: Int) {
+        RyujinxNative.setControllerType(playerIndex, 0) // 设置为无控制器
+        ControllerManager.updateControllerId(activity, "virtual_controller_$playerIndex", -1)
+        
+        android.util.Log.d("GameController", "Disconnected virtual controller for player $playerIndex")
+    }
+
+    // 新增方法：为激活玩家更新控制器类型
+    private fun updateControllerTypeForActivePlayer() {
+        val newType = getControllerTypeForPlayer(currentActivePlayerIndex)
+        updateControllerType(newType)
+    }
+
+    // 修改方法：从设置更新玩家索引
     fun updatePlayerIndexFromSettings() {
         // 检查掌机模式是否启用
         val handheldSetting = mainViewModel.getPlayerSetting(8)
@@ -159,41 +267,16 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
         
         android.util.Log.d("GameController", "Updated player index to: $currentPlayerIndex (Handheld: $isHandheldConnected, Player1: $isPlayer1Connected)")
         
-        if (controllerId != -1) {
-            disconnect()
-            connect()
-        }
+        // 更新激活玩家
+        updateActivePlayer()
     }
 
-    // 新增方法：获取初始控制器类型
-    private fun getInitialControllerType(): ControllerType {
-        val playerSetting = mainViewModel.getPlayerSetting(currentPlayerIndex)
-        return when (playerSetting?.controllerType ?: 0) {
-            0 -> ControllerType.PRO_CONTROLLER
-            1 -> ControllerType.JOYCON_LEFT
-            2 -> ControllerType.JOYCON_RIGHT
-            3 -> ControllerType.JOYCON_PAIR
-            4 -> ControllerType.HANDHELD
-            else -> ControllerType.PRO_CONTROLLER
-        }
-    }
-
-    // 新增方法：从设置更新控制器类型
+    // 修改方法：从设置更新控制器类型
     fun updateControllerTypeFromSettings() {
-        val playerSetting = mainViewModel.getPlayerSetting(currentPlayerIndex)
-        val newType = when (playerSetting?.controllerType ?: 0) {
-            0 -> ControllerType.PRO_CONTROLLER
-            1 -> ControllerType.JOYCON_LEFT
-            2 -> ControllerType.JOYCON_RIGHT
-            3 -> ControllerType.JOYCON_PAIR
-            4 -> ControllerType.HANDHELD
-            else -> ControllerType.PRO_CONTROLLER
-        }
-        
-        updateControllerType(newType)
+        updateControllerTypeForActivePlayer()
     }
 
-    // 新增方法：更新控制器类型
+    // 修改方法：更新控制器类型
     fun updateControllerType(newType: ControllerType) {
         if (currentControllerType == newType) {
             return
@@ -201,17 +284,17 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
         
         currentControllerType = newType
         
-        ControllerManager.updateControllerType(activity, "virtual_controller_$currentPlayerIndex", newType)
+        ControllerManager.updateControllerType(activity, "virtual_controller_$currentActivePlayerIndex", newType)
         
         if (controllerId != -1) {
             val controllerTypeInt = controllerTypeToInt(newType)
-            RyujinxNative.setControllerType(currentPlayerIndex, controllerTypeInt)
+            RyujinxNative.setControllerType(currentActivePlayerIndex, controllerTypeInt)
         }
         
         updateVirtualLayoutForControllerType(newType)
     }
 
-    // 新增方法：根据控制器类型更新虚拟按键布局
+    // 修改方法：根据控制器类型更新虚拟按键布局
     private fun updateVirtualLayoutForControllerType(controllerType: ControllerType) {
         when (controllerType) {
             ControllerType.PRO_CONTROLLER -> {
@@ -239,7 +322,7 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
         refreshVirtualControllerView()
     }
 
-    // 新增方法：重新创建游戏手柄
+    // 修改方法：重新创建游戏手柄
     private fun recreateGamePads(createLeft: Boolean, createRight: Boolean, isJoyCon: Boolean) {
         controllerView?.apply {
             val leftContainer = findViewById<FrameLayout>(R.id.leftcontainer)
@@ -287,7 +370,7 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
         }
     }
 
-    // 新增方法：设置虚拟控制器可见性
+    // 修改方法：设置虚拟控制器可见性
     private fun setVirtualControllerVisibility(showLeft: Boolean, showRight: Boolean) {
         controllerView?.apply {
             findViewById<FrameLayout>(R.id.leftcontainer)?.isVisible = showLeft
@@ -295,7 +378,7 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
         }
     }
 
-    // 新增方法：刷新虚拟控制器视图
+    // 修改方法：刷新虚拟控制器视图
     private fun refreshVirtualControllerView() {
         controllerView?.apply {
             requestLayout()
@@ -305,7 +388,7 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
         rightGamePad.invalidate()
     }
 
-    // 新增方法：生成Joy-Con左柄专用配置
+    // 修改方法：生成Joy-Con左柄专用配置
     private fun generateJoyConLeftConfig(): GamePadConfig {
         val distance = 0.3f
         val buttonScale = 1f
@@ -390,7 +473,7 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
         )
     }
 
-    // 新增方法：生成Joy-Con右柄专用配置
+    // 修改方法：生成Joy-Con右柄专用配置
     private fun generateJoyConRightConfig(): GamePadConfig {
         val distance = 0.3f
         val buttonScale = 1f
@@ -523,61 +606,52 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
         }
     }
 
+    // 修改方法：设置可见性
     fun setVisible(isVisible: Boolean) {
         controllerView?.apply {
             this.isVisible = isVisible
 
             if (isVisible) {
-                connect()
+                connectVirtualController(currentActivePlayerIndex)
                 updateVirtualLayoutForControllerType(currentControllerType)
             } else {
-                disconnect()
+                disconnectVirtualController(currentActivePlayerIndex)
             }
         }
     }
 
+    // 修改方法：连接（现在使用connectVirtualController）
     fun connect() {
-        if (controllerId == -1) {
-            controllerId = currentPlayerIndex
-            
-            val controllerTypeInt = controllerTypeToInt(currentControllerType)
-            RyujinxNative.setControllerType(currentPlayerIndex, controllerTypeInt)
-            
-            ControllerManager.updateControllerId(activity, "virtual_controller_$currentPlayerIndex", controllerId)
-            
-            android.util.Log.d("GameController", "Connected virtual controller with player index: $currentPlayerIndex, type: $currentControllerType")
-        }
+        connectVirtualController(currentActivePlayerIndex)
     }
 
+    // 修改方法：断开连接（现在使用disconnectVirtualController）
     fun disconnect() {
-        if (controllerId != -1) {
-            RyujinxNative.setControllerType(currentPlayerIndex, 1)
-            controllerId = -1
-            
-            ControllerManager.updateControllerId(activity, "virtual_controller_$currentPlayerIndex", -1)
-            
-            android.util.Log.d("GameController", "Disconnected virtual controller with player index: $currentPlayerIndex")
-        }
+        disconnectVirtualController(currentActivePlayerIndex)
     }
 
-    // 新增方法：重新连接
+    // 修改方法：重新连接
     fun reconnect() {
         if (isVisible) {
-            disconnect()
-            connect()
+            disconnectVirtualController(currentActivePlayerIndex)
+            connectVirtualController(currentActivePlayerIndex)
         }
     }
 
-    // 新增方法：完全刷新设置
+    // 修改方法：完全刷新设置
     fun refreshSettings() {
-        updatePlayerIndexFromSettings()
+        updateActivePlayer()
         updateControllerTypeFromSettings()
         reconnect()
     }
 
+    // 修改方法：处理输入事件时发送到当前激活的玩家
     private fun handleEvent(ev: Event) {
+        // 确保使用当前激活的玩家索引
+        val targetPlayerIndex = currentActivePlayerIndex
+        
         if (controllerId == -1) {
-            connect()
+            connectVirtualController(targetPlayerIndex)
         }
 
         if (controllerId == -1) {
@@ -589,10 +663,10 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
                 val action = ev.action
                 when (action) {
                     KeyEvent.ACTION_UP -> {
-                        RyujinxNative.jnaInstance.inputSetButtonReleased(ev.id, currentPlayerIndex)
+                        RyujinxNative.jnaInstance.inputSetButtonReleased(ev.id, targetPlayerIndex)
                     }
                     KeyEvent.ACTION_DOWN -> {
-                        RyujinxNative.jnaInstance.inputSetButtonPressed(ev.id, currentPlayerIndex)
+                        RyujinxNative.jnaInstance.inputSetButtonPressed(ev.id, targetPlayerIndex)
                     }
                 }
             }
@@ -603,57 +677,57 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
                         if (ev.xAxis > 0) {
                             RyujinxNative.jnaInstance.inputSetButtonPressed(
                                 GamePadButtonInputId.DpadRight.ordinal,
-                                currentPlayerIndex
+                                targetPlayerIndex
                             )
                             RyujinxNative.jnaInstance.inputSetButtonReleased(
                                 GamePadButtonInputId.DpadLeft.ordinal,
-                                currentPlayerIndex
+                                targetPlayerIndex
                             )
                         } else if (ev.xAxis < 0) {
                             RyujinxNative.jnaInstance.inputSetButtonPressed(
                                 GamePadButtonInputId.DpadLeft.ordinal,
-                                currentPlayerIndex
+                                targetPlayerIndex
                             )
                             RyujinxNative.jnaInstance.inputSetButtonReleased(
                                 GamePadButtonInputId.DpadRight.ordinal,
-                                currentPlayerIndex
+                                targetPlayerIndex
                             )
                         } else {
                             RyujinxNative.jnaInstance.inputSetButtonReleased(
                                 GamePadButtonInputId.DpadLeft.ordinal,
-                                currentPlayerIndex
+                                targetPlayerIndex
                             )
                             RyujinxNative.jnaInstance.inputSetButtonReleased(
                                 GamePadButtonInputId.DpadRight.ordinal,
-                                currentPlayerIndex
+                                targetPlayerIndex
                             )
                         }
                         if (ev.yAxis < 0) {
                             RyujinxNative.jnaInstance.inputSetButtonPressed(
                                 GamePadButtonInputId.DpadUp.ordinal,
-                                currentPlayerIndex
+                                targetPlayerIndex
                             )
                             RyujinxNative.jnaInstance.inputSetButtonReleased(
                                 GamePadButtonInputId.DpadDown.ordinal,
-                                currentPlayerIndex
+                                targetPlayerIndex
                             )
                         } else if (ev.yAxis > 0) {
                             RyujinxNative.jnaInstance.inputSetButtonPressed(
                                 GamePadButtonInputId.DpadDown.ordinal,
-                                currentPlayerIndex
+                                targetPlayerIndex
                             )
                             RyujinxNative.jnaInstance.inputSetButtonReleased(
                                 GamePadButtonInputId.DpadUp.ordinal,
-                                currentPlayerIndex
+                                targetPlayerIndex
                             )
                         } else {
                             RyujinxNative.jnaInstance.inputSetButtonReleased(
                                 GamePadButtonInputId.DpadDown.ordinal,
-                                currentPlayerIndex
+                                targetPlayerIndex
                             )
                             RyujinxNative.jnaInstance.inputSetButtonReleased(
                                 GamePadButtonInputId.DpadUp.ordinal,
-                                currentPlayerIndex
+                                targetPlayerIndex
                             )
                         }
                     }
@@ -665,7 +739,7 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
                             1,
                             x,
                             -y,
-                            currentPlayerIndex
+                            targetPlayerIndex
                         )
                     }
                     GamePadButtonInputId.RightStick.ordinal -> {
@@ -676,7 +750,7 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
                             2,
                             x,
                             -y,
-                            currentPlayerIndex
+                            targetPlayerIndex
                         )
                     }
                 }
@@ -686,8 +760,8 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
     
     // 新增方法：获取当前玩家索引的显示名称
     fun getCurrentPlayerDisplayName(): String {
-        return when (currentPlayerIndex) {
-            in 0..7 -> "Player ${currentPlayerIndex + 1}"
+        return when (currentActivePlayerIndex) {
+            in 0..7 -> "Player ${currentActivePlayerIndex + 1}"
             8 -> "Handheld"
             else -> "Unknown Player"
         }
@@ -695,17 +769,18 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
     
     // 新增方法：检查是否为掌机模式
     fun isHandheldMode(): Boolean {
-        return currentPlayerIndex == 8
+        return currentActivePlayerIndex == 8
     }
     
-    // 修改：删除以下冲突的方法，直接使用属性
-    // fun getCurrentPlayerIndex(): Int
-    // fun getCurrentControllerType(): ControllerType
+    // 新增方法：获取当前激活的玩家索引
+    fun getCurrentActivePlayerIndex(): Int {
+        return currentActivePlayerIndex
+    }
     
     // 新增方法：设置玩家索引（用于测试）
     fun setPlayerIndexForTesting(playerIndex: Int) {
         if (playerIndex in 0..8) {
-            currentPlayerIndex = playerIndex
+            currentActivePlayerIndex = playerIndex
             android.util.Log.d("GameController", "Player index set to: $playerIndex for testing")
         }
     }
