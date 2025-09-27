@@ -136,7 +136,7 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
         updatePlayerIndexFromSettings()
         
         // 设置初始激活玩家
-        currentActivePlayerIndex = getCurrentActivePlayerIndex()
+        currentActivePlayerIndex = calculateCurrentActivePlayerIndex()
         connectVirtualController(currentActivePlayerIndex)
         
         android.util.Log.d("GameController", "Initialized with active player: $currentActivePlayerIndex")
@@ -167,8 +167,8 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
         android.util.Log.d("GameController", "Initialized virtual controllers for player 0 and player 8")
     }
 
-    // 新增方法：获取当前激活的玩家索引
-    fun getCurrentActivePlayerIndex(): Int {
+    // 修改方法：重命名以避免重载冲突
+    private fun calculateCurrentActivePlayerIndex(): Int {
         // 优先检查掌机模式是否连接
         val handheldSetting = mainViewModel.getPlayerSetting(8)
         val isHandheldConnected = handheldSetting?.isConnected ?: false
@@ -199,7 +199,7 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
 
     // 新增方法：更新当前激活的玩家
     fun updateActivePlayer() {
-        val newActivePlayer = getCurrentActivePlayerIndex()
+        val newActivePlayer = calculateCurrentActivePlayerIndex()
         if (currentActivePlayerIndex != newActivePlayer) {
             android.util.Log.d("GameController", "Switching active player from $currentActivePlayerIndex to $newActivePlayer")
             
@@ -772,7 +772,7 @@ class GameController(var activity: Activity, var mainViewModel: MainViewModel) {
         return currentActivePlayerIndex == 8
     }
     
-    // 新增方法：获取当前激活的玩家索引
+    // 修改方法：重命名以避免重载冲突
     fun getCurrentActivePlayerIndex(): Int {
         return currentActivePlayerIndex
     }
