@@ -4,6 +4,7 @@ using Ryujinx.Graphics.Shader;
 using Ryujinx.Graphics.Shader.Translation;
 using Silk.NET.Vulkan;
 using System;
+using System.IO;
 using Extent2D = Ryujinx.Graphics.GAL.Extents2D;
 using Format = Silk.NET.Vulkan.Format;
 using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
@@ -43,6 +44,12 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             // 修改这里：从嵌入式资源改为从文件系统加载
             byte[] scalingShader = LoadShaderFromFile("Shaders/AreaScaling.spv");
 
+            if (scalingShader == null || scalingShader.Length == 0)
+            {
+                Logger.Error?.Print(LogClass.Gpu, "Failed to load AreaScaling.spv shader");
+                return;
+            }
+
             var scalingResourceLayout = new ResourceLayoutBuilder()
                 .Add(ResourceStages.Compute, ResourceType.UniformBuffer, 2)
                 .Add(ResourceStages.Compute, ResourceType.TextureAndSampler, 1)
@@ -61,21 +68,24 @@ namespace Ryujinx.Graphics.Vulkan.Effects
         {
             try
             {
-                // 首先尝试从应用数据目录加载
+                // 首先尝试从assets加载（Android）
+                byte[] assetShader = ShaderLoader.LoadShaderFromAssets(shaderPath);
+                if (assetShader != null && assetShader.Length > 0)
+                {
+                    Logger.Info?.Print(LogClass.Gpu, $"Successfully loaded shader from assets: {shaderPath}");
+                    return assetShader;
+                }
+
+                // 然后尝试从应用数据目录加载
                 string appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Ryujinx", shaderPath);
                 if (File.Exists(appDataPath))
                 {
+                    Logger.Info?.Print(LogClass.Gpu, $"Loading shader from app data: {appDataPath}");
                     return File.ReadAllBytes(appDataPath);
                 }
 
-                // 然后尝试从assets加载（Android）
-                string assetsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", shaderPath);
-                if (File.Exists(assetsPath))
-                {
-                    return File.ReadAllBytes(assetsPath);
-                }
-
                 // 最后回退到嵌入式资源
+                Logger.Info?.Print(LogClass.Gpu, $"Falling back to embedded resource for shader: {shaderPath}");
                 return EmbeddedResources.Read($"Ryujinx.Graphics.Vulkan/Effects/{shaderPath}");
             }
             catch (Exception ex)
@@ -96,7 +106,11 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             Extent2D source,
             Extent2D destination)
         {
-            if (_scalingProgram == null) return;
+            if (_scalingProgram == null) 
+            {
+                Logger.Warning?.Print(LogClass.Gpu, "Area scaling program not initialized, skipping filter");
+                return;
+            }
 
             _pipeline.SetCommandBuffer(cbs);
             _pipeline.SetProgram(_scalingProgram);
