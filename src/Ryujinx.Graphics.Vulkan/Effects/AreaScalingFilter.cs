@@ -42,8 +42,8 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             _pipeline = new PipelineHelperShader(_renderer, _device);
             _pipeline.Initialize();
 
-            // 修改这里：从嵌入式资源改为从文件系统加载
-            byte[] scalingShader = LoadShaderFromFile("Shaders/AreaScaling.spv");
+            // 修改这里：使用正确的路径
+            byte[] scalingShader = LoadShaderFromFile("AreaScaling.spv");
 
             if (scalingShader == null || scalingShader.Length == 0)
             {
@@ -69,7 +69,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
         {
             try
             {
-                // 首先尝试从assets加载（Android）
+                // 首先尝试从assets加载（Android）- 使用直接路径
                 byte[] assetShader = ShaderLoader.LoadShaderFromAssets(shaderPath);
                 if (assetShader != null && assetShader.Length > 0)
                 {
@@ -87,7 +87,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
 
                 // 最后回退到嵌入式资源
                 Logger.Info?.Print(LogClass.Gpu, $"Falling back to embedded resource for shader: {shaderPath}");
-                return EmbeddedResources.Read($"Ryujinx.Graphics.Vulkan/Effects/{shaderPath}");
+                return EmbeddedResources.Read($"Ryujinx.Graphics.Vulkan/Effects/Shaders/{shaderPath}");
             }
             catch (Exception ex)
             {
