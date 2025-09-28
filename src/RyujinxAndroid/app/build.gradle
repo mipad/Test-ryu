@@ -80,6 +80,14 @@ android {
             version '3.22.1'
         }
     }
+
+    // 添加assets目录配置
+    sourceSets {
+        main {
+            assets.srcDirs += ['src/main/cpp/shaders']
+            jniLibs.srcDirs = ['src/main/jniLibs']
+        }
+    }
 }
 
 tasks.named("preBuild") {
