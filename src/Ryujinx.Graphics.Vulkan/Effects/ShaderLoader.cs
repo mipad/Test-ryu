@@ -13,6 +13,9 @@ namespace Ryujinx.Graphics.Vulkan.Effects
         [DllImport("libryujinxjni", EntryPoint = "freeShaderData")]
         private static extern void FreeShaderDataNative(IntPtr data);
 
+        [DllImport("libryujinxjni", EntryPoint = "Java_org_ryujinx_android_NativeHelpers_initAssetManager")]
+        private static extern void InitAssetManagerNative(IntPtr assetManager);
+
         public static byte[] LoadShaderFromAssets(string shaderPath)
         {
             try
@@ -20,6 +23,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 IntPtr dataPtr = LoadShaderFromAssetsNative(shaderPath, out int length);
                 if (dataPtr == IntPtr.Zero || length == 0)
                 {
+                    Logger.Warning?.Print(LogClass.Gpu, $"Shader not found in assets: {shaderPath}");
                     return null;
                 }
 
@@ -27,12 +31,26 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 Marshal.Copy(dataPtr, data, 0, length);
                 FreeShaderDataNative(dataPtr);
 
+                Logger.Info?.Print(LogClass.Gpu, $"Successfully loaded shader from assets: {shaderPath}, size: {length} bytes");
                 return data;
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Gpu, $"Failed to load shader from assets {shaderPath}: {ex.Message}");
                 return null;
+            }
+        }
+
+        // 可选：如果需要从Java层初始化AssetManager
+        public static void InitAssetManager(IntPtr assetManager)
+        {
+            try
+            {
+                InitAssetManagerNative(assetManager);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, $"Failed to initialize asset manager: {ex.Message}");
             }
         }
     }
