@@ -24,8 +24,11 @@
 #include <android/log.h>
 #include <stdarg.h>
 #include <sys/system_properties.h>
+#include <android/asset_manager.h>
+#include <android/asset_manager_jni.h>
 
 std::chrono::time_point<std::chrono::steady_clock, std::chrono::nanoseconds> _currentTimePoint;
+static AAssetManager* assetManager = nullptr;
 
 extern "C"
 {
@@ -97,6 +100,84 @@ jstring createStringFromStdString(
     auto str = env->NewStringUTF(s.c_str());
 
     return str;
+}
+
+// =============== 新增：着色器加载函数 ===============
+JNIEXPORT void JNICALL
+Java_org_ryujinx_android_NativeHelpers_initAssetManager(
+        JNIEnv *env,
+        jobject instance,
+        jobject asset_manager) {
+    assetManager = AAssetManager_fromJava(env, asset_manager);
+    __android_log_print(ANDROID_LOG_INFO, "RyujinxNative", "AssetManager initialized");
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_org_ryujinx_android_NativeHelpers_loadShaderFromAssets(
+        JNIEnv *env,
+        jobject instance,
+        jstring shader_path) {
+    if (assetManager == nullptr) {
+        __android_log_print(ANDROID_LOG_ERROR, "RyujinxNative", "AssetManager not initialized");
+        return nullptr;
+    }
+
+    const char* path = env->GetStringUTFChars(shader_path, nullptr);
+    if (!path) {
+        return nullptr;
+    }
+
+    AAsset* asset = AAssetManager_open(assetManager, path, AASSET_MODE_BUFFER);
+    env->ReleaseStringUTFChars(shader_path, path);
+
+    if (!asset) {
+        __android_log_print(ANDROID_LOG_WARN, "RyujinxNative", "Shader asset not found: %s", path);
+        return nullptr;
+    }
+
+    off_t length = AAsset_getLength(asset);
+    jbyteArray result = env->NewByteArray(length);
+
+    if (result) {
+        const void* data = AAsset_getBuffer(asset);
+        env->SetByteArrayRegion(result, 0, length, static_cast<const jbyte*>(data));
+        __android_log_print(ANDROID_LOG_INFO, "RyujinxNative", "Loaded shader: %s, size: %ld", path, length);
+    }
+
+    AAsset_close(asset);
+    return result;
+}
+
+// C接口版本，供C# P/Invoke调用
+extern "C"
+void* loadShaderFromAssets(const char* shaderPath, int* outLength) {
+    if (assetManager == nullptr || shaderPath == nullptr) {
+        return nullptr;
+    }
+
+    AAsset* asset = AAssetManager_open(assetManager, shaderPath, AASSET_MODE_BUFFER);
+    if (!asset) {
+        return nullptr;
+    }
+
+    off_t length = AAsset_getLength(asset);
+    void* buffer = malloc(length);
+    
+    if (buffer) {
+        const void* data = AAsset_getBuffer(asset);
+        memcpy(buffer, data, length);
+        *outLength = length;
+    }
+
+    AAsset_close(asset);
+    return buffer;
+}
+
+extern "C"
+void freeShaderData(void* data) {
+    if (data) {
+        free(data);
+    }
 }
 }
 extern "C"
