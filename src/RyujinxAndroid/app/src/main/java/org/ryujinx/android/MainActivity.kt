@@ -123,6 +123,9 @@ class MainActivity : BaseActivity() {
 
         AppPath = this.getExternalFilesDir(null)!!.absolutePath
 
+        // 初始化AssetManager用于着色器加载
+        NativeHelpers.instance.initAssetManager(assets)
+
         initialize()
 
         window.attributes.layoutInDisplayCutoutMode =
