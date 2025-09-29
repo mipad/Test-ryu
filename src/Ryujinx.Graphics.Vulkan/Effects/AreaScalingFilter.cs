@@ -19,7 +19,6 @@ namespace Ryujinx.Graphics.Vulkan.Effects
         private ISampler _sampler;
         private ShaderCollection _scalingProgram;
         private Device _device;
-      //  private bool _useTestShader = true; // 标志位，控制使用测试着色器还是实际着色器
 
         public float Level { get; set; }
 
@@ -46,38 +45,24 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             // 检查设备是否支持计算着色器
             Logger.Info?.Print(LogClass.Gpu, "Checking compute shader support...");
 
-            string shaderPath = _useTestShader ? "SimpleTest.spv" : "AreaScaling.spv";
-            byte[] scalingShader = LoadShaderFromFile(shaderPath);
+            byte[] scalingShader = LoadShaderFromFile("AreaScaling.spv");
 
             if (scalingShader == null || scalingShader.Length == 0)
             {
-                Logger.Error?.Print(LogClass.Gpu, $"Failed to load {shaderPath} shader");
+                Logger.Error?.Print(LogClass.Gpu, "Failed to load AreaScaling.spv shader");
                 return;
             }
 
-            Logger.Info?.Print(LogClass.Gpu, $"{shaderPath} loaded successfully, size: {scalingShader.Length} bytes");
+            Logger.Info?.Print(LogClass.Gpu, $"AreaScaling.spv loaded successfully, size: {scalingShader.Length} bytes");
 
-            // 根据使用的着色器类型创建不同的资源布局
-            ResourceLayout scalingResourceLayout;
-            
-            if (_useTestShader)
-            {
-                // 测试着色器只需要输出图像
-                scalingResourceLayout = new ResourceLayoutBuilder()
-                    .Add(ResourceStages.Compute, ResourceType.Image, 0, true)
-                    .Build();
-                Logger.Info?.Print(LogClass.Gpu, "Using test shader resource layout (image only)");
-            }
-            else
-            {
-                // 实际着色器需要完整的资源布局
-                scalingResourceLayout = new ResourceLayoutBuilder()
-                    .Add(ResourceStages.Compute, ResourceType.UniformBuffer, 2)
-                    .Add(ResourceStages.Compute, ResourceType.TextureAndSampler, 1)
-                    .Add(ResourceStages.Compute, ResourceType.Image, 0, true)
-                    .Build();
-                Logger.Info?.Print(LogClass.Gpu, "Using area scaling resource layout (full)");
-            }
+            // 使用完整的资源布局
+            var scalingResourceLayout = new ResourceLayoutBuilder()
+                .Add(ResourceStages.Compute, ResourceType.UniformBuffer, 2)
+                .Add(ResourceStages.Compute, ResourceType.TextureAndSampler, 1)
+                .Add(ResourceStages.Compute, ResourceType.Image, 0, true)
+                .Build();
+
+            Logger.Info?.Print(LogClass.Gpu, "Using area scaling resource layout (full)");
 
             _sampler = _renderer.CreateSampler(SamplerCreateInfo.Create(MinFilter.Linear, MagFilter.Linear));
             Logger.Info?.Print(LogClass.Gpu, "Sampler created successfully");
@@ -95,7 +80,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 }
                 else
                 {
-                    Logger.Info?.Print(LogClass.Gpu, $"Program created successfully using {shaderPath}");
+                    Logger.Info?.Print(LogClass.Gpu, "Program created successfully using AreaScaling.spv");
                 }
             }
             catch (Exception ex)
@@ -147,11 +132,16 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             Logger.Info?.Print(LogClass.Gpu, $"Source: X1={source.X1}, X2={source.X2}, Y1={source.Y1}, Y2={source.Y2}");
             Logger.Info?.Print(LogClass.Gpu, $"Destination: X1={destination.X1}, X2={destination.X2}, Y1={destination.Y1}, Y2={destination.Y2}");
             Logger.Info?.Print(LogClass.Gpu, $"Format: {format}");
-            Logger.Info?.Print(LogClass.Gpu, $"Using test shader: {_useTestShader}");
 
             if (_scalingProgram == null) 
             {
                 Logger.Warning?.Print(LogClass.Gpu, "Scaling program not initialized, skipping filter");
+                return;
+            }
+
+            if (view == null)
+            {
+                Logger.Error?.Print(LogClass.Gpu, "Input texture view is null");
                 return;
             }
 
@@ -169,59 +159,50 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 _pipeline.SetProgram(_scalingProgram);
                 Logger.Info?.Print(LogClass.Gpu, "Program set");
 
-                if (!_useTestShader)
+                // 设置纹理和采样器
+                Logger.Info?.Print(LogClass.Gpu, "Binding texture and sampler...");
+                _pipeline.SetTextureAndSampler(ShaderStage.Compute, 1, view, _sampler);
+                Logger.Info?.Print(LogClass.Gpu, "Texture and sampler set");
+
+                // 修复坐标问题
+                float destY1 = destination.Y1;
+                float destY2 = destination.Y2;
+                
+                if (destY1 > destY2)
                 {
-                    // 只有使用实际着色器时才设置纹理和采样器
-                    if (view == null)
-                    {
-                        Logger.Error?.Print(LogClass.Gpu, "Input texture view is null for area scaling shader");
-                        return;
-                    }
-
-                    Logger.Info?.Print(LogClass.Gpu, "Binding texture and sampler...");
-                    _pipeline.SetTextureAndSampler(ShaderStage.Compute, 1, view, _sampler);
-                    Logger.Info?.Print(LogClass.Gpu, "Texture and sampler set");
-
-                    // 修复坐标问题
-                    float destY1 = destination.Y1;
-                    float destY2 = destination.Y2;
-                    
-                    if (destY1 > destY2)
-                    {
-                        Logger.Warning?.Print(LogClass.Gpu, "Destination Y coordinates are inverted, correcting...");
-                        (destY1, destY2) = (destY2, destY1);
-                    }
-
-                    ReadOnlySpan<float> dimensionsBuffer = stackalloc float[]
-                    {
-                        source.X1,
-                        source.X2,
-                        source.Y1,
-                        source.Y2,
-                        destination.X1,
-                        destination.X2,
-                        destY1,
-                        destY2,
-                    };
-
-                    Logger.Info?.Print(LogClass.Gpu, $"Corrected dimensions buffer: [{string.Join(", ", dimensionsBuffer.ToArray())}]");
-
-                    int rangeSize = dimensionsBuffer.Length * sizeof(float);
-                    Logger.Info?.Print(LogClass.Gpu, $"Range size: {rangeSize} bytes");
-
-                    using var buffer = _renderer.BufferManager.ReserveOrCreate(_renderer, cbs, rangeSize);
-                    buffer.Holder.SetDataUnchecked(buffer.Offset, dimensionsBuffer);
-                    Logger.Info?.Print(LogClass.Gpu, "Buffer data set");
-
-                    _pipeline.SetUniformBuffers(stackalloc[] { new BufferAssignment(2, buffer.Range) });
-                    Logger.Info?.Print(LogClass.Gpu, "Uniform buffers set");
+                    Logger.Warning?.Print(LogClass.Gpu, "Destination Y coordinates are inverted, correcting...");
+                    (destY1, destY2) = (destY2, destY1);
                 }
+
+                ReadOnlySpan<float> dimensionsBuffer = stackalloc float[]
+                {
+                    source.X1,
+                    source.X2,
+                    source.Y1,
+                    source.Y2,
+                    destination.X1,
+                    destination.X2,
+                    destY1,
+                    destY2,
+                };
+
+                Logger.Info?.Print(LogClass.Gpu, $"Corrected dimensions buffer: [{string.Join(", ", dimensionsBuffer.ToArray())}]");
+
+                int rangeSize = dimensionsBuffer.Length * sizeof(float);
+                Logger.Info?.Print(LogClass.Gpu, $"Range size: {rangeSize} bytes");
+
+                using var buffer = _renderer.BufferManager.ReserveOrCreate(_renderer, cbs, rangeSize);
+                buffer.Holder.SetDataUnchecked(buffer.Offset, dimensionsBuffer);
+                Logger.Info?.Print(LogClass.Gpu, "Buffer data set");
 
                 int threadGroupWorkRegionDim = 16;
                 int dispatchX = (width + (threadGroupWorkRegionDim - 1)) / threadGroupWorkRegionDim;
                 int dispatchY = (height + (threadGroupWorkRegionDim - 1)) / threadGroupWorkRegionDim;
 
                 Logger.Info?.Print(LogClass.Gpu, $"Dispatch: X={dispatchX}, Y={dispatchY}, Z=1");
+
+                _pipeline.SetUniformBuffers(stackalloc[] { new BufferAssignment(2, buffer.Range) });
+                Logger.Info?.Print(LogClass.Gpu, "Uniform buffers set");
 
                 _pipeline.SetImage(0, destinationTexture);
                 Logger.Info?.Print(LogClass.Gpu, "Image set");
@@ -235,7 +216,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 _pipeline.Finish();
                 Logger.Info?.Print(LogClass.Gpu, "Pipeline finished");
                 
-                Logger.Info?.Print(LogClass.Gpu, $"Filter completed successfully using {(_useTestShader ? "test" : "area scaling")} shader");
+                Logger.Info?.Print(LogClass.Gpu, "Area scaling filter completed successfully");
             }
             catch (Exception ex)
             {
