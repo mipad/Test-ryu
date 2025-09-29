@@ -52,17 +52,13 @@ namespace Ryujinx.Graphics.Vulkan.Effects
 
             Logger.Info?.Print(LogClass.Gpu, $"Area scaling shader loaded successfully, size: {scalingShader.Length} bytes");
 
-            // 创建资源布局并详细记录
+            // 创建资源布局
             var scalingResourceLayout = new ResourceLayoutBuilder()
                 .Add(ResourceStages.Compute, ResourceType.UniformBuffer, 2)
                 .Add(ResourceStages.Compute, ResourceType.TextureAndSampler, 1)
                 .Add(ResourceStages.Compute, ResourceType.Image, 0, true).Build();
 
-            Logger.Info?.Print(LogClass.Gpu, "Resource Layout Details:");
-            foreach (var descriptor in scalingResourceLayout.Descriptors)
-            {
-                Logger.Info?.Print(LogClass.Gpu, $"  Binding: {descriptor.Binding}, Type: {descriptor.Type}, Stages: {descriptor.Stages}");
-            }
+            Logger.Info?.Print(LogClass.Gpu, "Resource layout created for area scaling");
 
             _sampler = _renderer.CreateSampler(SamplerCreateInfo.Create(MinFilter.Linear, MagFilter.Linear));
             Logger.Info?.Print(LogClass.Gpu, "Sampler created successfully");
@@ -79,13 +75,6 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             else
             {
                 Logger.Info?.Print(LogClass.Gpu, "Area scaling program created successfully");
-                
-                // 获取程序信息
-                var programInfo = _scalingProgram.GetProgramInfo();
-                if (programInfo != null)
-                {
-                    Logger.Info?.Print(LogClass.Gpu, $"Program has {programInfo.SpecDescriptors.Length} spec descriptors");
-                }
             }
         }
 
@@ -173,7 +162,6 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 _pipeline.SetProgram(_scalingProgram);
                 Logger.Info?.Print(LogClass.Gpu, "Program set");
 
-                // 检查纹理绑定
                 Logger.Info?.Print(LogClass.Gpu, "Binding texture and sampler...");
                 _pipeline.SetTextureAndSampler(ShaderStage.Compute, 1, view, _sampler);
                 Logger.Info?.Print(LogClass.Gpu, "Texture and sampler set");
