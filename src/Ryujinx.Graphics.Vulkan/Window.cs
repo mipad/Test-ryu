@@ -142,10 +142,10 @@ namespace Ryujinx.Graphics.Vulkan
                 ImageFormat = surfaceFormat.Format,
                 ImageColorSpace = surfaceFormat.ColorSpace,
                 ImageExtent = extent,
-                ImageUsage = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit | (Ryujinx.Common.PlatformInfo.IsBionic ? 0 : ImageUsageFlags.StorageBit),
+                ImageUsage = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit | ImageUsageFlags.StorageBit, // 确保启用StorageBit
                 ImageSharingMode = SharingMode.Exclusive,
                 ImageArrayLayers = 1,
-                PreTransform = Ryujinx.Common.PlatformInfo.IsBionic ? SurfaceTransformFlagsKHR.IdentityBitKhr : capabilities.CurrentTransform,
+                PreTransform = capabilities.CurrentTransform,
                 CompositeAlpha = ChooseCompositeAlpha(capabilities.SupportedCompositeAlpha),
                 PresentMode = ChooseSwapPresentMode(presentModes, _vsyncEnabled),
                 Clipped = true,
@@ -168,7 +168,14 @@ namespace Ryujinx.Graphics.Vulkan
                 SwizzleComponent.Blue,
                 SwizzleComponent.Alpha);
 
-            _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain).ThrowOnError();
+            Result result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
+            if (result != Result.Success)
+            {
+                Logger.Error?.Print(LogClass.Gpu, $"Failed to create swapchain: {result}");
+                result.ThrowOnError();
+            }
+            
+            Logger.Info?.Print(LogClass.Gpu, $"Swapchain created: {_width}x{_height}, format: {_format}");
 
             _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, null);
 
@@ -230,45 +237,67 @@ namespace Ryujinx.Graphics.Vulkan
 
             _gd.Api.CreateImageView(_device, in imageCreateInfo, null, out var imageView).ThrowOnError();
 
+            Logger.Info?.Print(LogClass.Gpu, $"Swapchain image view created for format: {format}");
+
             return new TextureView(_gd, _device, new DisposableImageView(_gd.Api, _device, imageView), info, format);
         }
 
         private static SurfaceFormatKHR ChooseSwapSurfaceFormat(SurfaceFormatKHR[] availableFormats, bool colorSpacePassthroughEnabled)
         {
-            if (availableFormats.Length == 1 && availableFormats[0].Format == VkFormat.Undefined)
+            // 定义标准颜色空间常量
+            const ColorSpaceKHR StandardColorSpace = ColorSpaceKHR.SpaceSrgbNonlinearKhr;
+            const VkFormat PreferredFormat = VkFormat.B8G8R8A8Unorm;
+
+            // 空数组检查 - 返回安全默认值
+            if (availableFormats.Length == 0)
             {
-                return new SurfaceFormatKHR(VkFormat.B8G8R8A8Unorm, ColorSpaceKHR.PaceSrgbNonlinearKhr);
+                return new SurfaceFormatKHR(PreferredFormat, StandardColorSpace);
             }
 
-            var formatToReturn = availableFormats[0];
+            // 特殊格式处理
+            if (availableFormats.Length == 1 && availableFormats[0].Format == VkFormat.Undefined)
+            {
+                return new SurfaceFormatKHR(PreferredFormat, StandardColorSpace);
+            }
+
+            // 修复：使用正确的颜色空间枚举值
             if (colorSpacePassthroughEnabled)
             {
+                // 优先选择PassThrough格式
                 foreach (var format in availableFormats)
                 {
-                    if (format.Format == VkFormat.B8G8R8A8Unorm && format.ColorSpace == ColorSpaceKHR.SpacePassThroughExt)
+                    if (format.Format == PreferredFormat && 
+                        format.ColorSpace == ColorSpaceKHR.SpacePassThroughExt)
                     {
-                        formatToReturn = format;
-                        break;
+                        return format;
                     }
-                    else if (format.Format == VkFormat.B8G8R8A8Unorm && format.ColorSpace == ColorSpaceKHR.PaceSrgbNonlinearKhr)
+                }
+                
+                // 其次选择标准SRGB格式
+                foreach (var format in availableFormats)
+                {
+                    if (format.Format == PreferredFormat && 
+                        format.ColorSpace == StandardColorSpace)
                     {
-                        formatToReturn = format;
+                        return format;
                     }
                 }
             }
             else
             {
+                // 标准模式下优先选择SRGB格式
                 foreach (var format in availableFormats)
                 {
-                    if (format.Format == VkFormat.B8G8R8A8Unorm && format.ColorSpace == ColorSpaceKHR.PaceSrgbNonlinearKhr)
+                    if (format.Format == PreferredFormat && 
+                        format.ColorSpace == StandardColorSpace)
                     {
-                        formatToReturn = format;
-                        break;
+                        return format;
                     }
                 }
             }
 
-            return formatToReturn;
+            // 没有匹配时返回第一个可用格式
+            return availableFormats[0];
         }
 
         private static CompositeAlphaFlagsKHR ChooseCompositeAlpha(CompositeAlphaFlagsKHR supportedFlags)
@@ -289,6 +318,11 @@ namespace Ryujinx.Graphics.Vulkan
 
         private static PresentModeKHR ChooseSwapPresentMode(PresentModeKHR[] availablePresentModes, bool vsyncEnabled)
         {
+            if (availablePresentModes.Length == 0)
+            {
+                return PresentModeKHR.FifoKhr; // 安全默认值
+            }
+            
             if (!vsyncEnabled && availablePresentModes.Contains(PresentModeKHR.ImmediateKhr))
             {
                 return PresentModeKHR.ImmediateKhr;
@@ -357,11 +391,13 @@ namespace Ryujinx.Graphics.Vulkan
 
             var cbs = _gd.CommandBufferPool.Rent();
 
+            Logger.Info?.Print(LogClass.Gpu, $"Present: Transitioning swapchain image to General layout");
+
             Transition(
                 cbs.CommandBuffer,
                 swapchainImage,
                 0,
-                AccessFlags.TransferWriteBit,
+                AccessFlags.ShaderWriteBit, // 明确指定计算着色器写入
                 ImageLayout.Undefined,
                 ImageLayout.General);
 
@@ -432,8 +468,21 @@ namespace Ryujinx.Graphics.Vulkan
             int dstY0 = crop.FlipY ? dstPaddingY : _height - dstPaddingY;
             int dstY1 = crop.FlipY ? _height - dstPaddingY : dstPaddingY;
 
+            // 修正Y坐标问题
+            Logger.Info?.Print(LogClass.Gpu, $"Original destination coords: X=[{dstX0}, {dstX1}], Y=[{dstY0}, {dstY1}]");
+
+            // 确保Y坐标是正向的
+            var correctedDestination = new Extents2D(dstX0, dstY0, dstX1, dstY1);
+            if (dstY0 > dstY1)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, "Y coordinates are reversed, correcting...");
+                correctedDestination = new Extents2D(dstX0, dstY1, dstX1, dstY0);
+                Logger.Info?.Print(LogClass.Gpu, $"Corrected destination coords: X=[{correctedDestination.X1}, {correctedDestination.X2}], Y=[{correctedDestination.Y1}, {correctedDestination.Y2}]");
+            }
+
             if (_scalingFilter != null)
             {
+                Logger.Info?.Print(LogClass.Gpu, "Executing scaling filter...");
                 _scalingFilter.Run(
                     view,
                     cbs,
@@ -442,8 +491,8 @@ namespace Ryujinx.Graphics.Vulkan
                     _width,
                     _height,
                     new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                    new Extents2D(dstX0, dstY0, dstX1, dstY1)
-                    );
+                    correctedDestination); // 使用修正后的坐标
+                Logger.Info?.Print(LogClass.Gpu, "Scaling filter completed");
             }
             else
             {
@@ -458,13 +507,32 @@ namespace Ryujinx.Graphics.Vulkan
                     true);
             }
 
-            Transition(
+            Logger.Info?.Print(LogClass.Gpu, "Adding compute-to-present memory barrier");
+
+            // 添加计算着色器完成后的内存屏障
+            var computeBarrier = new ImageMemoryBarrier
+            {
+                SType = StructureType.ImageMemoryBarrier,
+                SrcAccessMask = AccessFlags.ShaderWriteBit,
+                DstAccessMask = 0,
+                OldLayout = ImageLayout.General,
+                NewLayout = ImageLayout.PresentSrcKhr,
+                SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                Image = swapchainImage,
+                SubresourceRange = new ImageSubresourceRange(ImageAspectFlags.ColorBit, 0, 1, 0, 1),
+            };
+
+            _gd.Api.CmdPipelineBarrier(
                 cbs.CommandBuffer,
-                swapchainImage,
+                PipelineStageFlags.ComputeShaderBit,
+                PipelineStageFlags.BottomOfPipeBit,
                 0,
-                0,
-                ImageLayout.General,
-                ImageLayout.PresentSrcKhr);
+                0, null,
+                0, null,
+                1, &computeBarrier);
+
+            Logger.Info?.Print(LogClass.Gpu, "Transitioning to PresentSrc layout");
 
             _gd.CommandBufferPool.Return(
                 cbs,
