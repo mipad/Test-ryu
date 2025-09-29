@@ -42,7 +42,6 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             _pipeline = new PipelineHelperShader(_renderer, _device);
             _pipeline.Initialize();
 
-            // 检查设备是否支持计算着色器
             Logger.Info?.Print(LogClass.Gpu, "Checking compute shader support...");
 
             byte[] scalingShader = LoadShaderFromFile("AreaScaling.spv");
@@ -55,14 +54,12 @@ namespace Ryujinx.Graphics.Vulkan.Effects
 
             Logger.Info?.Print(LogClass.Gpu, $"AreaScaling.spv loaded successfully, size: {scalingShader.Length} bytes");
 
-            // 使用完整的资源布局
             var scalingResourceLayout = new ResourceLayoutBuilder()
                 .Add(ResourceStages.Compute, ResourceType.UniformBuffer, 2)
                 .Add(ResourceStages.Compute, ResourceType.TextureAndSampler, 1)
-                .Add(ResourceStages.Compute, ResourceType.Image, 0, true)
-                .Build();
+                .Add(ResourceStages.Compute, ResourceType.Image, 0, true).Build();
 
-            Logger.Info?.Print(LogClass.Gpu, "Using area scaling resource layout (full)");
+            Logger.Info?.Print(LogClass.Gpu, "Using area scaling resource layout");
 
             _sampler = _renderer.CreateSampler(SamplerCreateInfo.Create(MinFilter.Linear, MagFilter.Linear));
             Logger.Info?.Print(LogClass.Gpu, "Sampler created successfully");
@@ -151,78 +148,40 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 return;
             }
 
-            try
+            _pipeline.SetCommandBuffer(cbs);
+            _pipeline.SetProgram(_scalingProgram);
+            _pipeline.SetTextureAndSampler(ShaderStage.Compute, 1, view, _sampler);
+
+            ReadOnlySpan<float> dimensionsBuffer = stackalloc float[]
             {
-                _pipeline.SetCommandBuffer(cbs);
-                Logger.Info?.Print(LogClass.Gpu, "Command buffer set");
+                source.X1,
+                source.X2,
+                source.Y1,
+                source.Y2,
+                destination.X1,
+                destination.X2,
+                destination.Y1,
+                destination.Y2,
+            };
 
-                _pipeline.SetProgram(_scalingProgram);
-                Logger.Info?.Print(LogClass.Gpu, "Program set");
+            int rangeSize = dimensionsBuffer.Length * sizeof(float);
+            using var buffer = _renderer.BufferManager.ReserveOrCreate(_renderer, cbs, rangeSize);
+            buffer.Holder.SetDataUnchecked(buffer.Offset, dimensionsBuffer);
 
-                // 设置纹理和采样器
-                Logger.Info?.Print(LogClass.Gpu, "Binding texture and sampler...");
-                _pipeline.SetTextureAndSampler(ShaderStage.Compute, 1, view, _sampler);
-                Logger.Info?.Print(LogClass.Gpu, "Texture and sampler set");
+            int threadGroupWorkRegionDim = 16;
+            int dispatchX = (width + (threadGroupWorkRegionDim - 1)) / threadGroupWorkRegionDim;
+            int dispatchY = (height + (threadGroupWorkRegionDim - 1)) / threadGroupWorkRegionDim;
 
-                // 修复坐标问题
-                float destY1 = destination.Y1;
-                float destY2 = destination.Y2;
-                
-                if (destY1 > destY2)
-                {
-                    Logger.Warning?.Print(LogClass.Gpu, "Destination Y coordinates are inverted, correcting...");
-                    (destY1, destY2) = (destY2, destY1);
-                }
+            Logger.Info?.Print(LogClass.Gpu, $"Dispatch: X={dispatchX}, Y={dispatchY}, Z=1");
 
-                ReadOnlySpan<float> dimensionsBuffer = stackalloc float[]
-                {
-                    source.X1,
-                    source.X2,
-                    source.Y1,
-                    source.Y2,
-                    destination.X1,
-                    destination.X2,
-                    destY1,
-                    destY2,
-                };
+            _pipeline.SetUniformBuffers(stackalloc[] { new BufferAssignment(2, buffer.Range) });
+            _pipeline.SetImage(0, destinationTexture);
+            _pipeline.DispatchCompute(dispatchX, dispatchY, 1);
+            _pipeline.ComputeBarrier();
 
-                Logger.Info?.Print(LogClass.Gpu, $"Corrected dimensions buffer: [{string.Join(", ", dimensionsBuffer.ToArray())}]");
-
-                int rangeSize = dimensionsBuffer.Length * sizeof(float);
-                Logger.Info?.Print(LogClass.Gpu, $"Range size: {rangeSize} bytes");
-
-                using var buffer = _renderer.BufferManager.ReserveOrCreate(_renderer, cbs, rangeSize);
-                buffer.Holder.SetDataUnchecked(buffer.Offset, dimensionsBuffer);
-                Logger.Info?.Print(LogClass.Gpu, "Buffer data set");
-
-                int threadGroupWorkRegionDim = 16;
-                int dispatchX = (width + (threadGroupWorkRegionDim - 1)) / threadGroupWorkRegionDim;
-                int dispatchY = (height + (threadGroupWorkRegionDim - 1)) / threadGroupWorkRegionDim;
-
-                Logger.Info?.Print(LogClass.Gpu, $"Dispatch: X={dispatchX}, Y={dispatchY}, Z=1");
-
-                _pipeline.SetUniformBuffers(stackalloc[] { new BufferAssignment(2, buffer.Range) });
-                Logger.Info?.Print(LogClass.Gpu, "Uniform buffers set");
-
-                _pipeline.SetImage(0, destinationTexture);
-                Logger.Info?.Print(LogClass.Gpu, "Image set");
-
-                _pipeline.DispatchCompute(dispatchX, dispatchY, 1);
-                Logger.Info?.Print(LogClass.Gpu, "DispatchCompute executed");
-
-                _pipeline.ComputeBarrier();
-                Logger.Info?.Print(LogClass.Gpu, "Compute barrier executed");
-
-                _pipeline.Finish();
-                Logger.Info?.Print(LogClass.Gpu, "Pipeline finished");
-                
-                Logger.Info?.Print(LogClass.Gpu, "Area scaling filter completed successfully");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.Gpu, $"Error in AreaScalingFilter.Run: {ex.Message}");
-                Logger.Error?.Print(LogClass.Gpu, $"Stack trace: {ex.StackTrace}");
-            }
+            _pipeline.Finish();
+            
+            Logger.Info?.Print(LogClass.Gpu, "Area scaling filter completed successfully");
         }
     }
 }
