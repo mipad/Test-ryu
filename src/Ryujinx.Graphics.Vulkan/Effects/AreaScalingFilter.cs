@@ -52,12 +52,12 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             
             Logger.Info?.Print(LogClass.Gpu, $"RGBA8 storage image support: {supportsRgba8Storage}");
             
-            // 检查交换链格式支持
-            bool supportsSwapchainFormat = _renderer.FormatCapabilities.OptimalFormatSupports(
+            // 修复：移除不存在的 SwapchainFormat 属性，使用硬编码格式检查
+            bool supportsBgra8Storage = _renderer.FormatCapabilities.OptimalFormatSupports(
                 FormatFeatureFlags.StorageImageBit | FormatFeatureFlags.ColorAttachmentBit,
-                FormatTable.GetFormat(_renderer.SwapchainFormat)); // 需要获取实际的交换链格式
+                Format.B8G8R8A8Unorm); // 使用常见的交换链格式
             
-            Logger.Info?.Print(LogClass.Gpu, $"Swapchain format storage support: {supportsSwapchainFormat}");
+            Logger.Info?.Print(LogClass.Gpu, $"BGRA8 storage image support: {supportsBgra8Storage}");
 
             if (!supportsRgba8Storage)
             {
@@ -169,6 +169,16 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             {
                 Logger.Error?.Print(LogClass.Gpu, "Destination texture is null");
                 return;
+            }
+
+            // 修复：检查目标格式是否支持存储图像操作
+            bool supportsDestinationFormat = _renderer.FormatCapabilities.OptimalFormatSupports(
+                FormatFeatureFlags.StorageImageBit, 
+                format);
+            
+            if (!supportsDestinationFormat)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, $"Destination format {format} does not support storage image operations, scaling filter may not work correctly");
             }
 
             _pipeline.SetCommandBuffer(cbs);
