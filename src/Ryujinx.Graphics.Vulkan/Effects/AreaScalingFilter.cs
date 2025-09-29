@@ -42,7 +42,6 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             _pipeline = new PipelineHelperShader(_renderer, _device);
             _pipeline.Initialize();
 
-            // 修改这里：使用正确的路径
             byte[] scalingShader = LoadShaderFromFile("AreaScaling.spv");
 
             if (scalingShader == null || scalingShader.Length == 0)
@@ -75,12 +74,10 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             }
         }
 
-        // 添加从文件系统加载着色器的方法
         private byte[] LoadShaderFromFile(string shaderPath)
         {
             try
             {
-                // 首先尝试从assets加载（Android）- 使用直接路径
                 byte[] assetShader = ShaderLoader.LoadShaderFromAssets(shaderPath);
                 if (assetShader != null && assetShader.Length > 0)
                 {
@@ -88,7 +85,6 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                     return assetShader;
                 }
 
-                // 然后尝试从应用数据目录加载
                 string appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Ryujinx", shaderPath);
                 if (File.Exists(appDataPath))
                 {
@@ -96,13 +92,11 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                     return File.ReadAllBytes(appDataPath);
                 }
 
-                // 最后回退到嵌入式资源
                 Logger.Info?.Print(LogClass.Gpu, $"Falling back to embedded resource for shader: {shaderPath}");
                 return EmbeddedResources.Read($"Ryujinx.Graphics.Vulkan/Effects/Shaders/{shaderPath}");
             }
             catch (Exception ex)
             {
-                // 如果所有方法都失败，记录错误并返回空数组
                 Logger.Error?.Print(LogClass.Gpu, $"Failed to load shader {shaderPath}: {ex.Message}");
                 return Array.Empty<byte>();
             }
@@ -142,6 +136,17 @@ namespace Ryujinx.Graphics.Vulkan.Effects
 
             try
             {
+                // 修复坐标问题：确保目标区域的Y坐标是有效的
+                float destY1 = destination.Y1;
+                float destY2 = destination.Y2;
+                
+                // 如果Y坐标反转，修正它们
+                if (destY1 > destY2)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, "Destination Y coordinates are inverted, correcting...");
+                    (destY1, destY2) = (destY2, destY1);
+                }
+
                 _pipeline.SetCommandBuffer(cbs);
                 Logger.Info?.Print(LogClass.Gpu, "Command buffer set");
 
@@ -159,11 +164,11 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                     source.Y2,
                     destination.X1,
                     destination.X2,
-                    destination.Y1,
-                    destination.Y2,
+                    destY1,  // 使用修正后的Y1
+                    destY2,  // 使用修正后的Y2
                 };
 
-                Logger.Info?.Print(LogClass.Gpu, $"Dimensions buffer: [{string.Join(", ", dimensionsBuffer.ToArray())}]");
+                Logger.Info?.Print(LogClass.Gpu, $"Corrected dimensions buffer: [{string.Join(", ", dimensionsBuffer.ToArray())}]");
 
                 int rangeSize = dimensionsBuffer.Length * sizeof(float);
                 Logger.Info?.Print(LogClass.Gpu, $"Range size: {rangeSize} bytes");
@@ -192,6 +197,8 @@ namespace Ryujinx.Graphics.Vulkan.Effects
 
                 _pipeline.Finish();
                 Logger.Info?.Print(LogClass.Gpu, "Pipeline finished");
+                
+                Logger.Info?.Print(LogClass.Gpu, "Area scaling filter completed successfully");
             }
             catch (Exception ex)
             {
