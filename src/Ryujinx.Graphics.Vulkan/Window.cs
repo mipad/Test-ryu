@@ -134,6 +134,9 @@ namespace Ryujinx.Graphics.Vulkan
 
             CurrentTransform = capabilities.CurrentTransform;
 
+            // 修改：在Android平台也启用StorageBit
+            ImageUsageFlags usageFlags = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit | ImageUsageFlags.StorageBit;
+
             var swapchainCreateInfo = new SwapchainCreateInfoKHR
             {
                 SType = StructureType.SwapchainCreateInfoKhr,
@@ -142,7 +145,7 @@ namespace Ryujinx.Graphics.Vulkan
                 ImageFormat = surfaceFormat.Format,
                 ImageColorSpace = surfaceFormat.ColorSpace,
                 ImageExtent = extent,
-                ImageUsage = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit | (Ryujinx.Common.PlatformInfo.IsBionic ? 0 : ImageUsageFlags.StorageBit),
+                ImageUsage = usageFlags, // 使用统一的usageFlags
                 ImageSharingMode = SharingMode.Exclusive,
                 ImageArrayLayers = 1,
                 PreTransform = Ryujinx.Common.PlatformInfo.IsBionic ? SurfaceTransformFlagsKHR.IdentityBitKhr : capabilities.CurrentTransform,
