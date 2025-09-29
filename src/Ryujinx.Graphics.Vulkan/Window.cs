@@ -1,4 +1,5 @@
 using Ryujinx.Graphics.GAL;
+using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.Vulkan.Effects;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.KHR;
