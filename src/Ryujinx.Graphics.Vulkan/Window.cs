@@ -168,13 +168,8 @@ namespace Ryujinx.Graphics.Vulkan
                 SwizzleComponent.Blue,
                 SwizzleComponent.Alpha);
 
-            //_gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain).ThrowOnError();
-            Result result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
-            if (result != Result.Success)
-            {
-                result.ThrowOnError();
-            }
-            
+            _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain).ThrowOnError();
+
             _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, null);
 
             _swapchainImages = new Image[imageCount];
@@ -240,60 +235,40 @@ namespace Ryujinx.Graphics.Vulkan
 
         private static SurfaceFormatKHR ChooseSwapSurfaceFormat(SurfaceFormatKHR[] availableFormats, bool colorSpacePassthroughEnabled)
         {
-            // 定义标准颜色空间常量
-            const ColorSpaceKHR StandardColorSpace = ColorSpaceKHR.SpaceSrgbNonlinearKhr;
-            const VkFormat PreferredFormat = VkFormat.B8G8R8A8Unorm;
-
-            // 空数组检查 - 返回安全默认值
-            if (availableFormats.Length == 0)
-            {
-                return new SurfaceFormatKHR(PreferredFormat, StandardColorSpace);
-            }
-
-            // 特殊格式处理
             if (availableFormats.Length == 1 && availableFormats[0].Format == VkFormat.Undefined)
             {
-                return new SurfaceFormatKHR(PreferredFormat, StandardColorSpace);
+                return new SurfaceFormatKHR(VkFormat.B8G8R8A8Unorm, ColorSpaceKHR.PaceSrgbNonlinearKhr);
             }
 
-            // 修复：使用正确的颜色空间枚举值
+            var formatToReturn = availableFormats[0];
             if (colorSpacePassthroughEnabled)
             {
-                // 优先选择PassThrough格式
                 foreach (var format in availableFormats)
                 {
-                    if (format.Format == PreferredFormat && 
-                        format.ColorSpace == ColorSpaceKHR.SpacePassThroughExt)
+                    if (format.Format == VkFormat.B8G8R8A8Unorm && format.ColorSpace == ColorSpaceKHR.SpacePassThroughExt)
                     {
-                        return format;
+                        formatToReturn = format;
+                        break;
                     }
-                }
-                
-                // 其次选择标准SRGB格式
-                foreach (var format in availableFormats)
-                {
-                    if (format.Format == PreferredFormat && 
-                        format.ColorSpace == StandardColorSpace)
+                    else if (format.Format == VkFormat.B8G8R8A8Unorm && format.ColorSpace == ColorSpaceKHR.PaceSrgbNonlinearKhr)
                     {
-                        return format;
+                        formatToReturn = format;
                     }
                 }
             }
             else
             {
-                // 标准模式下优先选择SRGB格式
                 foreach (var format in availableFormats)
                 {
-                    if (format.Format == PreferredFormat && 
-                        format.ColorSpace == StandardColorSpace)
+                    if (format.Format == VkFormat.B8G8R8A8Unorm && format.ColorSpace == ColorSpaceKHR.PaceSrgbNonlinearKhr)
                     {
-                        return format;
+                        formatToReturn = format;
+                        break;
                     }
                 }
             }
 
-            // 没有匹配时返回第一个可用格式
-            return availableFormats[0];
+            return formatToReturn;
         }
 
         private static CompositeAlphaFlagsKHR ChooseCompositeAlpha(CompositeAlphaFlagsKHR supportedFlags)
@@ -314,11 +289,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         private static PresentModeKHR ChooseSwapPresentMode(PresentModeKHR[] availablePresentModes, bool vsyncEnabled)
         {
-            if (availablePresentModes.Length == 0)
-            {
-                return PresentModeKHR.FifoKhr; // 安全默认值
-            }
-            
             if (!vsyncEnabled && availablePresentModes.Contains(PresentModeKHR.ImmediateKhr))
             {
                 return PresentModeKHR.ImmediateKhr;
