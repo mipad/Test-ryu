@@ -42,6 +42,29 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             _pipeline = new PipelineHelperShader(_renderer, _device);
             _pipeline.Initialize();
 
+            // 添加格式支持检查
+            Logger.Info?.Print(LogClass.Gpu, "Checking format capabilities...");
+            
+            // 检查RGBA8格式是否支持存储图像
+            bool supportsRgba8Storage = _renderer.FormatCapabilities.OptimalFormatSupports(
+                FormatFeatureFlags.StorageImageBit, 
+                Format.R8G8B8A8Unorm);
+            
+            Logger.Info?.Print(LogClass.Gpu, $"RGBA8 storage image support: {supportsRgba8Storage}");
+            
+            // 检查交换链格式支持
+            bool supportsSwapchainFormat = _renderer.FormatCapabilities.OptimalFormatSupports(
+                FormatFeatureFlags.StorageImageBit | FormatFeatureFlags.ColorAttachmentBit,
+                FormatTable.GetFormat(_renderer.SwapchainFormat)); // 需要获取实际的交换链格式
+            
+            Logger.Info?.Print(LogClass.Gpu, $"Swapchain format storage support: {supportsSwapchainFormat}");
+
+            if (!supportsRgba8Storage)
+            {
+                Logger.Error?.Print(LogClass.Gpu, "RGBA8 format does not support storage image operations!");
+                // 可能需要使用替代格式
+            }
+
             Logger.Info?.Print(LogClass.Gpu, "Checking compute shader support...");
 
             byte[] scalingShader = LoadShaderFromFile("AreaScaling.spv");
