@@ -52,12 +52,20 @@ namespace Ryujinx.Graphics.Vulkan.Effects
 
             Logger.Info?.Print(LogClass.Gpu, $"Area scaling shader loaded successfully, size: {scalingShader.Length} bytes");
 
+            // 创建资源布局并详细记录
             var scalingResourceLayout = new ResourceLayoutBuilder()
                 .Add(ResourceStages.Compute, ResourceType.UniformBuffer, 2)
                 .Add(ResourceStages.Compute, ResourceType.TextureAndSampler, 1)
                 .Add(ResourceStages.Compute, ResourceType.Image, 0, true).Build();
 
+            Logger.Info?.Print(LogClass.Gpu, "Resource Layout Details:");
+            foreach (var descriptor in scalingResourceLayout.Descriptors)
+            {
+                Logger.Info?.Print(LogClass.Gpu, $"  Binding: {descriptor.Binding}, Type: {descriptor.Type}, Stages: {descriptor.Stages}");
+            }
+
             _sampler = _renderer.CreateSampler(SamplerCreateInfo.Create(MinFilter.Linear, MagFilter.Linear));
+            Logger.Info?.Print(LogClass.Gpu, "Sampler created successfully");
 
             _scalingProgram = _renderer.CreateProgramWithMinimalLayout(new[]
             {
@@ -71,6 +79,13 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             else
             {
                 Logger.Info?.Print(LogClass.Gpu, "Area scaling program created successfully");
+                
+                // 获取程序信息
+                var programInfo = _scalingProgram.GetProgramInfo();
+                if (programInfo != null)
+                {
+                    Logger.Info?.Print(LogClass.Gpu, $"Program has {programInfo.SpecDescriptors.Length} spec descriptors");
+                }
             }
         }
 
@@ -115,6 +130,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             Logger.Info?.Print(LogClass.Gpu, $"AreaScalingFilter.Run called - width: {width}, height: {height}");
             Logger.Info?.Print(LogClass.Gpu, $"Source: X1={source.X1}, X2={source.X2}, Y1={source.Y1}, Y2={source.Y2}");
             Logger.Info?.Print(LogClass.Gpu, $"Destination: X1={destination.X1}, X2={destination.X2}, Y1={destination.Y1}, Y2={destination.Y2}");
+            Logger.Info?.Print(LogClass.Gpu, $"Format: {format}");
 
             if (_scalingProgram == null) 
             {
@@ -134,13 +150,17 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 return;
             }
 
+            // 检查输入纹理信息
+            var viewInfo = view.Info;
+            Logger.Info?.Print(LogClass.Gpu, $"Input texture: {viewInfo.Width}x{viewInfo.Height}, Format: {viewInfo.Format}");
+            Logger.Info?.Print(LogClass.Gpu, $"Target texture: {width}x{height}");
+
             try
             {
-                // 修复坐标问题：确保目标区域的Y坐标是有效的
+                // 修复坐标问题
                 float destY1 = destination.Y1;
                 float destY2 = destination.Y2;
                 
-                // 如果Y坐标反转，修正它们
                 if (destY1 > destY2)
                 {
                     Logger.Warning?.Print(LogClass.Gpu, "Destination Y coordinates are inverted, correcting...");
@@ -153,6 +173,8 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 _pipeline.SetProgram(_scalingProgram);
                 Logger.Info?.Print(LogClass.Gpu, "Program set");
 
+                // 检查纹理绑定
+                Logger.Info?.Print(LogClass.Gpu, "Binding texture and sampler...");
                 _pipeline.SetTextureAndSampler(ShaderStage.Compute, 1, view, _sampler);
                 Logger.Info?.Print(LogClass.Gpu, "Texture and sampler set");
 
@@ -164,8 +186,8 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                     source.Y2,
                     destination.X1,
                     destination.X2,
-                    destY1,  // 使用修正后的Y1
-                    destY2,  // 使用修正后的Y2
+                    destY1,
+                    destY2,
                 };
 
                 Logger.Info?.Print(LogClass.Gpu, $"Corrected dimensions buffer: [{string.Join(", ", dimensionsBuffer.ToArray())}]");
