@@ -42,17 +42,14 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             _pipeline = new PipelineHelperShader(_renderer, _device);
             _pipeline.Initialize();
 
-            // 添加格式支持检查
             Logger.Info?.Print(LogClass.Gpu, "Checking format capabilities...");
             
-            // 修复：使用 GAL.Format 而不是 Vulkan.Format
             bool supportsRgba8Storage = _renderer.FormatCapabilities.OptimalFormatSupports(
                 FormatFeatureFlags.StorageImageBit, 
                 GAL.Format.R8G8B8A8Unorm);
             
             Logger.Info?.Print(LogClass.Gpu, $"RGBA8 storage image support: {supportsRgba8Storage}");
             
-            // 修复：使用 GAL.Format 而不是 Vulkan.Format
             bool supportsBgra8Storage = _renderer.FormatCapabilities.OptimalFormatSupports(
                 FormatFeatureFlags.StorageImageBit | FormatFeatureFlags.ColorAttachmentBit,
                 GAL.Format.B8G8R8A8Unorm);
@@ -62,7 +59,6 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             if (!supportsRgba8Storage)
             {
                 Logger.Error?.Print(LogClass.Gpu, "RGBA8 format does not support storage image operations!");
-                // 可能需要使用替代格式
             }
 
             Logger.Info?.Print(LogClass.Gpu, "Checking compute shader support...");
@@ -171,21 +167,17 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 return;
             }
 
-            // 修复：将 Vulkan.Format 转换为 GAL.Format
-            GAL.Format galFormat = FormatTable.GetFormat(format);
-            
-            // 修复：使用 GAL.Format 而不是 Vulkan.Format
-            bool supportsDestinationFormat = _renderer.FormatCapabilities.OptimalFormatSupports(
-                FormatFeatureFlags.StorageImageBit, 
-                galFormat);
-            
-            if (!supportsDestinationFormat)
+            // 检查Y坐标是否反向
+            bool yReversed = destination.Y1 > destination.Y2;
+            if (yReversed)
             {
-                Logger.Warning?.Print(LogClass.Gpu, $"Destination format {format} (GAL: {galFormat}) does not support storage image operations, scaling filter may not work correctly");
+                Logger.Warning?.Print(LogClass.Gpu, "Y coordinates are reversed in destination, Area scaling may not work correctly");
             }
 
             _pipeline.SetCommandBuffer(cbs);
             _pipeline.SetProgram(_scalingProgram);
+            
+            Logger.Info?.Print(LogClass.Gpu, "Setting texture and sampler...");
             _pipeline.SetTextureAndSampler(ShaderStage.Compute, 1, view, _sampler);
 
             ReadOnlySpan<float> dimensionsBuffer = stackalloc float[]
@@ -210,9 +202,14 @@ namespace Ryujinx.Graphics.Vulkan.Effects
 
             Logger.Info?.Print(LogClass.Gpu, $"Dispatch: X={dispatchX}, Y={dispatchY}, Z=1");
 
+            Logger.Info?.Print(LogClass.Gpu, "Setting uniform buffers and image...");
             _pipeline.SetUniformBuffers(stackalloc[] { new BufferAssignment(2, buffer.Range) });
             _pipeline.SetImage(0, destinationTexture);
+            
+            Logger.Info?.Print(LogClass.Gpu, "Dispatching compute shader...");
             _pipeline.DispatchCompute(dispatchX, dispatchY, 1);
+            
+            Logger.Info?.Print(LogClass.Gpu, "Adding compute barrier...");
             _pipeline.ComputeBarrier();
 
             _pipeline.Finish();
