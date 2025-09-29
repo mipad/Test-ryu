@@ -45,17 +45,17 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             // 添加格式支持检查
             Logger.Info?.Print(LogClass.Gpu, "Checking format capabilities...");
             
-            // 检查RGBA8格式是否支持存储图像
+            // 修复：使用 GAL.Format 而不是 Vulkan.Format
             bool supportsRgba8Storage = _renderer.FormatCapabilities.OptimalFormatSupports(
                 FormatFeatureFlags.StorageImageBit, 
-                Format.R8G8B8A8Unorm);
+                GAL.Format.R8G8B8A8Unorm);
             
             Logger.Info?.Print(LogClass.Gpu, $"RGBA8 storage image support: {supportsRgba8Storage}");
             
-            // 修复：移除不存在的 SwapchainFormat 属性，使用硬编码格式检查
+            // 修复：使用 GAL.Format 而不是 Vulkan.Format
             bool supportsBgra8Storage = _renderer.FormatCapabilities.OptimalFormatSupports(
                 FormatFeatureFlags.StorageImageBit | FormatFeatureFlags.ColorAttachmentBit,
-                Format.B8G8R8A8Unorm); // 使用常见的交换链格式
+                GAL.Format.B8G8R8A8Unorm);
             
             Logger.Info?.Print(LogClass.Gpu, $"BGRA8 storage image support: {supportsBgra8Storage}");
 
@@ -171,14 +171,17 @@ namespace Ryujinx.Graphics.Vulkan.Effects
                 return;
             }
 
-            // 修复：检查目标格式是否支持存储图像操作
+            // 修复：将 Vulkan.Format 转换为 GAL.Format
+            GAL.Format galFormat = FormatTable.GetFormat(format);
+            
+            // 修复：使用 GAL.Format 而不是 Vulkan.Format
             bool supportsDestinationFormat = _renderer.FormatCapabilities.OptimalFormatSupports(
                 FormatFeatureFlags.StorageImageBit, 
-                format);
+                galFormat);
             
             if (!supportsDestinationFormat)
             {
-                Logger.Warning?.Print(LogClass.Gpu, $"Destination format {format} does not support storage image operations, scaling filter may not work correctly");
+                Logger.Warning?.Print(LogClass.Gpu, $"Destination format {format} (GAL: {galFormat}) does not support storage image operations, scaling filter may not work correctly");
             }
 
             _pipeline.SetCommandBuffer(cbs);
