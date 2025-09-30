@@ -95,6 +95,13 @@ namespace LibRyujinx
             {
                 Logger.Info?.Print(LogClass.Application, "Attempting to apply graphics settings...");
                 
+                // 检查配置状态是否已初始化
+                if (ConfigurationState.Instance == null)
+                {
+                    Logger.Warning?.Print(LogClass.Application, "ConfigurationState.Instance is null, cannot apply graphics settings");
+                    return;
+                }
+
                 if (Renderer == null)
                 {
                     Logger.Warning?.Print(LogClass.Application, "Renderer is null, cannot apply graphics settings");
@@ -155,8 +162,11 @@ namespace LibRyujinx
             Logger.Info?.Print(LogClass.Application, $"Renderer type: {Renderer.GetType().Name}");
             Logger.Info?.Print(LogClass.Application, $"Renderer.Window is null: {Renderer.Window == null}");
             
-            // 移除这里的 ApplyGraphicsSettings() 调用
-            // 图形设置将在渲染循环内部应用
+            // 检查配置状态
+            if (ConfigurationState.Instance == null)
+            {
+                Logger.Error?.Print(LogClass.Application, "ConfigurationState.Instance is null, graphics settings may not work correctly");
+            }
             
             ARMeilleure.Optimizations.CacheEviction = SwitchDevice!.EnableJitCacheEviction;
             
