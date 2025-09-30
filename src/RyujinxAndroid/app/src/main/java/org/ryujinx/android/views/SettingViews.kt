@@ -1154,7 +1154,7 @@ ExpandableView(onCardArrowClick = { }, title = "Post-Processing") {
                 text = when (scalingFilter.value) {
                     0 -> "Bilinear"
                     1 -> "Nearest"
-                    2 -> "FSR"
+                    2 -> "Fsr"
                     3 -> "Area" // 添加Area
                     else -> "Bilinear"
                 },
@@ -1469,7 +1469,7 @@ if (showScalingFilterDialog.value) {
                         }
                     )
                     Text(
-                        text = "FSR",
+                        text = "Fsr",
                         modifier = Modifier.padding(start = 16.dp)
                     )
                 }
