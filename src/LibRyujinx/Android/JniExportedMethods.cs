@@ -334,7 +334,30 @@ namespace LibRyujinx
                 return IntPtr.Zero;
             };
 
-            return InitializeGraphicsRenderer(GraphicsBackend.Vulkan, createSurfaceFunc, extensions.ToArray());
+            bool result = InitializeGraphicsRenderer(GraphicsBackend.Vulkan, createSurfaceFunc, extensions.ToArray());
+            
+            // 渲染器初始化后立即应用当前的图形配置
+            if (result && Renderer != null && Renderer.Window != null)
+            {
+                try
+                {
+                    // 应用抗锯齿设置
+                    if (ConfigurationState.Instance != null)
+                    {
+                        Renderer.Window.SetAntiAliasing((Ryujinx.Graphics.GAL.AntiAliasing)ConfigurationState.Instance.Graphics.AntiAliasing.Value);
+                        Renderer.Window.SetScalingFilter((Ryujinx.Graphics.GAL.ScalingFilter)ConfigurationState.Instance.Graphics.ScalingFilter.Value);
+                        Renderer.Window.SetScalingFilterLevel(ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value);
+                        
+                        Logger.Info?.Print(LogClass.Application, "Applied graphics settings to renderer after initialization");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.Application, $"Failed to apply graphics settings after renderer initialization: {ex.Message}");
+                }
+            }
+            
+            return result;
         }
 
         [UnmanagedCallersOnly(EntryPoint = "graphicsRendererSetSize")]
@@ -599,23 +622,35 @@ namespace LibRyujinx
             SetSystemTimeOffset(offset);
         }
 
-        // 新增：设置缩放过滤器的JNI方法
+        // 修复后的：设置缩放过滤器的JNI方法
         [UnmanagedCallersOnly(EntryPoint = "setScalingFilter")]
         public static void JnaSetScalingFilter(int filter)
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call: setScalingFilter");
             try
             {
+                // 确保配置状态已初始化
+                if (ConfigurationState.Instance == null)
+                {
+                    Logger.Error?.Print(LogClass.Application, "ConfigurationState.Instance is null, cannot set scaling filter");
+                    return;
+                }
+
+                var scalingFilter = (ScalingFilter)filter;
+                
                 // 更新配置状态
-                ConfigurationState.Instance.Graphics.ScalingFilter.Value = (ScalingFilter)filter;
+                ConfigurationState.Instance.Graphics.ScalingFilter.Value = scalingFilter;
                 
                 // 如果渲染器已初始化，直接应用设置
                 if (Renderer != null && Renderer.Window != null)
                 {
-                    Renderer.Window.SetScalingFilter((Ryujinx.Graphics.GAL.ScalingFilter)filter);
+                    Renderer.Window.SetScalingFilter((Ryujinx.Graphics.GAL.ScalingFilter)scalingFilter);
+                    Logger.Info?.Print(LogClass.Application, $"Scaling filter set to: {scalingFilter} and applied to renderer");
                 }
-                
-                Logger.Info?.Print(LogClass.Application, $"Scaling filter set to: {(ScalingFilter)filter}");
+                else
+                {
+                    Logger.Info?.Print(LogClass.Application, $"Scaling filter set to: {scalingFilter} (renderer not ready, will apply later)");
+                }
             }
             catch (Exception ex)
             {
@@ -623,13 +658,20 @@ namespace LibRyujinx
             }
         }
 
-        // 新增：设置缩放过滤器级别的JNI方法
+        // 修复后的：设置缩放过滤器级别的JNI方法
         [UnmanagedCallersOnly(EntryPoint = "setScalingFilterLevel")]
         public static void JnaSetScalingFilterLevel(int level)
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call: setScalingFilterLevel");
             try
             {
+                // 确保配置状态已初始化
+                if (ConfigurationState.Instance == null)
+                {
+                    Logger.Error?.Print(LogClass.Application, "ConfigurationState.Instance is null, cannot set scaling filter level");
+                    return;
+                }
+
                 // 更新配置状态
                 ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value = level;
                 
@@ -637,9 +679,12 @@ namespace LibRyujinx
                 if (Renderer != null && Renderer.Window != null)
                 {
                     Renderer.Window.SetScalingFilterLevel(level);
+                    Logger.Info?.Print(LogClass.Application, $"Scaling filter level set to: {level} and applied to renderer");
                 }
-                
-                Logger.Info?.Print(LogClass.Application, $"Scaling filter level set to: {level}");
+                else
+                {
+                    Logger.Info?.Print(LogClass.Application, $"Scaling filter level set to: {level} (renderer not ready, will apply later)");
+                }
             }
             catch (Exception ex)
             {
@@ -647,23 +692,35 @@ namespace LibRyujinx
             }
         }
 
-        // 新增：设置抗锯齿的JNI方法
+        // 修复后的：设置抗锯齿的JNI方法
         [UnmanagedCallersOnly(EntryPoint = "setAntiAliasing")]
         public static void JnaSetAntiAliasing(int mode)
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call: setAntiAliasing");
             try
             {
+                // 确保配置状态已初始化
+                if (ConfigurationState.Instance == null)
+                {
+                    Logger.Error?.Print(LogClass.Application, "ConfigurationState.Instance is null, cannot set anti-aliasing");
+                    return;
+                }
+
+                var antiAliasing = (AntiAliasing)mode;
+                
                 // 更新配置状态
-                ConfigurationState.Instance.Graphics.AntiAliasing.Value = (AntiAliasing)mode;
+                ConfigurationState.Instance.Graphics.AntiAliasing.Value = antiAliasing;
                 
                 // 如果渲染器已初始化，直接应用设置
                 if (Renderer != null && Renderer.Window != null)
                 {
-                    Renderer.Window.SetAntiAliasing((Ryujinx.Graphics.GAL.AntiAliasing)mode);
+                    Renderer.Window.SetAntiAliasing((Ryujinx.Graphics.GAL.AntiAliasing)antiAliasing);
+                    Logger.Info?.Print(LogClass.Application, $"Anti-aliasing set to: {antiAliasing} and applied to renderer");
                 }
-                
-                Logger.Info?.Print(LogClass.Application, $"Anti-aliasing set to: {(AntiAliasing)mode}");
+                else
+                {
+                    Logger.Info?.Print(LogClass.Application, $"Anti-aliasing set to: {antiAliasing} (renderer not ready, will apply later)");
+                }
             }
             catch (Exception ex)
             {
