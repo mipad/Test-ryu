@@ -160,6 +160,22 @@ class MainViewModel(val activity: MainActivity) {
         runBlocking {
             semaphore.acquire()
             launchOnUiThread {
+                // 在设备初始化之前设置图形配置
+            val settings = QuickSettings(activity)
+            
+            // 设置缩放过滤器
+            RyujinxNative.jnaInstance.setScalingFilter(settings.scalingFilter)
+            RyujinxNative.jnaInstance.setScalingFilterLevel(settings.scalingFilterLevel)
+            
+            // 设置抗锯齿
+            RyujinxNative.jnaInstance.setAntiAliasing(settings.antiAliasing)
+            
+            // 设置内存配置
+            RyujinxNative.jnaInstance.setMemoryConfiguration(settings.memoryConfiguration)
+            
+            // 设置系统时间偏移
+            RyujinxNative.jnaInstance.setSystemTimeOffset(settings.systemTimeOffset)
+            
                 // We are only able to initialize the emulation context on the main thread
                 val tzId = TimeZone.getDefault().id
                 success = RyujinxNative.jnaInstance.deviceInitialize(
@@ -269,6 +285,22 @@ class MainViewModel(val activity: MainActivity) {
         runBlocking {
             semaphore.acquire()
             launchOnUiThread {
+                // 在设备初始化之前设置图形配置
+            val settings = QuickSettings(activity)
+            
+            // 设置缩放过滤器
+            RyujinxNative.jnaInstance.setScalingFilter(settings.scalingFilter)
+            RyujinxNative.jnaInstance.setScalingFilterLevel(settings.scalingFilterLevel)
+            
+            // 设置抗锯齿
+            RyujinxNative.jnaInstance.setAntiAliasing(settings.antiAliasing)
+            
+            // 设置内存配置
+            RyujinxNative.jnaInstance.setMemoryConfiguration(settings.memoryConfiguration)
+            
+            // 设置系统时间偏移
+            RyujinxNative.jnaInstance.setSystemTimeOffset(settings.systemTimeOffset)
+            
                 // We are only able to initialize the emulation context on the main thread
                 val tzId = TimeZone.getDefault().id
                 success = RyujinxNative.jnaInstance.deviceInitialize(
