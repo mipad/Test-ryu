@@ -183,6 +183,18 @@ class RyujinxNative {
             }
         }
         
+        // 添加设置缩放过滤器的静态方法
+        @JvmStatic
+        fun setScalingFilter(filter: Int) {
+            jnaInstance.setScalingFilter(filter)
+        }
+        
+        // 添加设置缩放过滤器级别的静态方法
+        @JvmStatic
+        fun setScalingFilterLevel(level: Int) {
+            jnaInstance.setScalingFilterLevel(level)
+        }
+        
         // 添加设置抗锯齿的静态方法
         @JvmStatic
         fun setAntiAliasing(mode: Int) {
