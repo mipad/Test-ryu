@@ -55,7 +55,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableShaderCache: MutableState<Boolean>,
         enableTextureRecompression: MutableState<Boolean>,
         resScale: MutableState<Float>,
-        aspectRatio: MutableState<Int>, // 新增参数：画面比例
+        aspectRatio: MutableState<Int>,
         useVirtualController: MutableState<Boolean>,
         isGrid: MutableState<Boolean>,
         useSwitchLayout: MutableState<Boolean>,
@@ -71,15 +71,15 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableAccessLogs: MutableState<Boolean>,
         enableTraceLogs: MutableState<Boolean>,
         enableGraphicsLogs: MutableState<Boolean>,
-        skipMemoryBarriers: MutableState<Boolean>, // 新增参数
-        regionCode: MutableState<Int>, // 新增参数：区域代码
-        systemLanguage: MutableState<Int>, // 新增参数：系统语言
-        audioEngineType: MutableState<Int>, // 新增音频引擎参数
-        scalingFilter: MutableState<Int>, // 新增：缩放过滤器
-        scalingFilterLevel: MutableState<Int>, // 新增：缩放过滤器级别
-        antiAliasing: MutableState<Int>, // 新增：抗锯齿模式
-        memoryConfiguration: MutableState<Int>, // 新增：内存配置
-        systemTimeOffset: MutableState<Long>, // 新增：系统时间偏移
+        skipMemoryBarriers: MutableState<Boolean>,
+        regionCode: MutableState<Int>,
+        systemLanguage: MutableState<Int>,
+        audioEngineType: MutableState<Int>,
+        scalingFilter: MutableState<Int>,
+        scalingFilterLevel: MutableState<Int>,
+        antiAliasing: MutableState<Int>,
+        memoryConfiguration: MutableState<Int>,
+        systemTimeOffset: MutableState<Long>,
         customTimeEnabled: MutableState<Boolean>,
         customTimeYear: MutableState<Int>,
         customTimeMonth: MutableState<Int>,
@@ -100,22 +100,22 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableTextureRecompression.value =
             sharedPref.getBoolean("enableTextureRecompression", false)
         resScale.value = sharedPref.getFloat("resScale", 1f)
-        aspectRatio.value = sharedPref.getInt("aspect_ratio", 1) // 默认使用16:9
+        aspectRatio.value = sharedPref.getInt("aspect_ratio", 1)
         useVirtualController.value = sharedPref.getBoolean("useVirtualController", true)
         isGrid.value = sharedPref.getBoolean("isGrid", true)
         useSwitchLayout.value = sharedPref.getBoolean("useSwitchLayout", true)
         enableMotion.value = sharedPref.getBoolean("enableMotion", true)
         enablePerformanceMode.value = sharedPref.getBoolean("enablePerformanceMode", false)
         controllerStickSensitivity.value = sharedPref.getFloat("controllerStickSensitivity", 1.0f)
-        skipMemoryBarriers.value = sharedPref.getBoolean("skipMemoryBarriers", false) // 初始化
-        regionCode.value = sharedPref.getInt("regionCode", RegionCode.USA.ordinal) // 默认USA
-        systemLanguage.value = sharedPref.getInt("systemLanguage", SystemLanguage.AmericanEnglish.ordinal) // 默认美式英语
-        audioEngineType.value = sharedPref.getInt("audioEngineType", 1) // 默认OpenAL
-        scalingFilter.value = sharedPref.getInt("scalingFilter", 0) // 默认：最近邻
-        scalingFilterLevel.value = sharedPref.getInt("scalingFilterLevel", 80) // 默认级别：80
-        antiAliasing.value = sharedPref.getInt("antiAliasing", 0) // 默认关闭
-        memoryConfiguration.value = sharedPref.getInt("memoryConfiguration", 0) // 默认4GB
-        systemTimeOffset.value = sharedPref.getLong("systemTimeOffset", 0) // 默认0秒偏移
+        skipMemoryBarriers.value = sharedPref.getBoolean("skipMemoryBarriers", false)
+        regionCode.value = sharedPref.getInt("regionCode", RegionCode.USA.ordinal)
+        systemLanguage.value = sharedPref.getInt("systemLanguage", SystemLanguage.AmericanEnglish.ordinal)
+        audioEngineType.value = sharedPref.getInt("audioEngineType", 1)
+        scalingFilter.value = sharedPref.getInt("scalingFilter", 0)
+        scalingFilterLevel.value = sharedPref.getInt("scalingFilterLevel", 80)
+        antiAliasing.value = sharedPref.getInt("antiAliasing", 0)
+        memoryConfiguration.value = sharedPref.getInt("memoryConfiguration", 0)
+        systemTimeOffset.value = sharedPref.getLong("systemTimeOffset", 0)
         
         // 初始化自定义时间设置
         customTimeEnabled.value = sharedPref.getBoolean("customTimeEnabled", false)
@@ -148,7 +148,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableShaderCache: MutableState<Boolean>,
         enableTextureRecompression: MutableState<Boolean>,
         resScale: MutableState<Float>,
-        aspectRatio: MutableState<Int>, // 新增参数：画面比例
+        aspectRatio: MutableState<Int>,
         useVirtualController: MutableState<Boolean>,
         isGrid: MutableState<Boolean>,
         useSwitchLayout: MutableState<Boolean>,
@@ -164,15 +164,15 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         enableAccessLogs: MutableState<Boolean>,
         enableTraceLogs: MutableState<Boolean>,
         enableGraphicsLogs: MutableState<Boolean>,
-        skipMemoryBarriers: MutableState<Boolean>, // 新增参数
-        regionCode: MutableState<Int>, // 新增参数：区域代码
-        systemLanguage: MutableState<Int>, // 新增参数：系统语言
-        audioEngineType: MutableState<Int>, // 新增音频引擎参数
-        scalingFilter: MutableState<Int>, // 新增：缩放过滤器
-        scalingFilterLevel: MutableState<Int>, // 新增：缩放过滤器级别
-        antiAliasing: MutableState<Int>, // 新增：抗锯齿模式
-        memoryConfiguration: MutableState<Int>, // 新增：内存配置
-        systemTimeOffset: MutableState<Long>, // 新增：系统时间偏移
+        skipMemoryBarriers: MutableState<Boolean>,
+        regionCode: MutableState<Int>,
+        systemLanguage: MutableState<Int>,
+        audioEngineType: MutableState<Int>,
+        scalingFilter: MutableState<Int>,
+        scalingFilterLevel: MutableState<Int>,
+        antiAliasing: MutableState<Int>,
+        memoryConfiguration: MutableState<Int>,
+        systemTimeOffset: MutableState<Long>,
         customTimeEnabled: MutableState<Boolean>,
         customTimeYear: MutableState<Int>,
         customTimeMonth: MutableState<Int>,
@@ -193,22 +193,21 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.putBoolean("enableShaderCache", enableShaderCache.value)
         editor.putBoolean("enableTextureRecompression", enableTextureRecompression.value)
         editor.putFloat("resScale", resScale.value)
-        editor.putInt("aspect_ratio", aspectRatio.value) // 保存画面比例设置
+        editor.putInt("aspect_ratio", aspectRatio.value)
         editor.putBoolean("useVirtualController", useVirtualController.value)
         editor.putBoolean("isGrid", isGrid.value)
         editor.putBoolean("useSwitchLayout", useSwitchLayout.value)
         editor.putBoolean("enableMotion", enableMotion.value)
         editor.putBoolean("enablePerformanceMode", enablePerformanceMode.value)
         editor.putFloat("controllerStickSensitivity", controllerStickSensitivity.value)
-        editor.putBoolean("skipMemoryBarriers", skipMemoryBarriers.value) // 保存
-        editor.putInt("regionCode", regionCode.value) // 保存区域代码
-        editor.putInt("systemLanguage", systemLanguage.value) // 保存系统语言
-        editor.putInt("audioEngineType", audioEngineType.value) // 保存音频引擎设置
-        editor.putInt("scalingFilter", scalingFilter.value) // 保存缩放过滤器
-        editor.putInt("scalingFilterLevel", scalingFilterLevel.value) // 保存缩放过滤器级别
-        editor.putInt("antiAliasing", antiAliasing.value) // 保存抗锯齿设置
-        editor.putInt("memoryConfiguration", memoryConfiguration.value) // 保存内存配置
-        editor.putLong("systemTimeOffset", systemTimeOffset.value) // 保存系统时间偏移
+        editor.putBoolean("skipMemoryBarriers", skipMemoryBarriers.value)
+        editor.putInt("regionCode", regionCode.value)
+        editor.putInt("systemLanguage", systemLanguage.value)
+        editor.putInt("audioEngineType", audioEngineType.value)
+        editor.putInt("scalingFilter", scalingFilter.value)
+        editor.putInt("scalingFilterLevel", scalingFilterLevel.value)
+        editor.putInt("antiAliasing", antiAliasing.value)
+        editor.putInt("memoryConfiguration", memoryConfiguration.value)
         
         // 保存自定义时间设置
         editor.putBoolean("customTimeEnabled", customTimeEnabled.value)
@@ -229,7 +228,33 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.putBoolean("enableTraceLogs", enableTraceLogs.value)
         editor.putBoolean("enableGraphicsLogs", enableGraphicsLogs.value)
 
+        // 计算并设置系统时间偏移
+        val calculatedTimeOffset = if (customTimeEnabled.value) {
+            // 创建Calendar实例并设置自定义时间
+            val calendar = Calendar.getInstance()
+            calendar.set(customTimeYear.value, customTimeMonth.value - 1, customTimeDay.value, 
+                        customTimeHour.value, customTimeMinute.value, customTimeSecond.value)
+            
+            // 计算自定义时间与当前时间的偏移量（秒）
+            val customTimeMillis = calendar.timeInMillis
+            val currentTimeMillis = System.currentTimeMillis()
+            val timeOffset = (customTimeMillis - currentTimeMillis) / 1000
+            
+            // 更新状态值
+            systemTimeOffset.value = timeOffset
+            
+            timeOffset
+        } else {
+            // 如果不使用自定义时间，则重置为0
+            0L
+        }
+        
+        // 保存计算出的时间偏移
+        editor.putLong("systemTimeOffset", calculatedTimeOffset)
+        
+        // 应用所有设置
         editor.apply()
+
         activity.storageHelper!!.onFolderSelected = previousFolderCallback
 
         // 设置跳过内存屏障
@@ -248,24 +273,8 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         // 设置内存配置
         RyujinxNative.jnaInstance.setMemoryConfiguration(memoryConfiguration.value)
 
-        // 计算并设置系统时间偏移
-        if (customTimeEnabled.value) {
-            // 创建Calendar实例并设置自定义时间
-            val calendar = Calendar.getInstance()
-            calendar.set(customTimeYear.value, customTimeMonth.value - 1, customTimeDay.value, 
-                        customTimeHour.value, customTimeMinute.value, customTimeSecond.value)
-            
-            // 计算自定义时间与当前时间的偏移量（秒）
-            val customTimeMillis = calendar.timeInMillis
-            val currentTimeMillis = System.currentTimeMillis()
-            val timeOffset = (customTimeMillis - currentTimeMillis) / 1000
-            
-            // 设置系统时间偏移
-            RyujinxNative.jnaInstance.setSystemTimeOffset(timeOffset)
-        } else {
-            // 如果不使用自定义时间，则使用之前设置的系统时间偏移
-            RyujinxNative.jnaInstance.setSystemTimeOffset(systemTimeOffset.value)
-        }
+        // 设置系统时间偏移
+        RyujinxNative.jnaInstance.setSystemTimeOffset(calculatedTimeOffset)
 
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Debug.ordinal, enableDebugLogs.value)
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Info.ordinal, enableInfoLogs.value)
