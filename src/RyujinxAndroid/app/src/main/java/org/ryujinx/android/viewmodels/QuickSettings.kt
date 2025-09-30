@@ -18,32 +18,30 @@ class QuickSettings(val activity: Activity) {
     var enableShaderCache: Boolean
     var enableTextureRecompression: Boolean
     var resScale: Float
-    var aspectRatio: Int // 0: 4:3, 1: 16:9, 2: 16:10, 3: 21:9, 4: 32:9, 5: Stretched
+    var aspectRatio: Int
     var isGrid: Boolean
     var useSwitchLayout: Boolean
     var enableMotion: Boolean
     var enablePerformanceMode: Boolean
     var controllerStickSensitivity: Float
-    var skipMemoryBarriers: Boolean // 新增：跳过内存屏障
-    var regionCode: Int // 新增：区域代码
-    var systemLanguage: Int // 新增：系统语言
-    var audioEngineType: Int // 0=禁用，1=OpenAL
-    var scalingFilter: Int // 新增：缩放过滤器
-    var scalingFilterLevel: Int // 新增：缩放过滤器级别
-    var antiAliasing: Int // 新增：抗锯齿模式 0=None, 1=Fxaa, 2=SmaaLow, 3=SmaaMedium, 4=SmaaHigh, 5=SmaaUltra
-    var memoryConfiguration: Int // 新增：内存配置 0=4GB, 1=4GB Applet Dev, 2=4GB System Dev, 3=6GB, 4=6GB Applet Dev, 5=8GB
-    var systemTimeOffset: Long // 新增：系统时间偏移（秒）
+    var skipMemoryBarriers: Boolean
+    var regionCode: Int
+    var systemLanguage: Int
+    var audioEngineType: Int
+    var scalingFilter: Int
+    var scalingFilterLevel: Int
+    var antiAliasing: Int
+    var memoryConfiguration: Int
+    var systemTimeOffset: Long
     
-    // 新增：自定义时间相关字段
-    var customTimeEnabled: Boolean // 新增：自定义时间开关
-    var customTimeYear: Int // 新增：自定义时间-年
-    var customTimeMonth: Int // 新增：自定义时间-月
-    var customTimeDay: Int // 新增：自定义时间-日
-    var customTimeHour: Int // 新增：自定义时间-时
-    var customTimeMinute: Int // 新增：自定义时间-分
-    var customTimeSecond: Int // 新增：自定义时间-秒
+    var customTimeEnabled: Boolean
+    var customTimeYear: Int
+    var customTimeMonth: Int
+    var customTimeDay: Int
+    var customTimeHour: Int
+    var customTimeMinute: Int
+    var customTimeSecond: Int
 
-    // Logs
     var enableDebugLogs: Boolean
     var enableStubLogs: Boolean
     var enableInfoLogs: Boolean
@@ -68,24 +66,23 @@ class QuickSettings(val activity: Activity) {
         enableShaderCache = sharedPref.getBoolean("enableShaderCache", true)
         enableTextureRecompression = sharedPref.getBoolean("enableTextureRecompression", false)
         resScale = sharedPref.getFloat("resScale", 1f)
-        aspectRatio = sharedPref.getInt("aspect_ratio", 1) // 默认使用16:9
+        aspectRatio = sharedPref.getInt("aspect_ratio", 1)
         useVirtualController = sharedPref.getBoolean("useVirtualController", true)
         isGrid = sharedPref.getBoolean("isGrid", true)
         useSwitchLayout = sharedPref.getBoolean("useSwitchLayout", true)
         enableMotion = sharedPref.getBoolean("enableMotion", true)
         enablePerformanceMode = sharedPref.getBoolean("enablePerformanceMode", true)
         controllerStickSensitivity = sharedPref.getFloat("controllerStickSensitivity", 1.0f)
-        skipMemoryBarriers = sharedPref.getBoolean("skipMemoryBarriers", false) // 初始化
-        regionCode = sharedPref.getInt("regionCode", RegionCode.USA.ordinal) // 默认USA
-        systemLanguage = sharedPref.getInt("systemLanguage", SystemLanguage.AmericanEnglish.ordinal) // 默认美式英语
-        audioEngineType = sharedPref.getInt("audioEngineType", 1) // 默认使用OpenAL
-        scalingFilter = sharedPref.getInt("scalingFilter", 0) // 默认：最近邻
-        scalingFilterLevel = sharedPref.getInt("scalingFilterLevel", 80) // 默认级别：80
-        antiAliasing = sharedPref.getInt("antiAliasing", 0) // 默认关闭
-        memoryConfiguration = sharedPref.getInt("memoryConfiguration", 0) // 默认4GB
-        systemTimeOffset = sharedPref.getLong("systemTimeOffset", 0) // 默认0秒偏移
+        skipMemoryBarriers = sharedPref.getBoolean("skipMemoryBarriers", false)
+        regionCode = sharedPref.getInt("regionCode", RegionCode.USA.ordinal)
+        systemLanguage = sharedPref.getInt("systemLanguage", SystemLanguage.AmericanEnglish.ordinal)
+        audioEngineType = sharedPref.getInt("audioEngineType", 1)
+        scalingFilter = sharedPref.getInt("scalingFilter", 0)
+        scalingFilterLevel = sharedPref.getInt("scalingFilterLevel", 80)
+        antiAliasing = sharedPref.getInt("antiAliasing", 0)
+        memoryConfiguration = sharedPref.getInt("memoryConfiguration", 0)
+        systemTimeOffset = sharedPref.getLong("systemTimeOffset", 0)
         
-        // 初始化自定义时间字段
         customTimeEnabled = sharedPref.getBoolean("customTimeEnabled", false)
         customTimeYear = sharedPref.getInt("customTimeYear", 2023)
         customTimeMonth = sharedPref.getInt("customTimeMonth", 9)
@@ -125,17 +122,16 @@ class QuickSettings(val activity: Activity) {
         editor.putBoolean("enableMotion", enableMotion)
         editor.putBoolean("enablePerformanceMode", enablePerformanceMode)
         editor.putFloat("controllerStickSensitivity", controllerStickSensitivity)
-        editor.putBoolean("skipMemoryBarriers", skipMemoryBarriers) // 保存
-        editor.putInt("regionCode", regionCode) // 保存区域代码
-        editor.putInt("systemLanguage", systemLanguage) // 保存系统语言
-        editor.putInt("audioEngineType", audioEngineType) // 保存音频引擎设置
-        editor.putInt("scalingFilter", scalingFilter) // 保存缩放过滤器
-        editor.putInt("scalingFilterLevel", scalingFilterLevel) // 保存缩放过滤器级别
-        editor.putInt("antiAliasing", antiAliasing) // 保存抗锯齿设置
-        editor.putInt("memoryConfiguration", memoryConfiguration) // 保存内存配置
-        editor.putLong("systemTimeOffset", systemTimeOffset) // 保存系统时间偏移
+        editor.putBoolean("skipMemoryBarriers", skipMemoryBarriers)
+        editor.putInt("regionCode", regionCode)
+        editor.putInt("systemLanguage", systemLanguage)
+        editor.putInt("audioEngineType", audioEngineType)
+        editor.putInt("scalingFilter", scalingFilter)
+        editor.putInt("scalingFilterLevel", scalingFilterLevel)
+        editor.putInt("antiAliasing", antiAliasing)
+        editor.putInt("memoryConfiguration", memoryConfiguration)
+        editor.putLong("systemTimeOffset", systemTimeOffset)
         
-        // 保存自定义时间字段
         editor.putBoolean("customTimeEnabled", customTimeEnabled)
         editor.putInt("customTimeYear", customTimeYear)
         editor.putInt("customTimeMonth", customTimeMonth)
