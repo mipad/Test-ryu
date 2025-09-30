@@ -55,20 +55,6 @@ namespace LibRyujinx
             return _skipMemoryBarriers;
         }
 
-        // 添加设置系统时间偏移的 JNI 方法 - 修改 EntryPoint 名称以避免冲突
-        [UnmanagedCallersOnly(EntryPoint = "setSystemTimeOffsetNative")]
-        public static void SetSystemTimeOffsetNative(long offset)
-        {
-            SetSystemTimeOffset(offset);
-        }
-
-        // 添加获取系统时间偏移的 JNI 方法
-        [UnmanagedCallersOnly(EntryPoint = "getSystemTimeOffsetNative")]
-        public static long GetSystemTimeOffsetNative()
-        {
-            return GetSystemTimeOffset();
-        }
-
         [UnmanagedCallersOnly(EntryPoint = "device_initialize")]
         public static bool InitializeDeviceNative(bool isHostMapped,
                                                   bool useHypervisor,
@@ -537,50 +523,6 @@ namespace LibRyujinx
             var userId = Marshal.PtrToStringAnsi(userIdPtr) ?? "";
 
             CloseUser(userId);
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "set_scaling_filter")]
-        public static void SetScalingFilterNative(int filter)
-        {
-            try
-            {
-                // 更新配置状态
-                ConfigurationState.Instance.Graphics.ScalingFilter.Value = (ScalingFilter)filter;
-                
-                // 如果渲染器已初始化，直接应用设置
-                if (Renderer != null && Renderer.Window != null)
-                {
-                    Renderer.Window.SetScalingFilter((Ryujinx.Graphics.GAL.ScalingFilter)filter);
-                }
-                
-                Logger.Info?.Print(LogClass.Application, $"Scaling filter set to: {(ScalingFilter)filter}");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.Application, $"Failed to set scaling filter: {ex.Message}");
-            }
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "set_scaling_filter_level")]
-        public static void SetScalingFilterLevelNative(int level)
-        {
-            try
-            {
-                // 更新配置状态
-                ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value = level;
-                
-                // 如果渲染器已初始化，直接应用设置
-                if (Renderer != null && Renderer.Window != null)
-                {
-                    Renderer.Window.SetScalingFilterLevel(level);
-                }
-                
-                Logger.Info?.Print(LogClass.Application, $"Scaling filter level set to: {level}");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.Application, $"Failed to set scaling filter level: {ex.Message}");
-            }
         }
 
         // 添加金手指相关的 JNI 方法
