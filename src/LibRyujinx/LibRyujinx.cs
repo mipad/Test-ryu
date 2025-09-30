@@ -66,6 +66,7 @@ namespace LibRyujinx
             {
                 AppDataManager.Initialize(basePath);
 
+                // 确保配置状态正确初始化
                 ConfigurationState.Initialize();
                 LoggerModule.Initialize();
 
@@ -79,6 +80,24 @@ namespace LibRyujinx
 
                 Logger.Notice.Print(LogClass.Application, "Initializing...");
                 Logger.Notice.Print(LogClass.Application, $"Using base path: {AppDataManager.BaseDirPath}");
+
+                // 检查配置状态是否已初始化
+                if (ConfigurationState.Instance == null)
+                {
+                    Logger.Error?.Print(LogClass.Application, "ConfigurationState failed to initialize");
+                    return false;
+                }
+                else
+                {
+                    Logger.Info?.Print(LogClass.Application, "ConfigurationState initialized successfully");
+                    
+                    // 设置默认的图形配置值
+                    ConfigurationState.Instance.Graphics.ScalingFilter.Value = ScalingFilter.Bilinear;
+                    ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value = 80;
+                    ConfigurationState.Instance.Graphics.AntiAliasing.Value = AntiAliasing.None;
+                    
+                    Logger.Info?.Print(LogClass.Application, "Default graphics settings configured");
+                }
 
                 SwitchDevice = new SwitchDevice();
             }
