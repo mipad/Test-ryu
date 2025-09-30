@@ -91,6 +91,10 @@ class MainViewModel(val activity: MainActivity) {
 
         val settings = QuickSettings(activity)
 
+        // 在图形初始化之前设置缩放过滤器
+    RyujinxNative.jnaInstance.setScalingFilter(settings.scalingFilter)
+    RyujinxNative.jnaInstance.setScalingFilterLevel(settings.scalingFilterLevel)
+    
         var success = RyujinxNative.jnaInstance.graphicsInitialize(
             enableShaderCache = settings.enableShaderCache,
             enableTextureRecompression = settings.enableTextureRecompression,
@@ -159,6 +163,10 @@ class MainViewModel(val activity: MainActivity) {
         runBlocking {
             semaphore.acquire()
             launchOnUiThread {
+
+                // 在图形初始化之前设置缩放过滤器
+    RyujinxNative.jnaInstance.setScalingFilter(settings.scalingFilter)
+    RyujinxNative.jnaInstance.setScalingFilterLevel(settings.scalingFilterLevel)
                 // We are only able to initialize the emulation context on the main thread
                 val tzId = TimeZone.getDefault().id
                 success = RyujinxNative.jnaInstance.deviceInitialize(
