@@ -104,8 +104,7 @@ class MainViewModel(val activity: MainActivity) {
         val nativeHelpers = NativeHelpers.instance
         val nativeInterop = NativeGraphicsInterop()
         nativeInterop.VkRequiredExtensions = arrayOf(
-            "VK_KHR_surface", "VK_KHR_android_surface", "VK_EXT_filter_cubic",
-    "VK_IMG_filter_cubic"
+            "VK_KHR_surface", "VK_KHR_android_surface"
         )
         nativeInterop.VkCreateSurface = nativeHelpers.getCreateSurfacePtr()
         nativeInterop.SurfaceHandle = 0
@@ -229,8 +228,7 @@ class MainViewModel(val activity: MainActivity) {
         val nativeHelpers = NativeHelpers.instance
         val nativeInterop = NativeGraphicsInterop()
         nativeInterop.VkRequiredExtensions = arrayOf(
-            "VK_KHR_surface", "VK_KHR_android_surface", "VK_EXT_filter_cubic",
-    "VK_IMG_filter_cubic"
+            "VK_KHR_surface", "VK_KHR_android_surface"
         )
         nativeInterop.VkCreateSurface = nativeHelpers.getCreateSurfacePtr()
         nativeInterop.SurfaceHandle = 0
