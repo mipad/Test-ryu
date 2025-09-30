@@ -38,9 +38,9 @@ class MainViewModel(val activity: MainActivity) {
     var gameTimeState: MutableState<Double>? = null
     var usedMemState: MutableState<Int>? = null
     var totalMemState: MutableState<Int>? = null
-    var batteryTemperatureState: MutableState<Double>? = null // 电池温度状态
-    var batteryLevelState: MutableState<Int>? = null // 电池电量状态
-    var isChargingState: MutableState<Boolean>? = null // 充电状态
+    var batteryTemperatureState: MutableState<Double>? = null
+    var batteryLevelState: MutableState<Int>? = null
+    var isChargingState: MutableState<Boolean>? = null
     private var frequenciesState: MutableList<Double>? = null
     private var progress: MutableState<String>? = null
     private var progressValue: MutableState<Float>? = null
@@ -91,10 +91,6 @@ class MainViewModel(val activity: MainActivity) {
 
         val settings = QuickSettings(activity)
 
-        // 在图形初始化之前设置缩放过滤器
-    RyujinxNative.jnaInstance.setScalingFilter(settings.scalingFilter)
-    RyujinxNative.jnaInstance.setScalingFilterLevel(settings.scalingFilterLevel)
-    
         var success = RyujinxNative.jnaInstance.graphicsInitialize(
             enableShaderCache = settings.enableShaderCache,
             enableTextureRecompression = settings.enableTextureRecompression,
@@ -163,12 +159,12 @@ class MainViewModel(val activity: MainActivity) {
         runBlocking {
             semaphore.acquire()
             launchOnUiThread {
-
-                // 在图形初始化之前设置缩放过滤器
-    RyujinxNative.jnaInstance.setScalingFilter(settings.scalingFilter)
-    RyujinxNative.jnaInstance.setScalingFilterLevel(settings.scalingFilterLevel)
                 // We are only able to initialize the emulation context on the main thread
                 val tzId = TimeZone.getDefault().id
+                
+                // 获取当前系统时间偏移，而不是使用QuickSettings中的旧值
+                val currentTimeOffset = RyujinxNative.jnaInstance.getSystemTimeOffset()
+                
                 success = RyujinxNative.jnaInstance.deviceInitialize(
                     settings.isHostMapped,
                     settings.useNce,
@@ -179,11 +175,11 @@ class MainViewModel(val activity: MainActivity) {
                     settings.enablePtc,
                     settings.enableJitCacheEviction,
                     false,
-                    tzId, // <<< Pass through Android device time zone
+                    tzId,
                     settings.ignoreMissingServices,
-                    settings.audioEngineType, // 新增音频引擎参数
-                    settings.memoryConfiguration, // 内存配置
-                    settings.systemTimeOffset // 新增系统时间偏移参数
+                    settings.audioEngineType,
+                    settings.memoryConfiguration,
+                    currentTimeOffset // 使用当前设置的偏移量
                 )
 
                 semaphore.release()
@@ -277,6 +273,10 @@ class MainViewModel(val activity: MainActivity) {
             launchOnUiThread {
                 // We are only able to initialize the emulation context on the main thread
                 val tzId = TimeZone.getDefault().id
+                
+                // 获取当前系统时间偏移，而不是使用QuickSettings中的旧值
+                val currentTimeOffset = RyujinxNative.jnaInstance.getSystemTimeOffset()
+                
                 success = RyujinxNative.jnaInstance.deviceInitialize(
                     settings.isHostMapped,
                     settings.useNce,
@@ -287,11 +287,11 @@ class MainViewModel(val activity: MainActivity) {
                     settings.enablePtc,
                     settings.enableJitCacheEviction,
                     false,
-                    tzId, // <<< Pass through Android device time zone
+                    tzId,
                     settings.ignoreMissingServices,
-                    settings.audioEngineType, // 新增音频引擎参数
-                    settings.memoryConfiguration, // 内存配置
-                    settings.systemTimeOffset // 新增系统时间偏移参数
+                    settings.audioEngineType,
+                    settings.memoryConfiguration,
+                    currentTimeOffset // 使用当前设置的偏移量
                 )
 
                 semaphore.release()
@@ -376,9 +376,9 @@ class MainViewModel(val activity: MainActivity) {
         gameTime: MutableState<Double>,
         usedMem: MutableState<Int>,
         totalMem: MutableState<Int>,
-        batteryTemperature: MutableState<Double>, // 电池温度
-        batteryLevel: MutableState<Int>, // 电池电量
-        isCharging: MutableState<Boolean> // 充电状态
+        batteryTemperature: MutableState<Double>,
+        batteryLevel: MutableState<Int>,
+        isCharging: MutableState<Boolean>
     ) {
         fifoState = fifo
         gameFpsState = gameFps
