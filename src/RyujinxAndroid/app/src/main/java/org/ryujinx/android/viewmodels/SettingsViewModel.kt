@@ -1,403 +1,454 @@
 package org.ryujinx.android.viewmodels
 
-import android.content.SharedPreferences
+import android.annotation.SuppressLint
 import androidx.compose.runtime.MutableState
-import androidx.documentfile.provider.DocumentFile
 import androidx.navigation.NavHostController
-import androidx.preference.PreferenceManager
-import com.anggrayudi.storage.callback.FileCallback
-import com.anggrayudi.storage.file.FileFullPath
-import com.anggrayudi.storage.file.copyFileTo
-import com.anggrayudi.storage.file.extension
-import com.anggrayudi.storage.file.getAbsolutePath
-import org.ryujinx.android.LogLevel
+import com.anggrayudi.storage.extension.launchOnUiThread
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Semaphore
+import org.ryujinx.android.GameController
+import org.ryujinx.android.GameHost
+import org.ryujinx.android.Logging
 import org.ryujinx.android.MainActivity
+import org.ryujinx.android.MotionSensorManager
+import org.ryujinx.android.NativeGraphicsInterop
+import org.ryujinx.android.NativeHelpers
+import org.ryujinx.android.PerformanceManager
+import org.ryujinx.android.PhysicalControllerManager
 import org.ryujinx.android.RegionCode
 import org.ryujinx.android.RyujinxNative
 import org.ryujinx.android.SystemLanguage
 import java.io.File
-import java.util.Calendar
-import kotlin.concurrent.thread
+import java.util.TimeZone
 
-class SettingsViewModel(var navController: NavHostController, val activity: MainActivity) {
-    var selectedFirmwareVersion: String = ""
-    private var previousFileCallback: ((requestCode: Int, files: List<DocumentFile>) -> Unit)?
-    private var previousFolderCallback: ((requestCode: Int, folder: DocumentFile) -> Unit)?
-    private var sharedPref: SharedPreferences
-    var selectedFirmwareFile: DocumentFile? = null
+@SuppressLint("WrongConstant")
+class MainViewModel(val activity: MainActivity) {
+    var physicalControllerManager: PhysicalControllerManager? = null
+    var motionSensorManager: MotionSensorManager? = null
+    var gameModel: GameModel? = null
+    var controller: GameController? = null
+    var performanceManager: PerformanceManager? = null
+    var selected: GameModel? = null
+    var isMiiEditorLaunched = false
+    val userViewModel = UserViewModel()
+    val logging = Logging(this)
+    var firmwareVersion = ""
+    var fifoState: MutableState<Double>? = null
+    var gameFpsState: MutableState<Double>? = null
+    var gameTimeState: MutableState<Double>? = null
+    var usedMemState: MutableState<Int>? = null
+    var totalMemState: MutableState<Int>? = null
+    var batteryTemperatureState: MutableState<Double>? = null
+    var batteryLevelState: MutableState<Int>? = null
+    var isChargingState: MutableState<Boolean>? = null
+    private var frequenciesState: MutableList<Double>? = null
+    private var progress: MutableState<String>? = null
+    private var progressValue: MutableState<Float>? = null
+    private var showLoading: MutableState<Boolean>? = null
+    private var refreshUser: MutableState<Boolean>? = null
+
+    var gameHost: GameHost? = null
+        set(value) {
+            field = value
+            field?.setProgressStates(showLoading, progressValue, progress)
+        }
+    var navController: NavHostController? = null
+
+    var homeViewModel: HomeViewModel = HomeViewModel(activity, this)
 
     init {
-        sharedPref = getPreferences()
-        previousFolderCallback = activity.storageHelper!!.onFolderSelected
-        previousFileCallback = activity.storageHelper!!.onFileSelected
-        activity.storageHelper!!.onFolderSelected = { _, folder ->
-            run {
-                val p = folder.getAbsolutePath(activity)
-                val editor = sharedPref.edit()
-                editor?.putString("gameFolder", p)
-                editor?.apply()
-            }
-        }
+        performanceManager = PerformanceManager(activity)
     }
 
-    private fun getPreferences(): SharedPreferences {
-        return PreferenceManager.getDefaultSharedPreferences(activity)
+    fun closeGame() {
+        RyujinxNative.jnaInstance.deviceSignalEmulationClose()
+        gameHost?.close()
+        RyujinxNative.jnaInstance.deviceCloseEmulation()
+        motionSensorManager?.unregister()
+        physicalControllerManager?.disconnect()
+        motionSensorManager?.setControllerId(-1)
     }
 
-    fun initializeState(
-        isHostMapped: MutableState<Boolean>,
-        useNce: MutableState<Boolean>,
-        enableVsync: MutableState<Boolean>,
-        enableDocked: MutableState<Boolean>,
-        enablePtc: MutableState<Boolean>,
-        enableJitCacheEviction: MutableState<Boolean>,
-        ignoreMissingServices: MutableState<Boolean>,
-        enableShaderCache: MutableState<Boolean>,
-        enableTextureRecompression: MutableState<Boolean>,
-        resScale: MutableState<Float>,
-        aspectRatio: MutableState<Int>, // 新增参数：画面比例
-        useVirtualController: MutableState<Boolean>,
-        isGrid: MutableState<Boolean>,
-        useSwitchLayout: MutableState<Boolean>,
-        enableMotion: MutableState<Boolean>,
-        enablePerformanceMode: MutableState<Boolean>,
-        controllerStickSensitivity: MutableState<Float>,
-        enableDebugLogs: MutableState<Boolean>,
-        enableStubLogs: MutableState<Boolean>,
-        enableInfoLogs: MutableState<Boolean>,
-        enableWarningLogs: MutableState<Boolean>,
-        enableErrorLogs: MutableState<Boolean>,
-        enableGuestLogs: MutableState<Boolean>,
-        enableAccessLogs: MutableState<Boolean>,
-        enableTraceLogs: MutableState<Boolean>,
-        enableGraphicsLogs: MutableState<Boolean>,
-        skipMemoryBarriers: MutableState<Boolean>, // 新增参数
-        regionCode: MutableState<Int>, // 新增参数：区域代码
-        systemLanguage: MutableState<Int>, // 新增参数：系统语言
-        audioEngineType: MutableState<Int>, // 新增音频引擎参数
-        scalingFilter: MutableState<Int>, // 新增：缩放过滤器
-        scalingFilterLevel: MutableState<Int>, // 新增：缩放过滤器级别
-        antiAliasing: MutableState<Int>, // 新增：抗锯齿模式
-        memoryConfiguration: MutableState<Int>, // 新增：内存配置
-        systemTimeOffset: MutableState<Long>, // 新增：系统时间偏移
-        customTimeEnabled: MutableState<Boolean>,
-        customTimeYear: MutableState<Int>,
-        customTimeMonth: MutableState<Int>,
-        customTimeDay: MutableState<Int>,
-        customTimeHour: MutableState<Int>,
-        customTimeMinute: MutableState<Int>,
-        customTimeSecond: MutableState<Int>
-    ) {
-
-        isHostMapped.value = sharedPref.getBoolean("isHostMapped", true)
-        useNce.value = sharedPref.getBoolean("useNce", true)
-        enableVsync.value = sharedPref.getBoolean("enableVsync", true)
-        enableDocked.value = sharedPref.getBoolean("enableDocked", true)
-        enablePtc.value = sharedPref.getBoolean("enablePtc", true)
-        enableJitCacheEviction.value = sharedPref.getBoolean("enableJitCacheEviction", false)
-        ignoreMissingServices.value = sharedPref.getBoolean("ignoreMissingServices", false)
-        enableShaderCache.value = sharedPref.getBoolean("enableShaderCache", true)
-        enableTextureRecompression.value =
-            sharedPref.getBoolean("enableTextureRecompression", false)
-        resScale.value = sharedPref.getFloat("resScale", 1f)
-        aspectRatio.value = sharedPref.getInt("aspect_ratio", 1) // 默认使用16:9
-        useVirtualController.value = sharedPref.getBoolean("useVirtualController", true)
-        isGrid.value = sharedPref.getBoolean("isGrid", true)
-        useSwitchLayout.value = sharedPref.getBoolean("useSwitchLayout", true)
-        enableMotion.value = sharedPref.getBoolean("enableMotion", true)
-        enablePerformanceMode.value = sharedPref.getBoolean("enablePerformanceMode", false)
-        controllerStickSensitivity.value = sharedPref.getFloat("controllerStickSensitivity", 1.0f)
-        skipMemoryBarriers.value = sharedPref.getBoolean("skipMemoryBarriers", false) // 初始化
-        regionCode.value = sharedPref.getInt("regionCode", RegionCode.USA.ordinal) // 默认USA
-        systemLanguage.value = sharedPref.getInt("systemLanguage", SystemLanguage.AmericanEnglish.ordinal) // 默认美式英语
-        audioEngineType.value = sharedPref.getInt("audioEngineType", 1) // 默认OpenAL
-        scalingFilter.value = sharedPref.getInt("scalingFilter", 0) // 默认：最近邻
-        scalingFilterLevel.value = sharedPref.getInt("scalingFilterLevel", 80) // 默认级别：80
-        antiAliasing.value = sharedPref.getInt("antiAliasing", 0) // 默认关闭
-        memoryConfiguration.value = sharedPref.getInt("memoryConfiguration", 0) // 默认4GB
-        systemTimeOffset.value = sharedPref.getLong("systemTimeOffset", 0) // 默认0秒偏移
-        
-        // 初始化自定义时间设置
-        customTimeEnabled.value = sharedPref.getBoolean("customTimeEnabled", false)
-        customTimeYear.value = sharedPref.getInt("customTimeYear", 2023)
-        customTimeMonth.value = sharedPref.getInt("customTimeMonth", 9)
-        customTimeDay.value = sharedPref.getInt("customTimeDay", 12)
-        customTimeHour.value = sharedPref.getInt("customTimeHour", 10)
-        customTimeMinute.value = sharedPref.getInt("customTimeMinute", 27)
-        customTimeSecond.value = sharedPref.getInt("customTimeSecond", 0)
-
-        enableDebugLogs.value = sharedPref.getBoolean("enableDebugLogs", false)
-        enableStubLogs.value = sharedPref.getBoolean("enableStubLogs", false)
-        enableInfoLogs.value = sharedPref.getBoolean("enableInfoLogs", true)
-        enableWarningLogs.value = sharedPref.getBoolean("enableWarningLogs", true)
-        enableErrorLogs.value = sharedPref.getBoolean("enableErrorLogs", true)
-        enableGuestLogs.value = sharedPref.getBoolean("enableGuestLogs", true)
-        enableAccessLogs.value = sharedPref.getBoolean("enableAccessLogs", false)
-        enableTraceLogs.value = sharedPref.getBoolean("enableStubLogs", false)
-        enableGraphicsLogs.value = sharedPref.getBoolean("enableGraphicsLogs", false)
+    fun refreshFirmwareVersion() {
+        firmwareVersion = RyujinxNative.jnaInstance.deviceGetInstalledFirmwareVersion()
     }
 
-    fun save(
-        isHostMapped: MutableState<Boolean>,
-        useNce: MutableState<Boolean>,
-        enableVsync: MutableState<Boolean>,
-        enableDocked: MutableState<Boolean>,
-        enablePtc: MutableState<Boolean>,
-        enableJitCacheEviction: MutableState<Boolean>,
-        ignoreMissingServices: MutableState<Boolean>,
-        enableShaderCache: MutableState<Boolean>,
-        enableTextureRecompression: MutableState<Boolean>,
-        resScale: MutableState<Float>,
-        aspectRatio: MutableState<Int>, // 新增参数：画面比例
-        useVirtualController: MutableState<Boolean>,
-        isGrid: MutableState<Boolean>,
-        useSwitchLayout: MutableState<Boolean>,
-        enableMotion: MutableState<Boolean>,
-        enablePerformanceMode: MutableState<Boolean>,
-        controllerStickSensitivity: MutableState<Float>,
-        enableDebugLogs: MutableState<Boolean>,
-        enableStubLogs: MutableState<Boolean>,
-        enableInfoLogs: MutableState<Boolean>,
-        enableWarningLogs: MutableState<Boolean>,
-        enableErrorLogs: MutableState<Boolean>,
-        enableGuestLogs: MutableState<Boolean>,
-        enableAccessLogs: MutableState<Boolean>,
-        enableTraceLogs: MutableState<Boolean>,
-        enableGraphicsLogs: MutableState<Boolean>,
-        skipMemoryBarriers: MutableState<Boolean>, // 新增参数
-        regionCode: MutableState<Int>, // 新增参数：区域代码
-        systemLanguage: MutableState<Int>, // 新增参数：系统语言
-        audioEngineType: MutableState<Int>, // 新增音频引擎参数
-        scalingFilter: MutableState<Int>, // 新增：缩放过滤器
-        scalingFilterLevel: MutableState<Int>, // 新增：缩放过滤器级别
-        antiAliasing: MutableState<Int>, // 新增：抗锯齿模式
-        memoryConfiguration: MutableState<Int>, // 新增：内存配置
-        systemTimeOffset: MutableState<Long>, // 新增：系统时间偏移
-        customTimeEnabled: MutableState<Boolean>,
-        customTimeYear: MutableState<Int>,
-        customTimeMonth: MutableState<Int>,
-        customTimeDay: MutableState<Int>,
-        customTimeHour: MutableState<Int>,
-        customTimeMinute: MutableState<Int>,
-        customTimeSecond: MutableState<Int>
-    ) {
-        val editor = sharedPref.edit()
+    fun loadGame(game: GameModel): Int {
+        val descriptor = game.open()
 
-        editor.putBoolean("isHostMapped", isHostMapped.value)
-        editor.putBoolean("useNce", useNce.value)
-        editor.putBoolean("enableVsync", enableVsync.value)
-        editor.putBoolean("enableDocked", enableDocked.value)
-        editor.putBoolean("enablePtc", enablePtc.value)
-        editor.putBoolean("enableJitCacheEviction", enableJitCacheEviction.value)
-        editor.putBoolean("ignoreMissingServices", ignoreMissingServices.value)
-        editor.putBoolean("enableShaderCache", enableShaderCache.value)
-        editor.putBoolean("enableTextureRecompression", enableTextureRecompression.value)
-        editor.putFloat("resScale", resScale.value)
-        editor.putInt("aspect_ratio", aspectRatio.value) // 保存画面比例设置
-        editor.putBoolean("useVirtualController", useVirtualController.value)
-        editor.putBoolean("isGrid", isGrid.value)
-        editor.putBoolean("useSwitchLayout", useSwitchLayout.value)
-        editor.putBoolean("enableMotion", enableMotion.value)
-        editor.putBoolean("enablePerformanceMode", enablePerformanceMode.value)
-        editor.putFloat("controllerStickSensitivity", controllerStickSensitivity.value)
-        editor.putBoolean("skipMemoryBarriers", skipMemoryBarriers.value) // 保存
-        editor.putInt("regionCode", regionCode.value) // 保存区域代码
-        editor.putInt("systemLanguage", systemLanguage.value) // 保存系统语言
-        editor.putInt("audioEngineType", audioEngineType.value) // 保存音频引擎设置
-        editor.putInt("scalingFilter", scalingFilter.value) // 保存缩放过滤器
-        editor.putInt("scalingFilterLevel", scalingFilterLevel.value) // 保存缩放过滤器级别
-        editor.putInt("antiAliasing", antiAliasing.value) // 保存抗锯齿设置
-        editor.putInt("memoryConfiguration", memoryConfiguration.value) // 保存内存配置
-        editor.putLong("systemTimeOffset", systemTimeOffset.value) // 保存系统时间偏移
-        
-        // 保存自定义时间设置
-        editor.putBoolean("customTimeEnabled", customTimeEnabled.value)
-        editor.putInt("customTimeYear", customTimeYear.value)
-        editor.putInt("customTimeMonth", customTimeMonth.value)
-        editor.putInt("customTimeDay", customTimeDay.value)
-        editor.putInt("customTimeHour", customTimeHour.value)
-        editor.putInt("customTimeMinute", customTimeMinute.value)
-        editor.putInt("customTimeSecond", customTimeSecond.value)
+        if (descriptor == 0)
+            return 0
 
-        editor.putBoolean("enableDebugLogs", enableDebugLogs.value)
-        editor.putBoolean("enableStubLogs", enableStubLogs.value)
-        editor.putBoolean("enableInfoLogs", enableInfoLogs.value)
-        editor.putBoolean("enableWarningLogs", enableWarningLogs.value)
-        editor.putBoolean("enableErrorLogs", enableErrorLogs.value)
-        editor.putBoolean("enableGuestLogs", enableGuestLogs.value)
-        editor.putBoolean("enableAccessLogs", enableAccessLogs.value)
-        editor.putBoolean("enableTraceLogs", enableTraceLogs.value)
-        editor.putBoolean("enableGraphicsLogs", enableGraphicsLogs.value)
+        val update = game.openUpdate()
 
-        editor.apply()
-        activity.storageHelper!!.onFolderSelected = previousFolderCallback
-
-        // 设置跳过内存屏障
-        RyujinxNative.jnaInstance.setSkipMemoryBarriers(skipMemoryBarriers.value)
-
-        // 设置画面比例
-        RyujinxNative.jnaInstance.setAspectRatio(aspectRatio.value)
-
-        // 设置缩放过滤器和级别
-        RyujinxNative.jnaInstance.setScalingFilter(scalingFilter.value)
-        RyujinxNative.jnaInstance.setScalingFilterLevel(scalingFilterLevel.value)
-
-        // 设置抗锯齿
-        RyujinxNative.jnaInstance.setAntiAliasing(antiAliasing.value)
-
-        // 设置内存配置
-        RyujinxNative.jnaInstance.setMemoryConfiguration(memoryConfiguration.value)
-
-        // 计算并设置系统时间偏移
-        if (customTimeEnabled.value) {
-            // 创建Calendar实例并设置自定义时间
-            val calendar = Calendar.getInstance()
-            calendar.set(customTimeYear.value, customTimeMonth.value - 1, customTimeDay.value, 
-                        customTimeHour.value, customTimeMinute.value, customTimeSecond.value)
-            
-            // 计算自定义时间与当前时间的偏移量（秒）
-            val customTimeMillis = calendar.timeInMillis
-            val currentTimeMillis = System.currentTimeMillis()
-            val timeOffset = (customTimeMillis - currentTimeMillis) / 1000
-            
-            // 设置系统时间偏移
-            RyujinxNative.jnaInstance.setSystemTimeOffset(timeOffset)
-        } else {
-            // 如果不使用自定义时间，则使用之前设置的系统时间偏移
-            RyujinxNative.jnaInstance.setSystemTimeOffset(systemTimeOffset.value)
+        if(update == -2)
+        {
+            return -2
         }
 
-        RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Debug.ordinal, enableDebugLogs.value)
-        RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Info.ordinal, enableInfoLogs.value)
-        RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Stub.ordinal, enableStubLogs.value)
-        RyujinxNative.jnaInstance.loggingSetEnabled(
-            LogLevel.Warning.ordinal,
-            enableWarningLogs.value
+        gameModel = game
+        isMiiEditorLaunched = false
+
+        val settings = QuickSettings(activity)
+
+        var success = RyujinxNative.jnaInstance.graphicsInitialize(
+            enableShaderCache = settings.enableShaderCache,
+            enableTextureRecompression = settings.enableTextureRecompression,
+            rescale = settings.resScale,
+            backendThreading = org.ryujinx.android.BackendThreading.Auto.ordinal
         )
-        RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Error.ordinal, enableErrorLogs.value)
-        RyujinxNative.jnaInstance.loggingSetEnabled(
-            LogLevel.AccessLog.ordinal,
-            enableAccessLogs.value
+
+        if (!success)
+            return 0
+
+        val nativeHelpers = NativeHelpers.instance
+        val nativeInterop = NativeGraphicsInterop()
+        nativeInterop.VkRequiredExtensions = arrayOf(
+            "VK_KHR_surface", "VK_KHR_android_surface"
         )
-        RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Guest.ordinal, enableGuestLogs.value)
-        RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Trace.ordinal, enableTraceLogs.value)
-        RyujinxNative.jnaInstance.loggingEnabledGraphicsLog(enableGraphicsLogs.value)
-    }
+        nativeInterop.VkCreateSurface = nativeHelpers.getCreateSurfacePtr()
+        nativeInterop.SurfaceHandle = 0
 
-    fun openGameFolder() {
-        val path = sharedPref.getString("gameFolder", "") ?: ""
+        val driverViewModel = VulkanDriverViewModel(activity)
+        val drivers = driverViewModel.getAvailableDrivers()
 
-        if (path.isEmpty())
-            activity.storageHelper?.storage?.openFolderPicker()
-        else
-            activity.storageHelper?.storage?.openFolderPicker(
-                activity.storageHelper!!.storage.requestCodeFolderPicker,
-                FileFullPath(activity, path)
-            )
-    }
+        var driverHandle = 0L
 
-    fun importProdKeys() {
-        activity.storageHelper!!.onFileSelected = { _, files ->
-            run {
-                activity.storageHelper!!.onFileSelected = previousFileCallback
-                val file = files.firstOrNull()
-                file?.apply {
-                    if (name == "prod.keys") {
-                        val outputFile = File(MainActivity.AppPath + "/system")
-                        outputFile.delete()
+        if (driverViewModel.selected.isNotEmpty()) {
+            val metaData = drivers.find { it.driverPath == driverViewModel.selected }
 
-                        thread {
-                            file.copyFileTo(
-                                activity,
-                                outputFile,
-                                callback = object : FileCallback() {
-                                })
-                        }
+            metaData?.apply {
+                val privatePath = activity.filesDir
+                val privateDriverPath = privatePath.canonicalPath + "/driver/"
+                val pD = File(privateDriverPath)
+                if (pD.exists())
+                    pD.deleteRecursively()
+
+                pD.mkdirs()
+
+                val driver = File(driverViewModel.selected)
+                val parent = driver.parentFile
+                if (parent != null) {
+                    for (file in parent.walkTopDown()) {
+                        if (file.absolutePath == parent.absolutePath)
+                            continue
+                        file.copyTo(File(privateDriverPath + file.name), true)
                     }
                 }
+
+                driverHandle = NativeHelpers.instance.loadDriver(
+                    activity.applicationInfo.nativeLibraryDir!! + "/",
+                    privateDriverPath,
+                    this.libraryName
+                )
             }
+
         }
-        activity.storageHelper?.storage?.openFilePicker()
+
+        val extensions = nativeInterop.VkRequiredExtensions
+
+        success = RyujinxNative.jnaInstance.graphicsInitializeRenderer(
+            extensions!!,
+            extensions.size,
+            driverHandle
+        )
+        if (!success)
+            return 0
+
+        val semaphore = Semaphore(1, 0)
+        runBlocking {
+            semaphore.acquire()
+            launchOnUiThread {
+                // We are only able to initialize the emulation context on the main thread
+                val tzId = TimeZone.getDefault().id
+                
+                // 获取当前系统时间偏移，而不是使用QuickSettings中的旧值
+                val currentTimeOffset = RyujinxNative.jnaInstance.getSystemTimeOffset()
+                
+                success = RyujinxNative.jnaInstance.deviceInitialize(
+                    settings.isHostMapped,
+                    settings.useNce,
+                    settings.systemLanguage,
+                    settings.regionCode,
+                    settings.enableVsync,
+                    settings.enableDocked,
+                    settings.enablePtc,
+                    settings.enableJitCacheEviction,
+                    false,
+                    tzId,
+                    settings.ignoreMissingServices,
+                    settings.audioEngineType,
+                    settings.memoryConfiguration,
+                    currentTimeOffset // 使用当前设置的偏移量
+                )
+
+                semaphore.release()
+            }
+            semaphore.acquire()
+            semaphore.release()
+        }
+
+        if (!success)
+            return 0
+
+        success =
+            RyujinxNative.jnaInstance.deviceLoadDescriptor(descriptor, game.type.ordinal, update)
+
+        return if (success) 1 else 0
     }
 
-    fun selectFirmware(installState: MutableState<FirmwareInstallState>) {
-        if (installState.value != FirmwareInstallState.None)
-            return
-        activity.storageHelper!!.onFileSelected = { _, files ->
-            run {
-                activity.storageHelper!!.onFileSelected = previousFileCallback
-                val file = files.firstOrNull()
-                file?.apply {
-                    if (extension == "xci" || extension == "zip") {
-                        installState.value = FirmwareInstallState.Verifying
-                        thread {
-                            val descriptor =
-                                activity.contentResolver.openFileDescriptor(file.uri, "rw")
-                            descriptor?.use { d ->
-                                selectedFirmwareVersion =
-                                    RyujinxNative.jnaInstance.deviceVerifyFirmware(
-                                        d.fd,
-                                        extension == "xci"
-                                    )
-                                selectedFirmwareFile = file
-                                if (!selectedFirmwareVersion.isEmpty()) {
-                                    installState.value = FirmwareInstallState.Query
-                                } else {
-                                    installState.value = FirmwareInstallState.Cancelled
-                                }
-                            }
-                        }
+    fun loadMiiEditor(): Boolean {
+        gameModel = null
+        isMiiEditorLaunched = true
+
+        val settings = QuickSettings(activity)
+
+        var success = RyujinxNative.jnaInstance.graphicsInitialize(
+            enableShaderCache = settings.enableShaderCache,
+            enableTextureRecompression = settings.enableTextureRecompression,
+            rescale = settings.resScale,
+            backendThreading = org.ryujinx.android.BackendThreading.Auto.ordinal
+        )
+
+        if (!success)
+            return false
+
+        val nativeHelpers = NativeHelpers.instance
+        val nativeInterop = NativeGraphicsInterop()
+        nativeInterop.VkRequiredExtensions = arrayOf(
+            "VK_KHR_surface", "VK_KHR_android_surface"
+        )
+        nativeInterop.VkCreateSurface = nativeHelpers.getCreateSurfacePtr()
+        nativeInterop.SurfaceHandle = 0
+
+        val driverViewModel = VulkanDriverViewModel(activity)
+        val drivers = driverViewModel.getAvailableDrivers()
+
+        var driverHandle = 0L
+
+        if (driverViewModel.selected.isNotEmpty()) {
+            val metaData = drivers.find { it.driverPath == driverViewModel.selected }
+
+            metaData?.apply {
+                val privatePath = activity.filesDir
+                val privateDriverPath = privatePath.canonicalPath + "/driver/"
+                val pD = File(privateDriverPath)
+                if (pD.exists())
+                    pD.deleteRecursively()
+
+                pD.mkdirs()
+
+                val driver = File(driverViewModel.selected)
+                val parent = driver.parentFile
+                if (parent != null) {
+                    for (file in parent.walkTopDown()) {
+                        if (file.absolutePath == parent.absolutePath)
+                            continue
+                        file.copyTo(File(privateDriverPath + file.name), true)
+                    }
+                }
+
+                driverHandle = NativeHelpers.instance.loadDriver(
+                    activity.applicationInfo.nativeLibraryDir!! + "/",
+                    privateDriverPath,
+                    this.libraryName
+                )
+            }
+
+        }
+
+        val extensions = nativeInterop.VkRequiredExtensions
+
+        success = RyujinxNative.jnaInstance.graphicsInitializeRenderer(
+            extensions!!,
+            extensions.size,
+            driverHandle
+        )
+        if (!success)
+            return false
+
+        val semaphore = Semaphore(1, 0)
+        runBlocking {
+            semaphore.acquire()
+            launchOnUiThread {
+                // We are only able to initialize the emulation context on the main thread
+                val tzId = TimeZone.getDefault().id
+                
+                // 获取当前系统时间偏移，而不是使用QuickSettings中的旧值
+                val currentTimeOffset = RyujinxNative.jnaInstance.getSystemTimeOffset()
+                
+                success = RyujinxNative.jnaInstance.deviceInitialize(
+                    settings.isHostMapped,
+                    settings.useNce,
+                    settings.systemLanguage,
+                    settings.regionCode,
+                    settings.enableVsync,
+                    settings.enableDocked,
+                    settings.enablePtc,
+                    settings.enableJitCacheEviction,
+                    false,
+                    tzId,
+                    settings.ignoreMissingServices,
+                    settings.audioEngineType,
+                    settings.memoryConfiguration,
+                    currentTimeOffset // 使用当前设置的偏移量
+                )
+
+                semaphore.release()
+            }
+            semaphore.acquire()
+            semaphore.release()
+        }
+
+        if (!success)
+            return false
+
+        success = RyujinxNative.jnaInstance.deviceLaunchMiiEditor()
+
+        return success
+    }
+
+    fun clearPptcCache(titleId: String) {
+        if (titleId.isNotEmpty()) {
+            val basePath = MainActivity.AppPath + "/games/$titleId/cache/cpu"
+            if (File(basePath).exists()) {
+                var caches = mutableListOf<String>()
+
+                val mainCache = basePath + "${File.separator}0"
+                File(mainCache).listFiles()?.forEach {
+                    if (it.isFile && it.name.endsWith(".cache"))
+                        caches.add(it.absolutePath)
+                }
+                val backupCache = basePath + "${File.separator}1"
+                File(backupCache).listFiles()?.forEach {
+                    if (it.isFile && it.name.endsWith(".cache"))
+                        caches.add(it.absolutePath)
+                }
+                for (path in caches)
+                    File(path).delete()
+            }
+        }
+    }
+
+    fun purgeShaderCache(titleId: String) {
+        if (titleId.isNotEmpty()) {
+            val basePath = MainActivity.AppPath + "/games/$titleId/cache/shader"
+            if (File(basePath).exists()) {
+                var caches = mutableListOf<String>()
+                File(basePath).listFiles()?.forEach {
+                    if (!it.isFile)
+                        it.delete()
+                    else {
+                        if (it.name.endsWith(".toc") || it.name.endsWith(".data"))
+                            caches.add(it.absolutePath)
+                    }
+                }
+                for (path in caches)
+                    File(path).delete()
+            }
+        }
+    }
+
+    fun deleteCache(titleId: String) {
+        fun deleteDirectory(directory: File) {
+            if (directory.exists() && directory.isDirectory) {
+                directory.listFiles()?.forEach { file ->
+                    if (file.isDirectory) {
+                        deleteDirectory(file)
                     } else {
-                        installState.value = FirmwareInstallState.Cancelled
+                        file.delete()
                     }
                 }
+                directory.delete()
             }
         }
-        activity.storageHelper?.storage?.openFilePicker()
-    }
-
-    fun installFirmware(installState: MutableState<FirmwareInstallState>) {
-        if (installState.value != FirmwareInstallState.Query)
-            return
-        if (selectedFirmwareFile == null) {
-            installState.value = FirmwareInstallState.None
-            return
-        }
-        selectedFirmwareFile?.apply {
-            val descriptor = activity.contentResolver.openFileDescriptor(uri, "rw")
-
-            if(descriptor != null)
-            {
-                installState.value = FirmwareInstallState.Install
-                thread {
-                    Thread.sleep(1000)
-
-                    try {
-                        RyujinxNative.jnaInstance.deviceInstallFirmware(
-                            descriptor.fd,
-                            extension == "xci"
-                        )
-                    } finally {
-                        MainActivity.mainViewModel?.refreshFirmwareVersion()
-                        installState.value = FirmwareInstallState.Done
-                    }
-                }
+        if (titleId.isNotEmpty()) {
+            val basePath = MainActivity.AppPath + "/games/$titleId/cache"
+            if (File(basePath).exists()) {
+                deleteDirectory(File(basePath))
             }
         }
     }
 
-    fun clearFirmwareSelection(installState: MutableState<FirmwareInstallState>) {
-        selectedFirmwareFile = null
-        selectedFirmwareVersion = ""
-        installState.value = FirmwareInstallState.None
+    fun setStatStates(
+        fifo: MutableState<Double>,
+        gameFps: MutableState<Double>,
+        gameTime: MutableState<Double>,
+        usedMem: MutableState<Int>,
+        totalMem: MutableState<Int>,
+        batteryTemperature: MutableState<Double>,
+        batteryLevel: MutableState<Int>,
+        isCharging: MutableState<Boolean>
+    ) {
+        fifoState = fifo
+        gameFpsState = gameFps
+        gameTimeState = gameTime
+        usedMemState = usedMem
+        totalMemState = totalMem
+        batteryTemperatureState = batteryTemperature
+        batteryLevelState = batteryLevel
+        isChargingState = isCharging
     }
-}
 
-enum class FirmwareInstallState {
-    None,
-    Cancelled,
-    Verifying,
-    Query,
-    Install,
-    Done
+    fun updateStats(
+        fifo: Double,
+        gameFps: Double,
+        gameTime: Double
+    ) {
+        fifoState?.apply {
+            this.value = fifo
+        }
+        gameFpsState?.apply {
+            this.value = gameFps
+        }
+        gameTimeState?.apply {
+            this.value = gameTime
+        }
+        usedMemState?.let { usedMem ->
+            totalMemState?.let { totalMem ->
+                MainActivity.performanceMonitor.getMemoryUsage(
+                    usedMem,
+                    totalMem
+                )
+            }
+        }
+        
+        // 更新电池温度
+        batteryTemperatureState?.apply {
+            this.value = MainActivity.performanceMonitor.getBatteryTemperature()
+        }
+        
+        // 更新电池电量
+        batteryLevelState?.apply {
+            this.value = MainActivity.performanceMonitor.getBatteryLevel()
+        }
+        
+        // 更新充电状态
+        isChargingState?.apply {
+            this.value = MainActivity.performanceMonitor.isCharging()
+        }
+    }
+
+    fun setGameController(controller: GameController) {
+        this.controller = controller
+    }
+
+    fun navigateToGame() {
+        activity.setFullScreen(true)
+        navController?.navigate("game")
+        activity.isGameRunning = true
+        if (QuickSettings(activity).enableMotion)
+            motionSensorManager?.register()
+    }
+
+    fun setProgressStates(
+        showLoading: MutableState<Boolean>,
+        progressValue: MutableState<Float>,
+        progress: MutableState<String>
+    ) {
+        this.showLoading = showLoading
+        this.progressValue = progressValue
+        this.progress = progress
+        gameHost?.setProgressStates(showLoading, progressValue, progress)
+    }
 }
