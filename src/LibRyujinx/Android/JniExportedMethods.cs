@@ -650,9 +650,22 @@ namespace LibRyujinx
             try
             {
                 // 将 Android 端的枚举值转换为 GAL 的 ScalingFilter
-                var scalingFilter = ConvertToGALScalingFilter((AndroidScalingFilter)filter);
+                var androidFilter = (AndroidScalingFilter)filter;
+                var scalingFilter = ConvertToGALScalingFilter(androidFilter);
+                var configFilter = ConvertToConfigScalingFilter(androidFilter);
                 
-                Logger.Info?.Print(LogClass.Application, $"Setting scaling filter: Android={(AndroidScalingFilter)filter}, GAL={scalingFilter}");
+                Logger.Info?.Print(LogClass.Application, $"Setting scaling filter: Android={androidFilter}, GAL={scalingFilter}, Config={configFilter}");
+                
+                // 更新配置状态
+                if (ConfigurationState.Instance != null)
+                {
+                    ConfigurationState.Instance.Graphics.ScalingFilter.Value = configFilter;
+                    Logger.Info?.Print(LogClass.Application, $"ConfigurationState scaling filter updated to: {configFilter}");
+                }
+                else
+                {
+                    Logger.Warning?.Print(LogClass.Application, "ConfigurationState.Instance is null, cannot update scaling filter");
+                }
                 
                 // 如果渲染器已初始化，直接应用设置
                 if (Renderer != null && Renderer.Window != null)
@@ -678,6 +691,17 @@ namespace LibRyujinx
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call: setScalingFilterLevel");
             try
             {
+                // 更新配置状态
+                if (ConfigurationState.Instance != null)
+                {
+                    ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value = level;
+                    Logger.Info?.Print(LogClass.Application, $"ConfigurationState scaling filter level updated to: {level}");
+                }
+                else
+                {
+                    Logger.Warning?.Print(LogClass.Application, "ConfigurationState.Instance is null, cannot update scaling filter level");
+                }
+                
                 // 如果渲染器已初始化，直接应用设置
                 if (Renderer != null && Renderer.Window != null)
                 {
@@ -703,9 +727,22 @@ namespace LibRyujinx
             try
             {
                 // 将 Android 端的枚举值转换为 GAL 的 AntiAliasing
-                var antiAliasing = ConvertToGALAntiAliasing((AndroidAntiAliasing)mode);
+                var androidAA = (AndroidAntiAliasing)mode;
+                var antiAliasing = ConvertToGALAntiAliasing(androidAA);
+                var configAA = ConvertToConfigAntiAliasing(androidAA);
                 
-                Logger.Info?.Print(LogClass.Application, $"Setting anti-aliasing: Android={(AndroidAntiAliasing)mode}, GAL={antiAliasing}");
+                Logger.Info?.Print(LogClass.Application, $"Setting anti-aliasing: Android={androidAA}, GAL={antiAliasing}, Config={configAA}");
+                
+                // 更新配置状态
+                if (ConfigurationState.Instance != null)
+                {
+                    ConfigurationState.Instance.Graphics.AntiAliasing.Value = configAA;
+                    Logger.Info?.Print(LogClass.Application, $"ConfigurationState anti-aliasing updated to: {configAA}");
+                }
+                else
+                {
+                    Logger.Warning?.Print(LogClass.Application, "ConfigurationState.Instance is null, cannot update anti-aliasing");
+                }
                 
                 // 如果渲染器已初始化，直接应用设置
                 if (Renderer != null && Renderer.Window != null)
@@ -724,6 +761,19 @@ namespace LibRyujinx
             }
         }
 
+        // 辅助方法：将 Android 缩放过滤器转换为 Configuration 缩放过滤器
+        private static Ryujinx.Common.Configuration.ScalingFilter ConvertToConfigScalingFilter(AndroidScalingFilter androidFilter)
+        {
+            return androidFilter switch
+            {
+                AndroidScalingFilter.Bilinear => Ryujinx.Common.Configuration.ScalingFilter.Bilinear,
+                AndroidScalingFilter.Nearest => Ryujinx.Common.Configuration.ScalingFilter.Nearest,
+                AndroidScalingFilter.Fsr => Ryujinx.Common.Configuration.ScalingFilter.Fsr,
+                AndroidScalingFilter.Area => Ryujinx.Common.Configuration.ScalingFilter.Area,
+                _ => Ryujinx.Common.Configuration.ScalingFilter.Bilinear
+            };
+        }
+
         // 辅助方法：将 Android 缩放过滤器转换为 GAL 缩放过滤器
         private static Ryujinx.Graphics.GAL.ScalingFilter ConvertToGALScalingFilter(AndroidScalingFilter androidFilter)
         {
@@ -734,6 +784,21 @@ namespace LibRyujinx
                 AndroidScalingFilter.Fsr => Ryujinx.Graphics.GAL.ScalingFilter.Fsr,
                 AndroidScalingFilter.Area => Ryujinx.Graphics.GAL.ScalingFilter.Area,
                 _ => Ryujinx.Graphics.GAL.ScalingFilter.Bilinear
+            };
+        }
+
+        // 辅助方法：将 Android 抗锯齿转换为 Configuration 抗锯齿
+        private static Ryujinx.Common.Configuration.AntiAliasing ConvertToConfigAntiAliasing(AndroidAntiAliasing androidAA)
+        {
+            return androidAA switch
+            {
+                AndroidAntiAliasing.None => Ryujinx.Common.Configuration.AntiAliasing.None,
+                AndroidAntiAliasing.Fxaa => Ryujinx.Common.Configuration.AntiAliasing.Fxaa,
+                AndroidAntiAliasing.SmaaLow => Ryujinx.Common.Configuration.AntiAliasing.SmaaLow,
+                AndroidAntiAliasing.SmaaMedium => Ryujinx.Common.Configuration.AntiAliasing.SmaaMedium,
+                AndroidAntiAliasing.SmaaHigh => Ryujinx.Common.Configuration.AntiAliasing.SmaaHigh,
+                AndroidAntiAliasing.SmaaUltra => Ryujinx.Common.Configuration.AntiAliasing.SmaaUltra,
+                _ => Ryujinx.Common.Configuration.AntiAliasing.None
             };
         }
 
