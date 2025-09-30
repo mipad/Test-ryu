@@ -1128,6 +1128,7 @@ ExpandableView(onCardArrowClick = { }, title = "Post-Processing") {
             Text(text = "Anti-Aliasing")
             Text(
                 text = when (antiAliasing.value) {
+                    0 -> "None"
                     1 -> "Fxaa"
                     2 -> "SmaaLow"
                     3 -> "SmaaMedium"
