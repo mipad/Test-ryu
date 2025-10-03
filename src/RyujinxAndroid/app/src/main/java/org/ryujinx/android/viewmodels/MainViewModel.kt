@@ -92,10 +92,16 @@ class MainViewModel(val activity: MainActivity) {
         val settings = QuickSettings(activity)
 
         var success = RyujinxNative.jnaInstance.graphicsInitialize(
+            rescale = settings.resScale,
+            maxAnisotropy = settings.maxAnisotropy,
+            fastGpuTime = settings.fastGpuTime,
+            fast2DCopy = settings.fast2DCopy,
+            enableMacroJit = settings.enableMacroJit,
+            enableMacroHLE = settings.enableMacroHLE,
             enableShaderCache = settings.enableShaderCache,
             enableTextureRecompression = settings.enableTextureRecompression,
-            rescale = settings.resScale,
-            backendThreading = org.ryujinx.android.BackendThreading.Auto.ordinal
+            backendThreading = org.ryujinx.android.BackendThreading.Auto.ordinal,
+            aspectRatio = settings.aspectRatio.ordinal
         )
 
         if (!success)
@@ -200,10 +206,16 @@ class MainViewModel(val activity: MainActivity) {
         val settings = QuickSettings(activity)
 
         var success = RyujinxNative.jnaInstance.graphicsInitialize(
+            rescale = settings.resScale,
+            maxAnisotropy = settings.maxAnisotropy,
+            fastGpuTime = settings.fastGpuTime,
+            fast2DCopy = settings.fast2DCopy,
+            enableMacroJit = settings.enableMacroJit,
+            enableMacroHLE = settings.enableMacroHLE,
             enableShaderCache = settings.enableShaderCache,
             enableTextureRecompression = settings.enableTextureRecompression,
-            rescale = settings.resScale,
-            backendThreading = org.ryujinx.android.BackendThreading.Auto.ordinal
+            backendThreading = org.ryujinx.android.BackendThreading.Auto.ordinal,
+            aspectRatio = settings.aspectRatio.ordinal
         )
 
         if (!success)
@@ -442,5 +454,56 @@ class MainViewModel(val activity: MainActivity) {
         this.progressValue = progressValue
         this.progress = progress
         gameHost?.setProgressStates(showLoading, progressValue, progress)
+    }
+
+    // 新增：应用图形设置的方法
+    fun applyGraphicsSettings() {
+        val settings = QuickSettings(activity)
+        
+        // 应用抗锯齿设置
+        RyujinxNative.setAntiAliasing(settings.antiAliasing.ordinal)
+        
+        // 应用缩放过滤器设置
+        RyujinxNative.jnaInstance.setScalingFilter(settings.scalingFilter.ordinal)
+        RyujinxNative.jnaInstance.setScalingFilterLevel(settings.scalingFilterLevel)
+        
+        // 应用画面比例设置
+        RyujinxNative.jnaInstance.setAspectRatio(settings.aspectRatio.ordinal)
+        
+        // 应用内存配置
+        RyujinxNative.setMemoryConfiguration(settings.memoryConfiguration.ordinal)
+        
+        // 应用系统时间偏移
+        RyujinxNative.setSystemTimeOffset(settings.systemTimeOffset)
+    }
+
+    // 新增：获取金手指列表
+    fun getCheats(titleId: String, gamePath: String): Array<String> {
+        return RyujinxNative.getCheats(titleId, gamePath)
+    }
+
+    // 新增：获取已启用的金手指
+    fun getEnabledCheats(titleId: String): Array<String> {
+        return RyujinxNative.getEnabledCheats(titleId)
+    }
+
+    // 新增：设置金手指启用状态
+    fun setCheatEnabled(titleId: String, cheatId: String, enabled: Boolean) {
+        RyujinxNative.setCheatEnabled(titleId, cheatId, enabled)
+    }
+
+    // 新增：保存金手指设置
+    fun saveCheats(titleId: String) {
+        RyujinxNative.saveCheats(titleId)
+    }
+
+    // 新增：获取系统时间偏移
+    fun getSystemTimeOffset(): Long {
+        return RyujinxNative.getSystemTimeOffset()
+    }
+
+    // 新增：设置音频后端
+    fun setAudioBackend(audioBackend: Int) {
+        RyujinxNative.jnaInstance.setAudioBackend(audioBackend)
     }
 }
