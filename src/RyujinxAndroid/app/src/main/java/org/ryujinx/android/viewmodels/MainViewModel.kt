@@ -91,11 +91,13 @@ class MainViewModel(val activity: MainActivity) {
 
         val settings = QuickSettings(activity)
 
+        // 在图形初始化时传递画面比例设置
         var success = RyujinxNative.jnaInstance.graphicsInitialize(
             enableShaderCache = settings.enableShaderCache,
             enableTextureRecompression = settings.enableTextureRecompression,
             rescale = settings.resScale,
-            backendThreading = org.ryujinx.android.BackendThreading.Auto.ordinal
+            backendThreading = org.ryujinx.android.BackendThreading.Auto.ordinal,
+            aspectRatio = settings.aspectRatio  // 新增：传递画面比例
         )
 
         if (!success)
@@ -155,26 +157,18 @@ class MainViewModel(val activity: MainActivity) {
         if (!success)
             return 0
 
+        // 在设备初始化之前设置图形选项
+        RyujinxNative.jnaInstance.setScalingFilter(settings.scalingFilter)
+        RyujinxNative.jnaInstance.setScalingFilterLevel(settings.scalingFilterLevel)
+        RyujinxNative.jnaInstance.setAntiAliasing(settings.antiAliasing)
+        RyujinxNative.jnaInstance.setAspectRatio(settings.aspectRatio)
+        RyujinxNative.jnaInstance.setMemoryConfiguration(settings.memoryConfiguration)
+        RyujinxNative.jnaInstance.setSystemTimeOffset(settings.systemTimeOffset)
+
         val semaphore = Semaphore(1, 0)
         runBlocking {
             semaphore.acquire()
             launchOnUiThread {
-                // 在设备初始化之前设置图形配置
-            val settings = QuickSettings(activity)
-            
-            // 设置缩放过滤器
-            RyujinxNative.jnaInstance.setScalingFilter(settings.scalingFilter)
-            RyujinxNative.jnaInstance.setScalingFilterLevel(settings.scalingFilterLevel)
-            
-            // 设置抗锯齿
-            RyujinxNative.jnaInstance.setAntiAliasing(settings.antiAliasing)
-            
-            // 设置内存配置
-            RyujinxNative.jnaInstance.setMemoryConfiguration(settings.memoryConfiguration)
-            
-            // 设置系统时间偏移
-            RyujinxNative.jnaInstance.setSystemTimeOffset(settings.systemTimeOffset)
-            
                 // We are only able to initialize the emulation context on the main thread
                 val tzId = TimeZone.getDefault().id
                 success = RyujinxNative.jnaInstance.deviceInitialize(
@@ -189,9 +183,9 @@ class MainViewModel(val activity: MainActivity) {
                     false,
                     tzId, // <<< Pass through Android device time zone
                     settings.ignoreMissingServices,
-                    settings.audioEngineType, // 新增音频引擎参数
+                    settings.audioEngineType, // 音频引擎参数
                     settings.memoryConfiguration, // 内存配置
-                    settings.systemTimeOffset // 新增系统时间偏移参数
+                    settings.systemTimeOffset // 系统时间偏移参数
                 )
 
                 semaphore.release()
@@ -215,11 +209,13 @@ class MainViewModel(val activity: MainActivity) {
 
         val settings = QuickSettings(activity)
 
+        // 在图形初始化时传递画面比例设置
         var success = RyujinxNative.jnaInstance.graphicsInitialize(
             enableShaderCache = settings.enableShaderCache,
             enableTextureRecompression = settings.enableTextureRecompression,
             rescale = settings.resScale,
-            backendThreading = org.ryujinx.android.BackendThreading.Auto.ordinal
+            backendThreading = org.ryujinx.android.BackendThreading.Auto.ordinal,
+            aspectRatio = settings.aspectRatio  // 新增：传递画面比例
         )
 
         if (!success)
@@ -279,26 +275,18 @@ class MainViewModel(val activity: MainActivity) {
         if (!success)
             return false
 
+        // 在设备初始化之前设置图形选项
+        RyujinxNative.jnaInstance.setScalingFilter(settings.scalingFilter)
+        RyujinxNative.jnaInstance.setScalingFilterLevel(settings.scalingFilterLevel)
+        RyujinxNative.jnaInstance.setAntiAliasing(settings.antiAliasing)
+        RyujinxNative.jnaInstance.setAspectRatio(settings.aspectRatio)
+        RyujinxNative.jnaInstance.setMemoryConfiguration(settings.memoryConfiguration)
+        RyujinxNative.jnaInstance.setSystemTimeOffset(settings.systemTimeOffset)
+
         val semaphore = Semaphore(1, 0)
         runBlocking {
             semaphore.acquire()
             launchOnUiThread {
-                // 在设备初始化之前设置图形配置
-            val settings = QuickSettings(activity)
-            
-            // 设置缩放过滤器
-            RyujinxNative.jnaInstance.setScalingFilter(settings.scalingFilter)
-            RyujinxNative.jnaInstance.setScalingFilterLevel(settings.scalingFilterLevel)
-            
-            // 设置抗锯齿
-            RyujinxNative.jnaInstance.setAntiAliasing(settings.antiAliasing)
-            
-            // 设置内存配置
-            RyujinxNative.jnaInstance.setMemoryConfiguration(settings.memoryConfiguration)
-            
-            // 设置系统时间偏移
-            RyujinxNative.jnaInstance.setSystemTimeOffset(settings.systemTimeOffset)
-            
                 // We are only able to initialize the emulation context on the main thread
                 val tzId = TimeZone.getDefault().id
                 success = RyujinxNative.jnaInstance.deviceInitialize(
@@ -313,9 +301,9 @@ class MainViewModel(val activity: MainActivity) {
                     false,
                     tzId, // <<< Pass through Android device time zone
                     settings.ignoreMissingServices,
-                    settings.audioEngineType, // 新增音频引擎参数
+                    settings.audioEngineType, // 音频引擎参数
                     settings.memoryConfiguration, // 内存配置
-                    settings.systemTimeOffset // 新增系统时间偏移参数
+                    settings.systemTimeOffset // 系统时间偏移参数
                 )
 
                 semaphore.release()
