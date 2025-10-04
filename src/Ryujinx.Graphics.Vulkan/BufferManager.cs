@@ -75,6 +75,9 @@ namespace Ryujinx.Graphics.Vulkan
             BufferUsageFlags.TransferSrcBit |
             BufferUsageFlags.TransferDstBit;
 
+        // 大缓冲区阈值 - 超过此大小的缓冲区使用页式管理
+        private const int LargeBufferThreshold = 16 * 1024 * 1024; // 16MB
+
         private readonly Device _device;
 
         private readonly IdList<BufferHolder> _buffers;
@@ -251,7 +254,17 @@ namespace Ryujinx.Graphics.Vulkan
             BufferAllocationType baseType = BufferAllocationType.HostMapped,
             bool forceMirrors = false)
         {
-            holder = Create(gd, size, forConditionalRendering: false, sparseCompatible, baseType);
+            // 对于大缓冲区，使用页式管理
+            if (size >= LargeBufferThreshold)
+            {
+                Logger.Info?.Print(LogClass.Gpu, $"Creating large buffer using paged management: Size=0x{size:X}");
+                holder = BufferHolder.CreatePaged(gd, _device, size, baseType);
+            }
+            else
+            {
+                holder = Create(gd, size, forConditionalRendering: false, sparseCompatible, baseType);
+            }
+            
             if (holder == null)
             {
                 Logger.Error?.Print(LogClass.Gpu, $"Failed to create buffer with size 0x{size:X} and type \"{baseType}\"");
