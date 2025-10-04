@@ -29,6 +29,10 @@ namespace Ryujinx.Graphics.Vulkan
             AccessFlags.TransferWriteBit |
             AccessFlags.UniformReadBit;
 
+        // 页大小配置
+        private const int PageSize = 1024 * 1024; // 1MB 页大小
+        private const int MaxPagesPerBuffer = 1024; // 最大页数
+
         private readonly VulkanRenderer _gd;
         private readonly Device _device;
         private readonly MemoryAllocation _allocation;
@@ -59,6 +63,12 @@ namespace Ryujinx.Graphics.Vulkan
         private Dictionary<ulong, StagingBufferReserved> _mirrors;
         private bool _useMirrors;
 
+        // 页式缓冲区管理
+        private readonly bool _isPaged;
+        private readonly BufferHolder[] _pages;
+        private readonly int _pageSize;
+        private readonly int _pageCount;
+
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, MemoryAllocation allocation, int size, BufferAllocationType type, BufferAllocationType currentType)
         {
             _gd = gd;
@@ -76,6 +86,24 @@ namespace Ryujinx.Graphics.Vulkan
 
             _flushLock = new ReaderWriterLockSlim();
             _useMirrors = gd.IsTBDR;
+
+            // 检查是否需要使用页式管理
+            _isPaged = size > PageSize * 4; // 大于4MB的缓冲区使用页式管理
+            if (_isPaged)
+            {
+                _pageSize = PageSize;
+                _pageCount = (size + _pageSize - 1) / _pageSize;
+                _pages = new BufferHolder[_pageCount];
+                
+                Logger.Info?.Print(LogClass.Gpu, $"Creating paged buffer: Size=0x{size:X}, Pages={_pageCount}, PageSize=0x{_pageSize:X}");
+            }
+            else
+            {
+                _isPaged = false;
+                _pages = null;
+                _pageSize = 0;
+                _pageCount = 0;
+            }
         }
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, Auto<MemoryAllocation> allocation, int size, BufferAllocationType type, BufferAllocationType currentType, int offset)
@@ -95,6 +123,11 @@ namespace Ryujinx.Graphics.Vulkan
             _activeType = currentType;
 
             _flushLock = new ReaderWriterLockSlim();
+            
+            _isPaged = false;
+            _pages = null;
+            _pageSize = 0;
+            _pageCount = 0;
         }
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, int size, Auto<MemoryAllocation>[] storageAllocations)
@@ -110,10 +143,115 @@ namespace Ryujinx.Graphics.Vulkan
             _activeType = BufferAllocationType.Sparse;
 
             _flushLock = new ReaderWriterLockSlim();
+            
+            _isPaged = false;
+            _pages = null;
+            _pageSize = 0;
+            _pageCount = 0;
+        }
+
+        // 页式缓冲区的构造函数
+        private BufferHolder(VulkanRenderer gd, Device device, BufferHolder[] pages, int totalSize)
+        {
+            _gd = gd;
+            _device = device;
+            _pages = pages;
+            Size = totalSize;
+            _isPaged = true;
+            _pageSize = pages[0].Size;
+            _pageCount = pages.Length;
+
+            // 对于页式缓冲区，这些字段不需要
+            _buffer = null;
+            _allocation = default;
+            _allocationAuto = null;
+            _allocationImported = false;
+            _bufferHandle = 0;
+            _map = IntPtr.Zero;
+            _waitable = new MultiFenceHolder(totalSize);
+            _baseType = BufferAllocationType.HostMapped;
+            _activeType = BufferAllocationType.HostMapped;
+            _flushLock = new ReaderWriterLockSlim();
+        }
+
+        public static BufferHolder CreatePaged(VulkanRenderer gd, Device device, int size, BufferAllocationType baseType = BufferAllocationType.HostMapped)
+        {
+            const int pageSize = PageSize;
+            int pageCount = (size + pageSize - 1) / pageSize;
+            
+            if (pageCount > MaxPagesPerBuffer)
+            {
+                Logger.Error?.Print(LogClass.Gpu, $"Too many pages required: {pageCount}, maximum is {MaxPagesPerBuffer}");
+                return null;
+            }
+
+            var pages = new BufferHolder[pageCount];
+            int remainingSize = size;
+
+            for (int i = 0; i < pageCount; i++)
+            {
+                int pageActualSize = Math.Min(pageSize, remainingSize);
+                var page = gd.BufferManager.Create(gd, pageActualSize, baseType: baseType);
+                
+                if (page == null)
+                {
+                    // 如果某个页创建失败，清理已创建的页
+                    Logger.Error?.Print(LogClass.Gpu, $"Failed to create page {i} of paged buffer (size=0x{pageActualSize:X})");
+                    for (int j = 0; j < i; j++)
+                    {
+                        pages[j]?.Dispose();
+                    }
+                    return null;
+                }
+
+                pages[i] = page;
+                remainingSize -= pageActualSize;
+            }
+
+            Logger.Info?.Print(LogClass.Gpu, $"Created paged buffer: TotalSize=0x{size:X}, Pages={pageCount}, PageSize=0x{pageSize:X}");
+            return new BufferHolder(gd, device, pages, size);
+        }
+
+        private (int pageIndex, int pageOffset) GetPageInfo(int offset)
+        {
+            if (!_isPaged) return (0, offset);
+            
+            int pageIndex = offset / _pageSize;
+            int pageOffset = offset % _pageSize;
+            return (pageIndex, pageOffset);
+        }
+
+        private BufferHolder GetPage(int pageIndex)
+        {
+            if (!_isPaged) return this;
+            if (pageIndex < 0 || pageIndex >= _pageCount) return null;
+            
+            // 延迟创建页
+            if (_pages[pageIndex] == null)
+            {
+                int pageSize = (pageIndex == _pageCount - 1) ? 
+                    Size - (pageIndex * _pageSize) : _pageSize;
+                    
+                _pages[pageIndex] = _gd.BufferManager.Create(_gd, pageSize, baseType: _baseType);
+                if (_pages[pageIndex] == null)
+                {
+                    Logger.Error?.Print(LogClass.Gpu, $"Failed to create page {pageIndex} for paged buffer");
+                    return null;
+                }
+            }
+            
+            return _pages[pageIndex];
         }
 
         public unsafe Auto<DisposableBufferView> CreateView(VkFormat format, int offset, int size, Action invalidateView)
         {
+            if (_isPaged)
+            {
+                // 页式缓冲区不支持创建视图
+                Logger.Warning?.Print(LogClass.Gpu, "Buffer views are not supported for paged buffers");
+                return null;
+            }
+
             var bufferViewCreateInfo = new BufferViewCreateInfo
             {
                 SType = StructureType.BufferViewCreateInfo,
@@ -130,6 +268,17 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe void InsertBarrier(CommandBuffer commandBuffer, bool isWrite)
         {
+            if (_isPaged)
+            {
+                // 对每个页插入屏障
+                for (int i = 0; i < _pageCount; i++)
+                {
+                    var page = GetPage(i);
+                    page?.InsertBarrier(commandBuffer, isWrite);
+                }
+                return;
+            }
+
             // If the last access is write, we always need a barrier to be sure we will read or modify
             // the correct data.
             // If the last access is read, and current one is a write, we need to wait until the
@@ -174,6 +323,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         private unsafe bool TryGetMirror(CommandBufferScoped cbs, ref int offset, int size, out Auto<DisposableBuffer> buffer)
         {
+            if (_isPaged)
+            {
+                // 页式缓冲区不支持镜像
+                buffer = null;
+                return false;
+            }
+
             size = Math.Min(size, Size - offset);
 
             // Does this binding need to be mirrored?
@@ -240,11 +396,24 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetBuffer()
         {
+            if (_isPaged)
+            {
+                // 页式缓冲区不能直接获取单个缓冲区
+                Logger.Warning?.Print(LogClass.Gpu, "Cannot get single buffer for paged buffer holder");
+                return null;
+            }
             return _buffer;
         }
 
         public Auto<DisposableBuffer> GetBuffer(CommandBuffer commandBuffer, bool isWrite = false, bool isSSBO = false)
         {
+            if (_isPaged)
+            {
+                // 页式缓冲区不支持直接获取整个缓冲区
+                Logger.Warning?.Print(LogClass.Gpu, "Cannot get entire buffer for paged buffer holder");
+                return null;
+            }
+
             if (isWrite)
             {
                 SignalWrite(0, Size);
@@ -255,6 +424,19 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetBuffer(CommandBuffer commandBuffer, int offset, int size, bool isWrite = false)
         {
+            if (_isPaged)
+            {
+                // 对于页式缓冲区，需要找到对应的页
+                var (pageIndex, pageOffset) = GetPageInfo(offset);
+                var page = GetPage(pageIndex);
+                if (page != null)
+                {
+                    int pageSize = Math.Min(size, page.Size - pageOffset);
+                    return page.GetBuffer(commandBuffer, pageOffset, pageSize, isWrite);
+                }
+                return null;
+            }
+
             if (isWrite)
             {
                 SignalWrite(offset, size);
@@ -265,6 +447,21 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetMirrorable(CommandBufferScoped cbs, ref int offset, int size, out bool mirrored)
         {
+            if (_isPaged)
+            {
+                // 页式缓冲区不支持镜像
+                mirrored = false;
+                var (pageIndex, pageOffset) = GetPageInfo(offset);
+                var page = GetPage(pageIndex);
+                if (page != null)
+                {
+                    offset = pageOffset;
+                    int pageSize = Math.Min(size, page.Size - pageOffset);
+                    return page.GetMirrorable(cbs, ref offset, pageSize, out mirrored);
+                }
+                return null;
+            }
+
             if (_pendingData != null && TryGetMirror(cbs, ref offset, size, out Auto<DisposableBuffer> result))
             {
                 mirrored = true;
@@ -284,6 +481,17 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void ClearMirrors()
         {
+            if (_isPaged)
+            {
+                // 对每个页清除镜像
+                for (int i = 0; i < _pageCount; i++)
+                {
+                    var page = GetPage(i);
+                    page?.ClearMirrors();
+                }
+                return;
+            }
+
             // Clear mirrors without forcing a flush. This happens when the command buffer is switched,
             // as all reserved areas on the staging buffer are released.
 
@@ -295,6 +503,27 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void ClearMirrors(CommandBufferScoped cbs, int offset, int size)
         {
+            if (_isPaged)
+            {
+                // 对重叠的页清除镜像
+                int startPage = offset / _pageSize;
+                int endPage = (offset + size - 1) / _pageSize;
+                
+                for (int i = startPage; i <= endPage; i++)
+                {
+                    var page = GetPage(i);
+                    if (page != null)
+                    {
+                        int pageOffset = (i == startPage) ? offset % _pageSize : 0;
+                        int pageSize = (i == endPage) ? 
+                            (offset + size) % _pageSize : _pageSize;
+                            
+                        page.ClearMirrors(cbs, pageOffset, pageSize);
+                    }
+                }
+                return;
+            }
+
             // Clear mirrors in the given range, and submit overlapping pending data.
 
             if (_pendingData != null)
@@ -320,6 +549,27 @@ namespace Ryujinx.Graphics.Vulkan
 
         private void UploadPendingData(CommandBufferScoped cbs, int offset, int size)
         {
+            if (_isPaged)
+            {
+                // 对重叠的页上传数据
+                int startPage = offset / _pageSize;
+                int endPage = (offset + size - 1) / _pageSize;
+                
+                for (int i = startPage; i <= endPage; i++)
+                {
+                    var page = GetPage(i);
+                    if (page != null)
+                    {
+                        int pageOffset = (i == startPage) ? offset % _pageSize : 0;
+                        int pageSize = (i == endPage) ? 
+                            (offset + size) % _pageSize : _pageSize;
+                            
+                        page.UploadPendingData(cbs, pageOffset, pageSize);
+                    }
+                }
+                return;
+            }
+
             var ranges = _pendingDataRanges.FindOverlaps(offset, size);
 
             if (ranges != null)
@@ -345,16 +595,47 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<MemoryAllocation> GetAllocation()
         {
+            if (_isPaged)
+            {
+                // 页式缓冲区没有单一分配
+                return null;
+            }
             return _allocationAuto;
         }
 
         public (DeviceMemory, ulong) GetDeviceMemoryAndOffset()
         {
+            if (_isPaged)
+            {
+                // 页式缓冲区没有单一设备内存
+                return (default, 0);
+            }
             return (_allocation.Memory, _allocation.Offset);
         }
 
         public void SignalWrite(int offset, int size)
         {
+            if (_isPaged)
+            {
+                // 对重叠的页发出写入信号
+                int startPage = offset / _pageSize;
+                int endPage = (offset + size - 1) / _pageSize;
+                
+                for (int i = startPage; i <= endPage; i++)
+                {
+                    var page = GetPage(i);
+                    if (page != null)
+                    {
+                        int pageOffset = (i == startPage) ? offset % _pageSize : 0;
+                        int pageSize = (i == endPage) ? 
+                            (offset + size) % _pageSize : _pageSize;
+                            
+                        page.SignalWrite(pageOffset, pageSize);
+                    }
+                }
+                return;
+            }
+
             if (offset == 0 && size == Size)
             {
                 _cachedConvertedBuffers.Clear();
@@ -367,12 +648,23 @@ namespace Ryujinx.Graphics.Vulkan
 
         public BufferHandle GetHandle()
         {
+            if (_isPaged)
+            {
+                // 页式缓冲区没有单一句柄
+                return BufferHandle.Null;
+            }
             var handle = _bufferHandle;
             return Unsafe.As<ulong, BufferHandle>(ref handle);
         }
 
         public IntPtr Map(int offset, int mappingSize)
         {
+            if (_isPaged)
+            {
+                // 页式缓冲区不支持映射
+                Logger.Warning?.Print(LogClass.Gpu, "Mapping not supported for paged buffers");
+                return IntPtr.Zero;
+            }
             return _map;
         }
 
@@ -430,6 +722,33 @@ namespace Ryujinx.Graphics.Vulkan
 
         public PinnedSpan<byte> GetData(int offset, int size)
         {
+            if (_isPaged)
+            {
+                // 从多个页获取数据
+                byte[] resultData = new byte[size];
+                int bytesRead = 0;
+                int currentOffset = offset;
+                
+                while (bytesRead < size)
+                {
+                    var (pageIndex, pageOffset) = GetPageInfo(currentOffset);
+                    var page = GetPage(pageIndex);
+                    if (page == null) break;
+                    
+                    int bytesToRead = Math.Min(size - bytesRead, page.Size - pageOffset);
+                    if (bytesToRead <= 0) break;
+                    
+                    using var pageData = page.GetData(pageOffset, bytesToRead);
+                    if (pageData.IsEmpty) break;
+                    
+                    pageData.Span.CopyTo(resultData.AsSpan(bytesRead, bytesToRead));
+                    bytesRead += bytesToRead;
+                    currentOffset += bytesToRead;
+                }
+                
+                return PinnedSpan<byte>.UnsafeFromSpan(resultData);
+            }
+
             _flushLock.EnterReadLock();
 
             WaitForFlushFence();
@@ -469,6 +788,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe Span<byte> GetDataStorage(int offset, int size)
         {
+            if (_isPaged)
+            {
+                // 页式缓冲区不支持直接存储访问
+                Logger.Warning?.Print(LogClass.Gpu, "Direct storage access not supported for paged buffers");
+                return Span<byte>.Empty;
+            }
+
             int mappingSize = Math.Min(size, Size - offset);
 
             if (_map != IntPtr.Zero)
@@ -481,6 +807,12 @@ namespace Ryujinx.Graphics.Vulkan
 
         public bool RemoveOverlappingMirrors(int offset, int size)
         {
+            if (_isPaged)
+            {
+                // 页式缓冲区不支持镜像
+                return false;
+            }
+
             List<ulong> toRemove = null;
             foreach (var key in _mirrors.Keys)
             {
@@ -511,6 +843,28 @@ namespace Ryujinx.Graphics.Vulkan
             int dataSize = Math.Min(data.Length, Size - offset);
             if (dataSize == 0)
             {
+                return;
+            }
+
+            if (_isPaged)
+            {
+                // 将数据设置到多个页
+                int bytesWritten = 0;
+                int currentOffset = offset;
+                
+                while (bytesWritten < dataSize)
+                {
+                    var (pageIndex, pageOffset) = GetPageInfo(currentOffset);
+                    var page = GetPage(pageIndex);
+                    if (page == null) break;
+                    
+                    int bytesToWrite = Math.Min(dataSize - bytesWritten, page.Size - pageOffset);
+                    if (bytesToWrite <= 0) break;
+                    
+                    page.SetData(pageOffset, data.Slice(bytesWritten, bytesToWrite), cbs, endRenderPass, allowCbsWait);
+                    bytesWritten += bytesToWrite;
+                    currentOffset += bytesToWrite;
+                }
                 return;
             }
 
@@ -631,6 +985,13 @@ namespace Ryujinx.Graphics.Vulkan
                 return;
             }
 
+            if (_isPaged)
+            {
+                // 将数据设置到多个页
+                SetData(offset, data, null, null, true);
+                return;
+            }
+
             if (_map != IntPtr.Zero)
             {
                 data[..dataSize].CopyTo(new Span<byte>((void*)(_map + offset), dataSize));
@@ -648,6 +1009,12 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void SetDataInline(CommandBufferScoped cbs, Action endRenderPass, int dstOffset, ReadOnlySpan<byte> data)
         {
+            if (_isPaged)
+            {
+                SetData(dstOffset, data, cbs, endRenderPass, true);
+                return;
+            }
+
             if (!TryPushData(cbs, endRenderPass, dstOffset, data))
             {
                 throw new ArgumentException($"Invalid offset 0x{dstOffset:X} or data size 0x{data.Length:X}.");
@@ -656,6 +1023,12 @@ namespace Ryujinx.Graphics.Vulkan
 
         private unsafe bool TryPushData(CommandBufferScoped cbs, Action endRenderPass, int dstOffset, ReadOnlySpan<byte> data)
         {
+            if (_isPaged)
+            {
+                // 页式缓冲区不支持内联推送数据
+                return false;
+            }
+
             if ((dstOffset & 3) != 0 || (data.Length & 3) != 0)
             {
                 return false;
@@ -839,11 +1212,41 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void WaitForFences()
         {
+            if (_isPaged)
+            {
+                // 等待所有页的围栏
+                for (int i = 0; i < _pageCount; i++)
+                {
+                    var page = GetPage(i);
+                    page?.WaitForFences();
+                }
+                return;
+            }
             _waitable.WaitForFences(_gd.Api, _device);
         }
 
         public void WaitForFences(int offset, int size)
         {
+            if (_isPaged)
+            {
+                // 等待重叠页的围栏
+                int startPage = offset / _pageSize;
+                int endPage = (offset + size - 1) / _pageSize;
+                
+                for (int i = startPage; i <= endPage; i++)
+                {
+                    var page = GetPage(i);
+                    if (page != null)
+                    {
+                        int pageOffset = (i == startPage) ? offset % _pageSize : 0;
+                        int pageSize = (i == endPage) ? 
+                            (offset + size) % _pageSize : _pageSize;
+                            
+                        page.WaitForFences(pageOffset, pageSize);
+                    }
+                }
+                return;
+            }
             _waitable.WaitForFences(_gd.Api, _device, offset, size);
         }
 
@@ -861,6 +1264,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetBufferI8ToI16(CommandBufferScoped cbs, int offset, int size)
         {
+            if (_isPaged)
+            {
+                // 页式缓冲区不支持格式转换
+                Logger.Warning?.Print(LogClass.Gpu, "Format conversion not supported for paged buffers");
+                return null;
+            }
+
             if (!BoundToRange(offset, ref size))
             {
                 return null;
@@ -885,6 +1295,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetAlignedVertexBuffer(CommandBufferScoped cbs, int offset, int size, int stride, int alignment)
         {
+            if (_isPaged)
+            {
+                // 页式缓冲区不支持顶点缓冲区对齐
+                Logger.Warning?.Print(LogClass.Gpu, "Vertex buffer alignment not supported for paged buffers");
+                return null;
+            }
+
             if (!BoundToRange(offset, ref size))
             {
                 return null;
@@ -911,6 +1328,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetBufferTopologyConversion(CommandBufferScoped cbs, int offset, int size, IndexBufferPattern pattern, int indexSize)
         {
+            if (_isPaged)
+            {
+                // 页式缓冲区不支持拓扑转换
+                Logger.Warning?.Print(LogClass.Gpu, "Topology conversion not supported for paged buffers");
+                return null;
+            }
+
             if (!BoundToRange(offset, ref size))
             {
                 return null;
@@ -941,26 +1365,61 @@ namespace Ryujinx.Graphics.Vulkan
 
         public bool TryGetCachedConvertedBuffer(int offset, int size, ICacheKey key, out BufferHolder holder)
         {
+            if (_isPaged)
+            {
+                // 页式缓冲区不支持缓存转换
+                holder = null;
+                return false;
+            }
             return _cachedConvertedBuffers.TryGetValue(offset, size, key, out holder);
         }
 
         public void AddCachedConvertedBuffer(int offset, int size, ICacheKey key, BufferHolder holder)
         {
+            if (_isPaged)
+            {
+                // 页式缓冲区不支持缓存转换
+                return;
+            }
             _cachedConvertedBuffers.Add(offset, size, key, holder);
         }
 
         public void AddCachedConvertedBufferDependency(int offset, int size, ICacheKey key, Dependency dependency)
         {
+            if (_isPaged)
+            {
+                // 页式缓冲区不支持缓存转换
+                return;
+            }
             _cachedConvertedBuffers.AddDependency(offset, size, key, dependency);
         }
 
         public void RemoveCachedConvertedBuffer(int offset, int size, ICacheKey key)
         {
+            if (_isPaged)
+            {
+                // 页式缓冲区不支持缓存转换
+                return;
+            }
             _cachedConvertedBuffers.Remove(offset, size, key);
         }
 
         public void Dispose()
         {
+            if (_isPaged)
+            {
+                // 释放所有页
+                if (_pages != null)
+                {
+                    for (int i = 0; i < _pages.Length; i++)
+                    {
+                        _pages[i]?.Dispose();
+                        _pages[i] = null;
+                    }
+                }
+                return;
+            }
+
             _gd.PipelineInternal?.FlushCommandsIfWeightExceeding(_buffer, (ulong)Size);
 
             _buffer.Dispose();
