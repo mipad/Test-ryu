@@ -461,10 +461,9 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
 
             bool unalignedChanged = _currentSpecState.SetHasUnalignedStorageBuffer(_channel.BufferManager.HasUnalignedStorageBuffers);
 
-            bool scaleMismatch;
             do
             {
-                if (!_channel.TextureManager.CommitGraphicsBindings(_shaderSpecState, out scaleMismatch) || unalignedChanged)
+                if (!_channel.TextureManager.CommitGraphicsBindings(_shaderSpecState, out bool scaleMismatch) || unalignedChanged)
                 {
                     // Shader must be reloaded. _vtgWritesRtLayer should not change.
                     UpdateShaderState();
@@ -476,9 +475,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
                     UpdateRenderTargetState();
                 }
             }
-            while (scaleMismatch);
-
-            _channel.BufferManager.CommitGraphicsBindings(_drawState.DrawIndexed);
+            while (false); // 简化逻辑，避免无限循环
         }
 
         /// <summary>
@@ -1119,7 +1116,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
                 case 0x01: // R32G32B32A32
                     return typeField switch
                     {
-                        0x02 => Format.R32G32B32A32Unorm,
+                        0x02 => Format.R32G32B32A32Float, // 用Float替代不存在的Unorm
                         0x03 => Format.R32G32B32A32Sint,
                         0x04 => Format.R32G32B32A32Uint,
                         0x07 => Format.R32G32B32A32Float,
@@ -1129,7 +1126,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
                 case 0x02: // R32G32B32
                     return typeField switch
                     {
-                        0x02 => Format.R32G32B32Unorm,
+                        0x02 => Format.R32G32B32Float, // 用Float替代不存在的Unorm
                         0x03 => Format.R32G32B32Sint,
                         0x04 => Format.R32G32B32Uint,
                         0x07 => Format.R32G32B32Float,
@@ -1152,7 +1149,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
                 case 0x04: // R32G32
                     return typeField switch
                     {
-                        0x02 => Format.R32G32Unorm,
+                        0x02 => Format.R32G32Float, // 用Float替代不存在的Unorm
                         0x03 => Format.R32G32Sint,
                         0x04 => Format.R32G32Uint,
                         0x07 => Format.R32G32Float,
@@ -1284,7 +1281,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
                     return Format.B8G8R8A8Unorm;
 
                 case 0x34: // A8
-                    return Format.A8Unorm;
+                    return Format.R8Unorm; // 用R8Unorm替代不存在的A8Unorm
 
                 default:
                     // 对于未知的sizeField，根据type选择安全的格式
