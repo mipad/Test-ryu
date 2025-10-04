@@ -59,20 +59,121 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
 
         private uint _prevRtNoAlphaMask;
 
-        // 添加顶点格式白名单
+        // 扩展顶点格式白名单 - 包含更多常见格式
         private static readonly HashSet<uint> _validVertexFormats = new HashSet<uint>
         {
-            0x11400000, // RGBA8_UNORM (新增)
-    0x20000000, // RGBA32_FLOAT
-    0x21000000, // RGBA16_UNORM
-    0x21800000, // RGBA16_SNORM
-    0x25C00000, // RGBA32_UINT
-    0x25E00000, // RGBA32_SINT
-    0x38400000, // RG32_FLOAT (新增)
-    0x38800000, // RGBA16_FLOAT (新增)
-    0x30C00000, // RGB10_A2_UNORM (新增)
-    0x31C00000, // RG11B10_FLOAT (新增)
-            // 添加其他有效格式...
+            // R8 格式
+            0x1D000000, // R8_UNORM
+            0x1D010000, // R8_SNORM
+            0x1D030000, // R8_SINT
+            0x1D040000, // R8_UINT
+            0x1D050000, // R8_USCALED
+            0x1D060000, // R8_SSCALED
+
+            // R16 格式
+            0x1B000000, // R16_UNORM
+            0x1B010000, // R16_SNORM
+            0x1B020000, // R16_SINT
+            0x1B030000, // R16_UINT
+            0x1B040000, // R16_FLOAT
+            0x1B050000, // R16_USCALED
+            0x1B060000, // R16_SSCALED
+
+            // R32 格式
+            0x12000000, // R32_FLOAT
+            0x12030000, // R32_SINT
+            0x12040000, // R32_UINT
+
+            // RG8 格式
+            0x18000000, // RG8_UNORM
+            0x18010000, // RG8_SNORM
+            0x18030000, // RG8_SINT
+            0x18040000, // RG8_UINT
+            0x18050000, // RG8_USCALED
+            0x18060000, // RG8_SSCALED
+
+            // RG16 格式
+            0x0F000000, // RG16_UNORM
+            0x0F010000, // RG16_SNORM
+            0x0F020000, // RG16_SINT
+            0x0F030000, // RG16_UINT
+            0x0F040000, // RG16_FLOAT
+            0x0F050000, // RG16_USCALED
+            0x0F060000, // RG16_SSCALED
+
+            // RG32 格式
+            0x04000000, // RG32_FLOAT
+            0x04030000, // RG32_SINT
+            0x04040000, // RG32_UINT
+
+            // RGB8 格式
+            0x13000000, // RGB8_UNORM
+            0x13010000, // RGB8_SNORM
+            0x13030000, // RGB8_SINT
+            0x13040000, // RGB8_UINT
+            0x13050000, // RGB8_USCALED
+            0x13060000, // RGB8_SSCALED
+
+            // RGB16 格式
+            0x05000000, // RGB16_UNORM
+            0x05010000, // RGB16_SNORM
+            0x05020000, // RGB16_SINT
+            0x05030000, // RGB16_UINT
+            0x05040000, // RGB16_FLOAT
+            0x05050000, // RGB16_USCALED
+            0x05060000, // RGB16_SSCALED
+
+            // RGB32 格式
+            0x02000000, // RGB32_FLOAT
+            0x02030000, // RGB32_SINT
+            0x02040000, // RGB32_UINT
+
+            // RGBA8 格式
+            0x0A000000, // RGBA8_UNORM
+            0x0A010000, // RGBA8_SNORM
+            0x0A030000, // RGBA8_SINT
+            0x0A040000, // RGBA8_UINT
+            0x0A050000, // RGBA8_USCALED
+            0x0A060000, // RGBA8_SSCALED
+            0x11400000, // RGBA8_UNORM (alternative)
+
+            // RGBA16 格式
+            0x03000000, // RGBA16_UNORM
+            0x03010000, // RGBA16_SNORM
+            0x03020000, // RGBA16_SINT
+            0x03030000, // RGBA16_UINT
+            0x03040000, // RGBA16_FLOAT
+            0x03050000, // RGBA16_USCALED
+            0x03060000, // RGBA16_SSCALED
+
+            // RGBA32 格式
+            0x01000000, // RGBA32_FLOAT
+            0x01030000, // RGBA32_SINT
+            0x01040000, // RGBA32_UINT
+            0x25C00000, // RGBA32_UINT (alternative)
+            0x25E00000, // RGBA32_SINT (alternative)
+
+            // 特殊格式
+            0x30000000, // R10G10B10A2_UNORM
+            0x30010000, // R10G10B10A2_SNORM
+            0x30030000, // R10G10B10A2_SINT
+            0x30040000, // R10G10B10A2_UINT
+            0x30050000, // R10G10B10A2_USCALED
+            0x30060000, // R10G10B10A2_SSCALED
+
+            0x31000000, // R11G11B10_FLOAT
+
+            // BGRA 格式
+            0x33000000, // B8G8R8A8_UNORM
+            0x33010000, // B8G8R8A8_SNORM
+
+            // 其他格式
+            0x32000000, // G8R8_UNORM
+            0x34000000, // A8_UNORM
+            0x38800000, // RGBA16_FLOAT (alternative)
+            0x38400000, // RG32_FLOAT (alternative)
+            0x31C00000, // RG11B10_FLOAT (alternative)
+            0x30C00000, // RGB10_A2_UNORM (alternative)
         };
 
         /// <summary>
@@ -977,6 +1078,221 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         }
 
         /// <summary>
+        /// 改进的顶点格式检测和处理
+        /// </summary>
+        private bool TryDetectVertexFormat(uint packedFormat, out Format format)
+        {
+            format = Format.R32G32B32A32Float; // 默认回退格式
+
+            // 首先检查白名单
+            if (_validVertexFormats.Contains(packedFormat))
+            {
+                // 尝试使用FormatTable解析
+                if (FormatTable.TryGetAttribFormat(packedFormat, out format))
+                {
+                    return true;
+                }
+            }
+
+            // 解析packedFormat的各个部分
+            uint bufferIndex = packedFormat & 0x1F;
+            bool isConstant = ((packedFormat >> 6) & 1) != 0;
+            uint offset = (packedFormat >> 7) & 0x3FFF;
+            uint sizeField = (packedFormat >> 21) & 0x3F;
+            uint typeField = (packedFormat >> 27) & 0x7;
+            bool isBgra = ((packedFormat >> 31) & 1) != 0;
+
+            // 基于size和type推断格式
+            format = InferFormatFromFields(sizeField, typeField, isBgra);
+            
+            return format != Format.R32G32B32A32Float; // 如果推断出有效格式则返回true
+        }
+
+        /// <summary>
+        /// 根据字段推断顶点格式
+        /// </summary>
+        private Format InferFormatFromFields(uint sizeField, uint typeField, bool isBgra)
+        {
+            // 基于maxwell_3d.h中的定义进行推断
+            switch (sizeField)
+            {
+                case 0x01: // R32G32B32A32
+                    return typeField switch
+                    {
+                        0x02 => Format.R32G32B32A32Unorm,
+                        0x03 => Format.R32G32B32A32Sint,
+                        0x04 => Format.R32G32B32A32Uint,
+                        0x07 => Format.R32G32B32A32Float,
+                        _ => Format.R32G32B32A32Float
+                    };
+
+                case 0x02: // R32G32B32
+                    return typeField switch
+                    {
+                        0x02 => Format.R32G32B32Unorm,
+                        0x03 => Format.R32G32B32Sint,
+                        0x04 => Format.R32G32B32Uint,
+                        0x07 => Format.R32G32B32Float,
+                        _ => Format.R32G32B32Float
+                    };
+
+                case 0x03: // R16G16B16A16
+                    return typeField switch
+                    {
+                        0x01 => Format.R16G16B16A16Snorm,
+                        0x02 => Format.R16G16B16A16Unorm,
+                        0x03 => Format.R16G16B16A16Sint,
+                        0x04 => Format.R16G16B16A16Uint,
+                        0x05 => Format.R16G16B16A16Uscaled,
+                        0x06 => Format.R16G16B16A16Sscaled,
+                        0x07 => Format.R16G16B16A16Float,
+                        _ => Format.R16G16B16A16Float
+                    };
+
+                case 0x04: // R32G32
+                    return typeField switch
+                    {
+                        0x02 => Format.R32G32Unorm,
+                        0x03 => Format.R32G32Sint,
+                        0x04 => Format.R32G32Uint,
+                        0x07 => Format.R32G32Float,
+                        _ => Format.R32G32Float
+                    };
+
+                case 0x05: // R16G16B16
+                    return typeField switch
+                    {
+                        0x01 => Format.R16G16B16Snorm,
+                        0x02 => Format.R16G16B16Unorm,
+                        0x03 => Format.R16G16B16Sint,
+                        0x04 => Format.R16G16B16Uint,
+                        0x05 => Format.R16G16B16Uscaled,
+                        0x06 => Format.R16G16B16Sscaled,
+                        0x07 => Format.R16G16B16Float,
+                        _ => Format.R16G16B16Float
+                    };
+
+                case 0x0A: // R8G8B8A8
+                    if (isBgra)
+                    {
+                        return typeField switch
+                        {
+                            0x02 => Format.B8G8R8A8Unorm,
+                            _ => Format.B8G8R8A8Unorm
+                        };
+                    }
+                    return typeField switch
+                    {
+                        0x01 => Format.R8G8B8A8Snorm,
+                        0x02 => Format.R8G8B8A8Unorm,
+                        0x03 => Format.R8G8B8A8Sint,
+                        0x04 => Format.R8G8B8A8Uint,
+                        0x05 => Format.R8G8B8A8Uscaled,
+                        0x06 => Format.R8G8B8A8Sscaled,
+                        _ => Format.R8G8B8A8Unorm
+                    };
+
+                case 0x0F: // R16G16
+                    return typeField switch
+                    {
+                        0x01 => Format.R16G16Snorm,
+                        0x02 => Format.R16G16Unorm,
+                        0x03 => Format.R16G16Sint,
+                        0x04 => Format.R16G16Uint,
+                        0x05 => Format.R16G16Uscaled,
+                        0x06 => Format.R16G16Sscaled,
+                        0x07 => Format.R16G16Float,
+                        _ => Format.R16G16Float
+                    };
+
+                case 0x12: // R32
+                    return typeField switch
+                    {
+                        0x03 => Format.R32Sint,
+                        0x04 => Format.R32Uint,
+                        0x07 => Format.R32Float,
+                        _ => Format.R32Float
+                    };
+
+                case 0x13: // R8G8B8
+                    return typeField switch
+                    {
+                        0x01 => Format.R8G8B8Snorm,
+                        0x02 => Format.R8G8B8Unorm,
+                        0x03 => Format.R8G8B8Sint,
+                        0x04 => Format.R8G8B8Uint,
+                        0x05 => Format.R8G8B8Uscaled,
+                        0x06 => Format.R8G8B8Sscaled,
+                        _ => Format.R8G8B8Unorm
+                    };
+
+                case 0x18: // R8G8
+                    return typeField switch
+                    {
+                        0x01 => Format.R8G8Snorm,
+                        0x02 => Format.R8G8Unorm,
+                        0x03 => Format.R8G8Sint,
+                        0x04 => Format.R8G8Uint,
+                        0x05 => Format.R8G8Uscaled,
+                        0x06 => Format.R8G8Sscaled,
+                        _ => Format.R8G8Unorm
+                    };
+
+                case 0x1B: // R16
+                    return typeField switch
+                    {
+                        0x01 => Format.R16Snorm,
+                        0x02 => Format.R16Unorm,
+                        0x03 => Format.R16Sint,
+                        0x04 => Format.R16Uint,
+                        0x05 => Format.R16Uscaled,
+                        0x06 => Format.R16Sscaled,
+                        0x07 => Format.R16Float,
+                        _ => Format.R16Float
+                    };
+
+                case 0x1D: // R8
+                    return typeField switch
+                    {
+                        0x01 => Format.R8Snorm,
+                        0x02 => Format.R8Unorm,
+                        0x03 => Format.R8Sint,
+                        0x04 => Format.R8Uint,
+                        0x05 => Format.R8Uscaled,
+                        0x06 => Format.R8Sscaled,
+                        _ => Format.R8Unorm
+                    };
+
+                case 0x30: // A2B10G10R10
+                    return typeField switch
+                    {
+                        0x02 => Format.R10G10B10A2Unorm,
+                        0x03 => Format.R10G10B10A2Sint,
+                        0x04 => Format.R10G10B10A2Uint,
+                        0x05 => Format.R10G10B10A2Uscaled,
+                        0x06 => Format.R10G10B10A2Sscaled,
+                        _ => Format.R10G10B10A2Unorm
+                    };
+
+                case 0x31: // B10G11R11
+                    return Format.R11G11B10Float;
+
+                case 0x32: // G8R8
+                    return Format.R8G8Unorm;
+
+                case 0x33: // X8B8G8R8
+                    return Format.B8G8R8A8Unorm;
+
+                case 0x34: // A8
+                    return Format.A8Unorm;
+
+                default:
+                    // 对于未知的sizeField，根据type选择安全的格式
+                    return GetFallbackVertexFormat((VertexAttribType)typeField);
+            }
+        }
+
+        /// <summary>
         /// Updates host vertex attributes based on guest GPU state.
         /// </summary>
         private void UpdateVertexAttribState()
@@ -1007,24 +1323,34 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
                 // ==== 改进的顶点格式处理 ====
                 if (!FormatTable.TryGetAttribFormat(packedFormat, out format))
                 {
-                    isValid = false;
-                    
-                    // 特殊处理RGBA32_SINT格式 (0x25E00000)
-                    if (packedFormat == 0x25E00000)
+                    // 首先尝试使用改进的检测方法
+                    if (TryDetectVertexFormat(packedFormat, out format))
                     {
-                        format = Format.R32G32B32A32Sint;
-                        Logger.Warning?.Print(LogClass.Gpu, 
-                            $"强制使用RGBA32_SINT格式替代0x25E00000 " +
+                        Logger.Debug?.Print(LogClass.Gpu, 
+                            $"检测到顶点格式: 0x{packedFormat:X} -> {format} " +
                             $"(属性索引: {index}, 缓冲区: {bufferIndex})");
                     }
                     else
                     {
-                        // 根据类型选择安全的格式
-                        format = GetFallbackVertexFormat(type);
-                        Logger.Warning?.Print(LogClass.Gpu, 
-                            $"强制替换无效顶点属性格式: 0x{packedFormat:X} " +
-                            $"(属性索引: {index}, 缓冲区: {bufferIndex}, " +
-                            $"类型: {type}, 大小: {vertexAttrib.UnpackSize()})");
+                        isValid = false;
+                        
+                        // 特殊处理已知问题格式
+                        if (packedFormat == 0x25E00000)
+                        {
+                            format = Format.R32G32B32A32Sint;
+                            Logger.Warning?.Print(LogClass.Gpu, 
+                                $"强制使用RGBA32_SINT格式替代0x25E00000 " +
+                                $"(属性索引: {index}, 缓冲区: {bufferIndex})");
+                        }
+                        else
+                        {
+                            // 根据类型选择安全的格式
+                            format = GetFallbackVertexFormat(type);
+                            Logger.Warning?.Print(LogClass.Gpu, 
+                                $"使用回退顶点格式: 0x{packedFormat:X} -> {format} " +
+                                $"(属性索引: {index}, 缓冲区: {bufferIndex}, " +
+                                $"类型: {type}, 大小: {vertexAttrib.UnpackSize()})");
+                        }
                     }
                 }
 
