@@ -1,4 +1,4 @@
-using Ryujinx.Common.Logging;
+using Ryujinx.Common.Logging; 
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Gpu.Engine.Threed.Blender;
 using Ryujinx.Graphics.Gpu.Engine.Types;
