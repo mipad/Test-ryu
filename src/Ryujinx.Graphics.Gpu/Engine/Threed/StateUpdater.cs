@@ -603,7 +603,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// </summary>
         public void UpdateRenderTargetSpecialization()
         {
-            _currentSpecState.SetFragmentOutputTypes(_state.State.RtControl, _state.State.RtColorState.AsSpan());
+            _currentSpecState.SetFragmentOutputTypes(_state.State.RtControl, ref _state.State.RtColorState);
         }
 
         /// <summary>
@@ -1023,7 +1023,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
 
             _pipeline.SetVertexAttribs(vertexAttribs);
             _context.Renderer.Pipeline.SetVertexAttribs(vertexAttribs);
-            _currentSpecState.SetAttributeTypes(_state.State.VertexAttribState.AsSpan());
+            _currentSpecState.SetAttributeTypes(ref _state.State.VertexAttribState);
         }
 
         /// <summary>
