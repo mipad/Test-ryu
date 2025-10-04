@@ -721,70 +721,71 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         public PinnedSpan<byte> GetData(int offset, int size)
+{
+    if (_isPaged)
+    {
+        // 从多个页获取数据
+        byte[] resultData = new byte[size];
+        int bytesRead = 0;
+        int currentOffset = offset;
+        
+        while (bytesRead < size)
         {
-            if (_isPaged)
-            {
-                // 从多个页获取数据
-                byte[] resultData = new byte[size];
-                int bytesRead = 0;
-                int currentOffset = offset;
-                
-                while (bytesRead < size)
-                {
-                    var (pageIndex, pageOffset) = GetPageInfo(currentOffset);
-                    var page = GetPage(pageIndex);
-                    if (page == null) break;
-                    
-                    int bytesToRead = Math.Min(size - bytesRead, page.Size - pageOffset);
-                    if (bytesToRead <= 0) break;
-                    
-                    using var pageData = page.GetData(pageOffset, bytesToRead);
-                    if (pageData.IsEmpty) break;
-                    
-                    pageData.Span.CopyTo(resultData.AsSpan(bytesRead, bytesToRead));
-                    bytesRead += bytesToRead;
-                    currentOffset += bytesToRead;
-                }
-                
-                return PinnedSpan<byte>.UnsafeFromSpan(resultData);
-            }
-
-            _flushLock.EnterReadLock();
-
-            WaitForFlushFence();
-
-            Span<byte> result;
-
-            if (_map != IntPtr.Zero)
-            {
-                result = GetDataStorage(offset, size);
-
-                // Need to be careful here, the buffer can't be unmapped while the data is being used.
-                _buffer.IncrementReferenceCount();
-
-                _flushLock.ExitReadLock();
-
-                return PinnedSpan<byte>.UnsafeFromSpan(result, _buffer.DecrementReferenceCount);
-            }
-
-            BackgroundResource resource = _gd.BackgroundResources.Get();
-
-            if (_gd.CommandBufferPool.OwnedByCurrentThread)
-            {
-                _gd.FlushAllCommands();
-
-                result = resource.GetFlushBuffer().GetBufferData(_gd.CommandBufferPool, this, offset, size);
-            }
-            else
-            {
-                result = resource.GetFlushBuffer().GetBufferData(resource.GetPool(), this, offset, size);
-            }
-
-            _flushLock.ExitReadLock();
-
-            // Flush buffer is pinned until the next GetBufferData on the thread, which is fine for current uses.
-            return PinnedSpan<byte>.UnsafeFromSpan(result);
+            var (pageIndex, pageOffset) = GetPageInfo(currentOffset);
+            var page = GetPage(pageIndex);
+            if (page == null) break;
+            
+            int bytesToRead = Math.Min(size - bytesRead, page.Size - pageOffset);
+            if (bytesToRead <= 0) break;
+            
+            using var pageData = page.GetData(pageOffset, bytesToRead);
+            var pageDataSpan = pageData.Get(); // 使用 Get() 方法获取 Span
+            if (pageDataSpan.Length == 0) break; // 使用 Length 而不是 IsEmpty
+            
+            pageDataSpan.CopyTo(resultData.AsSpan(bytesRead, bytesToRead));
+            bytesRead += bytesToRead;
+            currentOffset += bytesToRead;
         }
+        
+        return PinnedSpan<byte>.UnsafeFromSpan(resultData);
+    }
+
+    _flushLock.EnterReadLock();
+
+    WaitForFlushFence();
+
+    Span<byte> result;
+
+    if (_map != IntPtr.Zero)
+    {
+        result = GetDataStorage(offset, size);
+
+        // Need to be careful here, the buffer can't be unmapped while the data is being used.
+        _buffer.IncrementReferenceCount();
+
+        _flushLock.ExitReadLock();
+
+        return PinnedSpan<byte>.UnsafeFromSpan(result, _buffer.DecrementReferenceCount);
+    }
+
+    BackgroundResource resource = _gd.BackgroundResources.Get();
+
+    if (_gd.CommandBufferPool.OwnedByCurrentThread)
+    {
+        _gd.FlushAllCommands();
+
+        result = resource.GetFlushBuffer().GetBufferData(_gd.CommandBufferPool, this, offset, size);
+    }
+    else
+    {
+        result = resource.GetFlushBuffer().GetBufferData(resource.GetPool(), this, offset, size);
+    }
+
+    _flushLock.ExitReadLock();
+
+    // Flush buffer is pinned until the next GetBufferData on the thread, which is fine for current uses.
+    return PinnedSpan<byte>.UnsafeFromSpan(result);
+}
 
         public unsafe Span<byte> GetDataStorage(int offset, int size)
         {
