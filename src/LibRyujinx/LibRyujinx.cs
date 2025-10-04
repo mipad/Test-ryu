@@ -55,6 +55,11 @@ namespace LibRyujinx
         // 添加静态字段来存储系统时间偏移
         private static long _systemTimeOffset = 0;
 
+        // 新增：添加静态字段来存储缩放器设置
+        private static ScalingFilter _currentScalingFilter = ScalingFilter.Bilinear;
+        private static int _currentScalingFilterLevel = 0;
+        private static AntiAliasing _currentAntiAliasing = AntiAliasing.None;
+
         public static bool Initialize(string? basePath)
         {
             if (SwitchDevice != null)
@@ -150,6 +155,87 @@ namespace LibRyujinx
         public static long GetSystemTimeOffset()
         {
             return _systemTimeOffset;
+        }
+
+        // 新增：添加设置缩放器的方法
+        public static void SetScalingFilter(ScalingFilter scalingFilter)
+        {
+            _currentScalingFilter = scalingFilter;
+            Logger.Info?.Print(LogClass.Emulation, $"Scaling filter set to: {_currentScalingFilter}");
+            
+            // 如果渲染器已初始化，立即应用新的缩放器设置
+            if (Renderer != null && Renderer.Window != null)
+            {
+                try
+                {
+                    Renderer.Window.SetScalingFilter((Ryujinx.Graphics.GAL.ScalingFilter)scalingFilter);
+                    Logger.Info?.Print(LogClass.Emulation, $"Scaling filter applied to running emulation: {_currentScalingFilter}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.Emulation, $"Failed to apply scaling filter: {ex.Message}");
+                }
+            }
+        }
+
+        // 新增：添加获取缩放器的方法
+        public static ScalingFilter GetScalingFilter()
+        {
+            return _currentScalingFilter;
+        }
+
+        // 新增：添加设置缩放器级别的方法
+        public static void SetScalingFilterLevel(int level)
+        {
+            _currentScalingFilterLevel = level;
+            Logger.Info?.Print(LogClass.Emulation, $"Scaling filter level set to: {_currentScalingFilterLevel}");
+            
+            // 如果渲染器已初始化，立即应用新的缩放器级别
+            if (Renderer != null && Renderer.Window != null)
+            {
+                try
+                {
+                    Renderer.Window.SetScalingFilterLevel(level);
+                    Logger.Info?.Print(LogClass.Emulation, $"Scaling filter level applied to running emulation: {_currentScalingFilterLevel}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.Emulation, $"Failed to apply scaling filter level: {ex.Message}");
+                }
+            }
+        }
+
+        // 新增：添加获取缩放器级别的方法
+        public static int GetScalingFilterLevel()
+        {
+            return _currentScalingFilterLevel;
+        }
+
+        // 新增：添加设置抗锯齿的方法
+        public static void SetAntiAliasing(AntiAliasing antiAliasing)
+        {
+            _currentAntiAliasing = antiAliasing;
+            Logger.Info?.Print(LogClass.Emulation, $"Anti-aliasing set to: {_currentAntiAliasing}");
+            
+            // 如果渲染器已初始化，立即应用新的抗锯齿设置
+            if (Renderer != null && Renderer.Window != null)
+            {
+                try
+                {
+                    Renderer.Window.SetAntiAliasing((Ryujinx.Graphics.GAL.AntiAliasing)antiAliasing);
+                    Logger.Info?.Print(LogClass.Emulation, $"Anti-aliasing applied to running emulation: {_currentAntiAliasing}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.Emulation, $"Failed to apply anti-aliasing: {ex.Message}");
+                }
+            }
+        }
+
+        // 新增：添加获取抗锯齿的方法
+        public static AntiAliasing GetAntiAliasing()
+        {
+            return _currentAntiAliasing;
         }
 
         public static void InitializeAudio()
@@ -922,11 +1008,14 @@ namespace LibRyujinx
                 return false;
             }
 
-            // 记录初始化参数
+            // 记录初始化参数（包含所有图形设置）
             Logger.Info?.Print(LogClass.Application, $"Initializing device context with parameters:");
             Logger.Info?.Print(LogClass.Application, $"  - Memory Configuration: {memoryConfiguration}");
             Logger.Info?.Print(LogClass.Application, $"  - System Time Offset: {systemTimeOffset} seconds");
             Logger.Info?.Print(LogClass.Application, $"  - Aspect Ratio: {LibRyujinx.GetAspectRatio()}");
+            Logger.Info?.Print(LogClass.Application, $"  - Scaling Filter: {LibRyujinx.GetScalingFilter()}");
+            Logger.Info?.Print(LogClass.Application, $"  - Scaling Filter Level: {LibRyujinx.GetScalingFilterLevel()}");
+            Logger.Info?.Print(LogClass.Application, $"  - Anti-Aliasing: {LibRyujinx.GetAntiAliasing()}");
             Logger.Info?.Print(LogClass.Application, $"  - Host Mapped: {isHostMapped}");
             Logger.Info?.Print(LogClass.Application, $"  - Hypervisor: {useHypervisor}");
             Logger.Info?.Print(LogClass.Application, $"  - Vsync: {enableVsync}");
