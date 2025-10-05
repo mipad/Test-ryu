@@ -1,7 +1,7 @@
 using Silk.NET.Vulkan;
 using System;
-using Ryujinx.Common.Logging;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 
 namespace Ryujinx.Graphics.Vulkan
@@ -17,27 +17,16 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly int _blockAlignment;
         private readonly ReaderWriterLockSlim _lock;
 
-        // 添加内存限制
-        private readonly ulong _memoryLimit;
+        // 内存统计和监控
         private ulong _currentUsage;
         private ulong _peakUsage;
+        private ulong _totalDeviceMemory;
+        private ulong _largestHeap;
 
-        // 添加大分配计数
+        // 分配统计
+        private int _totalAllocations;
+        private int _failedAllocations;
         private int _largeAllocationAttempts;
-        private const int MaxLargeAllocationAttempts = 3;
-
-        // 添加内存压力状态
-        private MemoryPressureState _pressureState;
-        private DateTime _lastMemoryCleanup;
-
-        // 将枚举改为 public
-        public enum MemoryPressureState
-        {
-            Normal,
-            Moderate,
-            High,
-            Critical
-        }
 
         public MemoryAllocator(Vk api, VulkanPhysicalDevice physicalDevice, Device device)
         {
@@ -48,68 +37,36 @@ namespace Ryujinx.Graphics.Vulkan
             _blockAlignment = (int)Math.Min(int.MaxValue, MaxDeviceMemoryUsageEstimate / _physicalDevice.PhysicalDeviceProperties.Limits.MaxMemoryAllocationCount);
             _lock = new(LockRecursionPolicy.NoRecursion);
             
-            // 设置更合理的内存限制
-            _memoryLimit = CalculateMemoryLimit(physicalDevice);
+            // 初始化内存统计
+            InitializeMemoryStats(physicalDevice);
             _currentUsage = 0;
             _peakUsage = 0;
+            _totalAllocations = 0;
+            _failedAllocations = 0;
             _largeAllocationAttempts = 0;
-            _pressureState = MemoryPressureState.Normal;
-            _lastMemoryCleanup = DateTime.Now;
             
-            Logger.Info?.Print(LogClass.Gpu, $"Memory allocator initialized with limit: 0x{_memoryLimit:X} ({_memoryLimit / (1024 * 1024)}MB)");
+            Logger.Info?.Print(LogClass.Gpu, 
+                $"Memory allocator initialized - Total VRAM: {_totalDeviceMemory / (1024 * 1024)}MB, " +
+                $"Largest Heap: {_largestHeap / (1024 * 1024)}MB");
         }
 
-        private ulong CalculateMemoryLimit(VulkanPhysicalDevice physicalDevice)
+        private void InitializeMemoryStats(VulkanPhysicalDevice physicalDevice)
         {
-            ulong totalDeviceMemory = 0;
-            ulong largestHeap = 0;
+            _totalDeviceMemory = 0;
+            _largestHeap = 0;
             
             for (int i = 0; i < physicalDevice.PhysicalDeviceMemoryProperties.MemoryHeapCount; i++)
             {
                 var heap = physicalDevice.PhysicalDeviceMemoryProperties.MemoryHeaps[i];
                 if ((heap.Flags & MemoryHeapFlags.DeviceLocalBit) != 0)
                 {
-                    totalDeviceMemory += heap.Size;
-                    if (heap.Size > largestHeap)
+                    _totalDeviceMemory += heap.Size;
+                    if (heap.Size > _largestHeap)
                     {
-                        largestHeap = heap.Size;
+                        _largestHeap = heap.Size;
                     }
                 }
             }
-            
-            // 更智能的内存限制策略 - 基于实际设备内存
-            ulong calculatedLimit;
-            
-            if (totalDeviceMemory > 6UL * 1024 * 1024 * 1024) // 6GB以上
-            {
-                calculatedLimit = Math.Min(totalDeviceMemory * 3 / 4, 4UL * 1024 * 1024 * 1024); // 最多4GB
-            }
-            else if (totalDeviceMemory > 4UL * 1024 * 1024 * 1024) // 4GB-6GB
-            {
-                calculatedLimit = Math.Min(totalDeviceMemory * 70 / 100, 3UL * 1024 * 1024 * 1024); // 最多3GB
-            }
-            else if (totalDeviceMemory > 2UL * 1024 * 1024 * 1024) // 2GB-4GB
-            {
-                calculatedLimit = Math.Min(totalDeviceMemory * 75 / 100, 2UL * 1024 * 1024 * 1024); // 最多2GB
-            }
-            else if (totalDeviceMemory > 1UL * 1024 * 1024 * 1024) // 1GB-2GB
-            {
-                calculatedLimit = Math.Min(totalDeviceMemory * 70 / 100, 1536UL * 1024 * 1024); // 最多1.5GB
-            }
-            else // 1GB以下
-            {
-                calculatedLimit = totalDeviceMemory / 2; // 使用一半
-            }
-            
-            // 确保至少有一定的最小限制
-            calculatedLimit = Math.Max(calculatedLimit, 512UL * 1024 * 1024); // 至少512MB
-            
-            Logger.Info?.Print(LogClass.Gpu, 
-                $"Memory stats - Total: 0x{totalDeviceMemory:X} ({totalDeviceMemory / (1024 * 1024)}MB), " +
-                $"Largest Heap: 0x{largestHeap:X} ({largestHeap / (1024 * 1024)}MB), " +
-                $"Limit: 0x{calculatedLimit:X} ({calculatedLimit / (1024 * 1024)}MB)");
-            
-            return calculatedLimit;
         }
 
         public MemoryAllocation AllocateDeviceMemory(
@@ -117,12 +74,12 @@ namespace Ryujinx.Graphics.Vulkan
             MemoryPropertyFlags flags = 0,
             bool isBuffer = false)
         {
-            // 更新内存压力状态
-            UpdateMemoryPressureState();
+            _totalAllocations++;
 
             // 对于大内存分配，使用特殊处理
             if (requirements.Size > 64 * 1024 * 1024) // 64MB以上
             {
+                _largeAllocationAttempts++;
                 return AllocateLargeMemory(requirements, flags, isBuffer);
             }
 
@@ -130,115 +87,101 @@ namespace Ryujinx.Graphics.Vulkan
             return AllocateRegularMemory(requirements, flags, isBuffer);
         }
 
-        private void UpdateMemoryPressureState()
-        {
-            double usageRatio = (double)_currentUsage / _memoryLimit;
-            
-            MemoryPressureState newState = usageRatio switch
-            {
-                < 0.6 => MemoryPressureState.Normal,
-                < 0.8 => MemoryPressureState.Moderate,
-                < 0.9 => MemoryPressureState.High,
-                _ => MemoryPressureState.Critical
-            };
-
-            if (newState != _pressureState)
-            {
-                Logger.Info?.Print(LogClass.Gpu, 
-                    $"Memory pressure state changed: {_pressureState} -> {newState} (Usage: {usageRatio:P})");
-                _pressureState = newState;
-            }
-
-            // 在高压状态下定期清理内存
-            if (_pressureState >= MemoryPressureState.High && 
-                (DateTime.Now - _lastMemoryCleanup).TotalSeconds > 30)
-            {
-                Logger.Info?.Print(LogClass.Gpu, "Performing periodic memory cleanup due to high memory pressure");
-                CompactMemory();
-                ForceGarbageCollection();
-                _lastMemoryCleanup = DateTime.Now;
-            }
-        }
-
         private MemoryAllocation AllocateLargeMemory(
             MemoryRequirements requirements,
             MemoryPropertyFlags flags,
             bool isBuffer)
         {
-            _largeAllocationAttempts++;
-            
-            ulong availableMemory = _memoryLimit - _currentUsage;
-            double usageRatio = (double)_currentUsage / _memoryLimit;
+            ulong requestedSize = requirements.Size;
+            double usagePercentage = (_currentUsage + requestedSize) * 100.0 / _totalDeviceMemory;
 
             Logger.Warning?.Print(LogClass.Gpu, 
-                $"Large memory allocation attempt #{_largeAllocationAttempts}: " +
-                $"Size=0x{requirements.Size:X} ({requirements.Size / (1024 * 1024)}MB), " +
-                $"CurrentUsage=0x{_currentUsage:X} ({_currentUsage / (1024 * 1024)}MB, {usageRatio:P}), " +
-                $"Available=0x{availableMemory:X} ({availableMemory / (1024 * 1024)}MB)");
+                $"Large memory allocation #{_largeAllocationAttempts}: " +
+                $"Size={requestedSize / (1024 * 1024)}MB, " +
+                $"Current={_currentUsage / (1024 * 1024)}MB, " +
+                $"Total={_totalDeviceMemory / (1024 * 1024)}MB, " +
+                $"Usage={usagePercentage:F1}%");
 
-            // 检查内存压力并采取相应措施
-            if (_pressureState == MemoryPressureState.Critical && requirements.Size > 128 * 1024 * 1024)
+            // 检查是否接近内存限制
+            if (usagePercentage > 85.0) // 超过85%使用率
             {
-                Logger.Error?.Print(LogClass.Gpu, 
-                    "Rejecting large allocation due to critical memory pressure");
-                return default;
-            }
-
-            // 如果请求大小超过可用内存，尝试智能处理
-            if (requirements.Size > availableMemory)
-            {
-                return HandleInsufficientMemory(requirements, flags, isBuffer, availableMemory);
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"High memory usage detected: {usagePercentage:F1}%. Attempting memory optimization...");
+                
+                // 尝试内存优化
+                if (!TryOptimizeMemoryForLargeAllocation(requestedSize))
+                {
+                    Logger.Error?.Print(LogClass.Gpu, 
+                        $"Cannot allocate {requestedSize / (1024 * 1024)}MB. Memory usage would be {usagePercentage:F1}%");
+                    _failedAllocations++;
+                    return default;
+                }
             }
 
             // 正常分配流程
-            return AllocateRegularMemory(requirements, flags, isBuffer);
+            var allocation = AllocateRegularMemory(requirements, flags, isBuffer);
+            if (allocation.Memory.Handle == 0)
+            {
+                _failedAllocations++;
+                
+                // 分配失败，尝试最后的手段
+                Logger.Warning?.Print(LogClass.Gpu, "Large allocation failed, attempting emergency memory cleanup");
+                PerformEmergencyMemoryCleanup();
+                
+                // 重试一次
+                allocation = AllocateRegularMemory(requirements, flags, isBuffer);
+            }
+
+            return allocation;
         }
 
-        private MemoryAllocation HandleInsufficientMemory(
-            MemoryRequirements requirements,
-            MemoryPropertyFlags flags,
-            bool isBuffer,
-            ulong availableMemory)
+        private bool TryOptimizeMemoryForLargeAllocation(ulong requestedSize)
         {
-            // 策略1: 尝试内存清理
-            if (_largeAllocationAttempts <= 2)
-            {
-                Logger.Info?.Print(LogClass.Gpu, "Attempting memory cleanup for large allocation");
-                CompactMemory();
-                ForceGarbageCollection();
-                
-                // 重新计算可用内存
-                availableMemory = _memoryLimit - _currentUsage;
-                if (requirements.Size <= availableMemory)
-                {
-                    Logger.Info?.Print(LogClass.Gpu, "Memory cleanup successful, proceeding with allocation");
-                    return AllocateRegularMemory(requirements, flags, isBuffer);
-                }
-            }
-
-            // 策略2: 对于特别大的分配，建议使用分段缓冲区
-            if (requirements.Size > 256 * 1024 * 1024)
+            // 策略1: 强制垃圾回收
+            Logger.Info?.Print(LogClass.Gpu, "Forcing garbage collection for large allocation");
+            ForceGarbageCollection();
+            
+            // 策略2: 压缩内存
+            CompactMemory();
+            
+            // 策略3: 检查当前使用情况
+            ulong availableMemory = _totalDeviceMemory - _currentUsage;
+            if (availableMemory < requestedSize)
             {
                 Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Consider using segmented buffer for very large allocation: 0x{requirements.Size:X}");
-            }
-
-            // 策略3: 在高压状态下允许轻微超限
-            if (_pressureState < MemoryPressureState.Critical)
-            {
-                ulong allowedOvershoot = _memoryLimit / 20; // 5%
-                if (_currentUsage + requirements.Size <= _memoryLimit + allowedOvershoot)
+                    $"Insufficient memory: Available={availableMemory / (1024 * 1024)}MB, " +
+                    $"Requested={requestedSize / (1024 * 1024)}MB");
+                
+                // 如果请求的大小超过可用内存，但设备总内存足够，可能是碎片问题
+                // 在这种情况下，我们仍然尝试分配，让系统处理
+                if (requestedSize < _totalDeviceMemory * 0.7) // 请求小于总内存70%
                 {
-                    Logger.Warning?.Print(LogClass.Gpu, 
-                        $"Allowing memory allocation slightly above limit: {(_currentUsage + requirements.Size) * 100 / _memoryLimit}% of limit");
-                    return AllocateRegularMemory(requirements, flags, isBuffer);
+                    Logger.Info?.Print(LogClass.Gpu, 
+                        "Requested size is less than 70% of total memory. Allowing allocation attempt despite fragmentation.");
+                    return true;
                 }
+                
+                return false;
             }
+            
+            return true;
+        }
 
-            // 策略4: 返回失败，让上层代码处理
-            Logger.Error?.Print(LogClass.Gpu, 
-                $"Insufficient memory for allocation: Requested=0x{requirements.Size:X}, Available=0x{availableMemory:X}");
-            return default;
+        private void PerformEmergencyMemoryCleanup()
+        {
+            Logger.Warning?.Print(LogClass.Gpu, "Performing emergency memory cleanup");
+            
+            // 强制完整的垃圾回收
+            for (int i = 0; i < 3; i++)
+            {
+                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, true);
+                GC.WaitForPendingFinalizers();
+            }
+            
+            // 如果有缓存清理机制，在这里调用
+            // ClearAllCaches();
+            
+            Logger.Info?.Print(LogClass.Gpu, "Emergency memory cleanup completed");
         }
 
         private MemoryAllocation AllocateRegularMemory(
@@ -246,38 +189,12 @@ namespace Ryujinx.Graphics.Vulkan
             MemoryPropertyFlags flags,
             bool isBuffer)
         {
-            // 检查内存限制
-            if (_currentUsage + requirements.Size > _memoryLimit)
-            {
-                // 在适度压力下允许小幅度超限
-                if (_pressureState <= MemoryPressureState.Moderate)
-                {
-                    ulong allowedOvershoot = _memoryLimit / 50; // 2%
-                    if (_currentUsage + requirements.Size <= _memoryLimit + allowedOvershoot)
-                    {
-                        Logger.Warning?.Print(LogClass.Gpu, 
-                            $"Allowing small allocation slightly above limit: {(_currentUsage + requirements.Size) * 100 / _memoryLimit}% of limit");
-                    }
-                    else
-                    {
-                        Logger.Warning?.Print(LogClass.Gpu, 
-                            $"Memory allocation would exceed limit: Current=0x{_currentUsage:X}, Requested=0x{requirements.Size:X}, Limit=0x{_memoryLimit:X}");
-                        return default;
-                    }
-                }
-                else
-                {
-                    Logger.Warning?.Print(LogClass.Gpu, 
-                        $"Memory allocation would exceed limit: Current=0x{_currentUsage:X}, Requested=0x{requirements.Size:X}, Limit=0x{_memoryLimit:X}");
-                    return default;
-                }
-            }
-
             int memoryTypeIndex = FindSuitableMemoryTypeIndex(requirements.MemoryTypeBits, flags);
             if (memoryTypeIndex < 0)
             {
                 Logger.Warning?.Print(LogClass.Gpu, 
                     $"No suitable memory type found for requirements: TypeBits=0x{requirements.MemoryTypeBits:X}, Flags={flags}");
+                _failedAllocations++;
                 return default;
             }
 
@@ -291,20 +208,26 @@ namespace Ryujinx.Graphics.Vulkan
                     _currentUsage += requirements.Size;
                     _peakUsage = Math.Max(_peakUsage, _currentUsage);
                     
-                    // 记录大分配
-                    if (requirements.Size > 64 * 1024 * 1024)
+                    // 记录内存使用情况
+                    double usagePercent = _currentUsage * 100.0 / _totalDeviceMemory;
+                    if (usagePercent > 80.0)
                     {
-                        Logger.Info?.Print(LogClass.Gpu, 
-                            $"Large memory allocation successful: 0x{requirements.Size:X} ({requirements.Size / (1024 * 1024)}MB), " +
-                            $"New usage: 0x{_currentUsage:X} ({_currentUsage / (1024 * 1024)}MB, {(double)_currentUsage / _memoryLimit:P})");
+                        Logger.Warning?.Print(LogClass.Gpu, 
+                            $"High memory usage: {_currentUsage / (1024 * 1024)}MB / {_totalDeviceMemory / (1024 * 1024)}MB ({usagePercent:F1}%)");
                     }
                 }
+                else
+                {
+                    _failedAllocations++;
+                }
+                
                 return allocation;
             }
             catch (VulkanException ex)
             {
                 Logger.Error?.Print(LogClass.Gpu, 
                     $"Memory allocation failed: Size=0x{requirements.Size:X}, TypeIndex={memoryTypeIndex}, Error={ex.Message}");
+                _failedAllocations++;
                 return default;
             }
         }
@@ -321,10 +244,15 @@ namespace Ryujinx.Graphics.Vulkan
             else
             {
                 _currentUsage -= size;
+                
+                // 记录内存释放后的使用情况
+                double usagePercent = _currentUsage * 100.0 / _totalDeviceMemory;
+                if (usagePercent < 50.0 && _peakUsage > _totalDeviceMemory * 0.8)
+                {
+                    Logger.Info?.Print(LogClass.Gpu, 
+                        $"Memory usage normalized: {_currentUsage / (1024 * 1024)}MB / {_totalDeviceMemory / (1024 * 1024)}MB ({usagePercent:F1}%)");
+                }
             }
-            
-            // 更新内存压力状态
-            UpdateMemoryPressureState();
         }
 
         private MemoryAllocation Allocate(int memoryTypeIndex, ulong size, ulong alignment, bool map, bool isBuffer)
@@ -445,24 +373,51 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         // 添加内存统计方法
-        public (ulong totalAllocated, ulong totalFreed, ulong currentUsage, ulong peakUsage, ulong memoryLimit, MemoryPressureState pressureState) GetMemoryStatistics()
+        public MemoryStatistics GetMemoryStatistics()
         {
             ulong totalAllocated = 0;
             ulong totalFreed = 0;
-            ulong currentUsage = 0;
+            ulong currentBlockUsage = 0;
 
             foreach (var blockList in _blockLists)
             {
                 var stats = blockList.GetMemoryStatistics();
                 totalAllocated += stats.allocated;
                 totalFreed += stats.freed;
-                currentUsage += stats.currentUsage;
+                currentBlockUsage += stats.currentUsage;
             }
 
-            return (totalAllocated, totalFreed, _currentUsage, _peakUsage, _memoryLimit, _pressureState);
+            return new MemoryStatistics
+            {
+                TotalAllocated = totalAllocated,
+                TotalFreed = totalFreed,
+                CurrentUsage = _currentUsage,
+                PeakUsage = _peakUsage,
+                TotalDeviceMemory = _totalDeviceMemory,
+                LargestHeap = _largestHeap,
+                TotalAllocations = _totalAllocations,
+                FailedAllocations = _failedAllocations,
+                LargeAllocationAttempts = _largeAllocationAttempts,
+                UsagePercentage = _currentUsage * 100.0 / _totalDeviceMemory
+            };
         }
 
-        // 添加内存压缩方法（尝试合并空闲块）
+        // 内存统计结构
+        public struct MemoryStatistics
+        {
+            public ulong TotalAllocated;
+            public ulong TotalFreed;
+            public ulong CurrentUsage;
+            public ulong PeakUsage;
+            public ulong TotalDeviceMemory;
+            public ulong LargestHeap;
+            public int TotalAllocations;
+            public int FailedAllocations;
+            public int LargeAllocationAttempts;
+            public double UsagePercentage;
+        }
+
+        // 添加内存压缩方法
         public void CompactMemory()
         {
             _lock.EnterWriteLock();
@@ -482,19 +437,32 @@ namespace Ryujinx.Graphics.Vulkan
         private void ForceGarbageCollection()
         {
             Logger.Info?.Print(LogClass.Gpu, "Forcing garbage collection");
-            GC.Collect();
+            
+            // 使用更激进的GC策略
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, true);
             GC.WaitForPendingFinalizers();
             GC.Collect();
+            
+            // 如果有未完成的任务，等待一下
+            System.Threading.Thread.Sleep(10);
         }
 
-        // 重置大分配计数
-        public void ResetLargeAllocationCount()
+        // 重置统计
+        public void ResetStatistics()
         {
+            _totalAllocations = 0;
+            _failedAllocations = 0;
             _largeAllocationAttempts = 0;
         }
 
         public void Dispose()
         {
+            // 输出最终内存统计
+            var stats = GetMemoryStatistics();
+            Logger.Info?.Print(LogClass.Gpu, 
+                $"Memory allocator disposed - Peak usage: {stats.PeakUsage / (1024 * 1024)}MB / {stats.TotalDeviceMemory / (1024 * 1024)}MB " +
+                $"({stats.UsagePercentage:F1}%), Failed allocations: {stats.FailedAllocations}");
+
             for (int i = 0; i < _blockLists.Count; i++)
             {
                 _blockLists[i].Dispose();
