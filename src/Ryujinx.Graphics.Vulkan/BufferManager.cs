@@ -2,6 +2,7 @@ using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
 using Silk.NET.Vulkan;
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using VkBuffer = Silk.NET.Vulkan.Buffer;
@@ -37,6 +38,42 @@ namespace Ryujinx.Graphics.Vulkan
                 _bufferManager.Delete(Range.Handle);
             }
         }
+    }
+
+    // 分段缓冲区持有者
+    class SegmentedBufferHolder : BufferHolder
+    {
+        private readonly BufferHolder[] _segments;
+        private readonly int _segmentSize;
+        private readonly int _totalSize;
+
+        public SegmentedBufferHolder(VulkanRenderer gd, Device device, BufferHolder[] segments, int segmentSize, int totalSize) 
+            : base(gd, device, default, default, totalSize, BufferAllocationType.HostMapped, BufferAllocationType.HostMapped)
+        {
+            _segments = segments;
+            _segmentSize = segmentSize;
+            _totalSize = totalSize;
+        }
+
+        public override void Dispose()
+        {
+            foreach (var segment in _segments)
+            {
+                segment?.Dispose();
+            }
+        }
+
+        public BufferHolder GetSegment(int index)
+        {
+            if (index >= 0 && index < _segments.Length)
+            {
+                return _segments[index];
+            }
+            return null;
+        }
+
+        public int SegmentCount => _segments.Length;
+        public int SegmentSize => _segmentSize;
     }
 
     class BufferManager : IDisposable
@@ -436,6 +473,15 @@ namespace Ryujinx.Graphics.Vulkan
             bool sparseCompatible = false,
             BufferAllocationType baseType = BufferAllocationType.HostMapped)
         {
+            // 添加内存压力检测和智能大小调整
+            int adjustedSize = AdjustBufferSizeBasedOnMemoryPressure(gd, size);
+            if (adjustedSize != size)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Adjusting buffer size from 0x{size:X} to 0x{adjustedSize:X} due to memory constraints");
+                size = adjustedSize;
+            }
+
             // 添加小缓冲区优化
             // 对于小于4KB的缓冲区，默认使用HostMapped类型
             const int smallBufferThreshold = 4 * 1024;
@@ -481,9 +527,29 @@ namespace Ryujinx.Graphics.Vulkan
                     $"Android-optimized buffer creation failed: {ex.Message}");
             }
 
-            // 最后尝试：使用简化版本的分段缓冲区
+            // 尝试分段缓冲区
             Logger.Warning?.Print(LogClass.Gpu, 
-                $"Android-optimized method failed, attempting simplified buffer for size 0x{size:X}");
+                $"Android-optimized method failed, attempting segmented buffer for size 0x{size:X}");
+
+            try
+            {
+                var segmentedBuffer = CreateSegmentedBuffer(gd, size);
+                if (segmentedBuffer != null)
+                {
+                    Logger.Info?.Print(LogClass.Gpu, 
+                        $"Successfully created segmented buffer for size 0x{size:X} with {segmentedBuffer.SegmentCount} segments");
+                    return segmentedBuffer;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Segmented buffer creation failed: {ex.Message}");
+            }
+
+            // 最后尝试：使用简化版本
+            Logger.Warning?.Print(LogClass.Gpu, 
+                $"Segmented method failed, attempting simplified buffer for size 0x{size:X}");
 
             try
             {
@@ -503,6 +569,173 @@ namespace Ryujinx.Graphics.Vulkan
 
             Logger.Error?.Print(LogClass.Gpu, $"All buffer creation methods failed for size 0x{size:X} and type \"{baseType}\"");
             return null;
+        }
+
+        private int AdjustBufferSizeBasedOnMemoryPressure(VulkanRenderer gd, int requestedSize)
+        {
+            // 对于小缓冲区，不需要调整
+            if (requestedSize <= 1 * 1024 * 1024) // 1MB以下
+            {
+                return requestedSize;
+            }
+
+            var memoryStats = gd.MemoryAllocator.GetMemoryStatistics();
+            ulong availableMemory = memoryStats.memoryLimit - memoryStats.currentUsage;
+            
+            // 如果请求大小超过可用内存，进行调整
+            if ((ulong)requestedSize > availableMemory)
+            {
+                // 策略1: 尝试使用可用内存的80%
+                int adjustedSize = (int)(availableMemory * 8 / 10);
+                if (adjustedSize > 0)
+                {
+                    Logger.Info?.Print(LogClass.Gpu, 
+                        $"Adjusting buffer size to 80% of available memory: 0x{adjustedSize:X}");
+                    return adjustedSize;
+                }
+                
+                // 策略2: 如果仍然不够，使用最大可用块
+                ulong largestBlock = gd.MemoryAllocator.GetLargestAvailableBlock();
+                if (largestBlock > 0 && largestBlock < (ulong)requestedSize)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"Using largest available block size: 0x{largestBlock:X} instead of requested 0x{requestedSize:X}");
+                    return (int)largestBlock;
+                }
+
+                // 策略3: 对于非常大的请求，使用固定分段大小
+                if (requestedSize > 256 * 1024 * 1024) // 256MB以上
+                {
+                    int segmentSize = 64 * 1024 * 1024; // 64MB段
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"Very large buffer requested, suggesting segment size: 0x{segmentSize:X}");
+                    return segmentSize;
+                }
+            }
+            
+            return requestedSize;
+        }
+
+        private SegmentedBufferHolder CreateSegmentedBuffer(VulkanRenderer gd, int totalSize)
+        {
+            // 计算合适的段大小
+            int segmentSize = CalculateOptimalSegmentSize(gd, totalSize);
+            int segmentCount = (totalSize + segmentSize - 1) / segmentSize;
+            
+            if (segmentCount <= 1)
+            {
+                Logger.Info?.Print(LogClass.Gpu, "Segment count is 1, no need for segmentation");
+                return null;
+            }
+
+            Logger.Info?.Print(LogClass.Gpu, 
+                $"Creating segmented buffer: {segmentCount} segments of 0x{segmentSize:X} for total 0x{totalSize:X}");
+
+            var segments = new BufferHolder[segmentCount];
+            int successfullyCreated = 0;
+
+            try
+            {
+                for (int i = 0; i < segmentCount; i++)
+                {
+                    int currentSegmentSize = (i == segmentCount - 1) ? totalSize - (segmentSize * i) : segmentSize;
+                    
+                    var segment = CreateSingleSegment(gd, currentSegmentSize);
+                    if (segment != null)
+                    {
+                        segments[i] = segment;
+                        successfullyCreated++;
+                    }
+                    else
+                    {
+                        Logger.Warning?.Print(LogClass.Gpu, 
+                            $"Failed to create segment {i} of size 0x{currentSegmentSize:X}");
+                        break;
+                    }
+                }
+
+                if (successfullyCreated == segmentCount)
+                {
+                    return new SegmentedBufferHolder(gd, _device, segments, segmentSize, totalSize);
+                }
+                else
+                {
+                    // 清理已创建的段
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"Only created {successfullyCreated} out of {segmentCount} segments, cleaning up");
+                    for (int i = 0; i < successfullyCreated; i++)
+                    {
+                        segments[i]?.Dispose();
+                    }
+                    return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Error creating segmented buffer: {ex.Message}");
+                // 清理已创建的段
+                for (int i = 0; i < successfullyCreated; i++)
+                {
+                    segments[i]?.Dispose();
+                }
+                return null;
+            }
+        }
+
+        private int CalculateOptimalSegmentSize(VulkanRenderer gd, int totalSize)
+        {
+            var memoryStats = gd.MemoryAllocator.GetMemoryStatistics();
+            ulong availableMemory = memoryStats.memoryLimit - memoryStats.currentUsage;
+            
+            // 基于可用内存计算段大小
+            if (availableMemory > 0)
+            {
+                // 使用可用内存的1/4作为段大小，但不超过128MB
+                ulong calculatedSegmentSize = Math.Min(availableMemory / 4, 128UL * 1024 * 1024);
+                
+                // 确保段大小合理
+                if (calculatedSegmentSize >= 1 * 1024 * 1024) // 至少1MB
+                {
+                    int segmentSize = (int)calculatedSegmentSize;
+                    
+                    // 如果总大小小于段大小，使用总大小
+                    if (totalSize < segmentSize)
+                    {
+                        segmentSize = totalSize;
+                    }
+                    
+                    Logger.Info?.Print(LogClass.Gpu, 
+                        $"Calculated optimal segment size: 0x{segmentSize:X} for total 0x{totalSize:X}");
+                    return segmentSize;
+                }
+            }
+
+            // 回退策略：使用固定段大小
+            int fallbackSegmentSize = 16 * 1024 * 1024; // 16MB
+            if (totalSize < fallbackSegmentSize)
+            {
+                fallbackSegmentSize = totalSize;
+            }
+            
+            Logger.Warning?.Print(LogClass.Gpu, 
+                $"Using fallback segment size: 0x{fallbackSegmentSize:X}");
+            return fallbackSegmentSize;
+        }
+
+        private BufferHolder CreateSingleSegment(VulkanRenderer gd, int segmentSize)
+        {
+            // 尝试常规创建
+            try
+            {
+                return Create(gd, segmentSize, forConditionalRendering: false, sparseCompatible: false, BufferAllocationType.HostMapped);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Failed to create segment of size 0x{segmentSize:X}: {ex.Message}");
+                return null;
+            }
         }
 
         private unsafe BufferHolder CreateAndroidOptimizedBuffer(VulkanRenderer gd, int size)
