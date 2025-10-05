@@ -8,6 +8,7 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly CommandBufferPool _pool;
         public CommandBuffer CommandBuffer { get; }
         public int CommandBufferIndex { get; }
+        public VulkanRenderer Gd => _pool.Gd;
 
         public CommandBufferScoped(CommandBufferPool pool, CommandBuffer commandBuffer, int commandBufferIndex)
         {
