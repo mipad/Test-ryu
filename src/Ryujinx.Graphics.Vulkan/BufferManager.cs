@@ -461,86 +461,113 @@ namespace Ryujinx.Graphics.Vulkan
 
             try
             {
-                // 创建一个单段的稀疏缓冲区，但这次要确保有实际的内存分配
-                var singleRange = new BufferRange[] { new BufferRange(BufferHandle.Null, 0, size) };
-                var sparseHandle = CreateSparse(gd, singleRange);
-                
-                if (TryGetBuffer(sparseHandle, out var sparseHolder))
+                // 创建一个带有实际内存绑定的稀疏缓冲区
+                var sparseBuffer = CreateSparseWithMemoryBacking(gd, size);
+                if (sparseBuffer != null)
                 {
                     Logger.Info?.Print(LogClass.Gpu, 
-                        $"Successfully created sparse buffer as fallback for size 0x{size:X}");
-                    return sparseHolder;
+                        $"Successfully created sparse buffer with memory backing for size 0x{size:X}");
+                    return sparseBuffer;
                 }
             }
             catch (Exception ex)
             {
                 Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Sparse buffer fallback also failed: {ex.Message}");
-            }
-
-            // 如果稀疏缓冲区也失败，尝试分段创建
-            Logger.Warning?.Print(LogClass.Gpu, 
-                $"Sparse buffer creation failed, attempting segmented allocation for size 0x{size:X}");
-
-            try
-            {
-                // 将大缓冲区分割成多个小段
-                const int segmentSize = 64 * 1024 * 1024; // 64MB segments
-                int segmentCount = (size + segmentSize - 1) / segmentSize;
-                
-                var segments = new BufferRange[segmentCount];
-                var segmentHandles = new BufferHandle[segmentCount];
-                
-                // 创建每个小段
-                for (int i = 0; i < segmentCount; i++)
-                {
-                    int segmentStart = i * segmentSize;
-                    int segmentEnd = Math.Min((i + 1) * segmentSize, size);
-                    int segmentActualSize = segmentEnd - segmentStart;
-                    
-                    // 尝试创建小段缓冲区
-                    var segmentHandle = CreateWithHandle(gd, segmentActualSize, out var segmentHolder, false, BufferAllocationType.HostMappedNoCache);
-                    
-                    if (segmentHolder != null)
-                    {
-                        segments[i] = new BufferRange(segmentHandle, 0, segmentActualSize);
-                        segmentHandles[i] = segmentHandle;
-                    }
-                    else
-                    {
-                        // 如果小段创建失败，清理已创建的段并退出
-                        for (int j = 0; j < i; j++)
-                        {
-                            Delete(segmentHandles[j]);
-                        }
-                        throw new InvalidOperationException($"Failed to create segment {i} of size 0x{segmentActualSize:X}");
-                    }
-                }
-                
-                // 使用这些小段创建稀疏缓冲区
-                var sparseHandle = CreateSparse(gd, segments);
-                
-                if (TryGetBuffer(sparseHandle, out var sparseHolder))
-                {
-                    Logger.Info?.Print(LogClass.Gpu, 
-                        $"Successfully created segmented sparse buffer for size 0x{size:X} using {segmentCount} segments");
-                    return sparseHolder;
-                }
-                
-                // 如果稀疏缓冲区创建失败，清理已创建的段
-                for (int i = 0; i < segmentCount; i++)
-                {
-                    Delete(segmentHandles[i]);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Segmented sparse buffer creation failed: {ex.Message}");
+                    $"Sparse buffer with memory backing failed: {ex.Message}");
             }
 
             Logger.Error?.Print(LogClass.Gpu, $"All buffer creation methods failed for size 0x{size:X} and type \"{baseType}\"");
             return null;
+        }
+
+        private unsafe BufferHolder CreateSparseWithMemoryBacking(VulkanRenderer gd, int size)
+        {
+            // 创建稀疏缓冲区
+            var usage = DefaultBufferUsageFlags;
+
+            if (gd.Capabilities.SupportsIndirectParameters)
+            {
+                usage |= BufferUsageFlags.IndirectBufferBit;
+            }
+
+            var bufferCreateInfo = new BufferCreateInfo()
+            {
+                SType = StructureType.BufferCreateInfo,
+                Size = (ulong)size,
+                Usage = usage,
+                SharingMode = SharingMode.Exclusive,
+                Flags = BufferCreateFlags.SparseBindingBit | BufferCreateFlags.SparseAliasedBit
+            };
+
+            gd.Api.CreateBuffer(_device, in bufferCreateInfo, null, out var buffer).ThrowOnError();
+            gd.Api.GetBufferMemoryRequirements(_device, buffer, out var requirements);
+
+            // 为稀疏缓冲区分配实际的内存
+            MemoryAllocation allocation;
+            try
+            {
+                allocation = gd.MemoryAllocator.AllocateDeviceMemory(
+                    requirements, 
+                    DefaultBufferMemoryNoCacheFlags, 
+                    false);
+            }
+            catch (VulkanException)
+            {
+                // 如果分配失败，尝试其他内存类型
+                try
+                {
+                    allocation = gd.MemoryAllocator.AllocateDeviceMemory(
+                        requirements, 
+                        DeviceLocalBufferMemoryFlags, 
+                        false);
+                }
+                catch (VulkanException)
+                {
+                    gd.Api.DestroyBuffer(_device, buffer, null);
+                    return null;
+                }
+            }
+
+            if (allocation.Memory.Handle == 0UL)
+            {
+                gd.Api.DestroyBuffer(_device, buffer, null);
+                return null;
+            }
+
+            // 绑定内存到稀疏缓冲区
+            var memoryBind = new SparseMemoryBind
+            {
+                ResourceOffset = 0,
+                Size = (ulong)size,
+                Memory = allocation.Memory,
+                MemoryOffset = allocation.Offset,
+                Flags = SparseMemoryBindFlags.None
+            };
+
+            fixed (SparseMemoryBind* pMemoryBind = &memoryBind)
+            {
+                var bufferBind = new SparseBufferMemoryBindInfo
+                {
+                    Buffer = buffer,
+                    BindCount = 1,
+                    PBinds = pMemoryBind
+                };
+
+                var bindSparseInfo = new BindSparseInfo
+                {
+                    SType = StructureType.BindSparseInfo,
+                    BufferBindCount = 1,
+                    PBufferBinds = &bufferBind
+                };
+
+                gd.Api.QueueBindSparse(gd.Queue, 1, in bindSparseInfo, default).ThrowOnError();
+            }
+
+            // 创建BufferHolder
+            var allocationAuto = new Auto<MemoryAllocation>(allocation);
+            var holder = new BufferHolder(gd, _device, buffer, allocation, size, BufferAllocationType.Sparse, BufferAllocationType.Sparse);
+
+            return holder;
         }
 
         public Auto<DisposableBufferView> CreateView(BufferHandle handle, VkFormat format, int offset, int size, Action invalidateView)
