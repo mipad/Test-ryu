@@ -567,9 +567,9 @@ namespace Ryujinx.Graphics.Vulkan
             return holder;
         }
 
-        private BufferHolder CreateSimplifiedBuffer(VulkanRenderer gd, int size)
+        private unsafe BufferHolder CreateSimplifiedBuffer(VulkanRenderer gd, int size)
         {
-            // 简化版本：只尝试最基本的内存分配，不使用指针
+            // 简化版本：只尝试最基本的内存分配
             try
             {
                 // 对于Android，使用最小的内存需求
