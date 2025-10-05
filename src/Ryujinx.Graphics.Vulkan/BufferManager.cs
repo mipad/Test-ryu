@@ -549,7 +549,8 @@ namespace Ryujinx.Graphics.Vulkan
         // 修改CopyBuffer方法以支持环形缓冲区
         public void CopyBuffer(CommandBufferScoped cbs, BufferHandle source, BufferHandle destination, int srcOffset, int dstOffset, int size)
         {
-            EndRenderPass();
+            var gd = cbs.Gd;
+            gd.PipelineInternal.EndRenderPass();
             
             var src = GetBuffer(cbs.CommandBuffer, source, srcOffset, size, false);
             var dst = GetBuffer(cbs.CommandBuffer, destination, dstOffset, size, true);
