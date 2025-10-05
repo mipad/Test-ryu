@@ -535,7 +535,7 @@ namespace Ryujinx.Graphics.Vulkan
                 allocation = gd.MemoryAllocator.AllocateDeviceMemory(
                     requirements, 
                     SystemMemoryFlags, 
-                    false);
+                    true); // 对于缓冲区，isBuffer参数为true
             }
             catch (VulkanException)
             {
@@ -545,7 +545,7 @@ namespace Ryujinx.Graphics.Vulkan
                     allocation = gd.MemoryAllocator.AllocateDeviceMemory(
                         requirements, 
                         MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit, 
-                        false);
+                        true); // 对于缓冲区，isBuffer参数为true
                 }
                 catch (VulkanException)
                 {
@@ -599,8 +599,7 @@ namespace Ryujinx.Graphics.Vulkan
                 allocation = gd.MemoryAllocator.AllocateDeviceMemory(
                     requirements, 
                     MemoryPropertyFlags.HostVisibleBit,  // 最低要求：主机可见
-                    false,
-                    true); // 允许使用系统分页文件
+                    true); // 对于缓冲区，isBuffer参数为true
             }
             catch (VulkanException)
             {
