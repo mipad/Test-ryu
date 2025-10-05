@@ -337,97 +337,93 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         public unsafe (VkBuffer buffer, MemoryAllocation allocation, BufferAllocationType resultType) CreateBacking(
-            VulkanRenderer gd,
-            int size,
-            BufferAllocationType type,
-            bool forConditionalRendering = false,
-            bool sparseCompatible = false,
-            BufferAllocationType fallbackType = BufferAllocationType.Auto)
+    VulkanRenderer gd,
+    int size,
+    BufferAllocationType type,
+    bool forConditionalRendering = false,
+    bool sparseCompatible = false,
+    BufferAllocationType fallbackType = BufferAllocationType.Auto)
+{
+    var usage = DefaultBufferUsageFlags;
+
+    if (forConditionalRendering && gd.Capabilities.SupportsConditionalRendering)
+    {
+        usage |= BufferUsageFlags.ConditionalRenderingBitExt;
+    }
+    else if (gd.Capabilities.SupportsIndirectParameters)
+    {
+        usage |= BufferUsageFlags.IndirectBufferBit;
+    }
+
+    var bufferCreateInfo = new BufferCreateInfo
+    {
+        SType = StructureType.BufferCreateInfo,
+        Size = (ulong)size,
+        Usage = usage,
+        SharingMode = SharingMode.Exclusive,
+    };
+
+    gd.Api.CreateBuffer(_device, in bufferCreateInfo, null, out var buffer).ThrowOnError();
+    gd.Api.GetBufferMemoryRequirements(_device, buffer, out var requirements);
+
+    if (sparseCompatible)
+    {
+        requirements.Alignment = Math.Max(requirements.Alignment, Constants.SparseBufferAlignment);
+    }
+
+    MemoryAllocation allocation;
+
+    do
+    {
+        var allocateFlags = type switch
         {
-            var usage = DefaultBufferUsageFlags;
+            BufferAllocationType.HostMappedNoCache => DefaultBufferMemoryNoCacheFlags,
+            BufferAllocationType.HostMapped => DefaultBufferMemoryFlags,
+            BufferAllocationType.DeviceLocal => DeviceLocalBufferMemoryFlags,
+            BufferAllocationType.DeviceLocalMapped => DeviceLocalMappedBufferMemoryFlags,
+            _ => DefaultBufferMemoryFlags,
+        };
 
-            if (forConditionalRendering && gd.Capabilities.SupportsConditionalRendering)
-            {
-                usage |= BufferUsageFlags.ConditionalRenderingBitExt;
-            }
-            else if (gd.Capabilities.SupportsIndirectParameters)
-            {
-                usage |= BufferUsageFlags.IndirectBufferBit;
-            }
-
-            var bufferCreateInfo = new BufferCreateInfo
-            {
-                SType = StructureType.BufferCreateInfo,
-                Size = (ulong)size,
-                Usage = usage,
-                SharingMode = SharingMode.Exclusive,
-            };
-
-            gd.Api.CreateBuffer(_device, in bufferCreateInfo, null, out var buffer).ThrowOnError();
-            gd.Api.GetBufferMemoryRequirements(_device, buffer, out var requirements);
-
-            if (sparseCompatible)
-            {
-                requirements.Alignment = Math.Max(requirements.Alignment, Constants.SparseBufferAlignment);
-            }
-
-            MemoryAllocation allocation;
-
-            do
-            {
-                var allocateFlags = type switch
-                {
-                    BufferAllocationType.HostMappedNoCache => DefaultBufferMemoryNoCacheFlags,
-                    BufferAllocationType.HostMapped => DefaultBufferMemoryFlags,
-                    BufferAllocationType.DeviceLocal => DeviceLocalBufferMemoryFlags,
-                    BufferAllocationType.DeviceLocalMapped => DeviceLocalMappedBufferMemoryFlags,
-                    _ => DefaultBufferMemoryFlags,
-                };
-
-                // 如果分配失败，尝试回退策略
-                try
-                {
-                    allocation = gd.MemoryAllocator.AllocateDeviceMemory(requirements, allocateFlags, true);
-                }
-                catch (VulkanException e)
-                {
-                    Logger.Warning?.Print(LogClass.Gpu, 
-                        $"Memory allocation failed (type={type}, size=0x{size:X}): {e.Message}");
-                    
-                    allocation = default;
-                }
-            }
-            while (allocation.Memory.Handle == 0 && (--type != fallbackType));
-
-            // 添加内存不足时的降级处理
-            if (allocation.Memory.Handle == 0UL)
-            {
-                // 在Android上，尝试使用更简单的内存标志
-                try
-                {
-                    allocation = gd.MemoryAllocator.AllocateDeviceMemory(
-                        requirements, 
-                        AndroidMemoryFlags, 
-                        true);
-                }
-                catch
-                {
-                    allocation = default;
-                }
-                
-                if (allocation.Memory.Handle == 0UL)
-                {
-                    Logger.Error?.Print(LogClass.Gpu, 
-                        $"All backup memory allocations failed for size 0x{size:X}");
-                    gd.Api.DestroyBuffer(_device, buffer, null);
-                    return default;
-                }
-            }
-
-            gd.Api.BindBufferMemory(_device, buffer, allocation.Memory, allocation.Offset);
-
-            return (buffer, allocation, type);
+        try
+        {
+            allocation = gd.MemoryAllocator.AllocateDeviceMemory(requirements, allocateFlags, true);
         }
+        catch (VulkanException e)
+        {
+            Logger.Warning?.Print(LogClass.Gpu, 
+                $"Memory allocation failed (type={type}, size=0x{size:X}): {e.Message}");
+            allocation = default;
+        }
+    }
+    while (allocation.Memory.Handle == 0 && (--type != fallbackType));
+
+    if (allocation.Memory.Handle == 0UL)
+    {
+        try
+        {
+            allocation = gd.MemoryAllocator.AllocateDeviceMemory(
+                requirements, 
+                AndroidMemoryFlags, 
+                true);
+        }
+        catch
+        {
+            allocation = default;
+        }
+        
+        if (allocation.Memory.Handle == 0UL)
+        {
+            Logger.Error?.Print(LogClass.Gpu, 
+                $"All backup memory allocations failed for size 0x{size:X}");
+            gd.Api.DestroyBuffer(_device, buffer, null);
+            return default;
+        }
+    }
+
+    gd.Api.BindBufferMemory(_device, buffer, allocation.Memory, allocation.Offset);
+
+    return (buffer, allocation, type);
+}
 
         public BufferHolder Create(
             VulkanRenderer gd,
