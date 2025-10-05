@@ -481,24 +481,24 @@ namespace Ryujinx.Graphics.Vulkan
                     $"Android-optimized buffer creation failed: {ex.Message}");
             }
 
-            // 最后尝试：使用分段缓冲区
+            // 最后尝试：使用简化版本的分段缓冲区
             Logger.Warning?.Print(LogClass.Gpu, 
-                $"Android-optimized method failed, attempting segmented buffer for size 0x{size:X}");
+                $"Android-optimized method failed, attempting simplified buffer for size 0x{size:X}");
 
             try
             {
-                var segmentedBuffer = CreateSegmentedBuffer(gd, size);
-                if (segmentedBuffer != null)
+                var simplifiedBuffer = CreateSimplifiedBuffer(gd, size);
+                if (simplifiedBuffer != null)
                 {
                     Logger.Info?.Print(LogClass.Gpu, 
-                        $"Successfully created segmented buffer for size 0x{size:X}");
-                    return segmentedBuffer;
+                        $"Successfully created simplified buffer for size 0x{size:X}");
+                    return simplifiedBuffer;
                 }
             }
             catch (Exception ex)
             {
                 Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Segmented buffer creation failed: {ex.Message}");
+                    $"Simplified buffer creation failed: {ex.Message}");
             }
 
             Logger.Error?.Print(LogClass.Gpu, $"All buffer creation methods failed for size 0x{size:X} and type \"{baseType}\"");
@@ -567,73 +567,61 @@ namespace Ryujinx.Graphics.Vulkan
             return holder;
         }
 
-        private BufferHolder CreateSegmentedBuffer(VulkanRenderer gd, int size)
+        private BufferHolder CreateSimplifiedBuffer(VulkanRenderer gd, int size)
         {
-            // 在Android上，将大缓冲区分割成多个小缓冲区
-            // 这对于内存受限的设备特别有用
-            const int maxSegmentSize = 16 * 1024 * 1024; // 16MB segments for Android
-            
-            if (size <= maxSegmentSize)
-            {
-                // 如果大小小于等于最大段大小，直接创建
-                return CreateAndroidOptimizedBuffer(gd, size);
-            }
-
-            // 创建分段缓冲区包装器
-            int segmentCount = (size + maxSegmentSize - 1) / maxSegmentSize;
-            var segments = new BufferHolder[segmentCount];
-            
+            // 简化版本：只尝试最基本的内存分配，不使用指针
             try
             {
-                for (int i = 0; i < segmentCount; i++)
+                // 对于Android，使用最小的内存需求
+                var usage = DefaultBufferUsageFlags;
+
+                if (gd.Capabilities.SupportsIndirectParameters)
                 {
-                    int segmentSize = (i == segmentCount - 1) ? (size - i * maxSegmentSize) : maxSegmentSize;
-                    segments[i] = CreateAndroidOptimizedBuffer(gd, segmentSize);
-                    
-                    if (segments[i] == null)
-                    {
-                        // 如果任何段创建失败，清理已创建的段
-                        for (int j = 0; j < i; j++)
-                        {
-                            segments[j]?.Dispose();
-                        }
-                        return null;
-                    }
+                    usage |= BufferUsageFlags.IndirectBufferBit;
                 }
 
-                // 创建一个虚拟的BufferHolder来管理这些段
-                // 注意：这是一个简化的实现，实际需要更复杂的管理逻辑
-                var dummyBufferCreateInfo = new BufferCreateInfo
+                // 使用最基础的内存标志
+                var bufferCreateInfo = new BufferCreateInfo
                 {
                     SType = StructureType.BufferCreateInfo,
                     Size = (ulong)size,
-                    Usage = DefaultBufferUsageFlags,
+                    Usage = usage,
                     SharingMode = SharingMode.Exclusive,
                 };
 
-                gd.Api.CreateBuffer(_device, in dummyBufferCreateInfo, null, out var dummyBuffer).ThrowOnError();
-                
-                // 创建一个特殊的BufferHolder来管理分段缓冲区
-                var segmentAllocations = new Auto<MemoryAllocation>[segmentCount];
-                for (int i = 0; i < segmentCount; i++)
+                gd.Api.CreateBuffer(_device, bufferCreateInfo, null, out var buffer).ThrowOnError();
+                gd.Api.GetBufferMemoryRequirements(_device, buffer, out var requirements);
+
+                // 尝试最基本的内存分配
+                MemoryAllocation allocation;
+                try
                 {
-                    segmentAllocations[i] = segments[i].GetAllocation();
+                    allocation = gd.MemoryAllocator.AllocateDeviceMemory(
+                        requirements, 
+                        MemoryPropertyFlags.HostVisibleBit, // 最基本的要求
+                        true);
+                }
+                catch (VulkanException)
+                {
+                    gd.Api.DestroyBuffer(_device, buffer, null);
+                    return null;
                 }
 
-                var holder = new BufferHolder(gd, _device, dummyBuffer, size, segmentAllocations);
+                if (allocation.Memory.Handle == 0UL)
+                {
+                    gd.Api.DestroyBuffer(_device, buffer, null);
+                    return null;
+                }
 
-                // 设置分段信息供后续使用
-                // 这里需要扩展BufferHolder来支持分段缓冲区
+                gd.Api.BindBufferMemory(_device, buffer, allocation.Memory, allocation.Offset);
+
+                var holder = new BufferHolder(gd, _device, buffer, allocation, size, 
+                    BufferAllocationType.HostMapped, BufferAllocationType.HostMapped);
 
                 return holder;
             }
             catch (Exception)
             {
-                // 清理所有已创建的段
-                foreach (var segment in segments)
-                {
-                    segment?.Dispose();
-                }
                 return null;
             }
         }
