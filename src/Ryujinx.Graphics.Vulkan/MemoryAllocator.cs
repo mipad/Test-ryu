@@ -1,6 +1,5 @@
 using Silk.NET.Vulkan;
 using System;
-using Ryujinx.Common.Logging;
 using System.Collections.Generic;
 using System.Threading;
 
@@ -26,6 +25,18 @@ namespace Ryujinx.Graphics.Vulkan
         private int _largeAllocationAttempts;
         private const int MaxLargeAllocationAttempts = 3;
 
+        // 添加内存压力状态
+        private MemoryPressureState _pressureState;
+        private DateTime _lastMemoryCleanup;
+
+        private enum MemoryPressureState
+        {
+            Normal,
+            Moderate,
+            High,
+            Critical
+        }
+
         public MemoryAllocator(Vk api, VulkanPhysicalDevice physicalDevice, Device device)
         {
             _api = api;
@@ -40,6 +51,8 @@ namespace Ryujinx.Graphics.Vulkan
             _currentUsage = 0;
             _peakUsage = 0;
             _largeAllocationAttempts = 0;
+            _pressureState = MemoryPressureState.Normal;
+            _lastMemoryCleanup = DateTime.Now;
             
             Logger.Info?.Print(LogClass.Gpu, $"Memory allocator initialized with limit: 0x{_memoryLimit:X} ({_memoryLimit / (1024 * 1024)}MB)");
         }
@@ -62,16 +75,24 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
             
-            // 更智能的内存限制策略
+            // 更智能的内存限制策略 - 基于实际设备内存
             ulong calculatedLimit;
             
-            if (totalDeviceMemory > 2UL * 1024 * 1024 * 1024) // 2GB以上
+            if (totalDeviceMemory > 6UL * 1024 * 1024 * 1024) // 6GB以上
             {
-                calculatedLimit = Math.Min(totalDeviceMemory * 3 / 4, 1536UL * 1024 * 1024); // 最多1.5GB
+                calculatedLimit = Math.Min(totalDeviceMemory * 3 / 4, 4UL * 1024 * 1024 * 1024); // 最多4GB
+            }
+            else if (totalDeviceMemory > 4UL * 1024 * 1024 * 1024) // 4GB-6GB
+            {
+                calculatedLimit = Math.Min(totalDeviceMemory * 70 / 100, 3UL * 1024 * 1024 * 1024); // 最多3GB
+            }
+            else if (totalDeviceMemory > 2UL * 1024 * 1024 * 1024) // 2GB-4GB
+            {
+                calculatedLimit = Math.Min(totalDeviceMemory * 75 / 100, 2UL * 1024 * 1024 * 1024); // 最多2GB
             }
             else if (totalDeviceMemory > 1UL * 1024 * 1024 * 1024) // 1GB-2GB
             {
-                calculatedLimit = Math.Min(totalDeviceMemory * 2 / 3, 1024UL * 1024 * 1024); // 最多1GB
+                calculatedLimit = Math.Min(totalDeviceMemory * 70 / 100, 1536UL * 1024 * 1024); // 最多1.5GB
             }
             else // 1GB以下
             {
@@ -79,7 +100,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             
             // 确保至少有一定的最小限制
-            calculatedLimit = Math.Max(calculatedLimit, 256UL * 1024 * 1024); // 至少256MB
+            calculatedLimit = Math.Max(calculatedLimit, 512UL * 1024 * 1024); // 至少512MB
             
             Logger.Info?.Print(LogClass.Gpu, 
                 $"Memory stats - Total: 0x{totalDeviceMemory:X} ({totalDeviceMemory / (1024 * 1024)}MB), " +
@@ -94,6 +115,9 @@ namespace Ryujinx.Graphics.Vulkan
             MemoryPropertyFlags flags = 0,
             bool isBuffer = false)
         {
+            // 更新内存压力状态
+            UpdateMemoryPressureState();
+
             // 对于大内存分配，使用特殊处理
             if (requirements.Size > 64 * 1024 * 1024) // 64MB以上
             {
@@ -104,6 +128,36 @@ namespace Ryujinx.Graphics.Vulkan
             return AllocateRegularMemory(requirements, flags, isBuffer);
         }
 
+        private void UpdateMemoryPressureState()
+        {
+            double usageRatio = (double)_currentUsage / _memoryLimit;
+            
+            MemoryPressureState newState = usageRatio switch
+            {
+                < 0.6 => MemoryPressureState.Normal,
+                < 0.8 => MemoryPressureState.Moderate,
+                < 0.9 => MemoryPressureState.High,
+                _ => MemoryPressureState.Critical
+            };
+
+            if (newState != _pressureState)
+            {
+                Logger.Info?.Print(LogClass.Gpu, 
+                    $"Memory pressure state changed: {_pressureState} -> {newState} (Usage: {usageRatio:P})");
+                _pressureState = newState;
+            }
+
+            // 在高压状态下定期清理内存
+            if (_pressureState >= MemoryPressureState.High && 
+                (DateTime.Now - _lastMemoryCleanup).TotalSeconds > 30)
+            {
+                Logger.Info?.Print(LogClass.Gpu, "Performing periodic memory cleanup due to high memory pressure");
+                CompactMemory();
+                ForceGarbageCollection();
+                _lastMemoryCleanup = DateTime.Now;
+            }
+        }
+
         private MemoryAllocation AllocateLargeMemory(
             MemoryRequirements requirements,
             MemoryPropertyFlags flags,
@@ -111,66 +165,78 @@ namespace Ryujinx.Graphics.Vulkan
         {
             _largeAllocationAttempts++;
             
-            Logger.Warning?.Print(LogClass.Gpu, 
-                $"Large memory allocation attempt #{_largeAllocationAttempts}: Size=0x{requirements.Size:X} ({requirements.Size / (1024 * 1024)}MB), " +
-                $"CurrentUsage=0x{_currentUsage:X} ({_currentUsage / (1024 * 1024)}MB), " +
-                $"Limit=0x{_memoryLimit:X} ({_memoryLimit / (1024 * 1024)}MB)");
-
-            // 检查是否超过限制但还有空间
-            bool wouldExceedLimit = _currentUsage + requirements.Size > _memoryLimit;
             ulong availableMemory = _memoryLimit - _currentUsage;
+            double usageRatio = (double)_currentUsage / _memoryLimit;
 
-            if (wouldExceedLimit && availableMemory > 0)
+            Logger.Warning?.Print(LogClass.Gpu, 
+                $"Large memory allocation attempt #{_largeAllocationAttempts}: " +
+                $"Size=0x{requirements.Size:X} ({requirements.Size / (1024 * 1024)}MB), " +
+                $"CurrentUsage=0x{_currentUsage:X} ({_currentUsage / (1024 * 1024)}MB, {usageRatio:P}), " +
+                $"Available=0x{availableMemory:X} ({availableMemory / (1024 * 1024)}MB)");
+
+            // 检查内存压力并采取相应措施
+            if (_pressureState == MemoryPressureState.Critical && requirements.Size > 128 * 1024 * 1024)
             {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Large allocation would exceed limit, but there's available memory: 0x{availableMemory:X} ({availableMemory / (1024 * 1024)}MB)");
-                
-                // 如果请求的大小远大于可用内存，尝试使用可用内存
-                if (requirements.Size > availableMemory * 2)
-                {
-                    Logger.Info?.Print(LogClass.Gpu, 
-                        $"Requested size is much larger than available memory. Considering reduced allocation.");
-                    
-                    // 这里可以返回失败，让上层代码处理大小调整
-                    // 或者尝试分配可用内存
-                }
+                Logger.Error?.Print(LogClass.Gpu, 
+                    "Rejecting large allocation due to critical memory pressure");
+                return default;
             }
 
-            // 对于大分配，放宽限制检查
-            if (wouldExceedLimit)
+            // 如果请求大小超过可用内存，尝试智能处理
+            if (requirements.Size > availableMemory)
             {
-                // 允许超过限制10%以内，但要记录警告
-                ulong allowedOvershoot = _memoryLimit / 10; // 10%
-                if (_currentUsage + requirements.Size <= _memoryLimit + allowedOvershoot)
-                {
-                    Logger.Warning?.Print(LogClass.Gpu, 
-                        $"Allowing memory allocation slightly above limit: {(_currentUsage + requirements.Size) * 100 / _memoryLimit}% of limit");
-                }
-                else if (_largeAllocationAttempts <= MaxLargeAllocationAttempts)
-                {
-                    // 如果是前几次大分配尝试，尝试强制垃圾回收和内存压缩
-                    Logger.Info?.Print(LogClass.Gpu, "Attempting memory cleanup for large allocation");
-                    CompactMemory();
-                    ForceGarbageCollection();
-                    
-                    // 重新检查
-                    if (_currentUsage + requirements.Size > _memoryLimit + allowedOvershoot)
-                    {
-                        Logger.Error?.Print(LogClass.Gpu, 
-                            $"Memory allocation would significantly exceed limit even after cleanup. Requested: 0x{requirements.Size:X}");
-                        return default;
-                    }
-                }
-                else
-                {
-                    Logger.Error?.Print(LogClass.Gpu, 
-                        $"Memory allocation would significantly exceed limit after {_largeAllocationAttempts} attempts. Requested: 0x{requirements.Size:X}");
-                    return default;
-                }
+                return HandleInsufficientMemory(requirements, flags, isBuffer, availableMemory);
             }
 
             // 正常分配流程
             return AllocateRegularMemory(requirements, flags, isBuffer);
+        }
+
+        private MemoryAllocation HandleInsufficientMemory(
+            MemoryRequirements requirements,
+            MemoryPropertyFlags flags,
+            bool isBuffer,
+            ulong availableMemory)
+        {
+            // 策略1: 尝试内存清理
+            if (_largeAllocationAttempts <= 2)
+            {
+                Logger.Info?.Print(LogClass.Gpu, "Attempting memory cleanup for large allocation");
+                CompactMemory();
+                ForceGarbageCollection();
+                
+                // 重新计算可用内存
+                availableMemory = _memoryLimit - _currentUsage;
+                if (requirements.Size <= availableMemory)
+                {
+                    Logger.Info?.Print(LogClass.Gpu, "Memory cleanup successful, proceeding with allocation");
+                    return AllocateRegularMemory(requirements, flags, isBuffer);
+                }
+            }
+
+            // 策略2: 对于特别大的分配，建议使用分段缓冲区
+            if (requirements.Size > 256 * 1024 * 1024)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Consider using segmented buffer for very large allocation: 0x{requirements.Size:X}");
+            }
+
+            // 策略3: 在高压状态下允许轻微超限
+            if (_pressureState < MemoryPressureState.Critical)
+            {
+                ulong allowedOvershoot = _memoryLimit / 20; // 5%
+                if (_currentUsage + requirements.Size <= _memoryLimit + allowedOvershoot)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"Allowing memory allocation slightly above limit: {(_currentUsage + requirements.Size) * 100 / _memoryLimit}% of limit");
+                    return AllocateRegularMemory(requirements, flags, isBuffer);
+                }
+            }
+
+            // 策略4: 返回失败，让上层代码处理
+            Logger.Error?.Print(LogClass.Gpu, 
+                $"Insufficient memory for allocation: Requested=0x{requirements.Size:X}, Available=0x{availableMemory:X}");
+            return default;
         }
 
         private MemoryAllocation AllocateRegularMemory(
@@ -181,9 +247,28 @@ namespace Ryujinx.Graphics.Vulkan
             // 检查内存限制
             if (_currentUsage + requirements.Size > _memoryLimit)
             {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Memory allocation would exceed limit: Current=0x{_currentUsage:X}, Requested=0x{requirements.Size:X}, Limit=0x{_memoryLimit:X}");
-                return default;
+                // 在适度压力下允许小幅度超限
+                if (_pressureState <= MemoryPressureState.Moderate)
+                {
+                    ulong allowedOvershoot = _memoryLimit / 50; // 2%
+                    if (_currentUsage + requirements.Size <= _memoryLimit + allowedOvershoot)
+                    {
+                        Logger.Warning?.Print(LogClass.Gpu, 
+                            $"Allowing small allocation slightly above limit: {(_currentUsage + requirements.Size) * 100 / _memoryLimit}% of limit");
+                    }
+                    else
+                    {
+                        Logger.Warning?.Print(LogClass.Gpu, 
+                            $"Memory allocation would exceed limit: Current=0x{_currentUsage:X}, Requested=0x{requirements.Size:X}, Limit=0x{_memoryLimit:X}");
+                        return default;
+                    }
+                }
+                else
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"Memory allocation would exceed limit: Current=0x{_currentUsage:X}, Requested=0x{requirements.Size:X}, Limit=0x{_memoryLimit:X}");
+                    return default;
+                }
             }
 
             int memoryTypeIndex = FindSuitableMemoryTypeIndex(requirements.MemoryTypeBits, flags);
@@ -209,7 +294,7 @@ namespace Ryujinx.Graphics.Vulkan
                     {
                         Logger.Info?.Print(LogClass.Gpu, 
                             $"Large memory allocation successful: 0x{requirements.Size:X} ({requirements.Size / (1024 * 1024)}MB), " +
-                            $"New usage: 0x{_currentUsage:X} ({_currentUsage / (1024 * 1024)}MB)");
+                            $"New usage: 0x{_currentUsage:X} ({_currentUsage / (1024 * 1024)}MB, {(double)_currentUsage / _memoryLimit:P})");
                     }
                 }
                 return allocation;
@@ -235,6 +320,9 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 _currentUsage -= size;
             }
+            
+            // 更新内存压力状态
+            UpdateMemoryPressureState();
         }
 
         private MemoryAllocation Allocate(int memoryTypeIndex, ulong size, ulong alignment, bool map, bool isBuffer)
@@ -355,7 +443,7 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         // 添加内存统计方法
-        public (ulong totalAllocated, ulong totalFreed, ulong currentUsage, ulong peakUsage, ulong memoryLimit) GetMemoryStatistics()
+        public (ulong totalAllocated, ulong totalFreed, ulong currentUsage, ulong peakUsage, ulong memoryLimit, MemoryPressureState pressureState) GetMemoryStatistics()
         {
             ulong totalAllocated = 0;
             ulong totalFreed = 0;
@@ -369,7 +457,7 @@ namespace Ryujinx.Graphics.Vulkan
                 currentUsage += stats.currentUsage;
             }
 
-            return (totalAllocated, totalFreed, _currentUsage, _peakUsage, _memoryLimit);
+            return (totalAllocated, totalFreed, _currentUsage, _peakUsage, _memoryLimit, _pressureState);
         }
 
         // 添加内存压缩方法（尝试合并空闲块）
