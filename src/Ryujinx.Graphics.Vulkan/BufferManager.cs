@@ -1387,8 +1387,8 @@ namespace Ryujinx.Graphics.Vulkan
             IBufferHolder drawCountBufferHolder = null;
 
             if (!TryGetBuffer(indexBuffer.Handle, out var indexBufferHolder) || !(indexBufferHolder is BufferHolder) ||
-                !TryGetBuffer(indirectBuffer.Handle, out var indirectBufferHolder) || !(indirectBufferHolder is BufferHolder) ||
-                (hasDrawCount && (!TryGetBuffer(drawCountBuffer.Handle, out drawCountBufferHolder) || !(drawCountBufferHolder is BufferHolder)))
+               !TryGetBuffer(indirectBuffer.Handle, out var indirectBufferHolder) || !(indirectBufferHolder is BufferHolder) ||
+               (hasDrawCount && (!TryGetBuffer(drawCountBuffer.Handle, out drawCountBufferHolder) || !(drawCountBufferHolder is BufferHolder))))
             {
                 return (null, null);
             }
