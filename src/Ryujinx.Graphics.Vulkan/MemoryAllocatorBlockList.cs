@@ -1,5 +1,6 @@
 using Ryujinx.Common;
 using Silk.NET.Vulkan;
+using Ryujinx.Common.Logging;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
