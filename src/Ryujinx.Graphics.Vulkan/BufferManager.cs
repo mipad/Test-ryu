@@ -75,9 +75,6 @@ namespace Ryujinx.Graphics.Vulkan
             BufferUsageFlags.TransferSrcBit |
             BufferUsageFlags.TransferDstBit;
 
-        // 大缓冲区阈值 - 超过此大小的缓冲区使用页式管理
-        private const int LargeBufferThreshold = 16 * 1024 * 1024; // 16MB
-
         private readonly Device _device;
 
         private readonly IdList<BufferHolder> _buffers;
@@ -254,17 +251,7 @@ namespace Ryujinx.Graphics.Vulkan
             BufferAllocationType baseType = BufferAllocationType.HostMapped,
             bool forceMirrors = false)
         {
-            // 对于大缓冲区，使用页式管理
-            if (size >= LargeBufferThreshold)
-            {
-                Logger.Info?.Print(LogClass.Gpu, $"Creating large buffer using paged management: Size=0x{size:X}");
-                holder = BufferHolder.CreatePaged(gd, _device, size, baseType);
-            }
-            else
-            {
-                holder = Create(gd, size, forConditionalRendering: false, sparseCompatible, baseType);
-            }
-            
+            holder = Create(gd, size, forConditionalRendering: false, sparseCompatible, baseType);
             if (holder == null)
             {
                 Logger.Error?.Print(LogClass.Gpu, $"Failed to create buffer with size 0x{size:X} and type \"{baseType}\"");
@@ -468,7 +455,30 @@ namespace Ryujinx.Graphics.Vulkan
                 return holder;
             }
 
-            Logger.Error?.Print(LogClass.Gpu, $"Failed to create buffer with size 0x{size:X} and type \"{baseType}\"");
+            // 常规缓冲区创建失败，尝试使用稀疏缓冲区作为回退
+            Logger.Warning?.Print(LogClass.Gpu, 
+                $"Regular buffer creation failed for size 0x{size:X}, attempting sparse buffer as fallback");
+
+            try
+            {
+                // 创建一个单段的稀疏缓冲区
+                var singleRange = new BufferRange[] { new BufferRange(BufferHandle.Null, 0, size) };
+                var sparseHandle = CreateSparse(gd, singleRange);
+                
+                if (TryGetBuffer(sparseHandle, out var sparseHolder))
+                {
+                    Logger.Info?.Print(LogClass.Gpu, 
+                        $"Successfully created sparse buffer as fallback for size 0x{size:X}");
+                    return sparseHolder;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Sparse buffer fallback also failed: {ex.Message}");
+            }
+
+            Logger.Error?.Print(LogClass.Gpu, $"All buffer creation methods failed for size 0x{size:X} and type \"{baseType}\"");
             return null;
         }
 
