@@ -355,6 +355,9 @@ namespace Ryujinx.Graphics.Vulkan
         usage |= BufferUsageFlags.IndirectBufferBit;
     }
 
+    // 移除硬性大小调整警告
+    // 让 MemoryAllocator 完全负责智能调整
+
     var bufferCreateInfo = new BufferCreateInfo
     {
         SType = StructureType.BufferCreateInfo,
@@ -399,6 +402,7 @@ namespace Ryujinx.Graphics.Vulkan
 
     if (allocation.Memory.Handle == 0UL)
     {
+        // 在Android上，尝试使用更简单的内存标志
         try
         {
             allocation = gd.MemoryAllocator.AllocateDeviceMemory(
@@ -426,80 +430,80 @@ namespace Ryujinx.Graphics.Vulkan
 }
 
         public BufferHolder Create(
-            VulkanRenderer gd,
-            int size,
-            bool forConditionalRendering = false,
-            bool sparseCompatible = false,
-            BufferAllocationType baseType = BufferAllocationType.HostMapped)
+    VulkanRenderer gd,
+    int size,
+    bool forConditionalRendering = false,
+    bool sparseCompatible = false,
+    BufferAllocationType baseType = BufferAllocationType.HostMapped)
+{
+    // 移除硬性大小调整，完全信任 MemoryAllocator 的智能调整
+    // 只保留小缓冲区优化
+    const int smallBufferThreshold = 4 * 1024;
+    if (size <= smallBufferThreshold && baseType == BufferAllocationType.Auto)
+    {
+        baseType = BufferAllocationType.HostMapped;
+    }
+
+    BufferAllocationType type = baseType;
+
+    if (baseType == BufferAllocationType.Auto)
+    {
+        type = BufferAllocationType.HostMapped;
+    }
+
+    // 直接尝试创建，让 MemoryAllocator 处理大小调整
+    (VkBuffer buffer, MemoryAllocation allocation, BufferAllocationType resultType) =
+        CreateBacking(gd, size, type, forConditionalRendering, sparseCompatible);
+
+    if (buffer.Handle != 0)
+    {
+        var holder = new BufferHolder(gd, _device, buffer, allocation, size, baseType, resultType);
+        return holder;
+    }
+
+    // 如果常规创建失败，尝试分段缓冲区而不是降级大小
+    Logger.Warning?.Print(LogClass.Gpu, 
+        $"Regular buffer creation failed for size 0x{size:X}, attempting segmented approach");
+
+    try
+    {
+        var segmentedBuffer = CreateSegmentedBuffer(gd, size);
+        if (segmentedBuffer != null)
         {
-            // 添加小缓冲区优化
-            // 对于小于4KB的缓冲区，默认使用HostMapped类型
-            const int smallBufferThreshold = 4 * 1024;
-            if (size <= smallBufferThreshold && baseType == BufferAllocationType.Auto)
-            {
-                baseType = BufferAllocationType.HostMapped;
-            }
-
-            BufferAllocationType type = baseType;
-
-            if (baseType == BufferAllocationType.Auto)
-            {
-                type = BufferAllocationType.HostMapped;
-            }
-
-            (VkBuffer buffer, MemoryAllocation allocation, BufferAllocationType resultType) =
-                CreateBacking(gd, size, type, forConditionalRendering, sparseCompatible);
-
-            if (buffer.Handle != 0)
-            {
-                var holder = new BufferHolder(gd, _device, buffer, allocation, size, baseType, resultType);
-                return holder;
-            }
-
-            // 常规缓冲区创建失败，尝试Android特定的回退策略
-            Logger.Warning?.Print(LogClass.Gpu, 
-                $"Regular buffer creation failed for size 0x{size:X}, attempting Android-specific fallback");
-
-            try
-            {
-                // 尝试使用Android优化的内存分配
-                var androidBuffer = CreateAndroidOptimizedBuffer(gd, size);
-                if (androidBuffer != null)
-                {
-                    Logger.Info?.Print(LogClass.Gpu, 
-                        $"Successfully created buffer using Android-optimized method for size 0x{size:X}");
-                    return androidBuffer;
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Android-optimized buffer creation failed: {ex.Message}");
-            }
-
-            // 最后尝试：使用简化版本的分段缓冲区
-            Logger.Warning?.Print(LogClass.Gpu, 
-                $"Android-optimized method failed, attempting simplified buffer for size 0x{size:X}");
-
-            try
-            {
-                var simplifiedBuffer = CreateSimplifiedBuffer(gd, size);
-                if (simplifiedBuffer != null)
-                {
-                    Logger.Info?.Print(LogClass.Gpu, 
-                        $"Successfully created simplified buffer for size 0x{size:X}");
-                    return simplifiedBuffer;
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Simplified buffer creation failed: {ex.Message}");
-            }
-
-            Logger.Error?.Print(LogClass.Gpu, $"All buffer creation methods failed for size 0x{size:X} and type \"{baseType}\"");
-            return null;
+            Logger.Info?.Print(LogClass.Gpu, 
+                $"Successfully created segmented buffer for size 0x{size:X} with {segmentedBuffer.SegmentCount} segments");
+            return segmentedBuffer.GetSegment(0);
         }
+    }
+    catch (Exception ex)
+    {
+        Logger.Warning?.Print(LogClass.Gpu, 
+            $"Segmented buffer creation failed: {ex.Message}");
+    }
+
+    // 最后尝试简化版本
+    Logger.Warning?.Print(LogClass.Gpu, 
+        $"Segmented method failed, attempting simplified buffer for size 0x{size:X}");
+
+    try
+    {
+        var simplifiedBuffer = CreateSimplifiedBuffer(gd, size);
+        if (simplifiedBuffer != null)
+        {
+            Logger.Info?.Print(LogClass.Gpu, 
+                $"Successfully created simplified buffer for size 0x{size:X}");
+            return simplifiedBuffer;
+        }
+    }
+    catch (Exception ex)
+    {
+        Logger.Warning?.Print(LogClass.Gpu, 
+            $"Simplified buffer creation failed: {ex.Message}");
+    }
+
+    Logger.Error?.Print(LogClass.Gpu, $"All buffer creation methods failed for size 0x{size:X} and type \"{baseType}\"");
+    return null;
+}
 
         private unsafe BufferHolder CreateAndroidOptimizedBuffer(VulkanRenderer gd, int size)
         {
