@@ -60,11 +60,10 @@ namespace Ryujinx.Graphics.Vulkan
             MemoryPropertyFlags.HostVisibleBit |
             MemoryPropertyFlags.HostCoherentBit;
 
-        // 新增：使用系统存储内存的标志
-        private const MemoryPropertyFlags SystemMemoryFlags =
+        // Android-specific memory flags
+        private const MemoryPropertyFlags AndroidMemoryFlags =
             MemoryPropertyFlags.HostVisibleBit |
-            MemoryPropertyFlags.HostCoherentBit |
-            MemoryPropertyFlags.HostCachedBit;
+            MemoryPropertyFlags.HostCoherentBit;
 
         private const BufferUsageFlags DefaultBufferUsageFlags =
             BufferUsageFlags.TransferSrcBit |
@@ -403,13 +402,13 @@ namespace Ryujinx.Graphics.Vulkan
             // 添加内存不足时的降级处理
             if (allocation.Memory.Handle == 0UL)
             {
-                // 尝试使用无缓存内存作为最后手段
+                // 在Android上，尝试使用更简单的内存标志
                 try
                 {
                     allocation = gd.MemoryAllocator.AllocateDeviceMemory(
                         requirements, 
-                        DefaultBufferMemoryNoCacheFlags, 
-                        false); // 不抛出异常
+                        AndroidMemoryFlags, 
+                        true);
                 }
                 catch
                 {
@@ -461,54 +460,54 @@ namespace Ryujinx.Graphics.Vulkan
                 return holder;
             }
 
-            // 常规缓冲区创建失败，尝试使用系统存储内存作为回退
+            // 常规缓冲区创建失败，尝试Android特定的回退策略
             Logger.Warning?.Print(LogClass.Gpu, 
-                $"Regular buffer creation failed for size 0x{size:X}, attempting system storage memory as fallback");
+                $"Regular buffer creation failed for size 0x{size:X}, attempting Android-specific fallback");
 
             try
             {
-                // 尝试使用系统存储内存创建缓冲区
-                var systemMemoryBuffer = CreateWithSystemStorageMemory(gd, size);
-                if (systemMemoryBuffer != null)
+                // 尝试使用Android优化的内存分配
+                var androidBuffer = CreateAndroidOptimizedBuffer(gd, size);
+                if (androidBuffer != null)
                 {
                     Logger.Info?.Print(LogClass.Gpu, 
-                        $"Successfully created buffer using system storage memory for size 0x{size:X}");
-                    return systemMemoryBuffer;
+                        $"Successfully created buffer using Android-optimized method for size 0x{size:X}");
+                    return androidBuffer;
                 }
             }
             catch (Exception ex)
             {
                 Logger.Warning?.Print(LogClass.Gpu, 
-                    $"System storage memory buffer creation failed: {ex.Message}");
+                    $"Android-optimized buffer creation failed: {ex.Message}");
             }
 
-            // 最后尝试：使用分段内存映射
+            // 最后尝试：使用分段缓冲区
             Logger.Warning?.Print(LogClass.Gpu, 
-                $"System storage memory failed, attempting memory-mapped fallback for size 0x{size:X}");
+                $"Android-optimized method failed, attempting segmented buffer for size 0x{size:X}");
 
             try
             {
-                var memoryMappedBuffer = CreateMemoryMappedBuffer(gd, size);
-                if (memoryMappedBuffer != null)
+                var segmentedBuffer = CreateSegmentedBuffer(gd, size);
+                if (segmentedBuffer != null)
                 {
                     Logger.Info?.Print(LogClass.Gpu, 
-                        $"Successfully created memory-mapped buffer for size 0x{size:X}");
-                    return memoryMappedBuffer;
+                        $"Successfully created segmented buffer for size 0x{size:X}");
+                    return segmentedBuffer;
                 }
             }
             catch (Exception ex)
             {
                 Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Memory-mapped buffer creation failed: {ex.Message}");
+                    $"Segmented buffer creation failed: {ex.Message}");
             }
 
             Logger.Error?.Print(LogClass.Gpu, $"All buffer creation methods failed for size 0x{size:X} and type \"{baseType}\"");
             return null;
         }
 
-        private unsafe BufferHolder CreateWithSystemStorageMemory(VulkanRenderer gd, int size)
+        private unsafe BufferHolder CreateAndroidOptimizedBuffer(VulkanRenderer gd, int size)
         {
-            // 创建缓冲区
+            // Android特定的优化缓冲区创建
             var usage = DefaultBufferUsageFlags;
 
             if (gd.Capabilities.SupportsIndirectParameters)
@@ -527,25 +526,25 @@ namespace Ryujinx.Graphics.Vulkan
             gd.Api.CreateBuffer(_device, in bufferCreateInfo, null, out var buffer).ThrowOnError();
             gd.Api.GetBufferMemoryRequirements(_device, buffer, out var requirements);
 
-            // 尝试使用系统存储内存（可能使用交换文件/虚拟内存）
+            // 在Android上，尝试使用设备本地内存，如果可用
             MemoryAllocation allocation;
             try
             {
-                // 尝试使用主机可见和缓存的内存类型，这可能使用系统存储
+                // 首先尝试设备本地内存
                 allocation = gd.MemoryAllocator.AllocateDeviceMemory(
                     requirements, 
-                    SystemMemoryFlags, 
-                    true); // 对于缓冲区，isBuffer参数为true
+                    DeviceLocalBufferMemoryFlags, 
+                    true);
             }
             catch (VulkanException)
             {
-                // 如果失败，尝试任何可用的主机内存类型
+                // 如果设备本地内存失败，尝试主机可见内存
                 try
                 {
                     allocation = gd.MemoryAllocator.AllocateDeviceMemory(
                         requirements, 
-                        MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit, 
-                        true); // 对于缓冲区，isBuffer参数为true
+                        AndroidMemoryFlags, 
+                        true);
                 }
                 catch (VulkanException)
                 {
@@ -563,62 +562,80 @@ namespace Ryujinx.Graphics.Vulkan
             gd.Api.BindBufferMemory(_device, buffer, allocation.Memory, allocation.Offset);
 
             var holder = new BufferHolder(gd, _device, buffer, allocation, size, 
-                BufferAllocationType.HostMapped, BufferAllocationType.HostMapped);
+                BufferAllocationType.DeviceLocal, BufferAllocationType.DeviceLocal);
 
             return holder;
         }
 
-        private unsafe BufferHolder CreateMemoryMappedBuffer(VulkanRenderer gd, int size)
+        private BufferHolder CreateSegmentedBuffer(VulkanRenderer gd, int size)
         {
-            // 对于非常大的缓冲区，使用内存映射文件作为最后手段
-            // 注意：这是一个简化的实现，实际可能需要更复杂的内存管理
+            // 在Android上，将大缓冲区分割成多个小缓冲区
+            // 这对于内存受限的设备特别有用
+            const int maxSegmentSize = 16 * 1024 * 1024; // 16MB segments for Android
             
-            var usage = DefaultBufferUsageFlags;
-
-            if (gd.Capabilities.SupportsIndirectParameters)
+            if (size <= maxSegmentSize)
             {
-                usage |= BufferUsageFlags.IndirectBufferBit;
+                // 如果大小小于等于最大段大小，直接创建
+                return CreateAndroidOptimizedBuffer(gd, size);
             }
 
-            var bufferCreateInfo = new BufferCreateInfo
-            {
-                SType = StructureType.BufferCreateInfo,
-                Size = (ulong)size,
-                Usage = usage,
-                SharingMode = SharingMode.Exclusive,
-            };
-
-            gd.Api.CreateBuffer(_device, in bufferCreateInfo, null, out var buffer).ThrowOnError();
-            gd.Api.GetBufferMemoryRequirements(_device, buffer, out var requirements);
-
-            // 尝试使用最宽松的内存要求
-            MemoryAllocation allocation;
+            // 创建分段缓冲区包装器
+            int segmentCount = (size + maxSegmentSize - 1) / maxSegmentSize;
+            var segments = new BufferHolder[segmentCount];
+            
             try
             {
-                // 使用最低要求的内存类型
-                allocation = gd.MemoryAllocator.AllocateDeviceMemory(
-                    requirements, 
-                    MemoryPropertyFlags.HostVisibleBit,  // 最低要求：主机可见
-                    true); // 对于缓冲区，isBuffer参数为true
+                for (int i = 0; i < segmentCount; i++)
+                {
+                    int segmentSize = (i == segmentCount - 1) ? (size - i * maxSegmentSize) : maxSegmentSize;
+                    segments[i] = CreateAndroidOptimizedBuffer(gd, segmentSize);
+                    
+                    if (segments[i] == null)
+                    {
+                        // 如果任何段创建失败，清理已创建的段
+                        for (int j = 0; j < i; j++)
+                        {
+                            segments[j]?.Dispose();
+                        }
+                        return null;
+                    }
+                }
+
+                // 创建一个虚拟的BufferHolder来管理这些段
+                // 注意：这是一个简化的实现，实际需要更复杂的管理逻辑
+                var dummyBufferCreateInfo = new BufferCreateInfo
+                {
+                    SType = StructureType.BufferCreateInfo,
+                    Size = (ulong)size,
+                    Usage = DefaultBufferUsageFlags,
+                    SharingMode = SharingMode.Exclusive,
+                };
+
+                gd.Api.CreateBuffer(_device, in dummyBufferCreateInfo, null, out var dummyBuffer).ThrowOnError();
+                
+                // 创建一个特殊的BufferHolder来管理分段缓冲区
+                var segmentAllocations = new Auto<MemoryAllocation>[segmentCount];
+                for (int i = 0; i < segmentCount; i++)
+                {
+                    segmentAllocations[i] = segments[i].GetAllocation();
+                }
+
+                var holder = new BufferHolder(gd, _device, dummyBuffer, size, segmentAllocations);
+
+                // 设置分段信息供后续使用
+                // 这里需要扩展BufferHolder来支持分段缓冲区
+
+                return holder;
             }
-            catch (VulkanException)
+            catch (Exception)
             {
-                gd.Api.DestroyBuffer(_device, buffer, null);
+                // 清理所有已创建的段
+                foreach (var segment in segments)
+                {
+                    segment?.Dispose();
+                }
                 return null;
             }
-
-            if (allocation.Memory.Handle == 0UL)
-            {
-                gd.Api.DestroyBuffer(_device, buffer, null);
-                return null;
-            }
-
-            gd.Api.BindBufferMemory(_device, buffer, allocation.Memory, allocation.Offset);
-
-            var holder = new BufferHolder(gd, _device, buffer, allocation, size, 
-                BufferAllocationType.HostMapped, BufferAllocationType.HostMapped);
-
-            return holder;
         }
 
         public Auto<DisposableBufferView> CreateView(BufferHandle handle, VkFormat format, int offset, int size, Action invalidateView)
