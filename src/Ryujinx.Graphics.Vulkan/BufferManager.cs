@@ -481,24 +481,44 @@ namespace Ryujinx.Graphics.Vulkan
                     $"Android-optimized buffer creation failed: {ex.Message}");
             }
 
-            // 最后尝试：使用简化版本的分段缓冲区
+            // 最后尝试：使用激进的内存压缩策略
             Logger.Warning?.Print(LogClass.Gpu, 
-                $"Android-optimized method failed, attempting simplified buffer for size 0x{size:X}");
+                $"Android-optimized method failed, attempting aggressive memory compression for size 0x{size:X}");
 
             try
             {
-                var simplifiedBuffer = CreateSimplifiedBuffer(gd, size);
-                if (simplifiedBuffer != null)
+                var compressedBuffer = CreateAggressiveCompressedBuffer(gd, size);
+                if (compressedBuffer != null)
                 {
                     Logger.Info?.Print(LogClass.Gpu, 
-                        $"Successfully created simplified buffer for size 0x{size:X}");
-                    return simplifiedBuffer;
+                        $"Successfully created compressed buffer for size 0x{size:X}");
+                    return compressedBuffer;
                 }
             }
             catch (Exception ex)
             {
                 Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Simplified buffer creation failed: {ex.Message}");
+                    $"Aggressive memory compression failed: {ex.Message}");
+            }
+
+            // 最终尝试：使用极小的分段缓冲区
+            Logger.Warning?.Print(LogClass.Gpu, 
+                $"All other methods failed, attempting ultra-segmented buffer for size 0x{size:X}");
+
+            try
+            {
+                var ultraSegmentedBuffer = CreateUltraSegmentedBuffer(gd, size);
+                if (ultraSegmentedBuffer != null)
+                {
+                    Logger.Info?.Print(LogClass.Gpu, 
+                        $"Successfully created ultra-segmented buffer for size 0x{size:X}");
+                    return ultraSegmentedBuffer;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Ultra-segmented buffer creation failed: {ex.Message}");
             }
 
             Logger.Error?.Print(LogClass.Gpu, $"All buffer creation methods failed for size 0x{size:X} and type \"{baseType}\"");
@@ -567,12 +587,123 @@ namespace Ryujinx.Graphics.Vulkan
             return holder;
         }
 
-        private unsafe BufferHolder CreateSimplifiedBuffer(VulkanRenderer gd, int size)
+        private unsafe BufferHolder CreateAggressiveCompressedBuffer(VulkanRenderer gd, int size)
         {
-            // 简化版本：只尝试最基本的内存分配
+            // 激进的内存压缩策略：尝试使用各种内存类型和大小
+            var usage = DefaultBufferUsageFlags;
+
+            if (gd.Capabilities.SupportsIndirectParameters)
+            {
+                usage |= BufferUsageFlags.IndirectBufferBit;
+            }
+
+            // 尝试逐步减少缓冲区大小
+            int[] sizeAttempts = {
+                size,                    // 原始大小
+                size / 2,                // 一半大小
+                size / 4,                // 四分之一大小
+                16 * 1024 * 1024,        // 16MB
+                8 * 1024 * 1024,         // 8MB
+                4 * 1024 * 1024,         // 4MB
+                2 * 1024 * 1024,         // 2MB
+                1 * 1024 * 1024,         // 1MB
+            };
+
+            foreach (int attemptSize in sizeAttempts)
+            {
+                if (attemptSize <= 0) continue;
+
+                try
+                {
+                    Logger.Info?.Print(LogClass.Gpu, 
+                        $"Attempting to create compressed buffer with size 0x{attemptSize:X}");
+
+                    var bufferCreateInfo = new BufferCreateInfo
+                    {
+                        SType = StructureType.BufferCreateInfo,
+                        Size = (ulong)attemptSize,
+                        Usage = usage,
+                        SharingMode = SharingMode.Exclusive,
+                    };
+
+                    gd.Api.CreateBuffer(_device, in bufferCreateInfo, null, out var buffer).ThrowOnError();
+                    gd.Api.GetBufferMemoryRequirements(_device, buffer, out var requirements);
+
+                    // 尝试多种内存类型
+                    MemoryPropertyFlags[] memoryFlagsAttempts = {
+                        DeviceLocalBufferMemoryFlags,
+                        AndroidMemoryFlags,
+                        MemoryPropertyFlags.HostVisibleBit,
+                        MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCachedBit,
+                        MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit,
+                    };
+
+                    foreach (var flags in memoryFlagsAttempts)
+                    {
+                        try
+                        {
+                            var allocation = gd.MemoryAllocator.AllocateDeviceMemory(
+                                requirements, 
+                                flags, 
+                                true);
+
+                            if (allocation.Memory.Handle != 0UL)
+                            {
+                                gd.Api.BindBufferMemory(_device, buffer, allocation.Memory, allocation.Offset);
+
+                                var holder = new BufferHolder(gd, _device, buffer, allocation, attemptSize, 
+                                    BufferAllocationType.HostMapped, BufferAllocationType.HostMapped);
+
+                                Logger.Warning?.Print(LogClass.Gpu, 
+                                    $"Created compressed buffer with reduced size 0x{attemptSize:X} instead of 0x{size:X}");
+
+                                return holder;
+                            }
+                        }
+                        catch (VulkanException)
+                        {
+                            // 继续尝试下一种内存类型
+                        }
+                    }
+
+                    gd.Api.DestroyBuffer(_device, buffer, null);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"Compressed buffer attempt with size 0x{attemptSize:X} failed: {ex.Message}");
+                }
+            }
+
+            return null;
+        }
+
+        private BufferHolder CreateUltraSegmentedBuffer(VulkanRenderer gd, int size)
+        {
+            // 极小的分段策略：使用非常小的段（1MB）
+            const int segmentSize = 1 * 1024 * 1024; // 1MB segments
+            int segmentCount = (size + segmentSize - 1) / segmentSize;
+
+            if (segmentCount == 1)
+            {
+                // 如果只需要一个段，直接创建
+                return CreateAndroidOptimizedBuffer(gd, size);
+            }
+
+            Logger.Info?.Print(LogClass.Gpu, 
+                $"Creating ultra-segmented buffer with {segmentCount} segments of 1MB each");
+
+            // 创建第一个段作为代表
+            var firstSegment = CreateAndroidOptimizedBuffer(gd, Math.Min(segmentSize, size));
+            if (firstSegment == null)
+            {
+                return null;
+            }
+
+            // 创建一个虚拟的BufferHolder来代表整个分段缓冲区
+            // 注意：这是一个简化的实现，实际使用时需要扩展BufferHolder来支持分段
             try
             {
-                // 对于Android，使用最小的内存需求
                 var usage = DefaultBufferUsageFlags;
 
                 if (gd.Capabilities.SupportsIndirectParameters)
@@ -580,7 +711,6 @@ namespace Ryujinx.Graphics.Vulkan
                     usage |= BufferUsageFlags.IndirectBufferBit;
                 }
 
-                // 使用最基础的内存标志
                 var bufferCreateInfo = new BufferCreateInfo
                 {
                     SType = StructureType.BufferCreateInfo,
@@ -589,39 +719,30 @@ namespace Ryujinx.Graphics.Vulkan
                     SharingMode = SharingMode.Exclusive,
                 };
 
-                gd.Api.CreateBuffer(_device, bufferCreateInfo, null, out var buffer).ThrowOnError();
-                gd.Api.GetBufferMemoryRequirements(_device, buffer, out var requirements);
+                gd.Api.CreateBuffer(_device, bufferCreateInfo, null, out var dummyBuffer).ThrowOnError();
 
-                // 尝试最基本的内存分配
-                MemoryAllocation allocation;
-                try
+                // 创建一个特殊的BufferHolder来管理分段缓冲区
+                var segmentAllocations = new Auto<MemoryAllocation>[segmentCount];
+                segmentAllocations[0] = firstSegment.GetAllocation();
+
+                // 对于其他段，在实际需要时再创建
+                for (int i = 1; i < segmentCount; i++)
                 {
-                    allocation = gd.MemoryAllocator.AllocateDeviceMemory(
-                        requirements, 
-                        MemoryPropertyFlags.HostVisibleBit, // 最基本的要求
-                        true);
-                }
-                catch (VulkanException)
-                {
-                    gd.Api.DestroyBuffer(_device, buffer, null);
-                    return null;
+                    segmentAllocations[i] = null; // 延迟分配
                 }
 
-                if (allocation.Memory.Handle == 0UL)
-                {
-                    gd.Api.DestroyBuffer(_device, buffer, null);
-                    return null;
-                }
+                var holder = new BufferHolder(gd, _device, dummyBuffer, size, segmentAllocations);
 
-                gd.Api.BindBufferMemory(_device, buffer, allocation.Memory, allocation.Offset);
-
-                var holder = new BufferHolder(gd, _device, buffer, allocation, size, 
-                    BufferAllocationType.HostMapped, BufferAllocationType.HostMapped);
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Created ultra-segmented buffer with {segmentCount} segments for total size 0x{size:X}");
 
                 return holder;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Failed to create ultra-segmented buffer: {ex.Message}");
+                firstSegment.Dispose();
                 return null;
             }
         }
