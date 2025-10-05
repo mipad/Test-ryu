@@ -21,10 +21,8 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly bool _concurrentFenceWaitUnsupported;
         private readonly CommandPool _pool;
         private readonly Thread _owner;
-        private readonly VulkanRenderer _gd;
 
         public bool OwnedByCurrentThread => _owner == Thread.CurrentThread;
-        public VulkanRenderer Gd => _gd;
 
         private struct ReservedCommandBuffer
         {
@@ -62,7 +60,6 @@ namespace Ryujinx.Graphics.Vulkan
         private int _inUseCount;
 
         public unsafe CommandBufferPool(
-            VulkanRenderer gd,
             Vk api,
             Device device,
             Queue queue,
@@ -71,7 +68,6 @@ namespace Ryujinx.Graphics.Vulkan
             bool concurrentFenceWaitUnsupported,
             bool isLight = false)
         {
-            _gd = gd;
             _api = api;
             _device = device;
             _queue = queue;
@@ -362,27 +358,27 @@ namespace Ryujinx.Graphics.Vulkan
         }
         
         public unsafe void Reset()
+{
+    lock (_commandBuffers)
+    {
+        // 等待所有命令缓冲区完成
+        for (int i = 0; i < _totalCommandBuffers; i++)
         {
-            lock (_commandBuffers)
+            if (_commandBuffers[i].InUse || _commandBuffers[i].InConsumption)
             {
-                // 等待所有命令缓冲区完成
-                for (int i = 0; i < _totalCommandBuffers; i++)
-                {
-                    if (_commandBuffers[i].InUse || _commandBuffers[i].InConsumption)
-                    {
-                        WaitAndDecrementRef(i);
-                    }
-                }
-                
-                // 重置命令池
-                _api.ResetCommandPool(_device, _pool, 0).ThrowOnError();
-                
-                // 重置状态
-                _queuedIndexesPtr = 0;
-                _queuedCount = 0;
-                _inUseCount = 0;
+                WaitAndDecrementRef(i);
             }
         }
+        
+        // 重置命令池
+        _api.ResetCommandPool(_device, _pool, 0).ThrowOnError();
+        
+        // 重置状态
+        _queuedIndexesPtr = 0;
+        _queuedCount = 0;
+        _inUseCount = 0;
+    }
+}
 
         public unsafe void Dispose()
         {
