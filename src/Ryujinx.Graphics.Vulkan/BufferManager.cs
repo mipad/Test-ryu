@@ -2,7 +2,6 @@ using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
 using Silk.NET.Vulkan;
 using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using VkBuffer = Silk.NET.Vulkan.Buffer;
@@ -90,9 +89,6 @@ namespace Ryujinx.Graphics.Vulkan
         public StagingBuffer StagingBuffer { get; }
 
         public MemoryRequirements HostImportedBufferMemoryRequirements { get; }
-
-        // 环形缓冲区大小（64MB）
-        private const int CircularBufferSize = 64 * 1024 * 1024;
 
         public BufferManager(VulkanRenderer gd, Device device)
         {
@@ -464,36 +460,54 @@ namespace Ryujinx.Graphics.Vulkan
                 return holder;
             }
 
-            // 常规缓冲区创建失败，尝试环形缓冲区方案
+            // 常规缓冲区创建失败，尝试Android特定的回退策略
             Logger.Warning?.Print(LogClass.Gpu, 
-                $"Regular buffer creation failed for size 0x{size:X}, attempting circular buffer solution");
+                $"Regular buffer creation failed for size 0x{size:X}, attempting Android-specific fallback");
 
             try
             {
-                // 创建环形缓冲区
-                var circularBuffer = CreateCircularBuffer(gd, size);
-                if (circularBuffer != null)
+                // 尝试使用Android优化的内存分配
+                var androidBuffer = CreateAndroidOptimizedBuffer(gd, size);
+                if (androidBuffer != null)
                 {
                     Logger.Info?.Print(LogClass.Gpu, 
-                        $"Successfully created circular buffer for virtual size 0x{size:X} (physical size: 0x{CircularBufferSize:X})");
-                    return circularBuffer;
+                        $"Successfully created buffer using Android-optimized method for size 0x{size:X}");
+                    return androidBuffer;
                 }
             }
             catch (Exception ex)
             {
                 Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Circular buffer creation failed: {ex.Message}");
+                    $"Android-optimized buffer creation failed: {ex.Message}");
+            }
+
+            // 最后尝试：使用简化版本的分段缓冲区
+            Logger.Warning?.Print(LogClass.Gpu, 
+                $"Android-optimized method failed, attempting simplified buffer for size 0x{size:X}");
+
+            try
+            {
+                var simplifiedBuffer = CreateSimplifiedBuffer(gd, size);
+                if (simplifiedBuffer != null)
+                {
+                    Logger.Info?.Print(LogClass.Gpu, 
+                        $"Successfully created simplified buffer for size 0x{size:X}");
+                    return simplifiedBuffer;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Simplified buffer creation failed: {ex.Message}");
             }
 
             Logger.Error?.Print(LogClass.Gpu, $"All buffer creation methods failed for size 0x{size:X} and type \"{baseType}\"");
             return null;
         }
 
-        private unsafe BufferHolder CreateCircularBuffer(VulkanRenderer gd, int virtualSize)
+        private unsafe BufferHolder CreateAndroidOptimizedBuffer(VulkanRenderer gd, int size)
         {
-            // 创建物理环形缓冲区（64MB）
-            int physicalSize = Math.Min(virtualSize, CircularBufferSize);
-            
+            // Android特定的优化缓冲区创建
             var usage = DefaultBufferUsageFlags;
 
             if (gd.Capabilities.SupportsIndirectParameters)
@@ -504,7 +518,7 @@ namespace Ryujinx.Graphics.Vulkan
             var bufferCreateInfo = new BufferCreateInfo
             {
                 SType = StructureType.BufferCreateInfo,
-                Size = (ulong)physicalSize,
+                Size = (ulong)size,
                 Usage = usage,
                 SharingMode = SharingMode.Exclusive,
             };
@@ -512,19 +526,31 @@ namespace Ryujinx.Graphics.Vulkan
             gd.Api.CreateBuffer(_device, in bufferCreateInfo, null, out var buffer).ThrowOnError();
             gd.Api.GetBufferMemoryRequirements(_device, buffer, out var requirements);
 
-            // 尝试分配物理缓冲区内存
+            // 在Android上，尝试使用设备本地内存，如果可用
             MemoryAllocation allocation;
             try
             {
+                // 首先尝试设备本地内存
                 allocation = gd.MemoryAllocator.AllocateDeviceMemory(
                     requirements, 
-                    AndroidMemoryFlags, 
+                    DeviceLocalBufferMemoryFlags, 
                     true);
             }
             catch (VulkanException)
             {
-                gd.Api.DestroyBuffer(_device, buffer, null);
-                return null;
+                // 如果设备本地内存失败，尝试主机可见内存
+                try
+                {
+                    allocation = gd.MemoryAllocator.AllocateDeviceMemory(
+                        requirements, 
+                        AndroidMemoryFlags, 
+                        true);
+                }
+                catch (VulkanException)
+                {
+                    gd.Api.DestroyBuffer(_device, buffer, null);
+                    return null;
+                }
             }
 
             if (allocation.Memory.Handle == 0UL)
@@ -535,66 +561,68 @@ namespace Ryujinx.Graphics.Vulkan
 
             gd.Api.BindBufferMemory(_device, buffer, allocation.Memory, allocation.Offset);
 
-            // 创建物理缓冲区
-            var physicalBuffer = new BufferHolder(gd, _device, buffer, allocation, physicalSize, 
-                BufferAllocationType.HostMapped, BufferAllocationType.HostMapped);
+            var holder = new BufferHolder(gd, _device, buffer, allocation, size, 
+                BufferAllocationType.DeviceLocal, BufferAllocationType.DeviceLocal);
 
-            // 创建环形缓冲区包装器
-            var circularBuffer = new CircularBufferHolder(gd, _device, physicalBuffer, virtualSize, physicalSize);
-
-            // 创建包装器，使CircularBufferHolder可以当作BufferHolder使用
-            return new CircularBufferWrapperHolder(gd, _device, buffer, circularBuffer, virtualSize);
+            return holder;
         }
 
-        // 修改CopyBuffer方法以支持环形缓冲区
-        public void CopyBuffer(CommandBufferScoped cbs, BufferHandle source, BufferHandle destination, int srcOffset, int dstOffset, int size)
+        private unsafe BufferHolder CreateSimplifiedBuffer(VulkanRenderer gd, int size)
         {
-            var gd = cbs.Gd;
-            gd.PipelineInternal.EndRenderPass();
-            
-            var src = GetBuffer(cbs.CommandBuffer, source, srcOffset, size, false);
-            var dst = GetBuffer(cbs.CommandBuffer, destination, dstOffset, size, true);
-
-            if (src == null || dst == null)
+            // 简化版本：只尝试最基本的内存分配
+            try
             {
-                Logger.Error?.Print(LogClass.Gpu, 
-                    $"跳过缓冲区复制: 源={(src == null ? "null" : "有效")}, " +
-                    $"目标={(dst == null ? "null" : "有效")}, " +
-                    $"大小=0x{size:X}, 源偏移=0x{srcOffset:X}, 目标偏移=0x{dstOffset:X}");
-                return;
-            }
+                // 对于Android，使用最小的内存需求
+                var usage = DefaultBufferUsageFlags;
 
-            // 对于大缓冲区，分段复制
-            const int maxCopySize = 16 * 1024 * 1024; // 16MB per copy
-            if (size > maxCopySize)
-            {
-                Logger.Info?.Print(LogClass.Gpu, 
-                    $"大缓冲区复制: 将0x{size:X}字节分割成多个16MB块");
-
-                int remaining = size;
-                int currentSrcOffset = srcOffset;
-                int currentDstOffset = dstOffset;
-
-                while (remaining > 0)
+                if (gd.Capabilities.SupportsIndirectParameters)
                 {
-                    int copySize = Math.Min(remaining, maxCopySize);
-                    
-                    var srcSegment = GetBuffer(cbs.CommandBuffer, source, currentSrcOffset, copySize, false);
-                    var dstSegment = GetBuffer(cbs.CommandBuffer, destination, currentDstOffset, copySize, true);
-
-                    if (srcSegment != null && dstSegment != null)
-                    {
-                        BufferHolder.Copy(gd, cbs, srcSegment, dstSegment, 0, 0, copySize);
-                    }
-
-                    currentSrcOffset += copySize;
-                    currentDstOffset += copySize;
-                    remaining -= copySize;
+                    usage |= BufferUsageFlags.IndirectBufferBit;
                 }
+
+                // 使用最基础的内存标志
+                var bufferCreateInfo = new BufferCreateInfo
+                {
+                    SType = StructureType.BufferCreateInfo,
+                    Size = (ulong)size,
+                    Usage = usage,
+                    SharingMode = SharingMode.Exclusive,
+                };
+
+                gd.Api.CreateBuffer(_device, bufferCreateInfo, null, out var buffer).ThrowOnError();
+                gd.Api.GetBufferMemoryRequirements(_device, buffer, out var requirements);
+
+                // 尝试最基本的内存分配
+                MemoryAllocation allocation;
+                try
+                {
+                    allocation = gd.MemoryAllocator.AllocateDeviceMemory(
+                        requirements, 
+                        MemoryPropertyFlags.HostVisibleBit, // 最基本的要求
+                        true);
+                }
+                catch (VulkanException)
+                {
+                    gd.Api.DestroyBuffer(_device, buffer, null);
+                    return null;
+                }
+
+                if (allocation.Memory.Handle == 0UL)
+                {
+                    gd.Api.DestroyBuffer(_device, buffer, null);
+                    return null;
+                }
+
+                gd.Api.BindBufferMemory(_device, buffer, allocation.Memory, allocation.Offset);
+
+                var holder = new BufferHolder(gd, _device, buffer, allocation, size, 
+                    BufferAllocationType.HostMapped, BufferAllocationType.HostMapped);
+
+                return holder;
             }
-            else
+            catch (Exception)
             {
-                BufferHolder.Copy(gd, cbs, src, dst, srcOffset, dstOffset, size);
+                return null;
             }
         }
 
