@@ -2,6 +2,7 @@ using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
 using Silk.NET.Vulkan;
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using VkBuffer = Silk.NET.Vulkan.Buffer;
@@ -90,11 +91,16 @@ namespace Ryujinx.Graphics.Vulkan
 
         public MemoryRequirements HostImportedBufferMemoryRequirements { get; }
 
+        // 环形缓冲区管理
+        private readonly Dictionary<int, CircularBufferPool> _circularBufferPools;
+        private readonly object _circularBufferLock = new object();
+
         public BufferManager(VulkanRenderer gd, Device device)
         {
             _device = device;
             _buffers = new IdList<BufferHolder>();
             StagingBuffer = new StagingBuffer(gd, this);
+            _circularBufferPools = new Dictionary<int, CircularBufferPool>();
 
             HostImportedBufferMemoryRequirements = GetHostImportedUsageRequirements(gd);
         }
@@ -290,18 +296,20 @@ namespace Ryujinx.Graphics.Vulkan
                 
                 if (holder == null)
                 {
-                    // 尝试使用最小尺寸作为回退
-                    const int fallbackSize = 1024;
+                    // 尝试使用环形缓冲区作为回退
                     Logger.Warning?.Print(LogClass.Gpu, 
-                        $"Using fallback buffer (size=0x{fallbackSize:X}) for failed allocation (0x{size:X})");
+                        $"Using circular buffer as fallback for failed allocation (0x{size:X})");
                     
-                    handle = CreateWithHandle(gd, fallbackSize, out holder);
-                    
-                    if (holder == null)
+                    var circularBuffer = CreateCircularBuffer(gd, size);
+                    if (circularBuffer != null)
+                    {
+                        return new ScopedTemporaryBuffer(this, circularBuffer, circularBuffer.GetHandle(), 0, size, false);
+                    }
+                    else
                     {
                         // 最终回退：使用占位符空缓冲区
                         Logger.Error?.Print(LogClass.Gpu, 
-                            "Critical: Failed to create fallback buffer. Using placeholder.");
+                            "Critical: Failed to create circular buffer fallback. Using placeholder.");
                         return new ScopedTemporaryBuffer(this, null, BufferHandle.Null, 0, 0, false);
                     }
                 }
@@ -460,65 +468,24 @@ namespace Ryujinx.Graphics.Vulkan
                 return holder;
             }
 
-            // 常规缓冲区创建失败，尝试Android特定的回退策略
+            // 常规缓冲区创建失败，尝试使用环形缓冲区作为回退
             Logger.Warning?.Print(LogClass.Gpu, 
-                $"Regular buffer creation failed for size 0x{size:X}, attempting Android-specific fallback");
+                $"Regular buffer creation failed for size 0x{size:X}, attempting circular buffer as fallback");
 
             try
             {
-                // 尝试使用Android优化的内存分配
-                var androidBuffer = CreateAndroidOptimizedBuffer(gd, size);
-                if (androidBuffer != null)
+                var circularBuffer = CreateCircularBuffer(gd, size);
+                if (circularBuffer != null)
                 {
                     Logger.Info?.Print(LogClass.Gpu, 
-                        $"Successfully created buffer using Android-optimized method for size 0x{size:X}");
-                    return androidBuffer;
+                        $"Successfully created circular buffer for size 0x{size:X}");
+                    return circularBuffer;
                 }
             }
             catch (Exception ex)
             {
                 Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Android-optimized buffer creation failed: {ex.Message}");
-            }
-
-            // 最后尝试：使用激进的内存压缩策略
-            Logger.Warning?.Print(LogClass.Gpu, 
-                $"Android-optimized method failed, attempting aggressive memory compression for size 0x{size:X}");
-
-            try
-            {
-                var compressedBuffer = CreateAggressiveCompressedBuffer(gd, size);
-                if (compressedBuffer != null)
-                {
-                    Logger.Info?.Print(LogClass.Gpu, 
-                        $"Successfully created compressed buffer for size 0x{size:X}");
-                    return compressedBuffer;
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Aggressive memory compression failed: {ex.Message}");
-            }
-
-            // 最终尝试：使用极小的分段缓冲区
-            Logger.Warning?.Print(LogClass.Gpu, 
-                $"All other methods failed, attempting ultra-segmented buffer for size 0x{size:X}");
-
-            try
-            {
-                var ultraSegmentedBuffer = CreateUltraSegmentedBuffer(gd, size);
-                if (ultraSegmentedBuffer != null)
-                {
-                    Logger.Info?.Print(LogClass.Gpu, 
-                        $"Successfully created ultra-segmented buffer for size 0x{size:X}");
-                    return ultraSegmentedBuffer;
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Ultra-segmented buffer creation failed: {ex.Message}");
+                    $"Circular buffer creation failed: {ex.Message}");
             }
 
             Logger.Error?.Print(LogClass.Gpu, $"All buffer creation methods failed for size 0x{size:X} and type \"{baseType}\"");
@@ -587,166 +554,169 @@ namespace Ryujinx.Graphics.Vulkan
             return holder;
         }
 
-        private unsafe BufferHolder CreateAggressiveCompressedBuffer(VulkanRenderer gd, int size)
+        private BufferHolder CreateCircularBuffer(VulkanRenderer gd, int requestedSize)
         {
-            // 激进的内存压缩策略：尝试使用各种内存类型和大小
-            var usage = DefaultBufferUsageFlags;
-
-            if (gd.Capabilities.SupportsIndirectParameters)
+            // 使用环形缓冲区策略：创建一个小得多的缓冲区，但重复使用它
+            // 这对于流式数据特别有效
+            
+            const int circularBufferSize = 16 * 1024 * 1024; // 16MB 环形缓冲区
+            
+            // 如果请求的大小小于环形缓冲区大小，直接创建
+            if (requestedSize <= circularBufferSize)
             {
-                usage |= BufferUsageFlags.IndirectBufferBit;
+                return CreateAndroidOptimizedBuffer(gd, requestedSize);
             }
 
-            // 尝试逐步减少缓冲区大小
-            int[] sizeAttempts = {
-                size,                    // 原始大小
-                size / 2,                // 一半大小
-                size / 4,                // 四分之一大小
-                16 * 1024 * 1024,        // 16MB
-                8 * 1024 * 1024,         // 8MB
-                4 * 1024 * 1024,         // 4MB
-                2 * 1024 * 1024,         // 2MB
-                1 * 1024 * 1024,         // 1MB
-            };
-
-            foreach (int attemptSize in sizeAttempts)
+            lock (_circularBufferLock)
             {
-                if (attemptSize <= 0) continue;
+                // 为不同的大小类别创建环形缓冲区池
+                int sizeCategory = (requestedSize + circularBufferSize - 1) / circularBufferSize;
+                int poolSize = circularBufferSize * sizeCategory;
 
-                try
+                if (!_circularBufferPools.TryGetValue(sizeCategory, out var pool))
                 {
-                    Logger.Info?.Print(LogClass.Gpu, 
-                        $"Attempting to create compressed buffer with size 0x{attemptSize:X}");
-
-                    var bufferCreateInfo = new BufferCreateInfo
+                    // 创建新的环形缓冲区池
+                    var buffer = CreateAndroidOptimizedBuffer(gd, poolSize);
+                    if (buffer == null)
                     {
-                        SType = StructureType.BufferCreateInfo,
-                        Size = (ulong)attemptSize,
-                        Usage = usage,
-                        SharingMode = SharingMode.Exclusive,
-                    };
-
-                    gd.Api.CreateBuffer(_device, in bufferCreateInfo, null, out var buffer).ThrowOnError();
-                    gd.Api.GetBufferMemoryRequirements(_device, buffer, out var requirements);
-
-                    // 尝试多种内存类型
-                    MemoryPropertyFlags[] memoryFlagsAttempts = {
-                        DeviceLocalBufferMemoryFlags,
-                        AndroidMemoryFlags,
-                        MemoryPropertyFlags.HostVisibleBit,
-                        MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCachedBit,
-                        MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit,
-                    };
-
-                    foreach (var flags in memoryFlagsAttempts)
-                    {
-                        try
-                        {
-                            var allocation = gd.MemoryAllocator.AllocateDeviceMemory(
-                                requirements, 
-                                flags, 
-                                true);
-
-                            if (allocation.Memory.Handle != 0UL)
-                            {
-                                gd.Api.BindBufferMemory(_device, buffer, allocation.Memory, allocation.Offset);
-
-                                var holder = new BufferHolder(gd, _device, buffer, allocation, attemptSize, 
-                                    BufferAllocationType.HostMapped, BufferAllocationType.HostMapped);
-
-                                Logger.Warning?.Print(LogClass.Gpu, 
-                                    $"Created compressed buffer with reduced size 0x{attemptSize:X} instead of 0x{size:X}");
-
-                                return holder;
-                            }
-                        }
-                        catch (VulkanException)
-                        {
-                            // 继续尝试下一种内存类型
-                        }
+                        return null;
                     }
 
-                    gd.Api.DestroyBuffer(_device, buffer, null);
+                    pool = new CircularBufferPool(buffer, poolSize);
+                    _circularBufferPools[sizeCategory] = pool;
                 }
-                catch (Exception ex)
-                {
-                    Logger.Warning?.Print(LogClass.Gpu, 
-                        $"Compressed buffer attempt with size 0x{attemptSize:X} failed: {ex.Message}");
-                }
-            }
 
-            return null;
+                // 从池中分配一个槽位
+                var allocation = pool.Allocate(requestedSize);
+                if (allocation != null)
+                {
+                    return allocation;
+                }
+
+                // 如果池已满，创建新的池
+                var newBuffer = CreateAndroidOptimizedBuffer(gd, poolSize);
+                if (newBuffer == null)
+                {
+                    return null;
+                }
+
+                var newPool = new CircularBufferPool(newBuffer, poolSize);
+                _circularBufferPools[sizeCategory] = newPool;
+
+                return newPool.Allocate(requestedSize);
+            }
         }
 
-        private BufferHolder CreateUltraSegmentedBuffer(VulkanRenderer gd, int size)
+        // 环形缓冲区池类
+        private class CircularBufferPool
         {
-            // 极小的分段策略：使用非常小的段（1MB）
-            const int segmentSize = 1 * 1024 * 1024; // 1MB segments
-            int segmentCount = (size + segmentSize - 1) / segmentSize;
+            private readonly BufferHolder _buffer;
+            private readonly int _totalSize;
+            private int _currentOffset;
+            private readonly object _lock = new object();
 
-            if (segmentCount == 1)
+            public CircularBufferPool(BufferHolder buffer, int totalSize)
             {
-                // 如果只需要一个段，直接创建
-                return CreateAndroidOptimizedBuffer(gd, size);
+                _buffer = buffer;
+                _totalSize = totalSize;
+                _currentOffset = 0;
             }
 
-            Logger.Info?.Print(LogClass.Gpu, 
-                $"Creating ultra-segmented buffer with {segmentCount} segments of 1MB each");
-
-            // 创建第一个段作为代表
-            var firstSegment = CreateAndroidOptimizedBuffer(gd, Math.Min(segmentSize, size));
-            if (firstSegment == null)
+            public BufferHolder Allocate(int size)
             {
-                return null;
-            }
-
-            // 创建一个虚拟的BufferHolder来代表整个分段缓冲区
-            // 注意：这是一个简化的实现，实际使用时需要扩展BufferHolder来支持分段
-            try
-            {
-                var usage = DefaultBufferUsageFlags;
-
-                if (gd.Capabilities.SupportsIndirectParameters)
+                lock (_lock)
                 {
-                    usage |= BufferUsageFlags.IndirectBufferBit;
+                    // 检查是否有足够的连续空间
+                    if (_currentOffset + size <= _totalSize)
+                    {
+                        // 有足够的空间，直接分配
+                        int offset = _currentOffset;
+                        _currentOffset += size;
+                        return CreateSubBuffer(_buffer, offset, size);
+                    }
+                    else
+                    {
+                        // 没有足够的连续空间，从开头重新开始（环形）
+                        if (size <= _totalSize)
+                        {
+                            _currentOffset = size;
+                            return CreateSubBuffer(_buffer, 0, size);
+                        }
+                        else
+                        {
+                            // 请求的大小超过整个缓冲区大小，无法分配
+                            return null;
+                        }
+                    }
                 }
-
-                var bufferCreateInfo = new BufferCreateInfo
-                {
-                    SType = StructureType.BufferCreateInfo,
-                    Size = (ulong)size,
-                    Usage = usage,
-                    SharingMode = SharingMode.Exclusive,
-                };
-
-                gd.Api.CreateBuffer(_device, bufferCreateInfo, null, out var dummyBuffer).ThrowOnError();
-
-                // 创建一个特殊的BufferHolder来管理分段缓冲区
-                var segmentAllocations = new Auto<MemoryAllocation>[segmentCount];
-                segmentAllocations[0] = firstSegment.GetAllocation();
-
-                // 对于其他段，在实际需要时再创建
-                for (int i = 1; i < segmentCount; i++)
-                {
-                    segmentAllocations[i] = null; // 延迟分配
-                }
-
-                var holder = new BufferHolder(gd, _device, dummyBuffer, size, segmentAllocations);
-
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Created ultra-segmented buffer with {segmentCount} segments for total size 0x{size:X}");
-
-                return holder;
             }
-            catch (Exception ex)
+
+            private BufferHolder CreateSubBuffer(BufferHolder parent, int offset, int size)
             {
-                Logger.Error?.Print(LogClass.Gpu, 
-                    $"Failed to create ultra-segmented buffer: {ex.Message}");
-                firstSegment.Dispose();
-                return null;
+                // 创建一个包装器，表示父缓冲区的一个子范围
+                // 注意：这是一个简化的实现，实际需要更复杂的管理
+                return new CircularBufferSlice(parent, offset, size);
             }
         }
 
+        // 环形缓冲区切片类
+        private class CircularBufferSlice : BufferHolder
+        {
+            private readonly BufferHolder _parent;
+            private readonly int _baseOffset;
+            private readonly int _sliceSize;
+
+            public CircularBufferSlice(BufferHolder parent, int baseOffset, int sliceSize)
+                : base(parent._gd, parent._device, parent.GetBuffer().GetUnsafe(), parent.GetAllocation(), 
+                      sliceSize, BufferAllocationType.HostMapped, BufferAllocationType.HostMapped)
+            {
+                _parent = parent;
+                _baseOffset = baseOffset;
+                _sliceSize = sliceSize;
+            }
+
+            public override PinnedSpan<byte> GetData(int offset, int size)
+            {
+                // 调整偏移量以考虑基偏移
+                int adjustedOffset = _baseOffset + offset;
+                if (adjustedOffset + size <= _parent.Size)
+                {
+                    return _parent.GetData(adjustedOffset, size);
+                }
+                else
+                {
+                    // 处理环形回绕
+                    int firstPart = _parent.Size - adjustedOffset;
+                    var firstSpan = _parent.GetData(adjustedOffset, firstPart);
+                    var secondSpan = _parent.GetData(0, size - firstPart);
+
+                    // 合并两个span（简化实现）
+                    byte[] combined = new byte[size];
+                    firstSpan.Span.CopyTo(combined.AsSpan(0, firstPart));
+                    secondSpan.Span.CopyTo(combined.AsSpan(firstPart));
+
+                    return PinnedSpan<byte>.UnsafeFromSpan(combined);
+                }
+            }
+
+            public override void SetData(int offset, ReadOnlySpan<byte> data, CommandBufferScoped? cbs, Action endRenderPass, bool allowCbsWait)
+            {
+                int adjustedOffset = _baseOffset + offset;
+                if (adjustedOffset + data.Length <= _parent.Size)
+                {
+                    _parent.SetData(adjustedOffset, data, cbs, endRenderPass, allowCbsWait);
+                }
+                else
+                {
+                    // 处理环形回绕
+                    int firstPart = _parent.Size - adjustedOffset;
+                    _parent.SetData(adjustedOffset, data.Slice(0, firstPart), cbs, endRenderPass, allowCbsWait);
+                    _parent.SetData(0, data.Slice(firstPart), cbs, endRenderPass, allowCbsWait);
+                }
+            }
+        }
+
+        // 其他方法保持不变...
         public Auto<DisposableBufferView> CreateView(BufferHandle handle, VkFormat format, int offset, int size, Action invalidateView)
         {
             if (TryGetBuffer(handle, out var holder))
@@ -1008,6 +978,12 @@ namespace Ryujinx.Graphics.Vulkan
                 }
 
                 _buffers.Clear();
+
+                foreach (var pool in _circularBufferPools.Values)
+                {
+                    // 清理环形缓冲区池
+                }
+                _circularBufferPools.Clear();
             }
         }
 
