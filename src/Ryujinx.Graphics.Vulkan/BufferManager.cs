@@ -39,6 +39,43 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 
+    class SegmentedBufferHolder : IDisposable
+    {
+        private readonly VulkanRenderer _gd;
+        private readonly Device _device;
+        private readonly BufferHolder[] _segments;
+        private readonly int _segmentSize;
+        private readonly int _totalSize;
+
+        public int SegmentCount => _segments.Length;
+
+        public SegmentedBufferHolder(VulkanRenderer gd, Device device, BufferHolder[] segments, int segmentSize, int totalSize)
+        {
+            _gd = gd;
+            _device = device;
+            _segments = segments;
+            _segmentSize = segmentSize;
+            _totalSize = totalSize;
+        }
+
+        public BufferHolder GetSegment(int index)
+        {
+            if (index >= 0 && index < _segments.Length)
+            {
+                return _segments[index];
+            }
+            return null;
+        }
+
+        public void Dispose()
+        {
+            foreach (var segment in _segments)
+            {
+                segment?.Dispose();
+            }
+        }
+    }
+
     class BufferManager : IDisposable
     {
         public const MemoryPropertyFlags DefaultBufferMemoryFlags =
