@@ -40,65 +40,6 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 
-    // 环形缓冲区包装器
-    class CircularBufferHolder : BufferHolder
-    {
-        private readonly BufferHolder _physicalBuffer;
-        private readonly int _circularSize;
-        private int _writePointer;
-        private readonly Dictionary<int, (int offset, int size)> _virtualToPhysicalMap;
-
-        public CircularBufferHolder(VulkanRenderer gd, Device device, BufferHolder physicalBuffer, int virtualSize, int circularSize) 
-            : base(gd, device, physicalBuffer.GetBuffer().GetUnsafe().Value, physicalBuffer.GetAllocation().GetUnsafe(), virtualSize, 
-                  BufferAllocationType.HostMapped, BufferAllocationType.HostMapped)
-        {
-            _physicalBuffer = physicalBuffer;
-            _circularSize = circularSize;
-            _writePointer = 0;
-            _virtualToPhysicalMap = new Dictionary<int, (int offset, int size)>();
-        }
-
-        public override void SetData(int offset, ReadOnlySpan<byte> data, CommandBufferScoped? cbs = null, Action endRenderPass = null, bool allowCbsWait = true)
-        {
-            int dataSize = Math.Min(data.Length, Size - offset);
-            if (dataSize == 0) return;
-
-            // 检查是否需要回绕
-            if (_writePointer + dataSize > _circularSize)
-            {
-                _writePointer = 0; // 回到开头
-            }
-
-            // 记录虚拟偏移到物理偏移的映射
-            _virtualToPhysicalMap[offset] = (_writePointer, dataSize);
-
-            // 实际写入物理缓冲区
-            _physicalBuffer.SetData(_writePointer, data.Slice(0, dataSize), cbs, endRenderPass, allowCbsWait);
-
-            _writePointer += dataSize;
-        }
-
-        public override PinnedSpan<byte> GetData(int offset, int size)
-        {
-            if (_virtualToPhysicalMap.TryGetValue(offset, out var physicalMapping))
-            {
-                int actualSize = Math.Min(size, physicalMapping.size);
-                return _physicalBuffer.GetData(physicalMapping.offset, actualSize);
-            }
-            return new PinnedSpan<byte>();
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                _physicalBuffer?.Dispose();
-                _virtualToPhysicalMap?.Clear();
-            }
-            base.Dispose(disposing);
-        }
-    }
-
     class BufferManager : IDisposable
     {
         public const MemoryPropertyFlags DefaultBufferMemoryFlags =
@@ -601,16 +542,18 @@ namespace Ryujinx.Graphics.Vulkan
             // 创建环形缓冲区包装器
             var circularBuffer = new CircularBufferHolder(gd, _device, physicalBuffer, virtualSize, physicalSize);
 
-            return circularBuffer;
+            // 创建包装器，使CircularBufferHolder可以当作BufferHolder使用
+            return new CircularBufferWrapperHolder(gd, _device, buffer, circularBuffer, virtualSize);
         }
 
         // 修改CopyBuffer方法以支持环形缓冲区
-        public void CopyBuffer(BufferHandle source, BufferHandle destination, int srcOffset, int dstOffset, int size)
+        public void CopyBuffer(CommandBufferScoped cbs, BufferHandle source, BufferHandle destination, int srcOffset, int dstOffset, int size)
         {
-            EndRenderPass();
+            var gd = cbs.Gd;
+            gd.PipelineInternal.EndRenderPass();
 
-            var src = GetBuffer(CommandBuffer, source, srcOffset, size, false);
-            var dst = GetBuffer(CommandBuffer, destination, dstOffset, size, true);
+            var src = GetBuffer(cbs.CommandBuffer, source, srcOffset, size, false);
+            var dst = GetBuffer(cbs.CommandBuffer, destination, dstOffset, size, true);
 
             if (src == null || dst == null)
             {
@@ -636,12 +579,12 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     int copySize = Math.Min(remaining, maxCopySize);
                     
-                    var srcSegment = GetBuffer(CommandBuffer, source, currentSrcOffset, copySize, false);
-                    var dstSegment = GetBuffer(CommandBuffer, destination, currentDstOffset, copySize, true);
+                    var srcSegment = GetBuffer(cbs.CommandBuffer, source, currentSrcOffset, copySize, false);
+                    var dstSegment = GetBuffer(cbs.CommandBuffer, destination, currentDstOffset, copySize, true);
 
                     if (srcSegment != null && dstSegment != null)
                     {
-                        BufferHolder.Copy(gd, Cbs, srcSegment, dstSegment, 0, 0, copySize);
+                        BufferHolder.Copy(gd, cbs, srcSegment, dstSegment, 0, 0, copySize);
                     }
 
                     currentSrcOffset += copySize;
@@ -651,7 +594,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                BufferHolder.Copy(gd, Cbs, src, dst, srcOffset, dstOffset, size);
+                BufferHolder.Copy(gd, cbs, src, dst, srcOffset, dstOffset, size);
             }
         }
 
