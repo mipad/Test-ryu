@@ -544,24 +544,24 @@ namespace Ryujinx.Graphics.Vulkan
                 Flags = SparseMemoryBindFlags.None
             };
 
-            fixed (SparseMemoryBind* pMemoryBind = &memoryBind)
+            // 修复：使用指针直接指向memoryBind，而不是使用fixed语句
+            SparseMemoryBind* pMemoryBind = &memoryBind;
+
+            var bufferBind = new SparseBufferMemoryBindInfo
             {
-                var bufferBind = new SparseBufferMemoryBindInfo
-                {
-                    Buffer = buffer,
-                    BindCount = 1,
-                    PBinds = pMemoryBind
-                };
+                Buffer = buffer,
+                BindCount = 1,
+                PBinds = pMemoryBind
+            };
 
-                var bindSparseInfo = new BindSparseInfo
-                {
-                    SType = StructureType.BindSparseInfo,
-                    BufferBindCount = 1,
-                    PBufferBinds = &bufferBind
-                };
+            var bindSparseInfo = new BindSparseInfo
+            {
+                SType = StructureType.BindSparseInfo,
+                BufferBindCount = 1,
+                PBufferBinds = &bufferBind
+            };
 
-                gd.Api.QueueBindSparse(gd.Queue, 1, in bindSparseInfo, default).ThrowOnError();
-            }
+            gd.Api.QueueBindSparse(gd.Queue, 1, in bindSparseInfo, default).ThrowOnError();
 
             // 创建BufferHolder
             var allocationAuto = new Auto<MemoryAllocation>(allocation);
