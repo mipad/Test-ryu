@@ -463,6 +463,19 @@ namespace Ryujinx.Graphics.Vulkan
             return -1;
         }
 
+        public static bool IsDeviceMemoryShared(VulkanPhysicalDevice physicalDevice)
+        {
+            for (int i = 0; i < physicalDevice.PhysicalDeviceMemoryProperties.MemoryHeapCount; i++)
+            {
+                if (!physicalDevice.PhysicalDeviceMemoryProperties.MemoryHeaps[i].Flags.HasFlag(MemoryHeapFlags.DeviceLocalBit))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        
         public ulong GetFreeMemory()
         {
             var systemMemoryInfo = GetSystemMemoryInfo();
