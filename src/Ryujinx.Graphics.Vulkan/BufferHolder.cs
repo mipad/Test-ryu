@@ -528,7 +528,10 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     WaitForFences(offset, dataSize);
 
-                    data[..dataSize].CopyTo(new Span<byte>((void*)(_map + offset), dataSize));
+                    unsafe
+                    {
+                        data[..dataSize].CopyTo(new Span<byte>((void*)(_map + offset), dataSize));
+                    }
 
                     if (_pendingData != null)
                     {
