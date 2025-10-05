@@ -39,32 +39,6 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 
-    // 临时测试缓冲区类
-    internal class TemporaryTestBuffer : IDisposable
-    {
-        private readonly Vk _api;
-        private readonly Device _device;
-        private readonly VkBuffer _buffer;
-        private readonly MemoryAllocation _allocation;
-        private readonly VulkanRenderer _gd;
-
-        public TemporaryTestBuffer(VulkanRenderer gd, Vk api, Device device, VkBuffer buffer, MemoryAllocation allocation)
-        {
-            _gd = gd;
-            _api = api;
-            _device = device;
-            _buffer = buffer;
-            _allocation = allocation;
-        }
-
-        public void Dispose()
-        {
-            _api.DestroyBuffer(_device, _buffer, null);
-            // 注意：这里需要根据内存分配器来释放内存
-            _gd.MemoryAllocator?.FreeMemory(_allocation);
-        }
-    }
-
     class BufferManager : IDisposable
     {
         public const MemoryPropertyFlags DefaultBufferMemoryFlags =
@@ -311,49 +285,28 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                // 创建临时缓冲区时使用新的内存感知策略
-                int actualSize = GetAdjustedBufferSize(gd, size);
-                
-                BufferHandle handle = CreateWithHandle(gd, actualSize, out BufferHolder holder);
+                // Create a temporary buffer.
+                BufferHandle handle = CreateWithHandle(gd, size, out BufferHolder holder);
                 
                 if (holder == null)
                 {
-                    // 逐步降级策略
-                    int[] fallbackSizes = new[] { 
-                        size / 2, 
-                        size / 4, 
-                        16 * 1024 * 1024, // 16MB
-                        4 * 1024 * 1024,  // 4MB
-                        1024 * 1024,      // 1MB
-                        256 * 1024        // 256KB
-                    };
+                    // 尝试使用最小尺寸作为回退
+                    const int fallbackSize = 1024;
+                    Logger.Warning?.Print(LogClass.Gpu, 
+                        $"Using fallback buffer (size=0x{fallbackSize:X}) for failed allocation (0x{size:X})");
                     
-                    foreach (int fallbackSize in fallbackSizes)
-                    {
-                        if (fallbackSize <= 0) continue;
-                        
-                        Logger.Warning?.Print(LogClass.Gpu, 
-                            $"Trying fallback buffer size 0x{fallbackSize:X} for failed allocation (0x{size:X})");
-                        
-                        handle = CreateWithHandle(gd, fallbackSize, out holder);
-                        
-                        if (holder != null)
-                        {
-                            Logger.Info?.Print(LogClass.Gpu, 
-                                $"Successfully created fallback buffer of size 0x{fallbackSize:X}");
-                            break;
-                        }
-                    }
+                    handle = CreateWithHandle(gd, fallbackSize, out holder);
                     
                     if (holder == null)
                     {
+                        // 最终回退：使用占位符空缓冲区
                         Logger.Error?.Print(LogClass.Gpu, 
-                            "Critical: All fallback buffer creation failed. Using placeholder.");
+                            "Critical: Failed to create fallback buffer. Using placeholder.");
                         return new ScopedTemporaryBuffer(this, null, BufferHandle.Null, 0, 0, false);
                     }
                 }
 
-                return new ScopedTemporaryBuffer(this, holder, handle, 0, Math.Min(size, holder.Size), false);
+                return new ScopedTemporaryBuffer(this, holder, handle, 0, size, false);
             }
         }
 
@@ -483,22 +436,6 @@ namespace Ryujinx.Graphics.Vulkan
             bool sparseCompatible = false,
             BufferAllocationType baseType = BufferAllocationType.HostMapped)
         {
-            // 添加内存压力检测
-            if (size > GetAvailableMemoryEstimate(gd))
-            {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Buffer size 0x{size:X} exceeds estimated available memory. Attempting reduced allocation.");
-                
-                // 尝试使用可用的最大尺寸
-                int reducedSize = GetMaxAvailableBufferSize(gd, size);
-                if (reducedSize > 0)
-                {
-                    Logger.Info?.Print(LogClass.Gpu, 
-                        $"Using reduced buffer size 0x{reducedSize:X} instead of 0x{size:X}");
-                    size = reducedSize;
-                }
-            }
-
             // 添加小缓冲区优化
             // 对于小于4KB的缓冲区，默认使用HostMapped类型
             const int smallBufferThreshold = 4 * 1024;
@@ -523,277 +460,49 @@ namespace Ryujinx.Graphics.Vulkan
                 return holder;
             }
 
-            // 使用改进的回退策略
-            return CreateFallbackBuffer(gd, size, forConditionalRendering, sparseCompatible, baseType);
-        }
-
-        private long GetAvailableMemoryEstimate(VulkanRenderer gd)
-        {
-            try
-            {
-                // 获取设备内存属性
-                var memoryProperties = gd.PhysicalDevice.GetMemoryProperties();
-                long availableMemory = 0;
-                
-                // 估算可用内存（这里使用启发式方法）
-                for (int i = 0; i < memoryProperties.MemoryHeapCount; i++)
-                {
-                    var heap = memoryProperties.MemoryHeaps[i];
-                    if ((heap.Flags & MemoryHeapFlags.DeviceLocalBit) != 0)
-                    {
-                        // 保守估计：使用堆大小的 1/4 作为可用内存
-                        availableMemory = Math.Max(availableMemory, (long)(heap.Size * 0.25));
-                    }
-                }
-                
-                return availableMemory > 0 ? availableMemory : 256 * 1024 * 1024; // 默认 256MB
-            }
-            catch
-            {
-                return 128 * 1024 * 1024; // 保守回退值
-            }
-        }
-
-        private int GetMaxAvailableBufferSize(VulkanRenderer gd, int requestedSize)
-        {
-            // 二分查找法找到最大可分配尺寸
-            int minSize = 1024; // 1KB 最小
-            int maxSize = requestedSize;
-            int bestSize = 0;
-            
-            for (int i = 0; i < 8; i++) // 最多尝试8次
-            {
-                int testSize = (minSize + maxSize) / 2;
-                
-                // 测试这个尺寸是否能分配
-                bool canAllocate = TestBufferAllocation(gd, testSize);
-                
-                if (canAllocate)
-                {
-                    bestSize = testSize;
-                    minSize = testSize + 1;
-                    
-                    // 如果已经很接近请求大小，直接返回
-                    if (testSize >= requestedSize * 0.95)
-                        break;
-                }
-                else
-                {
-                    maxSize = testSize - 1;
-                }
-                
-                if (minSize > maxSize)
-                    break;
-            }
-            
-            return bestSize;
-        }
-
-        private bool TestBufferAllocation(VulkanRenderer gd, int size)
-        {
-            try
-            {
-                // 尝试创建临时缓冲区来测试内存可用性
-                using var testBuffer = CreateTemporaryTestBuffer(gd, size);
-                return testBuffer != null;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private IDisposable CreateTemporaryTestBuffer(VulkanRenderer gd, int size)
-        {
-            // 使用最基础的内存标志进行测试
-            var usage = DefaultBufferUsageFlags;
-            
-            var bufferCreateInfo = new BufferCreateInfo
-            {
-                SType = StructureType.BufferCreateInfo,
-                Size = (ulong)size,
-                Usage = usage,
-                SharingMode = SharingMode.Exclusive,
-            };
-
-            gd.Api.CreateBuffer(_device, in bufferCreateInfo, null, out var buffer).ThrowOnError();
-            gd.Api.GetBufferMemoryRequirements(_device, buffer, out var requirements);
+            // 常规缓冲区创建失败，尝试Android特定的回退策略
+            Logger.Warning?.Print(LogClass.Gpu, 
+                $"Regular buffer creation failed for size 0x{size:X}, attempting Android-specific fallback");
 
             try
             {
-                var allocation = gd.MemoryAllocator.AllocateDeviceMemory(
-                    requirements, 
-                    MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit,
-                    true);
-                    
-                if (allocation.Memory.Handle != 0UL)
+                // 尝试使用Android优化的内存分配
+                var androidBuffer = CreateAndroidOptimizedBuffer(gd, size);
+                if (androidBuffer != null)
                 {
-                    gd.Api.BindBufferMemory(_device, buffer, allocation.Memory, allocation.Offset);
-                    
-                    // 返回可销毁的对象
-                    return new TemporaryTestBuffer(gd, gd.Api, _device, buffer, allocation);
+                    Logger.Info?.Print(LogClass.Gpu, 
+                        $"Successfully created buffer using Android-optimized method for size 0x{size:X}");
+                    return androidBuffer;
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                gd.Api.DestroyBuffer(_device, buffer, null);
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Android-optimized buffer creation failed: {ex.Message}");
             }
-            
+
+            // 最后尝试：使用简化版本的分段缓冲区
+            Logger.Warning?.Print(LogClass.Gpu, 
+                $"Android-optimized method failed, attempting simplified buffer for size 0x{size:X}");
+
+            try
+            {
+                var simplifiedBuffer = CreateSimplifiedBuffer(gd, size);
+                if (simplifiedBuffer != null)
+                {
+                    Logger.Info?.Print(LogClass.Gpu, 
+                        $"Successfully created simplified buffer for size 0x{size:X}");
+                    return simplifiedBuffer;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Simplified buffer creation failed: {ex.Message}");
+            }
+
+            Logger.Error?.Print(LogClass.Gpu, $"All buffer creation methods failed for size 0x{size:X} and type \"{baseType}\"");
             return null;
-        }
-
-        private int GetAdjustedBufferSize(VulkanRenderer gd, int requestedSize)
-        {
-            // 根据可用内存调整请求的大小
-            long availableMemory = GetAvailableMemoryEstimate(gd);
-            
-            if (requestedSize > availableMemory)
-            {
-                int adjustedSize = (int)Math.Min(availableMemory, requestedSize);
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Adjusting buffer size from 0x{requestedSize:X} to 0x{adjustedSize:X} due to memory constraints");
-                return adjustedSize;
-            }
-            
-            return requestedSize;
-        }
-
-        private BufferHolder CreateFallbackBuffer(
-            VulkanRenderer gd, 
-            int size, 
-            bool forConditionalRendering, 
-            bool sparseCompatible, 
-            BufferAllocationType baseType)
-        {
-            Logger.Warning?.Print(LogClass.Gpu, 
-                $"Regular buffer creation failed for size 0x{size:X}, attempting system storage memory as fallback");
-
-            // 策略1: 尝试系统内存
-            try
-            {
-                var systemBuffer = CreateSystemMemoryBuffer(gd, size);
-                if (systemBuffer != null)
-                {
-                    Logger.Info?.Print(LogClass.Gpu, 
-                        $"Successfully created buffer using system memory for size 0x{size:X}");
-                    return systemBuffer;
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"System storage memory failed: {ex.Message}");
-            }
-
-            // 策略2: 尝试内存映射回退
-            Logger.Warning?.Print(LogClass.Gpu, 
-                $"System storage memory failed, attempting memory-mapped fallback for size 0x{size:X}");
-
-            try
-            {
-                var memoryMappedBuffer = CreateMemoryMappedFallback(gd, size);
-                if (memoryMappedBuffer != null)
-                {
-                    Logger.Info?.Print(LogClass.Gpu, 
-                        $"Successfully created memory-mapped buffer for size 0x{size:X}");
-                    return memoryMappedBuffer;
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Memory-mapped fallback failed: {ex.Message}");
-            }
-
-            // 策略3: 分段缓冲区模拟
-            Logger.Warning?.Print(LogClass.Gpu, 
-                $"Memory-mapped fallback failed, attempting segmented buffer for size 0x{size:X}");
-
-            try
-            {
-                var segmentedBuffer = CreateSegmentedBuffer(gd, size);
-                if (segmentedBuffer != null)
-                {
-                    Logger.Info?.Print(LogClass.Gpu, 
-                        $"Successfully created segmented buffer for size 0x{size:X}");
-                    return segmentedBuffer;
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Segmented buffer creation failed: {ex.Message}");
-            }
-
-            Logger.Error?.Print(LogClass.Gpu, 
-                $"All buffer creation methods failed for size 0x{size:X} and type \"{baseType}\"");
-            return null;
-        }
-
-        private BufferHolder CreateSystemMemoryBuffer(VulkanRenderer gd, int size)
-        {
-            // 使用系统内存而不是GPU内存
-            return CreateAndroidOptimizedBuffer(gd, size);
-        }
-
-        private BufferHolder CreateMemoryMappedFallback(VulkanRenderer gd, int size)
-        {
-            // 创建使用系统内存的缓冲区
-            var usage = DefaultBufferUsageFlags;
-
-            var bufferCreateInfo = new BufferCreateInfo
-            {
-                SType = StructureType.BufferCreateInfo,
-                Size = (ulong)size,
-                Usage = usage,
-                SharingMode = SharingMode.Exclusive,
-            };
-
-            gd.Api.CreateBuffer(_device, in bufferCreateInfo, null, out var buffer).ThrowOnError();
-            gd.Api.GetBufferMemoryRequirements(_device, buffer, out var requirements);
-
-            // 使用系统可见的内存
-            MemoryAllocation allocation;
-            try
-            {
-                allocation = gd.MemoryAllocator.AllocateDeviceMemory(
-                    requirements, 
-                    MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit,
-                    false); // 不要求设备本地
-            }
-            catch (VulkanException)
-            {
-                gd.Api.DestroyBuffer(_device, buffer, null);
-                return null;
-            }
-
-            if (allocation.Memory.Handle == 0UL)
-            {
-                gd.Api.DestroyBuffer(_device, buffer, null);
-                return null;
-            }
-
-            gd.Api.BindBufferMemory(_device, buffer, allocation.Memory, allocation.Offset);
-
-            return new BufferHolder(gd, _device, buffer, allocation, size, 
-                BufferAllocationType.HostMapped, BufferAllocationType.HostMapped);
-        }
-
-        private BufferHolder CreateSegmentedBuffer(VulkanRenderer gd, int totalSize)
-        {
-            // 对于非常大的缓冲区，使用多个小缓冲区模拟
-            const int segmentSize = 16 * 1024 * 1024; // 16MB 段
-            int segmentCount = (totalSize + segmentSize - 1) / segmentSize;
-            
-            if (segmentCount <= 1)
-                return null; // 不需要分段
-
-            Logger.Info?.Print(LogClass.Gpu, 
-                $"Creating segmented buffer: {segmentCount} segments of 0x{segmentSize:X} for total 0x{totalSize:X}");
-
-            // 这里需要实现一个 SegmentedBufferHolder 类来管理多个缓冲区
-            // 由于代码较长，这是一个概念实现
-            return CreateSimplifiedBuffer(gd, Math.Min(segmentSize, totalSize));
         }
 
         private unsafe BufferHolder CreateAndroidOptimizedBuffer(VulkanRenderer gd, int size)
