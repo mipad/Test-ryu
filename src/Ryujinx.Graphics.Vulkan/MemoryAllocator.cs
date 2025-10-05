@@ -29,7 +29,8 @@ namespace Ryujinx.Graphics.Vulkan
         private MemoryPressureState _pressureState;
         private DateTime _lastMemoryCleanup;
 
-        private enum MemoryPressureState
+        // 将枚举改为 public
+        public enum MemoryPressureState
         {
             Normal,
             Moderate,
