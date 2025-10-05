@@ -150,6 +150,23 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
 
+            // 添加 LargestFreeBlock 属性
+            public ulong LargestFreeBlock
+            {
+                get
+                {
+                    ulong largest = 0;
+                    foreach (var range in _freeRanges)
+                    {
+                        if (range.Size > largest)
+                        {
+                            largest = range.Size;
+                        }
+                    }
+                    return largest;
+                }
+            }
+
             public int CompareTo(Block other)
             {
                 return Size.CompareTo(other.Size);
@@ -183,6 +200,10 @@ namespace Ryujinx.Graphics.Vulkan
 
         private readonly ReaderWriterLockSlim _lock;
 
+        // 添加内存统计
+        private ulong _totalAllocated;
+        private ulong _totalFreed;
+
         public MemoryAllocatorBlockList(Vk api, Device device, int memoryTypeIndex, int blockAlignment, bool forBuffer)
         {
             _blocks = new List<Block>();
@@ -192,6 +213,8 @@ namespace Ryujinx.Graphics.Vulkan
             ForBuffer = forBuffer;
             _blockAlignment = blockAlignment;
             _lock = new(LockRecursionPolicy.NoRecursion);
+            _totalAllocated = 0;
+            _totalFreed = 0;
         }
 
         public unsafe MemoryAllocation Allocate(ulong size, ulong alignment, bool map)
@@ -215,6 +238,7 @@ namespace Ryujinx.Graphics.Vulkan
                         ulong offset = block.Allocate(size, alignment);
                         if (offset != InvalidOffset)
                         {
+                            _totalAllocated += size;
                             return new MemoryAllocation(this, block, block.Memory, GetHostPointer(block, offset), offset, size);
                         }
                     }
@@ -227,6 +251,23 @@ namespace Ryujinx.Graphics.Vulkan
 
             ulong blockAlignedSize = BitUtils.AlignUp(size, (ulong)_blockAlignment);
 
+            // 在Android上，如果请求的大小超过256MB，尝试使用更小的块
+            if (blockAlignedSize > 256 * 1024 * 1024)
+            {
+                // 对于大内存分配，尝试分段
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Large memory allocation requested: 0x{blockAlignedSize:X}. This may fail on Android.");
+                
+                // 尝试使用256MB作为最大块大小
+                ulong maxReasonableSize = 256 * 1024 * 1024;
+                if (blockAlignedSize > maxReasonableSize)
+                {
+                    blockAlignedSize = maxReasonableSize;
+                    Logger.Info?.Print(LogClass.Gpu, 
+                        $"Reducing allocation size to 0x{blockAlignedSize:X} for Android compatibility");
+                }
+            }
+
             var memoryAllocateInfo = new MemoryAllocateInfo
             {
                 SType = StructureType.MemoryAllocateInfo,
@@ -234,25 +275,35 @@ namespace Ryujinx.Graphics.Vulkan
                 MemoryTypeIndex = (uint)MemoryTypeIndex,
             };
 
-            _api.AllocateMemory(_device, in memoryAllocateInfo, null, out var deviceMemory).ThrowOnError();
-
-            IntPtr hostPointer = IntPtr.Zero;
-
-            if (map)
+            try
             {
-                void* pointer = null;
-                _api.MapMemory(_device, deviceMemory, 0, blockAlignedSize, 0, ref pointer).ThrowOnError();
-                hostPointer = (IntPtr)pointer;
+                _api.AllocateMemory(_device, in memoryAllocateInfo, null, out var deviceMemory).ThrowOnError();
+
+                IntPtr hostPointer = IntPtr.Zero;
+
+                if (map)
+                {
+                    void* pointer = null;
+                    _api.MapMemory(_device, deviceMemory, 0, blockAlignedSize, 0, ref pointer).ThrowOnError();
+                    hostPointer = (IntPtr)pointer;
+                }
+
+                var newBlock = new Block(deviceMemory, hostPointer, blockAlignedSize);
+
+                InsertBlock(newBlock);
+
+                ulong newBlockOffset = newBlock.Allocate(size, alignment);
+                Debug.Assert(newBlockOffset != InvalidOffset);
+
+                _totalAllocated += size;
+                return new MemoryAllocation(this, newBlock, deviceMemory, GetHostPointer(newBlock, newBlockOffset), newBlockOffset, size);
             }
-
-            var newBlock = new Block(deviceMemory, hostPointer, blockAlignedSize);
-
-            InsertBlock(newBlock);
-
-            ulong newBlockOffset = newBlock.Allocate(size, alignment);
-            Debug.Assert(newBlockOffset != InvalidOffset);
-
-            return new MemoryAllocation(this, newBlock, deviceMemory, GetHostPointer(newBlock, newBlockOffset), newBlockOffset, size);
+            catch (VulkanException ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, 
+                    $"Failed to allocate memory: Size=0x{blockAlignedSize:X}, TypeIndex={MemoryTypeIndex}, Error={ex.Message}");
+                throw;
+            }
         }
 
         private static IntPtr GetHostPointer(Block block, ulong offset)
@@ -268,6 +319,7 @@ namespace Ryujinx.Graphics.Vulkan
         public void Free(Block block, ulong offset, ulong size)
         {
             block.Free(offset, size);
+            _totalFreed += size;
 
             if (block.IsTotallyFree())
             {
@@ -322,6 +374,32 @@ namespace Ryujinx.Graphics.Vulkan
                 freeMemory += block.FreeMemory;
             }
             return freeMemory;
+        }
+
+        // 添加 GetLargestFreeBlock 方法
+        public ulong GetLargestFreeBlock()
+        {
+            ulong largest = 0;
+            foreach (var block in _blocks)
+            {
+                ulong blockLargest = block.LargestFreeBlock;
+                if (blockLargest > largest)
+                {
+                    largest = blockLargest;
+                }
+            }
+            return largest;
+        }
+
+        // 添加内存统计方法
+        public (ulong allocated, ulong freed, ulong currentUsage) GetMemoryStatistics()
+        {
+            ulong currentUsage = 0;
+            foreach (var block in _blocks)
+            {
+                currentUsage += block.Size - block.FreeMemory;
+            }
+            return (_totalAllocated, _totalFreed, currentUsage);
         }
 
         public void Dispose()
