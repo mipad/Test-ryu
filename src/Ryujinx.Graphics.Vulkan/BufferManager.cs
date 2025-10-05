@@ -16,12 +16,12 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly bool _isReserved;
 
         public readonly BufferRange Range;
-        public readonly BufferHolder Holder;
+        public readonly IBufferHolder Holder;
 
         public BufferHandle Handle => Range.Handle;
         public int Offset => Range.Offset;
 
-        public ScopedTemporaryBuffer(BufferManager bufferManager, BufferHolder holder, BufferHandle handle, int offset, int size, bool isReserved)
+        public ScopedTemporaryBuffer(BufferManager bufferManager, IBufferHolder holder, BufferHandle handle, int offset, int size, bool isReserved)
         {
             _bufferManager = bufferManager;
 
@@ -174,8 +174,22 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 
+    // 缓冲区持有者接口
+    interface IBufferHolder : IDisposable
+    {
+        int Size { get; }
+        void SetData(int offset, ReadOnlySpan<byte> data, CommandBufferScoped? cbs = null, Action endRenderPass = null, bool allowCbsWait = true);
+        PinnedSpan<byte> GetData(int offset, int size);
+        Auto<DisposableBuffer> GetBuffer(CommandBuffer commandBuffer, bool isWrite = false, bool isSSBO = false);
+        Auto<DisposableBuffer> GetBuffer(CommandBuffer commandBuffer, int offset, int size, bool isWrite = false);
+        Auto<MemoryAllocation> GetAllocation();
+        (DeviceMemory, ulong) GetDeviceMemoryAndOffset();
+        BufferHandle GetHandle();
+        void UseMirrors();
+    }
+
     // 分块缓冲区包装器
-    class ChunkedBufferHolder : BufferHolder
+    class ChunkedBufferHolder : IBufferHolder
     {
         private readonly List<BufferHolder> _chunks;
         private readonly int _chunkSize;
@@ -183,9 +197,9 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly VulkanRenderer _gd;
         private readonly Device _device;
 
-        public ChunkedBufferHolder(VulkanRenderer gd, Device device, int totalSize, int chunkSize) 
-            : base(gd, device, new VkBuffer(), new MemoryAllocation(), totalSize, 
-                  BufferAllocationType.HostMapped, BufferAllocationType.HostMapped)
+        public int Size => _totalSize;
+
+        public ChunkedBufferHolder(VulkanRenderer gd, Device device, int totalSize, int chunkSize)
         {
             _gd = gd;
             _device = device;
@@ -220,7 +234,7 @@ namespace Ryujinx.Graphics.Vulkan
                 $"Created chunked buffer: total=0x{totalSize:X}, chunks={_chunks.Count}, chunkSize=0x{chunkSize:X}");
         }
 
-        public override void SetData(int offset, ReadOnlySpan<byte> data, CommandBufferScoped? cbs = null, Action endRenderPass = null, bool allowCbsWait = true)
+        public void SetData(int offset, ReadOnlySpan<byte> data, CommandBufferScoped? cbs = null, Action endRenderPass = null, bool allowCbsWait = true)
         {
             int dataOffset = 0;
             int remaining = data.Length;
@@ -244,7 +258,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public override PinnedSpan<byte> GetData(int offset, int size)
+        public PinnedSpan<byte> GetData(int offset, int size)
         {
             // 对于分块缓冲区，需要从多个块中收集数据
             if (_chunks.Count == 0)
@@ -282,13 +296,13 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public override Auto<DisposableBuffer> GetBuffer(CommandBuffer commandBuffer, bool isWrite = false, bool isSSBO = false)
+        public Auto<DisposableBuffer> GetBuffer(CommandBuffer commandBuffer, bool isWrite = false, bool isSSBO = false)
         {
             // 返回第一个块的缓冲区（简化实现）
             return _chunks.Count > 0 ? _chunks[0].GetBuffer(commandBuffer, isWrite, isSSBO) : null;
         }
 
-        public override Auto<DisposableBuffer> GetBuffer(CommandBuffer commandBuffer, int offset, int size, bool isWrite = false)
+        public Auto<DisposableBuffer> GetBuffer(CommandBuffer commandBuffer, int offset, int size, bool isWrite = false)
         {
             // 返回相应块的缓冲区
             int chunkIndex = offset / _chunkSize;
@@ -300,14 +314,36 @@ namespace Ryujinx.Graphics.Vulkan
             return null;
         }
 
-        public override void Dispose()
+        public Auto<MemoryAllocation> GetAllocation()
+        {
+            return _chunks.Count > 0 ? _chunks[0].GetAllocation() : null;
+        }
+
+        public (DeviceMemory, ulong) GetDeviceMemoryAndOffset()
+        {
+            return _chunks.Count > 0 ? _chunks[0].GetDeviceMemoryAndOffset() : (new DeviceMemory(), 0UL);
+        }
+
+        public BufferHandle GetHandle()
+        {
+            return _chunks.Count > 0 ? _chunks[0].GetHandle() : BufferHandle.Null;
+        }
+
+        public void UseMirrors()
+        {
+            foreach (var chunk in _chunks)
+            {
+                chunk.UseMirrors();
+            }
+        }
+
+        public void Dispose()
         {
             foreach (var chunk in _chunks)
             {
                 chunk?.Dispose();
             }
             _chunks.Clear();
-            base.Dispose();
         }
     }
 
@@ -403,7 +439,7 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         // 处理数据流
-        public void ProcessData(CommandBufferScoped cbs, BufferHolder source, int srcOffset, int size)
+        public void ProcessData(CommandBufferScoped cbs, IBufferHolder source, int srcOffset, int size)
         {
             if (size > Stage1_CopyIn.Size)
             {
@@ -425,12 +461,24 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        private void ProcessDataChunk(CommandBufferScoped cbs, BufferHolder source, int srcOffset, int size)
+        private void ProcessDataChunk(CommandBufferScoped cbs, IBufferHolder source, int srcOffset, int size)
         {
             try
             {
                 // 阶段1: 数据复制进入
-                Stage1_CopyIn.CopyToChunked(cbs, source, srcOffset, 0, size);
+                if (source is BufferHolder bufferHolder)
+                {
+                    Stage1_CopyIn.CopyToChunked(cbs, bufferHolder, srcOffset, 0, size);
+                }
+                else
+                {
+                    // 对于非BufferHolder类型，使用SetData
+                    using var data = source.GetData(srcOffset, size);
+                    if (!data.IsEmpty)
+                    {
+                        Stage1_CopyIn.SetData(0, data.Get(), cbs, null, true);
+                    }
+                }
                 
                 // 阶段2: 压缩处理
                 CompressAndStore(cbs, size);
@@ -474,8 +522,8 @@ namespace Ryujinx.Graphics.Vulkan
             else
             {
                 // 压缩失败或没有节省空间，直接复制
-                Stage2_Compression.CopyToChunked(cbs, Stage1_CopyIn, 0, 0, size);
-                Stage3_Compressed.CopyToChunked(cbs, Stage1_CopyIn, 0, 0, size);
+                Stage2_Compression.CopyToChunked(cbs, (BufferHolder)Stage1_CopyIn, 0, 0, size);
+                Stage3_Compressed.CopyToChunked(cbs, (BufferHolder)Stage1_CopyIn, 0, 0, size);
                 Logger.Debug?.Print(LogClass.Gpu, "Compression skipped or failed, using direct copy");
             }
         }
@@ -503,19 +551,30 @@ namespace Ryujinx.Graphics.Vulkan
             else
             {
                 // 解压失败，从阶段1直接复制
-                Stage4_Ready.CopyToChunked(cbs, Stage1_CopyIn, 0, 0, originalSize);
+                Stage4_Ready.CopyToChunked(cbs, (BufferHolder)Stage1_CopyIn, 0, 0, originalSize);
                 Logger.Warning?.Print(LogClass.Gpu, 
                     $"Decompression failed: expected {originalSize}, got {decompressedSize}, using direct copy");
             }
         }
 
-        private void FallbackDirectCopy(CommandBufferScoped cbs, BufferHolder source, int srcOffset, int size)
+        private void FallbackDirectCopy(CommandBufferScoped cbs, IBufferHolder source, int srcOffset, int size)
         {
             Logger.Warning?.Print(LogClass.Gpu, "Using fallback direct copy for 4-stage pipeline");
             
             // 直接复制到阶段4，跳过压缩
-            Stage1_CopyIn.CopyToChunked(cbs, source, srcOffset, 0, size);
-            Stage4_Ready.CopyToChunked(cbs, Stage1_CopyIn, 0, 0, size);
+            if (source is BufferHolder bufferHolder)
+            {
+                Stage1_CopyIn.CopyToChunked(cbs, bufferHolder, srcOffset, 0, size);
+            }
+            else
+            {
+                using var data = source.GetData(srcOffset, size);
+                if (!data.IsEmpty)
+                {
+                    Stage1_CopyIn.SetData(0, data.Get(), cbs, null, true);
+                }
+            }
+            Stage4_Ready.CopyToChunked(cbs, (BufferHolder)Stage1_CopyIn, 0, 0, size);
         }
 
         public void Dispose()
@@ -530,23 +589,27 @@ namespace Ryujinx.Graphics.Vulkan
     }
 
     // 虚拟大缓冲区包装器
-    class VirtualLargeBufferHolder : BufferHolder
+    class VirtualLargeBufferHolder : IBufferHolder
     {
         private readonly FourStageBufferManager _bufferManager;
         private readonly int _virtualSize;
+        private readonly VulkanRenderer _gd;
+        private readonly Device _device;
 
-        public VirtualLargeBufferHolder(VulkanRenderer gd, Device device, int size, FourStageBufferManager bufferManager) 
-            : base(gd, device, new VkBuffer(), new MemoryAllocation(), size, 
-                  BufferAllocationType.HostMapped, BufferAllocationType.HostMapped)
+        public int Size => _virtualSize;
+
+        public VirtualLargeBufferHolder(VulkanRenderer gd, Device device, int size, FourStageBufferManager bufferManager)
         {
             _virtualSize = size;
             _bufferManager = bufferManager;
+            _gd = gd;
+            _device = device;
             
             Logger.Info?.Print(LogClass.Gpu, 
                 $"Created virtual large buffer: virtualSize=0x{size:X}, using 4-stage manager");
         }
 
-        public override void SetData(int offset, ReadOnlySpan<byte> data, CommandBufferScoped? cbs = null, Action endRenderPass = null, bool allowCbsWait = true)
+        public void SetData(int offset, ReadOnlySpan<byte> data, CommandBufferScoped? cbs = null, Action endRenderPass = null, bool allowCbsWait = true)
         {
             // 对于虚拟大缓冲区，我们需要创建一个临时缓冲区来存储数据
             // 然后通过四阶段管道处理
@@ -570,29 +633,48 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public override Auto<DisposableBuffer> GetBuffer(CommandBuffer commandBuffer, bool isWrite = false, bool isSSBO = false)
+        public Auto<DisposableBuffer> GetBuffer(CommandBuffer commandBuffer, bool isWrite = false, bool isSSBO = false)
         {
             // 返回阶段4的缓冲区供使用
             return _bufferManager.Stage4_Ready.GetBuffer(commandBuffer, isWrite, isSSBO);
         }
 
-        public override Auto<DisposableBuffer> GetBuffer(CommandBuffer commandBuffer, int offset, int size, bool isWrite = false)
+        public Auto<DisposableBuffer> GetBuffer(CommandBuffer commandBuffer, int offset, int size, bool isWrite = false)
         {
             // 注意：这里假设数据已经在阶段4中
             return _bufferManager.Stage4_Ready.GetBuffer(commandBuffer, offset, size, isWrite);
         }
 
-        public override PinnedSpan<byte> GetData(int offset, int size)
+        public PinnedSpan<byte> GetData(int offset, int size)
         {
             // 从阶段4获取数据
             return _bufferManager.Stage4_Ready.GetData(offset, size);
         }
 
-        public override void Dispose()
+        public Auto<MemoryAllocation> GetAllocation()
+        {
+            return _bufferManager.Stage4_Ready.GetAllocation();
+        }
+
+        public (DeviceMemory, ulong) GetDeviceMemoryAndOffset()
+        {
+            return _bufferManager.Stage4_Ready.GetDeviceMemoryAndOffset();
+        }
+
+        public BufferHandle GetHandle()
+        {
+            return _bufferManager.Stage4_Ready.GetHandle();
+        }
+
+        public void UseMirrors()
+        {
+            _bufferManager.Stage4_Ready.UseMirrors();
+        }
+
+        public void Dispose()
         {
             // 虚拟缓冲区本身不持有实际资源，由FourStageBufferManager管理
             Logger.Debug?.Print(LogClass.Gpu, "Disposed virtual large buffer");
-            base.Dispose();
         }
     }
 
@@ -639,7 +721,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         private readonly Device _device;
 
-        private readonly IdList<BufferHolder> _buffers;
+        private readonly IdList<IBufferHolder> _buffers;
 
         public int BufferCount { get; private set; }
 
@@ -654,7 +736,7 @@ namespace Ryujinx.Graphics.Vulkan
         public BufferManager(VulkanRenderer gd, Device device)
         {
             _device = device;
-            _buffers = new IdList<BufferHolder>();
+            _buffers = new IdList<IBufferHolder>();
             StagingBuffer = new StagingBuffer(gd, this);
 
             HostImportedBufferMemoryRequirements = GetHostImportedUsageRequirements(gd);
@@ -825,7 +907,7 @@ namespace Ryujinx.Graphics.Vulkan
         public BufferHandle CreateWithHandle(
             VulkanRenderer gd,
             int size,
-            out BufferHolder holder,
+            out IBufferHolder holder,
             bool sparseCompatible = false,
             BufferAllocationType baseType = BufferAllocationType.HostMapped,
             bool forceMirrors = false)
@@ -845,7 +927,9 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             // 原有创建逻辑...
-            holder = Create(gd, size, forConditionalRendering: false, sparseCompatible, baseType);
+            var bufferHolder = Create(gd, size, forConditionalRendering: false, sparseCompatible, baseType);
+            holder = bufferHolder;
+            
             if (holder == null)
             {
                 // 如果常规创建失败，也尝试使用四阶段方案
@@ -888,7 +972,7 @@ namespace Ryujinx.Graphics.Vulkan
             else
             {
                 // Create a temporary buffer.
-                BufferHandle handle = CreateWithHandle(gd, size, out BufferHolder holder);
+                BufferHandle handle = CreateWithHandle(gd, size, out IBufferHolder holder);
                 
                 if (holder == null)
                 {
@@ -1230,9 +1314,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBufferView> CreateView(BufferHandle handle, VkFormat format, int offset, int size, Action invalidateView)
         {
-            if (TryGetBuffer(handle, out var holder))
+            if (TryGetBuffer(handle, out var holder) && holder is BufferHolder bufferHolder)
             {
-                return holder.CreateView(format, offset, size, invalidateView);
+                return bufferHolder.CreateView(format, offset, size, invalidateView);
             }
 
             return null;
@@ -1260,9 +1344,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetBufferI8ToI16(CommandBufferScoped cbs, BufferHandle handle, int offset, int size)
         {
-            if (TryGetBuffer(handle, out var holder))
+            if (TryGetBuffer(handle, out var holder) && holder is BufferHolder bufferHolder)
             {
-                return holder.GetBufferI8ToI16(cbs, offset, size);
+                return bufferHolder.GetBufferI8ToI16(cbs, offset, size);
             }
 
             return null;
@@ -1270,9 +1354,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetAlignedVertexBuffer(CommandBufferScoped cbs, BufferHandle handle, int offset, int size, int stride, int alignment)
         {
-            if (TryGetBuffer(handle, out var holder))
+            if (TryGetBuffer(handle, out var holder) && holder is BufferHolder bufferHolder)
             {
-                return holder.GetAlignedVertexBuffer(cbs, offset, size, stride, alignment);
+                return bufferHolder.GetAlignedVertexBuffer(cbs, offset, size, stride, alignment);
             }
 
             return null;
@@ -1280,9 +1364,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetBufferTopologyConversion(CommandBufferScoped cbs, BufferHandle handle, int offset, int size, IndexBufferPattern pattern, int indexSize)
         {
-            if (TryGetBuffer(handle, out var holder))
+            if (TryGetBuffer(handle, out var holder) && holder is BufferHolder bufferHolder)
             {
-                return holder.GetBufferTopologyConversion(cbs, offset, size, pattern, indexSize);
+                return bufferHolder.GetBufferTopologyConversion(cbs, offset, size, pattern, indexSize);
             }
 
             return null;
@@ -1300,11 +1384,11 @@ namespace Ryujinx.Graphics.Vulkan
             int maxDrawCount,
             int indirectDataStride)
         {
-            BufferHolder drawCountBufferHolder = null;
+            IBufferHolder drawCountBufferHolder = null;
 
-            if (!TryGetBuffer(indexBuffer.Handle, out var indexBufferHolder) ||
-                !TryGetBuffer(indirectBuffer.Handle, out var indirectBufferHolder) ||
-                (hasDrawCount && !TryGetBuffer(drawCountBuffer.Handle, out drawCountBufferHolder)))
+            if (!TryGetBuffer(indexBuffer.Handle, out var indexBufferHolder) || !(indexBufferHolder is BufferHolder) ||
+                !TryGetBuffer(indirectBuffer.Handle, out var indirectBufferHolder) || !(indirectBufferHolder is BufferHolder) ||
+                (hasDrawCount && (!TryGetBuffer(drawCountBuffer.Handle, out drawCountBufferHolder) || !(drawCountBufferHolder is BufferHolder)))
             {
                 return (null, null);
             }
@@ -1313,18 +1397,18 @@ namespace Ryujinx.Graphics.Vulkan
                 gd,
                 pattern,
                 indexSize,
-                indirectBufferHolder,
+                (BufferHolder)indirectBufferHolder,
                 indirectBuffer.Offset,
                 indirectBuffer.Size);
 
-            bool hasConvertedIndexBuffer = indexBufferHolder.TryGetCachedConvertedBuffer(
+            bool hasConvertedIndexBuffer = ((BufferHolder)indexBufferHolder).TryGetCachedConvertedBuffer(
                 indexBuffer.Offset,
                 indexBuffer.Size,
                 indexBufferKey,
                 out var convertedIndexBuffer);
 
             var indirectBufferKey = new IndirectDataCacheKey(pattern);
-            bool hasConvertedIndirectBuffer = indirectBufferHolder.TryGetCachedConvertedBuffer(
+            bool hasConvertedIndirectBuffer = ((BufferHolder)indirectBufferHolder).TryGetCachedConvertedBuffer(
                 indirectBuffer.Offset,
                 indirectBuffer.Size,
                 indirectBufferKey,
@@ -1335,7 +1419,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (hasDrawCount)
             {
-                hasCachedDrawCount = drawCountBufferHolder.TryGetCachedConvertedBuffer(
+                hasCachedDrawCount = ((BufferHolder)drawCountBufferHolder).TryGetCachedConvertedBuffer(
                     drawCountBuffer.Offset,
                     drawCountBuffer.Size,
                     drawCountBufferKey,
@@ -1354,23 +1438,23 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     convertedIndexBuffer = Create(gd, convertedCount * 4);
                     indexBufferKey.SetBuffer(convertedIndexBuffer.GetBuffer());
-                    indexBufferHolder.AddCachedConvertedBuffer(indexBuffer.Offset, indexBuffer.Size, indexBufferKey, convertedIndexBuffer);
+                    ((BufferHolder)indexBufferHolder).AddCachedConvertedBuffer(indexBuffer.Offset, indexBuffer.Size, indexBufferKey, convertedIndexBuffer);
                 }
 
                 if (!hasConvertedIndirectBuffer)
                 {
                     convertedIndirectBuffer = Create(gd, indirectBuffer.Size);
-                    indirectBufferHolder.AddCachedConvertedBuffer(indirectBuffer.Offset, indirectBuffer.Size, indirectBufferKey, convertedIndirectBuffer);
+                    ((BufferHolder)indirectBufferHolder).AddCachedConvertedBuffer(indirectBuffer.Offset, indirectBuffer.Size, indirectBufferKey, convertedIndirectBuffer);
                 }
 
                 gd.PipelineInternal.EndRenderPass();
                 gd.HelperShader.ConvertIndexBufferIndirect(
                     gd,
                     cbs,
-                    indirectBufferHolder,
+                    (BufferHolder)indirectBufferHolder,
                     convertedIndirectBuffer,
                     drawCountBuffer,
-                    indexBufferHolder,
+                    (BufferHolder)indexBufferHolder,
                     convertedIndexBuffer,
                     pattern,
                     indexSize,
@@ -1385,12 +1469,12 @@ namespace Ryujinx.Graphics.Vulkan
                 // since we used the indirect data to find the range of the index buffer that is used.
 
                 var indexBufferDependency = new Dependency(
-                    indexBufferHolder,
+                    (BufferHolder)indexBufferHolder,
                     indexBuffer.Offset,
                     indexBuffer.Size,
                     indexBufferKey);
 
-                indirectBufferHolder.AddCachedConvertedBufferDependency(
+                ((BufferHolder)indirectBufferHolder).AddCachedConvertedBufferDependency(
                     indirectBuffer.Offset,
                     indirectBuffer.Size,
                     indirectBufferKey,
@@ -1400,19 +1484,19 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     if (!hasCachedDrawCount)
                     {
-                        drawCountBufferHolder.AddCachedConvertedBuffer(drawCountBuffer.Offset, drawCountBuffer.Size, drawCountBufferKey, null);
+                        ((BufferHolder)drawCountBufferHolder).AddCachedConvertedBuffer(drawCountBuffer.Offset, drawCountBuffer.Size, drawCountBufferKey, null);
                     }
 
                     // If we have a draw count, any modification of the draw count should invalidate all indirect buffers
                     // where we used it to find the range of indirect data that is actually used.
 
                     var indirectBufferDependency = new Dependency(
-                        indirectBufferHolder,
+                        (BufferHolder)indirectBufferHolder,
                         indirectBuffer.Offset,
                         indirectBuffer.Size,
                         indirectBufferKey);
 
-                    drawCountBufferHolder.AddCachedConvertedBufferDependency(
+                    ((BufferHolder)drawCountBufferHolder).AddCachedConvertedBufferDependency(
                         drawCountBuffer.Offset,
                         drawCountBuffer.Size,
                         drawCountBufferKey,
@@ -1472,7 +1556,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        private bool TryGetBuffer(BufferHandle handle, out BufferHolder holder)
+        private bool TryGetBuffer(BufferHandle handle, out IBufferHolder holder)
         {
             return _buffers.TryGetValue((int)Unsafe.As<BufferHandle, ulong>(ref handle), out holder);
         }
@@ -1484,7 +1568,7 @@ namespace Ryujinx.Graphics.Vulkan
                 StagingBuffer.Dispose();
                 _fallbackBufferManager?.Dispose();
 
-                foreach (BufferHolder buffer in _buffers)
+                foreach (IBufferHolder buffer in _buffers)
                 {
                     buffer.Dispose();
                 }
