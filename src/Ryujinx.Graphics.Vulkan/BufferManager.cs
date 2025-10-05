@@ -60,6 +60,12 @@ namespace Ryujinx.Graphics.Vulkan
             MemoryPropertyFlags.HostVisibleBit |
             MemoryPropertyFlags.HostCoherentBit;
 
+        // 新增：使用系统存储内存的标志
+        private const MemoryPropertyFlags SystemMemoryFlags =
+            MemoryPropertyFlags.HostVisibleBit |
+            MemoryPropertyFlags.HostCoherentBit |
+            MemoryPropertyFlags.HostCachedBit;
+
         private const BufferUsageFlags DefaultBufferUsageFlags =
             BufferUsageFlags.TransferSrcBit |
             BufferUsageFlags.TransferDstBit |
@@ -455,34 +461,54 @@ namespace Ryujinx.Graphics.Vulkan
                 return holder;
             }
 
-            // 常规缓冲区创建失败，尝试使用稀疏缓冲区作为回退
+            // 常规缓冲区创建失败，尝试使用系统存储内存作为回退
             Logger.Warning?.Print(LogClass.Gpu, 
-                $"Regular buffer creation failed for size 0x{size:X}, attempting sparse buffer as fallback");
+                $"Regular buffer creation failed for size 0x{size:X}, attempting system storage memory as fallback");
 
             try
             {
-                // 创建一个带有实际内存绑定的稀疏缓冲区
-                var sparseBuffer = CreateSparseWithMemoryBacking(gd, size);
-                if (sparseBuffer != null)
+                // 尝试使用系统存储内存创建缓冲区
+                var systemMemoryBuffer = CreateWithSystemStorageMemory(gd, size);
+                if (systemMemoryBuffer != null)
                 {
                     Logger.Info?.Print(LogClass.Gpu, 
-                        $"Successfully created sparse buffer with memory backing for size 0x{size:X}");
-                    return sparseBuffer;
+                        $"Successfully created buffer using system storage memory for size 0x{size:X}");
+                    return systemMemoryBuffer;
                 }
             }
             catch (Exception ex)
             {
                 Logger.Warning?.Print(LogClass.Gpu, 
-                    $"Sparse buffer with memory backing failed: {ex.Message}");
+                    $"System storage memory buffer creation failed: {ex.Message}");
+            }
+
+            // 最后尝试：使用分段内存映射
+            Logger.Warning?.Print(LogClass.Gpu, 
+                $"System storage memory failed, attempting memory-mapped fallback for size 0x{size:X}");
+
+            try
+            {
+                var memoryMappedBuffer = CreateMemoryMappedBuffer(gd, size);
+                if (memoryMappedBuffer != null)
+                {
+                    Logger.Info?.Print(LogClass.Gpu, 
+                        $"Successfully created memory-mapped buffer for size 0x{size:X}");
+                    return memoryMappedBuffer;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Memory-mapped buffer creation failed: {ex.Message}");
             }
 
             Logger.Error?.Print(LogClass.Gpu, $"All buffer creation methods failed for size 0x{size:X} and type \"{baseType}\"");
             return null;
         }
 
-        private unsafe BufferHolder CreateSparseWithMemoryBacking(VulkanRenderer gd, int size)
+        private unsafe BufferHolder CreateWithSystemStorageMemory(VulkanRenderer gd, int size)
         {
-            // 创建稀疏缓冲区
+            // 创建缓冲区
             var usage = DefaultBufferUsageFlags;
 
             if (gd.Capabilities.SupportsIndirectParameters)
@@ -490,35 +516,35 @@ namespace Ryujinx.Graphics.Vulkan
                 usage |= BufferUsageFlags.IndirectBufferBit;
             }
 
-            var bufferCreateInfo = new BufferCreateInfo()
+            var bufferCreateInfo = new BufferCreateInfo
             {
                 SType = StructureType.BufferCreateInfo,
                 Size = (ulong)size,
                 Usage = usage,
                 SharingMode = SharingMode.Exclusive,
-                Flags = BufferCreateFlags.SparseBindingBit | BufferCreateFlags.SparseAliasedBit
             };
 
             gd.Api.CreateBuffer(_device, in bufferCreateInfo, null, out var buffer).ThrowOnError();
             gd.Api.GetBufferMemoryRequirements(_device, buffer, out var requirements);
 
-            // 为稀疏缓冲区分配实际的内存
+            // 尝试使用系统存储内存（可能使用交换文件/虚拟内存）
             MemoryAllocation allocation;
             try
             {
+                // 尝试使用主机可见和缓存的内存类型，这可能使用系统存储
                 allocation = gd.MemoryAllocator.AllocateDeviceMemory(
                     requirements, 
-                    DefaultBufferMemoryNoCacheFlags, 
+                    SystemMemoryFlags, 
                     false);
             }
             catch (VulkanException)
             {
-                // 如果分配失败，尝试其他内存类型
+                // 如果失败，尝试任何可用的主机内存类型
                 try
                 {
                     allocation = gd.MemoryAllocator.AllocateDeviceMemory(
                         requirements, 
-                        DeviceLocalBufferMemoryFlags, 
+                        MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit, 
                         false);
                 }
                 catch (VulkanException)
@@ -534,38 +560,64 @@ namespace Ryujinx.Graphics.Vulkan
                 return null;
             }
 
-            // 绑定内存到稀疏缓冲区
-            var memoryBind = new SparseMemoryBind
+            gd.Api.BindBufferMemory(_device, buffer, allocation.Memory, allocation.Offset);
+
+            var holder = new BufferHolder(gd, _device, buffer, allocation, size, 
+                BufferAllocationType.HostMapped, BufferAllocationType.HostMapped);
+
+            return holder;
+        }
+
+        private unsafe BufferHolder CreateMemoryMappedBuffer(VulkanRenderer gd, int size)
+        {
+            // 对于非常大的缓冲区，使用内存映射文件作为最后手段
+            // 注意：这是一个简化的实现，实际可能需要更复杂的内存管理
+            
+            var usage = DefaultBufferUsageFlags;
+
+            if (gd.Capabilities.SupportsIndirectParameters)
             {
-                ResourceOffset = 0,
+                usage |= BufferUsageFlags.IndirectBufferBit;
+            }
+
+            var bufferCreateInfo = new BufferCreateInfo
+            {
+                SType = StructureType.BufferCreateInfo,
                 Size = (ulong)size,
-                Memory = allocation.Memory,
-                MemoryOffset = allocation.Offset,
-                Flags = SparseMemoryBindFlags.None
+                Usage = usage,
+                SharingMode = SharingMode.Exclusive,
             };
 
-            // 修复：使用指针直接指向memoryBind，而不是使用fixed语句
-            SparseMemoryBind* pMemoryBind = &memoryBind;
+            gd.Api.CreateBuffer(_device, in bufferCreateInfo, null, out var buffer).ThrowOnError();
+            gd.Api.GetBufferMemoryRequirements(_device, buffer, out var requirements);
 
-            var bufferBind = new SparseBufferMemoryBindInfo
+            // 尝试使用最宽松的内存要求
+            MemoryAllocation allocation;
+            try
             {
-                Buffer = buffer,
-                BindCount = 1,
-                PBinds = pMemoryBind
-            };
-
-            var bindSparseInfo = new BindSparseInfo
+                // 使用最低要求的内存类型
+                allocation = gd.MemoryAllocator.AllocateDeviceMemory(
+                    requirements, 
+                    MemoryPropertyFlags.HostVisibleBit,  // 最低要求：主机可见
+                    false,
+                    true); // 允许使用系统分页文件
+            }
+            catch (VulkanException)
             {
-                SType = StructureType.BindSparseInfo,
-                BufferBindCount = 1,
-                PBufferBinds = &bufferBind
-            };
+                gd.Api.DestroyBuffer(_device, buffer, null);
+                return null;
+            }
 
-            gd.Api.QueueBindSparse(gd.Queue, 1, in bindSparseInfo, default).ThrowOnError();
+            if (allocation.Memory.Handle == 0UL)
+            {
+                gd.Api.DestroyBuffer(_device, buffer, null);
+                return null;
+            }
 
-            // 创建BufferHolder
-            var allocationAuto = new Auto<MemoryAllocation>(allocation);
-            var holder = new BufferHolder(gd, _device, buffer, allocation, size, BufferAllocationType.Sparse, BufferAllocationType.Sparse);
+            gd.Api.BindBufferMemory(_device, buffer, allocation.Memory, allocation.Offset);
+
+            var holder = new BufferHolder(gd, _device, buffer, allocation, size, 
+                BufferAllocationType.HostMapped, BufferAllocationType.HostMapped);
 
             return holder;
         }
