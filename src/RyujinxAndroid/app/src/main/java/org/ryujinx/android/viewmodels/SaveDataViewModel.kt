@@ -83,6 +83,33 @@ class SaveDataViewModel : ViewModel() {
     }
 
     /**
+     * 刷新存档信息（静默模式，不显示加载消息）
+     */
+    private fun refreshSaveDataInfoSilent() {
+        Thread {
+            try {
+                RyujinxNative.refreshSaveData()
+                
+                val exists = RyujinxNative.saveDataExists(currentTitleId.value)
+                if (exists) {
+                    val saveId = RyujinxNative.getSaveIdByTitleId(currentTitleId.value)
+                    if (!saveId.isNullOrEmpty()) {
+                        val info = getDetailedSaveDataInfo(saveId)
+                        saveDataInfo.value = info
+                    } else {
+                        saveDataInfo.value = null
+                    }
+                } else {
+                    saveDataInfo.value = null
+                }
+            } catch (e: Exception) {
+                // 静默失败，不显示错误信息
+                e.printStackTrace()
+            }
+        }.start()
+    }
+
+    /**
      * 获取详细的存档信息
      */
     private fun getDetailedSaveDataInfo(saveId: String): SaveDataInfo {
@@ -240,6 +267,8 @@ class SaveDataViewModel : ViewModel() {
                 else 
                     "Failed to export save data"
                 showOperationResult.value = true
+                
+                // 导出成功后不需要刷新存档信息，因为导出不影响存档内容
             } catch (e: Exception) {
                 operationInProgress.value = false
                 operationSuccess.value = false
@@ -268,9 +297,9 @@ class SaveDataViewModel : ViewModel() {
                     "Failed to import save data"
                 showOperationResult.value = true
 
-                // 导入成功后重新加载存档信息
+                // 导入成功后静默刷新存档信息
                 if (success) {
-                    loadSaveDataInfo()
+                    refreshSaveDataInfoSilent()
                 }
             } catch (e: Exception) {
                 operationInProgress.value = false
@@ -311,9 +340,9 @@ class SaveDataViewModel : ViewModel() {
                     "Failed to import save data"
                 showOperationResult.value = true
                 
-                // 导入成功后重新加载存档信息
+                // 导入成功后静默刷新存档信息
                 if (success) {
-                    loadSaveDataInfo()
+                    refreshSaveDataInfoSilent()
                 }
             } catch (e: Exception) {
                 operationInProgress.value = false
@@ -375,9 +404,9 @@ class SaveDataViewModel : ViewModel() {
                     "Failed to delete save files"
                 showOperationResult.value = true
 
-                // 删除文件后重新加载存档信息
+                // 删除文件后静默刷新存档信息
                 if (success) {
-                    loadSaveDataInfo()
+                    refreshSaveDataInfoSilent()
                 }
             } catch (e: Exception) {
                 operationInProgress.value = false
@@ -411,40 +440,11 @@ class SaveDataViewModel : ViewModel() {
     }
     
     /**
-     * 强制刷新存档信息
+     * 强制刷新存档信息（公开方法，用于手动刷新）
      */
     fun refreshSaveData() {
         loadSaveDataInfo()
     }
 }
 
-/**
- * 存档信息数据类
- */
-data class SaveDataInfo(
-    val saveId: String,
-    val titleId: String,
-    val titleName: String,
-    val lastModified: Date,
-    val size: Long
-)
-
-/**
- * 工具函数 - 格式化日期
- */
-fun formatDate(date: Date): String {
-    val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-    return formatter.format(date)
-}
-
-/**
- * 工具函数 - 格式化文件大小
- */
-fun formatFileSize(size: Long): String {
-    return when {
-        size < 1024 -> "$size B"
-        size < 1024 * 1024 -> "${size / 1024} KB"
-        size < 1024 * 1024 * 1024 -> "${size / (1024 * 1024)} MB"
-        else -> "${size / (1024 * 1024 * 1024)} GB"
-    }
-}
+// 其余代码保持不变...
