@@ -447,4 +447,33 @@ class SaveDataViewModel : ViewModel() {
     }
 }
 
-// 其余代码保持不变...
+/**
+ * 存档信息数据类
+ */
+data class SaveDataInfo(
+    val saveId: String,
+    val titleId: String,
+    val titleName: String,
+    val lastModified: Date,
+    val size: Long
+)
+
+/**
+ * 工具函数 - 格式化日期
+ */
+fun formatDate(date: Date): String {
+    val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+    return formatter.format(date)
+}
+
+/**
+ * 工具函数 - 格式化文件大小
+ */
+fun formatFileSize(size: Long): String {
+    return when {
+        size < 1024 -> "$size B"
+        size < 1024 * 1024 -> "${size / 1024} KB"
+        size < 1024 * 1024 * 1024 -> "${size / (1024 * 1024)} MB"
+        else -> "${size / (1024 * 1024 * 1024)} GB"
+    }
+}
