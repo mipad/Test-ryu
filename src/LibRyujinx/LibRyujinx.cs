@@ -28,7 +28,6 @@ using Path = System.IO.Path;
 using LibHac;
 using OpenTK.Audio.OpenAL;
 using Ryujinx.HLE.Loaders.Npdm;
-using Ryujinx.Common.Utilities;
 using System.Globalization;
 using Ryujinx.UI.Common.Configuration.System;
 using Ryujinx.Common.Logging.Targets;
@@ -36,6 +35,7 @@ using System.Collections.Generic;
 using System.Text;
 using Ryujinx.HLE.UI;
 using LibRyujinx.Android;
+using System.IO.Compression; // 添加ZIP压缩支持
 
 namespace LibRyujinx
 {
@@ -849,6 +849,296 @@ namespace LibRyujinx
             // 如果需要立即生效，可以在这里调用TamperMachine.EnableCheats
             // 但通常我们会在游戏启动时自动加载，所以这里可能不需要做任何事情
         }
+
+        // ==================== 存档管理功能 ====================
+
+        /// <summary>
+        /// 获取所有存档文件夹的信息
+        /// </summary>
+        public static List<SaveDataInfo> GetSaveDataList()
+        {
+            var saveDataList = new List<SaveDataInfo>();
+            
+            if (SwitchDevice?.VirtualFileSystem == null)
+                return saveDataList;
+
+            try
+            {
+                string saveBasePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save");
+                
+                if (!Directory.Exists(saveBasePath))
+                    return saveDataList;
+
+                // 获取所有数字文件夹
+                var saveDirs = Directory.GetDirectories(saveBasePath)
+                    .Where(dir => Path.GetFileName(dir).All(char.IsDigit) && Path.GetFileName(dir).Length == 16)
+                    .ToList();
+
+                foreach (var saveDir in saveDirs)
+                {
+                    string saveId = Path.GetFileName(saveDir);
+                    var saveInfo = GetSaveDataInfo(saveId);
+                    if (saveInfo != null)
+                    {
+                        saveDataList.Add(saveInfo);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error getting save data list: {ex.Message}");
+            }
+
+            return saveDataList;
+        }
+
+        /// <summary>
+        /// 获取特定存档文件夹的详细信息
+        /// </summary>
+        private static SaveDataInfo GetSaveDataInfo(string saveId)
+        {
+            try
+            {
+                string savePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save", saveId);
+                if (!Directory.Exists(savePath))
+                    return null;
+
+                // 从 ExtraData 文件中读取标题ID
+                string titleId = ExtractTitleIdFromSaveData(savePath);
+                string titleName = "Unknown Game";
+                
+                // 如果有标题ID，尝试获取游戏名称
+                if (!string.IsNullOrEmpty(titleId) && titleId != "0000000000000000")
+                {
+                    // 这里可以调用现有的游戏信息获取方法
+                    // titleName = GetGameNameByTitleId(titleId);
+                }
+
+                var directoryInfo = new DirectoryInfo(savePath);
+                long totalSize = CalculateDirectorySize(savePath);
+
+                return new SaveDataInfo
+                {
+                    SaveId = saveId,
+                    TitleId = titleId ?? "0000000000000000",
+                    TitleName = titleName,
+                    LastModified = directoryInfo.LastWriteTime,
+                    Size = totalSize
+                };
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error getting save data info for {saveId}: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 从 ExtraData 文件中提取标题ID
+        /// </summary>
+        private static string ExtractTitleIdFromSaveData(string savePath)
+        {
+            try
+            {
+                // 尝试读取 ExtraData0 或 ExtraData1 文件来获取标题ID
+                string[] extraDataFiles = { "ExtraData0", "ExtraData1" };
+                
+                foreach (var fileName in extraDataFiles)
+                {
+                    string filePath = Path.Combine(savePath, fileName);
+                    if (File.Exists(filePath))
+                    {
+                        using var fileStream = File.OpenRead(filePath);
+                        if (fileStream.Length >= 8)
+                        {
+                            byte[] buffer = new byte[8];
+                            fileStream.Read(buffer, 0, 8);
+                            
+                            // 将字节转换为十六进制字符串
+                            string titleId = BitConverter.ToString(buffer).Replace("-", "").ToLower();
+                            if (IsValidTitleId(titleId))
+                            {
+                                return titleId;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error extracting title ID from save data: {ex.Message}");
+            }
+            
+            return null;
+        }
+
+        /// <summary>
+        /// 验证标题ID格式
+        /// </summary>
+        private static bool IsValidTitleId(string titleId)
+        {
+            return !string.IsNullOrEmpty(titleId) && 
+                   titleId.Length == 16 && 
+                   titleId.All(c => char.IsDigit(c) || (c >= 'a' && c <= 'f'));
+        }
+
+        /// <summary>
+        /// 计算目录大小
+        /// </summary>
+        private static long CalculateDirectorySize(string path)
+        {
+            long size = 0;
+            try
+            {
+                var directory = new DirectoryInfo(path);
+                foreach (var file in directory.GetFiles("*", SearchOption.AllDirectories))
+                {
+                    size += file.Length;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error calculating directory size: {ex.Message}");
+            }
+            return size;
+        }
+
+        /// <summary>
+        /// 根据游戏标题ID获取对应的存档文件夹ID
+        /// </summary>
+        public static string GetSaveIdByTitleId(string titleId)
+        {
+            var saveDataList = GetSaveDataList();
+            var saveInfo = saveDataList.FirstOrDefault(s => s.TitleId == titleId);
+            return saveInfo?.SaveId;
+        }
+
+        /// <summary>
+        /// 导出存档为ZIP文件
+        /// </summary>
+        public static bool ExportSaveData(string titleId, string outputZipPath)
+        {
+            try
+            {
+                string saveId = GetSaveIdByTitleId(titleId);
+                if (string.IsNullOrEmpty(saveId))
+                {
+                    Logger.Error?.Print(LogClass.Application, $"No save data found for title ID: {titleId}");
+                    return false;
+                }
+
+                string savePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save", saveId);
+                if (!Directory.Exists(savePath))
+                {
+                    Logger.Error?.Print(LogClass.Application, $"Save directory not found: {savePath}");
+                    return false;
+                }
+
+                // 使用 System.IO.Compression 创建ZIP文件
+                ZipFile.CreateFromDirectory(savePath, outputZipPath);
+                Logger.Info?.Print(LogClass.Application, $"Save data exported to: {outputZipPath}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error exporting save data: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 从ZIP文件导入存档
+        /// </summary>
+        public static bool ImportSaveData(string titleId, string zipFilePath)
+        {
+            try
+            {
+                string saveId = GetSaveIdByTitleId(titleId);
+                if (string.IsNullOrEmpty(saveId))
+                {
+                    // 如果没有现有的存档文件夹，创建一个新的
+                    saveId = FindNextAvailableSaveId();
+                }
+
+                string savePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save", saveId);
+                
+                // 如果目标目录存在，先备份然后删除
+                if (Directory.Exists(savePath))
+                {
+                    string backupPath = savePath + "_backup_" + DateTime.Now.ToString("yyyyMMddHHmmss");
+                    Directory.Move(savePath, backupPath);
+                }
+
+                // 创建目录并解压ZIP文件
+                Directory.CreateDirectory(savePath);
+                ZipFile.ExtractToDirectory(zipFilePath, savePath);
+                
+                Logger.Info?.Print(LogClass.Application, $"Save data imported to: {savePath}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error importing save data: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 查找下一个可用的存档文件夹ID
+        /// </summary>
+        private static string FindNextAvailableSaveId()
+        {
+            string saveBasePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save");
+            
+            if (!Directory.Exists(saveBasePath))
+                return "0000000000000001";
+
+            var existingIds = Directory.GetDirectories(saveBasePath)
+                .Where(dir => Path.GetFileName(dir).All(char.IsDigit) && Path.GetFileName(dir).Length == 16)
+                .Select(dir => long.Parse(Path.GetFileName(dir)))
+                .OrderBy(id => id)
+                .ToList();
+
+            long nextId = 1;
+            if (existingIds.Any())
+            {
+                nextId = existingIds.Last() + 1;
+            }
+
+            return nextId.ToString("D16"); // 格式化为16位数字
+        }
+
+        /// <summary>
+        /// 删除存档
+        /// </summary>
+        public static bool DeleteSaveData(string titleId)
+        {
+            try
+            {
+                string saveId = GetSaveIdByTitleId(titleId);
+                if (string.IsNullOrEmpty(saveId))
+                {
+                    Logger.Error?.Print(LogClass.Application, $"No save data found for title ID: {titleId}");
+                    return false;
+                }
+
+                string savePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save", saveId);
+                if (Directory.Exists(savePath))
+                {
+                    Directory.Delete(savePath, true);
+                    Logger.Info?.Print(LogClass.Application, $"Save data deleted: {savePath}");
+                    return true;
+                }
+                
+                Logger.Warning?.Print(LogClass.Application, $"Save directory not found: {savePath}");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error deleting save data: {ex.Message}");
+                return false;
+            }
+        }
     }
 
     public class SwitchDevice : IDisposable
@@ -1065,5 +1355,15 @@ namespace LibRyujinx
         public double Fifo;
         public double GameFps;
         public double GameTime;
+    }
+
+    // 存档信息类
+    public class SaveDataInfo
+    {
+        public string SaveId { get; set; } = string.Empty; // 数字文件夹名，如 "0000000000000001"
+        public string TitleId { get; set; } = string.Empty; // 游戏标题ID
+        public string TitleName { get; set; } = string.Empty; // 游戏名称
+        public DateTime LastModified { get; set; } // 最后修改时间
+        public long Size { get; set; } // 存档大小
     }
 }
