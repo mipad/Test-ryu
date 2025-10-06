@@ -1320,7 +1320,17 @@ class HomeViews {
                                      val gamePath = viewModel.mainViewModel?.selected?.path ?: ""
                                      // 导航到金手指界面
                                     navController?.navigate("cheats/$titleId?gamePath=${android.net.Uri.encode(gamePath)}")
-                                    })                                      
+                                    })
+                                        // 新增的存档管理菜单项
+                                        DropdownMenuItem(text = {
+                                            Text(text = "Manage Save Data")
+                                        }, onClick = {
+                                            showAppMenu.value = false
+                                            val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
+                                            val gameName = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
+                                            // 导航到存档管理界面
+                                            navController?.navigate("savedata/$titleId?gameName=${android.net.Uri.encode(gameName)}")
+                                        })                                      
                                     }
                                 }
                             }
@@ -1371,4 +1381,4 @@ class HomeViews {
             Home(isPreview = true)
         }
     }
-}}}
+}
