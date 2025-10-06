@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -45,6 +46,14 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = { viewModel.refreshSaveData() },
+                        enabled = !viewModel.operationInProgress.value
+                    ) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
                     }
                 }
             )
@@ -109,6 +118,12 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
                             "No save data found for this game",
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "Start the game to create save data",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
                     }
                 }
             }
@@ -141,6 +156,17 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
                     isDestructive = true
                 ) {
                     viewModel.deleteSaveData()
+                }
+                
+                // 调试按钮（仅在开发时显示）
+                if (isDebugBuild()) {
+                    ActionButton(
+                        text = "Debug Save Data",
+                        enabled = !viewModel.operationInProgress.value
+                    ) {
+                        // 调用调试方法
+                        debugSaveData()
+                    }
                 }
             }
         }
@@ -175,7 +201,8 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
                     viewModel.resetOperationResult()
                     // 如果删除成功且我们还在当前页面，返回上一页
                     if (viewModel.operationSuccess.value && !viewModel.hasSaveData()) {
-                        navController.popBackStack()
+                        // 可选：自动返回上一页
+                        // navController.popBackStack()
                     }
                 }) {
                     Text("OK")
@@ -191,8 +218,15 @@ fun InfoRow(label: String, value: String) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(text = label, style = MaterialTheme.typography.bodyMedium)
-        Text(text = value, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            text = label, 
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value, 
+            style = MaterialTheme.typography.bodyMedium
+        )
     }
 }
 
@@ -216,5 +250,32 @@ fun ActionButton(
         colors = buttonColors
     ) {
         Text(text = text)
+    }
+}
+
+/**
+ * 检查是否为调试版本
+ */
+private fun isDebugBuild(): Boolean {
+    return try {
+        // 这里可以根据构建类型返回不同的值
+        // 在实际应用中，可以从BuildConfig中获取
+        true // 暂时返回true用于测试
+    } catch (e: Exception) {
+        false
+    }
+}
+
+/**
+ * 调试存档数据
+ */
+private fun debugSaveData() {
+    // 调用原生方法进行调试
+    try {
+        // 这里应该调用一个原生方法来执行调试
+        // RyujinxNative.debugSaveData()
+        android.util.Log.d("SaveDataViews", "Debug save data called")
+    } catch (e: Exception) {
+        android.util.Log.e("SaveDataViews", "Error debugging save data: ${e.message}")
     }
 }
