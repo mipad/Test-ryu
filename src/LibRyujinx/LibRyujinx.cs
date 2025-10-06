@@ -876,21 +876,38 @@ namespace LibRyujinx
             {
                 string saveBasePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save");
                 
+                Logger.Info?.Print(LogClass.Application, $"Looking for save data in: {saveBasePath}");
+                
                 if (!Directory.Exists(saveBasePath))
+                {
+                    Logger.Warning?.Print(LogClass.Application, $"Save base directory does not exist: {saveBasePath}");
                     return saveDataList;
+                }
 
                 // 获取所有数字文件夹
                 var saveDirs = Directory.GetDirectories(saveBasePath)
-                    .Where(dir => Path.GetFileName(dir).All(char.IsDigit) && Path.GetFileName(dir).Length == 16)
+                    .Where(dir => {
+                        var dirName = Path.GetFileName(dir);
+                        return dirName.All(char.IsDigit) && dirName.Length == 16;
+                    })
                     .ToList();
+
+                Logger.Info?.Print(LogClass.Application, $"Found {saveDirs.Count} save directories");
 
                 foreach (var saveDir in saveDirs)
                 {
                     string saveId = Path.GetFileName(saveDir);
+                    Logger.Info?.Print(LogClass.Application, $"Processing save directory: {saveId}");
+                    
                     var saveInfo = GetSaveDataInfo(saveId);
                     if (saveInfo != null)
                     {
                         saveDataList.Add(saveInfo);
+                        Logger.Info?.Print(LogClass.Application, $"Mapped save {saveId} to title {saveInfo.TitleId}");
+                    }
+                    else
+                    {
+                        Logger.Warning?.Print(LogClass.Application, $"Could not get info for save directory: {saveId}");
                     }
                 }
             }
@@ -911,10 +928,30 @@ namespace LibRyujinx
             {
                 string savePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save", saveId);
                 if (!Directory.Exists(savePath))
+                {
+                    Logger.Warning?.Print(LogClass.Application, $"Save directory does not exist: {savePath}");
                     return null;
+                }
+
+                // 检查存档文件夹是否为空（只有.lock文件）
+                var files = Directory.GetFiles(savePath);
+                var directories = Directory.GetDirectories(savePath);
+                
+                // 如果只有.lock文件，可能是一个无效的存档目录
+                if (files.Length == 1 && Path.GetFileName(files[0]) == ".lock" && directories.Length == 0)
+                {
+                    Logger.Info?.Print(LogClass.Application, $"Save directory {saveId} appears to be empty (only .lock file)");
+                    return null;
+                }
 
                 // 从 ExtraData 文件中读取标题ID - 使用新的解析方法
                 string titleId = ExtractTitleIdFromExtraData(savePath);
+                if (string.IsNullOrEmpty(titleId))
+                {
+                    // 如果无法从ExtraData解析，尝试从其他方式获取
+                    titleId = TryAlternativeTitleIdExtraction(savePath, saveId);
+                }
+
                 string titleName = "Unknown Game";
                 
                 // 如果有标题ID，尝试获取游戏名称
@@ -958,23 +995,46 @@ namespace LibRyujinx
                     string filePath = Path.Combine(savePath, fileName);
                     if (File.Exists(filePath))
                     {
+                        Logger.Info?.Print(LogClass.Application, $"Found ExtraData file: {filePath}");
+                        
                         using var fileStream = File.OpenRead(filePath);
                         if (fileStream.Length >= 8)
                         {
                             byte[] buffer = new byte[8];
-                            fileStream.Read(buffer, 0, 8);
+                            int bytesRead = fileStream.Read(buffer, 0, 8);
                             
-                            // 将字节转换为小端序的ulong
-                            ulong titleIdValue = BitConverter.ToUInt64(buffer, 0);
-                            // 转换为16进制字符串，16位，不足补0
-                            string titleId = titleIdValue.ToString("x16");
-                            if (IsValidTitleId(titleId))
+                            if (bytesRead == 8)
                             {
-                                return titleId;
+                                // 将字节转换为小端序的ulong
+                                ulong titleIdValue = BitConverter.ToUInt64(buffer, 0);
+                                // 转换为16进制字符串，16位，不足补0
+                                string titleId = titleIdValue.ToString("x16");
+                                
+                                Logger.Info?.Print(LogClass.Application, $"Extracted title ID from {fileName}: {titleId}");
+                                
+                                if (IsValidTitleId(titleId))
+                                {
+                                    return titleId;
+                                }
+                                else
+                                {
+                                    Logger.Warning?.Print(LogClass.Application, $"Invalid title ID format: {titleId}");
+                                }
                             }
                         }
+                        else
+                        {
+                            Logger.Warning?.Print(LogClass.Application, $"ExtraData file too small: {filePath}, Size: {fileStream.Length}");
+                        }
+                    }
+                    else
+                    {
+                        Logger.Info?.Print(LogClass.Application, $"ExtraData file not found: {filePath}");
                     }
                 }
+                
+                // 如果ExtraData文件不存在或解析失败，尝试检查存档内容
+                Logger.Info?.Print(LogClass.Application, $"Could not extract title ID from ExtraData files in {savePath}");
             }
             catch (Exception ex)
             {
@@ -982,6 +1042,42 @@ namespace LibRyujinx
             }
             
             return null;
+        }
+
+        /// <summary>
+        /// 尝试其他方式提取标题ID
+        /// </summary>
+        private static string TryAlternativeTitleIdExtraction(string savePath, string saveId)
+        {
+            try
+            {
+                // 方法1: 检查是否有已知的游戏数据文件夹模式
+                // 有些游戏可能在存档文件夹中存储了标题ID信息
+                
+                // 方法2: 如果存档文件夹是数字，可能是按顺序分配的
+                // 我们可以记录这种映射关系，但这不太可靠
+                
+                // 方法3: 检查存档文件夹中的特定文件模式
+                var allFiles = Directory.GetFiles(savePath, "*", SearchOption.AllDirectories);
+                foreach (var file in allFiles)
+                {
+                    var fileName = Path.GetFileName(file);
+                    // 有些文件可能包含标题ID信息
+                    if (fileName.Length == 16 && IsValidTitleId(fileName))
+                    {
+                        Logger.Info?.Print(LogClass.Application, $"Found potential title ID in filename: {fileName}");
+                        return fileName;
+                    }
+                }
+                
+                Logger.Info?.Print(LogClass.Application, $"Could not find title ID for save {saveId} using alternative methods");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in alternative title ID extraction: {ex.Message}");
+                return null;
+            }
         }
 
         /// <summary>
@@ -1020,9 +1116,37 @@ namespace LibRyujinx
         /// </summary>
         public static string GetSaveIdByTitleId(string titleId)
         {
+            Logger.Info?.Print(LogClass.Application, $"Looking for save ID for title: {titleId}");
+            
             var saveDataList = GetSaveDataList();
             var saveInfo = saveDataList.FirstOrDefault(s => s.TitleId == titleId);
-            return saveInfo?.SaveId;
+            
+            if (saveInfo != null)
+            {
+                Logger.Info?.Print(LogClass.Application, $"Found save ID {saveInfo.SaveId} for title {titleId}");
+                return saveInfo.SaveId;
+            }
+            else
+            {
+                Logger.Warning?.Print(LogClass.Application, $"No save data found for title ID: {titleId}");
+                
+                // 列出所有找到的映射关系用于调试
+                foreach (var save in saveDataList)
+                {
+                    Logger.Info?.Print(LogClass.Application, $"Available mapping: {save.SaveId} -> {save.TitleId}");
+                }
+                
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 强制刷新存档列表
+        /// </summary>
+        public static void RefreshSaveDataList()
+        {
+            Logger.Info?.Print(LogClass.Application, "Forcing refresh of save data list");
+            // 这个方法主要是为了清除任何缓存，由于我们每次都是重新读取，所以只需记录日志
         }
 
         /// <summary>
