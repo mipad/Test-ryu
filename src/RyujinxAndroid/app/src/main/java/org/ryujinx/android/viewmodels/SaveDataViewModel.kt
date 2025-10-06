@@ -62,11 +62,9 @@ class SaveDataViewModel : ViewModel() {
                         saveDataInfo.value = info
                     } else {
                         saveDataInfo.value = null
-                        Logger.warning("Save ID not found for title ID: ${currentTitleId.value}")
                     }
                 } else {
                     saveDataInfo.value = null
-                    Logger.info("No save data found for title ID: ${currentTitleId.value}")
                 }
                 
                 operationInProgress.value = false
@@ -75,7 +73,6 @@ class SaveDataViewModel : ViewModel() {
                 operationMessage.value = "Error loading save data: ${e.message}"
                 operationSuccess.value = false
                 showOperationResult.value = true
-                Logger.error("Error loading save data: ${e.message}")
             }
         }.start()
     }
@@ -85,7 +82,7 @@ class SaveDataViewModel : ViewModel() {
      */
     private fun getDetailedSaveDataInfo(saveId: String): SaveDataInfo {
         try {
-            // 计算实际存档大小
+            // 计算实际存档大小 - 只计算0文件夹
             val size = calculateSaveDataSize(saveId)
             
             // 获取最后修改时间
@@ -99,7 +96,6 @@ class SaveDataViewModel : ViewModel() {
                 size = size
             )
         } catch (e: Exception) {
-            Logger.error("Error getting detailed save data info: ${e.message}")
             // 返回基本信息
             return SaveDataInfo(
                 saveId = saveId,
@@ -112,7 +108,7 @@ class SaveDataViewModel : ViewModel() {
     }
 
     /**
-     * 计算存档数据大小
+     * 计算存档数据大小 - 只计算0文件夹
      */
     private fun calculateSaveDataSize(saveId: String): Long {
         try {
@@ -120,10 +116,13 @@ class SaveDataViewModel : ViewModel() {
             val saveDir = File(saveBasePath, saveId)
             
             if (saveDir.exists() && saveDir.isDirectory) {
-                return calculateDirectorySize(saveDir)
+                // 只计算0文件夹的大小
+                val folder0 = File(saveDir, "0")
+                if (folder0.exists() && folder0.isDirectory) {
+                    return calculateDirectorySize(folder0)
+                }
             }
         } catch (e: Exception) {
-            Logger.error("Error calculating save data size: ${e.message}")
         }
         return 0L
     }
@@ -140,7 +139,6 @@ class SaveDataViewModel : ViewModel() {
                 return Date(saveDir.lastModified())
             }
         } catch (e: Exception) {
-            Logger.error("Error getting save data last modified: ${e.message}")
         }
         return Date()
     }
@@ -162,7 +160,6 @@ class SaveDataViewModel : ViewModel() {
                 }
             }
         } catch (e: Exception) {
-            Logger.error("Error calculating directory size: ${e.message}")
         }
         return size
     }
@@ -200,18 +197,11 @@ class SaveDataViewModel : ViewModel() {
                 else 
                     "Failed to export save data"
                 showOperationResult.value = true
-                
-                if (success) {
-                    Logger.info("Save data exported successfully: $exportPath")
-                } else {
-                    Logger.error("Failed to export save data for title ID: ${currentTitleId.value}")
-                }
             } catch (e: Exception) {
                 operationInProgress.value = false
                 operationSuccess.value = false
                 operationMessage.value = "Error exporting save data: ${e.message}"
                 showOperationResult.value = true
-                Logger.error("Error exporting save data: ${e.message}")
             }
         }.start()
     }
@@ -238,16 +228,12 @@ class SaveDataViewModel : ViewModel() {
                 // 导入成功后重新加载存档信息
                 if (success) {
                     loadSaveDataInfo()
-                    Logger.info("Save data imported successfully for title ID: ${currentTitleId.value}")
-                } else {
-                    Logger.error("Failed to import save data for title ID: ${currentTitleId.value}")
                 }
             } catch (e: Exception) {
                 operationInProgress.value = false
                 operationSuccess.value = false
                 operationMessage.value = "Error importing save data: ${e.message}"
                 showOperationResult.value = true
-                Logger.error("Error importing save data: ${e.message}")
             }
         }.start()
     }
@@ -285,16 +271,12 @@ class SaveDataViewModel : ViewModel() {
                 // 导入成功后重新加载存档信息
                 if (success) {
                     loadSaveDataInfo()
-                    Logger.info("Save data imported successfully from URI for title ID: ${currentTitleId.value}")
-                } else {
-                    Logger.error("Failed to import save data from URI for title ID: ${currentTitleId.value}")
                 }
             } catch (e: Exception) {
                 operationInProgress.value = false
                 operationSuccess.value = false
                 operationMessage.value = "Error importing save data: ${e.message}"
                 showOperationResult.value = true
-                Logger.error("Error importing save data from URI: ${e.message}")
             }
         }.start()
     }
@@ -321,16 +303,12 @@ class SaveDataViewModel : ViewModel() {
                 if (success) {
                     // 更新UI状态
                     saveDataInfo.value = null
-                    Logger.info("Save data deleted successfully for title ID: ${currentTitleId.value}")
-                } else {
-                    Logger.error("Failed to delete save data for title ID: ${currentTitleId.value}")
                 }
             } catch (e: Exception) {
                 operationInProgress.value = false
                 operationSuccess.value = false
                 operationMessage.value = "Error deleting save data: ${e.message}"
                 showOperationResult.value = true
-                Logger.error("Error deleting save data: ${e.message}")
             }
         }.start()
     }
@@ -393,22 +371,5 @@ fun formatFileSize(size: Long): String {
         size < 1024 * 1024 -> "${size / 1024} KB"
         size < 1024 * 1024 * 1024 -> "${size / (1024 * 1024)} MB"
         else -> "${size / (1024 * 1024 * 1024)} GB"
-    }
-}
-
-/**
- * 简单的日志记录类
- */
-object Logger {
-    fun info(message: String) {
-        android.util.Log.i("SaveDataViewModel", message)
-    }
-    
-    fun warning(message: String) {
-        android.util.Log.w("SaveDataViewModel", message)
-    }
-    
-    fun error(message: String) {
-        android.util.Log.e("SaveDataViewModel", message)
     }
 }
