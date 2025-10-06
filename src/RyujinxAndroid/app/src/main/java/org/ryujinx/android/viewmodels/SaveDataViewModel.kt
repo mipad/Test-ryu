@@ -50,24 +50,23 @@ class SaveDataViewModel : ViewModel() {
 
         Thread {
             try {
+                // 强制刷新存档列表
+                RyujinxNative.refreshSaveData()
+                
                 val exists = RyujinxNative.saveDataExists(currentTitleId.value)
                 if (exists) {
                     val saveId = RyujinxNative.getSaveIdByTitleId(currentTitleId.value)
                     if (!saveId.isNullOrEmpty()) {
-                        // 这里可以加载更详细的存档信息，比如大小和修改时间
-                        val info = SaveDataInfo(
-                            saveId = saveId,
-                            titleId = currentTitleId.value,
-                            titleName = currentGameName.value,
-                            lastModified = Date(),
-                            size = calculateSaveDataSize(saveId) // 计算实际大小
-                        )
+                        // 获取详细的存档信息
+                        val info = getDetailedSaveDataInfo(saveId)
                         saveDataInfo.value = info
                     } else {
                         saveDataInfo.value = null
+                        Logger.warning("Save ID not found for title ID: ${currentTitleId.value}")
                     }
                 } else {
                     saveDataInfo.value = null
+                    Logger.info("No save data found for title ID: ${currentTitleId.value}")
                 }
                 
                 operationInProgress.value = false
@@ -76,17 +75,105 @@ class SaveDataViewModel : ViewModel() {
                 operationMessage.value = "Error loading save data: ${e.message}"
                 operationSuccess.value = false
                 showOperationResult.value = true
+                Logger.error("Error loading save data: ${e.message}")
             }
         }.start()
+    }
+
+    /**
+     * 获取详细的存档信息
+     */
+    private fun getDetailedSaveDataInfo(saveId: String): SaveDataInfo {
+        try {
+            // 计算实际存档大小
+            val size = calculateSaveDataSize(saveId)
+            
+            // 获取最后修改时间
+            val lastModified = getSaveDataLastModified(saveId)
+            
+            return SaveDataInfo(
+                saveId = saveId,
+                titleId = currentTitleId.value,
+                titleName = currentGameName.value,
+                lastModified = lastModified,
+                size = size
+            )
+        } catch (e: Exception) {
+            Logger.error("Error getting detailed save data info: ${e.message}")
+            // 返回基本信息
+            return SaveDataInfo(
+                saveId = saveId,
+                titleId = currentTitleId.value,
+                titleName = currentGameName.value,
+                lastModified = Date(),
+                size = 0L
+            )
+        }
     }
 
     /**
      * 计算存档数据大小
      */
     private fun calculateSaveDataSize(saveId: String): Long {
-        // 这里可以实现计算存档文件夹大小的逻辑
-        // 暂时返回0，实际使用时可以计算真实大小
+        try {
+            val saveBasePath = File(getRyujinxBasePath(), "bis/user/save")
+            val saveDir = File(saveBasePath, saveId)
+            
+            if (saveDir.exists() && saveDir.isDirectory) {
+                return calculateDirectorySize(saveDir)
+            }
+        } catch (e: Exception) {
+            Logger.error("Error calculating save data size: ${e.message}")
+        }
         return 0L
+    }
+
+    /**
+     * 获取存档最后修改时间
+     */
+    private fun getSaveDataLastModified(saveId: String): Date {
+        try {
+            val saveBasePath = File(getRyujinxBasePath(), "bis/user/save")
+            val saveDir = File(saveBasePath, saveId)
+            
+            if (saveDir.exists()) {
+                return Date(saveDir.lastModified())
+            }
+        } catch (e: Exception) {
+            Logger.error("Error getting save data last modified: ${e.message}")
+        }
+        return Date()
+    }
+
+    /**
+     * 递归计算目录大小
+     */
+    private fun calculateDirectorySize(directory: File): Long {
+        var size = 0L
+        try {
+            val files = directory.listFiles()
+            if (files != null) {
+                for (file in files) {
+                    if (file.isFile) {
+                        size += file.length()
+                    } else if (file.isDirectory) {
+                        size += calculateDirectorySize(file)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Logger.error("Error calculating directory size: ${e.message}")
+        }
+        return size
+    }
+
+    /**
+     * 获取Ryujinx基础路径
+     */
+    private fun getRyujinxBasePath(): File {
+        // 这里应该返回Ryujinx的基础数据目录
+        // 在实际实现中，这应该从应用程序的上下文中获取
+        return File("/storage/emulated/0/Android/data/org.ryujinx.android/files")
     }
 
     /**
@@ -109,15 +196,22 @@ class SaveDataViewModel : ViewModel() {
                 operationInProgress.value = false
                 operationSuccess.value = success
                 operationMessage.value = if (success) 
-                    "Save data exported to: $exportPath" 
+                    "Save data exported to: ${File(exportPath).name}" 
                 else 
                     "Failed to export save data"
                 showOperationResult.value = true
+                
+                if (success) {
+                    Logger.info("Save data exported successfully: $exportPath")
+                } else {
+                    Logger.error("Failed to export save data for title ID: ${currentTitleId.value}")
+                }
             } catch (e: Exception) {
                 operationInProgress.value = false
                 operationSuccess.value = false
                 operationMessage.value = "Error exporting save data: ${e.message}"
                 showOperationResult.value = true
+                Logger.error("Error exporting save data: ${e.message}")
             }
         }.start()
     }
@@ -144,12 +238,16 @@ class SaveDataViewModel : ViewModel() {
                 // 导入成功后重新加载存档信息
                 if (success) {
                     loadSaveDataInfo()
+                    Logger.info("Save data imported successfully for title ID: ${currentTitleId.value}")
+                } else {
+                    Logger.error("Failed to import save data for title ID: ${currentTitleId.value}")
                 }
             } catch (e: Exception) {
                 operationInProgress.value = false
                 operationSuccess.value = false
                 operationMessage.value = "Error importing save data: ${e.message}"
                 showOperationResult.value = true
+                Logger.error("Error importing save data: ${e.message}")
             }
         }.start()
     }
@@ -165,7 +263,7 @@ class SaveDataViewModel : ViewModel() {
             try {
                 // 将选中的文件复制到临时位置
                 val inputStream = context.contentResolver.openInputStream(uri)
-                val tempFile = File.createTempFile("save_import", ".zip")
+                val tempFile = File.createTempFile("save_import", ".zip", context.cacheDir)
                 FileOutputStream(tempFile).use { output ->
                     inputStream?.copyTo(output)
                 }
@@ -187,12 +285,16 @@ class SaveDataViewModel : ViewModel() {
                 // 导入成功后重新加载存档信息
                 if (success) {
                     loadSaveDataInfo()
+                    Logger.info("Save data imported successfully from URI for title ID: ${currentTitleId.value}")
+                } else {
+                    Logger.error("Failed to import save data from URI for title ID: ${currentTitleId.value}")
                 }
             } catch (e: Exception) {
                 operationInProgress.value = false
                 operationSuccess.value = false
                 operationMessage.value = "Error importing save data: ${e.message}"
                 showOperationResult.value = true
+                Logger.error("Error importing save data from URI: ${e.message}")
             }
         }.start()
     }
@@ -219,12 +321,16 @@ class SaveDataViewModel : ViewModel() {
                 if (success) {
                     // 更新UI状态
                     saveDataInfo.value = null
+                    Logger.info("Save data deleted successfully for title ID: ${currentTitleId.value}")
+                } else {
+                    Logger.error("Failed to delete save data for title ID: ${currentTitleId.value}")
                 }
             } catch (e: Exception) {
                 operationInProgress.value = false
                 operationSuccess.value = false
                 operationMessage.value = "Error deleting save data: ${e.message}"
                 showOperationResult.value = true
+                Logger.error("Error deleting save data: ${e.message}")
             }
         }.start()
     }
@@ -249,6 +355,13 @@ class SaveDataViewModel : ViewModel() {
      */
     fun getSaveId(): String {
         return saveDataInfo.value?.saveId ?: ""
+    }
+    
+    /**
+     * 强制刷新存档信息
+     */
+    fun refreshSaveData() {
+        loadSaveDataInfo()
     }
 }
 
@@ -278,6 +391,24 @@ fun formatFileSize(size: Long): String {
     return when {
         size < 1024 -> "$size B"
         size < 1024 * 1024 -> "${size / 1024} KB"
-        else -> "${size / (1024 * 1024)} MB"
+        size < 1024 * 1024 * 1024 -> "${size / (1024 * 1024)} MB"
+        else -> "${size / (1024 * 1024 * 1024)} GB"
+    }
+}
+
+/**
+ * 简单的日志记录类
+ */
+object Logger {
+    fun info(message: String) {
+        android.util.Log.i("SaveDataViewModel", message)
+    }
+    
+    fun warning(message: String) {
+        android.util.Log.w("SaveDataViewModel", message)
+    }
+    
+    fun error(message: String) {
+        android.util.Log.e("SaveDataViewModel", message)
     }
 }
