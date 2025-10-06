@@ -17,6 +17,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SaveDataViews(navController: NavHostController, titleId: String, gameName: String) {
     var saveDataInfo by remember { mutableStateOf<SaveDataInfo?>(null) }
@@ -115,14 +116,13 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
             
             Spacer(modifier = Modifier.height(24.dp))
             
-            // 操作按钮
+            // 操作按钮 - 使用文字代替图标
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 ActionButton(
                     text = "Export Save Data",
-                    icon = Icons.Filled.Archive,
                     enabled = saveDataInfo != null && !operationInProgress
                 ) {
                     showImportExportDialog = true
@@ -130,7 +130,6 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
                 
                 ActionButton(
                     text = "Import Save Data", 
-                    icon = Icons.Filled.Unarchive,
                     enabled = !operationInProgress
                 ) {
                     showImportExportDialog = true
@@ -138,7 +137,6 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
                 
                 ActionButton(
                     text = "Delete Save Data",
-                    icon = Icons.Filled.Delete,
                     enabled = saveDataInfo != null && !operationInProgress,
                     isDestructive = true
                 ) {
@@ -267,7 +265,6 @@ fun InfoRow(label: String, value: String) {
 @Composable
 fun ActionButton(
     text: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
     enabled: Boolean = true,
     isDestructive: Boolean = false,
     onClick: () -> Unit
@@ -284,8 +281,6 @@ fun ActionButton(
         enabled = enabled,
         colors = buttonColors
     ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
-        Spacer(modifier = Modifier.width(8.dp))
         Text(text = text)
     }
 }
