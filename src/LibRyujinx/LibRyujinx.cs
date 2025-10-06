@@ -1319,6 +1319,62 @@ namespace LibRyujinx
         }
 
         /// <summary>
+        /// 删除存档文件（只删除0和1文件夹中的文件，保留存档文件夹结构）
+        /// </summary>
+        public static bool DeleteSaveFiles(string titleId)
+        {
+            try
+            {
+                string saveId = GetSaveIdByTitleId(titleId);
+                if (string.IsNullOrEmpty(saveId))
+                {
+                    return false;
+                }
+
+                string savePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save", saveId);
+                if (!Directory.Exists(savePath))
+                {
+                    return false;
+                }
+
+                bool success = true;
+
+                // 只删除0和1文件夹中的内容，保留文件夹结构
+                string[] foldersToDelete = { "0", "1" };
+                foreach (string folder in foldersToDelete)
+                {
+                    string folderPath = Path.Combine(savePath, folder);
+                    if (Directory.Exists(folderPath))
+                    {
+                        try
+                        {
+                            // 删除文件夹中的所有内容，但保留文件夹本身
+                            var directory = new DirectoryInfo(folderPath);
+                            foreach (FileInfo file in directory.GetFiles())
+                            {
+                                file.Delete();
+                            }
+                            foreach (DirectoryInfo subDirectory in directory.GetDirectories())
+                            {
+                                subDirectory.Delete(true);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            success = false;
+                        }
+                    }
+                }
+                
+                return success;
+            }
+            catch (Exception ex)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
         /// 调试方法：显示所有存档文件夹的详细信息
         /// </summary>
         public static void DebugSaveData()
