@@ -35,7 +35,8 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
     }
     
     // 删除确认对话框状态
-    var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var showDeleteFilesConfirmation by remember { mutableStateOf(false) }
+    var showDeleteFolderConfirmation by remember { mutableStateOf(false) }
     
     // 初始化ViewModel
     LaunchedEffect(titleId, gameName) {
@@ -153,13 +154,23 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
                     filePickerLauncher.launch("application/zip")
                 }
                 
+                // 两个独立的删除选项
                 ActionButton(
-                    text = "Delete Save Data",
+                    text = "Delete Save Files",
                     enabled = viewModel.hasSaveData() && !viewModel.operationInProgress.value,
                     isDestructive = true
                 ) {
-                    // 显示删除确认对话框
-                    showDeleteConfirmation = true
+                    // 显示删除存档文件确认对话框
+                    showDeleteFilesConfirmation = true
+                }
+                
+                ActionButton(
+                    text = "Delete Save Folder",
+                    enabled = viewModel.hasSaveData() && !viewModel.operationInProgress.value,
+                    isDestructive = true
+                ) {
+                    // 显示删除存档文件夹确认对话框
+                    showDeleteFolderConfirmation = true
                 }
                 
                 // 调试按钮（仅在开发时显示）
@@ -215,17 +226,17 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
         )
     }
     
-    // 删除确认对话框
-    if (showDeleteConfirmation) {
+    // 删除存档文件确认对话框
+    if (showDeleteFilesConfirmation) {
         AlertDialog(
-            onDismissRequest = { showDeleteConfirmation = false },
-            title = { Text("Confirm Delete") },
+            onDismissRequest = { showDeleteFilesConfirmation = false },
+            title = { Text("Confirm Delete Save Files") },
             text = { 
                 Column {
-                    Text("Are you sure you want to delete the save data for this game?")
+                    Text("Are you sure you want to delete the save files for this game?")
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "This will completely remove the save data folder. You will need to start the game again to create a new save data folder.",
+                        "This will delete only the save files inside the 0 and 1 folders of the current save ID. The game will be able to continue using the same save folder.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -234,18 +245,57 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
             confirmButton = {
                 TextButton(
                     onClick = {
-                        showDeleteConfirmation = false
+                        showDeleteFilesConfirmation = false
+                        // 调用删除存档文件的方法
+                        viewModel.deleteSaveFiles()
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Delete Files")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteFilesConfirmation = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+    
+    // 删除存档文件夹确认对话框
+    if (showDeleteFolderConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteFolderConfirmation = false },
+            title = { Text("Confirm Delete Save Folder") },
+            text = { 
+                Column {
+                    Text("Are you sure you want to delete the entire save folder for this game?")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "This will completely remove the save data folder including the save ID. You will need to start the game again to create a new save data folder.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteFolderConfirmation = false
+                        // 调用现有的删除存档文件夹方法
                         viewModel.deleteSaveData()
                     },
                     colors = ButtonDefaults.textButtonColors(
                         contentColor = MaterialTheme.colorScheme.error
                     )
                 ) {
-                    Text("Delete")
+                    Text("Delete Folder")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteConfirmation = false }) {
+                TextButton(onClick = { showDeleteFolderConfirmation = false }) {
                     Text("Cancel")
                 }
             }
