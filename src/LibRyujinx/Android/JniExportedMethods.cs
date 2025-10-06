@@ -22,7 +22,7 @@ using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading;
-using Ryujinx.HLE; // 添加这行
+using Ryujinx.HLE; 
 
 namespace LibRyujinx
 {
@@ -698,6 +698,21 @@ namespace LibRyujinx
             {
                 string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
                 return DeleteSaveData(titleId);
+            }
+            catch (Exception ex)
+            {
+                return false;
+            }
+        }
+
+        // 新增：删除存档文件的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "saveDataDeleteFiles")]
+        public static bool JnaDeleteSaveFiles(IntPtr titleIdPtr)
+        {
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                return DeleteSaveFiles(titleId);
             }
             catch (Exception ex)
             {
