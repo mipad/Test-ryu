@@ -544,8 +544,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         private SegmentedBufferHolder CreateSegmentedBuffer(VulkanRenderer gd, int totalSize)
 {
-    // 只在真正需要时才使用分段（比如超过512MB）
-    if (totalSize <= 512 * 1024 * 1024)
+    // 只在真正需要时才使用分段（比如超过256MB）
+    if (totalSize <= 256 * 1024 * 1024)
     {
         Logger.Info?.Print(LogClass.Gpu, 
             $"Buffer size 0x{totalSize:X} not large enough to require segmentation");
