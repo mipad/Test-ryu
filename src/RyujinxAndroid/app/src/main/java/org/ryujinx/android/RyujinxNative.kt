@@ -108,6 +108,13 @@ interface RyujinxNativeJna : Library {
     fun cheatGetEnabledCheats(titleId: String): Array<String>
     fun cheatSetEnabled(titleId: String, cheatId: String, enabled: Boolean)
     fun cheatSave(titleId: String)
+    
+    // 存档管理相关方法
+    fun saveDataExport(titleId: String, outputPath: String): Boolean
+    fun saveDataImport(titleId: String, zipFilePath: String): Boolean
+    fun saveDataDelete(titleId: String): Boolean
+    fun saveDataGetSaveId(titleId: String): String
+    fun saveDataExists(titleId: String): Boolean
 }
 
 class RyujinxNative {
@@ -226,6 +233,32 @@ class RyujinxNative {
         @JvmStatic
         fun saveCheats(titleId: String) {
             jnaInstance.cheatSave(titleId)
+        }
+        
+        // 存档管理相关静态方法
+        @JvmStatic
+        fun exportSaveData(titleId: String, outputPath: String): Boolean {
+            return jnaInstance.saveDataExport(titleId, outputPath)
+        }
+
+        @JvmStatic
+        fun importSaveData(titleId: String, zipFilePath: String): Boolean {
+            return jnaInstance.saveDataImport(titleId, zipFilePath)
+        }
+
+        @JvmStatic
+        fun deleteSaveData(titleId: String): Boolean {
+            return jnaInstance.saveDataDelete(titleId)
+        }
+
+        @JvmStatic
+        fun getSaveIdByTitleId(titleId: String): String {
+            return jnaInstance.saveDataGetSaveId(titleId)
+        }
+
+        @JvmStatic
+        fun saveDataExists(titleId: String): Boolean {
+            return jnaInstance.saveDataExists(titleId)
         }
     }
 }
