@@ -100,12 +100,10 @@ namespace LibRyujinx
         public static void SetAspectRatio(AspectRatio aspectRatio)
         {
             _currentAspectRatio = aspectRatio;
-            Logger.Info?.Print(LogClass.Emulation, $"Aspect ratio set to: {_currentAspectRatio}");
             
             // 如果设备已初始化，立即应用新的画面比例
             if (SwitchDevice?.EmulationContext != null)
             {
-                Logger.Info?.Print(LogClass.Emulation, $"Applying aspect ratio change to running emulation: {_currentAspectRatio}");
                 // 这里需要重新配置模拟器上下文以应用新的画面比例
                 // 可能需要重启模拟器才能完全生效
             }
@@ -121,12 +119,10 @@ namespace LibRyujinx
         public static void SetMemoryConfiguration(MemoryConfiguration memoryConfig)
         {
             _currentMemoryConfiguration = memoryConfig;
-            Logger.Info?.Print(LogClass.Emulation, $"Memory configuration set to: {_currentMemoryConfiguration}");
             
             // 如果设备已初始化，记录需要重启才能生效
             if (SwitchDevice?.EmulationContext != null)
             {
-                Logger.Info?.Print(LogClass.Emulation, "Memory configuration change requires emulation restart to take effect");
             }
         }
 
@@ -140,12 +136,10 @@ namespace LibRyujinx
         public static void SetSystemTimeOffset(long offset)
         {
             _systemTimeOffset = offset;
-            Logger.Info?.Print(LogClass.Emulation, $"System time offset set to: {offset} seconds");
             
             // 如果设备已初始化，记录需要重启才能生效
             if (SwitchDevice?.EmulationContext != null)
             {
-                Logger.Info?.Print(LogClass.Emulation, "System time offset change requires emulation restart to take effect");
             }
         }
 
@@ -182,8 +176,6 @@ namespace LibRyujinx
                 return new GameInfo();
             }
 
-            Logger.Info?.Print(LogClass.Application, $"Getting game info for file: {file}");
-
             using var stream = File.Open(file, FileMode.Open);
 
             return GetGameInfo(stream, new FileInfo(file).Extension.Remove('.'));
@@ -193,7 +185,6 @@ namespace LibRyujinx
         {
             if (SwitchDevice == null)
             {
-                Logger.Error?.Print(LogClass.Application, "SwitchDevice is not initialized.");
                 return null;
             }
             GameInfo gameInfo = GetDefaultInfo(gameStream);
@@ -280,7 +271,6 @@ namespace LibRyujinx
 
                             if (controlFs == null)
                             {
-                                Logger.Error?.Print(LogClass.Application, $"No control FS was returned. Unable to process game any further: {gameInfo.TitleName}");
                                 return null;
                             }
 
@@ -374,22 +364,17 @@ namespace LibRyujinx
                 }
                 catch (MissingKeyException exception)
                 {
-                    Logger.Warning?.Print(LogClass.Application, $"Your key set is missing a key with the name: {exception.Name}");
                 }
                 catch (InvalidDataException exception)
                 {
-                    Logger.Warning?.Print(LogClass.Application, $"The header key is incorrect or missing and therefore the NCA header content type check has failed. {exception}");
                 }
                 catch (Exception exception)
                 {
-                    Logger.Warning?.Print(LogClass.Application, $"The gameStream encountered was not of a valid type. Error: {exception}");
-
                     return null;
                 }
             }
             catch (IOException exception)
             {
-                Logger.Warning?.Print(LogClass.Application, exception.Message);
             }
 
             void ReadControlData(IFileSystem? controlFs, Span<byte> outProperty)
@@ -465,8 +450,6 @@ namespace LibRyujinx
             {
                 if (SwitchDevice == null)
                 {
-                    Logger.Error?.Print(LogClass.Application, "SwitchDevice is not initialized.");
-
                     controlFs = null;
                     titleId = null;
                     return;
@@ -475,7 +458,6 @@ namespace LibRyujinx
 
                 if (controlNca == null)
                 {
-                    Logger.Warning?.Print(LogClass.Application, "Control NCA is null. Unable to load control FS.");
                 }
 
                 // Return the ControlFS
@@ -494,8 +476,6 @@ namespace LibRyujinx
                 foreach (DirectoryEntryEx fileEntry in pfs.EnumerateEntries("/", "*.nca"))
                 {
                     using var ncaFile = new UniqueRef<IFile>();
-
-                    Logger.Info?.Print(LogClass.Application, $"Loading file from PFS: {fileEntry.FullPath}");
 
                     pfs.OpenFile(ref ncaFile.Ref, fileEntry.FullPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
 
@@ -538,7 +518,6 @@ namespace LibRyujinx
 
                 if (SwitchDevice?.VirtualFileSystem == null)
                 {
-                    Logger.Error?.Print(LogClass.Application, "SwitchDevice was not initialized.");
                     return false;
                 }
 
@@ -555,11 +534,9 @@ namespace LibRyujinx
                 }
                 catch (InvalidDataException)
                 {
-                    Logger.Warning?.Print(LogClass.Application, $"The header key is incorrect or missing and therefore the NCA header content type check has failed. Errored File: {updatePath}");
                 }
                 catch (MissingKeyException exception)
                 {
-                    Logger.Warning?.Print(LogClass.Application, $"Your key set is missing a key with the name: {exception.Name}. Errored File: {updatePath}");
                 }
 
                 return false;
@@ -685,16 +662,12 @@ namespace LibRyujinx
             try
             {
                 var nca = new Nca(SwitchDevice.VirtualFileSystem.KeySet, ncaStorage);
-                // 如果需要，可以在这里打开文件系统进行验证
-                // nca.OpenFileSystem(NcaSectionType.Data, checkLevel);
                 return nca;
             }
             catch (Exception ex)
             {
-                // 添加详细的错误日志
-                Logger.Error?.Print(LogClass.Application, $"Failed to open NCA: {ex.Message}");
+                return null;
             }
-            return null;
         }
 
         public static List<string> GetDlcContentList(string path, ulong titleId)
@@ -758,7 +731,6 @@ namespace LibRyujinx
             
             if (SwitchDevice?.VirtualFileSystem == null)
             {
-                Logger.Warning?.Print(LogClass.Application, "VirtualFileSystem not initialized, cannot get cheats");
                 return cheats;
             }
             
@@ -767,11 +739,8 @@ namespace LibRyujinx
             string titleModsPath = ModLoader.GetApplicationDir(modsBasePath, titleId);
             string cheatsPath = Path.Combine(titleModsPath, "cheats");
             
-            Logger.Info?.Print(LogClass.Application, $"Looking for cheats in: {cheatsPath}");
-            
             if (!Directory.Exists(cheatsPath))
             {
-                Logger.Info?.Print(LogClass.Application, $"Cheats directory does not exist: {cheatsPath}");
                 return cheats;
             }
             
@@ -842,7 +811,6 @@ namespace LibRyujinx
             // 如果游戏正在运行，可能需要重新加载金手指
             if (SwitchDevice?.EmulationContext != null)
             {
-                Logger.Info?.Print(LogClass.Emulation, "Cheat state changed but requires game restart to take effect");
             }
         }
 
@@ -897,7 +865,7 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Error getting save data list: {ex.Message}");
+                return saveDataList;
             }
 
             return saveDataList;
@@ -945,7 +913,6 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Error getting save data info for {saveId}: {ex.Message}");
                 return null;
             }
         }
@@ -960,14 +927,12 @@ namespace LibRyujinx
                 string saveMetaPath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "saveMeta", saveId);
                 if (!Directory.Exists(saveMetaPath))
                 {
-                    Logger.Warning?.Print(LogClass.Application, $"SaveMeta directory not found for saveId: {saveId}");
                     return null;
                 }
 
                 string metaFilePath = Path.Combine(saveMetaPath, "00000001.meta");
                 if (!File.Exists(metaFilePath))
                 {
-                    Logger.Warning?.Print(LogClass.Application, $"Meta file not found: {metaFilePath}");
                     return null;
                 }
 
@@ -984,14 +949,12 @@ namespace LibRyujinx
                     
                     if (IsValidTitleId(titleId))
                     {
-                        Logger.Info?.Print(LogClass.Application, $"Found title ID {titleId} from saveMeta for saveId {saveId}");
                         return titleId;
                     }
                 }
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Error reading saveMeta for saveId {saveId}: {ex.Message}");
             }
             
             return null;
@@ -1024,7 +987,6 @@ namespace LibRyujinx
                             
                             if (IsValidTitleId(titleId1))
                             {
-                                Logger.Info?.Print(LogClass.Application, $"Found title ID {titleId1} from {fileName}");
                                 return titleId1;
                             }
                             
@@ -1035,18 +997,14 @@ namespace LibRyujinx
                             
                             if (IsValidTitleId(titleId2))
                             {
-                                Logger.Info?.Print(LogClass.Application, $"Found title ID {titleId2} from {fileName} (big-endian)");
                                 return titleId2;
                             }
                         }
                     }
                 }
-                
-                Logger.Warning?.Print(LogClass.Application, $"Could not extract title ID from ExtraData files in {savePath}");
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Error extracting title ID from save data: {ex.Message}");
             }
             
             return null;
@@ -1084,7 +1042,6 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Error calculating directory size: {ex.Message}");
             }
             return size;
         }
@@ -1102,16 +1059,14 @@ namespace LibRyujinx
             
             if (saveInfo != null)
             {
-                Logger.Info?.Print(LogClass.Application, $"Found saveId {saveInfo.SaveId} for titleId {titleId}");
                 return saveInfo.SaveId;
             }
             
-            Logger.Warning?.Print(LogClass.Application, $"No save data found for titleId {titleId}");
             return null;
         }
 
         /// <summary>
-        /// 导出存档为ZIP文件
+        /// 导出存档为ZIP文件（只导出0和1文件夹）
         /// </summary>
         public static bool ExportSaveData(string titleId, string outputZipPath)
         {
@@ -1120,34 +1075,58 @@ namespace LibRyujinx
                 string saveId = GetSaveIdByTitleId(titleId);
                 if (string.IsNullOrEmpty(saveId))
                 {
-                    Logger.Error?.Print(LogClass.Application, $"No save data found for title ID: {titleId}");
                     return false;
                 }
 
                 string savePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save", saveId);
                 if (!Directory.Exists(savePath))
                 {
-                    Logger.Error?.Print(LogClass.Application, $"Save directory not found: {savePath}");
                     return false;
                 }
 
                 // 确保输出目录存在
                 Directory.CreateDirectory(Path.GetDirectoryName(outputZipPath));
 
-                // 使用 System.IO.Compression 创建ZIP文件
-                ZipFile.CreateFromDirectory(savePath, outputZipPath, CompressionLevel.Optimal, false);
-                Logger.Info?.Print(LogClass.Application, $"Save data exported to: {outputZipPath}");
-                return true;
+                // 创建临时目录用于存放0和1文件夹
+                string tempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+                Directory.CreateDirectory(tempPath);
+
+                try
+                {
+                    // 只复制0和1文件夹
+                    string[] foldersToExport = { "0", "1" };
+                    foreach (string folder in foldersToExport)
+                    {
+                        string sourceFolder = Path.Combine(savePath, folder);
+                        string destFolder = Path.Combine(tempPath, folder);
+                        
+                        if (Directory.Exists(sourceFolder))
+                        {
+                            CopyDirectory(sourceFolder, destFolder);
+                        }
+                    }
+
+                    // 使用 System.IO.Compression 创建ZIP文件
+                    ZipFile.CreateFromDirectory(tempPath, outputZipPath, CompressionLevel.Optimal, false);
+                    return true;
+                }
+                finally
+                {
+                    // 清理临时目录
+                    if (Directory.Exists(tempPath))
+                    {
+                        Directory.Delete(tempPath, true);
+                    }
+                }
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Error exporting save data: {ex.Message}");
                 return false;
             }
         }
 
         /// <summary>
-        /// 从ZIP文件导入存档
+        /// 从ZIP文件导入存档（只导入0和1文件夹）
         /// </summary>
         public static bool ImportSaveData(string titleId, string zipFilePath)
         {
@@ -1155,7 +1134,6 @@ namespace LibRyujinx
             {
                 if (!File.Exists(zipFilePath))
                 {
-                    Logger.Error?.Print(LogClass.Application, $"ZIP file not found: {zipFilePath}");
                     return false;
                 }
 
@@ -1167,39 +1145,77 @@ namespace LibRyujinx
                 }
 
                 string savePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save", saveId);
-                string saveMetaPath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "saveMeta", saveId);
                 
-                // 如果目标目录存在，先备份然后删除
-                if (Directory.Exists(savePath))
-                {
-                    string backupPath = savePath + "_backup_" + DateTime.Now.ToString("yyyyMMddHHmmss");
-                    Directory.Move(savePath, backupPath);
-                    Logger.Info?.Print(LogClass.Application, $"Existing save data backed up to: {backupPath}");
-                }
-
-                // 如果saveMeta目录存在，也备份
-                if (Directory.Exists(saveMetaPath))
-                {
-                    string backupMetaPath = saveMetaPath + "_backup_" + DateTime.Now.ToString("yyyyMMddHHmmss");
-                    Directory.Move(saveMetaPath, backupMetaPath);
-                    Logger.Info?.Print(LogClass.Application, $"Existing save meta backed up to: {backupMetaPath}");
-                }
-
-                // 创建目录并解压ZIP文件
+                // 创建目标目录
                 Directory.CreateDirectory(savePath);
-                ZipFile.ExtractToDirectory(zipFilePath, savePath);
-                
-                // 重新创建saveMeta目录和meta文件
-                Directory.CreateDirectory(saveMetaPath);
-                CreateSaveMetaFile(saveMetaPath, titleId);
-                
-                Logger.Info?.Print(LogClass.Application, $"Save data imported to: {savePath}");
-                return true;
+
+                // 创建临时目录用于解压
+                string tempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+                Directory.CreateDirectory(tempPath);
+
+                try
+                {
+                    // 解压ZIP文件到临时目录
+                    ZipFile.ExtractToDirectory(zipFilePath, tempPath);
+                    
+                    // 只复制0和1文件夹到目标目录
+                    string[] foldersToImport = { "0", "1" };
+                    foreach (string folder in foldersToImport)
+                    {
+                        string sourceFolder = Path.Combine(tempPath, folder);
+                        string destFolder = Path.Combine(savePath, folder);
+                        
+                        if (Directory.Exists(sourceFolder))
+                        {
+                            // 如果目标文件夹已存在，先删除
+                            if (Directory.Exists(destFolder))
+                            {
+                                Directory.Delete(destFolder, true);
+                            }
+                            
+                            CopyDirectory(sourceFolder, destFolder);
+                        }
+                    }
+                    
+                    return true;
+                }
+                finally
+                {
+                    // 清理临时目录
+                    if (Directory.Exists(tempPath))
+                    {
+                        Directory.Delete(tempPath, true);
+                    }
+                }
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Error importing save data: {ex.Message}");
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// 复制目录及其所有内容
+        /// </summary>
+        private static void CopyDirectory(string sourceDir, string destinationDir)
+        {
+            var dir = new DirectoryInfo(sourceDir);
+            
+            if (!dir.Exists)
+                return;
+
+            Directory.CreateDirectory(destinationDir);
+
+            foreach (FileInfo file in dir.GetFiles())
+            {
+                string targetFilePath = Path.Combine(destinationDir, file.Name);
+                file.CopyTo(targetFilePath, true);
+            }
+
+            foreach (DirectoryInfo subDir in dir.GetDirectories())
+            {
+                string newDestinationDir = Path.Combine(destinationDir, subDir.Name);
+                CopyDirectory(subDir.FullName, newDestinationDir);
             }
         }
 
@@ -1223,12 +1239,10 @@ namespace LibRyujinx
                     }
                     
                     File.WriteAllBytes(metaFilePath, titleIdBytes);
-                    Logger.Info?.Print(LogClass.Application, $"Created save meta file: {metaFilePath}");
                 }
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Error creating save meta file: {ex.Message}");
             }
         }
 
@@ -1272,7 +1286,6 @@ namespace LibRyujinx
                 string saveId = GetSaveIdByTitleId(titleId);
                 if (string.IsNullOrEmpty(saveId))
                 {
-                    Logger.Error?.Print(LogClass.Application, $"No save data found for title ID: {titleId}");
                     return false;
                 }
 
@@ -1285,11 +1298,9 @@ namespace LibRyujinx
                 if (Directory.Exists(savePath))
                 {
                     Directory.Delete(savePath, true);
-                    Logger.Info?.Print(LogClass.Application, $"Save data deleted: {savePath}");
                 }
                 else
                 {
-                    Logger.Warning?.Print(LogClass.Application, $"Save directory not found: {savePath}");
                     success = false;
                 }
 
@@ -1297,18 +1308,12 @@ namespace LibRyujinx
                 if (Directory.Exists(saveMetaPath))
                 {
                     Directory.Delete(saveMetaPath, true);
-                    Logger.Info?.Print(LogClass.Application, $"Save meta deleted: {saveMetaPath}");
-                }
-                else
-                {
-                    Logger.Warning?.Print(LogClass.Application, $"Save meta directory not found: {saveMetaPath}");
                 }
                 
                 return success;
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Error deleting save data: {ex.Message}");
                 return false;
             }
         }
@@ -1318,17 +1323,11 @@ namespace LibRyujinx
         /// </summary>
         public static void DebugSaveData()
         {
-            Logger.Info?.Print(LogClass.Application, "=== Debug Save Data ===");
-            
             string saveBasePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save");
             string saveMetaBasePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "saveMeta");
             
-            Logger.Info?.Print(LogClass.Application, $"Save base path: {saveBasePath}");
-            Logger.Info?.Print(LogClass.Application, $"SaveMeta base path: {saveMetaBasePath}");
-            
             if (!Directory.Exists(saveBasePath))
             {
-                Logger.Info?.Print(LogClass.Application, "Save directory does not exist");
                 return;
             }
             
@@ -1336,31 +1335,15 @@ namespace LibRyujinx
                 .Where(dir => Path.GetFileName(dir).All(char.IsDigit) && Path.GetFileName(dir).Length == 16)
                 .ToList();
             
-            Logger.Info?.Print(LogClass.Application, $"Found {saveDirs.Count} save directories:");
-            
             foreach (var saveDir in saveDirs)
             {
                 string saveId = Path.GetFileName(saveDir);
-                Logger.Info?.Print(LogClass.Application, $"SaveId: {saveId}");
                 
                 // 检查 saveMeta
                 string saveMetaPath = Path.Combine(saveMetaBasePath, saveId);
                 if (Directory.Exists(saveMetaPath))
                 {
-                    Logger.Info?.Print(LogClass.Application, $"  SaveMeta exists: Yes");
                     string metaFile = Path.Combine(saveMetaPath, "00000001.meta");
-                    if (File.Exists(metaFile))
-                    {
-                        Logger.Info?.Print(LogClass.Application, $"  Meta file exists: Yes, Size: {new FileInfo(metaFile).Length} bytes");
-                    }
-                    else
-                    {
-                        Logger.Info?.Print(LogClass.Application, $"  Meta file exists: No");
-                    }
-                }
-                else
-                {
-                    Logger.Info?.Print(LogClass.Application, $"  SaveMeta exists: No");
                 }
                 
                 // 检查 ExtraData 文件
@@ -1368,23 +1351,11 @@ namespace LibRyujinx
                 foreach (var fileName in extraDataFiles)
                 {
                     string filePath = Path.Combine(saveDir, fileName);
-                    if (File.Exists(filePath))
-                    {
-                        Logger.Info?.Print(LogClass.Application, $"  {fileName} exists: Yes, Size: {new FileInfo(filePath).Length} bytes");
-                    }
-                    else
-                    {
-                        Logger.Info?.Print(LogClass.Application, $"  {fileName} exists: No");
-                    }
                 }
                 
                 // 尝试获取标题ID
                 string titleIdFromMeta = GetTitleIdFromSaveMeta(saveId);
                 string titleIdFromExtra = ExtractTitleIdFromExtraData(saveDir);
-                
-                Logger.Info?.Print(LogClass.Application, $"  TitleID from SaveMeta: {titleIdFromMeta ?? "Not found"}");
-                Logger.Info?.Print(LogClass.Application, $"  TitleID from ExtraData: {titleIdFromExtra ?? "Not found"}");
-                Logger.Info?.Print(LogClass.Application, "---");
             }
         }
 
@@ -1393,10 +1364,8 @@ namespace LibRyujinx
         /// </summary>
         public static void RefreshSaveData()
         {
-            Logger.Info?.Print(LogClass.Application, "Refreshing save data list...");
             // 强制重新扫描文件系统
             var freshList = GetSaveDataList();
-            Logger.Info?.Print(LogClass.Application, $"Refresh complete. Found {freshList.Count} save entries.");
         }
     }
 
@@ -1443,11 +1412,6 @@ namespace LibRyujinx
 
             if (_firmwareVersion != null)
             {
-                Logger.Notice.Print(LogClass.Application, $"System Firmware Version: {_firmwareVersion.VersionString}");
-            }
-            else
-            {
-                Logger.Notice.Print(LogClass.Application, $"System Firmware not installed");
             }
         }
 
@@ -1467,24 +1431,8 @@ namespace LibRyujinx
         {
             if (LibRyujinx.Renderer == null)
             {
-                Logger.Error?.Print(LogClass.Application, "Renderer is not initialized. Cannot initialize device context.");
                 return false;
             }
-
-            // 记录初始化参数
-            Logger.Info?.Print(LogClass.Application, $"Initializing device context with parameters:");
-            Logger.Info?.Print(LogClass.Application, $"  - Memory Configuration: {memoryConfiguration}");
-            Logger.Info?.Print(LogClass.Application, $"  - System Time Offset: {systemTimeOffset} seconds");
-            Logger.Info?.Print(LogClass.Application, $"  - Aspect Ratio: {LibRyujinx.GetAspectRatio()}");
-            Logger.Info?.Print(LogClass.Application, $"  - Host Mapped: {isHostMapped}");
-            Logger.Info?.Print(LogClass.Application, $"  - Hypervisor: {useHypervisor}");
-            Logger.Info?.Print(LogClass.Application, $"  - Vsync: {enableVsync}");
-            Logger.Info?.Print(LogClass.Application, $"  - Docked Mode: {enableDockedMode}");
-            Logger.Info?.Print(LogClass.Application, $"  - PTC: {enablePtc}");
-            Logger.Info?.Print(LogClass.Application, $"  - JIT Cache Eviction: {enableJitCacheEviction}");
-            Logger.Info?.Print(LogClass.Application, $"  - Internet Access: {enableInternetAccess}");
-            Logger.Info?.Print(LogClass.Application, $"  - Time Zone: {timeZone ?? "Default"}");
-            Logger.Info?.Print(LogClass.Application, $"  - Ignore Missing Services: {ignoreMissingServices}");
 
             var renderer = LibRyujinx.Renderer;
             BackendThreading threadingMode = LibRyujinx.GraphicsConfiguration.BackendThreading;
@@ -1493,12 +1441,7 @@ namespace LibRyujinx
 
             if (threadedGAL)
             {
-                Logger.Info?.Print(LogClass.Application, "Using threaded renderer");
                 renderer = new ThreadedRenderer(renderer);
-            }
-            else
-            {
-                Logger.Info?.Print(LogClass.Application, "Using non-threaded renderer");
             }
 
             HLEConfiguration configuration = new HLEConfiguration(VirtualFileSystem,
@@ -1533,33 +1476,27 @@ namespace LibRyujinx
             try
             {
                 EmulationContext = new Switch(configuration);
-                Logger.Info?.Print(LogClass.Application, "Device context initialized successfully");
                 return true;
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Failed to initialize device context: {ex.Message}");
                 return false;
             }
         }
 
         internal void ReloadFileSystem()
         {
-            Logger.Info?.Print(LogClass.Application, "Reloading filesystem");
             VirtualFileSystem.ReloadKeySet();
             ContentManager = new ContentManager(VirtualFileSystem);
             AccountManager = new AccountManager(LibHacHorizonManager.RyujinxClient);
-            Logger.Info?.Print(LogClass.Application, "Filesystem reloaded successfully");
         }
 
         internal void DisposeContext()
         {
-            Logger.Info?.Print(LogClass.Application, "Disposing device context");
             EmulationContext?.Dispose();
             EmulationContext?.DisposeGpu();
             EmulationContext = null;
             LibRyujinx.Renderer = null;
-            Logger.Info?.Print(LogClass.Application, "Device context disposed");
         }
     }
 
