@@ -17,7 +17,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import org.ryujinx.android.viewmodels.SaveDataViewModel
 import org.ryujinx.android.viewmodels.formatDate
-import org.ryujinx.android.viewmodels.formatFileSize
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -25,12 +24,21 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
     val context = LocalContext.current
     val viewModel: SaveDataViewModel = viewModel()
     
-    // 文件选择器
-    val filePickerLauncher = rememberLauncherForActivityResult(
+    // 文件选择器 - 用于导入
+    val importFilePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let { selectedUri ->
             viewModel.importSaveDataFromUri(selectedUri, context)
+        }
+    }
+    
+    // 文件创建器 - 用于导出
+    val exportFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        uri?.let { destinationUri ->
+            viewModel.exportSaveDataToUri(destinationUri, context)
         }
     }
     
@@ -107,7 +115,6 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
                         Spacer(modifier = Modifier.height(8.dp))
                         InfoRow("Save ID:", viewModel.saveDataInfo.value!!.saveId)
                         InfoRow("Last Modified:", formatDate(viewModel.saveDataInfo.value!!.lastModified))
-                        InfoRow("Size:", formatFileSize(viewModel.saveDataInfo.value!!.size))
                     }
                 }
             } else {
@@ -143,7 +150,9 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
                     text = "Export Save Data",
                     enabled = viewModel.hasSaveData() && !viewModel.operationInProgress.value
                 ) {
-                    viewModel.exportSaveData(context)
+                    // 使用URI导出，让用户选择保存位置
+                    val fileName = "${gameName.replace("[^a-zA-Z0-9]".toRegex(), "_")}_save_${System.currentTimeMillis()}.zip"
+                    exportFileLauncher.launch(fileName)
                 }
                 
                 ActionButton(
@@ -151,7 +160,7 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
                     enabled = !viewModel.operationInProgress.value
                 ) {
                     // 打开文件选择器选择ZIP文件
-                    filePickerLauncher.launch("application/zip")
+                    importFilePickerLauncher.launch("application/zip")
                 }
                 
                 // 两个独立的删除选项
@@ -171,17 +180,6 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
                 ) {
                     // 显示删除存档文件夹确认对话框
                     showDeleteFolderConfirmation = true
-                }
-                
-                // 调试按钮（仅在开发时显示）
-                if (isDebugBuild()) {
-                    ActionButton(
-                        text = "Debug Save Data",
-                        enabled = !viewModel.operationInProgress.value
-                    ) {
-                        // 调用调试方法
-                        debugSaveData()
-                    }
                 }
             }
         }
@@ -214,11 +212,6 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
             confirmButton = {
                 TextButton(onClick = { 
                     viewModel.resetOperationResult()
-                    // 如果删除成功且我们还在当前页面，返回上一页
-                    if (viewModel.operationSuccess.value && !viewModel.hasSaveData()) {
-                        // 可选：自动返回上一页
-                        // navController.popBackStack()
-                    }
                 }) {
                     Text("OK")
                 }
@@ -341,30 +334,5 @@ fun ActionButton(
         colors = buttonColors
     ) {
         Text(text = text)
-    }
-}
-
-/**
- * 检查是否为调试版本
- */
-private fun isDebugBuild(): Boolean {
-    return try {
-        // 这里可以根据构建类型返回不同的值
-        // 在实际应用中，可以从BuildConfig中获取
-        true // 暂时返回true用于测试
-    } catch (e: Exception) {
-        false
-    }
-}
-
-/**
- * 调试存档数据
- */
-private fun debugSaveData() {
-    // 调用原生方法进行调试
-    try {
-        // 这里应该调用一个原生方法来执行调试
-        // RyujinxNative.debugSaveData()
-    } catch (e: Exception) {
     }
 }
