@@ -587,7 +587,6 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "setMemoryConfiguration")]
         public static void JnaSetMemoryConfiguration(int memoryConfig)
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: setMemoryConfiguration");
             SetMemoryConfiguration((MemoryConfiguration)memoryConfig);
         }
 
@@ -595,7 +594,6 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "setSystemTimeOffset")]
         public static void JnaSetSystemTimeOffset(long offset)
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: setSystemTimeOffset");
             SetSystemTimeOffset(offset);
         }
 
@@ -603,7 +601,6 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "setScalingFilter")]
         public static void JnaSetScalingFilter(int filter)
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: setScalingFilter");
             try
             {
                 // 更新配置状态
@@ -614,12 +611,9 @@ namespace LibRyujinx
                 {
                     Renderer.Window.SetScalingFilter((Ryujinx.Graphics.GAL.ScalingFilter)filter);
                 }
-                
-                Logger.Info?.Print(LogClass.Application, $"Scaling filter set to: {(ScalingFilter)filter}");
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Failed to set scaling filter: {ex.Message}");
             }
         }
 
@@ -627,7 +621,6 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "setScalingFilterLevel")]
         public static void JnaSetScalingFilterLevel(int level)
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: setScalingFilterLevel");
             try
             {
                 // 更新配置状态
@@ -638,12 +631,9 @@ namespace LibRyujinx
                 {
                     Renderer.Window.SetScalingFilterLevel(level);
                 }
-                
-                Logger.Info?.Print(LogClass.Application, $"Scaling filter level set to: {level}");
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Failed to set scaling filter level: {ex.Message}");
             }
         }
 
@@ -651,7 +641,6 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "setAntiAliasing")]
         public static void JnaSetAntiAliasing(int mode)
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: setAntiAliasing");
             try
             {
                 // 更新配置状态
@@ -662,12 +651,9 @@ namespace LibRyujinx
                 {
                     Renderer.Window.SetAntiAliasing((Ryujinx.Graphics.GAL.AntiAliasing)mode);
                 }
-                
-                Logger.Info?.Print(LogClass.Application, $"Anti-aliasing set to: {(AntiAliasing)mode}");
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Failed to set anti-aliasing: {ex.Message}");
             }
         }
 
@@ -676,7 +662,6 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "saveDataExport")]
         public static bool JnaExportSaveData(IntPtr titleIdPtr, IntPtr outputPathPtr)
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: saveDataExport");
             try
             {
                 string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
@@ -686,7 +671,6 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Error in saveDataExport: {ex.Message}");
                 return false;
             }
         }
@@ -694,7 +678,6 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "saveDataImport")]
         public static bool JnaImportSaveData(IntPtr titleIdPtr, IntPtr zipFilePathPtr)
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: saveDataImport");
             try
             {
                 string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
@@ -704,7 +687,6 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Error in saveDataImport: {ex.Message}");
                 return false;
             }
         }
@@ -712,7 +694,6 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "saveDataDelete")]
         public static bool JnaDeleteSaveData(IntPtr titleIdPtr)
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: saveDataDelete");
             try
             {
                 string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
@@ -720,7 +701,6 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Error in saveDataDelete: {ex.Message}");
                 return false;
             }
         }
@@ -728,7 +708,6 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "saveDataGetSaveId")]
         public static IntPtr JnaGetSaveIdByTitleId(IntPtr titleIdPtr)
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: saveDataGetSaveId");
             try
             {
                 string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
@@ -738,7 +717,6 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Error in saveDataGetSaveId: {ex.Message}");
                 return IntPtr.Zero;
             }
         }
@@ -746,7 +724,6 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "saveDataExists")]
         public static bool JnaSaveDataExists(IntPtr titleIdPtr)
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: saveDataExists");
             try
             {
                 string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
@@ -754,7 +731,6 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Error in saveDataExists: {ex.Message}");
                 return false;
             }
         }
@@ -763,15 +739,12 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "saveDataRefresh")]
         public static void JnaRefreshSaveData()
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: saveDataRefresh");
             try
             {
                 RefreshSaveData();
-                Logger.Info?.Print(LogClass.Application, "Save data refreshed successfully");
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Error refreshing save data: {ex.Message}");
             }
         }
 
@@ -779,14 +752,12 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "saveDataDebug")]
         public static void JnaDebugSaveData()
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: saveDataDebug");
             try
             {
                 DebugSaveData();
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Error debugging save data: {ex.Message}");
             }
         }
 
@@ -794,7 +765,6 @@ namespace LibRyujinx
         [UnmanagedCallersOnly(EntryPoint = "saveDataGetAll")]
         public static IntPtr JnaGetAllSaveData()
         {
-            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: saveDataGetAll");
             try
             {
                 var saveDataList = GetSaveDataList();
@@ -804,7 +774,6 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"Error getting all save data: {ex.Message}");
                 return IntPtr.Zero;
             }
         }
