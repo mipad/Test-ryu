@@ -36,7 +36,8 @@ using System.Collections.Generic;
 using System.Text;
 using Ryujinx.HLE.UI;
 using LibRyujinx.Android;
-using System.IO.Compression; // 添加ZIP压缩支持
+using System.IO.Compression;
+using LibHac.FsSrv; // 添加这个命名空间用于存档管理
 
 namespace LibRyujinx
 {
@@ -854,6 +855,14 @@ namespace LibRyujinx
         // ==================== 存档管理功能 ====================
 
         /// <summary>
+        /// 检查指定标题ID的存档是否存在
+        /// </summary>
+        public static bool SaveDataExists(string titleId)
+        {
+            return !string.IsNullOrEmpty(GetSaveIdByTitleId(titleId));
+        }
+
+        /// <summary>
         /// 获取所有存档文件夹的信息
         /// </summary>
         public static List<SaveDataInfo> GetSaveDataList()
@@ -904,8 +913,8 @@ namespace LibRyujinx
                 if (!Directory.Exists(savePath))
                     return null;
 
-                // 从 ExtraData 文件中读取标题ID
-                string titleId = ExtractTitleIdFromSaveData(savePath);
+                // 从 ExtraData 文件中读取标题ID - 使用新的解析方法
+                string titleId = ExtractTitleIdFromExtraData(savePath);
                 string titleName = "Unknown Game";
                 
                 // 如果有标题ID，尝试获取游戏名称
@@ -935,9 +944,9 @@ namespace LibRyujinx
         }
 
         /// <summary>
-        /// 从 ExtraData 文件中提取标题ID
+        /// 从 ExtraData 文件中提取标题ID - 改进版本
         /// </summary>
-        private static string ExtractTitleIdFromSaveData(string savePath)
+        private static string ExtractTitleIdFromExtraData(string savePath)
         {
             try
             {
@@ -955,8 +964,10 @@ namespace LibRyujinx
                             byte[] buffer = new byte[8];
                             fileStream.Read(buffer, 0, 8);
                             
-                            // 将字节转换为十六进制字符串
-                            string titleId = BitConverter.ToString(buffer).Replace("-", "").ToLower();
+                            // 将字节转换为小端序的ulong
+                            ulong titleIdValue = BitConverter.ToUInt64(buffer, 0);
+                            // 转换为16进制字符串，16位，不足补0
+                            string titleId = titleIdValue.ToString("x16");
                             if (IsValidTitleId(titleId))
                             {
                                 return titleId;
@@ -1035,8 +1046,11 @@ namespace LibRyujinx
                     return false;
                 }
 
+                // 确保输出目录存在
+                Directory.CreateDirectory(Path.GetDirectoryName(outputZipPath));
+
                 // 使用 System.IO.Compression 创建ZIP文件
-                ZipFile.CreateFromDirectory(savePath, outputZipPath);
+                ZipFile.CreateFromDirectory(savePath, outputZipPath, CompressionLevel.Optimal, false);
                 Logger.Info?.Print(LogClass.Application, $"Save data exported to: {outputZipPath}");
                 return true;
             }
@@ -1054,6 +1068,12 @@ namespace LibRyujinx
         {
             try
             {
+                if (!File.Exists(zipFilePath))
+                {
+                    Logger.Error?.Print(LogClass.Application, $"ZIP file not found: {zipFilePath}");
+                    return false;
+                }
+
                 string saveId = GetSaveIdByTitleId(titleId);
                 if (string.IsNullOrEmpty(saveId))
                 {
@@ -1068,6 +1088,7 @@ namespace LibRyujinx
                 {
                     string backupPath = savePath + "_backup_" + DateTime.Now.ToString("yyyyMMddHHmmss");
                     Directory.Move(savePath, backupPath);
+                    Logger.Info?.Print(LogClass.Application, $"Existing save data backed up to: {backupPath}");
                 }
 
                 // 创建目录并解压ZIP文件
@@ -1096,7 +1117,12 @@ namespace LibRyujinx
 
             var existingIds = Directory.GetDirectories(saveBasePath)
                 .Where(dir => Path.GetFileName(dir).All(char.IsDigit) && Path.GetFileName(dir).Length == 16)
-                .Select(dir => long.Parse(Path.GetFileName(dir)))
+                .Select(dir => {
+                    if (long.TryParse(Path.GetFileName(dir), out long id))
+                        return id;
+                    return 0L;
+                })
+                .Where(id => id > 0)
                 .OrderBy(id => id)
                 .ToList();
 
