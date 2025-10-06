@@ -114,9 +114,6 @@ class SaveDataViewModel : ViewModel() {
      */
     private fun getDetailedSaveDataInfo(saveId: String): SaveDataInfo {
         try {
-            // 计算实际存档大小 - 计算0和1文件夹
-            val size = calculateSaveDataSize(saveId)
-            
             // 获取最后修改时间
             val lastModified = getSaveDataLastModified(saveId)
             
@@ -124,8 +121,7 @@ class SaveDataViewModel : ViewModel() {
                 saveId = saveId,
                 titleId = currentTitleId.value,
                 titleName = currentGameName.value,
-                lastModified = lastModified,
-                size = size
+                lastModified = lastModified
             )
         } catch (e: Exception) {
             // 返回基本信息
@@ -133,55 +129,9 @@ class SaveDataViewModel : ViewModel() {
                 saveId = saveId,
                 titleId = currentTitleId.value,
                 titleName = currentGameName.value,
-                lastModified = Date(),
-                size = 0L
+                lastModified = Date()
             )
         }
-    }
-
-    /**
-     * 计算存档数据大小 - 计算0和1文件夹
-     */
-    private fun calculateSaveDataSize(saveId: String): Long {
-        try {
-            val saveBasePath = File(getRyujinxBasePath(), "bis/user/save")
-            println("DEBUG: Save base path: $saveBasePath")
-            println("DEBUG: Save path exists: ${saveBasePath.exists()}")
-            
-            val saveDir = File(saveBasePath, saveId)
-            println("DEBUG: Save dir: $saveDir")
-            println("DEBUG: Save dir exists: ${saveDir.exists()}")
-            
-            if (saveDir.exists() && saveDir.isDirectory) {
-                var totalSize = 0L
-                
-                // 计算0文件夹的大小
-                val folder0 = File(saveDir, "0")
-                println("DEBUG: Folder 0: $folder0")
-                println("DEBUG: Folder 0 exists: ${folder0.exists()}")
-                if (folder0.exists() && folder0.isDirectory) {
-                    val size0 = calculateDirectorySize(folder0)
-                    println("DEBUG: Folder 0 size: $size0")
-                    totalSize += size0
-                }
-                
-                // 计算1文件夹的大小
-                val folder1 = File(saveDir, "1")
-                println("DEBUG: Folder 1: $folder1")
-                println("DEBUG: Folder 1 exists: ${folder1.exists()}")
-                if (folder1.exists() && folder1.isDirectory) {
-                    val size1 = calculateDirectorySize(folder1)
-                    println("DEBUG: Folder 1 size: $size1")
-                    totalSize += size1
-                }
-                
-                println("DEBUG: Total size: $totalSize")
-                return totalSize
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        return 0L
     }
 
     /**
@@ -215,28 +165,6 @@ class SaveDataViewModel : ViewModel() {
     }
 
     /**
-     * 递归计算目录大小
-     */
-    private fun calculateDirectorySize(directory: File): Long {
-        var size = 0L
-        try {
-            val files = directory.listFiles()
-            if (files != null) {
-                for (file in files) {
-                    if (file.isFile) {
-                        size += file.length()
-                    } else if (file.isDirectory) {
-                        size += calculateDirectorySize(file)
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        return size
-    }
-
-    /**
      * 获取Ryujinx基础路径 - 动态获取应用文件目录
      */
     private fun getRyujinxBasePath(): File {
@@ -244,7 +172,52 @@ class SaveDataViewModel : ViewModel() {
     }
 
     /**
-     * 导出存档
+     * 导出存档到指定URI
+     */
+    fun exportSaveDataToUri(uri: android.net.Uri, context: Context) {
+        operationInProgress.value = true
+        operationMessage.value = "Exporting save data..."
+
+        Thread {
+            try {
+                // 创建临时ZIP文件
+                val tempFile = File.createTempFile("save_export", ".zip", context.cacheDir)
+                val tempPath = tempFile.absolutePath
+
+                // 使用原生方法导出到临时文件
+                val success = RyujinxNative.exportSaveData(currentTitleId.value, tempPath)
+
+                if (success) {
+                    // 将临时文件复制到目标URI
+                    context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                        tempFile.inputStream().use { inputStream ->
+                            inputStream.copyTo(outputStream)
+                        }
+                    }
+                    
+                    // 删除临时文件
+                    tempFile.delete()
+                }
+
+                operationInProgress.value = false
+                operationSuccess.value = success
+                operationMessage.value = if (success) 
+                    "Save data exported successfully" 
+                else 
+                    "Failed to export save data"
+                showOperationResult.value = true
+                
+            } catch (e: Exception) {
+                operationInProgress.value = false
+                operationSuccess.value = false
+                operationMessage.value = "Error exporting save data: ${e.message}"
+                showOperationResult.value = true
+            }
+        }.start()
+    }
+
+    /**
+     * 导出存档到应用目录（兼容旧方法）
      */
     fun exportSaveData(context: Context) {
         operationInProgress.value = true
@@ -268,7 +241,6 @@ class SaveDataViewModel : ViewModel() {
                     "Failed to export save data"
                 showOperationResult.value = true
                 
-                // 导出成功后不需要刷新存档信息，因为导出不影响存档内容
             } catch (e: Exception) {
                 operationInProgress.value = false
                 operationSuccess.value = false
@@ -448,14 +420,13 @@ class SaveDataViewModel : ViewModel() {
 }
 
 /**
- * 存档信息数据类
+ * 存档信息数据类 
  */
 data class SaveDataInfo(
     val saveId: String,
     val titleId: String,
     val titleName: String,
-    val lastModified: Date,
-    val size: Long
+    val lastModified: Date
 )
 
 /**
@@ -464,16 +435,4 @@ data class SaveDataInfo(
 fun formatDate(date: Date): String {
     val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
     return formatter.format(date)
-}
-
-/**
- * 工具函数 - 格式化文件大小
- */
-fun formatFileSize(size: Long): String {
-    return when {
-        size < 1024 -> "$size B"
-        size < 1024 * 1024 -> "${size / 1024} KB"
-        size < 1024 * 1024 * 1024 -> "${size / (1024 * 1024)} MB"
-        else -> "${size / (1024 * 1024 * 1024)} GB"
-    }
 }
