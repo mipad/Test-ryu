@@ -750,14 +750,62 @@ namespace LibRyujinx
             try
             {
                 string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
-                string saveId = GetSaveIdByTitleId(titleId);
-                
-                return !string.IsNullOrEmpty(saveId);
+                return SaveDataExists(titleId);
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Error in saveDataExists: {ex.Message}");
                 return false;
+            }
+        }
+
+        // 新增：刷新存档数据的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "saveDataRefresh")]
+        public static void JnaRefreshSaveData()
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: saveDataRefresh");
+            try
+            {
+                RefreshSaveData();
+                Logger.Info?.Print(LogClass.Application, "Save data refreshed successfully");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error refreshing save data: {ex.Message}");
+            }
+        }
+
+        // 新增：调试存档数据的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "saveDataDebug")]
+        public static void JnaDebugSaveData()
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: saveDataDebug");
+            try
+            {
+                DebugSaveData();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error debugging save data: {ex.Message}");
+            }
+        }
+
+        // 新增：获取所有存档列表的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "saveDataGetAll")]
+        public static IntPtr JnaGetAllSaveData()
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: saveDataGetAll");
+            try
+            {
+                var saveDataList = GetSaveDataList();
+                var titleIds = saveDataList.Select(s => s.TitleId).Where(id => !string.IsNullOrEmpty(id) && id != "0000000000000000").ToList();
+                
+                return CreateStringArray(titleIds);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error getting all save data: {ex.Message}");
+                return IntPtr.Zero;
             }
         }
     }
