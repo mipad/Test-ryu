@@ -5,7 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -105,13 +105,6 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
                         modifier = Modifier.padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(
-                            Icons.Filled.Save,
-                            contentDescription = "No Save Data",
-                            modifier = Modifier.size(48.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             "No save data found for this game",
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -129,16 +122,14 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
             ) {
                 ActionButton(
                     text = "Export Save Data",
-                    enabled = viewModel.hasSaveData() && !viewModel.operationInProgress.value,
-                    icon = Icons.Filled.Archive
+                    enabled = viewModel.hasSaveData() && !viewModel.operationInProgress.value
                 ) {
                     viewModel.exportSaveData(context)
                 }
                 
                 ActionButton(
                     text = "Import Save Data", 
-                    enabled = !viewModel.operationInProgress.value,
-                    icon = Icons.Filled.Unarchive
+                    enabled = !viewModel.operationInProgress.value
                 ) {
                     // 打开文件选择器选择ZIP文件
                     filePickerLauncher.launch("application/zip")
@@ -147,7 +138,6 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
                 ActionButton(
                     text = "Delete Save Data",
                     enabled = viewModel.hasSaveData() && !viewModel.operationInProgress.value,
-                    icon = Icons.Filled.Delete,
                     isDestructive = true
                 ) {
                     viewModel.deleteSaveData()
@@ -209,7 +199,6 @@ fun InfoRow(label: String, value: String) {
 @Composable
 fun ActionButton(
     text: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
     enabled: Boolean = true,
     isDestructive: Boolean = false,
     onClick: () -> Unit
@@ -226,8 +215,6 @@ fun ActionButton(
         enabled = enabled,
         colors = buttonColors
     ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
-        Spacer(modifier = Modifier.width(8.dp))
         Text(text = text)
     }
 }
