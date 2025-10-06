@@ -670,6 +670,96 @@ namespace LibRyujinx
                 Logger.Error?.Print(LogClass.Application, $"Failed to set anti-aliasing: {ex.Message}");
             }
         }
+
+        // ==================== 存档管理的JNI方法 ====================
+
+        [UnmanagedCallersOnly(EntryPoint = "saveDataExport")]
+        public static bool JnaExportSaveData(IntPtr titleIdPtr, IntPtr outputPathPtr)
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: saveDataExport");
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                string outputPath = Marshal.PtrToStringAnsi(outputPathPtr) ?? "";
+                
+                return ExportSaveData(titleId, outputPath);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in saveDataExport: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "saveDataImport")]
+        public static bool JnaImportSaveData(IntPtr titleIdPtr, IntPtr zipFilePathPtr)
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: saveDataImport");
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                string zipFilePath = Marshal.PtrToStringAnsi(zipFilePathPtr) ?? "";
+                
+                return ImportSaveData(titleId, zipFilePath);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in saveDataImport: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "saveDataDelete")]
+        public static bool JnaDeleteSaveData(IntPtr titleIdPtr)
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: saveDataDelete");
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                return DeleteSaveData(titleId);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in saveDataDelete: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "saveDataGetSaveId")]
+        public static IntPtr JnaGetSaveIdByTitleId(IntPtr titleIdPtr)
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: saveDataGetSaveId");
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                string saveId = GetSaveIdByTitleId(titleId);
+                
+                return Marshal.StringToHGlobalAnsi(saveId ?? "");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in saveDataGetSaveId: {ex.Message}");
+                return IntPtr.Zero;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "saveDataExists")]
+        public static bool JnaSaveDataExists(IntPtr titleIdPtr)
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call: saveDataExists");
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                string saveId = GetSaveIdByTitleId(titleId);
+                
+                return !string.IsNullOrEmpty(saveId);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in saveDataExists: {ex.Message}");
+                return false;
+            }
+        }
     }
 
     internal static partial class Logcat
