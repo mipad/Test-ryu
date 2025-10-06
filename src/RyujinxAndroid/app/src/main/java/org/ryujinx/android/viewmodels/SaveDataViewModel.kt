@@ -1,5 +1,6 @@
 package org.ryujinx.android.viewmodels
 
+import android.content.Context
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.Dispatchers
@@ -32,12 +33,16 @@ class SaveDataViewModel : ViewModel() {
     var currentGameName = mutableStateOf("")
         private set
 
+    // 应用上下文（用于获取正确的文件路径）
+    private var appContext: Context? = null
+
     /**
      * 初始化存档数据
      */
-    fun initialize(titleId: String, gameName: String) {
+    fun initialize(titleId: String, gameName: String, context: Context) {
         currentTitleId.value = titleId
         currentGameName.value = gameName
+        appContext = context.applicationContext
         loadSaveDataInfo()
     }
 
@@ -82,7 +87,7 @@ class SaveDataViewModel : ViewModel() {
      */
     private fun getDetailedSaveDataInfo(saveId: String): SaveDataInfo {
         try {
-            // 计算实际存档大小 - 只计算0文件夹
+            // 计算实际存档大小 - 计算0和1文件夹
             val size = calculateSaveDataSize(saveId)
             
             // 获取最后修改时间
@@ -108,21 +113,46 @@ class SaveDataViewModel : ViewModel() {
     }
 
     /**
-     * 计算存档数据大小 - 只计算0文件夹
+     * 计算存档数据大小 - 计算0和1文件夹
      */
     private fun calculateSaveDataSize(saveId: String): Long {
         try {
             val saveBasePath = File(getRyujinxBasePath(), "bis/user/save")
+            println("DEBUG: Save base path: $saveBasePath")
+            println("DEBUG: Save path exists: ${saveBasePath.exists()}")
+            
             val saveDir = File(saveBasePath, saveId)
+            println("DEBUG: Save dir: $saveDir")
+            println("DEBUG: Save dir exists: ${saveDir.exists()}")
             
             if (saveDir.exists() && saveDir.isDirectory) {
-                // 只计算0文件夹的大小
+                var totalSize = 0L
+                
+                // 计算0文件夹的大小
                 val folder0 = File(saveDir, "0")
+                println("DEBUG: Folder 0: $folder0")
+                println("DEBUG: Folder 0 exists: ${folder0.exists()}")
                 if (folder0.exists() && folder0.isDirectory) {
-                    return calculateDirectorySize(folder0)
+                    val size0 = calculateDirectorySize(folder0)
+                    println("DEBUG: Folder 0 size: $size0")
+                    totalSize += size0
                 }
+                
+                // 计算1文件夹的大小
+                val folder1 = File(saveDir, "1")
+                println("DEBUG: Folder 1: $folder1")
+                println("DEBUG: Folder 1 exists: ${folder1.exists()}")
+                if (folder1.exists() && folder1.isDirectory) {
+                    val size1 = calculateDirectorySize(folder1)
+                    println("DEBUG: Folder 1 size: $size1")
+                    totalSize += size1
+                }
+                
+                println("DEBUG: Total size: $totalSize")
+                return totalSize
             }
         } catch (e: Exception) {
+            e.printStackTrace()
         }
         return 0L
     }
@@ -136,9 +166,23 @@ class SaveDataViewModel : ViewModel() {
             val saveDir = File(saveBasePath, saveId)
             
             if (saveDir.exists()) {
-                return Date(saveDir.lastModified())
+                // 优先检查0和1文件夹的最后修改时间
+                var latestModified = saveDir.lastModified()
+                
+                val folder0 = File(saveDir, "0")
+                if (folder0.exists() && folder0.lastModified() > latestModified) {
+                    latestModified = folder0.lastModified()
+                }
+                
+                val folder1 = File(saveDir, "1")
+                if (folder1.exists() && folder1.lastModified() > latestModified) {
+                    latestModified = folder1.lastModified()
+                }
+                
+                return Date(latestModified)
             }
         } catch (e: Exception) {
+            e.printStackTrace()
         }
         return Date()
     }
@@ -160,23 +204,22 @@ class SaveDataViewModel : ViewModel() {
                 }
             }
         } catch (e: Exception) {
+            e.printStackTrace()
         }
         return size
     }
 
     /**
-     * 获取Ryujinx基础路径
+     * 获取Ryujinx基础路径 - 动态获取应用文件目录
      */
     private fun getRyujinxBasePath(): File {
-        // 这里应该返回Ryujinx的基础数据目录
-        // 在实际实现中，这应该从应用程序的上下文中获取
-        return File("/storage/emulated/0/Android/data/org.ryujinx.android/files")
+        return appContext?.filesDir?.parentFile ?: File("/storage/emulated/0/Android/data/org.ryujinx.android/files")
     }
 
     /**
      * 导出存档
      */
-    fun exportSaveData(context: android.content.Context) {
+    fun exportSaveData(context: Context) {
         operationInProgress.value = true
         operationMessage.value = "Exporting save data..."
 
@@ -241,7 +284,7 @@ class SaveDataViewModel : ViewModel() {
     /**
      * 从URI导入存档
      */
-    fun importSaveDataFromUri(uri: android.net.Uri, context: android.content.Context) {
+    fun importSaveDataFromUri(uri: android.net.Uri, context: Context) {
         operationInProgress.value = true
         operationMessage.value = "Importing save data..."
 
@@ -282,11 +325,11 @@ class SaveDataViewModel : ViewModel() {
     }
 
     /**
-     * 删除存档
+     * 删除存档文件夹（完全删除）
      */
     fun deleteSaveData() {
         operationInProgress.value = true
-        operationMessage.value = "Deleting save data..."
+        operationMessage.value = "Deleting save data folder..."
 
         Thread {
             try {
@@ -295,9 +338,9 @@ class SaveDataViewModel : ViewModel() {
                 operationInProgress.value = false
                 operationSuccess.value = success
                 operationMessage.value = if (success) 
-                    "Save data deleted successfully" 
+                    "Save data folder deleted successfully" 
                 else 
-                    "Failed to delete save data"
+                    "Failed to delete save data folder"
                 showOperationResult.value = true
 
                 if (success) {
@@ -307,7 +350,39 @@ class SaveDataViewModel : ViewModel() {
             } catch (e: Exception) {
                 operationInProgress.value = false
                 operationSuccess.value = false
-                operationMessage.value = "Error deleting save data: ${e.message}"
+                operationMessage.value = "Error deleting save data folder: ${e.message}"
+                showOperationResult.value = true
+            }
+        }.start()
+    }
+
+    /**
+     * 删除存档文件（只删除0和1文件夹中的内容）
+     */
+    fun deleteSaveFiles() {
+        operationInProgress.value = true
+        operationMessage.value = "Deleting save files..."
+
+        Thread {
+            try {
+                val success = RyujinxNative.deleteSaveFiles(currentTitleId.value)
+
+                operationInProgress.value = false
+                operationSuccess.value = success
+                operationMessage.value = if (success) 
+                    "Save files deleted successfully" 
+                else 
+                    "Failed to delete save files"
+                showOperationResult.value = true
+
+                // 删除文件后重新加载存档信息
+                if (success) {
+                    loadSaveDataInfo()
+                }
+            } catch (e: Exception) {
+                operationInProgress.value = false
+                operationSuccess.value = false
+                operationMessage.value = "Error deleting save files: ${e.message}"
                 showOperationResult.value = true
             }
         }.start()
