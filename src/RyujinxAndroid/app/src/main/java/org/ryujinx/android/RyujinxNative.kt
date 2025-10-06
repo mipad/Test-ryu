@@ -115,6 +115,15 @@ interface RyujinxNativeJna : Library {
     fun saveDataDelete(titleId: String): Boolean
     fun saveDataGetSaveId(titleId: String): String
     fun saveDataExists(titleId: String): Boolean
+    
+    // 新增：刷新存档数据的方法
+    fun saveDataRefresh()
+    
+    // 新增：调试存档数据的方法
+    fun saveDataDebug()
+    
+    // 新增：获取所有存档列表的方法
+    fun saveDataGetAll(): Array<String>
 }
 
 class RyujinxNative {
@@ -259,6 +268,24 @@ class RyujinxNative {
         @JvmStatic
         fun saveDataExists(titleId: String): Boolean {
             return jnaInstance.saveDataExists(titleId)
+        }
+        
+        // 新增：刷新存档数据的静态方法
+        @JvmStatic
+        fun refreshSaveData() {
+            jnaInstance.saveDataRefresh()
+        }
+        
+        // 新增：调试存档数据的静态方法
+        @JvmStatic
+        fun debugSaveData() {
+            jnaInstance.saveDataDebug()
+        }
+        
+        // 新增：获取所有存档列表的静态方法
+        @JvmStatic
+        fun getAllSaveData(): Array<String> {
+            return jnaInstance.saveDataGetAll()
         }
     }
 }
