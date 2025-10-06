@@ -89,7 +89,7 @@ interface RyujinxNativeJna : Library {
     fun setSkipMemoryBarriers(skip: Boolean)
     // 添加设置画面比例的方法
     fun setAspectRatio(aspectRatio: Int)
-    // 在 RyujinxNativeJna 接口中添加这个方法
+    // 添加设置音频引擎的方法
     fun setAudioBackend(audioBackend: Int)
     // 添加设置缩放过滤器的方法
     fun setScalingFilter(filter: Int)
