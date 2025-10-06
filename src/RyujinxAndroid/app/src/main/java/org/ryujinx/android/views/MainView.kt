@@ -44,6 +44,22 @@ class MainView {
                     val gamePath = backStackEntry.arguments?.getString("gamePath") ?: ""
                     CheatsViews(navController, titleId, gamePath)
                 }
+                // 添加存档管理界面导航，包含 titleId 和 gameName 参数
+                composable(
+                    "savedata/{titleId}?gameName={gameName}",
+                    arguments = listOf(
+                        navArgument("titleId") { type = NavType.StringType },
+                        navArgument("gameName") { 
+                            type = NavType.StringType
+                            defaultValue = ""
+                            nullable = true
+                        }
+                    )
+                ) { backStackEntry ->
+                    val titleId = backStackEntry.arguments?.getString("titleId") ?: ""
+                    val gameName = backStackEntry.arguments?.getString("gameName") ?: ""
+                    SaveDataViews(navController, titleId, gameName)
+                }
             }
         }
     }
