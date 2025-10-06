@@ -116,6 +116,9 @@ interface RyujinxNativeJna : Library {
     fun saveDataGetSaveId(titleId: String): String
     fun saveDataExists(titleId: String): Boolean
     
+    // 新增：删除存档文件的方法（只删除0和1文件夹中的文件）
+    fun saveDataDeleteFiles(titleId: String): Boolean
+    
     // 新增：刷新存档数据的方法
     fun saveDataRefresh()
     
@@ -258,6 +261,11 @@ class RyujinxNative {
         @JvmStatic
         fun deleteSaveData(titleId: String): Boolean {
             return jnaInstance.saveDataDelete(titleId)
+        }
+
+        @JvmStatic
+        fun deleteSaveFiles(titleId: String): Boolean {
+            return jnaInstance.saveDataDeleteFiles(titleId)
         }
 
         @JvmStatic
