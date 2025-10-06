@@ -34,6 +34,9 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
         }
     }
     
+    // 删除确认对话框状态
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
+    
     // 初始化ViewModel
     LaunchedEffect(titleId, gameName) {
         viewModel.initialize(titleId, gameName)
@@ -155,7 +158,8 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
                     enabled = viewModel.hasSaveData() && !viewModel.operationInProgress.value,
                     isDestructive = true
                 ) {
-                    viewModel.deleteSaveData()
+                    // 显示删除确认对话框
+                    showDeleteConfirmation = true
                 }
                 
                 // 调试按钮（仅在开发时显示）
@@ -206,6 +210,43 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
                     }
                 }) {
                     Text("OK")
+                }
+            }
+        )
+    }
+    
+    // 删除确认对话框
+    if (showDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text("Confirm Delete") },
+            text = { 
+                Column {
+                    Text("Are you sure you want to delete the save data for this game?")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "This will completely remove the save data folder. You will need to start the game again to create a new save data folder.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirmation = false
+                        viewModel.deleteSaveData()
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmation = false }) {
+                    Text("Cancel")
                 }
             }
         )
@@ -274,8 +315,6 @@ private fun debugSaveData() {
     try {
         // 这里应该调用一个原生方法来执行调试
         // RyujinxNative.debugSaveData()
-        android.util.Log.d("SaveDataViews", "Debug save data called")
     } catch (e: Exception) {
-        android.util.Log.e("SaveDataViews", "Error debugging save data: ${e.message}")
     }
 }
