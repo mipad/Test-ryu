@@ -40,7 +40,7 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
     
     // 初始化ViewModel
     LaunchedEffect(titleId, gameName) {
-        viewModel.initialize(titleId, gameName)
+        viewModel.initialize(titleId, gameName, context)
     }
     
     Scaffold(
