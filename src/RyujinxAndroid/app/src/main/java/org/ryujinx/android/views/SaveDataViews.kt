@@ -4,8 +4,6 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -14,81 +12,30 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import org.ryujinx.android.RyujinxNative
-import java.io.File
-import java.io.FileOutputStream
-import java.text.SimpleDateFormat
-import java.util.*
+import org.ryujinx.android.viewmodels.SaveDataViewModel
+import org.ryujinx.android.viewmodels.formatDate
+import org.ryujinx.android.viewmodels.formatFileSize
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SaveDataViews(navController: NavHostController, titleId: String, gameName: String) {
     val context = LocalContext.current
-    var saveDataInfo by remember { mutableStateOf<SaveDataInfo?>(null) }
-    var showImportExportDialog by remember { mutableStateOf(false) }
-    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
-    var operationInProgress by remember { mutableStateOf(false) }
-    var operationMessage by remember { mutableStateOf("") }
-    var showOperationResult by remember { mutableStateOf(false) }
-    var operationSuccess by remember { mutableStateOf(false) }
+    val viewModel: SaveDataViewModel = viewModel()
     
     // 文件选择器
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let { selectedUri ->
-            operationInProgress = true
-            operationMessage = "Importing save data..."
-            
-            Thread {
-                try {
-                    // 将选中的文件复制到临时位置
-                    val inputStream = context.contentResolver.openInputStream(selectedUri)
-                    val tempFile = File.createTempFile("save_import", ".zip")
-                    FileOutputStream(tempFile).use { output ->
-                        inputStream?.copyTo(output)
-                    }
-                    
-                    // 调用导入方法
-                    val success = RyujinxNative.importSaveData(titleId, tempFile.absolutePath)
-                    
-                    // 删除临时文件
-                    tempFile.delete()
-                    
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        operationInProgress = false
-                        operationSuccess = success
-                        operationMessage = if (success) 
-                            "Save data imported successfully" 
-                        else 
-                            "Failed to import save data"
-                        showOperationResult = true
-                        
-                        if (success) {
-                            // 重新加载存档信息
-                            loadSaveDataInfo(titleId, gameName) { info ->
-                                saveDataInfo = info
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        operationInProgress = false
-                        operationSuccess = false
-                        operationMessage = "Error importing save data: ${e.message}"
-                        showOperationResult = true
-                    }
-                }
-            }.start()
+            viewModel.importSaveDataFromUri(selectedUri, context)
         }
     }
     
-    // 加载存档信息
-    LaunchedEffect(titleId) {
-        loadSaveDataInfo(titleId, gameName) { info ->
-            saveDataInfo = info
-        }
+    // 初始化ViewModel
+    LaunchedEffect(titleId, gameName) {
+        viewModel.initialize(titleId, gameName)
     }
     
     Scaffold(
@@ -133,7 +80,7 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
             Spacer(modifier = Modifier.height(16.dp))
             
             // 存档信息
-            if (saveDataInfo != null) {
+            if (viewModel.saveDataInfo.value != null) {
                 Card(
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -145,9 +92,9 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
                             style = MaterialTheme.typography.titleMedium
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        InfoRow("Save ID:", saveDataInfo!!.saveId)
-                        InfoRow("Last Modified:", formatDate(saveDataInfo!!.lastModified))
-                        InfoRow("Size:", formatFileSize(saveDataInfo!!.size))
+                        InfoRow("Save ID:", viewModel.saveDataInfo.value!!.saveId)
+                        InfoRow("Last Modified:", formatDate(viewModel.saveDataInfo.value!!.lastModified))
+                        InfoRow("Size:", formatFileSize(viewModel.saveDataInfo.value!!.size))
                     }
                 }
             } else {
@@ -182,36 +129,15 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
             ) {
                 ActionButton(
                     text = "Export Save Data",
-                    enabled = saveDataInfo != null && !operationInProgress,
+                    enabled = viewModel.hasSaveData() && !viewModel.operationInProgress.value,
                     icon = Icons.Filled.Archive
                 ) {
-                    operationInProgress = true
-                    operationMessage = "Exporting save data..."
-                    
-                    Thread {
-                        // 创建导出文件名
-                        val fileName = "${gameName.replace("[^a-zA-Z0-9]".toRegex(), "_")}_save_${System.currentTimeMillis()}.zip"
-                        val exportDir = File(context.getExternalFilesDir(null), "exports")
-                        exportDir.mkdirs()
-                        val exportPath = File(exportDir, fileName).absolutePath
-                        
-                        val success = RyujinxNative.exportSaveData(titleId, exportPath)
-                        
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            operationInProgress = false
-                            operationSuccess = success
-                            operationMessage = if (success) 
-                                "Save data exported to: $exportPath" 
-                            else 
-                                "Failed to export save data"
-                            showOperationResult = true
-                        }
-                    }.start()
+                    viewModel.exportSaveData(context)
                 }
                 
                 ActionButton(
                     text = "Import Save Data", 
-                    enabled = !operationInProgress,
+                    enabled = !viewModel.operationInProgress.value,
                     icon = Icons.Filled.Unarchive
                 ) {
                     // 打开文件选择器选择ZIP文件
@@ -220,24 +146,24 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
                 
                 ActionButton(
                     text = "Delete Save Data",
-                    enabled = saveDataInfo != null && !operationInProgress,
+                    enabled = viewModel.hasSaveData() && !viewModel.operationInProgress.value,
                     icon = Icons.Filled.Delete,
                     isDestructive = true
                 ) {
-                    showDeleteConfirmDialog = true
+                    viewModel.deleteSaveData()
                 }
             }
         }
     }
     
     // 操作进度对话框
-    if (operationInProgress) {
+    if (viewModel.operationInProgress.value) {
         AlertDialog(
             onDismissRequest = { /* 不允许取消 */ },
             title = { Text("Processing") },
             text = { 
                 Column {
-                    Text(operationMessage)
+                    Text(viewModel.operationMessage.value)
                     Spacer(modifier = Modifier.height(16.dp))
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
@@ -247,51 +173,23 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
     }
     
     // 操作结果对话框
-    if (showOperationResult) {
+    if (viewModel.showOperationResult.value) {
         AlertDialog(
-            onDismissRequest = { showOperationResult = false },
+            onDismissRequest = { viewModel.resetOperationResult() },
             title = { 
-                Text(if (operationSuccess) "Success" else "Error") 
+                Text(if (viewModel.operationSuccess.value) "Success" else "Error") 
             },
-            text = { Text(operationMessage) },
+            text = { Text(viewModel.operationMessage.value) },
             confirmButton = {
-                TextButton(onClick = { showOperationResult = false }) {
+                TextButton(onClick = { 
+                    viewModel.resetOperationResult()
+                    // 如果删除成功且我们还在当前页面，返回上一页
+                    if (viewModel.operationSuccess.value && !viewModel.hasSaveData()) {
+                        navController.popBackStack()
+                    }
+                }) {
                     Text("OK")
                 }
-            }
-        )
-    }
-    
-    // 删除确认对话框
-    if (showDeleteConfirmDialog) {
-        DeleteConfirmDialog(
-            onDismiss = { showDeleteConfirmDialog = false },
-            onConfirm = { 
-                operationInProgress = true
-                operationMessage = "Deleting save data..."
-                
-                Thread {
-                    val success = RyujinxNative.deleteSaveData(titleId)
-                    
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        operationInProgress = false
-                        operationSuccess = success
-                        operationMessage = if (success) 
-                            "Save data deleted successfully" 
-                        else 
-                            "Failed to delete save data"
-                        showOperationResult = true
-                        
-                        if (success) {
-                            // 更新UI状态
-                            saveDataInfo = null
-                            // 延迟关闭对话框并返回
-                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                                navController.popBackStack()
-                            }, 1500)
-                        }
-                    }
-                }.start()
             }
         )
     }
@@ -332,90 +230,4 @@ fun ActionButton(
         Spacer(modifier = Modifier.width(8.dp))
         Text(text = text)
     }
-}
-
-@Composable
-fun DeleteConfirmDialog(
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Delete Save Data") },
-        text = { 
-            Text("Are you sure you want to delete all save data for this game? This action cannot be undone.") 
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    onConfirm()
-                    onDismiss()
-                },
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error
-                )
-            ) {
-                Text("Delete")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-}
-
-// 数据类
-data class SaveDataInfo(
-    val saveId: String,
-    val titleId: String,
-    val titleName: String,
-    val lastModified: Date,
-    val size: Long
-)
-
-// 工具函数
-private fun formatDate(date: Date): String {
-    val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-    return formatter.format(date)
-}
-
-private fun formatFileSize(size: Long): String {
-    return when {
-        size < 1024 -> "$size B"
-        size < 1024 * 1024 -> "${size / 1024} KB"
-        else -> "${size / (1024 * 1024)} MB"
-    }
-}
-
-// 加载存档信息的辅助函数
-private fun loadSaveDataInfo(titleId: String, gameName: String, onResult: (SaveDataInfo?) -> Unit) {
-    Thread {
-        val exists = RyujinxNative.saveDataExists(titleId)
-        if (exists) {
-            val saveId = RyujinxNative.getSaveIdByTitleId(titleId)
-            if (!saveId.isNullOrEmpty()) {
-                // 这里可以加载更详细的存档信息，比如大小和修改时间
-                val saveInfo = SaveDataInfo(
-                    saveId = saveId,
-                    titleId = titleId,
-                    titleName = gameName,
-                    lastModified = Date(),
-                    size = 0 // 实际使用时可以计算真实大小
-                )
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    onResult(saveInfo)
-                }
-            } else {
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    onResult(null)
-                }
-            }
-        } else {
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                onResult(null)
-            }
-        }
-    }.start()
 }
