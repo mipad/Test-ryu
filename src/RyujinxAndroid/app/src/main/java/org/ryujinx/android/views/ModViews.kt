@@ -168,56 +168,44 @@ class ModViews {
                                 .padding(16.dp)
                         ) {
                             // 统计信息和批量操作
-                            Column(
-                                modifier = Modifier.fillMaxWidth()
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
                                     text = "Mods: ${viewModel.mods.size} (${viewModel.selectedMods.size} enabled)",
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                                 
-                                Spacer(modifier = Modifier.height(8.dp))
-                                
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceEvenly
-                                ) {
-                                    // 启用全部按钮 - 使用文字
+                                Row {
+                                    // 使用文字按钮代替图标按钮
                                     OutlinedButton(
                                         onClick = {
                                             coroutineScope.launch {
                                                 viewModel.enableAllMods(titleId)
                                             }
                                         },
-                                        modifier = Modifier.weight(1f)
+                                        modifier = Modifier.padding(end = 8.dp)
                                     ) {
                                         Text("Enable All")
                                     }
                                     
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    
-                                    // 禁用全部按钮 - 使用文字
                                     OutlinedButton(
                                         onClick = {
                                             coroutineScope.launch {
                                                 viewModel.disableAllMods(titleId)
                                             }
                                         },
-                                        modifier = Modifier.weight(1f)
+                                        modifier = Modifier.padding(end = 8.dp)
                                     ) {
                                         Text("Disable All")
                                     }
                                     
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    
-                                    // 删除全部按钮 - 保留图标
                                     OutlinedButton(
                                         onClick = { showDeleteAllDialog = true },
-                                        enabled = viewModel.mods.isNotEmpty(),
-                                        modifier = Modifier.weight(1f)
+                                        enabled = viewModel.mods.isNotEmpty()
                                     ) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Delete All", modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
                                         Text("Delete All")
                                     }
                                 }
@@ -234,7 +222,7 @@ class ModViews {
                                 ) {
                                     Text(
                                         text = "📁",
-                                        style = MaterialTheme.typography.headlineLarge
+                                        style = MaterialTheme.typography.displayMedium
                                     )
                                     Spacer(modifier = Modifier.height(16.dp))
                                     Text(
@@ -407,9 +395,25 @@ class ModViews {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                        
+                        // 操作按钮 - 使用文字按钮
+                        Row {
+                            OutlinedButton(
+                                onClick = onOpenLocation,
+                                modifier = Modifier.padding(end = 8.dp)
+                            ) {
+                                Text("Open")
+                            }
+                            
+                            OutlinedButton(
+                                onClick = onDelete
+                            ) {
+                                Text("Delete")
+                            }
+                        }
                     }
                     
-                    // 路径信息
+                    // 路径信息（可选的，因为可能很长）
                     Text(
                         text = mod.path,
                         style = MaterialTheme.typography.bodySmall,
@@ -417,29 +421,6 @@ class ModViews {
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    // 操作按钮 - 使用文字按钮
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        // 打开位置按钮 - 使用文字
-                        OutlinedButton(
-                            onClick = onOpenLocation,
-                            modifier = Modifier.padding(end = 8.dp)
-                        ) {
-                            Text("Open Location")
-                        }
-                        
-                        // 删除按钮 - 使用文字
-                        Button(
-                            onClick = onDelete
-                        ) {
-                            Text("Delete")
-                        }
-                    }
                 }
             }
         }
