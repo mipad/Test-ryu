@@ -127,6 +127,15 @@ interface RyujinxNativeJna : Library {
     
     // 新增：获取所有存档列表的方法
     fun saveDataGetAll(): Array<String>
+    
+    // ==================== Mod 管理相关方法 ====================
+    fun modsGetMods(titleId: String): String
+    fun modsSetEnabled(titleId: String, modPath: String, enabled: Boolean): Boolean
+    fun modsDeleteMod(titleId: String, modPath: String): Boolean
+    fun modsDeleteAll(titleId: String): Boolean
+    fun modsEnableAll(titleId: String): Boolean
+    fun modsDisableAll(titleId: String): Boolean
+    fun modsAddMod(titleId: String, sourcePath: String, modName: String): Boolean
 }
 
 class RyujinxNative {
@@ -294,6 +303,42 @@ class RyujinxNative {
         @JvmStatic
         fun getAllSaveData(): Array<String> {
             return jnaInstance.saveDataGetAll()
+        }
+        
+        // ==================== Mod 管理相关静态方法 ====================
+        @JvmStatic
+        fun getMods(titleId: String): String {
+            return jnaInstance.modsGetMods(titleId)
+        }
+
+        @JvmStatic
+        fun setModEnabled(titleId: String, modPath: String, enabled: Boolean): Boolean {
+            return jnaInstance.modsSetEnabled(titleId, modPath, enabled)
+        }
+
+        @JvmStatic
+        fun deleteMod(titleId: String, modPath: String): Boolean {
+            return jnaInstance.modsDeleteMod(titleId, modPath)
+        }
+
+        @JvmStatic
+        fun deleteAllMods(titleId: String): Boolean {
+            return jnaInstance.modsDeleteAll(titleId)
+        }
+
+        @JvmStatic
+        fun enableAllMods(titleId: String): Boolean {
+            return jnaInstance.modsEnableAll(titleId)
+        }
+
+        @JvmStatic
+        fun disableAllMods(titleId: String): Boolean {
+            return jnaInstance.modsDisableAll(titleId)
+        }
+
+        @JvmStatic
+        fun addMod(titleId: String, sourcePath: String, modName: String): Boolean {
+            return jnaInstance.modsAddMod(titleId, sourcePath, modName)
         }
     }
 }
