@@ -3,7 +3,11 @@ package org.ryujinx.android.views
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
@@ -11,10 +15,19 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import kotlinx.coroutines.delay
 import org.ryujinx.android.viewmodels.SaveDataViewModel
 import org.ryujinx.android.viewmodels.formatDate
 
@@ -84,12 +97,12 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
                 Column(
                     modifier = Modifier.padding(16.dp)
                 ) {
-                    Text(
-                        text = gameName,
-                        style = MaterialTheme.typography.headlineSmall,
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    // 使用可滚动的游戏名称
+                    ScrollableGameName(
+                        gameName = gameName,
+                        modifier = Modifier.fillMaxWidth()
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "Title ID: $titleId",
                         style = MaterialTheme.typography.bodyMedium,
@@ -293,6 +306,107 @@ fun SaveDataViews(navController: NavHostController, titleId: String, gameName: S
                 }
             }
         )
+    }
+}
+
+/**
+ * 可滚动的游戏名称组件
+ */
+@Composable
+fun ScrollableGameName(
+    gameName: String,
+    modifier: Modifier = Modifier,
+    textStyle: TextStyle = MaterialTheme.typography.headlineSmall.copy(fontSize = 18.sp),
+    maxLines: Int = 1
+) {
+    var containerWidth by remember { mutableStateOf(0) }
+    var textWidth by remember { mutableStateOf(0) }
+    var isScrolling by remember { mutableStateOf(false) }
+    var shouldScroll by remember { mutableStateOf(false) }
+    
+    val density = LocalDensity.current
+    
+    // 计算文本是否需要滚动（文本宽度大于容器宽度）
+    val needsScrolling = remember(textWidth, containerWidth) {
+        textWidth > containerWidth
+    }
+    
+    // 滚动动画
+    val scrollOffset by animateFloatAsState(
+        targetValue = if (isScrolling && shouldScroll) {
+            // 滚动到完全显示文本（负值表示向左移动）
+            -(textWidth - containerWidth).toFloat()
+        } else {
+            // 回到起始位置
+            0f
+        },
+        animationSpec = tween(
+            durationMillis = if (isScrolling) {
+                // 根据文本长度计算滚动时间，让速度相对均匀
+                (textWidth * 30 / density.density).toInt().coerceIn(2000, 8000)
+            } else {
+                500 // 快速回到起始位置
+            },
+            delay = if (isScrolling) 300 else 0 // 滚动前稍作延迟
+        ),
+        label = "gameNameScroll"
+    )
+    
+    // 当滚动完成后自动停止
+    LaunchedEffect(isScrolling) {
+        if (isScrolling) {
+            // 计算滚动持续时间
+            val scrollDuration = (textWidth * 30 / density.density).toInt().coerceIn(2000, 8000)
+            delay(scrollDuration.toLong() + 300) // 等待动画完成
+            isScrolling = false
+        }
+    }
+    
+    Box(
+        modifier = modifier
+            .height(IntrinsicSize.Min)
+            .clipToBounds()
+            .clickable(
+                enabled = needsScrolling,
+                onClick = {
+                    if (needsScrolling) {
+                        shouldScroll = !shouldScroll
+                        isScrolling = true
+                    }
+                }
+            )
+    ) {
+        // 测量容器宽度
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .onSizeChanged { containerWidth = it.width }
+        )
+        
+        // 可滚动的文本
+        SelectionContainer {
+            Text(
+                text = gameName,
+                style = textStyle,
+                maxLines = maxLines,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Clip,
+                modifier = Modifier
+                    .graphicsLayer {
+                        translationX = scrollOffset
+                    }
+                    .onSizeChanged { textWidth = it.width }
+            )
+        }
+        
+        // 如果文本需要滚动但当前没有在滚动，显示提示
+        if (needsScrolling && !isScrolling && !shouldScroll) {
+            Text(
+                text = "⋯",
+                style = textStyle,
+                modifier = Modifier.align(Alignment.CenterEnd),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+            )
+        }
     }
 }
 
