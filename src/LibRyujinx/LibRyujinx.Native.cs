@@ -19,6 +19,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Ryujinx.HLE; 
+using System.Text.Json;
 
 namespace LibRyujinx
 {
@@ -651,6 +652,132 @@ namespace LibRyujinx
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Error in CheatSaveNative: {ex.Message}");
+            }
+        }
+
+        // ==================== Mod 管理相关的 JNI 方法 ====================
+
+        [UnmanagedCallersOnly(EntryPoint = "modsGetMods")]
+        public static IntPtr ModsGetModsNative(IntPtr titleIdPtr)
+        {
+            try
+            {
+                var titleId = Marshal.PtrToStringAnsi(titleIdPtr);
+                var mods = GetMods(titleId);
+                
+                // 将Mod列表序列化为JSON字符串返回
+                var json = JsonSerializer.Serialize(mods, new JsonSerializerOptions 
+                { 
+                    WriteIndented = false,
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                });
+                
+                return Marshal.StringToHGlobalAnsi(json);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in ModsGetModsNative: {ex.Message}");
+                return IntPtr.Zero;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "modsSetEnabled")]
+        public static bool ModsSetEnabledNative(IntPtr titleIdPtr, IntPtr modPathPtr, bool enabled)
+        {
+            try
+            {
+                var titleId = Marshal.PtrToStringAnsi(titleIdPtr);
+                var modPath = Marshal.PtrToStringAnsi(modPathPtr);
+                
+                return SetModEnabled(titleId, modPath, enabled);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in ModsSetEnabledNative: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "modsDeleteMod")]
+        public static bool ModsDeleteModNative(IntPtr titleIdPtr, IntPtr modPathPtr)
+        {
+            try
+            {
+                var titleId = Marshal.PtrToStringAnsi(titleIdPtr);
+                var modPath = Marshal.PtrToStringAnsi(modPathPtr);
+                
+                return DeleteMod(titleId, modPath);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in ModsDeleteModNative: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "modsDeleteAll")]
+        public static bool ModsDeleteAllNative(IntPtr titleIdPtr)
+        {
+            try
+            {
+                var titleId = Marshal.PtrToStringAnsi(titleIdPtr);
+                
+                return DeleteAllMods(titleId);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in ModsDeleteAllNative: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "modsEnableAll")]
+        public static bool ModsEnableAllNative(IntPtr titleIdPtr)
+        {
+            try
+            {
+                var titleId = Marshal.PtrToStringAnsi(titleIdPtr);
+                
+                return EnableAllMods(titleId);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in ModsEnableAllNative: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "modsDisableAll")]
+        public static bool ModsDisableAllNative(IntPtr titleIdPtr)
+        {
+            try
+            {
+                var titleId = Marshal.PtrToStringAnsi(titleIdPtr);
+                
+                return DisableAllMods(titleId);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in ModsDisableAllNative: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "modsAddMod")]
+        public static bool ModsAddModNative(IntPtr titleIdPtr, IntPtr sourcePathPtr, IntPtr modNamePtr)
+        {
+            try
+            {
+                var titleId = Marshal.PtrToStringAnsi(titleIdPtr);
+                var sourcePath = Marshal.PtrToStringAnsi(sourcePathPtr);
+                var modName = Marshal.PtrToStringAnsi(modNamePtr);
+                
+                return AddMod(titleId, sourcePath, modName);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in ModsAddModNative: {ex.Message}");
+                return false;
             }
         }
     }
