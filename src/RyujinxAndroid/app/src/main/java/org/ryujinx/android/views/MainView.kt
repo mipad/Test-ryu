@@ -1,3 +1,4 @@
+// MainView.kt
 package org.ryujinx.android.views
 
 import androidx.compose.runtime.Composable
@@ -8,6 +9,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.SettingsViewModel
+import org.ryujinx.android.viewmodels.ModViewModel
 
 class MainView {
     companion object {
@@ -59,6 +61,28 @@ class MainView {
                     val titleId = backStackEntry.arguments?.getString("titleId") ?: ""
                     val gameName = backStackEntry.arguments?.getString("gameName") ?: ""
                     SaveDataViews(navController, titleId, gameName)
+                }
+                // 添加Mod管理界面导航，包含 titleId 和 gameName 参数
+                composable(
+                    "mods/{titleId}?gameName={gameName}",
+                    arguments = listOf(
+                        navArgument("titleId") { type = NavType.StringType },
+                        navArgument("gameName") { 
+                            type = NavType.StringType
+                            defaultValue = ""
+                            nullable = true
+                        }
+                    )
+                ) { backStackEntry ->
+                    val titleId = backStackEntry.arguments?.getString("titleId") ?: ""
+                    val gameName = backStackEntry.arguments?.getString("gameName") ?: ""
+                    val modViewModel = ModViewModel()
+                    ModViews.ModManagementScreen(
+                        viewModel = modViewModel,
+                        navController = navController,
+                        titleId = titleId,
+                        gameName = gameName
+                    )
                 }
             }
         }

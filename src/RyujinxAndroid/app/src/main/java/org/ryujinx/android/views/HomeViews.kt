@@ -1,3 +1,4 @@
+// HomeViews.kt
 package org.ryujinx.android.views 
 
 import android.content.res.Configuration
@@ -1330,6 +1331,16 @@ class HomeViews {
                                             val gameName = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
                                             // 导航到存档管理界面
                                             navController?.navigate("savedata/$titleId?gameName=${android.net.Uri.encode(gameName)}")
+                                        })
+                                        // 新增的Mod管理菜单项
+                                        DropdownMenuItem(text = {
+                                            Text(text = "Manage Mods")
+                                        }, onClick = {
+                                            showAppMenu.value = false
+                                            val titleId = viewModel.mainViewModel?.selected?.titleId ?: ""
+                                            val gameName = viewModel.mainViewModel?.selected?.getDisplayName() ?: ""
+                                            // 导航到Mod管理界面
+                                            navController?.navigate("mods/$titleId?gameName=${android.net.Uri.encode(gameName)}")
                                         })                                      
                                     }
                                 }
