@@ -24,12 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckBox
-import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.PlaylistAddCheck
-import androidx.compose.material.icons.filled.PlaylistRemove
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -173,42 +168,57 @@ class ModViews {
                                 .padding(16.dp)
                         ) {
                             // 统计信息和批量操作
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                            Column(
+                                modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(
                                     text = "Mods: ${viewModel.mods.size} (${viewModel.selectedMods.size} enabled)",
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                                 
-                                Row {
-                                    IconButton(
+                                Spacer(modifier = Modifier.height(8.dp))
+                                
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceEvenly
+                                ) {
+                                    // 启用全部按钮 - 使用文字
+                                    OutlinedButton(
                                         onClick = {
                                             coroutineScope.launch {
                                                 viewModel.enableAllMods(titleId)
                                             }
-                                        }
+                                        },
+                                        modifier = Modifier.weight(1f)
                                     ) {
-                                        Icon(Icons.Default.PlaylistAddCheck, contentDescription = "Enable All")
+                                        Text("Enable All")
                                     }
                                     
-                                    IconButton(
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    
+                                    // 禁用全部按钮 - 使用文字
+                                    OutlinedButton(
                                         onClick = {
                                             coroutineScope.launch {
                                                 viewModel.disableAllMods(titleId)
                                             }
-                                        }
+                                        },
+                                        modifier = Modifier.weight(1f)
                                     ) {
-                                        Icon(Icons.Default.PlaylistRemove, contentDescription = "Disable All")
+                                        Text("Disable All")
                                     }
                                     
-                                    IconButton(
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    
+                                    // 删除全部按钮 - 保留图标
+                                    OutlinedButton(
                                         onClick = { showDeleteAllDialog = true },
-                                        enabled = viewModel.mods.isNotEmpty()
+                                        enabled = viewModel.mods.isNotEmpty(),
+                                        modifier = Modifier.weight(1f)
                                     ) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Delete All")
+                                        Icon(Icons.Default.Delete, contentDescription = "Delete All", modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Delete All")
                                     }
                                 }
                             }
@@ -222,11 +232,9 @@ class ModViews {
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.Center
                                 ) {
-                                    Icon(
-                                        Icons.Default.Folder,
-                                        contentDescription = "No Mods",
-                                        modifier = Modifier.size(64.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    Text(
+                                        text = "📁",
+                                        style = MaterialTheme.typography.headlineLarge
                                     )
                                     Spacer(modifier = Modifier.height(16.dp))
                                     Text(
@@ -399,20 +407,9 @@ class ModViews {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        
-                        // 操作按钮
-                        Row {
-                            IconButton(onClick = onOpenLocation) {
-                                Icon(Icons.Default.Folder, contentDescription = "Open Location")
-                            }
-                            
-                            IconButton(onClick = onDelete) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete")
-                            }
-                        }
                     }
                     
-                    // 路径信息（可选的，因为可能很长）
+                    // 路径信息
                     Text(
                         text = mod.path,
                         style = MaterialTheme.typography.bodySmall,
@@ -420,6 +417,29 @@ class ModViews {
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // 操作按钮 - 使用文字按钮
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        // 打开位置按钮 - 使用文字
+                        OutlinedButton(
+                            onClick = onOpenLocation,
+                            modifier = Modifier.padding(end = 8.dp)
+                        ) {
+                            Text("Open Location")
+                        }
+                        
+                        // 删除按钮 - 使用文字
+                        Button(
+                            onClick = onDelete
+                        ) {
+                            Text("Delete")
+                        }
+                    }
                 }
             }
         }
