@@ -172,7 +172,7 @@ class SaveDataViewModel : ViewModel() {
     }
 
     /**
-     * 导出存档到指定URI
+     * 导出存档到指定URI - 改进版本：先导出到应用目录，然后复制到URI
      */
     fun exportSaveDataToUri(uri: android.net.Uri, context: Context) {
         operationInProgress.value = true
@@ -180,31 +180,54 @@ class SaveDataViewModel : ViewModel() {
 
         Thread {
             try {
-                // 创建临时ZIP文件
-                val tempFile = File.createTempFile("save_export", ".zip", context.cacheDir)
-                val tempPath = tempFile.absolutePath
+                // 创建导出文件名
+                val fileName = "${currentGameName.value.replace("[^a-zA-Z0-9]".toRegex(), "_")}_save_${System.currentTimeMillis()}.zip"
+                val exportDir = File(context.getExternalFilesDir(null), "exports")
+                exportDir.mkdirs()
+                val exportPath = File(exportDir, fileName).absolutePath
 
-                // 使用原生方法导出到临时文件
-                val success = RyujinxNative.exportSaveData(currentTitleId.value, tempPath)
+                // 第一步：先导出到应用目录（这是已经验证能正常工作的方式）
+                val success = RyujinxNative.exportSaveData(currentTitleId.value, exportPath)
 
                 if (success) {
-                    // 将临时文件复制到目标URI
-                    context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                        tempFile.inputStream().use { inputStream ->
-                            inputStream.copyTo(outputStream)
+                    // 检查导出的文件是否存在且大小不为0
+                    val exportedFile = File(exportPath)
+                    if (exportedFile.exists() && exportedFile.length() > 0) {
+                        // 第二步：将成功导出的文件复制到用户选择的URI位置
+                        context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                            exportedFile.inputStream().use { inputStream ->
+                                // 使用缓冲区复制文件
+                                val buffer = ByteArray(8192)
+                                var bytesRead: Int
+                                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                                    outputStream.write(buffer, 0, bytesRead)
+                                }
+                                outputStream.flush()
+                            }
+                        }
+                        
+                        // 第三步：删除应用目录中的临时文件
+                        exportedFile.delete()
+                        
+                        operationInProgress.value = false
+                        operationSuccess.value = true
+                        operationMessage.value = "Save data exported successfully"
+                    } else {
+                        // 导出的文件有问题（不存在或大小为0）
+                        operationInProgress.value = false
+                        operationSuccess.value = false
+                        operationMessage.value = "Failed to export save data: exported file is empty or missing"
+                        // 清理可能存在的空文件
+                        if (exportedFile.exists()) {
+                            exportedFile.delete()
                         }
                     }
-                    
-                    // 删除临时文件
-                    tempFile.delete()
+                } else {
+                    operationInProgress.value = false
+                    operationSuccess.value = false
+                    operationMessage.value = "Failed to export save data"
                 }
-
-                operationInProgress.value = false
-                operationSuccess.value = success
-                operationMessage.value = if (success) 
-                    "Save data exported successfully" 
-                else 
-                    "Failed to export save data"
+                
                 showOperationResult.value = true
                 
             } catch (e: Exception) {
@@ -212,6 +235,16 @@ class SaveDataViewModel : ViewModel() {
                 operationSuccess.value = false
                 operationMessage.value = "Error exporting save data: ${e.message}"
                 showOperationResult.value = true
+                
+                // 清理可能存在的临时文件
+                try {
+                    val fileName = "${currentGameName.value.replace("[^a-zA-Z0-9]".toRegex(), "_")}_save_${System.currentTimeMillis()}.zip"
+                    val exportDir = File(context.getExternalFilesDir(null), "exports")
+                    val exportPath = File(exportDir, fileName).absolutePath
+                    File(exportPath).delete()
+                } catch (cleanupEx: Exception) {
+                    // 忽略清理错误
+                }
             }
         }.start()
     }
