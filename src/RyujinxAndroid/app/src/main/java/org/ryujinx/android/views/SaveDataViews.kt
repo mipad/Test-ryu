@@ -1,6 +1,7 @@
 package org.ryujinx.android.views
 
 import android.net.Uri
+import androidx.compose.ui.unit.dp
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
