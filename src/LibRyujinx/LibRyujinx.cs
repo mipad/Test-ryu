@@ -39,6 +39,8 @@ using LibRyujinx.Android;
 using System.IO.Compression;
 using LibHac.FsSrv;
 using System.Security.Cryptography;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace LibRyujinx
 {
@@ -47,6 +49,10 @@ namespace LibRyujinx
         internal static IHardwareDeviceDriver AudioDriver { get; set; } = new DummyHardwareDeviceDriver();
 
         private static readonly TitleUpdateMetadataJsonSerializerContext _titleSerializerContext = new(JsonHelper.GetDefaultSerializerOptions());
+        
+        // 添加 ModMetadata 序列化上下文
+        private static readonly JsonSerializerContext _modSerializerContext = new(JsonHelper.GetDefaultSerializerOptions());
+        
         public static SwitchDevice? SwitchDevice { get; set; }
 
         // 添加静态字段来存储画面比例
@@ -57,6 +63,34 @@ namespace LibRyujinx
 
         // 添加静态字段来存储系统时间偏移
         private static long _systemTimeOffset = 0;
+
+        // Mod 相关类型定义
+        public class ModInfo
+        {
+            public string Name { get; set; } = string.Empty;
+            public string Path { get; set; } = string.Empty;
+            public bool Enabled { get; set; }
+            public bool InExternalStorage { get; set; }
+            public ModType Type { get; set; }
+        }
+
+        public enum ModType
+        {
+            RomFs,
+            ExeFs
+        }
+
+        public class ModMetadata
+        {
+            public List<ModEntry> Mods { get; set; } = new List<ModEntry>();
+        }
+
+        public class ModEntry
+        {
+            public string Name { get; set; } = string.Empty;
+            public string Path { get; set; } = string.Empty;
+            public bool Enabled { get; set; }
+        }
 
         public static bool Initialize(string? basePath)
         {
@@ -167,6 +201,364 @@ namespace LibRyujinx
                 GameFps = context.Statistics.GetGameFrameRate(),
                 GameTime = context.Statistics.GetGameFrameTime()
             };
+        }
+
+        // ==================== Mod 管理功能 ====================
+
+        /// <summary>
+        /// 获取指定标题ID的Mod列表
+        /// </summary>
+        public static List<ModInfo> GetMods(string titleId)
+        {
+            var mods = new List<ModInfo>();
+            
+            if (SwitchDevice?.VirtualFileSystem == null)
+            {
+                return mods;
+            }
+
+            try
+            {
+                string[] modsBasePaths = { 
+                    Path.Combine(AppDataManager.BaseDirPath, "mods"),
+                    "/storage/emulated/0/Android/data/org.ryujinx.android/files/mods"
+                };
+
+                foreach (var basePath in modsBasePaths)
+                {
+                    if (!Directory.Exists(basePath))
+                        continue;
+
+                    var inExternal = basePath.StartsWith("/storage/emulated/0");
+                    var modCache = new ModLoader.ModCache();
+                    var contentsDir = new DirectoryInfo(Path.Combine(basePath, "contents"));
+                    
+                    if (contentsDir.Exists)
+                    {
+                        // 使用 ulong 类型的 titleId
+                        if (ulong.TryParse(titleId, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out ulong titleIdNum))
+                        {
+                            ModLoader.QueryContentsDir(modCache, contentsDir, titleIdNum);
+
+                            // 处理 romfs 目录
+                            foreach (var mod in modCache.RomfsDirs)
+                            {
+                                var modPath = mod.Path.Parent.FullName;
+                                var modName = mod.Name;
+                                
+                                if (mods.All(x => x.Path != modPath))
+                                {
+                                    mods.Add(new ModInfo
+                                    {
+                                        Name = modName,
+                                        Path = modPath,
+                                        Enabled = mod.Enabled,
+                                        InExternalStorage = inExternal,
+                                        Type = ModType.RomFs
+                                    });
+                                }
+                            }
+
+                            // 处理 romfs 容器
+                            foreach (var mod in modCache.RomfsContainers)
+                            {
+                                mods.Add(new ModInfo
+                                {
+                                    Name = mod.Name,
+                                    Path = mod.Path.FullName,
+                                    Enabled = mod.Enabled,
+                                    InExternalStorage = inExternal,
+                                    Type = ModType.RomFs
+                                });
+                            }
+
+                            // 处理 exefs 目录
+                            foreach (var mod in modCache.ExefsDirs)
+                            {
+                                var modPath = mod.Path.Parent.FullName;
+                                var modName = mod.Name;
+                                
+                                if (mods.All(x => x.Path != modPath))
+                                {
+                                    mods.Add(new ModInfo
+                                    {
+                                        Name = modName,
+                                        Path = modPath,
+                                        Enabled = mod.Enabled,
+                                        InExternalStorage = inExternal,
+                                        Type = ModType.ExeFs
+                                    });
+                                }
+                            }
+
+                            // 处理 exefs 容器
+                            foreach (var mod in modCache.ExefsContainers)
+                            {
+                                mods.Add(new ModInfo
+                                {
+                                    Name = mod.Name,
+                                    Path = mod.Path.FullName,
+                                    Enabled = mod.Enabled,
+                                    InExternalStorage = inExternal,
+                                    Type = ModType.ExeFs
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error getting mods: {ex.Message}");
+            }
+
+            return mods;
+        }
+
+        /// <summary>
+        /// 设置Mod启用状态
+        /// </summary>
+        public static bool SetModEnabled(string titleId, string modPath, bool enabled)
+        {
+            try
+            {
+                string modJsonPath = Path.Combine(AppDataManager.GamesDirPath, titleId, "mods.json");
+                
+                ModMetadata modData = new ModMetadata();
+                
+                // 如果文件存在，读取现有数据
+                if (File.Exists(modJsonPath))
+                {
+                    try
+                    {
+                        modData = JsonHelper.DeserializeFromFile(modJsonPath, _modSerializerContext.ModMetadata);
+                    }
+                    catch
+                    {
+                        modData = new ModMetadata();
+                    }
+                }
+
+                // 查找并更新Mod状态
+                var mod = modData.Mods.FirstOrDefault(m => m.Path == modPath);
+                if (mod != null)
+                {
+                    mod.Enabled = enabled;
+                }
+                else
+                {
+                    // 如果Mod不存在，添加新条目
+                    modData.Mods.Add(new ModEntry
+                    {
+                        Name = Path.GetFileName(modPath),
+                        Path = modPath,
+                        Enabled = enabled
+                    });
+                }
+
+                // 保存到文件
+                JsonHelper.SerializeToFile(modJsonPath, modData, _modSerializerContext.ModMetadata);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error setting mod enabled: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 删除Mod
+        /// </summary>
+        public static bool DeleteMod(string titleId, string modPath)
+        {
+            try
+            {
+                if (Directory.Exists(modPath))
+                {
+                    Directory.Delete(modPath, true);
+                    
+                    // 从mods.json中移除
+                    RemoveModFromJson(titleId, modPath);
+                    
+                    return true;
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error deleting mod: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 删除所有Mod
+        /// </summary>
+        public static bool DeleteAllMods(string titleId)
+        {
+            try
+            {
+                var mods = GetMods(titleId);
+                bool success = true;
+                
+                foreach (var mod in mods)
+                {
+                    if (!DeleteMod(titleId, mod.Path))
+                    {
+                        success = false;
+                    }
+                }
+                
+                return success;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error deleting all mods: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 从mods.json中移除Mod条目
+        /// </summary>
+        private static void RemoveModFromJson(string titleId, string modPath)
+        {
+            try
+            {
+                string modJsonPath = Path.Combine(AppDataManager.GamesDirPath, titleId, "mods.json");
+                
+                if (File.Exists(modJsonPath))
+                {
+                    var modData = JsonHelper.DeserializeFromFile(modJsonPath, _modSerializerContext.ModMetadata);
+                    modData.Mods.RemoveAll(m => m.Path == modPath);
+                    JsonHelper.SerializeToFile(modJsonPath, modData, _modSerializerContext.ModMetadata);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error removing mod from JSON: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 启用所有Mod
+        /// </summary>
+        public static bool EnableAllMods(string titleId)
+        {
+            try
+            {
+                var mods = GetMods(titleId);
+                bool success = true;
+                
+                foreach (var mod in mods)
+                {
+                    if (!SetModEnabled(titleId, mod.Path, true))
+                    {
+                        success = false;
+                    }
+                }
+                
+                return success;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error enabling all mods: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 禁用所有Mod
+        /// </summary>
+        public static bool DisableAllMods(string titleId)
+        {
+            try
+            {
+                var mods = GetMods(titleId);
+                bool success = true;
+                
+                foreach (var mod in mods)
+                {
+                    if (!SetModEnabled(titleId, mod.Path, false))
+                    {
+                        success = false;
+                    }
+                }
+                
+                return success;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error disabling all mods: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 添加Mod（从源目录复制到Mod目录）
+        /// </summary>
+        public static bool AddMod(string titleId, string sourcePath, string modName)
+        {
+            try
+            {
+                if (!Directory.Exists(sourcePath))
+                {
+                    return false;
+                }
+
+                // 确定目标路径
+                string targetBasePath = Path.Combine(AppDataManager.BaseDirPath, "mods", "contents", titleId);
+                string targetPath = Path.Combine(targetBasePath, modName);
+                
+                // 如果目标已存在，添加数字后缀
+                if (Directory.Exists(targetPath))
+                {
+                    int counter = 1;
+                    string newTargetPath;
+                    do
+                    {
+                        newTargetPath = $"{targetPath}_{counter}";
+                        counter++;
+                    } while (Directory.Exists(newTargetPath));
+                    targetPath = newTargetPath;
+                }
+
+                // 复制目录
+                CopyDirectory(sourcePath, targetPath);
+                
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error adding mod: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 复制目录及其所有内容
+        /// </summary>
+        private static void CopyDirectory(string sourceDir, string destinationDir)
+        {
+            var dir = new DirectoryInfo(sourceDir);
+            
+            if (!dir.Exists)
+                return;
+
+            Directory.CreateDirectory(destinationDir);
+
+            foreach (FileInfo file in dir.GetFiles())
+            {
+                string targetFilePath = Path.Combine(destinationDir, file.Name);
+                file.CopyTo(targetFilePath, true);
+            }
+
+            foreach (DirectoryInfo subDir in dir.GetDirectories())
+            {
+                string newDestinationDir = Path.Combine(destinationDir, subDir.Name);
+                CopyDirectory(subDir.FullName, newDestinationDir);
+            }
         }
 
         public static GameInfo? GetGameInfo(string? file)
@@ -1191,31 +1583,6 @@ namespace LibRyujinx
             catch (Exception ex)
             {
                 return false;
-            }
-        }
-
-        /// <summary>
-        /// 复制目录及其所有内容
-        /// </summary>
-        private static void CopyDirectory(string sourceDir, string destinationDir)
-        {
-            var dir = new DirectoryInfo(sourceDir);
-            
-            if (!dir.Exists)
-                return;
-
-            Directory.CreateDirectory(destinationDir);
-
-            foreach (FileInfo file in dir.GetFiles())
-            {
-                string targetFilePath = Path.Combine(destinationDir, file.Name);
-                file.CopyTo(targetFilePath, true);
-            }
-
-            foreach (DirectoryInfo subDir in dir.GetDirectories())
-            {
-                string newDestinationDir = Path.Combine(destinationDir, subDir.Name);
-                CopyDirectory(subDir.FullName, newDestinationDir);
             }
         }
 
