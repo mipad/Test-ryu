@@ -87,20 +87,20 @@ class ModViews {
             // 添加一个状态来跟踪是否已经显示了mod列表
             var modsLoaded by remember { mutableStateOf(false) }
             
-            // 使用OpenDocument而不是OpenDocumentTree，这样可以选择文件或文件夹
-            val filePickerLauncher = rememberLauncherForActivityResult(
-                ActivityResultContracts.OpenDocument()
+            // 使用OpenDocumentTree来选择文件夹而不是文件
+            val folderPickerLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenDocumentTree()
             ) { uri ->
                 uri?.let {
-                    // 获取文件路径
-                    val filePath = getFilePathFromUri(context, it)
-                    if (!filePath.isNullOrEmpty()) {
-                        selectedModPath = filePath
+                    // 获取文件夹路径
+                    val folderPath = getFolderPathFromUri(context, it)
+                    if (!folderPath.isNullOrEmpty()) {
+                        selectedModPath = folderPath
                         showAddModDialog = true
                     } else {
                         // 如果无法获取路径，显示错误
                         scope.launch {
-                            snackbarHostState.showSnackbar("无法获取文件路径")
+                            snackbarHostState.showSnackbar("无法获取文件夹路径")
                         }
                     }
                 }
@@ -163,8 +163,8 @@ class ModViews {
                 floatingActionButton = {
                     FloatingActionButton(
                         onClick = {
-                            // 启动文件选择器，允许选择任何类型的文件
-                            filePickerLauncher.launch(arrayOf("*/*"))
+                            // 启动文件夹选择器，选择整个文件夹
+                            folderPickerLauncher.launch(null)
                         }
                     ) {
                         Icon(Icons.Default.Add, contentDescription = "Add Mod")
@@ -355,6 +355,13 @@ class ModViews {
                     selectedPath = selectedModPath,
                     onConfirm = { modName ->
                         scope.launch {
+                            // 检查路径是否是文件夹
+                            val sourceFile = File(selectedModPath)
+                            if (!sourceFile.exists() || !sourceFile.isDirectory) {
+                                snackbarHostState.showSnackbar("请选择一个有效的文件夹")
+                                return@launch
+                            }
+                            
                             viewModel.addMod(titleId, selectedModPath, modName)
                             showAddModDialog = false
                             selectedModPath = ""
@@ -437,13 +444,14 @@ class ModViews {
                     
                     Spacer(modifier = Modifier.height(4.dp))
                     
-                    // 路径信息 - 允许换行显示
+                    // 路径信息 - 允许更多行显示
                     Text(
                         text = mod.path,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2, // 允许最多2行
-                        overflow = TextOverflow.Ellipsis
+                        maxLines = 4, // 增加到4行，允许更多换行
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
@@ -456,11 +464,11 @@ class ModViews {
             onDismiss: () -> Unit
         ) {
             var modName by remember { mutableStateOf("") }
-            val fileName = File(selectedPath).name
+            val folderName = File(selectedPath).name
             
             // 如果modName为空，设置默认值
             if (modName.isEmpty()) {
-                modName = fileName
+                modName = folderName
             }
             
             AlertDialog(
@@ -468,7 +476,7 @@ class ModViews {
                 title = { Text("Add Mod") },
                 text = {
                     Column {
-                        Text("Selected file: $selectedPath")
+                        Text("Selected folder: $selectedPath")
                         Spacer(modifier = Modifier.height(8.dp))
                         Text("Mod name:")
                         OutlinedTextField(
@@ -479,7 +487,7 @@ class ModViews {
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "This will copy the selected file/folder to the game's mod directory.",
+                            text = "This will copy the entire folder contents to the game's mod directory.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -501,25 +509,18 @@ class ModViews {
             )
         }
 
-        private fun getFilePathFromUri(context: Context, uri: Uri): String? {
+        private fun getFolderPathFromUri(context: Context, uri: Uri): String? {
             return try {
-                // 首先尝试直接获取路径
-                val path = uri.path
-                if (path != null && File(path).exists()) {
-                    return path
-                }
-                
-                // 如果直接路径不可用，使用ContentResolver
                 val contentResolver = context.contentResolver
                 val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 contentResolver.takePersistableUriPermission(uri, takeFlags)
                 
                 // 对于 DocumentFile，我们需要使用 DocumentsContract 来获取路径
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                    val documentId = android.provider.DocumentsContract.getDocumentId(uri)
+                    val documentId = android.provider.DocumentsContract.getTreeDocumentId(uri)
                     if (documentId.startsWith("primary:")) {
-                        val docPath = documentId.substringAfter("primary:")
-                        "/storage/emulated/0/$docPath"
+                        val path = documentId.substringAfter("primary:")
+                        "/storage/emulated/0/$path"
                     } else {
                         // 处理其他存储设备
                         uri.path
