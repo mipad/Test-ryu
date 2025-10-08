@@ -83,6 +83,9 @@ class ModViews {
             var showAddModDialog by remember { mutableStateOf(false) }
             var selectedModPath by remember { mutableStateOf("") }
             
+            // 添加一个状态来跟踪是否已经显示了mod列表
+            var modsLoaded by remember { mutableStateOf(false) }
+            
             // 文件夹选择启动器 - 用于添加mod
             val folderPickerLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.OpenDocumentTree()
@@ -96,9 +99,12 @@ class ModViews {
                 }
             }
 
-            // 加载Mod列表 - 确保每次都重新加载
+            // 加载Mod列表 - 使用延迟加载避免闪烁
             LaunchedEffect(titleId) {
+                // 延迟一小段时间再加载，避免UI闪烁
+                kotlinx.coroutines.delay(100)
                 viewModel.loadMods(titleId)
+                modsLoaded = true
             }
 
             // 显示错误消息
@@ -148,7 +154,7 @@ class ModViews {
                         .fillMaxSize()
                         .padding(paddingValues)
                 ) {
-                    if (viewModel.isLoading) {
+                    if (viewModel.isLoading && !modsLoaded) {
                         Column(
                             modifier = Modifier.fillMaxSize(),
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -164,7 +170,7 @@ class ModViews {
                                 .fillMaxSize()
                                 .padding(16.dp)
                         ) {
-                            // 统计信息和批量操作
+                            // 统计信息和删除所有按钮 - 放在左侧
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -175,39 +181,11 @@ class ModViews {
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                                 
-                                Row {
-                                    OutlinedButton(
-                                        onClick = {
-                                            scope.launch {
-                                                viewModel.enableAllMods(titleId)
-                                                // 重新加载列表以确保状态更新
-                                                viewModel.loadMods(titleId)
-                                            }
-                                        },
-                                        modifier = Modifier.padding(end = 8.dp)
-                                    ) {
-                                        Text("Enable All")
-                                    }
-                                    
-                                    OutlinedButton(
-                                        onClick = {
-                                            scope.launch {
-                                                viewModel.disableAllMods(titleId)
-                                                // 重新加载列表以确保状态更新
-                                                viewModel.loadMods(titleId)
-                                            }
-                                        },
-                                        modifier = Modifier.padding(end = 8.dp)
-                                    ) {
-                                        Text("Disable All")
-                                    }
-                                    
-                                    OutlinedButton(
-                                        onClick = { showDeleteAllDialog = true },
-                                        enabled = viewModel.mods.isNotEmpty()
-                                    ) {
-                                        Text("Delete All")
-                                    }
+                                OutlinedButton(
+                                    onClick = { showDeleteAllDialog = true },
+                                    enabled = viewModel.mods.isNotEmpty()
+                                ) {
+                                    Text("Delete All")
                                 }
                             }
                             
@@ -254,8 +232,7 @@ class ModViews {
                                                 onEnabledChanged = { enabled ->
                                                     scope.launch {
                                                         viewModel.setModEnabled(titleId, mod, enabled)
-                                                        // 重新加载列表以确保状态更新
-                                                        viewModel.loadMods(titleId)
+                                                        // 不重新加载列表，避免闪烁
                                                     }
                                                 },
                                                 onDelete = {
@@ -423,12 +400,12 @@ class ModViews {
                     
                     Spacer(modifier = Modifier.height(4.dp))
                     
-                    // 路径信息
+                    // 路径信息 - 允许换行显示
                     Text(
                         text = mod.path,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
+                        maxLines = 2, // 允许最多2行
                         overflow = TextOverflow.Ellipsis
                     )
                 }
@@ -456,6 +433,12 @@ class ModViews {
                             onValueChange = { modName = it },
                             modifier = Modifier.fillMaxWidth(),
                             placeholder = { Text("Enter mod name") }
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "This will copy the mod files to the game's mod directory.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 },
