@@ -21,9 +21,6 @@ class ModViewModel : ViewModel() {
     private val _errorMessage = mutableStateOf<String?>(null)
     val errorMessage: String? get() = _errorMessage.value
 
-    private val _debugInfo = mutableStateOf<String?>(null)
-    val debugInfo: String? get() = _debugInfo.value
-
     // 添加一个状态来跟踪是否已经加载过
     private val _hasLoaded = mutableStateOf(false)
     val hasLoaded: Boolean get() = _hasLoaded.value
@@ -32,13 +29,15 @@ class ModViewModel : ViewModel() {
     private var _parseFailed = false
 
     fun loadMods(titleId: String, forceRefresh: Boolean = false) {
+        var actualForceRefresh = forceRefresh
+        
         // 如果解析失败过，强制重新加载
         if (_parseFailed) {
-            forceRefresh = true
+            actualForceRefresh = true
             _parseFailed = false
         }
         
-        if (_hasLoaded.value && !forceRefresh) {
+        if (_hasLoaded.value && !actualForceRefresh) {
             Log.d("ModViewModel", "Mods already loaded, skipping")
             return
         }
@@ -241,23 +240,8 @@ class ModViewModel : ViewModel() {
         }
     }
 
-    fun getDebugInfo(titleId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val debugInfo = RyujinxNative.getModsDebug(titleId)
-                _debugInfo.value = debugInfo
-            } catch (e: Exception) {
-                _debugInfo.value = "Error getting debug info: ${e.message}"
-            }
-        }
-    }
-
     fun clearError() {
         _errorMessage.value = null
-    }
-
-    fun clearDebugInfo() {
-        _debugInfo.value = null
     }
 
     fun resetLoadedState() {
