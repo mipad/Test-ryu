@@ -85,6 +85,7 @@ class ModViews {
             var showDeleteDialog by remember { mutableStateOf<ModModel?>(null) }
             var showAddModDialog by remember { mutableStateOf(false) }
             var selectedModPath by remember { mutableStateOf("") }
+            var debugInfo by remember { mutableStateOf("") }
             
             // 文件夹选择启动器
             val folderPickerLauncher = rememberLauncherForActivityResult(
@@ -95,6 +96,10 @@ class ModViews {
                     if (!folderPath.isNullOrEmpty()) {
                         selectedModPath = folderPath
                         showAddModDialog = true
+                    } else {
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar("Failed to get folder path")
+                        }
                     }
                 }
             }
@@ -107,7 +112,7 @@ class ModViews {
             // 显示错误消息
             viewModel.errorMessage?.let { error ->
                 LaunchedEffect(error) {
-                    snackbarHostState.showSnackbar(error)
+                    snackbarHostState.showSnackbar("Error: $error")
                     viewModel.clearError()
                 }
             }
@@ -131,6 +136,21 @@ class ModViews {
                         navigationIcon = {
                             IconButton(onClick = { navController.popBackStack() }) {
                                 Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                            }
+                        },
+                        actions = {
+                            // 调试按钮
+                            IconButton(
+                                onClick = {
+                                    debugInfo = "Mods count: ${viewModel.mods.size}\n" +
+                                               "Selected: ${viewModel.selectedMods.size}\n" +
+                                               "Loading: ${viewModel.isLoading}"
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar(debugInfo)
+                                    }
+                                }
+                            ) {
+                                Icon(Icons.Default.Warning, contentDescription = "Debug Info")
                             }
                         }
                     )
@@ -186,7 +206,8 @@ class ModViews {
                                                 viewModel.enableAllMods(titleId)
                                             }
                                         },
-                                        modifier = Modifier.padding(end = 8.dp)
+                                        modifier = Modifier.padding(end = 8.dp),
+                                        enabled = viewModel.mods.isNotEmpty()
                                     ) {
                                         Text("Enable All")
                                     }
@@ -197,7 +218,8 @@ class ModViews {
                                                 viewModel.disableAllMods(titleId)
                                             }
                                         },
-                                        modifier = Modifier.padding(end = 8.dp)
+                                        modifier = Modifier.padding(end = 8.dp),
+                                        enabled = viewModel.mods.isNotEmpty()
                                     ) {
                                         Text("Disable All")
                                     }
