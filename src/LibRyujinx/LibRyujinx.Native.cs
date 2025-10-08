@@ -665,18 +665,15 @@ namespace LibRyujinx
                 var titleId = Marshal.PtrToStringAnsi(titleIdPtr);
                 var mods = GetMods(titleId);
                 
-                // 将Mod列表序列化为JSON字符串返回
-                var json = JsonSerializer.Serialize(mods, new JsonSerializerOptions 
-                { 
-                    WriteIndented = false,
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                });
+                // 使用源生成器进行序列化，避免反射
+                var json = JsonSerializer.Serialize(mods, _modSerializerContext.ListModInfo);
                 
                 return Marshal.StringToHGlobalAnsi(json);
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Error in ModsGetModsNative: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
                 return IntPtr.Zero;
             }
         }
@@ -694,6 +691,7 @@ namespace LibRyujinx
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Error in ModsSetEnabledNative: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
@@ -711,6 +709,7 @@ namespace LibRyujinx
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Error in ModsDeleteModNative: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
@@ -727,6 +726,7 @@ namespace LibRyujinx
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Error in ModsDeleteAllNative: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
@@ -743,6 +743,7 @@ namespace LibRyujinx
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Error in ModsEnableAllNative: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
@@ -759,6 +760,7 @@ namespace LibRyujinx
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Error in ModsDisableAllNative: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
@@ -777,6 +779,7 @@ namespace LibRyujinx
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Error in ModsAddModNative: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
