@@ -240,43 +240,41 @@ namespace LibRyujinx
 
             try
             {
-                Logger.Info?.Print(LogClass.ModLoader, $"开始扫描Mods，标题ID: {titleId}");
-                
                 string[] modsBasePaths = { 
                     Path.Combine(AppDataManager.BaseDirPath, "mods"),
                     "/storage/emulated/0/Android/data/org.ryujinx.android/files/mods"
                 };
 
-                Logger.Info?.Print(LogClass.ModLoader, $"扫描路径1: {modsBasePaths[0]}");
-                Logger.Info?.Print(LogClass.ModLoader, $"扫描路径2: {modsBasePaths[1]}");
+                Logger.Info?.Print(LogClass.ModLoader, $"Starting mod scan for titleId: {titleId}");
+                Logger.Info?.Print(LogClass.ModLoader, $"Base paths to scan: {string.Join(", ", modsBasePaths)}");
 
                 foreach (var basePath in modsBasePaths)
                 {
+                    Logger.Info?.Print(LogClass.ModLoader, $"Scanning base path: {basePath}");
+                    
                     if (!Directory.Exists(basePath))
                     {
-                        Logger.Warning?.Print(LogClass.ModLoader, $"Mod基础路径不存在: {basePath}");
+                        Logger.Warning?.Print(LogClass.ModLoader, $"Base path does not exist: {basePath}");
                         continue;
                     }
 
-                    Logger.Info?.Print(LogClass.ModLoader, $"正在扫描路径: {basePath}");
-                    
                     var inExternal = basePath.StartsWith("/storage/emulated/0");
                     var modCache = new ModLoader.ModCache();
                     var contentsDir = new DirectoryInfo(Path.Combine(basePath, "contents"));
                     
-                    Logger.Info?.Print(LogClass.ModLoader, $"Contents目录: {contentsDir.FullName}, 存在: {contentsDir.Exists}");
+                    Logger.Info?.Print(LogClass.ModLoader, $"Contents directory: {contentsDir.FullName}, Exists: {contentsDir.Exists}");
                     
                     if (contentsDir.Exists)
                     {
                         // 使用 ulong 类型的 titleId
                         if (ulong.TryParse(titleId, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out ulong titleIdNum))
                         {
-                            Logger.Info?.Print(LogClass.ModLoader, $"开始查询Contents目录，标题ID: {titleIdNum:X16}");
+                            Logger.Info?.Print(LogClass.ModLoader, $"Querying contents directory for titleId: {titleIdNum:X16}");
                             
                             // 修复：传递空的DLC列表作为第四个参数
                             ModLoader.QueryContentsDir(modCache, contentsDir, titleIdNum, new ulong[0]);
 
-                            Logger.Info?.Print(LogClass.ModLoader, $"扫描结果 - RomFs目录: {modCache.RomfsDirs.Count}, RomFs容器: {modCache.RomfsContainers.Count}, ExeFs目录: {modCache.ExefsDirs.Count}, ExeFs容器: {modCache.ExefsContainers.Count}");
+                            Logger.Info?.Print(LogClass.ModLoader, $"Found {modCache.RomfsDirs.Count} RomFs dirs, {modCache.ExefsDirs.Count} ExeFs dirs, {modCache.RomfsContainers.Count} RomFs containers, {modCache.ExefsContainers.Count} ExeFs containers");
 
                             // 处理 romfs 目录
                             foreach (var mod in modCache.RomfsDirs)
@@ -284,7 +282,7 @@ namespace LibRyujinx
                                 var modPath = mod.Path.Parent?.FullName ?? mod.Path.FullName;
                                 var modName = mod.Name;
                                 
-                                Logger.Info?.Print(LogClass.ModLoader, $"找到RomFs目录Mod: {modName}, 路径: {modPath}, 启用: {mod.Enabled}");
+                                Logger.Info?.Print(LogClass.ModLoader, $"Found RomFs directory mod: {modName} at {modPath}, Enabled: {mod.Enabled}");
                                 
                                 if (mods.All(x => x.Path != modPath))
                                 {
@@ -302,7 +300,7 @@ namespace LibRyujinx
                             // 处理 romfs 容器
                             foreach (var mod in modCache.RomfsContainers)
                             {
-                                Logger.Info?.Print(LogClass.ModLoader, $"找到RomFs容器Mod: {mod.Name}, 路径: {mod.Path.FullName}, 启用: {mod.Enabled}");
+                                Logger.Info?.Print(LogClass.ModLoader, $"Found RomFs container mod: {mod.Name} at {mod.Path.FullName}, Enabled: {mod.Enabled}");
                                 
                                 mods.Add(new ModInfo
                                 {
@@ -320,7 +318,7 @@ namespace LibRyujinx
                                 var modPath = mod.Path.Parent?.FullName ?? mod.Path.FullName;
                                 var modName = mod.Name;
                                 
-                                Logger.Info?.Print(LogClass.ModLoader, $"找到ExeFs目录Mod: {modName}, 路径: {modPath}, 启用: {mod.Enabled}");
+                                Logger.Info?.Print(LogClass.ModLoader, $"Found ExeFs directory mod: {modName} at {modPath}, Enabled: {mod.Enabled}");
                                 
                                 if (mods.All(x => x.Path != modPath))
                                 {
@@ -338,7 +336,7 @@ namespace LibRyujinx
                             // 处理 exefs 容器
                             foreach (var mod in modCache.ExefsContainers)
                             {
-                                Logger.Info?.Print(LogClass.ModLoader, $"找到ExeFs容器Mod: {mod.Name}, 路径: {mod.Path.FullName}, 启用: {mod.Enabled}");
+                                Logger.Info?.Print(LogClass.ModLoader, $"Found ExeFs container mod: {mod.Name} at {mod.Path.FullName}, Enabled: {mod.Enabled}");
                                 
                                 mods.Add(new ModInfo
                                 {
@@ -352,21 +350,25 @@ namespace LibRyujinx
                         }
                         else
                         {
-                            Logger.Error?.Print(LogClass.ModLoader, $"标题ID格式错误: {titleId}");
+                            Logger.Error?.Print(LogClass.ModLoader, $"Failed to parse titleId: {titleId}");
                         }
                     }
                     else
                     {
-                        Logger.Warning?.Print(LogClass.ModLoader, $"Contents目录不存在: {contentsDir.FullName}");
+                        Logger.Warning?.Print(LogClass.ModLoader, $"Contents directory does not exist: {contentsDir.FullName}");
                     }
                 }
-                
-                Logger.Info?.Print(LogClass.ModLoader, $"总共找到 {mods.Count} 个Mod");
+
+                Logger.Info?.Print(LogClass.ModLoader, $"Total mods found for {titleId}: {mods.Count}");
+                foreach (var mod in mods)
+                {
+                    Logger.Info?.Print(LogClass.ModLoader, $"  - {mod.Name} ({mod.Type}) at {mod.Path}, Enabled: {mod.Enabled}");
+                }
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"获取Mods时出错: {ex.Message}");
-                Logger.Error?.Print(LogClass.Application, $"堆栈跟踪: {ex.StackTrace}");
+                Logger.Error?.Print(LogClass.Application, $"Error getting mods: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
             }
 
             return mods;
@@ -379,10 +381,10 @@ namespace LibRyujinx
         {
             try
             {
-                Logger.Info?.Print(LogClass.ModLoader, $"设置Mod启用状态 - 标题ID: {titleId}, 路径: {modPath}, 启用: {enabled}");
+                Logger.Info?.Print(LogClass.ModLoader, $"Setting mod enabled: titleId={titleId}, modPath={modPath}, enabled={enabled}");
                 
                 string modJsonPath = Path.Combine(AppDataManager.GamesDirPath, titleId, "mods.json");
-                Logger.Info?.Print(LogClass.ModLoader, $"Mods.json路径: {modJsonPath}");
+                Logger.Info?.Print(LogClass.ModLoader, $"Mod JSON path: {modJsonPath}");
                 
                 ModMetadata modData = new ModMetadata();
                 
@@ -392,30 +394,30 @@ namespace LibRyujinx
                     try
                     {
                         modData = JsonHelper.DeserializeFromFile(modJsonPath, _modSerializerContext.ModMetadata);
-                        Logger.Info?.Print(LogClass.ModLoader, $"成功读取mods.json，包含 {modData.Mods.Count} 个Mod");
+                        Logger.Info?.Print(LogClass.ModLoader, $"Loaded existing mods.json with {modData.Mods.Count} mods");
                     }
                     catch (Exception ex)
                     {
-                        Logger.Warning?.Print(LogClass.ModLoader, $"读取mods.json失败: {ex.Message}");
+                        Logger.Warning?.Print(LogClass.ModLoader, $"Failed to deserialize mods.json: {ex.Message}");
                         modData = new ModMetadata();
                     }
                 }
                 else
                 {
-                    Logger.Warning?.Print(LogClass.ModLoader, "mods.json文件不存在，将创建新文件");
+                    Logger.Info?.Print(LogClass.ModLoader, "mods.json does not exist, creating new one");
                 }
 
                 // 查找并更新Mod状态
                 var mod = modData.Mods.FirstOrDefault(m => m.Path == modPath);
                 if (mod != null)
                 {
-                    Logger.Info?.Print(LogClass.ModLoader, $"找到现有Mod: {mod.Name}，更新启用状态为: {enabled}");
+                    Logger.Info?.Print(LogClass.ModLoader, $"Updating existing mod: {mod.Name}, Path: {mod.Path}");
                     mod.Enabled = enabled;
                 }
                 else
                 {
                     // 如果Mod不存在，添加新条目
-                    Logger.Info?.Print(LogClass.ModLoader, $"添加新Mod条目: {Path.GetFileName(modPath)}");
+                    Logger.Info?.Print(LogClass.ModLoader, $"Adding new mod entry: {Path.GetFileName(modPath)}");
                     modData.Mods.Add(new ModEntry
                     {
                         Name = Path.GetFileName(modPath),
@@ -425,13 +427,22 @@ namespace LibRyujinx
                 }
 
                 // 保存到文件
-                JsonHelper.SerializeToFile(modJsonPath, modData, _modSerializerContext.ModMetadata);
-                Logger.Info?.Print(LogClass.ModLoader, "成功保存mods.json");
-                return true;
+                try
+                {
+                    JsonHelper.SerializeToFile(modJsonPath, modData, _modSerializerContext.ModMetadata);
+                    Logger.Info?.Print(LogClass.ModLoader, $"Successfully saved mods.json with {modData.Mods.Count} mods");
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.ModLoader, $"Failed to save mods.json: {ex.Message}");
+                    return false;
+                }
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"设置Mod启用状态时出错: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Error setting mod enabled: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
@@ -443,27 +454,29 @@ namespace LibRyujinx
         {
             try
             {
-                Logger.Info?.Print(LogClass.ModLoader, $"删除Mod - 标题ID: {titleId}, 路径: {modPath}");
+                Logger.Info?.Print(LogClass.ModLoader, $"Deleting mod: titleId={titleId}, modPath={modPath}");
                 
                 if (Directory.Exists(modPath))
                 {
-                    Logger.Info?.Print(LogClass.ModLoader, "删除Mod目录");
+                    Logger.Info?.Print(LogClass.ModLoader, $"Deleting directory: {modPath}");
                     Directory.Delete(modPath, true);
                     
                     // 从mods.json中移除
                     RemoveModFromJson(titleId, modPath);
                     
+                    Logger.Info?.Print(LogClass.ModLoader, "Mod directory deleted successfully");
                     return true;
                 }
                 else
                 {
-                    Logger.Warning?.Print(LogClass.ModLoader, "Mod目录不存在");
+                    Logger.Warning?.Print(LogClass.ModLoader, $"Mod directory does not exist: {modPath}");
                 }
                 return false;
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"删除Mod时出错: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Error deleting mod: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
@@ -475,26 +488,30 @@ namespace LibRyujinx
         {
             try
             {
-                Logger.Info?.Print(LogClass.ModLoader, $"删除所有Mod - 标题ID: {titleId}");
+                Logger.Info?.Print(LogClass.ModLoader, $"Deleting all mods for titleId: {titleId}");
+                
                 var mods = GetMods(titleId);
-                Logger.Info?.Print(LogClass.ModLoader, $"找到 {mods.Count} 个Mod待删除");
                 bool success = true;
+                
+                Logger.Info?.Print(LogClass.ModLoader, $"Found {mods.Count} mods to delete");
                 
                 foreach (var mod in mods)
                 {
-                    Logger.Info?.Print(LogClass.ModLoader, $"删除Mod: {mod.Name}");
+                    Logger.Info?.Print(LogClass.ModLoader, $"Deleting mod: {mod.Name}");
                     if (!DeleteMod(titleId, mod.Path))
                     {
-                        Logger.Warning?.Print(LogClass.ModLoader, $"删除Mod失败: {mod.Name}");
+                        Logger.Warning?.Print(LogClass.ModLoader, $"Failed to delete mod: {mod.Name}");
                         success = false;
                     }
                 }
                 
+                Logger.Info?.Print(LogClass.ModLoader, $"Delete all mods completed. Success: {success}");
                 return success;
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"删除所有Mod时出错: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Error deleting all mods: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
@@ -506,34 +523,29 @@ namespace LibRyujinx
         {
             try
             {
+                Logger.Info?.Print(LogClass.ModLoader, $"Removing mod from JSON: titleId={titleId}, modPath={modPath}");
+                
                 string modJsonPath = Path.Combine(AppDataManager.GamesDirPath, titleId, "mods.json");
-                Logger.Info?.Print(LogClass.ModLoader, $"从mods.json移除Mod: {modPath}");
                 
                 if (File.Exists(modJsonPath))
                 {
                     var modData = JsonHelper.DeserializeFromFile(modJsonPath, _modSerializerContext.ModMetadata);
-                    int beforeCount = modData.Mods.Count;
+                    int initialCount = modData.Mods.Count;
                     modData.Mods.RemoveAll(m => m.Path == modPath);
-                    int afterCount = modData.Mods.Count;
+                    int removedCount = initialCount - modData.Mods.Count;
                     
-                    if (beforeCount != afterCount)
-                    {
-                        JsonHelper.SerializeToFile(modJsonPath, modData, _modSerializerContext.ModMetadata);
-                        Logger.Info?.Print(LogClass.ModLoader, $"从mods.json成功移除Mod，剩余 {afterCount} 个Mod");
-                    }
-                    else
-                    {
-                        Logger.Warning?.Print(LogClass.ModLoader, "未找到要移除的Mod条目");
-                    }
+                    JsonHelper.SerializeToFile(modJsonPath, modData, _modSerializerContext.ModMetadata);
+                    Logger.Info?.Print(LogClass.ModLoader, $"Removed {removedCount} mod entries from mods.json");
                 }
                 else
                 {
-                    Logger.Warning?.Print(LogClass.ModLoader, "mods.json文件不存在");
+                    Logger.Warning?.Print(LogClass.ModLoader, "mods.json does not exist, nothing to remove");
                 }
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"从JSON移除Mod时出错: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Error removing mod from JSON: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
             }
         }
 
@@ -544,26 +556,30 @@ namespace LibRyujinx
         {
             try
             {
-                Logger.Info?.Print(LogClass.ModLoader, $"启用所有Mod - 标题ID: {titleId}");
+                Logger.Info?.Print(LogClass.ModLoader, $"Enabling all mods for titleId: {titleId}");
+                
                 var mods = GetMods(titleId);
-                Logger.Info?.Print(LogClass.ModLoader, $"找到 {mods.Count} 个Mod待启用");
                 bool success = true;
+                
+                Logger.Info?.Print(LogClass.ModLoader, $"Found {mods.Count} mods to enable");
                 
                 foreach (var mod in mods)
                 {
-                    Logger.Info?.Print(LogClass.ModLoader, $"启用Mod: {mod.Name}");
+                    Logger.Info?.Print(LogClass.ModLoader, $"Enabling mod: {mod.Name}");
                     if (!SetModEnabled(titleId, mod.Path, true))
                     {
-                        Logger.Warning?.Print(LogClass.ModLoader, $"启用Mod失败: {mod.Name}");
+                        Logger.Warning?.Print(LogClass.ModLoader, $"Failed to enable mod: {mod.Name}");
                         success = false;
                     }
                 }
                 
+                Logger.Info?.Print(LogClass.ModLoader, $"Enable all mods completed. Success: {success}");
                 return success;
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"启用所有Mod时出错: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Error enabling all mods: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
@@ -575,26 +591,30 @@ namespace LibRyujinx
         {
             try
             {
-                Logger.Info?.Print(LogClass.ModLoader, $"禁用所有Mod - 标题ID: {titleId}");
+                Logger.Info?.Print(LogClass.ModLoader, $"Disabling all mods for titleId: {titleId}");
+                
                 var mods = GetMods(titleId);
-                Logger.Info?.Print(LogClass.ModLoader, $"找到 {mods.Count} 个Mod待禁用");
                 bool success = true;
+                
+                Logger.Info?.Print(LogClass.ModLoader, $"Found {mods.Count} mods to disable");
                 
                 foreach (var mod in mods)
                 {
-                    Logger.Info?.Print(LogClass.ModLoader, $"禁用Mod: {mod.Name}");
+                    Logger.Info?.Print(LogClass.ModLoader, $"Disabling mod: {mod.Name}");
                     if (!SetModEnabled(titleId, mod.Path, false))
                     {
-                        Logger.Warning?.Print(LogClass.ModLoader, $"禁用Mod失败: {mod.Name}");
+                        Logger.Warning?.Print(LogClass.ModLoader, $"Failed to disable mod: {mod.Name}");
                         success = false;
                     }
                 }
                 
+                Logger.Info?.Print(LogClass.ModLoader, $"Disable all mods completed. Success: {success}");
                 return success;
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"禁用所有Mod时出错: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Error disabling all mods: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
@@ -606,24 +626,25 @@ namespace LibRyujinx
         {
             try
             {
-                Logger.Info?.Print(LogClass.ModLoader, $"添加Mod - 标题ID: {titleId}, 源路径: {sourcePath}, Mod名称: {modName}");
+                Logger.Info?.Print(LogClass.ModLoader, $"Adding mod: titleId={titleId}, sourcePath={sourcePath}, modName={modName}");
                 
                 if (!Directory.Exists(sourcePath))
                 {
-                    Logger.Error?.Print(LogClass.ModLoader, $"源目录不存在: {sourcePath}");
+                    Logger.Error?.Print(LogClass.ModLoader, $"Source directory does not exist: {sourcePath}");
                     return false;
                 }
 
                 // 确定目标路径
                 string targetBasePath = Path.Combine(AppDataManager.BaseDirPath, "mods", "contents", titleId);
-                Logger.Info?.Print(LogClass.ModLoader, $"目标基础路径: {targetBasePath}");
                 string targetPath = Path.Combine(targetBasePath, modName);
-                Logger.Info?.Print(LogClass.ModLoader, $"目标路径: {targetPath}");
+                
+                Logger.Info?.Print(LogClass.ModLoader, $"Target base path: {targetBasePath}");
+                Logger.Info?.Print(LogClass.ModLoader, $"Target path: {targetPath}");
                 
                 // 如果目标已存在，添加数字后缀
                 if (Directory.Exists(targetPath))
                 {
-                    Logger.Warning?.Print(LogClass.ModLoader, $"目标路径已存在，添加数字后缀");
+                    Logger.Info?.Print(LogClass.ModLoader, "Target path already exists, adding suffix");
                     int counter = 1;
                     string newTargetPath;
                     do
@@ -632,20 +653,20 @@ namespace LibRyujinx
                         counter++;
                     } while (Directory.Exists(newTargetPath));
                     targetPath = newTargetPath;
-                    Logger.Info?.Print(LogClass.ModLoader, $"新目标路径: {targetPath}");
+                    Logger.Info?.Print(LogClass.ModLoader, $"Using new target path: {targetPath}");
                 }
 
                 // 复制目录
-                Logger.Info?.Print(LogClass.ModLoader, "开始复制目录");
+                Logger.Info?.Print(LogClass.ModLoader, $"Copying directory from {sourcePath} to {targetPath}");
                 CopyDirectory(sourcePath, targetPath);
-                Logger.Info?.Print(LogClass.ModLoader, "目录复制完成");
                 
+                Logger.Info?.Print(LogClass.ModLoader, "Mod added successfully");
                 return true;
             }
             catch (Exception ex)
             {
-                Logger.Error?.Print(LogClass.Application, $"添加Mod时出错: {ex.Message}");
-                Logger.Error?.Print(LogClass.Application, $"堆栈跟踪: {ex.StackTrace}");
+                Logger.Error?.Print(LogClass.Application, $"Error adding mod: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
@@ -659,35 +680,30 @@ namespace LibRyujinx
             
             if (!dir.Exists)
             {
-                Logger.Error?.Print(LogClass.ModLoader, $"源目录不存在: {sourceDir}");
+                Logger.Warning?.Print(LogClass.ModLoader, $"Source directory does not exist: {sourceDir}");
                 return;
             }
 
-            Logger.Info?.Print(LogClass.ModLoader, $"创建目标目录: {destinationDir}");
+            Logger.Info?.Print(LogClass.ModLoader, $"Creating destination directory: {destinationDir}");
             Directory.CreateDirectory(destinationDir);
 
             foreach (FileInfo file in dir.GetFiles())
             {
                 string targetFilePath = Path.Combine(destinationDir, file.Name);
-                Logger.Info?.Print(LogClass.ModLoader, $"复制文件: {file.Name} -> {targetFilePath}");
+                Logger.Info?.Print(LogClass.ModLoader, $"Copying file: {file.Name} to {targetFilePath}");
                 file.CopyTo(targetFilePath, true);
             }
 
             foreach (DirectoryInfo subDir in dir.GetDirectories())
             {
                 string newDestinationDir = Path.Combine(destinationDir, subDir.Name);
-                Logger.Info?.Print(LogClass.ModLoader, $"递归复制子目录: {subDir.Name}");
+                Logger.Info?.Print(LogClass.ModLoader, $"Copying subdirectory: {subDir.Name} to {newDestinationDir}");
                 CopyDirectory(subDir.FullName, newDestinationDir);
             }
         }
 
-        // 其余代码保持不变...
-        // [原有的大量代码保持不变，包括 GetGameInfo, GetDlcTitleId, GetCheats 等方法]
-        // 为了节省空间，这里省略了未修改的部分
-
         public static GameInfo? GetGameInfo(string? file)
         {
-            // 原有实现保持不变
             if (string.IsNullOrWhiteSpace(file))
             {
                 return new GameInfo();
@@ -700,42 +716,1414 @@ namespace LibRyujinx
 
         public static GameInfo? GetGameInfo(Stream gameStream, string extension)
         {
-            // 原有实现保持不变
             if (SwitchDevice == null)
             {
                 return null;
             }
-            // ... 其余原有代码
+            GameInfo gameInfo = GetDefaultInfo(gameStream);
+
+            const Language TitleLanguage = Language.SimplifiedChinese;
+
+            BlitStruct<ApplicationControlProperty> controlHolder = new(1);
+
+            try
+            {
+                try
+                {
+                    if (extension == "nsp" || extension == "pfs0" || extension == "xci")
+                    {
+                        IFileSystem pfs;
+
+                        bool isExeFs = false;
+
+                        if (extension == "xci")
+                        {
+                            Xci xci = new(SwitchDevice.VirtualFileSystem.KeySet, gameStream.AsStorage());
+
+                            pfs = xci.OpenPartition(XciPartitionType.Secure);
+                        }
+                        else
+                        {
+                            var pfsTemp = new PartitionFileSystem();
+                            pfsTemp.Initialize(gameStream.AsStorage()).ThrowIfFailure();
+                            pfs = pfsTemp;
+
+                            // If the NSP doesn't have a main NCA, decrement the number of applications found and then continue to the next application.
+                            bool hasMainNca = false;
+
+                            foreach (DirectoryEntryEx fileEntry in pfs.EnumerateEntries("/", "*"))
+                            {
+                                if (Path.GetExtension(fileEntry.FullPath).ToLower() == ".nca")
+                                {
+                                    using UniqueRef<IFile> ncaFile = new();
+
+                                    pfs.OpenFile(ref ncaFile.Ref, fileEntry.FullPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
+
+                                    Nca nca = new(SwitchDevice.VirtualFileSystem.KeySet, ncaFile.Get.AsStorage());
+                                    int dataIndex = Nca.GetSectionIndexFromType(NcaSectionType.Data, NcaContentType.Program);
+
+                                    // Some main NCAs don't have a data partition, so check if the partition exists before opening it
+                                    if (nca.Header.ContentType == NcaContentType.Program && !(nca.SectionExists(NcaSectionType.Data) && nca.Header.GetFsHeader(dataIndex).IsPatchSection()))
+                                    {
+                                        hasMainNca = true;
+
+                                        break;
+                                    }
+                                }
+                                else if (Path.GetFileNameWithoutExtension(fileEntry.FullPath) == "main")
+                                {
+                                    isExeFs = true;
+                                }
+                            }
+
+                            if (!hasMainNca && !isExeFs)
+                            {
+                                return null;
+                            }
+                        }
+
+                        if (isExeFs)
+                        {
+                            using UniqueRef<IFile> npdmFile = new();
+
+                            Result result = pfs.OpenFile(ref npdmFile.Ref, "/main.npdm".ToU8Span(), OpenMode.Read);
+
+                            if (ResultFs.PathNotFound.Includes(result))
+                            {
+                                Npdm npdm = new(npdmFile.Get.AsStream());
+
+                                gameInfo.TitleName = npdm.TitleName;
+                                gameInfo.TitleId = npdm.Aci0.TitleId.ToString("x16");
+                            }
+                        }
+                        else
+                        {
+                            GetControlFsAndTitleId(pfs, out IFileSystem? controlFs, out string? id);
+
+                            gameInfo.TitleId = id;
+
+                            if (controlFs == null)
+                            {
+                                return null;
+                            }
+
+                            // Check if there is an update available.
+                            if (IsUpdateApplied(gameInfo.TitleId, out IFileSystem? updatedControlFs))
+                            {
+                                // Replace the original ControlFs by the updated one.
+                                controlFs = updatedControlFs;
+                            }
+
+                            ReadControlData(controlFs, controlHolder.ByteSpan);
+
+                            GetGameInformation(ref controlHolder.Value, out gameInfo.TitleName, out _, out gameInfo.Developer, out gameInfo.Version);
+
+                            // Read the icon from the ControlFS and store it as a byte array
+                            try
+                            {
+                                using UniqueRef<IFile> icon = new();
+
+                                controlFs?.OpenFile(ref icon.Ref, $"/icon_{TitleLanguage}.dat".ToU8Span(), OpenMode.Read).ThrowIfFailure();
+
+                                using MemoryStream stream = new();
+
+                                icon.Get.AsStream().CopyTo(stream);
+                                gameInfo.Icon = stream.ToArray();
+                            }
+                            catch (HorizonResultException)
+                            {
+                                foreach (DirectoryEntryEx entry in controlFs.EnumerateEntries("/", "*"))
+                                {
+                                    if (entry.Name == "control.nacp")
+                                    {
+                                        continue;
+                                    }
+
+                                    using var icon = new UniqueRef<IFile>();
+
+                                    controlFs?.OpenFile(ref icon.Ref, entry.FullPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
+
+                                    using MemoryStream stream = new();
+
+                                    icon.Get.AsStream().CopyTo(stream);
+                                    gameInfo.Icon = stream.ToArray();
+
+                                    if (gameInfo.Icon != null)
+                                    {
+                                        break;
+                                    }
+                                }
+
+                            }
+                        }
+                    }
+                    else if (extension == "nro")
+                    {
+                        BinaryReader reader = new(gameStream);
+
+                        byte[] Read(long position, int size)
+                        {
+                            gameStream.Seek(position, SeekOrigin.Begin);
+
+                            return reader.ReadBytes(size);
+                        }
+
+                        gameStream.Seek(24, SeekOrigin.Begin);
+
+                        int assetOffset = reader.ReadInt32();
+
+                        if (Encoding.ASCII.GetString(Read(assetOffset, 4)) == "ASET")
+                        {
+                            byte[] iconSectionInfo = Read(assetOffset + 8, 0x10);
+
+                            long iconOffset = BitConverter.ToInt64(iconSectionInfo, 0);
+                            long iconSize = BitConverter.ToInt64(iconSectionInfo, 8);
+
+                            ulong nacpOffset = reader.ReadUInt64();
+                            ulong nacpSize = reader.ReadUInt64();
+
+                            // Reads and stores game icon as byte array
+                            if (iconSize > 0)
+                            {
+                                gameInfo.Icon = Read(assetOffset + iconOffset, (int)iconSize);
+                            }
+
+                            // Read the NACP data
+                            Read(assetOffset + (int)nacpOffset, (int)nacpSize).AsSpan().CopyTo(controlHolder.ByteSpan);
+
+                            GetGameInformation(ref controlHolder.Value, out gameInfo.TitleName, out _, out gameInfo.Developer, out gameInfo.Version);
+                        }
+                    }
+                }
+                catch (MissingKeyException exception)
+                {
+                }
+                catch (InvalidDataException exception)
+                {
+                }
+                catch (Exception exception)
+                {
+                    return null;
+                }
+            }
+            catch (IOException exception)
+            {
+            }
+
+            void ReadControlData(IFileSystem? controlFs, Span<byte> outProperty)
+            {
+                using UniqueRef<IFile> controlFile = new();
+
+                controlFs?.OpenFile(ref controlFile.Ref, "/control.nacp".ToU8Span(), OpenMode.Read).ThrowIfFailure();
+                controlFile.Get.Read(out _, 0, outProperty, ReadOption.None).ThrowIfFailure();
+            }
+
+            void GetGameInformation(ref ApplicationControlProperty controlData, out string? titleName, out string titleId, out string? publisher, out string? version)
+            {
+                _ = Enum.TryParse(TitleLanguage.ToString(), out TitleLanguage desiredTitleLanguage);
+
+                if (controlData.Title.Length > (int)desiredTitleLanguage)
+                {
+                    titleName = controlData.Title[(int)desiredTitleLanguage].NameString.ToString();
+                    publisher = controlData.Title[(int)desiredTitleLanguage].PublisherString.ToString();
+                }
+                else
+                {   
+                    titleName = null;
+                    publisher = null;
+                }
+
+                if (string.IsNullOrWhiteSpace(titleName))
+                {
+                    foreach (ref readonly var controlTitle in controlData.Title)
+                    {
+                        if (!controlTitle.NameString.IsEmpty())
+                        {
+                            titleName = controlTitle.NameString.ToString();
+
+                            break;
+                        }
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(publisher))
+                {
+                    foreach (ref readonly var controlTitle in controlData.Title)
+                    {
+                        if (!controlTitle.PublisherString.IsEmpty())
+                        {
+                            publisher = controlTitle.PublisherString.ToString();
+
+                            break;
+                        }
+                    }
+                }
+
+                if (controlData.PresenceGroupId != 0)
+                {
+                    titleId = controlData.PresenceGroupId.ToString("x16");
+                }
+                else if (controlData.SaveDataOwnerId != 0)
+                {
+                    titleId = controlData.SaveDataOwnerId.ToString();
+                }
+                else if (controlData.AddOnContentBaseId != 0)
+                {
+                    titleId = (controlData.AddOnContentBaseId - 0x1000).ToString("x16");
+                }
+                else
+                {
+                    titleId = "0000000000000000";
+                }
+
+                version = controlData.DisplayVersionString.ToString();
+            }
+
+            void GetControlFsAndTitleId(IFileSystem pfs, out IFileSystem? controlFs, out string? titleId)
+            {
+                if (SwitchDevice == null)
+                {
+                    controlFs = null;
+                    titleId = null;
+                    return;
+                }
+                (_, _, Nca? controlNca) = GetGameData(SwitchDevice.VirtualFileSystem, pfs, 0);
+
+                if (controlNca == null)
+                {
+                }
+
+                // Return the ControlFS
+                controlFs = controlNca?.OpenFileSystem(NcaSectionType.Data, IntegrityCheckLevel.None);
+                titleId = controlNca?.Header.TitleId.ToString("x16");
+            }
+
+            (Nca? mainNca, Nca? patchNca, Nca? controlNca) GetGameData(VirtualFileSystem fileSystem, IFileSystem pfs, int programIndex)
+            {
+                Nca? mainNca = null;
+                Nca? patchNca = null;
+                Nca? controlNca = null;
+
+                fileSystem.ImportTickets(pfs);
+
+                foreach (DirectoryEntryEx fileEntry in pfs.EnumerateEntries("/", "*.nca"))
+                {
+                    using var ncaFile = new UniqueRef<IFile>();
+
+                    pfs.OpenFile(ref ncaFile.Ref, fileEntry.FullPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
+
+                    Nca nca = new(fileSystem.KeySet, ncaFile.Release().AsStorage());
+
+                    int ncaProgramIndex = (int)(nca.Header.TitleId & 0xF);
+
+                    if (ncaProgramIndex != programIndex)
+                    {
+                        continue;
+                    }
+
+                    if (nca.Header.ContentType == NcaContentType.Program)
+                    {
+                        int dataIndex = Nca.GetSectionIndexFromType(NcaSectionType.Data, NcaContentType.Program);
+
+                        if (nca.SectionExists(NcaSectionType.Data) && nca.Header.GetFsHeader(dataIndex).IsPatchSection())
+                        {
+                            patchNca = nca;
+                        }
+                        else
+                        {
+                            mainNca = nca;
+                        }
+                    }
+                    else if (nca.Header.ContentType == NcaContentType.Control)
+                    {
+                        controlNca = nca;
+                    }
+                }
+
+                return (mainNca, patchNca, controlNca);
+            }
+
+            bool IsUpdateApplied(string? titleId, out IFileSystem? updatedControlFs)
+            {
+                updatedControlFs = null;
+
+                string? updatePath = "(unknown)";
+
+                if (SwitchDevice?.VirtualFileSystem == null)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    (Nca? patchNca, Nca? controlNca) = GetGameUpdateData(SwitchDevice.VirtualFileSystem, titleId, 0, out updatePath);
+
+                    if (patchNca != null && controlNca != null)
+                    {
+                        updatedControlFs = controlNca.OpenFileSystem(NcaSectionType.Data, IntegrityCheckLevel.None);
+
+                        return true;
+                    }
+                }
+                catch (InvalidDataException)
+                {
+                }
+                catch (MissingKeyException exception)
+                {
+                }
+
+                return false;
+            }
+
+            (Nca? patch, Nca? control) GetGameUpdateData(VirtualFileSystem fileSystem, string? titleId, int programIndex, out string? updatePath)
+            {
+                updatePath = null;
+
+                if (ulong.TryParse(titleId, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out ulong titleIdBase))
+                {
+                    // Clear the program index part.
+                    titleIdBase &= ~0xFUL;
+
+                    // Load update information if exists.
+                    string titleUpdateMetadataPath = Path.Combine(AppDataManager.GamesDirPath, titleIdBase.ToString("x16"), "updates.json");
+
+                    if (File.Exists(titleUpdateMetadataPath))
+                    {
+                        updatePath = JsonHelper.DeserializeFromFile(titleUpdateMetadataPath, _titleSerializerContext.TitleUpdateMetadata).Selected;
+
+                        if (File.Exists(updatePath))
+                        {
+                            FileStream file = new(updatePath, FileMode.Open, FileAccess.Read);
+                            PartitionFileSystem nsp = new();
+                            nsp.Initialize(file.AsStorage()).ThrowIfFailure();
+
+                            return GetGameUpdateDataFromPartition(fileSystem, nsp, titleIdBase.ToString("x16"), programIndex);
+                        }
+                    }
+                }
+
+                return (null, null);
+            }
+
+            (Nca? patchNca, Nca? controlNca) GetGameUpdateDataFromPartition(VirtualFileSystem fileSystem, PartitionFileSystem pfs, string titleId, int programIndex)
+            {
+                Nca? patchNca = null;
+                Nca? controlNca = null;
+
+                fileSystem.ImportTickets(pfs);
+
+                foreach (DirectoryEntryEx fileEntry in pfs.EnumerateEntries("/", "*.nca"))
+                {
+                    using var ncaFile = new UniqueRef<IFile>();
+
+                    pfs.OpenFile(ref ncaFile.Ref, fileEntry.FullPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
+
+                    Nca nca = new(fileSystem.KeySet, ncaFile.Release().AsStorage());
+
+                    int ncaProgramIndex = (int)(nca.Header.TitleId & 0xF);
+
+                    if (ncaProgramIndex != programIndex)
+                    {
+                        continue;
+                    }
+
+                    if ($"{nca.Header.TitleId.ToString("x16")[..^3]}000" != titleId)
+                    {
+                        break;
+                    }
+
+                    if (nca.Header.ContentType == NcaContentType.Program)
+                    {
+                        patchNca = nca;
+                    }
+                    else if (nca.Header.ContentType == NcaContentType.Control)
+                    {
+                        controlNca = nca;
+                    }
+                }
+
+                return (patchNca, controlNca);
+            }
+
+            return gameInfo;
         }
 
-        // 其余方法保持不变...
+        private static GameInfo GetDefaultInfo(Stream gameStream)
+        {
+            return new GameInfo
+            {
+                FileSize = gameStream.Length * 0.000000000931,
+                TitleName = "Unknown",
+                TitleId = "0000000000000000",
+                Developer = "Unknown",
+                Version = "0",
+                Icon = null
+            };
+        }
+
+        public static string GetDlcTitleId(string path, string ncaPath)
+        {
+            if (File.Exists(path))
+            {
+                using FileStream containerFile = File.OpenRead(path);
+
+                PartitionFileSystem partitionFileSystem = new();
+                partitionFileSystem.Initialize(containerFile.AsStorage()).ThrowIfFailure();
+
+                SwitchDevice.VirtualFileSystem.ImportTickets(partitionFileSystem);
+
+                using UniqueRef<IFile> ncaFile = new();
+
+                partitionFileSystem.OpenFile(ref ncaFile.Ref, ncaPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
+
+                // 修改：使用条件性完整性检查
+                IntegrityCheckLevel checkLevel = SwitchDevice.EnableFsIntegrityChecks ? 
+                    IntegrityCheckLevel.ErrorOnInvalid : IntegrityCheckLevel.None;
+                
+                Nca nca = TryOpenNca(ncaFile.Get.AsStorage(), ncaPath, checkLevel);
+                if (nca != null)
+                {
+                    return nca.Header.TitleId.ToString("X16");
+                }
+            }
+            return string.Empty;
+        }
+
+        // 修改 TryOpenNca 方法以接受完整性检查参数
+        private static Nca TryOpenNca(IStorage ncaStorage, string containerPath, IntegrityCheckLevel checkLevel = IntegrityCheckLevel.None)
+        {
+            try
+            {
+                var nca = new Nca(SwitchDevice.VirtualFileSystem.KeySet, ncaStorage);
+                return nca;
+            }
+            catch (Exception ex)
+            {
+                return null;
+            }
+        }
+
+        public static List<string> GetDlcContentList(string path, ulong titleId)
+        {
+            if (!File.Exists(path))
+                return new List<string>();
+
+            using FileStream containerFile = File.OpenRead(path);
+
+            PartitionFileSystem partitionFileSystem = new();
+            partitionFileSystem.Initialize(containerFile.AsStorage()).ThrowIfFailure();
+
+            SwitchDevice.VirtualFileSystem.ImportTickets(partitionFileSystem);
+            List<string> paths = new List<string>();
+
+            foreach (DirectoryEntryEx fileEntry in partitionFileSystem.EnumerateEntries("/", "*.nca"))
+            {
+                using var ncaFile = new UniqueRef<IFile>();
+
+                partitionFileSystem.OpenFile(ref ncaFile.Ref, fileEntry.FullPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
+
+                Nca nca = TryOpenNca(ncaFile.Get.AsStorage(), path);
+                if (nca == null)
+                {
+                    continue;
+                }
+
+                if (nca.Header.ContentType == NcaContentType.PublicData)
+                {
+                    if ((nca.Header.TitleId & 0xFFFFFFFFFFFFE000) != titleId)
+                    {
+                        break;
+                    }
+
+                    paths.Add(fileEntry.FullPath);
+            }
+            }
+
+            return paths;
+        }
+
+        public static void SetupUiHandler()
+        {
+            if (SwitchDevice is { } switchDevice)
+            {
+                switchDevice.HostUiHandler = new AndroidUIHandler();
+            }
+        }
+
+        public static void SetUiHandlerResponse(bool isOkPressed, string input)
+        {
+            if (SwitchDevice?.HostUiHandler is AndroidUIHandler uiHandler)
+            {
+                uiHandler.SetResponse(isOkPressed, input);
+            }
+        }
+
+        public static List<string> GetCheats(string titleId, string gamePath)
+        {
+            var cheats = new List<string>();
+            
+            if (SwitchDevice?.VirtualFileSystem == null)
+            {
+                return cheats;
+            }
+            
+            // 获取金手指目录路径
+            string modsBasePath = ModLoader.GetModsBasePath();
+            string titleModsPath = ModLoader.GetApplicationDir(modsBasePath, titleId);
+            string cheatsPath = Path.Combine(titleModsPath, "cheats");
+            
+            if (!Directory.Exists(cheatsPath))
+            {
+                return cheats;
+            }
+            
+            // 读取金手指文件
+            foreach (var file in Directory.GetFiles(cheatsPath, "*.txt"))
+            {
+                if (Path.GetFileName(file) == "enabled.txt") continue;
+                
+                string buildId = Path.GetFileNameWithoutExtension(file);
+                var cheatInstructions = ModLoader.GetCheatsInFile(new FileInfo(file));
+                
+                foreach (var cheat in cheatInstructions)
+                {
+                    string cheatIdentifier = $"{buildId}-{cheat.Name}"; // 直接使用名称，不加 < >
+                    cheats.Add(cheatIdentifier);
+                }
+            }
+            
+            return cheats;
+        }
+
+        public static List<string> GetEnabledCheats(string titleId)
+        {
+            var enabledCheats = new List<string>();
+            
+            // 获取已启用的金手指列表
+            string modsBasePath = ModLoader.GetModsBasePath();
+            string titleModsPath = ModLoader.GetApplicationDir(modsBasePath, titleId);
+            string enabledCheatsPath = Path.Combine(titleModsPath, "cheats", "enabled.txt");
+            
+            if (File.Exists(enabledCheatsPath))
+            {
+                enabledCheats.AddRange(File.ReadAllLines(enabledCheatsPath));
+            }
+            
+            return enabledCheats;
+        }
+
+        public static void SetCheatEnabled(string titleId, string cheatId, bool enabled)
+        {
+            // 这里需要修改enabled.txt文件，添加或移除金手指ID
+            string modsBasePath = ModLoader.GetModsBasePath();
+            string titleModsPath = ModLoader.GetApplicationDir(modsBasePath, titleId);
+            string enabledCheatsPath = Path.Combine(titleModsPath, "cheats", "enabled.txt");
+            
+            var enabledCheats = new HashSet<string>();
+            if (File.Exists(enabledCheatsPath))
+            {
+                // 确保读取时去除空行和空白字符
+                var lines = File.ReadAllLines(enabledCheatsPath)
+                              .Where(line => !string.IsNullOrWhiteSpace(line))
+                              .Select(line => line.Trim());
+                enabledCheats.UnionWith(lines);
+            }
+            
+            if (enabled)
+            {
+                enabledCheats.Add(cheatId);
+            }
+            else
+            {
+                enabledCheats.Remove(cheatId);
+            }
+            
+            Directory.CreateDirectory(Path.GetDirectoryName(enabledCheatsPath));
+            File.WriteAllLines(enabledCheatsPath, enabledCheats);
+            
+            // 如果游戏正在运行，可能需要重新加载金手指
+            if (SwitchDevice?.EmulationContext != null)
+            {
+            }
+        }
+
+        public static void SaveCheats(string titleId)
+        {
+            // 如果需要立即生效，可以在这里调用TamperMachine.EnableCheats
+            // 但通常我们会在游戏启动时自动加载，所以这里可能不需要做任何事情
+        }
+
+        // ==================== 改进的存档管理功能 ====================
+
+        /// <summary>
+        /// 检查指定标题ID的存档是否存在（改进版本）
+        /// </summary>
+        public static bool SaveDataExists(string titleId)
+        {
+            return !string.IsNullOrEmpty(GetSaveIdByTitleId(titleId));
+        }
+
+        /// <summary>
+        /// 获取所有存档文件夹的信息（改进版本）
+        /// </summary>
+        public static List<SaveDataInfo> GetSaveDataList()
+        {
+            var saveDataList = new List<SaveDataInfo>();
+            
+            if (SwitchDevice?.VirtualFileSystem == null)
+                return saveDataList;
+
+            try
+            {
+                string saveBasePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save");
+                string saveMetaBasePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "saveMeta");
+                
+                if (!Directory.Exists(saveBasePath))
+                    return saveDataList;
+
+                // 获取所有数字文件夹
+                var saveDirs = Directory.GetDirectories(saveBasePath)
+                    .Where(dir => Path.GetFileName(dir).All(char.IsDigit) && Path.GetFileName(dir).Length == 16)
+                    .ToList();
+
+                foreach (var saveDir in saveDirs)
+                {
+                    string saveId = Path.GetFileName(saveDir);
+                    var saveInfo = GetSaveDataInfo(saveId);
+                    if (saveInfo != null)
+                    {
+                        saveDataList.Add(saveInfo);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                return saveDataList;
+            }
+
+            return saveDataList;
+        }
+
+        /// <summary>
+        /// 获取特定存档文件夹的详细信息（改进版本）
+        /// </summary>
+        private static SaveDataInfo GetSaveDataInfo(string saveId)
+        {
+            try
+            {
+                string savePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save", saveId);
+                if (!Directory.Exists(savePath))
+                    return null;
+
+                // 优先从 saveMeta 目录读取标题ID
+                string titleId = GetTitleIdFromSaveMeta(saveId);
+                
+                // 如果 saveMeta 中没有找到，回退到 ExtraData 方法
+                if (string.IsNullOrEmpty(titleId) || titleId == "0000000000000000")
+                {
+                    titleId = ExtractTitleIdFromExtraData(savePath);
+                }
+
+                string titleName = "Unknown Game";
+                
+                // 如果有标题ID，尝试获取游戏名称
+                if (!string.IsNullOrEmpty(titleId) && titleId != "0000000000000000")
+                {
+                    titleName = $"Game [{titleId}]"; // 可以进一步改进为获取实际游戏名称
+                }
+
+                var directoryInfo = new DirectoryInfo(savePath);
+                long totalSize = CalculateDirectorySize(savePath);
+
+                return new SaveDataInfo
+                {
+                    SaveId = saveId,
+                    TitleId = titleId ?? "0000000000000000",
+                    TitleName = titleName,
+                    LastModified = directoryInfo.LastWriteTime,
+                    Size = totalSize
+                };
+            }
+            catch (Exception ex)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 从 saveMeta 目录读取标题ID（新增方法）
+        /// </summary>
+        private static string GetTitleIdFromSaveMeta(string saveId)
+        {
+            try
+            {
+                string saveMetaPath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "saveMeta", saveId);
+                if (!Directory.Exists(saveMetaPath))
+                {
+                    return null;
+                }
+
+                string metaFilePath = Path.Combine(saveMetaPath, "00000001.meta");
+                if (!File.Exists(metaFilePath))
+                {
+                    return null;
+                }
+
+                // 读取 meta 文件并解析标题ID
+                using var fileStream = File.OpenRead(metaFilePath);
+                if (fileStream.Length >= 8)
+                {
+                    byte[] buffer = new byte[8];
+                    fileStream.Read(buffer, 0, 8);
+                    
+                    // meta 文件中的标题ID通常是小端序
+                    ulong titleIdValue = BitConverter.ToUInt64(buffer, 0);
+                    string titleId = titleIdValue.ToString("x16");
+                    
+                    if (IsValidTitleId(titleId))
+                    {
+                        return titleId;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+            }
+            
+            return null;
+        }
+
+        /// <summary>
+        /// 改进的 ExtraData 标题ID提取方法
+        /// </summary>
+        private static string ExtractTitleIdFromExtraData(string savePath)
+        {
+            try
+            {
+                // 尝试读取 ExtraData0 或 ExtraData1 文件来获取标题ID
+                string[] extraDataFiles = { "ExtraData0", "ExtraData1" };
+                
+                foreach (var fileName in extraDataFiles)
+                {
+                    string filePath = Path.Combine(savePath, fileName);
+                    if (File.Exists(filePath))
+                    {
+                        using var fileStream = File.OpenRead(filePath);
+                        if (fileStream.Length >= 8)
+                        {
+                            byte[] buffer = new byte[8];
+                            fileStream.Read(buffer, 0, 8);
+                            
+                            // 尝试两种字节序
+                            ulong titleIdValue1 = BitConverter.ToUInt64(buffer, 0);
+                            string titleId1 = titleIdValue1.ToString("x16");
+                            
+                            if (IsValidTitleId(titleId1))
+                            {
+                                return titleId1;
+                            }
+                            
+                            // 如果是大端序，需要反转字节
+                            Array.Reverse(buffer);
+                            ulong titleIdValue2 = BitConverter.ToUInt64(buffer, 0);
+                            string titleId2 = titleIdValue2.ToString("x16");
+                            
+                            if (IsValidTitleId(titleId2))
+                            {
+                                return titleId2;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+            }
+            
+            return null;
+        }
+
+        /// <summary>
+        /// 改进的验证标题ID格式方法
+        /// </summary>
+        private static bool IsValidTitleId(string titleId)
+        {
+            if (string.IsNullOrEmpty(titleId) || titleId.Length != 16)
+                return false;
+            
+            // 检查是否全是0（无效）
+            if (titleId.All(c => c == '0'))
+                return false;
+                
+            // 检查格式：16位十六进制
+            return titleId.All(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'));
+        }
+
+        /// <summary>
+        /// 计算目录大小
+        /// </summary>
+        private static long CalculateDirectorySize(string path)
+        {
+            long size = 0;
+            try
+            {
+                var directory = new DirectoryInfo(path);
+                foreach (var file in directory.GetFiles("*", SearchOption.AllDirectories))
+                {
+                    size += file.Length;
+                }
+            }
+            catch (Exception ex)
+            {
+            }
+            return size;
+        }
+
+        /// <summary>
+        /// 根据游戏标题ID获取对应的存档文件夹ID（改进版本）
+        /// </summary>
+        public static string GetSaveIdByTitleId(string titleId)
+        {
+            if (string.IsNullOrEmpty(titleId) || titleId == "0000000000000000")
+                return null;
+
+            var saveDataList = GetSaveDataList();
+            var saveInfo = saveDataList.FirstOrDefault(s => s.TitleId == titleId);
+            
+            if (saveInfo != null)
+            {
+                return saveInfo.SaveId;
+            }
+            
+            return null;
+        }
+
+        /// <summary>
+        /// 导出存档为ZIP文件（只导出0和1文件夹）
+        /// </summary>
+        public static bool ExportSaveData(string titleId, string outputZipPath)
+        {
+            try
+            {
+                string saveId = GetSaveIdByTitleId(titleId);
+                if (string.IsNullOrEmpty(saveId))
+                {
+                    return false;
+                }
+
+                string savePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save", saveId);
+                if (!Directory.Exists(savePath))
+                {
+                    return false;
+                }
+
+                // 确保输出目录存在
+                Directory.CreateDirectory(Path.GetDirectoryName(outputZipPath));
+
+                // 创建临时目录用于存放0和1文件夹
+                string tempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+                Directory.CreateDirectory(tempPath);
+
+                try
+                {
+                    // 只复制0和1文件夹
+                    string[] foldersToExport = { "0", "1" };
+                    foreach (string folder in foldersToExport)
+                    {
+                        string sourceFolder = Path.Combine(savePath, folder);
+                        string destFolder = Path.Combine(tempPath, folder);
+                        
+                        if (Directory.Exists(sourceFolder))
+                        {
+                            CopyDirectory(sourceFolder, destFolder);
+                        }
+                    }
+
+                    // 使用 System.IO.Compression 创建ZIP文件
+                    ZipFile.CreateFromDirectory(tempPath, outputZipPath, CompressionLevel.Optimal, false);
+                    return true;
+                }
+                finally
+                {
+                    // 清理临时目录
+                    if (Directory.Exists(tempPath))
+                    {
+                        Directory.Delete(tempPath, true);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 从ZIP文件导入存档（只导入0和1文件夹）
+        /// </summary>
+        public static bool ImportSaveData(string titleId, string zipFilePath)
+        {
+            try
+            {
+                if (!File.Exists(zipFilePath))
+                {
+                    return false;
+                }
+
+                string saveId = GetSaveIdByTitleId(titleId);
+                if (string.IsNullOrEmpty(saveId))
+                {
+                    // 如果没有现有的存档文件夹，创建一个新的
+                    saveId = FindNextAvailableSaveId();
+                }
+
+                string savePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save", saveId);
+                
+                // 创建目标目录
+                Directory.CreateDirectory(savePath);
+
+                // 创建临时目录用于解压
+                string tempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+                Directory.CreateDirectory(tempPath);
+
+                try
+                {
+                    // 解压ZIP文件到临时目录
+                    ZipFile.ExtractToDirectory(zipFilePath, tempPath);
+                    
+                    // 只复制0和1文件夹到目标目录
+                    string[] foldersToImport = { "0", "1" };
+                    foreach (string folder in foldersToImport)
+                    {
+                        string sourceFolder = Path.Combine(tempPath, folder);
+                        string destFolder = Path.Combine(savePath, folder);
+                        
+                        if (Directory.Exists(sourceFolder))
+                        {
+                            // 如果目标文件夹已存在，先删除
+                            if (Directory.Exists(destFolder))
+                            {
+                                Directory.Delete(destFolder, true);
+                            }
+                            
+                            CopyDirectory(sourceFolder, destFolder);
+                        }
+                    }
+                    
+                    return true;
+                }
+                finally
+                {
+                    // 清理临时目录
+                    if (Directory.Exists(tempPath))
+                    {
+                        Directory.Delete(tempPath, true);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 创建saveMeta文件（新增方法）
+        /// </summary>
+        private static void CreateSaveMetaFile(string saveMetaPath, string titleId)
+        {
+            try
+            {
+                string metaFilePath = Path.Combine(saveMetaPath, "00000001.meta");
+                
+                if (ulong.TryParse(titleId, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out ulong titleIdValue))
+                {
+                    byte[] titleIdBytes = BitConverter.GetBytes(titleIdValue);
+                    
+                    // 确保是小端序
+                    if (!BitConverter.IsLittleEndian)
+                    {
+                        Array.Reverse(titleIdBytes);
+                    }
+                    
+                    File.WriteAllBytes(metaFilePath, titleIdBytes);
+                }
+            }
+            catch (Exception ex)
+            {
+            }
+        }
+
+        /// <summary>
+        /// 查找下一个可用的存档文件夹ID
+        /// </summary>
+        private static string FindNextAvailableSaveId()
+        {
+            string saveBasePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save");
+            
+            if (!Directory.Exists(saveBasePath))
+                return "0000000000000001";
+
+            var existingIds = Directory.GetDirectories(saveBasePath)
+                .Where(dir => Path.GetFileName(dir).All(char.IsDigit) && Path.GetFileName(dir).Length == 16)
+                .Select(dir => {
+                    if (long.TryParse(Path.GetFileName(dir), out long id))
+                        return id;
+                    return 0L;
+                })
+                .Where(id => id > 0)
+                .OrderBy(id => id)
+                .ToList();
+
+            long nextId = 1;
+            if (existingIds.Any())
+            {
+                nextId = existingIds.Last() + 1;
+            }
+
+            return nextId.ToString("D16"); // 格式化为16位数字
+        }
+
+        /// <summary>
+        /// 删除存档（改进版本，同时删除saveMeta）
+        /// </summary>
+        public static bool DeleteSaveData(string titleId)
+        {
+            try
+            {
+                string saveId = GetSaveIdByTitleId(titleId);
+                if (string.IsNullOrEmpty(saveId))
+                {
+                    return false;
+                }
+
+                string savePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save", saveId);
+                string saveMetaPath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "saveMeta", saveId);
+                
+                bool success = true;
+
+                // 删除存档目录
+                if (Directory.Exists(savePath))
+                {
+                    Directory.Delete(savePath, true);
+                }
+                else
+                {
+                    success = false;
+                }
+
+                // 删除存档元数据目录
+                if (Directory.Exists(saveMetaPath))
+                {
+                    Directory.Delete(saveMetaPath, true);
+                }
+                
+                return success;
+            }
+            catch (Exception ex)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 删除存档文件（只删除0和1文件夹中的文件，保留存档文件夹结构）
+        /// </summary>
+        public static bool DeleteSaveFiles(string titleId)
+        {
+            try
+            {
+                string saveId = GetSaveIdByTitleId(titleId);
+                if (string.IsNullOrEmpty(saveId))
+                {
+                    return false;
+                }
+
+                string savePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save", saveId);
+                if (!Directory.Exists(savePath))
+                {
+                    return false;
+                }
+
+                bool success = true;
+
+                // 只删除0和1文件夹中的内容，保留文件夹结构
+                string[] foldersToDelete = { "0", "1" };
+                foreach (string folder in foldersToDelete)
+                {
+                    string folderPath = Path.Combine(savePath, folder);
+                    if (Directory.Exists(folderPath))
+                    {
+                        try
+                        {
+                            // 删除文件夹中的所有内容，但保留文件夹本身
+                            var directory = new DirectoryInfo(folderPath);
+                            foreach (FileInfo file in directory.GetFiles())
+                            {
+                                file.Delete();
+                            }
+                            foreach (DirectoryInfo subDirectory in directory.GetDirectories())
+                            {
+                                subDirectory.Delete(true);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            success = false;
+                        }
+                    }
+                }
+                
+                return success;
+            }
+            catch (Exception ex)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 调试方法：显示所有存档文件夹的详细信息
+        /// </summary>
+        public static void DebugSaveData()
+        {
+            string saveBasePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save");
+            string saveMetaBasePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "saveMeta");
+            
+            if (!Directory.Exists(saveBasePath))
+            {
+                return;
+            }
+            
+            var saveDirs = Directory.GetDirectories(saveBasePath)
+                .Where(dir => Path.GetFileName(dir).All(char.IsDigit) && Path.GetFileName(dir).Length == 16)
+                .ToList();
+            
+            foreach (var saveDir in saveDirs)
+            {
+                string saveId = Path.GetFileName(saveDir);
+                
+                // 检查 saveMeta
+                string saveMetaPath = Path.Combine(saveMetaBasePath, saveId);
+                if (Directory.Exists(saveMetaPath))
+                {
+                    string metaFile = Path.Combine(saveMetaPath, "00000001.meta");
+                }
+                
+                // 检查 ExtraData 文件
+                string[] extraDataFiles = { "ExtraData0", "ExtraData1" };
+                foreach (var fileName in extraDataFiles)
+                {
+                    string filePath = Path.Combine(saveDir, fileName);
+                }
+                
+                // 尝试获取标题ID
+                string titleIdFromMeta = GetTitleIdFromSaveMeta(saveId);
+                string titleIdFromExtra = ExtractTitleIdFromExtraData(saveDir);
+            }
+        }
+
+        /// <summary>
+        /// 强制刷新存档列表（新增方法）
+        /// </summary>
+        public static void RefreshSaveData()
+        {
+            // 强制重新扫描文件系统
+            var freshList = GetSaveDataList();
+        }
     }
 
-    // SwitchDevice 类和其他辅助类保持不变...
     public class SwitchDevice : IDisposable
     {
-        // 原有实现保持不变
+        private readonly SystemVersion _firmwareVersion;
+        public VirtualFileSystem VirtualFileSystem { get; set; }
+        public ContentManager ContentManager { get; set; }
+        public AccountManager AccountManager { get; set; }
+        public LibHacHorizonManager LibHacHorizonManager { get; set; }
+        public UserChannelPersistence UserChannelPersistence { get; set; }
+        public InputManager? InputManager { get; set; }
+        public Switch? EmulationContext { get; set; }
+        public IHostUIHandler? HostUiHandler { get; set; }
+        public bool EnableJitCacheEviction { get; set; }
+        public bool EnableFsIntegrityChecks { get; set; }
+        
+        public void Dispose()
+        {
+            GC.SuppressFinalize(this);
+
+            VirtualFileSystem.Dispose();
+            InputManager?.Dispose();
+            EmulationContext?.Dispose();
+        }
+
+        public SwitchDevice()
+        {
+            VirtualFileSystem = VirtualFileSystem.CreateInstance();
+            LibHacHorizonManager = new LibHacHorizonManager();
+
+            LibHacHorizonManager.InitializeFsServer(VirtualFileSystem);
+            LibHacHorizonManager.InitializeArpServer();
+            LibHacHorizonManager.InitializeBcatServer();
+            LibHacHorizonManager.InitializeSystemClients();
+
+            ContentManager = new ContentManager(VirtualFileSystem);
+            AccountManager = new AccountManager(LibHacHorizonManager.RyujinxClient);
+            UserChannelPersistence = new UserChannelPersistence();
+            
+            EnableFsIntegrityChecks = false;
+            
+            _firmwareVersion = ContentManager.GetCurrentFirmwareVersion();
+
+            if (_firmwareVersion != null)
+            {
+            }
+        }
+
+        public bool InitializeContext(bool isHostMapped,
+                                      bool useHypervisor,
+                                      SystemLanguage systemLanguage,
+                                      RegionCode regionCode,
+                                      bool enableVsync,
+                                      bool enableDockedMode,
+                                      bool enablePtc,
+                                      bool enableJitCacheEviction,
+                                      bool enableInternetAccess,
+                                      string? timeZone,
+                                      bool ignoreMissingServices,
+                                      MemoryConfiguration memoryConfiguration,
+                                      long systemTimeOffset)  // 新增系统时间偏移参数
+        {
+            if (LibRyujinx.Renderer == null)
+            {
+                return false;
+            }
+
+            var renderer = LibRyujinx.Renderer;
+            BackendThreading threadingMode = LibRyujinx.GraphicsConfiguration.BackendThreading;
+
+            bool threadedGAL = threadingMode == BackendThreading.On || (threadingMode == BackendThreading.Auto && renderer.PreferThreading);
+
+            if (threadedGAL)
+            {
+                renderer = new ThreadedRenderer(renderer);
+            }
+
+            HLEConfiguration configuration = new HLEConfiguration(VirtualFileSystem,
+                                                                  LibHacHorizonManager,
+                                                                  ContentManager,
+                                                                  AccountManager,
+                                                                  UserChannelPersistence,
+                                                                  renderer,
+                                                                  LibRyujinx.AudioDriver, //Audio
+                                                                  memoryConfiguration, // 使用传入的内存配置参数
+                                                                  HostUiHandler,
+                                                                  systemLanguage,
+                                                                  regionCode,
+                                                                  enableVsync,
+                                                                  enableDockedMode,
+                                                                  enablePtc,
+                                                                  enableJitCacheEviction,
+                                                                  enableInternetAccess,
+                                                                  IntegrityCheckLevel.None,
+                                                                  0,
+                                                                  systemTimeOffset,  // 传递系统时间偏移
+                                                                  timeZone,
+                                                                 // isHostMapped ? MemoryManagerMode.HostMappedUnsafe : MemoryManagerMode.SoftwarePageTable,
+                                                                  MemoryManagerMode.HostMappedUnsafe,
+                                                                  ignoreMissingServices,
+                                                                   LibRyujinx.GetAspectRatio(),  // 使用 GetAspectRatio 方法获取当前画面比例
+                                                                  100,
+                                                                  useHypervisor,
+                                                                  "",
+                                                                  Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled);
+
+            try
+            {
+                EmulationContext = new Switch(configuration);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                return false;
+            }
+        }
+
+        internal void ReloadFileSystem()
+        {
+            VirtualFileSystem.ReloadKeySet();
+            ContentManager = new ContentManager(VirtualFileSystem);
+            AccountManager = new AccountManager(LibHacHorizonManager.RyujinxClient);
+        }
+
+        internal void DisposeContext()
+        {
+            EmulationContext?.Dispose();
+            EmulationContext?.DisposeGpu();
+            EmulationContext = null;
+            LibRyujinx.Renderer = null;
+        }
     }
 
     public class GameInfo
     {
-        // 原有实现保持不变
+        public double FileSize;
+        public string? TitleName;
+        public string? TitleId;
+        public string? Developer;
+        public string? Version;
+        public byte[]? Icon;
     }
 
     [StructLayout(LayoutKind.Sequential)]
     public unsafe struct GameInfoNative
     {
-        // 原有实现保持不变
+        public double FileSize;
+        public char* TitleName;
+        public char* TitleId;
+        public char* Developer;
+        public char* Version;
+        public char* Icon;
+
+        public GameInfoNative()
+        {
+
+        }
+
+        public GameInfoNative(double fileSize, string? titleName, string? titleId, string? developer, string? version, byte[]? icon)
+        {
+            FileSize = fileSize;
+            TitleId = (char*)Marshal.StringToHGlobalAnsi(titleId);
+            Version = (char*)Marshal.StringToHGlobalAnsi(version);
+            Developer = (char*)Marshal.StringToHGlobalAnsi(developer);
+            TitleName = (char*)Marshal.StringToHGlobalAnsi(titleName);
+
+            if (icon != null)
+            {
+                Icon = (char*)Marshal.StringToHGlobalAnsi(Convert.ToBase64String(icon));
+            }
+            else
+            {
+                Icon = (char*)0;
+            }
+        }
+
+        public GameInfoNative(GameInfo info) : this(info.FileSize, info.TitleName, info.TitleId, info.Developer, info.Version, info.Icon){}
     }
 
     public class GameStats
     {
-        // 原有实现保持不变
+        public double Fifo;
+        public double GameFps;
+        public double GameTime;
     }
 
     // 存档信息类
     public class SaveDataInfo
     {
-        // 原有实现保持不变
+        public string SaveId { get; set; } = string.Empty; // 数字文件夹名，如 "0000000000000001"
+        public string TitleId { get; set; } = string.Empty; // 游戏标题ID
+        public string TitleName { get; set; } = string.Empty; // 游戏名称
+        public DateTime LastModified { get; set; } // 最后修改时间
+        public long Size { get; set; } // 存档大小
     }
 }
