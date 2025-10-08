@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -101,8 +102,10 @@ class ModViews {
 
             // 加载Mod列表 - 使用延迟加载避免闪烁
             LaunchedEffect(titleId) {
+                // 重置加载状态，确保每次都重新加载
+                viewModel.resetLoadedState()
                 // 延迟一小段时间再加载，避免UI闪烁
-                kotlinx.coroutines.delay(100)
+                kotlinx.coroutines.delay(300)
                 viewModel.loadMods(titleId)
                 modsLoaded = true
             }
@@ -134,6 +137,19 @@ class ModViews {
                         navigationIcon = {
                             IconButton(onClick = { navController.popBackStack() }) {
                                 Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                            }
+                        },
+                        actions = {
+                            // 添加刷新按钮
+                            IconButton(
+                                onClick = {
+                                    scope.launch {
+                                        viewModel.resetLoadedState()
+                                        viewModel.loadMods(titleId)
+                                    }
+                                }
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                             }
                         }
                     )
@@ -213,6 +229,20 @@ class ModViews {
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    // 添加手动刷新按钮
+                                    OutlinedButton(
+                                        onClick = {
+                                            scope.launch {
+                                                viewModel.resetLoadedState()
+                                                viewModel.loadMods(titleId)
+                                            }
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.Refresh, contentDescription = "Refresh", modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Refresh List")
+                                    }
                                 }
                             } else {
                                 // 使用类似DLC的列表布局
