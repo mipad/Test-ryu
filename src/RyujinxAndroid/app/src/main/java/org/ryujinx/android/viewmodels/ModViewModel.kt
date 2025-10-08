@@ -1,264 +1,516 @@
-// ModViewModel.kt
-package org.ryujinx.android.viewmodels
+// ModViews.kt
+package org.ryujinx.android.views
 
-import androidx.compose.runtime.mutableStateListOf
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.Dispatchers
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.navigation.NavHostController
 import kotlinx.coroutines.launch
-import org.ryujinx.android.RyujinxNative
-import org.json.JSONArray
-import android.util.Log
+import org.ryujinx.android.viewmodels.ModModel
+import org.ryujinx.android.viewmodels.ModType
+import org.ryujinx.android.viewmodels.ModViewModel
+import java.io.File
 
-class ModViewModel : ViewModel() {
-    private val _mods = mutableStateListOf<ModModel>()
-    val mods: List<ModModel> get() = _mods
-
-    private val _isLoading = mutableStateOf(false)
-    val isLoading: Boolean get() = _isLoading.value
-
-    private val _errorMessage = mutableStateOf<String?>(null)
-    val errorMessage: String? get() = _errorMessage.value
-
-    // 添加一个状态来跟踪是否已经加载过
-    private val _hasLoaded = mutableStateOf(false)
-    val hasLoaded: Boolean get() = _hasLoaded.value
-
-    // 添加一个状态来跟踪是否解析失败
-    private var _parseFailed = false
-
-    fun loadMods(titleId: String, forceRefresh: Boolean = false) {
-        var actualForceRefresh = forceRefresh
+class ModViews {
+    companion object {
         
-        // 如果解析失败过，强制重新加载
-        if (_parseFailed) {
-            actualForceRefresh = true
-            _parseFailed = false
-        }
-        
-        if (_hasLoaded.value && !actualForceRefresh) {
-            Log.d("ModViewModel", "Mods already loaded, skipping")
-            return
-        }
-
-        viewModelScope.launch {
-            _isLoading.value = true
-            _errorMessage.value = null
+        @OptIn(ExperimentalMaterial3Api::class)
+        @Composable
+        fun ModManagementScreen(
+            viewModel: ModViewModel,
+            navController: NavHostController,
+            titleId: String,
+            gameName: String
+        ) {
+            val context = LocalContext.current
+            val snackbarHostState = remember { SnackbarHostState() }
+            val scope = rememberCoroutineScope()
             
-            try {
-                val modsJson = RyujinxNative.getMods(titleId)
-                Log.d("ModViewModel", "Raw mods JSON received, length: ${modsJson.length}")
-                
-                if (modsJson.isNotEmpty()) {
-                    val success = parseModsJson(modsJson)
-                    if (success) {
-                        _hasLoaded.value = true
-                        Log.d("ModViewModel", "Successfully loaded ${_mods.size} mods")
-                    } else {
-                        // 解析失败，标记为解析失败，下次强制重新加载
-                        _parseFailed = true
-                        Log.e("ModViewModel", "Failed to parse mods JSON")
+            // 状态变量
+            var showDeleteAllDialog by remember { mutableStateOf(false) }
+            var showDeleteDialog by remember { mutableStateOf<ModModel?>(null) }
+            var showAddModDialog by remember { mutableStateOf(false) }
+            var selectedModPath by remember { mutableStateOf("") }
+            
+            // 添加一个状态来跟踪是否已经显示了mod列表
+            var modsLoaded by remember { mutableStateOf(false) }
+            
+            // 文件夹选择启动器 - 用于添加mod
+            val folderPickerLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenDocumentTree()
+            ) { uri ->
+                uri?.let {
+                    val folderPath = getFilePathFromUri(context, it)
+                    if (!folderPath.isNullOrEmpty()) {
+                        selectedModPath = folderPath
+                        showAddModDialog = true
                     }
-                } else {
-                    Log.d("ModViewModel", "Empty mods response")
-                    _mods.clear()
-                    _hasLoaded.value = true
                 }
-            } catch (e: Exception) {
-                Log.e("ModViewModel", "Error loading mods", e)
-                _errorMessage.value = "Failed to load mods: ${e.message}"
-                // 发生异常时也标记为解析失败
-                _parseFailed = true
-            } finally {
-                _isLoading.value = false
-            }
-        }
-    }
-
-    private fun parseModsJson(jsonString: String): Boolean {
-        try {
-            Log.d("ModViewModel", "Parsing JSON: ${jsonString.take(200)}...") // 只打印前200字符
-            
-            val cleanJson = jsonString.trim()
-            if (cleanJson.isEmpty()) {
-                Log.w("ModViewModel", "Empty JSON string")
-                _mods.clear()
-                return true // 空JSON视为成功，只是没有mod
             }
 
-            // 尝试解析JSON数组
-            val jsonArray = JSONArray(cleanJson)
-            Log.d("ModViewModel", "JSON array length: ${jsonArray.length()}")
-            
-            val newMods = mutableListOf<ModModel>()
-            
-            for (i in 0 until jsonArray.length()) {
-                try {
-                    val modJson = jsonArray.getJSONObject(i)
-                    val mod = ModModel(
-                        name = modJson.optString("name", "Unknown Mod"),
-                        path = modJson.optString("path", ""),
-                        enabled = modJson.optBoolean("enabled", false),
-                        inExternalStorage = modJson.optBoolean("inExternalStorage", false),
-                        type = when (modJson.optString("type", "RomFs")) {
-                            "RomFs" -> ModType.RomFs
-                            "ExeFs" -> ModType.ExeFs
-                            else -> ModType.RomFs
+            // 加载Mod列表 - 使用延迟加载避免闪烁
+            LaunchedEffect(titleId) {
+                // 重置加载状态，确保每次都重新加载
+                viewModel.resetLoadedState()
+                // 延迟一小段时间再加载，避免UI闪烁
+                kotlinx.coroutines.delay(300)
+                viewModel.loadMods(titleId)
+                modsLoaded = true
+            }
+
+            // 显示错误消息
+            viewModel.errorMessage?.let { error ->
+                LaunchedEffect(error) {
+                    snackbarHostState.showSnackbar(error)
+                    viewModel.clearError()
+                }
+            }
+
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = { 
+                            Column {
+                                Text(
+                                    text = "Mod Management",
+                                    style = MaterialTheme.typography.titleLarge
+                                )
+                                Text(
+                                    text = "$gameName ($titleId)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = { navController.popBackStack() }) {
+                                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                            }
+                        },
+                        actions = {
+                            // 添加刷新按钮
+                            IconButton(
+                                onClick = {
+                                    scope.launch {
+                                        viewModel.resetLoadedState()
+                                        viewModel.loadMods(titleId)
+                                    }
+                                }
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                            }
                         }
                     )
-                    
-                    Log.d("ModViewModel", "Parsed mod: ${mod.name} (enabled: ${mod.enabled})")
-                    newMods.add(mod)
-                } catch (e: Exception) {
-                    Log.e("ModViewModel", "Error parsing mod at index $i", e)
-                }
-            }
-            
-            // 一次性更新列表
-            _mods.clear()
-            _mods.addAll(newMods)
-            Log.d("ModViewModel", "Final mods count: ${_mods.size}")
-            
-            return true // 解析成功
-            
-        } catch (e: Exception) {
-            Log.e("ModViewModel", "Failed to parse mods JSON", e)
-            _errorMessage.value = "Failed to parse mods: ${e.message}\nJSON: ${jsonString.take(500)}"
-            // 解析失败时不清空列表，保持现有状态
-            return false // 解析失败
-        }
-    }
-
-    fun setModEnabled(titleId: String, mod: ModModel, enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                Log.d("ModViewModel", "Setting mod ${mod.name} enabled: $enabled")
-                val success = RyujinxNative.setModEnabled(titleId, mod.path, enabled)
-                
-                if (success) {
-                    // 在主线程更新UI状态
-                    viewModelScope.launch(Dispatchers.Main) {
-                        val index = _mods.indexOfFirst { it.path == mod.path }
-                        if (index != -1) {
-                            _mods[index] = _mods[index].copy(enabled = enabled)
-                            Log.d("ModViewModel", "Updated mod state in UI")
+                },
+                floatingActionButton = {
+                    FloatingActionButton(
+                        onClick = {
+                            folderPickerLauncher.launch(null)
+                        }
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Add Mod")
+                    }
+                },
+                snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
+            ) { paddingValues ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(paddingValues)
+                ) {
+                    if (viewModel.isLoading && !modsLoaded) {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator()
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("Loading mods...")
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp)
+                        ) {
+                            // 统计信息和删除所有按钮 - 放在左侧
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Mods: ${viewModel.mods.size} (${viewModel.mods.count { it.enabled }} enabled)",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                
+                                OutlinedButton(
+                                    onClick = { showDeleteAllDialog = true },
+                                    enabled = viewModel.mods.isNotEmpty()
+                                ) {
+                                    Text("Delete All")
+                                }
+                            }
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            // Mod列表
+                            if (viewModel.mods.isEmpty()) {
+                                Column(
+                                    modifier = Modifier.fillMaxSize(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = "📁",
+                                        style = MaterialTheme.typography.displayMedium
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text(
+                                        text = "No mods found",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "Click the + button to add a mod",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    // 添加手动刷新按钮
+                                    OutlinedButton(
+                                        onClick = {
+                                            scope.launch {
+                                                viewModel.resetLoadedState()
+                                                viewModel.loadMods(titleId)
+                                            }
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.Refresh, contentDescription = "Refresh", modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Refresh List")
+                                    }
+                                }
+                            } else {
+                                // 使用类似DLC的列表布局
+                                Surface(
+                                    modifier = Modifier.padding(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = MaterialTheme.shapes.medium
+                                ) {
+                                    LazyColumn(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(400.dp) // 固定高度，确保内容可滚动
+                                    ) {
+                                        items(viewModel.mods) { mod ->
+                                            ModListItem(
+                                                mod = mod,
+                                                onEnabledChanged = { enabled ->
+                                                    scope.launch {
+                                                        viewModel.setModEnabled(titleId, mod, enabled)
+                                                        // 不重新加载列表，避免闪烁
+                                                    }
+                                                },
+                                                onDelete = {
+                                                    showDeleteDialog = mod
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
+                }
+            }
+
+            // 删除单个Mod对话框
+            showDeleteDialog?.let { mod ->
+                AlertDialog(
+                    onDismissRequest = { showDeleteDialog = null },
+                    title = { Text("Delete Mod") },
+                    text = { 
+                        Text("Are you sure you want to delete \"${mod.name}\"? This action cannot be undone.") 
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    viewModel.deleteMod(titleId, mod)
+                                    showDeleteDialog = null
+                                    // 重新加载列表
+                                    viewModel.loadMods(titleId)
+                                }
+                            }
+                        ) {
+                            Text("Delete")
+                        }
+                    },
+                    dismissButton = {
+                        OutlinedButton(
+                            onClick = { showDeleteDialog = null }
+                        ) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
+
+            // 删除所有Mod对话框
+            if (showDeleteAllDialog) {
+                AlertDialog(
+                    onDismissRequest = { showDeleteAllDialog = false },
+                    title = { Text("Delete All Mods") },
+                    text = { 
+                        Text("Are you sure you want to delete all ${viewModel.mods.size} mods? This action cannot be undone.") 
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    viewModel.deleteAllMods(titleId)
+                                    showDeleteAllDialog = false
+                                    // 重新加载列表
+                                    viewModel.loadMods(titleId)
+                                }
+                            }
+                        ) {
+                            Text("Delete All")
+                        }
+                    },
+                    dismissButton = {
+                        OutlinedButton(
+                            onClick = { showDeleteAllDialog = false }
+                        ) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
+
+            // 添加Mod对话框
+            if (showAddModDialog) {
+                AddModDialog(
+                    selectedPath = selectedModPath,
+                    onConfirm = { modName ->
+                        scope.launch {
+                            viewModel.addMod(titleId, selectedModPath, modName)
+                            showAddModDialog = false
+                            selectedModPath = ""
+                            // 重新加载列表
+                            viewModel.loadMods(titleId)
+                        }
+                    },
+                    onDismiss = {
+                        showAddModDialog = false
+                        selectedModPath = ""
+                    }
+                )
+            }
+        }
+
+        @Composable
+        private fun ModListItem(
+            mod: ModModel,
+            onEnabledChanged: (Boolean) -> Unit,
+            onDelete: () -> Unit
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp, horizontal = 8.dp),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    // 第一行：开关、Mod名称和删除按钮
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // 启用开关 - 使用Switch而不是Checkbox
+                        Switch(
+                            checked = mod.enabled,
+                            onCheckedChange = onEnabledChanged
+                        )
+                        
+                        Spacer(modifier = Modifier.width(12.dp))
+                        
+                        // Mod名称 - 占用剩余空间
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = mod.name,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            
+                            // 类型信息
+                            Text(
+                                text = "Type: ${mod.type.name}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        
+                        // 删除按钮
+                        IconButton(
+                            onClick = onDelete
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete")
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // 存储位置信息
+                    Text(
+                        text = if (mod.inExternalStorage) "External Storage" else "Internal Storage",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    Spacer(modifier = Modifier.height(4.dp))
+                    
+                    // 路径信息 - 允许换行显示
+                    Text(
+                        text = mod.path,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2, // 允许最多2行
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+
+        @Composable
+        private fun AddModDialog(
+            selectedPath: String,
+            onConfirm: (String) -> Unit,
+            onDismiss: () -> Unit
+        ) {
+            var modName by remember { mutableStateOf(File(selectedPath).name) }
+            
+            AlertDialog(
+                onDismissRequest = onDismiss,
+                title = { Text("Add Mod") },
+                text = {
+                    Column {
+                        Text("Selected folder: $selectedPath")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Mod name:")
+                        OutlinedTextField(
+                            value = modName,
+                            onValueChange = { modName = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("Enter mod name") }
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "This will copy the mod files to the game's mod directory.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { onConfirm(modName) },
+                        enabled = modName.isNotEmpty()
+                    ) {
+                        Text("Add Mod")
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = onDismiss) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+        private fun getFilePathFromUri(context: Context, uri: Uri): String? {
+            return try {
+                val contentResolver = context.contentResolver
+                val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                contentResolver.takePersistableUriPermission(uri, takeFlags)
+                
+                // 对于 DocumentFile，我们需要使用 DocumentsContract 来获取路径
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                    val documentId = android.provider.DocumentsContract.getDocumentId(uri)
+                    if (documentId.startsWith("primary:")) {
+                        val path = documentId.substringAfter("primary:")
+                        "/storage/emulated/0/$path"
+                    } else {
+                        // 处理其他存储设备
+                        uri.path
+                    }
                 } else {
-                    _errorMessage.value = "Failed to update mod state"
+                    uri.path
                 }
             } catch (e: Exception) {
-                Log.e("ModViewModel", "Error setting mod enabled", e)
-                _errorMessage.value = "Error: ${e.message}"
+                e.printStackTrace()
+                null
             }
         }
     }
-
-    fun deleteMod(titleId: String, mod: ModModel) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val success = RyujinxNative.deleteMod(titleId, mod.path)
-                if (success) {
-                    // 重新加载列表
-                    loadMods(titleId, true)
-                } else {
-                    _errorMessage.value = "Failed to delete mod"
-                }
-            } catch (e: Exception) {
-                Log.e("ModViewModel", "Error deleting mod", e)
-                _errorMessage.value = "Error: ${e.message}"
-            }
-        }
-    }
-
-    fun deleteAllMods(titleId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val success = RyujinxNative.deleteAllMods(titleId)
-                if (success) {
-                    // 重新加载列表
-                    loadMods(titleId, true)
-                } else {
-                    _errorMessage.value = "Failed to delete all mods"
-                }
-            } catch (e: Exception) {
-                Log.e("ModViewModel", "Error deleting all mods", e)
-                _errorMessage.value = "Error: ${e.message}"
-            }
-        }
-    }
-
-    fun enableAllMods(titleId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val success = RyujinxNative.enableAllMods(titleId)
-                if (success) {
-                    // 重新加载列表
-                    loadMods(titleId, true)
-                } else {
-                    _errorMessage.value = "Failed to enable all mods"
-                }
-            } catch (e: Exception) {
-                Log.e("ModViewModel", "Error enabling all mods", e)
-                _errorMessage.value = "Error: ${e.message}"
-            }
-        }
-    }
-
-    fun disableAllMods(titleId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val success = RyujinxNative.disableAllMods(titleId)
-                if (success) {
-                    // 重新加载列表
-                    loadMods(titleId, true)
-                } else {
-                    _errorMessage.value = "Failed to disable all mods"
-                }
-            } catch (e: Exception) {
-                Log.e("ModViewModel", "Error disabling all mods", e)
-                _errorMessage.value = "Error: ${e.message}"
-            }
-        }
-    }
-
-    fun addMod(titleId: String, sourcePath: String, modName: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val success = RyujinxNative.addMod(titleId, sourcePath, modName)
-                if (success) {
-                    // 重新加载列表
-                    loadMods(titleId, true)
-                } else {
-                    _errorMessage.value = "Failed to add mod"
-                }
-            } catch (e: Exception) {
-                Log.e("ModViewModel", "Error adding mod", e)
-                _errorMessage.value = "Error: ${e.message}"
-            }
-        }
-    }
-
-    fun clearError() {
-        _errorMessage.value = null
-    }
-
-    fun resetLoadedState() {
-        _hasLoaded.value = false
-        _parseFailed = false
-    }
-}
-
-data class ModModel(
-    val name: String,
-    val path: String,
-    val enabled: Boolean,
-    val inExternalStorage: Boolean,
-    val type: ModType
-)
-
-enum class ModType {
-    RomFs,
-    ExeFs
 }
