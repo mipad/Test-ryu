@@ -52,6 +52,8 @@ namespace LibRyujinx
         
         // 添加 ModMetadata 序列化上下文
         [JsonSerializable(typeof(ModMetadata))]
+        [JsonSerializable(typeof(ModInfo))]
+        [JsonSerializable(typeof(List<ModInfo>))]
         public partial class ModMetadataJsonSerializerContext : JsonSerializerContext
         {
         }
@@ -85,7 +87,7 @@ namespace LibRyujinx
             public bool InExternalStorage { get; set; }
             
             [JsonPropertyName("type")]
-            public ModType Type { get; set; }
+            public string Type { get; set; } = string.Empty; // 改为字符串类型避免枚举序列化问题
         }
 
         public enum ModType
@@ -292,7 +294,7 @@ namespace LibRyujinx
                                         Path = modPath,
                                         Enabled = mod.Enabled,
                                         InExternalStorage = inExternal,
-                                        Type = ModType.RomFs
+                                        Type = "RomFs"
                                     });
                                 }
                             }
@@ -308,7 +310,7 @@ namespace LibRyujinx
                                     Path = mod.Path.FullName,
                                     Enabled = mod.Enabled,
                                     InExternalStorage = inExternal,
-                                    Type = ModType.RomFs
+                                    Type = "RomFs"
                                 });
                             }
 
@@ -328,7 +330,7 @@ namespace LibRyujinx
                                         Path = modPath,
                                         Enabled = mod.Enabled,
                                         InExternalStorage = inExternal,
-                                        Type = ModType.ExeFs
+                                        Type = "ExeFs"
                                     });
                                 }
                             }
@@ -344,7 +346,7 @@ namespace LibRyujinx
                                     Path = mod.Path.FullName,
                                     Enabled = mod.Enabled,
                                     InExternalStorage = inExternal,
-                                    Type = ModType.ExeFs
+                                    Type = "ExeFs"
                                 });
                             }
                         }
