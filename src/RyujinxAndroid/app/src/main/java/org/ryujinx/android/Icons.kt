@@ -811,7 +811,77 @@ class Icons {
             }
         }
     
-
+@Composable
+fun edit(): ImageVector {
+    val primaryColor = MaterialTheme.colorScheme.primary
+    return remember {
+        ImageVector.Builder(
+            name = "edit",
+            defaultWidth = 40.0.dp,
+            defaultHeight = 40.0.dp,
+            viewportWidth = 40.0f,
+            viewportHeight = 40.0f
+        ).apply {
+            path(
+                fill = SolidColor(Color.Black.copy(alpha = 0.5f)),
+                stroke = SolidColor(primaryColor),
+                fillAlpha = 1f,
+                strokeAlpha = 1f,
+                strokeLineWidth = 1.0f,
+                strokeLineCap = StrokeCap.Butt,
+                strokeLineJoin = StrokeJoin.Miter,
+                strokeLineMiter = 1f,
+                pathFillType = PathFillType.NonZero
+            ) {
+                moveTo(9.417f, 32.083f)
+                horizontalLineToRelative(2.25f)
+                lineToRelative(12.583f, -12.583f)
+                quadToRelative(0.25f, -0.25f, 0.25f, -0.583f)
+                quadToRelative(0f, -0.334f, -0.25f, -0.584f)
+                lineToRelative(-2.166f, -2.166f)
+                quadToRelative(-0.25f, -0.25f, -0.584f, -0.25f)
+                quadToRelative(-0.333f, 0f, -0.583f, 0.25f)
+                lineTo(9.417f, 29.833f)
+                close()
+                moveToRelative(17.75f, -14.208f)
+                lineToRelative(-2.25f, -2.25f)
+                lineToRelative(2.25f, 2.25f)
+                close()
+                moveToRelative(4.25f, 11.75f)
+                quadToRelative(0f, 0.625f, -0.438f, 1.062f)
+                quadToRelative(-0.437f, 0.438f, -1.062f, 0.438f)
+                horizontalLineToRelative(-2.25f)
+                verticalLineToRelative(2.25f)
+                quadToRelative(0f, 1.042f, -0.729f, 1.771f)
+                quadToRelative(-0.729f, 0.729f, -1.771f, 0.729f)
+                horizontalLineTo(9.417f)
+                quadToRelative(-1.041f, 0f, -1.77f, -0.729f)
+                quadToRelative(-0.73f, -0.729f, -0.73f, -1.771f)
+                verticalLineTo(13.417f)
+                quadToRelative(0f, -1.041f, 0.73f, -1.77f)
+                quadToRelative(0.729f, -0.73f, 1.77f, -0.73f)
+                horizontalLineToRelative(8.25f)
+                verticalLineToRelative(2.25f)
+                horizontalLineToRelative(-8.25f)
+                verticalLineToRelative(17.166f)
+                horizontalLineToRelative(17.166f)
+                verticalLineToRelative(-8.25f)
+                horizontalLineToRelative(2.25f)
+                verticalLineToRelative(8.25f)
+                close()
+                moveToRelative(-8.75f, -8.75f)
+                lineToRelative(-2.25f, -2.25f)
+                lineToRelative(7.416f, -7.416f)
+                quadToRelative(0.5f, -0.5f, 1.167f, -0.5f)
+                quadToRelative(0.666f, 0f, 1.166f, 0.5f)
+                lineToRelative(2.167f, 2.167f)
+                quadToRelative(0.5f, 0.5f, 0.5f, 1.166f)
+                quadToRelative(0f, 0.667f, -0.5f, 1.167f)
+                close()
+            }
+        }.build()
+    }
+}
 
 @Composable
         fun stats(): ImageVector {
