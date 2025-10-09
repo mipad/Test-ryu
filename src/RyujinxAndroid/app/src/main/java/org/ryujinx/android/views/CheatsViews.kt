@@ -29,7 +29,7 @@ fun CheatsViews(
     val packageName = context.packageName // 动态获取包名
     
     // 传递包名给 ViewModel
-    val viewModel = remember { CheatsViewModel(titleId, gamePath, packageName) }
+    val viewModel = remember { CheatsViewModel(titleId, gamePath, packageName, context) }
     val cheats by viewModel.cheats.collectAsState(emptyList())
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
