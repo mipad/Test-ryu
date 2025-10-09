@@ -76,44 +76,45 @@ class CheatsViewModel(
     )
 
     init {
-        loadCheats()
-        loadCheatFileNames()
+        // 先加载自定义名称，再加载金手指列表
+        viewModelScope.launch {
+            loadCheatFileNames()
+            loadCheats()
+        }
     }
 
-    private fun loadCheatFileNames() {
-        viewModelScope.launch {
-            try {
-                val fileNames = mutableMapOf<String, String>()
-                
-                // 从 SharedPreferences 加载已保存的自定义名称
-                val savedNames = prefs.all
-                savedNames.forEach { (fileName, displayName) ->
-                    if (displayName is String) {
-                        fileNames[fileName] = displayName
-                    }
+    private suspend fun loadCheatFileNames() {
+        try {
+            val fileNames = mutableMapOf<String, String>()
+            
+            // 从 SharedPreferences 加载已保存的自定义名称
+            val savedNames = prefs.all
+            savedNames.forEach { (fileName, displayName) ->
+                if (displayName is String) {
+                    fileNames[fileName] = displayName
                 }
-                
-                // 同时扫描目录，确保新文件也有默认名称
-                if (cheatsDir.exists() && cheatsDir.isDirectory) {
-                    cheatsDir.listFiles()?.forEach { file ->
-                        if (file.isFile && 
-                            (file.extension == "txt" || file.extension == "json") &&
-                            !file.name.equals("enabled.txt", ignoreCase = true)) {
-                            // 如果还没有自定义名称，使用文件名（不带扩展名）作为默认显示名称
-                            if (!fileNames.containsKey(file.name)) {
-                                fileNames[file.name] = file.nameWithoutExtension
-                                // 保存默认名称到 SharedPreferences
-                                saveDisplayNameToPrefs(file.name, file.nameWithoutExtension)
-                            }
+            }
+            
+            // 同时扫描目录，确保新文件也有默认名称
+            if (cheatsDir.exists() && cheatsDir.isDirectory) {
+                cheatsDir.listFiles()?.forEach { file ->
+                    if (file.isFile && 
+                        (file.extension == "txt" || file.extension == "json") &&
+                        !file.name.equals("enabled.txt", ignoreCase = true)) {
+                        // 如果还没有自定义名称，使用文件名（不带扩展名）作为默认显示名称
+                        if (!fileNames.containsKey(file.name)) {
+                            fileNames[file.name] = file.nameWithoutExtension
+                            // 保存默认名称到 SharedPreferences
+                            saveDisplayNameToPrefs(file.name, file.nameWithoutExtension)
                         }
                     }
                 }
-                
-                _cheatFileNames.value = fileNames
-            } catch (e: Exception) {
-                // 忽略错误，使用空映射
-                _cheatFileNames.value = emptyMap()
             }
+            
+            _cheatFileNames.value = fileNames
+        } catch (e: Exception) {
+            // 忽略错误，使用空映射
+            _cheatFileNames.value = emptyMap()
         }
     }
 
@@ -127,68 +128,68 @@ class CheatsViewModel(
         prefs.edit().remove(fileName).apply()
     }
 
-    private fun loadCheats() {
-        viewModelScope.launch {
-            try {
-                _isLoading.value = true
-                // 通过JNI调用获取金手指列表
-                val cheatList = RyujinxNative.getCheats(titleId, gamePath)
-                // 获取已启用的金手指列表
-                val enabledCheats = RyujinxNative.getEnabledCheats(titleId)
-                
-                // 按buildId分组
-                val groupedCheats = cheatList.groupBy { cheatId ->
-                    cheatId.substringBefore('-')
-                }
-                
-                // 构建分组的CheatItem列表
-                val cheatItems = mutableListOf<CheatListItem>()
-                
-                groupedCheats.forEach { (buildId, cheatIds) ->
-                    // 查找对应的文件名和显示名称
-                    val fileInfo = findFileInfoByBuildId(buildId)
-                    
-                    // 添加分组标题
-                    cheatItems.add(CheatListItem.GroupHeader(
-                        fileName = fileInfo.fileName,
-                        displayName = fileInfo.displayName
-                    ))
-                    
-                    // 添加该分组下的金手指项
-                    cheatIds.forEach { cheatId ->
-                        val name = cheatId.substringAfterLast('-')
-                        cheatItems.add(CheatListItem.CheatItem(
-                            id = cheatId,
-                            name = name,
-                            enabled = enabledCheats.contains(cheatId),
-                            groupName = fileInfo.displayName
-                        ))
-                    }
-                }
-                
-                _cheats.value = cheatItems
-            } catch (e: Exception) {
-                _errorMessage.value = "Failed to load cheats: ${e.message}"
-            } finally {
-                _isLoading.value = false
+    private suspend fun loadCheats() {
+        try {
+            _isLoading.value = true
+            // 通过JNI调用获取金手指列表
+            val cheatList = RyujinxNative.getCheats(titleId, gamePath)
+            // 获取已启用的金手指列表
+            val enabledCheats = RyujinxNative.getEnabledCheats(titleId)
+            
+            // 按buildId分组
+            val groupedCheats = cheatList.groupBy { cheatId ->
+                cheatId.substringBefore('-')
             }
+            
+            // 构建分组的CheatItem列表
+            val cheatItems = mutableListOf<CheatListItem>()
+            
+            groupedCheats.forEach { (buildId, cheatIds) ->
+                // 查找对应的文件名和显示名称
+                val fileInfo = findFileInfoByBuildId(buildId)
+                
+                // 添加分组标题
+                cheatItems.add(CheatListItem.GroupHeader(
+                    fileName = fileInfo.fileName,
+                    displayName = fileInfo.displayName
+                ))
+                
+                // 添加该分组下的金手指项
+                cheatIds.forEach { cheatId ->
+                    val name = cheatId.substringAfterLast('-')
+                    cheatItems.add(CheatListItem.CheatItem(
+                        id = cheatId,
+                        name = name,
+                        enabled = enabledCheats.contains(cheatId),
+                        groupName = fileInfo.displayName
+                    ))
+                }
+            }
+            
+            _cheats.value = cheatItems
+        } catch (e: Exception) {
+            _errorMessage.value = "Failed to load cheats: ${e.message}"
+        } finally {
+            _isLoading.value = false
         }
     }
 
     // 根据buildId查找对应的文件信息和显示名称
     private fun findFileInfoByBuildId(buildId: String): CheatFileInfo {
-        // 首先尝试精确匹配文件名
+        // 首先尝试精确匹配文件名（包含buildId的文件）
         val exactMatch = _cheatFileNames.value.keys.firstOrNull { fileName ->
-            fileName.startsWith(buildId) || fileName.contains(buildId)
+            // 移除扩展名进行比较
+            val fileNameWithoutExt = fileName.substringBeforeLast('.')
+            fileNameWithoutExt == buildId || fileNameWithoutExt.contains(buildId)
         }
         
         if (exactMatch != null) {
-            return CheatFileInfo(exactMatch, _cheatFileNames.value[exactMatch] ?: exactMatch)
+            return CheatFileInfo(exactMatch, _cheatFileNames.value[exactMatch] ?: exactMatch.substringBeforeLast('.'))
         }
         
         // 如果没有精确匹配，尝试在显示名称中查找
-        val displayNameMatch = _cheatFileNames.value.entries.firstOrNull { (_, displayName) ->
-            displayName.contains(buildId)
+        val displayNameMatch = _cheatFileNames.value.entries.firstOrNull { (fileName, displayName) ->
+            displayName.contains(buildId) || fileName.contains(buildId)
         }
         
         return if (displayNameMatch != null) {
@@ -420,5 +421,10 @@ class CheatsViewModel(
     
     fun clearError() {
         _errorMessage.value = null
+    }
+    
+    // 调试方法：获取当前自定义名称映射
+    fun getCurrentDisplayNames(): Map<String, String> {
+        return _cheatFileNames.value
     }
 }
