@@ -28,7 +28,7 @@ fun CheatsViews(
     val context = LocalContext.current
     val packageName = context.packageName // 动态获取包名
     
-    // 传递包名给 ViewModel
+    // 传递包名和 Context 给 ViewModel
     val viewModel = remember { CheatsViewModel(titleId, gamePath, packageName, context) }
     val cheats by viewModel.cheats.collectAsState(emptyList())
     val isLoading by viewModel.isLoading.collectAsState()
@@ -88,6 +88,7 @@ fun CheatsViews(
                 showAddCheatDialog = false
                 selectedCheatFile?.delete() // 清理临时文件
                 selectedCheatFile = null
+                customDisplayName = ""
             },
             title = { Text("Add Cheat File") },
             text = {
@@ -112,6 +113,9 @@ fun CheatsViews(
                             }
                             showAddCheatDialog = false
                             selectedCheatFile = null
+                            customDisplayName = ""
+                        } else {
+                            viewModel.setErrorMessage("Display name cannot be empty")
                         }
                     }
                 ) {
@@ -124,6 +128,7 @@ fun CheatsViews(
                         showAddCheatDialog = false
                         selectedCheatFile?.delete() // 清理临时文件
                         selectedCheatFile = null
+                        customDisplayName = ""
                     }
                 ) {
                     Text("Cancel")
