@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import org.ryujinx.android.viewmodels.CheatsViewModel
+import org.ryujinx.android.viewmodels.CheatListItem // 添加这个导入
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import java.io.File
@@ -285,7 +286,7 @@ fun CheatsViews(
                 ) {
                     items(cheats) { item ->
                         when (item) {
-                            is CheatsViewModel.CheatListItem.GroupHeader -> {
+                            is CheatListItem.GroupHeader -> {
                                 // 显示分组标题
                                 Card(
                                     modifier = Modifier
@@ -302,7 +303,7 @@ fun CheatsViews(
                                     )
                                 }
                             }
-                            is CheatsViewModel.CheatListItem.CheatItem -> {
+                            is CheatListItem.CheatItem -> {
                                 // 显示金手指项
                                 Row(
                                     modifier = Modifier
