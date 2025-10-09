@@ -35,6 +35,9 @@ fun CheatsViews(
     
     // 状态控制
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showAddCheatDialog by remember { mutableStateOf(false) }
+    var selectedCheatFile by remember { mutableStateOf<File?>(null) }
+    var customDisplayName by remember { mutableStateOf("") }
     
     // 文件选择器 - 使用 OpenDocument 契约
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -42,7 +45,7 @@ fun CheatsViews(
         onResult = { uri ->
             if (uri != null) {
                 try {
-                    // 从 URI 读取文件内容并复制到金手指目录
+                    // 从 URI 读取文件内容
                     context.contentResolver.openInputStream(uri)?.use { inputStream ->
                         // 获取文件名
                         val fileName = getFileNameFromUri(context, uri) ?: "cheat_${System.currentTimeMillis()}.txt"
@@ -53,17 +56,22 @@ fun CheatsViews(
                             return@use
                         }
                         
+                        // 检查文件名，不允许添加 enabled.txt
+                        if (fileName.equals("enabled.txt", ignoreCase = true)) {
+                            viewModel.setErrorMessage("Cannot add enabled.txt file. This is a system file.")
+                            return@use
+                        }
+                        
                         // 创建临时文件
                         val tempFile = File(context.cacheDir, fileName)
                         tempFile.outputStream().use { outputStream ->
                             inputStream.copyTo(outputStream)
                         }
                         
-                        // 传递给 ViewModel 处理
-                        viewModel.addCheatFile(tempFile)
-                        
-                        // 删除临时文件
-                        tempFile.delete()
+                        // 设置默认显示名称（不带扩展名的文件名）
+                        customDisplayName = tempFile.nameWithoutExtension
+                        selectedCheatFile = tempFile
+                        showAddCheatDialog = true
                     }
                 } catch (e: Exception) {
                     viewModel.setErrorMessage("Failed to import cheat file: ${e.message}")
@@ -71,6 +79,57 @@ fun CheatsViews(
             }
         }
     )
+
+    // 添加金手指对话框
+    if (showAddCheatDialog && selectedCheatFile != null) {
+        AlertDialog(
+            onDismissRequest = { 
+                showAddCheatDialog = false
+                selectedCheatFile?.delete() // 清理临时文件
+                selectedCheatFile = null
+            },
+            title = { Text("Add Cheat File") },
+            text = {
+                Column {
+                    Text("File: ${selectedCheatFile?.name ?: ""}")
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = customDisplayName,
+                        onValueChange = { customDisplayName = it },
+                        label = { Text("Display Name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Enter a name for this cheat file") }
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (customDisplayName.isNotBlank()) {
+                            selectedCheatFile?.let { file ->
+                                viewModel.addCheatFile(file, customDisplayName)
+                            }
+                            showAddCheatDialog = false
+                            selectedCheatFile = null
+                        }
+                    }
+                ) {
+                    Text("Add")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showAddCheatDialog = false
+                        selectedCheatFile?.delete() // 清理临时文件
+                        selectedCheatFile = null
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     // 显示错误对话框
     if (errorMessage != null) {
@@ -93,7 +152,16 @@ fun CheatsViews(
         AlertDialog(
             onDismissRequest = { showDeleteConfirmDialog = false },
             title = { Text("Confirm Delete") },
-            text = { Text("Are you sure you want to delete all cheat files? This action cannot be undone.") },
+            text = { 
+                Column {
+                    Text("Are you sure you want to delete all cheat files?")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Note: The enabled.txt file (which stores cheat states) will not be deleted.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -185,24 +253,6 @@ fun CheatsViews(
                 }
             }
             
-            // 显示金手指目录路径（用于调试）
-            if (cheats.isEmpty() && !isLoading) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-                ) {
-                    Text(
-                        text = "Cheats directory:\n/storage/emulated/0/Android/data/$packageName/files/mods/contents/$titleId/cheats/",
-                        modifier = Modifier.padding(16.dp),
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
-            
             if (isLoading) {
                 Box(
                     modifier = Modifier
@@ -233,34 +283,56 @@ fun CheatsViews(
                 LazyColumn(
                     modifier = Modifier.weight(1f)
                 ) {
-                    items(cheats) { cheat ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(
-                                    text = cheat.name,
-                                    style = MaterialTheme.typography.bodyLarge
-                                )
-                                Text(
-                                    text = "ID: ${cheat.id}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Switch(
-                                checked = cheat.enabled,
-                                onCheckedChange = { enabled ->
-                                    viewModel.setCheatEnabled(cheat.id, enabled)
+                    items(cheats) { item ->
+                        when (item) {
+                            is CheatsViewModel.CheatListItem.GroupHeader -> {
+                                // 显示分组标题
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                ) {
+                                    Text(
+                                        text = item.displayName,
+                                        modifier = Modifier.padding(16.dp),
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
                                 }
-                            )
+                            }
+                            is CheatsViewModel.CheatListItem.CheatItem -> {
+                                // 显示金手指项
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text(
+                                            text = item.name,
+                                            style = MaterialTheme.typography.bodyLarge
+                                        )
+                                        Text(
+                                            text = "ID: ${item.id}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Switch(
+                                        checked = item.enabled,
+                                        onCheckedChange = { enabled ->
+                                            viewModel.setCheatEnabled(item.id, enabled)
+                                        }
+                                    )
+                                }
+                                Divider()
+                            }
                         }
-                        Divider()
                     }
                 }
             }
