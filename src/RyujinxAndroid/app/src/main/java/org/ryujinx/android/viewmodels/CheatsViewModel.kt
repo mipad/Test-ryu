@@ -8,7 +8,7 @@ import kotlinx.coroutines.launch
 import org.ryujinx.android.RyujinxNative
 import java.io.File
 
-// 修改数据结构以支持分组
+// 修改数据结构以支持分组 - 移到文件顶部
 sealed class CheatListItem {
     data class GroupHeader(val fileName: String, val displayName: String) : CheatListItem()
     data class CheatItem(
