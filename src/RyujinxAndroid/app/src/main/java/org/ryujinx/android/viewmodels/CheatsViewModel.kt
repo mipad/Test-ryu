@@ -1,5 +1,7 @@
 package org.ryujinx.android.viewmodels
 
+import android.content.Context
+import android.content.SharedPreferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,7 +38,8 @@ data class EncodingResult(
 class CheatsViewModel(
     private val titleId: String, 
     private val gamePath: String,
-    private val packageName: String
+    private val packageName: String,
+    private val context: Context // 添加 Context 参数用于 SharedPreferences
 ) : ViewModel() {
     private val _cheats = MutableStateFlow<List<CheatListItem>>(emptyList())
     val cheats: StateFlow<List<CheatListItem>> = _cheats
@@ -53,6 +56,11 @@ class CheatsViewModel(
     // 金手指目录路径 - 使用动态包名
     private val cheatsDir: File by lazy {
         File("/storage/emulated/0/Android/data/$packageName/files/mods/contents/$titleId/cheats")
+    }
+
+    // SharedPreferences 用于持久化存储自定义名称
+    private val prefs: SharedPreferences by lazy {
+        context.getSharedPreferences("cheat_display_names_$titleId", Context.MODE_PRIVATE)
     }
 
     // 常见编码列表，按可能性排序
@@ -75,25 +83,48 @@ class CheatsViewModel(
     private fun loadCheatFileNames() {
         viewModelScope.launch {
             try {
-                // 从文件加载自定义名称（如果有的话）
-                // 这里可以添加持久化存储逻辑
-                // 暂时使用文件名作为默认显示名称
+                val fileNames = mutableMapOf<String, String>()
+                
+                // 从 SharedPreferences 加载已保存的自定义名称
+                val savedNames = prefs.all
+                savedNames.forEach { (fileName, displayName) ->
+                    if (displayName is String) {
+                        fileNames[fileName] = displayName
+                    }
+                }
+                
+                // 同时扫描目录，确保新文件也有默认名称
                 if (cheatsDir.exists() && cheatsDir.isDirectory) {
-                    val fileNames = mutableMapOf<String, String>()
                     cheatsDir.listFiles()?.forEach { file ->
                         if (file.isFile && 
                             (file.extension == "txt" || file.extension == "json") &&
                             !file.name.equals("enabled.txt", ignoreCase = true)) {
-                            // 默认使用文件名（不带扩展名）作为显示名称
-                            fileNames[file.name] = file.nameWithoutExtension
+                            // 如果还没有自定义名称，使用文件名（不带扩展名）作为默认显示名称
+                            if (!fileNames.containsKey(file.name)) {
+                                fileNames[file.name] = file.nameWithoutExtension
+                                // 保存默认名称到 SharedPreferences
+                                saveDisplayNameToPrefs(file.name, file.nameWithoutExtension)
+                            }
                         }
                     }
-                    _cheatFileNames.value = fileNames
                 }
+                
+                _cheatFileNames.value = fileNames
             } catch (e: Exception) {
-                // 忽略错误，使用默认名称
+                // 忽略错误，使用空映射
+                _cheatFileNames.value = emptyMap()
             }
         }
+    }
+
+    // 保存显示名称到 SharedPreferences
+    private fun saveDisplayNameToPrefs(fileName: String, displayName: String) {
+        prefs.edit().putString(fileName, displayName).apply()
+    }
+
+    // 从 SharedPreferences 删除显示名称
+    private fun removeDisplayNameFromPrefs(fileName: String) {
+        prefs.edit().remove(fileName).apply()
     }
 
     private fun loadCheats() {
@@ -146,14 +177,22 @@ class CheatsViewModel(
 
     // 根据buildId查找对应的文件信息和显示名称
     private fun findFileInfoByBuildId(buildId: String): CheatFileInfo {
-        // 查找包含该buildId的文件
-        val matchingFile = _cheatFileNames.value.keys.firstOrNull { fileName ->
-            fileName.contains(buildId) || 
-            _cheatFileNames.value[fileName]?.contains(buildId) == true
+        // 首先尝试精确匹配文件名
+        val exactMatch = _cheatFileNames.value.keys.firstOrNull { fileName ->
+            fileName.startsWith(buildId) || fileName.contains(buildId)
         }
         
-        return if (matchingFile != null) {
-            CheatFileInfo(matchingFile, _cheatFileNames.value[matchingFile] ?: matchingFile)
+        if (exactMatch != null) {
+            return CheatFileInfo(exactMatch, _cheatFileNames.value[exactMatch] ?: exactMatch)
+        }
+        
+        // 如果没有精确匹配，尝试在显示名称中查找
+        val displayNameMatch = _cheatFileNames.value.entries.firstOrNull { (_, displayName) ->
+            displayName.contains(buildId)
+        }
+        
+        return if (displayNameMatch != null) {
+            CheatFileInfo(displayNameMatch.key, displayNameMatch.value)
         } else {
             // 如果没有找到匹配的文件，使用buildId作为显示名称
             CheatFileInfo("$buildId.txt", buildId)
@@ -298,7 +337,10 @@ class CheatsViewModel(
                     _errorMessage.value = "File converted from ${encodingResult.detectedEncoding} to UTF-8. Detected language: $detectedLanguage"
                 }
                 
-                // 保存自定义显示名称
+                // 保存自定义显示名称到 SharedPreferences
+                saveDisplayNameToPrefs(cheatFile.name, displayName)
+                
+                // 更新内存中的映射
                 val updatedNames = _cheatFileNames.value.toMutableMap()
                 updatedNames[cheatFile.name] = displayName
                 _cheatFileNames.value = updatedNames
@@ -315,6 +357,10 @@ class CheatsViewModel(
     fun updateCheatFileName(fileName: String, newDisplayName: String) {
         viewModelScope.launch {
             try {
+                // 保存到 SharedPreferences
+                saveDisplayNameToPrefs(fileName, newDisplayName)
+                
+                // 更新内存中的映射
                 val updatedNames = _cheatFileNames.value.toMutableMap()
                 updatedNames[fileName] = newDisplayName
                 _cheatFileNames.value = updatedNames
@@ -337,6 +383,8 @@ class CheatsViewModel(
                             (file.extension == "txt" || file.extension == "json") &&
                             !file.name.equals("enabled.txt", ignoreCase = true)) {
                             file.delete()
+                            // 从 SharedPreferences 中删除对应的显示名称
+                            removeDisplayNameFromPrefs(file.name)
                         }
                     }
                 }
