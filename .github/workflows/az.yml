@@ -2,9 +2,9 @@ name: Android CI  Fix
 
 on:
   push:
-    branches: [ "mod管理1" ]
+    branches: [ "更新金手指管理" ]
   pull_request:
-    branches: [ "mod管理1" ]
+    branches: [ "更新金手指管理" ]
 
 jobs:
   build:
@@ -25,7 +25,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: mod管理1
+        ref: 更新金手指管理
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
