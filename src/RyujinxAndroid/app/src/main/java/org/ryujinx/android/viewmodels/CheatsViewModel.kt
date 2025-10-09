@@ -6,7 +6,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import org.ryujinx.android.RyujinxNative
-import java.io.File
+import java.io.*
+import java.nio.charset.Charset
 
 // 修改数据结构以支持分组 - 移到文件顶部
 sealed class CheatListItem {
@@ -23,6 +24,13 @@ sealed class CheatListItem {
 data class CheatFileInfo(
     val fileName: String,
     val displayName: String
+)
+
+// 编码检测结果
+data class EncodingResult(
+    val charset: Charset,
+    val content: String,
+    val detectedEncoding: String
 )
 
 class CheatsViewModel(
@@ -46,6 +54,18 @@ class CheatsViewModel(
     private val cheatsDir: File by lazy {
         File("/storage/emulated/0/Android/data/$packageName/files/mods/contents/$titleId/cheats")
     }
+
+    // 常见编码列表，按可能性排序
+    private val commonCharsets = listOf(
+        Charset.forName("UTF-8"),
+        Charset.forName("GBK"),
+        Charset.forName("GB2312"),
+        Charset.forName("BIG5"),
+        Charset.forName("Shift_JIS"),
+        Charset.forName("EUC-JP"),
+        Charset.forName("ISO-8859-1"),
+        Charset.forName("Windows-1252")
+    )
 
     init {
         loadCheats()
@@ -140,6 +160,86 @@ class CheatsViewModel(
         }
     }
 
+    // 检测文件编码并转换为UTF-8
+    private fun detectAndConvertEncoding(file: File): EncodingResult {
+        // 首先检查是否为UTF-8
+        if (isValidUtf8(file)) {
+            val content = file.readText(Charsets.UTF_8)
+            return EncodingResult(Charsets.UTF_8, content, "UTF-8")
+        }
+        
+        // 如果不是UTF-8，尝试其他常见编码
+        for (charset in commonCharsets) {
+            if (charset == Charsets.UTF_8) continue // 已经检查过UTF-8
+            
+            try {
+                val content = file.readText(charset)
+                // 简单验证：检查是否包含过多乱码字符
+                if (!containsTooManyInvalidChars(content)) {
+                    return EncodingResult(charset, content, charset.name())
+                }
+            } catch (e: Exception) {
+                // 尝试下一个编码
+                continue
+            }
+        }
+        
+        // 如果所有编码都失败，默认使用UTF-8并记录警告
+        val fallbackContent = try {
+            file.readText(Charsets.UTF_8)
+        } catch (e: Exception) {
+            "Failed to read file with any encoding"
+        }
+        return EncodingResult(Charsets.UTF_8, fallbackContent, "Unknown (fallback to UTF-8)")
+    }
+    
+    // 检查文件是否为有效的UTF-8
+    private fun isValidUtf8(file: File): Boolean {
+        return try {
+            file.reader(Charsets.UTF_8).use { reader ->
+                val buffer = CharArray(1024)
+                while (reader.read(buffer) != -1) {
+                    // 如果读取过程中没有抛出异常，说明是有效的UTF-8
+                }
+            }
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+    
+    // 检查内容是否包含过多无效字符（简单的乱码检测）
+    private fun containsTooManyInvalidChars(text: String): Boolean {
+        if (text.isEmpty()) return false
+        
+        val invalidCharCount = text.count { char ->
+            // 检查是否为控制字符（除了换行和制表符）或 Unicode 替换字符
+            (char.code in 0x0000..0x001F && char != '\n' && char != '\r' && char != '\t') ||
+            char == '\uFFFD' // Unicode 替换字符
+        }
+        
+        // 如果超过文本长度的1%是无效字符，认为编码可能不正确
+        return (invalidCharCount.toDouble() / text.length) > 0.01
+    }
+    
+    // 根据编码判断可能的语言
+    private fun detectLanguageFromEncoding(charset: Charset, content: String): String {
+        return when (charset.name().uppercase()) {
+            "GBK", "GB2312" -> "Chinese (Simplified)"
+            "BIG5" -> "Chinese (Traditional)"
+            "SHIFT_JIS", "EUC-JP" -> "Japanese"
+            else -> {
+                // 通过字符范围进行简单判断
+                val hasCJK = content.any { char ->
+                    char.code in 0x4E00..0x9FFF || // CJK统一表意文字
+                    char.code in 0x3040..0x309F || // 平假名
+                    char.code in 0x30A0..0x30FF    // 片假名
+                }
+                if (hasCJK) "Detected CJK Characters" else "Unknown"
+            }
+        }
+    }
+
     fun setCheatEnabled(cheatId: String, enabled: Boolean) {
         viewModelScope.launch {
             try {
@@ -170,7 +270,7 @@ class CheatsViewModel(
         }
     }
 
-    // 添加金手指文件
+    // 添加金手指文件（现在会自动检测编码并转换为UTF-8）
     fun addCheatFile(cheatFile: File, displayName: String) {
         viewModelScope.launch {
             try {
@@ -185,10 +285,17 @@ class CheatsViewModel(
                 }
                 
                 val targetFile = File(cheatsDir, cheatFile.name)
-                cheatFile.inputStream().use { input ->
-                    targetFile.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
+                
+                // 检测编码并转换为UTF-8
+                val encodingResult = detectAndConvertEncoding(cheatFile)
+                
+                // 以UTF-8编码保存文件
+                targetFile.writeText(encodingResult.content, Charsets.UTF_8)
+                
+                // 显示编码检测信息（可选）
+                if (encodingResult.detectedEncoding != "UTF-8") {
+                    val detectedLanguage = detectLanguageFromEncoding(encodingResult.charset, encodingResult.content)
+                    _errorMessage.value = "File converted from ${encodingResult.detectedEncoding} to UTF-8. Detected language: $detectedLanguage"
                 }
                 
                 // 保存自定义显示名称
