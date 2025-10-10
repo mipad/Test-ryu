@@ -1,13 +1,10 @@
-using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Vulkan.Effects;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.KHR;
 using System;
 using System.Linq;
-using System.Threading;
 using VkFormat = Silk.NET.Vulkan.Format;
-using VkSemaphore = Silk.NET.Vulkan.Semaphore;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -25,8 +22,8 @@ namespace Ryujinx.Graphics.Vulkan
         private Image[] _swapchainImages;
         private TextureView[] _swapchainImageViews;
 
-        private VkSemaphore[] _imageAvailableSemaphores;
-        private VkSemaphore[] _renderFinishedSemaphores;
+        private Semaphore[] _imageAvailableSemaphores;
+        private Semaphore[] _renderFinishedSemaphores;
 
         private int _frameIndex;
 
@@ -45,12 +42,6 @@ namespace Ryujinx.Graphics.Vulkan
         private ScalingFilter _currentScalingFilter;
         private bool _colorSpacePassthroughEnabled;
 
-        // Android特定：交换链恢复计数器
-#if ANDROID
-        private int _swapchainRecoveryAttempts = 0;
-        private const int MaxSwapchainRecoveryAttempts = 3;
-#endif
-
         public unsafe Window(VulkanRenderer gd, SurfaceKHR surface, PhysicalDevice physicalDevice, Device device)
         {
             _gd = gd;
@@ -68,10 +59,11 @@ namespace Ryujinx.Graphics.Vulkan
 
             for (int i = 0; i < _swapchainImageViews.Length; i++)
             {
-                _swapchainImageViews[i]?.Dispose();
+                _swapchainImageViews[i].Dispose();
             }
 
             // Destroy old Swapchain.
+
             _gd.Api.DeviceWaitIdle(_device);
 
             unsafe
@@ -98,220 +90,119 @@ namespace Ryujinx.Graphics.Vulkan
             RecreateSwapchain();
         }
 
-        private unsafe bool TryCreateSwapchain(out string errorMessage)
-        {
-            errorMessage = null;
-            
-#if ANDROID
-            if (_swapchainRecoveryAttempts >= MaxSwapchainRecoveryAttempts)
-            {
-                errorMessage = "Maximum swapchain recovery attempts reached";
-                return false;
-            }
-            
-            _swapchainRecoveryAttempts++;
-#endif
-
-            try
-            {
-                _gd.SurfaceApi.GetPhysicalDeviceSurfaceCapabilities(_physicalDevice, _surface, out var capabilities);
-
-                uint surfaceFormatsCount;
-                _gd.SurfaceApi.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, &surfaceFormatsCount, null);
-
-                var surfaceFormats = new SurfaceFormatKHR[surfaceFormatsCount];
-                fixed (SurfaceFormatKHR* pSurfaceFormats = surfaceFormats)
-                {
-                    _gd.SurfaceApi.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, &surfaceFormatsCount, pSurfaceFormats);
-                }
-
-                uint presentModesCount;
-                _gd.SurfaceApi.GetPhysicalDeviceSurfacePresentModes(_physicalDevice, _surface, &presentModesCount, null);
-
-                var presentModes = new PresentModeKHR[presentModesCount];
-                fixed (PresentModeKHR* pPresentModes = presentModes)
-                {
-                    _gd.SurfaceApi.GetPhysicalDeviceSurfacePresentModes(_physicalDevice, _surface, &presentModesCount, pPresentModes);
-                }
-
-                uint imageCount = capabilities.MinImageCount + 1;
-                if (capabilities.MaxImageCount > 0 && imageCount > capabilities.MaxImageCount)
-                {
-                    imageCount = capabilities.MaxImageCount;
-                }
-
-                var surfaceFormat = ChooseSwapSurfaceFormat(surfaceFormats, _colorSpacePassthroughEnabled);
-                var extent = ChooseSwapExtent(capabilities);
-
-                _width = (int)extent.Width;
-                _height = (int)extent.Height;
-                _format = surfaceFormat.Format;
-
-                var oldSwapchain = _swapchain;
-                CurrentTransform = capabilities.CurrentTransform;
-
-                // 动态确定图像使用标志
-                var imageUsage = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit;
-                
-                // 检查是否需要StorageBit用于高级缩放器
-                bool needsStorageForScaling = _currentScalingFilter == ScalingFilter.Fsr || 
-                                            _currentScalingFilter == ScalingFilter.Area;
-                
-#if ANDROID
-                // 在Android上，只有当需要高级缩放器时才包含StorageBit
-                if (needsStorageForScaling)
-                {
-                    imageUsage |= ImageUsageFlags.StorageBit;
-                    Logger.Debug?.Print(LogClass.Gpu, "Android: Including StorageBit for advanced scaling filter");
-                }
-                else
-                {
-                    Logger.Debug?.Print(LogClass.Gpu, "Android: Using optimized swapchain usage flags (no StorageBit)");
-                }
-#else
-                // 非Android平台始终包含StorageBit以获得最佳兼容性
-                imageUsage |= ImageUsageFlags.StorageBit;
-#endif
-
-                var swapchainCreateInfo = new SwapchainCreateInfoKHR
-                {
-                    SType = StructureType.SwapchainCreateInfoKhr,
-                    Surface = _surface,
-                    MinImageCount = imageCount,
-                    ImageFormat = surfaceFormat.Format,
-                    ImageColorSpace = surfaceFormat.ColorSpace,
-                    ImageExtent = extent,
-                    ImageUsage = imageUsage, // 使用动态确定的标志
-                    ImageSharingMode = SharingMode.Exclusive,
-                    ImageArrayLayers = 1,
-                    PreTransform = capabilities.CurrentTransform,
-                    CompositeAlpha = ChooseCompositeAlpha(capabilities.SupportedCompositeAlpha),
-                    PresentMode = ChooseSwapPresentMode(presentModes, _vsyncEnabled),
-                    Clipped = true,
-                };
-
-                // Android特定：优化呈现模式
-#if ANDROID
-                // 使用更兼容的呈现模式
-                if (swapchainCreateInfo.PresentMode == PresentModeKHR.ImmediateKhr)
-                {
-                    swapchainCreateInfo.PresentMode = PresentModeKHR.FifoKhr; // 更稳定的模式
-                    Logger.Debug?.Print(LogClass.Gpu, "Android: Using FIFO present mode for better compatibility");
-                }
-#endif
-
-                var textureCreateInfo = new TextureCreateInfo(
-                    _width,
-                    _height,
-                    1,
-                    1,
-                    1,
-                    1,
-                    1,
-                    1,
-                    FormatTable.GetFormat(surfaceFormat.Format),
-                    DepthStencilMode.Depth,
-                    Target.Texture2D,
-                    SwizzleComponent.Red,
-                    SwizzleComponent.Green,
-                    SwizzleComponent.Blue,
-                    SwizzleComponent.Alpha);
-
-                Result result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
-                
-                if (result != Result.Success)
-                {
-                    // 尝试备用格式和设置
-#if ANDROID
-                    Logger.Warning?.Print(LogClass.Gpu, $"Swapchain creation failed: {result}, trying fallback options");
-                    
-                    // 第一次回退：尝试使用B8G8R8A8Unorm格式
-                    surfaceFormat.Format = VkFormat.B8G8R8A8Unorm;
-                    swapchainCreateInfo.ImageFormat = surfaceFormat.Format;
-                    result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
-                    
-                    if (result != Result.Success)
-                    {
-                        // 第二次回退：移除StorageBit
-                        Logger.Warning?.Print(LogClass.Gpu, $"Swapchain creation failed with fallback format: {result}, removing StorageBit");
-                        swapchainCreateInfo.ImageUsage &= ~ImageUsageFlags.StorageBit;
-                        result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
-                        
-                        if (result != Result.Success)
-                        {
-                            errorMessage = $"Swapchain creation failed after all fallback attempts: {result}";
-                            return false;
-                        }
-                        else
-                        {
-                            Logger.Info?.Print(LogClass.Gpu, "Swapchain created successfully without StorageBit - advanced scaling filters may not work");
-                        }
-                    }
-#else
-                    errorMessage = $"Swapchain creation failed: {result}";
-                    return false;
-#endif
-                }
-
-                _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, null);
-                _swapchainImages = new Image[imageCount];
-                fixed (Image* pSwapchainImages = _swapchainImages)
-                {
-                    _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, pSwapchainImages);
-                }
-
-                _swapchainImageViews = new TextureView[imageCount];
-                for (int i = 0; i < _swapchainImageViews.Length; i++)
-                {
-                    _swapchainImageViews[i] = CreateSwapchainImageView(_swapchainImages[i], surfaceFormat.Format, textureCreateInfo);
-                }
-
-                var semaphoreCreateInfo = new SemaphoreCreateInfo
-                {
-                    SType = StructureType.SemaphoreCreateInfo,
-                };
-
-                _imageAvailableSemaphores = new VkSemaphore[imageCount];
-                for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
-                {
-                    _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _imageAvailableSemaphores[i]).ThrowOnError();
-                }
-
-                _renderFinishedSemaphores = new VkSemaphore[imageCount];
-                for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
-                {
-                    _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _renderFinishedSemaphores[i]).ThrowOnError();
-                }
-
-#if ANDROID
-                _swapchainRecoveryAttempts = 0; // 重置恢复计数器
-#endif
-                return true;
-            }
-            catch (Exception ex)
-            {
-                errorMessage = ex.Message;
-                return false;
-            }
-        }
-
         private unsafe void CreateSwapchain()
         {
-            if (!TryCreateSwapchain(out string error))
+            _gd.SurfaceApi.GetPhysicalDeviceSurfaceCapabilities(_physicalDevice, _surface, out var capabilities);
+
+            uint surfaceFormatsCount;
+
+            _gd.SurfaceApi.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, &surfaceFormatsCount, null);
+
+            var surfaceFormats = new SurfaceFormatKHR[surfaceFormatsCount];
+
+            fixed (SurfaceFormatKHR* pSurfaceFormats = surfaceFormats)
             {
-                Logger.Error?.Print(LogClass.Gpu, $"Failed to create swapchain: {error}");
-                
-#if ANDROID
-                // Android特定：尝试延迟恢复
-                Logger.Info?.Print(LogClass.Gpu, "Will retry swapchain creation after delay");
-                Thread.Sleep(100); // 短暂延迟后重试
-                if (!TryCreateSwapchain(out error))
-                {
-                    throw new InvalidOperationException($"Unable to create swapchain: {error}");
-                }
-#else
-                throw new InvalidOperationException($"Unable to create swapchain: {error}");
-#endif
+                _gd.SurfaceApi.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, &surfaceFormatsCount, pSurfaceFormats);
+            }
+
+            uint presentModesCount;
+
+            _gd.SurfaceApi.GetPhysicalDeviceSurfacePresentModes(_physicalDevice, _surface, &presentModesCount, null);
+
+            var presentModes = new PresentModeKHR[presentModesCount];
+
+            fixed (PresentModeKHR* pPresentModes = presentModes)
+            {
+                _gd.SurfaceApi.GetPhysicalDeviceSurfacePresentModes(_physicalDevice, _surface, &presentModesCount, pPresentModes);
+            }
+
+            uint imageCount = capabilities.MinImageCount + 1;
+            if (capabilities.MaxImageCount > 0 && imageCount > capabilities.MaxImageCount)
+            {
+                imageCount = capabilities.MaxImageCount;
+            }
+
+            var surfaceFormat = ChooseSwapSurfaceFormat(surfaceFormats, _colorSpacePassthroughEnabled);
+
+            var extent = ChooseSwapExtent(capabilities);
+
+            _width = (int)extent.Width;
+            _height = (int)extent.Height;
+            _format = surfaceFormat.Format;
+
+            var oldSwapchain = _swapchain;
+
+            CurrentTransform = capabilities.CurrentTransform;
+
+            var swapchainCreateInfo = new SwapchainCreateInfoKHR
+            {
+                SType = StructureType.SwapchainCreateInfoKhr,
+                Surface = _surface,
+                MinImageCount = imageCount,
+                ImageFormat = surfaceFormat.Format,
+                ImageColorSpace = surfaceFormat.ColorSpace,
+                ImageExtent = extent,
+                ImageUsage = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit | (Ryujinx.Common.PlatformInfo.IsBionic ? 0 : ImageUsageFlags.StorageBit),
+                ImageSharingMode = SharingMode.Exclusive,
+                ImageArrayLayers = 1,
+                PreTransform = Ryujinx.Common.PlatformInfo.IsBionic ? SurfaceTransformFlagsKHR.IdentityBitKhr : capabilities.CurrentTransform,
+                CompositeAlpha = ChooseCompositeAlpha(capabilities.SupportedCompositeAlpha),
+                PresentMode = ChooseSwapPresentMode(presentModes, _vsyncEnabled),
+                Clipped = true,
+            };
+
+            var textureCreateInfo = new TextureCreateInfo(
+                _width,
+                _height,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                FormatTable.GetFormat(surfaceFormat.Format),
+                DepthStencilMode.Depth,
+                Target.Texture2D,
+                SwizzleComponent.Red,
+                SwizzleComponent.Green,
+                SwizzleComponent.Blue,
+                SwizzleComponent.Alpha);
+
+            _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain).ThrowOnError();
+
+            _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, null);
+
+            _swapchainImages = new Image[imageCount];
+
+            fixed (Image* pSwapchainImages = _swapchainImages)
+            {
+                _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, pSwapchainImages);
+            }
+
+            _swapchainImageViews = new TextureView[imageCount];
+
+            for (int i = 0; i < _swapchainImageViews.Length; i++)
+            {
+                _swapchainImageViews[i] = CreateSwapchainImageView(_swapchainImages[i], surfaceFormat.Format, textureCreateInfo);
+            }
+
+            var semaphoreCreateInfo = new SemaphoreCreateInfo
+            {
+                SType = StructureType.SemaphoreCreateInfo,
+            };
+
+            _imageAvailableSemaphores = new Semaphore[imageCount];
+
+            for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
+            {
+                _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _imageAvailableSemaphores[i]).ThrowOnError();
+            }
+
+            _renderFinishedSemaphores = new Semaphore[imageCount];
+
+            for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
+            {
+                _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _renderFinishedSemaphores[i]).ThrowOnError();
             }
         }
 
@@ -324,6 +215,7 @@ namespace Ryujinx.Graphics.Vulkan
                 ComponentSwizzle.A);
 
             var aspectFlags = ImageAspectFlags.ColorBit;
+
             var subresourceRange = new ImageSubresourceRange(aspectFlags, 0, 1, 0, 1);
 
             var imageCreateInfo = new ImageViewCreateInfo
@@ -336,86 +228,47 @@ namespace Ryujinx.Graphics.Vulkan
                 SubresourceRange = subresourceRange,
             };
 
-            var result = _gd.Api.CreateImageView(_device, in imageCreateInfo, null, out var imageView);
-            if (result != Result.Success)
-            {
-                Logger.Error?.Print(LogClass.Gpu, $"Failed to create swapchain image view: {result}");
-                result.ThrowOnError();
-                return null;
-            }
+            _gd.Api.CreateImageView(_device, in imageCreateInfo, null, out var imageView).ThrowOnError();
 
             return new TextureView(_gd, _device, new DisposableImageView(_gd.Api, _device, imageView), info, format);
         }
 
         private static SurfaceFormatKHR ChooseSwapSurfaceFormat(SurfaceFormatKHR[] availableFormats, bool colorSpacePassthroughEnabled)
         {
-            // 定义标准颜色空间常量
-            const ColorSpaceKHR StandardColorSpace = ColorSpaceKHR.SpaceSrgbNonlinearKhr;
-            const VkFormat PreferredFormat = VkFormat.B8G8R8A8Unorm;
-
-            // 空数组检查 - 返回安全默认值
-            if (availableFormats.Length == 0)
-            {
-                return new SurfaceFormatKHR(PreferredFormat, StandardColorSpace);
-            }
-
-            // 特殊格式处理
             if (availableFormats.Length == 1 && availableFormats[0].Format == VkFormat.Undefined)
             {
-                return new SurfaceFormatKHR(PreferredFormat, StandardColorSpace);
+                return new SurfaceFormatKHR(VkFormat.B8G8R8A8Unorm, ColorSpaceKHR.PaceSrgbNonlinearKhr);
             }
 
-            // Android特定：优先选择兼容格式
-#if ANDROID
-            // 在Android上优先选择B8G8R8A8Unorm格式
-            foreach (var format in availableFormats)
-            {
-                if (format.Format == VkFormat.B8G8R8A8Unorm || 
-                    format.Format == VkFormat.R8G8B8A8Unorm)
-                {
-                    return format;
-                }
-            }
-#endif
-
-            // 修复：使用正确的颜色空间枚举值
+            var formatToReturn = availableFormats[0];
             if (colorSpacePassthroughEnabled)
             {
-                // 优先选择PassThrough格式
                 foreach (var format in availableFormats)
                 {
-                    if (format.Format == PreferredFormat && 
-                        format.ColorSpace == ColorSpaceKHR.SpacePassThroughExt)
+                    if (format.Format == VkFormat.B8G8R8A8Unorm && format.ColorSpace == ColorSpaceKHR.SpacePassThroughExt)
                     {
-                        return format;
+                        formatToReturn = format;
+                        break;
                     }
-                }
-                
-                // 其次选择标准SRGB格式
-                foreach (var format in availableFormats)
-                {
-                    if (format.Format == PreferredFormat && 
-                        format.ColorSpace == StandardColorSpace)
+                    else if (format.Format == VkFormat.B8G8R8A8Unorm && format.ColorSpace == ColorSpaceKHR.PaceSrgbNonlinearKhr)
                     {
-                        return format;
+                        formatToReturn = format;
                     }
                 }
             }
             else
             {
-                // 标准模式下优先选择SRGB格式
                 foreach (var format in availableFormats)
                 {
-                    if (format.Format == PreferredFormat && 
-                        format.ColorSpace == StandardColorSpace)
+                    if (format.Format == VkFormat.B8G8R8A8Unorm && format.ColorSpace == ColorSpaceKHR.PaceSrgbNonlinearKhr)
                     {
-                        return format;
+                        formatToReturn = format;
+                        break;
                     }
                 }
             }
 
-            // 没有匹配时返回第一个可用格式
-            return availableFormats[0];
+            return formatToReturn;
         }
 
         private static CompositeAlphaFlagsKHR ChooseCompositeAlpha(CompositeAlphaFlagsKHR supportedFlags)
@@ -436,20 +289,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         private static PresentModeKHR ChooseSwapPresentMode(PresentModeKHR[] availablePresentModes, bool vsyncEnabled)
         {
-            if (availablePresentModes.Length == 0)
-            {
-                return PresentModeKHR.FifoKhr; // 安全默认值
-            }
-            
-            // Android特定：使用更稳定的呈现模式
-#if ANDROID
-            // 在Android上优先使用FIFO模式，更稳定
-            if (availablePresentModes.Contains(PresentModeKHR.FifoKhr))
-            {
-                return PresentModeKHR.FifoKhr;
-            }
-#endif
-            
             if (!vsyncEnabled && availablePresentModes.Contains(PresentModeKHR.ImmediateKhr))
             {
                 return PresentModeKHR.ImmediateKhr;
@@ -479,212 +318,184 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe override void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback)
         {
-            try
+            _gd.PipelineInternal.AutoFlush.Present();
+
+            uint nextImage = 0;
+            int semaphoreIndex = _frameIndex++ % _imageAvailableSemaphores.Length;
+
+            while (true)
             {
-                _gd.PipelineInternal.AutoFlush.Present();
+                var acquireResult = _gd.SwapchainApi.AcquireNextImage(
+                    _device,
+                    _swapchain,
+                    ulong.MaxValue,
+                    _imageAvailableSemaphores[semaphoreIndex],
+                    new Fence(),
+                    ref nextImage);
 
-                uint nextImage = 0;
-                int semaphoreIndex = _frameIndex++ % _imageAvailableSemaphores.Length;
-
-                while (true)
+                if (acquireResult == Result.ErrorOutOfDateKhr ||
+                    acquireResult == Result.SuboptimalKhr ||
+                    _swapchainIsDirty)
                 {
-                    var acquireResult = _gd.SwapchainApi.AcquireNextImage(
-                        _device,
-                        _swapchain,
-                        1000000000, // 1秒超时，避免无限等待
-                        _imageAvailableSemaphores[semaphoreIndex],
-                        new Fence(),
-                        ref nextImage);
-
-                    if (acquireResult == Result.ErrorOutOfDateKhr ||
-                        acquireResult == Result.SuboptimalKhr ||
-                        _swapchainIsDirty)
-                    {
-                        Logger.Info?.Print(LogClass.Gpu, "Swapchain out of date, recreating...");
-                        RecreateSwapchain();
-                        semaphoreIndex = (_frameIndex - 1) % _imageAvailableSemaphores.Length;
-                    }
-                    else if(acquireResult == Result.ErrorSurfaceLostKhr)
-                    {
-                        Logger.Warning?.Print(LogClass.Gpu, "Surface lost, recreating...");
-                        _gd.RecreateSurface();
-                    }
-                    else if (acquireResult == Result.Timeout)
-                    {
-                        Logger.Warning?.Print(LogClass.Gpu, "AcquireNextImage timeout, retrying...");
-                        continue;
-                    }
-                    else
-                    {
-                        acquireResult.ThrowOnError();
-                        break;
-                    }
+                    RecreateSwapchain();
+                    semaphoreIndex = (_frameIndex - 1) % _imageAvailableSemaphores.Length;
                 }
+                else if(acquireResult == Result.ErrorSurfaceLostKhr)
+                {
+                    _gd.RecreateSurface();
+                }
+                else
+                {
+                    acquireResult.ThrowOnError();
+                    break;
+                }
+            }
 
-                var swapchainImage = _swapchainImages[nextImage];
+            var swapchainImage = _swapchainImages[nextImage];
 
-                _gd.FlushAllCommands();
+            _gd.FlushAllCommands();
 
-                var cbs = _gd.CommandBufferPool.Rent();
+            var cbs = _gd.CommandBufferPool.Rent();
 
-                Transition(
-                    cbs.CommandBuffer,
-                    swapchainImage,
-                    0,
-                    AccessFlags.TransferWriteBit,
-                    ImageLayout.Undefined,
-                    ImageLayout.General);
+            Transition(
+                cbs.CommandBuffer,
+                swapchainImage,
+                0,
+                AccessFlags.TransferWriteBit,
+                ImageLayout.Undefined,
+                ImageLayout.General);
 
-                var view = (TextureView)texture;
+            var view = (TextureView)texture;
 
-                UpdateEffect();
+            UpdateEffect();
 
+            if (_effect != null)
+            {
+                view = _effect.Run(view, cbs, _width, _height);
+            }
+
+            int srcX0, srcX1, srcY0, srcY1;
+
+            if (crop.Left == 0 && crop.Right == 0)
+            {
+                srcX0 = 0;
+                srcX1 = view.Width;
+            }
+            else
+            {
+                srcX0 = crop.Left;
+                srcX1 = crop.Right;
+            }
+
+            if (crop.Top == 0 && crop.Bottom == 0)
+            {
+                srcY0 = 0;
+                srcY1 = view.Height;
+            }
+            else
+            {
+                srcY0 = crop.Top;
+                srcY1 = crop.Bottom;
+            }
+
+            if (ScreenCaptureRequested)
+            {
                 if (_effect != null)
                 {
-                    view = _effect.Run(view, cbs, _width, _height);
-                }
-
-                int srcX0, srcX1, srcY0, srcY1;
-
-                if (crop.Left == 0 && crop.Right == 0)
-                {
-                    srcX0 = 0;
-                    srcX1 = view.Width;
-                }
-                else
-                {
-                    srcX0 = crop.Left;
-                    srcX1 = crop.Right;
-                }
-
-                if (crop.Top == 0 && crop.Bottom == 0)
-                {
-                    srcY0 = 0;
-                    srcY1 = view.Height;
-                }
-                else
-                {
-                    srcY0 = crop.Top;
-                    srcY1 = crop.Bottom;
-                }
-
-                if (ScreenCaptureRequested)
-                {
-                    if (_effect != null)
-                    {
-                        _gd.CommandBufferPool.Return(
-                            cbs,
-                            null,
-                            stackalloc[] { PipelineStageFlags.ColorAttachmentOutputBit },
-                            null);
-                        _gd.FlushAllCommands();
-                        cbs.GetFence().Wait();
-                        cbs = _gd.CommandBufferPool.Rent();
-                    }
-
-                    CaptureFrame(view, srcX0, srcY0, srcX1 - srcX0, srcY1 - srcY0, view.Info.Format.IsBgr(), crop.FlipX, crop.FlipY);
-
-                    ScreenCaptureRequested = false;
-                }
-
-                float ratioX = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _height * crop.AspectRatioX / (_width * crop.AspectRatioY));
-                float ratioY = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _width * crop.AspectRatioY / (_height * crop.AspectRatioX));
-
-                int dstWidth = (int)(_width * ratioX);
-                int dstHeight = (int)(_height * ratioY);
-
-                int dstPaddingX = (_width - dstWidth) / 2;
-                int dstPaddingY = (_height - dstHeight) / 2;
-
-                int dstX0 = crop.FlipX ? _width - dstPaddingX : dstPaddingX;
-                int dstX1 = crop.FlipX ? dstPaddingX : _width - dstPaddingX;
-
-                int dstY0 = crop.FlipY ? dstPaddingY : _height - dstPaddingY;
-                int dstY1 = crop.FlipY ? _height - dstPaddingY : dstPaddingY;
-
-                if (_scalingFilter != null)
-                {
-                    _scalingFilter.Run(
-                        view,
+                    _gd.CommandBufferPool.Return(
                         cbs,
-                        _swapchainImageViews[nextImage].GetImageViewForAttachment(),
-                        _format,
-                        _width,
-                        _height,
-                        new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                        new Extents2D(dstX0, dstY0, dstX1, dstY1)
-                        );
-                }
-                else
-                {
-                    _gd.HelperShader.BlitColor(
-                        _gd,
-                        cbs,
-                        view,
-                        _swapchainImageViews[nextImage],
-                        new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                        new Extents2D(dstX0, dstY1, dstX1, dstY0),
-                        _isLinear,
-                        true);
+                        null,
+                        stackalloc[] { PipelineStageFlags.ColorAttachmentOutputBit },
+                        null);
+                    _gd.FlushAllCommands();
+                    cbs.GetFence().Wait();
+                    cbs = _gd.CommandBufferPool.Rent();
                 }
 
-                Transition(
-                    cbs.CommandBuffer,
-                    swapchainImage,
-                    0,
-                    0,
-                    ImageLayout.General,
-                    ImageLayout.PresentSrcKhr);
+                CaptureFrame(view, srcX0, srcY0, srcX1 - srcX0, srcY1 - srcY0, view.Info.Format.IsBgr(), crop.FlipX, crop.FlipY);
 
-                _gd.CommandBufferPool.Return(
-                    cbs,
-                    stackalloc[] { _imageAvailableSemaphores[semaphoreIndex] },
-                    stackalloc[] { PipelineStageFlags.ColorAttachmentOutputBit },
-                    stackalloc[] { _renderFinishedSemaphores[semaphoreIndex] });
-
-                // TODO: Present queue.
-                var semaphore = _renderFinishedSemaphores[semaphoreIndex];
-                var swapchain = _swapchain;
-
-                Result result;
-
-                var presentInfo = new PresentInfoKHR
-                {
-                    SType = StructureType.PresentInfoKhr,
-                    WaitSemaphoreCount = 1,
-                    PWaitSemaphores = &semaphore,
-                    SwapchainCount = 1,
-                    PSwapchains = &swapchain,
-                    PImageIndices = &nextImage,
-                    PResults = &result,
-                };
-
-                lock (_gd.QueueLock)
-                {
-                    _gd.SwapchainApi.QueuePresent(_gd.Queue, in presentInfo);
-                }
-
-                if (result != Result.Success && result != Result.SuboptimalKhr)
-                {
-                    Logger.Warning?.Print(LogClass.Gpu, $"QueuePresent returned: {result}");
-                }
-
-                //While this does nothing in most cases, it's useful to notify the end of the frame.
-                swapBuffersCallback?.Invoke();
+                ScreenCaptureRequested = false;
             }
-            catch (Exception ex)
+
+            float ratioX = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _height * crop.AspectRatioX / (_width * crop.AspectRatioY));
+            float ratioY = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _width * crop.AspectRatioY / (_height * crop.AspectRatioX));
+
+            int dstWidth = (int)(_width * ratioX);
+            int dstHeight = (int)(_height * ratioY);
+
+            int dstPaddingX = (_width - dstWidth) / 2;
+            int dstPaddingY = (_height - dstHeight) / 2;
+
+            int dstX0 = crop.FlipX ? _width - dstPaddingX : dstPaddingX;
+            int dstX1 = crop.FlipX ? dstPaddingX : _width - dstPaddingX;
+
+            int dstY0 = crop.FlipY ? dstPaddingY : _height - dstPaddingY;
+            int dstY1 = crop.FlipY ? _height - dstPaddingY : dstPaddingY;
+
+            if (_scalingFilter != null)
             {
-                Logger.Error?.Print(LogClass.Gpu, $"Present failed: {ex.Message}");
-                
-                // Android特定：尝试恢复
-#if ANDROID
-                Logger.Info?.Print(LogClass.Gpu, "Attempting swapchain recovery after present failure");
-                _swapchainIsDirty = true;
-                Thread.Sleep(16); // 延迟一帧
-#else
-                throw;
-#endif
+                _scalingFilter.Run(
+                    view,
+                    cbs,
+                    _swapchainImageViews[nextImage].GetImageViewForAttachment(),
+                    _format,
+                    _width,
+                    _height,
+                    new Extents2D(srcX0, srcY0, srcX1, srcY1),
+                    new Extents2D(dstX0, dstY0, dstX1, dstY1)
+                    );
             }
+            else
+            {
+                _gd.HelperShader.BlitColor(
+                    _gd,
+                    cbs,
+                    view,
+                    _swapchainImageViews[nextImage],
+                    new Extents2D(srcX0, srcY0, srcX1, srcY1),
+                    new Extents2D(dstX0, dstY1, dstX1, dstY0),
+                    _isLinear,
+                    true);
+            }
+
+            Transition(
+                cbs.CommandBuffer,
+                swapchainImage,
+                0,
+                0,
+                ImageLayout.General,
+                ImageLayout.PresentSrcKhr);
+
+            _gd.CommandBufferPool.Return(
+                cbs,
+                stackalloc[] { _imageAvailableSemaphores[semaphoreIndex] },
+                stackalloc[] { PipelineStageFlags.ColorAttachmentOutputBit },
+                stackalloc[] { _renderFinishedSemaphores[semaphoreIndex] });
+
+            // TODO: Present queue.
+            var semaphore = _renderFinishedSemaphores[semaphoreIndex];
+            var swapchain = _swapchain;
+
+            Result result;
+
+            var presentInfo = new PresentInfoKHR
+            {
+                SType = StructureType.PresentInfoKhr,
+                WaitSemaphoreCount = 1,
+                PWaitSemaphores = &semaphore,
+                SwapchainCount = 1,
+                PSwapchains = &swapchain,
+                PImageIndices = &nextImage,
+                PResults = &result,
+            };
+
+            lock (_gd.QueueLock)
+            {
+                _gd.SwapchainApi.QueuePresent(_gd.Queue, in presentInfo);
+            }
+
+            //While this does nothing in most cases, it's useful to notify the end of the frame.
+            swapBuffersCallback?.Invoke();
         }
 
         public override void SetAntiAliasing(AntiAliasing effect)
@@ -709,7 +520,6 @@ namespace Ryujinx.Graphics.Vulkan
             _currentScalingFilter = type;
 
             _updateScalingFilter = true;
-            _swapchainIsDirty = true; // 缩放器改变可能需要重新创建交换链
         }
 
         public override void SetColorSpacePassthrough(bool colorSpacePassthroughEnabled)
@@ -853,7 +663,7 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     for (int i = 0; i < _swapchainImageViews.Length; i++)
                     {
-                        _swapchainImageViews[i]?.Dispose();
+                        _swapchainImageViews[i].Dispose();
                     }
 
                     for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
