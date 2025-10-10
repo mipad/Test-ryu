@@ -1366,7 +1366,7 @@ namespace LibRyujinx
         }
 
         /// <summary>
-        /// 获取所有存档文件夹的信息（改进版本）
+        /// 获取所有存档文件夹的信息（改进版本，支持十六进制格式）
         /// </summary>
         public static List<SaveDataInfo> GetSaveDataList()
         {
@@ -1383,9 +1383,16 @@ namespace LibRyujinx
                 if (!Directory.Exists(saveBasePath))
                     return saveDataList;
 
-                // 获取所有数字文件夹
+                // 修改：支持十六进制格式的文件夹名
                 var saveDirs = Directory.GetDirectories(saveBasePath)
-                    .Where(dir => Path.GetFileName(dir).All(char.IsDigit) && Path.GetFileName(dir).Length == 16)
+                    .Where(dir => {
+                        string dirName = Path.GetFileName(dir);
+                        // 检查是否为16位十六进制字符串（0-9, a-f, A-F）
+                        return dirName.Length == 16 && 
+                               dirName.All(c => (c >= '0' && c <= '9') || 
+                                              (c >= 'a' && c <= 'f') || 
+                                              (c >= 'A' && c <= 'F'));
+                    })
                     .ToList();
 
                 foreach (var saveDir in saveDirs)
@@ -1400,6 +1407,8 @@ namespace LibRyujinx
             }
             catch (Exception ex)
             {
+                // 记录错误日志
+                Logger.Error?.Print(LogClass.Application, $"Error in GetSaveDataList: {ex.Message}");
                 return saveDataList;
             }
 
@@ -1757,7 +1766,7 @@ namespace LibRyujinx
         }
 
         /// <summary>
-        /// 查找下一个可用的存档文件夹ID
+        /// 查找下一个可用的存档文件夹ID（改进版本，支持十六进制）
         /// </summary>
         private static string FindNextAvailableSaveId()
         {
@@ -1767,9 +1776,16 @@ namespace LibRyujinx
                 return "0000000000000001";
 
             var existingIds = Directory.GetDirectories(saveBasePath)
-                .Where(dir => Path.GetFileName(dir).All(char.IsDigit) && Path.GetFileName(dir).Length == 16)
+                .Where(dir => {
+                    string dirName = Path.GetFileName(dir);
+                    return dirName.Length == 16 && 
+                           dirName.All(c => (c >= '0' && c <= '9') || 
+                                          (c >= 'a' && c <= 'f') || 
+                                          (c >= 'A' && c <= 'F'));
+                })
                 .Select(dir => {
-                    if (long.TryParse(Path.GetFileName(dir), out long id))
+                    // 将十六进制字符串转换为长整型
+                    if (long.TryParse(Path.GetFileName(dir), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out long id))
                         return id;
                     return 0L;
                 })
@@ -1783,7 +1799,7 @@ namespace LibRyujinx
                 nextId = existingIds.Last() + 1;
             }
 
-            return nextId.ToString("D16"); // 格式化为16位数字
+            return nextId.ToString("X16").ToLower(); // 格式化为16位十六进制小写
         }
 
         /// <summary>
@@ -1885,7 +1901,7 @@ namespace LibRyujinx
         }
 
         /// <summary>
-        /// 调试方法：显示所有存档文件夹的详细信息
+        /// 调试方法：显示所有存档文件夹的详细信息（改进版本）
         /// </summary>
         public static void DebugSaveData()
         {
@@ -1894,12 +1910,22 @@ namespace LibRyujinx
             
             if (!Directory.Exists(saveBasePath))
             {
+                Logger.Info?.Print(LogClass.Application, "Save base path does not exist");
                 return;
             }
             
+            // 修改：使用新的十六进制筛选条件
             var saveDirs = Directory.GetDirectories(saveBasePath)
-                .Where(dir => Path.GetFileName(dir).All(char.IsDigit) && Path.GetFileName(dir).Length == 16)
+                .Where(dir => {
+                    string dirName = Path.GetFileName(dir);
+                    return dirName.Length == 16 && 
+                           dirName.All(c => (c >= '0' && c <= '9') || 
+                                          (c >= 'a' && c <= 'f') || 
+                                          (c >= 'A' && c <= 'F'));
+                })
                 .ToList();
+            
+            Logger.Info?.Print(LogClass.Application, $"Found {saveDirs.Count} save directories:");
             
             foreach (var saveDir in saveDirs)
             {
@@ -1907,21 +1933,52 @@ namespace LibRyujinx
                 
                 // 检查 saveMeta
                 string saveMetaPath = Path.Combine(saveMetaBasePath, saveId);
-                if (Directory.Exists(saveMetaPath))
-                {
-                    string metaFile = Path.Combine(saveMetaPath, "00000001.meta");
-                }
+                bool hasSaveMeta = Directory.Exists(saveMetaPath);
                 
                 // 检查 ExtraData 文件
                 string[] extraDataFiles = { "ExtraData0", "ExtraData1" };
-                foreach (var fileName in extraDataFiles)
-                {
-                    string filePath = Path.Combine(saveDir, fileName);
-                }
+                bool hasExtraData = extraDataFiles.Any(file => File.Exists(Path.Combine(saveDir, file)));
                 
                 // 尝试获取标题ID
                 string titleIdFromMeta = GetTitleIdFromSaveMeta(saveId);
                 string titleIdFromExtra = ExtractTitleIdFromExtraData(saveDir);
+                
+                Logger.Info?.Print(LogClass.Application, 
+                    $"SaveID: {saveId}, " +
+                    $"HasSaveMeta: {hasSaveMeta}, " +
+                    $"HasExtraData: {hasExtraData}, " +
+                    $"TitleID from Meta: {titleIdFromMeta ?? "N/A"}, " +
+                    $"TitleID from Extra: {titleIdFromExtra ?? "N/A"}");
+            }
+        }
+
+        /// <summary>
+        /// 调试方法：列出所有存档文件夹（包含被过滤掉的）
+        /// </summary>
+        public static void DebugAllSaveFolders()
+        {
+            string saveBasePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save");
+            
+            if (!Directory.Exists(saveBasePath))
+            {
+                Logger.Info?.Print(LogClass.Application, "Save base path does not exist");
+                return;
+            }
+            
+            var allDirs = Directory.GetDirectories(saveBasePath);
+            Logger.Info?.Print(LogClass.Application, $"Total directories in save folder: {allDirs.Length}");
+            
+            foreach (var dir in allDirs)
+            {
+                string dirName = Path.GetFileName(dir);
+                bool isNumeric = dirName.All(char.IsDigit);
+                bool isHex = dirName.Length == 16 && 
+                            dirName.All(c => (c >= '0' && c <= '9') || 
+                                           (c >= 'a' && c <= 'f') || 
+                                           (c >= 'A' && c <= 'F'));
+                
+                Logger.Info?.Print(LogClass.Application, 
+                    $"Directory: {dirName}, IsNumeric: {isNumeric}, IsHex: {isHex}, Included: {isHex}");
             }
         }
 
