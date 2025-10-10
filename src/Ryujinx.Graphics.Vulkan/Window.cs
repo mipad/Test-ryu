@@ -340,8 +340,8 @@ namespace Ryujinx.Graphics.Vulkan
             if (result != Result.Success)
             {
                 Logger.Error?.Print(LogClass.Gpu, $"Failed to create swapchain image view: {result}");
-                result.ThrowOnError(); // 使用 ThrowOnError 而不是 VkException
-                return null; // 这行不会执行，但为了编译
+                result.ThrowOnError();
+                return null;
             }
 
             return new TextureView(_gd, _device, new DisposableImageView(_gd.Api, _device, imageView), info, format);
@@ -604,33 +604,16 @@ namespace Ryujinx.Graphics.Vulkan
 
                 if (_scalingFilter != null)
                 {
-                    try
-                    {
-                        _scalingFilter.Run(
-                            view,
-                            cbs,
-                            _swapchainImageViews[nextImage].GetImageViewForAttachment(),
-                            _format,
-                            _width,
-                            _height,
-                            new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                            new Extents2D(dstX0, dstY0, dstX1, dstY1)
-                            );
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error?.Print(LogClass.Gpu, $"Scaling filter failed: {ex.Message}, falling back to bilinear");
-                        // 回退到双线性过滤
-                        _gd.HelperShader.BlitColor(
-                            _gd,
-                            cbs,
-                            view,
-                            _swapchainImageViews[nextImage],
-                            new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                            new Extents2D(dstX0, dstY1, dstX1, dstY0),
-                            true, // 使用线性过滤
-                            true);
-                    }
+                    _scalingFilter.Run(
+                        view,
+                        cbs,
+                        _swapchainImageViews[nextImage].GetImageViewForAttachment(),
+                        _format,
+                        _width,
+                        _height,
+                        new Extents2D(srcX0, srcY0, srcX1, srcY1),
+                        new Extents2D(dstX0, dstY0, dstX1, dstY1)
+                        );
                 }
                 else
                 {
@@ -741,42 +724,31 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 _updateEffect = false;
 
-                try
+                switch (_currentAntiAliasing)
                 {
-                    switch (_currentAntiAliasing)
-                    {
-                        case AntiAliasing.Fxaa:
+                    case AntiAliasing.Fxaa:
+                        _effect?.Dispose();
+                        _effect = new FxaaPostProcessingEffect(_gd, _device);
+                        break;
+                    case AntiAliasing.None:
+                        _effect?.Dispose();
+                        _effect = null;
+                        break;
+                    case AntiAliasing.SmaaLow:
+                    case AntiAliasing.SmaaMedium:
+                    case AntiAliasing.SmaaHigh:
+                    case AntiAliasing.SmaaUltra:
+                        var quality = _currentAntiAliasing - AntiAliasing.SmaaLow;
+                        if (_effect is SmaaPostProcessingEffect smaa)
+                        {
+                            smaa.Quality = quality;
+                        }
+                        else
+                        {
                             _effect?.Dispose();
-                            _effect = new FxaaPostProcessingEffect(_gd, _device);
-                            break;
-                        case AntiAliasing.None:
-                            _effect?.Dispose();
-                            _effect = null;
-                            break;
-                        case AntiAliasing.SmaaLow:
-                        case AntiAliasing.SmaaMedium:
-                        case AntiAliasing.SmaaHigh:
-                        case AntiAliasing.SmaaUltra:
-                            var quality = _currentAntiAliasing - AntiAliasing.SmaaLow;
-                            if (_effect is SmaaPostProcessingEffect smaa)
-                            {
-                                smaa.Quality = quality;
-                            }
-                            else
-                            {
-                                _effect?.Dispose();
-                                _effect = new SmaaPostProcessingEffect(_gd, _device, quality);
-                            }
-                            break;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error?.Print(LogClass.Gpu, $"Failed to update anti-aliasing effect: {ex.Message}");
-                    // 回退到无抗锯齿
-                    _effect?.Dispose();
-                    _effect = null;
-                    _currentAntiAliasing = AntiAliasing.None;
+                            _effect = new SmaaPostProcessingEffect(_gd, _device, quality);
+                        }
+                        break;
                 }
             }
 
@@ -784,42 +756,30 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 _updateScalingFilter = false;
 
-                try
+                switch (_currentScalingFilter)
                 {
-                    switch (_currentScalingFilter)
-                    {
-                        case ScalingFilter.Bilinear:
-                        case ScalingFilter.Nearest:
+                    case ScalingFilter.Bilinear:
+                    case ScalingFilter.Nearest:
+                        _scalingFilter?.Dispose();
+                        _scalingFilter = null;
+                        _isLinear = _currentScalingFilter == ScalingFilter.Bilinear;
+                        break;
+                    case ScalingFilter.Fsr:
+                        if (_scalingFilter is not FsrScalingFilter)
+                        {
                             _scalingFilter?.Dispose();
-                            _scalingFilter = null;
-                            _isLinear = _currentScalingFilter == ScalingFilter.Bilinear;
-                            break;
-                        case ScalingFilter.Fsr:
-                            if (_scalingFilter is not FsrScalingFilter)
-                            {
-                                _scalingFilter?.Dispose();
-                                _scalingFilter = new FsrScalingFilter(_gd, _device);
-                            }
+                            _scalingFilter = new FsrScalingFilter(_gd, _device);
+                        }
 
-                            _scalingFilter.Level = _scalingFilterLevel;
-                            break;
-                        case ScalingFilter.Area:
-                            if (_scalingFilter is not AreaScalingFilter)
-                            {
-                                _scalingFilter?.Dispose();
-                                _scalingFilter = new AreaScalingFilter(_gd, _device);
-                            }
-                            break;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error?.Print(LogClass.Gpu, $"Failed to update scaling filter: {ex.Message}");
-                    // 回退到双线性过滤
-                    _scalingFilter?.Dispose();
-                    _scalingFilter = null;
-                    _isLinear = true;
-                    _currentScalingFilter = ScalingFilter.Bilinear;
+                        _scalingFilter.Level = _scalingFilterLevel;
+                        break;
+                    case ScalingFilter.Area:
+                        if (_scalingFilter is not AreaScalingFilter)
+                        {
+                            _scalingFilter?.Dispose();
+                            _scalingFilter = new AreaScalingFilter(_gd, _device);
+                        }
+                        break;
                 }
             }
         }
