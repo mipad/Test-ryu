@@ -136,20 +136,6 @@ namespace Ryujinx.Graphics.Vulkan
                 return false;
             }
 
-            // 添加 FreeMemory 属性计算空闲内存大小
-            public ulong FreeMemory
-            {
-                get
-                {
-                    ulong free = 0;
-                    foreach (var range in _freeRanges)
-                    {
-                        free += range.Size;
-                    }
-                    return free;
-                }
-            }
-
             public int CompareTo(Block other)
             {
                 return Size.CompareTo(other.Size);
@@ -311,17 +297,6 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 _lock.ExitWriteLock();
             }
-        }
-
-        // 添加 GetFreeMemory 方法
-        public ulong GetFreeMemory()
-        {
-            ulong freeMemory = 0;
-            foreach (var block in _blocks)
-            {
-                freeMemory += block.FreeMemory;
-            }
-            return freeMemory;
         }
 
         public void Dispose()
