@@ -84,7 +84,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (_isMaliGpu)
             {
-                Logger.Info?.Print(LogClass.Gpu, "Mali GPU detected, applying compatibility fixes");
+                Logger.Info?.Print(LogClass.Gpu, "Mali GPU detected, will attempt advanced scaling filters");
                 
                 // 检查Mali GPU的Storage Image支持
                 _gd.Api.GetPhysicalDeviceFormatProperties(_physicalDevice, VkFormat.B8G8R8A8Unorm, out var formatProps);
@@ -92,12 +92,16 @@ namespace Ryujinx.Graphics.Vulkan
                 
                 Logger.Info?.Print(LogClass.Gpu, $"Mali GPU Storage Image support: {supportsStorage}");
                 
-                // 根据Mali型号决定高级缩放器支持
-                _maliSupportsAdvancedScaling = CheckMaliAdvancedScalingSupport(properties, supportsStorage);
+                // 对于Mali GPU，我们仍然允许尝试高级缩放器，但会在运行时处理失败
+                _maliSupportsAdvancedScaling = supportsStorage;
                 
                 if (!_maliSupportsAdvancedScaling)
                 {
-                    Logger.Warning?.Print(LogClass.Gpu, "Mali GPU: Advanced scaling filters (FSR/Area) disabled due to compatibility issues");
+                    Logger.Warning?.Print(LogClass.Gpu, "Mali GPU: No Storage Image support, advanced scaling filters disabled");
+                }
+                else
+                {
+                    Logger.Info?.Print(LogClass.Gpu, "Mali GPU: Storage Image supported, advanced scaling filters enabled");
                 }
             }
             else
@@ -107,44 +111,6 @@ namespace Ryujinx.Graphics.Vulkan
 
             // 记录设备限制
             Logger.Debug?.Print(LogClass.Gpu, $"Max storage image dimensions: {properties.Limits.MaxImageDimension2D}");
-        }
-
-        private bool CheckMaliAdvancedScalingSupport(PhysicalDeviceProperties properties, bool supportsStorage)
-        {
-            if (!supportsStorage)
-            {
-                return false;
-            }
-
-            // 根据Mali型号决定支持程度
-            string lowerName = _gpuName.ToLowerInvariant();
-            
-            // 较旧的Mali型号可能不支持或支持不完善
-            if (lowerName.Contains("mali-t") || 
-                lowerName.Contains("mali-g51") || 
-                lowerName.Contains("mali-g52") ||
-                lowerName.Contains("mali-4") ||
-                lowerName.Contains("mali-3"))
-            {
-                Logger.Warning?.Print(LogClass.Gpu, $"Older Mali GPU model detected: {_gpuName}, advanced scaling may be unstable");
-                return false;
-            }
-
-            // 较新的Mali型号应该支持
-            if (lowerName.Contains("mali-g") && 
-               (lowerName.Contains("mali-g71") || 
-                lowerName.Contains("mali-g72") ||
-                lowerName.Contains("mali-g76") ||
-                lowerName.Contains("mali-g77") ||
-                lowerName.Contains("mali-g78") ||
-                lowerName.Contains("mali-g710")))
-            {
-                return true;
-            }
-
-            // 默认情况下，对于未知的Mali型号，我们保守地禁用高级缩放
-            Logger.Warning?.Print(LogClass.Gpu, $"Unknown Mali GPU model: {_gpuName}, disabling advanced scaling for safety");
-            return false;
         }
 
         private void RecreateSwapchain()
@@ -257,7 +223,7 @@ namespace Ryujinx.Graphics.Vulkan
                 }
                 else if (_isMaliGpu && (_currentScalingFilter == ScalingFilter.Fsr || _currentScalingFilter == ScalingFilter.Area))
                 {
-                    Logger.Warning?.Print(LogClass.Gpu, "Mali GPU: Advanced scaling requested but not supported, StorageBit excluded");
+                    Logger.Warning?.Print(LogClass.Gpu, "Mali GPU: Advanced scaling requested but StorageBit not supported, using fallback");
                 }
                 else
                 {
@@ -702,11 +668,11 @@ namespace Ryujinx.Graphics.Vulkan
                 int dstY0 = crop.FlipY ? dstPaddingY : _height - dstPaddingY;
                 int dstY1 = crop.FlipY ? _height - dstPaddingY : dstPaddingY;
 
-                // Mali GPU特定：检查缩放器兼容性
+                // 只有在Mali GPU且明确不支持Storage时才回退
                 bool useScalingFilter = _scalingFilter != null;
                 if (_isMaliGpu && useScalingFilter && !_maliSupportsAdvancedScaling)
                 {
-                    Logger.Warning?.Print(LogClass.Gpu, "Mali GPU: Advanced scaling filter requested but not supported, falling back to bilinear");
+                    Logger.Warning?.Print(LogClass.Gpu, "Mali GPU: Advanced scaling filter requested but StorageBit not supported, falling back to bilinear");
                     useScalingFilter = false;
                     _isLinear = true;
                 }
@@ -832,13 +798,7 @@ namespace Ryujinx.Graphics.Vulkan
                 return;
             }
 
-            // Mali GPU特定：检查高级缩放器支持
-            if (_isMaliGpu && (type == ScalingFilter.Fsr || type == ScalingFilter.Area) && !_maliSupportsAdvancedScaling)
-            {
-                Logger.Warning?.Print(LogClass.Gpu, $"Mali GPU: {type} scaling filter not supported, using bilinear instead");
-                type = ScalingFilter.Bilinear;
-            }
-
+            // 对于Mali GPU，我们允许尝试高级缩放器，不再预先阻止
             _currentScalingFilter = type;
 
             _updateScalingFilter = true;
