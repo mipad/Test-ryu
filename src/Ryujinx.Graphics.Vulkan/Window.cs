@@ -5,6 +5,7 @@ using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.KHR;
 using System;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using VkFormat = Silk.NET.Vulkan.Format;
 using VkSemaphore = Silk.NET.Vulkan.Semaphore;
@@ -73,13 +74,8 @@ namespace Ryujinx.Graphics.Vulkan
         {
             _gd.Api.GetPhysicalDeviceProperties(_physicalDevice, out var properties);
             
-            // 获取GPU名称
-            fixed (byte* namePtr = properties.DeviceName)
-            {
-                _gpuName = System.Text.Encoding.UTF8.GetString(namePtr, 
-                    (int)Math.Min(256, System.Text.Encoding.UTF8.GetByteCount(properties.DeviceName)));
-            }
-
+            // 修复编译错误：正确获取GPU名称
+            _gpuName = Marshal.PtrToStringAnsi((IntPtr)properties.DeviceName) ?? "Unknown";
             Logger.Info?.Print(LogClass.Gpu, $"GPU detected: {_gpuName}");
 
             // 检测Mali GPU
