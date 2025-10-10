@@ -1953,36 +1953,6 @@ namespace LibRyujinx
         }
 
         /// <summary>
-        /// 调试方法：列出所有存档文件夹（包含被过滤掉的）
-        /// </summary>
-        public static void DebugAllSaveFolders()
-        {
-            string saveBasePath = Path.Combine(AppDataManager.BaseDirPath, "bis", "user", "save");
-            
-            if (!Directory.Exists(saveBasePath))
-            {
-                Logger.Info?.Print(LogClass.Application, "Save base path does not exist");
-                return;
-            }
-            
-            var allDirs = Directory.GetDirectories(saveBasePath);
-            Logger.Info?.Print(LogClass.Application, $"Total directories in save folder: {allDirs.Length}");
-            
-            foreach (var dir in allDirs)
-            {
-                string dirName = Path.GetFileName(dir);
-                bool isNumeric = dirName.All(char.IsDigit);
-                bool isHex = dirName.Length == 16 && 
-                            dirName.All(c => (c >= '0' && c <= '9') || 
-                                           (c >= 'a' && c <= 'f') || 
-                                           (c >= 'A' && c <= 'F'));
-                
-                Logger.Info?.Print(LogClass.Application, 
-                    $"Directory: {dirName}, IsNumeric: {isNumeric}, IsHex: {isHex}, Included: {isHex}");
-            }
-        }
-
-        /// <summary>
         /// 强制刷新存档列表（新增方法）
         /// </summary>
         public static void RefreshSaveData()
