@@ -1,3 +1,4 @@
+using Ryujinx.Audio.Renderer.Dsp;
 using Ryujinx.Common.Memory;
 using Ryujinx.Common.Utilities;
 using System;
@@ -6,10 +7,10 @@ using System.Runtime.InteropServices;
 namespace Ryujinx.Audio.Renderer.Parameter
 {
     /// <summary>
-    /// Input header for a splitter destination version 1 update.
+    /// Input header for a splitter destination version 2 update.
     /// </summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct SplitterDestinationInParameterVersion1 : ISplitterDestinationInParameter
+    public struct SplitterDestinationInParameterVersion2a : ISplitterDestinationInParameter
     {
         /// <summary>
         /// Magic of the input header.
@@ -32,6 +33,11 @@ namespace Ryujinx.Audio.Renderer.Parameter
         public int DestinationId;
 
         /// <summary>
+        /// Biquad filter parameters.
+        /// </summary>
+        public Array2<BiquadFilterParameter1> BiquadFilters;
+
+        /// <summary>
         /// Set to true if in use.
         /// </summary>
         [MarshalAs(UnmanagedType.I1)]
@@ -46,7 +52,7 @@ namespace Ryujinx.Audio.Renderer.Parameter
         /// <summary>
         /// Reserved/padding.
         /// </summary>
-        private unsafe fixed byte _reserved[2];
+        private unsafe fixed byte _reserved[10];
 
         [StructLayout(LayoutKind.Sequential, Size = sizeof(float) * Constants.MixBufferCountMax, Pack = 1)]
         private struct MixArray { }
@@ -61,7 +67,18 @@ namespace Ryujinx.Audio.Renderer.Parameter
 
         readonly int ISplitterDestinationInParameter.DestinationId => DestinationId;
         
-        readonly Array2<BiquadFilterParameter2> ISplitterDestinationInParameter.BiquadFilters2 => default;
+        readonly Array2<BiquadFilterParameter2> ISplitterDestinationInParameter.BiquadFilters2
+        {
+            get
+            {
+                Array2<BiquadFilterParameter2> newFilters = new();
+                Span<BiquadFilterParameter2> newFiltersSpan = newFilters.AsSpan();
+                newFiltersSpan[0] = BiquadFilterHelper.ToBiquadFilterParameter2(BiquadFilters[0]);
+                newFiltersSpan[1] = BiquadFilterHelper.ToBiquadFilterParameter2(BiquadFilters[1]);
+                
+                return newFilters;
+            }
+        }
 
         readonly bool ISplitterDestinationInParameter.IsUsed => IsUsed;
         readonly bool ISplitterDestinationInParameter.ResetPrevVolume => ResetPrevVolume;
