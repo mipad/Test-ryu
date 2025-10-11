@@ -7,7 +7,6 @@ using Ryujinx.Graphics.Gpu.Shader;
 using Ryujinx.Graphics.Shader;
 using Ryujinx.Graphics.Texture;
 using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
 namespace Ryujinx.Graphics.Gpu.Engine.Threed
@@ -58,22 +57,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         private bool _prevTfEnable;
 
         private uint _prevRtNoAlphaMask;
-
-        // 添加顶点格式白名单
-        private static readonly HashSet<uint> _validVertexFormats = new HashSet<uint>
-        {
-            0x11400000, // RGBA8_UNORM (新增)
-    0x20000000, // RGBA32_FLOAT
-    0x21000000, // RGBA16_UNORM
-    0x21800000, // RGBA16_SNORM
-    0x25C00000, // RGBA32_UINT
-    0x25E00000, // RGBA32_SINT
-    0x38400000, // RG32_FLOAT (新增)
-    0x38800000, // RGBA16_FLOAT (新增)
-    0x30C00000, // RGB10_A2_UNORM (新增)
-    0x31C00000, // RG11B10_FLOAT (新增)
-            // 添加其他有效格式...
-        };
 
         /// <summary>
         /// Creates a new instance of the state updater.
@@ -1000,32 +983,27 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
                 }
 
                 uint packedFormat = vertexAttrib.UnpackFormat();
-                VertexAttribType type = vertexAttrib.UnpackType();
-                Format format;
-                bool isValid = true;
 
-                // ==== 改进的顶点格式处理 ====
-                if (!FormatTable.TryGetAttribFormat(packedFormat, out format))
+                if (!supportsScaledFormats)
                 {
-                    isValid = false;
-                    
-                    // 特殊处理RGBA32_SINT格式 (0x25E00000)
-                    if (packedFormat == 0x25E00000)
+                    packedFormat = vertexAttrib.UnpackType() switch
                     {
-                        format = Format.R32G32B32A32Sint;
-                        Logger.Warning?.Print(LogClass.Gpu, 
-                            $"强制使用RGBA32_SINT格式替代0x25E00000 " +
-                            $"(属性索引: {index}, 缓冲区: {bufferIndex})");
-                    }
-                    else
+                        VertexAttribType.Uscaled => ((uint)VertexAttribType.Uint << 27) | (packedFormat & (0x3f << 21)),
+                        VertexAttribType.Sscaled => ((uint)VertexAttribType.Sint << 27) | (packedFormat & (0x3f << 21)),
+                        _ => packedFormat,
+                    };
+                }
+
+                if (!FormatTable.TryGetAttribFormat(packedFormat, out Format format))
+                {
+                    Logger.Debug?.Print(LogClass.Gpu, $"Invalid attribute format 0x{vertexAttrib.UnpackFormat():X}.");
+
+                    format = vertexAttrib.UnpackType() switch
                     {
-                        // 根据类型选择安全的格式
-                        format = GetFallbackVertexFormat(type);
-                        Logger.Warning?.Print(LogClass.Gpu, 
-                            $"强制替换无效顶点属性格式: 0x{packedFormat:X} " +
-                            $"(属性索引: {index}, 缓冲区: {bufferIndex}, " +
-                            $"类型: {type}, 大小: {vertexAttrib.UnpackSize()})");
-                    }
+                        VertexAttribType.Sint => Format.R32G32B32A32Sint,
+                        VertexAttribType.Uint => Format.R32G32B32A32Uint,
+                        _ => Format.R32G32B32A32Float,
+                    };
                 }
 
                 vertexAttribs[index] = new VertexAttribDescriptor(
@@ -1038,22 +1016,6 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
             _pipeline.SetVertexAttribs(vertexAttribs);
             _context.Renderer.Pipeline.SetVertexAttribs(vertexAttribs);
             _currentSpecState.SetAttributeTypes(ref _state.State.VertexAttribState);
-        }
-
-        // 安全回退格式选择
-        private Format GetFallbackVertexFormat(VertexAttribType type)
-        {
-            return type switch
-            {
-                VertexAttribType.Sint   => Format.R32G32B32A32Sint,
-                VertexAttribType.Uint   => Format.R32G32B32A32Uint,
-                VertexAttribType.Snorm  => Format.R16G16B16A16Snorm,
-                VertexAttribType.Unorm  => Format.R16G16B16A16Unorm,
-                VertexAttribType.Uscaled => Format.R16G16B16A16Unorm,
-                VertexAttribType.Sscaled => Format.R16G16B16A16Snorm,
-                VertexAttribType.Float  => Format.R32G32B32A32Float,
-                _ => Format.R32G32B32A32Float // 默认回退
-            };
         }
 
         /// <summary>
@@ -1103,14 +1065,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         /// </summary>
         private void UpdateIndexBufferState()
         {
-            var indexBufferNullable = _state?.State.IndexBufferState;
-
-            if (!indexBufferNullable.HasValue)
-            {
-                return;
-            }
-
-            IndexBufferState indexBuffer = indexBufferNullable.Value;
+            var indexBuffer = _state.State.IndexBufferState;
 
             if (_drawState.IndexCount == 0)
             {
