@@ -149,6 +149,7 @@ namespace Ryujinx.Graphics.GAL
         B8G8R8A8Srgb,
         B10G10R10A2Unorm,
         X8UintD24Unorm,
+        A8B8G8R8Uint,
     }
 
     public static class FormatExtensions
