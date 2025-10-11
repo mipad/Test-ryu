@@ -9,13 +9,11 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
     partial class KScheduler : IDisposable
     {
         public const int PrioritiesCount = 64;
-        public const int CpuCoresCount = 4;
+        public static int CpuCoresCount;
 
         private const int RoundRobinTimeQuantumMs = 10;
 
-        private static readonly int[] _preemptionPriorities = { 59, 59, 59, 63 };
-
-        private static readonly int[] _srcCoresHighestPrioThreads = new int[CpuCoresCount];
+        private static int[] _srcCoresHighestPrioThreads;
 
         private readonly KernelContext _context;
         private readonly int _coreId;
@@ -47,6 +45,13 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
             _coreId = coreId;
 
             _currentThread = null;
+
+            _srcCoresHighestPrioThreads ??= new int[CpuCoresCount];
+        }
+
+        private static int PreemptionPriorities(int index)
+        {
+            return index == CpuCoresCount - 1 ? 63 : 59;
         }
 
         public static ulong SelectThreads(KernelContext context)
@@ -302,6 +307,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
             currentThread.SchedulerWaitEvent.Reset();
             currentThread.ThreadContext.Unlock();
+            currentThread.DebugHalt.Set();
 
             // Wake all the threads that might be waiting until this thread context is unlocked.
             for (int core = 0; core < CpuCoresCount; core++)
@@ -318,11 +324,12 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
                 if (nextThread == null)
                 {
                     ActivateIdleThread();
-                    currentThread.SchedulerWaitEvent.WaitOne();
+                    currentThread.SchedulerWaitEvent.Wait();
                 }
                 else
                 {
-                    WaitHandle.SignalAndWait(nextThread.SchedulerWaitEvent, currentThread.SchedulerWaitEvent);
+                    nextThread.SchedulerWaitEvent.Set();
+                    currentThread.SchedulerWaitEvent.Wait();
                 }
             }
             else
@@ -443,7 +450,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
                 for (int core = 0; core < CpuCoresCount; core++)
                 {
-                    RotateScheduledQueue(context, core, _preemptionPriorities[core]);
+                    RotateScheduledQueue(context, core, PreemptionPriorities(core));
                 }
 
                 context.CriticalSection.Leave();
@@ -578,7 +585,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
                     {
                         KThread selectedSuggestedCore = context.Schedulers[suggestedCore]._state.SelectedThread;
 
-                        if (selectedSuggestedCore == suggested || (selectedSuggestedCore != null && selectedSuggestedCore.DynamicPriority < 2))
+                        if (selectedSuggestedCore == suggested || selectedSuggestedCore is { DynamicPriority: < 2 })
                         {
                             continue;
                         }
