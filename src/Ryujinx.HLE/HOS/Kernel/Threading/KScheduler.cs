@@ -316,7 +316,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
                 }
                 else
                 {
-                    WaitHandle.SignalAndWait(nextThread.SchedulerWaitEvent, currentThread.SchedulerWaitEvent);
+                    nextThread.SchedulerWaitEvent.Set();
+                    currentThread.SchedulerWaitEvent.Wait();
                 }
             }
             else
