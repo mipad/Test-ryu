@@ -38,9 +38,9 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
         public const int MaxWaitSyncObjects = 64;
 
-        private ManualResetEventSlim _schedulerWaitEvent;
+        private ManualResetEvent _schedulerWaitEvent;
 
-        public ManualResetEventSlim SchedulerWaitEvent => _schedulerWaitEvent;
+        public ManualResetEvent SchedulerWaitEvent => _schedulerWaitEvent;
 
         public Thread HostThread { get; private set; }
 
@@ -235,10 +235,10 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
             }
 
             Context.TpidrroEl0 = (long)_tlsAddress;
-            Context.DebugPc = _entrypoint;
+            // Context.DebugPc = _entrypoint; // 移除了不存在的属性
 
             ThreadUid = KernelContext.NewThreadUid();
-            Context.ThreadUid = ThreadUid;
+            // Context.ThreadUid = ThreadUid; // 移除了不存在的属性
 
             HostThread.Name = customThreadStart != null ? $"HLE.OsThread.{ThreadUid}" : $"HLE.GuestThread.{ThreadUid}";
 
@@ -1270,7 +1270,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         {
             if (_schedulerWaitEvent == null)
             {
-                ManualResetEventSlim schedulerWaitEvent = new(false);
+                ManualResetEvent schedulerWaitEvent = new(false);
 
                 if (Interlocked.Exchange(ref _schedulerWaitEvent, schedulerWaitEvent) == null)
                 {
@@ -1285,7 +1285,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
         private void ThreadStart()
         {
-            _schedulerWaitEvent.Wait();
+            _schedulerWaitEvent.WaitOne();
             KernelStatic.SetKernelContext(KernelContext, this);
 
             if (_customThreadStart != null)
