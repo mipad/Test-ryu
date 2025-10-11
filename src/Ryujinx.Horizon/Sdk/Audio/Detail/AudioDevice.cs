@@ -23,10 +23,10 @@ namespace Ryujinx.Horizon.Sdk.Audio.Detail
         {
             _registry = registry;
 
-            BehaviourContext behaviourContext = new();
-            behaviourContext.SetUserRevision((int)revision);
+            BehaviourInfo behaviourInfo = new();
+            behaviourInfo.SetUserRevision((int)revision);
 
-            _isUsbDeviceSupported = behaviourContext.IsAudioUsbDeviceOutputSupported();
+            _isUsbDeviceSupported = behaviourInfo.IsAudioUsbDeviceOutputSupported();
             _sessions = registry.GetSessionByAppletResourceId(appletResourceId.Id);
 
             Os.CreateSystemEvent(out _audioEvent, EventClearMode.AutoClear, interProcess: true);
@@ -121,7 +121,7 @@ namespace Ryujinx.Horizon.Sdk.Audio.Detail
 
             if (!_isUsbDeviceSupported && device.IsUsbDevice())
             {
-                device = _registry.DefaultDevice;
+                device = VirtualDeviceSessionRegistry.DefaultDevice;
             }
 
             if (name.Length > 0)
@@ -147,7 +147,7 @@ namespace Ryujinx.Horizon.Sdk.Audio.Detail
 
             if (!_isUsbDeviceSupported && device.IsUsbDevice())
             {
-                device = _registry.DefaultDevice;
+                device = VirtualDeviceSessionRegistry.DefaultDevice;
             }
 
             channelCount = (int)device.ChannelCount;
