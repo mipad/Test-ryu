@@ -1,4 +1,5 @@
 using Ryujinx.Common.Logging;
+using Ryujinx.Common.Collections;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Gpu.Memory;
 using Ryujinx.Graphics.Texture;
@@ -72,6 +73,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         }
 
         private readonly GpuChannel _channel;
+        private readonly BitMap _invalidMap;
         private readonly ConcurrentQueue<DereferenceRequest> _dereferenceQueue = new();
         private TextureDescriptor _defaultDescriptor;
 
@@ -166,6 +168,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         {
             _channel = channel;
             _aliasLists = new Dictionary<Texture, TextureAliasList>();
+            _invalidMap = new BitMap(maximumId + 1);
         }
 
         /// <summary>
@@ -182,6 +185,11 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             if (texture == null)
             {
+                if (_invalidMap.IsSet(id))
+                {
+                    return ref descriptor;
+                }
+
                 texture = PhysicalMemory.TextureCache.FindShortCache(descriptor);
 
                 if (texture == null)
@@ -198,6 +206,8 @@ namespace Ryujinx.Graphics.Gpu.Image
                     // If this happens, then the texture address is invalid, we can't add it to the cache.
                     if (texture == null)
                     {
+                        _invalidMap.Set(id);
+                        
                         return ref descriptor;
                     }
                 }
@@ -514,6 +524,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                         RemoveAliasList(texture);
                     }
                 }
+     _invalidMap.Clear(id);
             }
         }
 
