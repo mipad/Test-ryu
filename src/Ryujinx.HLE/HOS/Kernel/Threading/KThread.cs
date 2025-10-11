@@ -1243,6 +1243,24 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
             ReleaseAndResume();
         }
 
+        public string GetGuestStackTrace()
+        {
+            return "";
+        }
+
+        public string GetGuestRegisterPrintout()
+        {
+            return "";
+        }
+
+        public void PrintGuestStackTrace()
+        {
+        }
+
+        public void PrintGuestRegisterPrintout()
+        {
+        }
+        
         public void AddCpuTime(long ticks)
         {
             Interlocked.Add(ref _totalTimeRunning, ticks);
