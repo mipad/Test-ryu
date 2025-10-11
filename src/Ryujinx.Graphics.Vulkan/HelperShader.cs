@@ -1789,4 +1789,3 @@ region[3] = flipY * srcY1 + (1 - flipY) * srcY2;
         }
     }
 }
- 
