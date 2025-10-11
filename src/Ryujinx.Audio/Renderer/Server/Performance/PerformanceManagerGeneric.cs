@@ -47,7 +47,7 @@ namespace Ryujinx.Audio.Renderer.Server.Performance
         private uint _historyFrameIndex;
 
         // 添加缓冲区欠载状态
-        public override bool LastBufferUnderrun { get; protected set; }
+        //public override bool LastBufferUnderrun { get; protected set; }
 
         public PerformanceManagerGeneric(Memory<byte> buffer, ref AudioRendererConfiguration parameter)
         {
