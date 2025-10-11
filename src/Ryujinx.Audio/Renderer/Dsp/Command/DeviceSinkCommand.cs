@@ -34,15 +34,17 @@ namespace Ryujinx.Audio.Renderer.Dsp.Command
             SessionId = sessionId;
             InputCount = sink.Parameter.InputCount;
             InputBufferIndices = new ushort[InputCount];
+            
+            Span<byte> inputSpan = sink.Parameter.Input.AsSpan();
 
             for (int i = 0; i < Math.Min(InputCount, Constants.ChannelCountMax); i++)
             {
-                InputBufferIndices[i] = (ushort)(bufferOffset + sink.Parameter.Input[i]);
+                InputBufferIndices[i] = (ushort)(bufferOffset + inputSpan[i]);
             }
 
-            if (sink.UpsamplerState != null)
+            if (sink.UpsamplerInfo != null)
             {
-                Buffers = sink.UpsamplerState.OutputBuffer;
+                Buffers = sink.UpsamplerInfo.OutputBuffer;
             }
             else
             {
