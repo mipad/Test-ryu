@@ -1012,7 +1012,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
                     // 特殊处理Format.A8B8G8R8Uint格式 (0x25E00000)
                     if (packedFormat == 0x25E00000)
                     {
-                        Format.A8B8G8R8Uint
+                        Format.A8B8G8R8Uint;
                         Logger.Warning?.Print(LogClass.Gpu, 
                             $"强制使用Format.A8B8G8R8Uint格式替代0x25E00000 " +
                             $"(属性索引: {index}, 缓冲区: {bufferIndex})");
