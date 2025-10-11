@@ -361,6 +361,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             A2B10G10R10Sint     = (A2B10G10R10 << 21)  | (Sint << 27),    // 0x1e000000
             A2B10G10R10Uscaled  = (A2B10G10R10 << 21)  | (Uscaled << 27), // 0x2e000000
             A2B10G10R10Sscaled  = (A2B10G10R10 << 21)  | (Sscaled << 27), // 0x36000000
+            A8B8G8R8Uint        = (A8B8G8R8 << 21)     | (Uint << 27),    // 0x25E00040
         }
 
         private static readonly Dictionary<TextureFormat, FormatInfo> _textureFormats = new()
