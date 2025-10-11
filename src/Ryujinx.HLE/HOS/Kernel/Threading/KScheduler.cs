@@ -312,7 +312,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
                 if (nextThread == null)
                 {
                     ActivateIdleThread();
-                    currentThread.SchedulerWaitEvent.WaitOne();
+                    currentThread.SchedulerWaitEvent.Wait();
                 }
                 else
                 {
