@@ -34,6 +34,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
         public ulong ThreadUid { get; private set; }
 
+        public bool IsThreadNamed { get; set; }
+        
         private long _totalTimeRunning;
 
         public long TotalTimeRunning => _totalTimeRunning;
