@@ -557,6 +557,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             { VertexAttributeFormat.A2B10G10R10Sint,     Format.R10G10B10A2Sint     },
             { VertexAttributeFormat.A2B10G10R10Uscaled,  Format.R10G10B10A2Uscaled  },
             { VertexAttributeFormat.A2B10G10R10Sscaled,  Format.R10G10B10A2Sscaled  },
+            { VertexAttributeFormat.A8B8G8R8Uint,        Format.A8B8G8R8Uint        },
         };
 #pragma warning restore IDE0055
 
