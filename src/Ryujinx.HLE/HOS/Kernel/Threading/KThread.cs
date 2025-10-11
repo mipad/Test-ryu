@@ -1,7 +1,6 @@
 using ARMeilleure.State;
 using Ryujinx.Common.Logging;
 using Ryujinx.Cpu;
-using Ryujinx.HLE.Debugger;
 using Ryujinx.HLE.HOS.Kernel.Common;
 using Ryujinx.HLE.HOS.Kernel.Process;
 using Ryujinx.HLE.HOS.Kernel.SupervisorCall;
@@ -35,7 +34,6 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         // Tls -> ThreadType (Version 1) -> ThreadNamePointer
         private const int TlsThreadTypeThreadNamePointerOffsetAArch64 = 0x1A0;
         private const int TlsThreadTypeThreadNamePointerOffsetAArch32 = 0xE4;
-
 
         public const int MaxWaitSyncObjects = 64;
 
@@ -136,9 +134,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
         public bool WaitingInArbitration { get; set; }
 
-        private readonly object _activityOperationLock = new();
-
-        internal readonly ManualResetEventSlim DebugHalt = new(false);
+        private readonly Lock _activityOperationLock = new();
 
         public KThread(KernelContext context) : base(context)
         {
@@ -238,10 +234,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
             }
 
             Context.TpidrroEl0 = (long)_tlsAddress;
-            Context.DebugPc = _entrypoint;
 
             ThreadUid = KernelContext.NewThreadUid();
-            Context.ThreadUid = ThreadUid;
 
             HostThread.Name = customThreadStart != null ? $"HLE.OsThread.{ThreadUid}" : $"HLE.GuestThread.{ThreadUid}";
 
@@ -557,7 +551,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
             _forcePauseFlags &= ~type;
 
-            if ((oldForcePauseFlags & ~type) == ThreadSchedState.None)
+            if ((oldForcePauseFlags & ~type) == ThreadShedState.None)
             {
                 ThreadSchedState oldSchedFlags = SchedFlags;
 
@@ -1248,22 +1242,20 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
         public string GetGuestStackTrace()
         {
-            return Owner.Debugger.GetGuestStackTrace(this);
+            return "";
         }
 
         public string GetGuestRegisterPrintout()
         {
-            return Owner.Debugger.GetCpuRegisterPrintout(this);
+            return "";
         }
 
         public void PrintGuestStackTrace()
         {
-            Logger.Info?.Print(LogClass.Cpu, $"Guest stack trace:\n{GetGuestStackTrace()}\n");
         }
 
         public void PrintGuestRegisterPrintout()
         {
-            Logger.Info?.Print(LogClass.Cpu, $"Guest CPU registers:\n{GetGuestRegisterPrintout()}\n");
         }
 
         public void AddCpuTime(long ticks)
@@ -1291,7 +1283,6 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         private void ThreadStart()
         {
             _schedulerWaitEvent.Wait();
-            DebugHalt.Reset();
             KernelStatic.SetKernelContext(KernelContext, this);
 
             if (_customThreadStart != null)
