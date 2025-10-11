@@ -35,6 +35,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         private const int TlsThreadTypeThreadNamePointerOffsetAArch64 = 0x1A0;
         private const int TlsThreadTypeThreadNamePointerOffsetAArch32 = 0xE4;
 
+
         public const int MaxWaitSyncObjects = 64;
 
         private ManualResetEventSlim _schedulerWaitEvent;
@@ -134,7 +135,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
         public bool WaitingInArbitration { get; set; }
 
-        private readonly object _activityOperationLock = new();
+        private readonly Lock _activityOperationLock = new();
 
         public KThread(KernelContext context) : base(context)
         {
@@ -234,8 +235,10 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
             }
 
             Context.TpidrroEl0 = (long)_tlsAddress;
+            Context.DebugPc = _entrypoint;
 
             ThreadUid = KernelContext.NewThreadUid();
+            Context.ThreadUid = ThreadUid;
 
             HostThread.Name = customThreadStart != null ? $"HLE.OsThread.{ThreadUid}" : $"HLE.GuestThread.{ThreadUid}";
 
@@ -551,7 +554,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
             _forcePauseFlags &= ~type;
 
-            if ((oldForcePauseFlags & ~type) == ThreadShedState.None)
+            if ((oldForcePauseFlags & ~type) == ThreadSchedState.None)
             {
                 ThreadSchedState oldSchedFlags = SchedFlags;
 
@@ -1238,24 +1241,6 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
         public void TimeUp()
         {
             ReleaseAndResume();
-        }
-
-        public string GetGuestStackTrace()
-        {
-            return "";
-        }
-
-        public string GetGuestRegisterPrintout()
-        {
-            return "";
-        }
-
-        public void PrintGuestStackTrace()
-        {
-        }
-
-        public void PrintGuestRegisterPrintout()
-        {
         }
 
         public void AddCpuTime(long ticks)
