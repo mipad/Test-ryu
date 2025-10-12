@@ -619,6 +619,23 @@ namespace LibRyujinx
             SetLanInterface(interfaceId);
         }
 
+        // 新增：获取网络接口的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "getLanInterface")]
+        public static IntPtr JnaGetLanInterface()
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
+            var lanInterface = GetLanInterface();
+            return Marshal.StringToHGlobalAnsi(lanInterface);
+        }
+
+        // 新增：获取多人游戏模式的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "getMultiplayerMode")]
+        public static int JnaGetMultiplayerMode()
+        {
+            Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
+            return (int)GetMultiplayerMode();
+        }
+
         // 新增：设置缩放过滤器的JNI方法
         [UnmanagedCallersOnly(EntryPoint = "setScalingFilter")]
         public static void JnaSetScalingFilter(int filter)
