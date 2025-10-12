@@ -7,7 +7,7 @@ import org.ryujinx.android.viewmodels.GameInfo
 import java.util.Collections
 
 interface RyujinxNativeJna : Library {
-    // 更新 deviceInitialize 方法，添加网络参数
+    // 更新后的 deviceInitialize 方法，包含网络参数
     fun deviceInitialize(
         isHostMapped: Boolean, useNce: Boolean,
         systemLanguage: Int,
@@ -19,28 +19,11 @@ interface RyujinxNativeJna : Library {
         enableInternetAccess: Boolean,
         timeZone: String,
         ignoreMissingServices: Boolean,
-        audioEngineType: Int,  // 新增音频引擎参数
-        memoryConfiguration: Int,  // 新增内存配置参数
-        systemTimeOffset: Long  // 新增系统时间偏移参数
-    ): Boolean
-
-    // 添加重载方法以支持网络参数
-    fun deviceInitializeWithNetwork(
-        isHostMapped: Boolean, useNce: Boolean,
-        systemLanguage: Int,
-        regionCode: Int,
-        enableVsync: Boolean,
-        enableDockedMode: Boolean,
-        enablePtc: Boolean,
-        enableJitCacheEviction: Boolean,
-        enableInternetAccess: Boolean,
-        timeZone: String,
-        ignoreMissingServices: Boolean,
-        audioEngineType: Int,
-        memoryConfiguration: Int,
-        systemTimeOffset: Long,
-        multiplayerMode: Int,  // 新增多人游戏模式参数
-        lanInterfaceId: String  // 新增网络接口ID参数
+        audioEngineType: Int,  // 音频引擎参数
+        memoryConfiguration: Int,  // 内存配置参数
+        systemTimeOffset: Long,  // 系统时间偏移参数
+        multiplayerMode: Int,  // 多人游戏模式参数
+        lanInterfaceId: String  // 网络接口ID参数
     ): Boolean
 
     fun graphicsInitialize(
@@ -237,6 +220,45 @@ class RyujinxNative {
             }
         }
         
+        // 设备初始化方法（包含网络参数）
+        @JvmStatic
+        fun deviceInitialize(
+            isHostMapped: Boolean, useNce: Boolean,
+            systemLanguage: Int,
+            regionCode: Int,
+            enableVsync: Boolean,
+            enableDockedMode: Boolean,
+            enablePtc: Boolean,
+            enableJitCacheEviction: Boolean,
+            enableInternetAccess: Boolean,
+            timeZone: String,
+            ignoreMissingServices: Boolean,
+            audioEngineType: Int,
+            memoryConfiguration: Int,
+            systemTimeOffset: Long,
+            multiplayerMode: Int,
+            lanInterfaceId: String
+        ): Boolean {
+            return jnaInstance.deviceInitialize(
+                isHostMapped,
+                useNce,
+                systemLanguage,
+                regionCode,
+                enableVsync,
+                enableDockedMode,
+                enablePtc,
+                enableJitCacheEviction,
+                enableInternetAccess,
+                timeZone,
+                ignoreMissingServices,
+                audioEngineType,
+                memoryConfiguration,
+                systemTimeOffset,
+                multiplayerMode,
+                lanInterfaceId
+            )
+        }
+        
         // 添加设置抗锯齿的静态方法
         @JvmStatic
         fun setAntiAliasing(mode: Int) {
@@ -282,45 +304,6 @@ class RyujinxNative {
             return jnaInstance.getLanInterface()
         }
 
-        // 设备初始化带网络参数的方法
-        @JvmStatic
-        fun deviceInitializeWithNetwork(
-            isHostMapped: Boolean, useNce: Boolean,
-            systemLanguage: Int,
-            regionCode: Int,
-            enableVsync: Boolean,
-            enableDockedMode: Boolean,
-            enablePtc: Boolean,
-            enableJitCacheEviction: Boolean,
-            enableInternetAccess: Boolean,
-            timeZone: String,
-            ignoreMissingServices: Boolean,
-            audioEngineType: Int,
-            memoryConfiguration: Int,
-            systemTimeOffset: Long,
-            multiplayerMode: Int,
-            lanInterfaceId: String
-        ): Boolean {
-            return jnaInstance.deviceInitializeWithNetwork(
-                isHostMapped,
-                useNce,
-                systemLanguage,
-                regionCode,
-                enableVsync,
-                enableDockedMode,
-                enablePtc,
-                enableJitCacheEviction,
-                enableInternetAccess,
-                timeZone,
-                ignoreMissingServices,
-                audioEngineType,
-                memoryConfiguration,
-                systemTimeOffset,
-                multiplayerMode,
-                lanInterfaceId
-            )
-        }
-        
         // 金手指相关静态方法
         @JvmStatic
         fun getCheats(titleId: String, gamePath: String): Array<String> {
