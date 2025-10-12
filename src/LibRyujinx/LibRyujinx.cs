@@ -246,50 +246,7 @@ namespace LibRyujinx
             return _currentLanInterfaceId;
         }
 
-        // 修改 InitializeDevice 方法，添加网络配置参数
-        public static bool InitializeDevice(bool isHostMapped,
-                                            bool useHypervisor,
-                                            SystemLanguage systemLanguage,
-                                            RegionCode regionCode,
-                                            bool enableVsync,
-                                            bool enableDockedMode,
-                                            bool enablePtc,
-                                            bool enableJitCacheEviction,
-                                            bool enableInternetAccess,
-                                            string? timeZone,
-                                            bool ignoreMissingServices,
-                                            MemoryConfiguration memoryConfiguration,
-                                            long systemTimeOffset,
-                                            // 新增网络参数
-                                            MultiplayerMode multiplayerMode,
-                                            string lanInterfaceId)
-        {
-            if (SwitchDevice == null)
-            {
-                return false;
-            }
-
-            // 更新当前网络设置
-            _currentMultiplayerMode = multiplayerMode;
-            _currentLanInterfaceId = lanInterfaceId ?? "0";
-
-            return SwitchDevice.InitializeContext(isHostMapped,
-                                                useHypervisor,
-                                                systemLanguage,
-                                                regionCode,
-                                                enableVsync,
-                                                enableDockedMode,
-                                                enablePtc,
-                                                enableJitCacheEviction,
-                                                enableInternetAccess,
-                                                timeZone,
-                                                ignoreMissingServices,
-                                                memoryConfiguration,
-                                                systemTimeOffset,
-                                                // 传递网络参数
-                                                multiplayerMode,
-                                                lanInterfaceId);
-        }
+        // 删除重复的 InitializeDevice 方法，已移至 LibRyujinx.Device.cs
 
         public static void InitializeAudio()
         {
