@@ -220,45 +220,6 @@ class RyujinxNative {
             }
         }
         
-        // 设备初始化方法（包含网络参数）
-        @JvmStatic
-        fun deviceInitialize(
-            isHostMapped: Boolean, useNce: Boolean,
-            systemLanguage: Int,
-            regionCode: Int,
-            enableVsync: Boolean,
-            enableDockedMode: Boolean,
-            enablePtc: Boolean,
-            enableJitCacheEviction: Boolean,
-            enableInternetAccess: Boolean,
-            timeZone: String,
-            ignoreMissingServices: Boolean,
-            audioEngineType: Int,
-            memoryConfiguration: Int,
-            systemTimeOffset: Long,
-            multiplayerMode: Int,
-            lanInterfaceId: String
-        ): Boolean {
-            return jnaInstance.deviceInitialize(
-                isHostMapped,
-                useNce,
-                systemLanguage,
-                regionCode,
-                enableVsync,
-                enableDockedMode,
-                enablePtc,
-                enableJitCacheEviction,
-                enableInternetAccess,
-                timeZone,
-                ignoreMissingServices,
-                audioEngineType,
-                memoryConfiguration,
-                systemTimeOffset,
-                multiplayerMode,
-                lanInterfaceId
-            )
-        }
-        
         // 添加设置抗锯齿的静态方法
         @JvmStatic
         fun setAntiAliasing(mode: Int) {
