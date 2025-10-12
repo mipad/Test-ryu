@@ -2108,10 +2108,8 @@ namespace LibRyujinx
                                                                   LibRyujinx.GetAspectRatio(),
                                                                   100,
                                                                   useHypervisor,
-                                                                  "",
-                                                                  // 使用传入的多人游戏模式和网络接口
-                                                                  multiplayerMode,
-                                                                  lanInterfaceId);
+                                                                  lanInterfaceId, // 修正：移除多余的""参数，直接使用lanInterfaceId
+                                                                  multiplayerMode);
 
             try
             {
