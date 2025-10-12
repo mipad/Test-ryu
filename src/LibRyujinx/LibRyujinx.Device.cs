@@ -8,7 +8,7 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using Ryujinx.HLE; 
-using Ryujinx.Common.Configuration.Multiplayer; // 添加多人游戏模式命名空间
+using Ryujinx.Common.Configuration.Multiplayer;
 
 namespace LibRyujinx
 {
@@ -26,45 +26,9 @@ namespace LibRyujinx
                                             string? timeZone,
                                             bool ignoreMissingServices,
                                             MemoryConfiguration memoryConfiguration,
-                                            long systemTimeOffset) // 新增系统时间偏移参数
-        {
-            if (SwitchDevice == null)
-            {
-                return false;
-            }
-
-            return SwitchDevice.InitializeContext(isHostMapped,
-                                                  useHypervisor,
-                                                  systemLanguage,
-                                                  regionCode,
-                                                  enableVsync,
-                                                  enableDockedMode,
-                                                  enablePtc,
-                                                  enableJitCacheEviction,
-                                                  enableInternetAccess,
-                                                  timeZone,
-                                                  ignoreMissingServices,
-                                                  memoryConfiguration,
-                                                  systemTimeOffset); // 传递系统时间偏移参数
-        }
-
-        // 添加重载方法以支持网络参数
-        public static bool InitializeDevice(bool isHostMapped,
-                                            bool useHypervisor,
-                                            SystemLanguage systemLanguage,
-                                            RegionCode regionCode,
-                                            bool enableVsync,
-                                            bool enableDockedMode,
-                                            bool enablePtc,
-                                            bool enableJitCacheEviction,
-                                            bool enableInternetAccess,
-                                            string? timeZone,
-                                            bool ignoreMissingServices,
-                                            MemoryConfiguration memoryConfiguration,
                                             long systemTimeOffset,
-                                            // 新增网络参数
-                                            MultiplayerMode multiplayerMode,
-                                            string lanInterfaceId)
+                                            MultiplayerMode multiplayerMode,        
+    string lanInterfaceId) 
         {
             if (SwitchDevice == null)
             {
@@ -84,7 +48,6 @@ namespace LibRyujinx
                                                   ignoreMissingServices,
                                                   memoryConfiguration,
                                                   systemTimeOffset,
-                                                  // 传递网络参数
                                                   multiplayerMode,
                                                   lanInterfaceId);
         }
