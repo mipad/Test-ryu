@@ -8,7 +8,6 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using Ryujinx.HLE; 
-using Ryujinx.Common.Configuration.Multiplayer;
 
 namespace LibRyujinx
 {
@@ -26,9 +25,7 @@ namespace LibRyujinx
                                             string? timeZone,
                                             bool ignoreMissingServices,
                                             MemoryConfiguration memoryConfiguration,
-                                            long systemTimeOffset,
-                                            MultiplayerMode multiplayerMode,        
-    string lanInterfaceId) 
+                                            long systemTimeOffset) // 新增系统时间偏移参数
         {
             if (SwitchDevice == null)
             {
@@ -47,9 +44,7 @@ namespace LibRyujinx
                                                   timeZone,
                                                   ignoreMissingServices,
                                                   memoryConfiguration,
-                                                  systemTimeOffset,
-                                                  multiplayerMode,
-                                                  lanInterfaceId);
+                                                  systemTimeOffset); // 传递系统时间偏移参数
         }
 
         public static void InstallFirmware(Stream stream, bool isXci)
