@@ -7,6 +7,7 @@ import org.ryujinx.android.viewmodels.GameInfo
 import java.util.Collections
 
 interface RyujinxNativeJna : Library {
+    // 更新 deviceInitialize 方法，添加网络参数
     fun deviceInitialize(
         isHostMapped: Boolean, useNce: Boolean,
         systemLanguage: Int,
@@ -21,6 +22,25 @@ interface RyujinxNativeJna : Library {
         audioEngineType: Int,  // 新增音频引擎参数
         memoryConfiguration: Int,  // 新增内存配置参数
         systemTimeOffset: Long  // 新增系统时间偏移参数
+    ): Boolean
+
+    // 添加重载方法以支持网络参数
+    fun deviceInitializeWithNetwork(
+        isHostMapped: Boolean, useNce: Boolean,
+        systemLanguage: Int,
+        regionCode: Int,
+        enableVsync: Boolean,
+        enableDockedMode: Boolean,
+        enablePtc: Boolean,
+        enableJitCacheEviction: Boolean,
+        enableInternetAccess: Boolean,
+        timeZone: String,
+        ignoreMissingServices: Boolean,
+        audioEngineType: Int,
+        memoryConfiguration: Int,
+        systemTimeOffset: Long,
+        multiplayerMode: Int,  // 新增多人游戏模式参数
+        lanInterfaceId: String  // 新增网络接口ID参数
     ): Boolean
 
     fun graphicsInitialize(
@@ -102,6 +122,12 @@ interface RyujinxNativeJna : Library {
     fun setSystemTimeOffset(offset: Long)
     // 添加获取系统时间偏移的方法
     fun getSystemTimeOffset(): Long
+    
+    // 网络相关方法
+    fun setMultiplayerMode(multiplayerMode: Int)
+    fun getMultiplayerMode(): Int
+    fun setLanInterface(interfaceId: String)
+    fun getLanInterface(): String
     
     // 金手指相关方法
     fun cheatGetCheats(titleId: String, gamePath: String): Array<String>
@@ -233,6 +259,66 @@ class RyujinxNative {
         @JvmStatic
         fun getSystemTimeOffset(): Long {
             return jnaInstance.getSystemTimeOffset()
+        }
+        
+        // 网络相关静态方法
+        @JvmStatic
+        fun setMultiplayerMode(multiplayerMode: Int) {
+            jnaInstance.setMultiplayerMode(multiplayerMode)
+        }
+
+        @JvmStatic
+        fun getMultiplayerMode(): Int {
+            return jnaInstance.getMultiplayerMode()
+        }
+
+        @JvmStatic
+        fun setLanInterface(interfaceId: String) {
+            jnaInstance.setLanInterface(interfaceId)
+        }
+
+        @JvmStatic
+        fun getLanInterface(): String {
+            return jnaInstance.getLanInterface()
+        }
+
+        // 设备初始化带网络参数的方法
+        @JvmStatic
+        fun deviceInitializeWithNetwork(
+            isHostMapped: Boolean, useNce: Boolean,
+            systemLanguage: Int,
+            regionCode: Int,
+            enableVsync: Boolean,
+            enableDockedMode: Boolean,
+            enablePtc: Boolean,
+            enableJitCacheEviction: Boolean,
+            enableInternetAccess: Boolean,
+            timeZone: String,
+            ignoreMissingServices: Boolean,
+            audioEngineType: Int,
+            memoryConfiguration: Int,
+            systemTimeOffset: Long,
+            multiplayerMode: Int,
+            lanInterfaceId: String
+        ): Boolean {
+            return jnaInstance.deviceInitializeWithNetwork(
+                isHostMapped,
+                useNce,
+                systemLanguage,
+                regionCode,
+                enableVsync,
+                enableDockedMode,
+                enablePtc,
+                enableJitCacheEviction,
+                enableInternetAccess,
+                timeZone,
+                ignoreMissingServices,
+                audioEngineType,
+                memoryConfiguration,
+                systemTimeOffset,
+                multiplayerMode,
+                lanInterfaceId
+            )
         }
         
         // 金手指相关静态方法
