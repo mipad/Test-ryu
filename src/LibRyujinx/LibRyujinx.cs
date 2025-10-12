@@ -41,6 +41,7 @@ using LibHac.FsSrv;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Ryujinx.Common.Configuration.Multiplayer; // 添加多人游戏模式命名空间
 
 namespace LibRyujinx
 {
@@ -70,6 +71,10 @@ namespace LibRyujinx
 
         // 添加静态字段来存储系统时间偏移
         private static long _systemTimeOffset = 0;
+
+        // 添加网络相关静态字段
+        private static MultiplayerMode _currentMultiplayerMode = MultiplayerMode.Disabled;
+        private static string _currentLanInterfaceId = "0";
 
         // Mod 相关类型定义
         public class ModInfo
@@ -203,6 +208,87 @@ namespace LibRyujinx
         public static long GetSystemTimeOffset()
         {
             return _systemTimeOffset;
+        }
+
+        // 添加设置多人游戏模式的方法
+        public static void SetMultiplayerMode(MultiplayerMode mode)
+        {
+            _currentMultiplayerMode = mode;
+            
+            // 如果设备已初始化，记录需要重启才能生效
+            if (SwitchDevice?.EmulationContext != null)
+            {
+                Logger.Info?.Print(LogClass.Application, $"Multiplayer mode changed to: {mode}. Restart required to take effect.");
+            }
+        }
+
+        // 添加获取多人游戏模式的方法
+        public static MultiplayerMode GetMultiplayerMode()
+        {
+            return _currentMultiplayerMode;
+        }
+
+        // 添加设置网络接口的方法
+        public static void SetLanInterface(string interfaceId)
+        {
+            _currentLanInterfaceId = interfaceId ?? "0";
+            
+            // 如果设备已初始化，记录需要重启才能生效
+            if (SwitchDevice?.EmulationContext != null)
+            {
+                Logger.Info?.Print(LogClass.Application, $"LAN interface changed to: {interfaceId}. Restart required to take effect.");
+            }
+        }
+
+        // 添加获取网络接口的方法
+        public static string GetLanInterface()
+        {
+            return _currentLanInterfaceId;
+        }
+
+        // 修改 InitializeDevice 方法，添加网络配置参数
+        public static bool InitializeDevice(bool isHostMapped,
+                                            bool useHypervisor,
+                                            SystemLanguage systemLanguage,
+                                            RegionCode regionCode,
+                                            bool enableVsync,
+                                            bool enableDockedMode,
+                                            bool enablePtc,
+                                            bool enableJitCacheEviction,
+                                            bool enableInternetAccess,
+                                            string? timeZone,
+                                            bool ignoreMissingServices,
+                                            MemoryConfiguration memoryConfiguration,
+                                            long systemTimeOffset,
+                                            // 新增网络参数
+                                            MultiplayerMode multiplayerMode,
+                                            string lanInterfaceId)
+        {
+            if (SwitchDevice == null)
+            {
+                return false;
+            }
+
+            // 更新当前网络设置
+            _currentMultiplayerMode = multiplayerMode;
+            _currentLanInterfaceId = lanInterfaceId ?? "0";
+
+            return SwitchDevice.InitializeContext(isHostMapped,
+                                                useHypervisor,
+                                                systemLanguage,
+                                                regionCode,
+                                                enableVsync,
+                                                enableDockedMode,
+                                                enablePtc,
+                                                enableJitCacheEviction,
+                                                enableInternetAccess,
+                                                timeZone,
+                                                ignoreMissingServices,
+                                                memoryConfiguration,
+                                                systemTimeOffset,
+                                                // 传递网络参数
+                                                multiplayerMode,
+                                                lanInterfaceId);
         }
 
         public static void InitializeAudio()
@@ -2065,6 +2151,80 @@ namespace LibRyujinx
                                                                   useHypervisor,
                                                                   "",
                                                                   Ryujinx.Common.Configuration.Multiplayer.MultiplayerMode.Disabled);
+
+            try
+            {
+                EmulationContext = new Switch(configuration);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                return false;
+            }
+        }
+
+        // 重载 InitializeContext 方法，添加网络参数
+        public bool InitializeContext(bool isHostMapped,
+                                      bool useHypervisor,
+                                      SystemLanguage systemLanguage,
+                                      RegionCode regionCode,
+                                      bool enableVsync,
+                                      bool enableDockedMode,
+                                      bool enablePtc,
+                                      bool enableJitCacheEviction,
+                                      bool enableInternetAccess,
+                                      string? timeZone,
+                                      bool ignoreMissingServices,
+                                      MemoryConfiguration memoryConfiguration,
+                                      long systemTimeOffset,
+                                      // 新增网络参数
+                                      MultiplayerMode multiplayerMode,
+                                      string lanInterfaceId)
+        {
+            if (LibRyujinx.Renderer == null)
+            {
+                return false;
+            }
+
+            var renderer = LibRyujinx.Renderer;
+            BackendThreading threadingMode = LibRyujinx.GraphicsConfiguration.BackendThreading;
+
+            bool threadedGAL = threadingMode == BackendThreading.On || (threadingMode == BackendThreading.Auto && renderer.PreferThreading);
+
+            if (threadedGAL)
+            {
+                renderer = new ThreadedRenderer(renderer);
+            }
+
+            HLEConfiguration configuration = new HLEConfiguration(VirtualFileSystem,
+                                                                  LibHacHorizonManager,
+                                                                  ContentManager,
+                                                                  AccountManager,
+                                                                  UserChannelPersistence,
+                                                                  renderer,
+                                                                  LibRyujinx.AudioDriver,
+                                                                  memoryConfiguration,
+                                                                  HostUiHandler,
+                                                                  systemLanguage,
+                                                                  regionCode,
+                                                                  enableVsync,
+                                                                  enableDockedMode,
+                                                                  enablePtc,
+                                                                  enableJitCacheEviction,
+                                                                  enableInternetAccess,
+                                                                  IntegrityCheckLevel.None,
+                                                                  0,
+                                                                  systemTimeOffset,
+                                                                  timeZone,
+                                                                  MemoryManagerMode.HostMappedUnsafe,
+                                                                  ignoreMissingServices,
+                                                                  LibRyujinx.GetAspectRatio(),
+                                                                  100,
+                                                                  useHypervisor,
+                                                                  "",
+                                                                  // 使用传入的多人游戏模式和网络接口
+                                                                  multiplayerMode,
+                                                                  lanInterfaceId);
 
             try
             {

@@ -20,6 +20,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Ryujinx.HLE; 
 using System.Text.Json;
+using Ryujinx.Common.Configuration.Multiplayer; // 添加多人游戏模式命名空间
 
 namespace LibRyujinx
 {
@@ -70,6 +71,7 @@ namespace LibRyujinx
             return GetSystemTimeOffset();
         }
 
+        // 更新设备初始化方法，添加网络参数
         [UnmanagedCallersOnly(EntryPoint = "device_initialize")]
         public static bool InitializeDeviceNative(bool isHostMapped,
                                                   bool useHypervisor,
@@ -84,7 +86,10 @@ namespace LibRyujinx
                                                   bool ignoreMissingServices,
                                                   int audioEngineType,
                                                   int memoryConfiguration,
-                                                  long systemTimeOffset)  // 新增系统时间偏移参数
+                                                  long systemTimeOffset,
+                                                  // 新增网络参数
+                                                  int multiplayerMode,
+                                                  IntPtr lanInterfaceIdPtr)
         {
             // 根据音频引擎类型设置音频驱动
             switch (audioEngineType)
@@ -106,6 +111,8 @@ namespace LibRyujinx
                     break;
             }
             
+            string lanInterfaceId = Marshal.PtrToStringAnsi(lanInterfaceIdPtr) ?? "0";
+            
             return InitializeDevice(isHostMapped,
                                     useHypervisor,
                                     systemLanguage,
@@ -118,7 +125,40 @@ namespace LibRyujinx
                                     Marshal.PtrToStringAnsi(timeZone),
                                     ignoreMissingServices,
                                     (MemoryConfiguration)memoryConfiguration,
-                                    systemTimeOffset);  // 传递系统时间偏移参数
+                                    systemTimeOffset,
+                                    // 传递网络参数
+                                    (MultiplayerMode)multiplayerMode,
+                                    lanInterfaceId);
+        }
+
+        // 添加设置多人游戏模式的 JNI 方法
+        [UnmanagedCallersOnly(EntryPoint = "setMultiplayerMode")]
+        public static void SetMultiplayerModeNative(int multiplayerMode)
+        {
+            SetMultiplayerMode((MultiplayerMode)multiplayerMode);
+        }
+
+        // 添加获取多人游戏模式的 JNI 方法
+        [UnmanagedCallersOnly(EntryPoint = "getMultiplayerMode")]
+        public static int GetMultiplayerModeNative()
+        {
+            return (int)GetMultiplayerMode();
+        }
+
+        // 添加设置网络接口的 JNI 方法
+        [UnmanagedCallersOnly(EntryPoint = "setLanInterface")]
+        public static void SetLanInterfaceNative(IntPtr interfaceIdPtr)
+        {
+            string interfaceId = Marshal.PtrToStringAnsi(interfaceIdPtr) ?? "0";
+            SetLanInterface(interfaceId);
+        }
+
+        // 添加获取网络接口的 JNI 方法
+        [UnmanagedCallersOnly(EntryPoint = "getLanInterface")]
+        public static IntPtr GetLanInterfaceNative()
+        {
+            string interfaceId = GetLanInterface();
+            return Marshal.StringToHGlobalAnsi(interfaceId);
         }
 
         [UnmanagedCallersOnly(EntryPoint = "device_reload_file_system")]
