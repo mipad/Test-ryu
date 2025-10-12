@@ -161,7 +161,9 @@ class MainViewModel(val activity: MainActivity) {
             launchOnUiThread {
                 // We are only able to initialize the emulation context on the main thread
                 val tzId = TimeZone.getDefault().id
-                success = RyujinxNative.jnaInstance.deviceInitialize(
+                
+                // 使用带网络参数的设备初始化方法
+                success = RyujinxNative.deviceInitializeWithNetwork(
                     settings.isHostMapped,
                     settings.useNce,
                     settings.systemLanguage,
@@ -170,12 +172,14 @@ class MainViewModel(val activity: MainActivity) {
                     settings.enableDocked,
                     settings.enablePtc,
                     settings.enableJitCacheEviction,
-                    false,
-                    tzId, // <<< Pass through Android device time zone
+                    settings.enableInternetAccess,
+                    tzId,
                     settings.ignoreMissingServices,
-                    settings.audioEngineType, // 新增音频引擎参数
-                    settings.memoryConfiguration, // 内存配置
-                    settings.systemTimeOffset // 新增系统时间偏移参数
+                    settings.audioEngineType,
+                    settings.memoryConfiguration,
+                    settings.systemTimeOffset,
+                    settings.multiplayerModeIndex,
+                    settings.getSelectedInterfaceId()
                 )
 
                 semaphore.release()
@@ -269,7 +273,9 @@ class MainViewModel(val activity: MainActivity) {
             launchOnUiThread {
                 // We are only able to initialize the emulation context on the main thread
                 val tzId = TimeZone.getDefault().id
-                success = RyujinxNative.jnaInstance.deviceInitialize(
+                
+                // 使用带网络参数的设备初始化方法
+                success = RyujinxNative.deviceInitializeWithNetwork(
                     settings.isHostMapped,
                     settings.useNce,
                     settings.systemLanguage,
@@ -278,12 +284,14 @@ class MainViewModel(val activity: MainActivity) {
                     settings.enableDocked,
                     settings.enablePtc,
                     settings.enableJitCacheEviction,
-                    false,
-                    tzId, // <<< Pass through Android device time zone
+                    settings.enableInternetAccess,
+                    tzId,
                     settings.ignoreMissingServices,
-                    settings.audioEngineType, // 新增音频引擎参数
-                    settings.memoryConfiguration, // 内存配置
-                    settings.systemTimeOffset // 新增系统时间偏移参数
+                    settings.audioEngineType,
+                    settings.memoryConfiguration,
+                    settings.systemTimeOffset,
+                    settings.multiplayerModeIndex,
+                    settings.getSelectedInterfaceId()
                 )
 
                 semaphore.release()
@@ -442,5 +450,33 @@ class MainViewModel(val activity: MainActivity) {
         this.progressValue = progressValue
         this.progress = progress
         gameHost?.setProgressStates(showLoading, progressValue, progress)
+    }
+
+    /**
+     * 检查当前网络设置状态
+     */
+    fun getNetworkSettingsInfo(): String {
+        val settings = QuickSettings(activity)
+        return "互联网访问: ${if (settings.enableInternetAccess) "启用" else "禁用"}, " +
+               "多人模式: ${settings.getMultiplayerModeName()}"
+    }
+
+    /**
+     * 刷新网络状态显示
+     */
+    fun refreshNetworkStatus() {
+        // 可以在这里添加网络状态更新的逻辑
+        // 例如：更新UI中显示的网络状态信息
+        
+     /**
+      * 获取多人游戏模式名称
+      */
+    fun getMultiplayerModeName(index:  Int): String {
+        return when (index) {
+        0 -> "禁用"
+        1 -> "LDN 本地无线"
+        else -> "未知"
+    }
+}
     }
 }

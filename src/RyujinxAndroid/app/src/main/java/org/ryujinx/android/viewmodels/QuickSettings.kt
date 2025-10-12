@@ -43,6 +43,11 @@ class QuickSettings(val activity: Activity) {
     var customTimeMinute: Int // 新增：自定义时间-分
     var customTimeSecond: Int // 新增：自定义时间-秒
 
+    // 新增：网络设置字段
+    var multiplayerModeIndex: Int // 新增：多人游戏模式索引
+    var enableInternetAccess: Boolean // 新增：启用互联网访问
+    var networkInterfaceIndex: Int // 新增：网络接口索引
+
     // Logs
     var enableDebugLogs: Boolean
     var enableStubLogs: Boolean
@@ -94,6 +99,11 @@ class QuickSettings(val activity: Activity) {
         customTimeMinute = sharedPref.getInt("customTimeMinute", 27)
         customTimeSecond = sharedPref.getInt("customTimeSecond", 0)
 
+        // 初始化网络设置字段
+        multiplayerModeIndex = sharedPref.getInt("multiplayerModeIndex", 0) // 默认禁用
+        enableInternetAccess = sharedPref.getBoolean("enableInternetAccess", false) // 默认禁用互联网访问
+        networkInterfaceIndex = sharedPref.getInt("networkInterfaceIndex", 0) // 默认接口
+
         enableDebugLogs = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs = sharedPref.getBoolean("enableStubLogs", false)
         enableInfoLogs = sharedPref.getBoolean("enableInfoLogs", true)
@@ -144,6 +154,11 @@ class QuickSettings(val activity: Activity) {
         editor.putInt("customTimeMinute", customTimeMinute)
         editor.putInt("customTimeSecond", customTimeSecond)
 
+        // 保存网络设置字段
+        editor.putInt("multiplayerModeIndex", multiplayerModeIndex)
+        editor.putBoolean("enableInternetAccess", enableInternetAccess)
+        editor.putInt("networkInterfaceIndex", networkInterfaceIndex)
+
         editor.putBoolean("enableDebugLogs", enableDebugLogs)
         editor.putBoolean("enableStubLogs", enableStubLogs)
         editor.putBoolean("enableInfoLogs", enableInfoLogs)
@@ -155,5 +170,34 @@ class QuickSettings(val activity: Activity) {
         editor.putBoolean("enableGraphicsLogs", enableGraphicsLogs)
 
         editor.apply()
+    }
+
+    /**
+     * 获取多人游戏模式名称
+     */
+    fun getMultiplayerModeName(): String {
+        return when (multiplayerModeIndex) {
+            0 -> "禁用"
+            1 -> "LDN 本地无线"
+            else -> "未知"
+        }
+    }
+
+    /**
+     * 获取网络状态信息
+     */
+    fun getNetworkStatusInfo(): String {
+        return when {
+            enableInternetAccess -> "互联网访问已启用"
+            else -> "互联网访问已禁用"
+        }
+    }
+
+    /**
+     * 获取网络接口信息
+     */
+    fun getNetworkInterfaceInfo(): String {
+        val networkViewModel = NetworkViewModel(activity)
+        return networkViewModel.networkInterfaceList.getOrNull(networkInterfaceIndex)?.name ?: "默认"
     }
 }

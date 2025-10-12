@@ -26,6 +26,19 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
     private var sharedPref: SharedPreferences
     var selectedFirmwareFile: DocumentFile? = null
 
+    // 网络设置属性
+    var multiplayerModeIndex: Int
+        get() = sharedPref.getInt("multiplayerModeIndex", 0)
+        set(value) = sharedPref.edit().putInt("multiplayerModeIndex", value).apply()
+
+    var enableInternetAccess: Boolean
+        get() = sharedPref.getBoolean("enableInternetAccess", false)
+        set(value) = sharedPref.edit().putBoolean("enableInternetAccess", value).apply()
+
+    var networkInterfaceIndex: Int
+        get() = sharedPref.getInt("networkInterfaceIndex", 0)
+        set(value) = sharedPref.edit().putInt("networkInterfaceIndex", value).apply()
+
     init {
         sharedPref = getPreferences()
         previousFolderCallback = activity.storageHelper!!.onFolderSelected
@@ -86,7 +99,11 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         customTimeDay: MutableState<Int>,
         customTimeHour: MutableState<Int>,
         customTimeMinute: MutableState<Int>,
-        customTimeSecond: MutableState<Int>
+        customTimeSecond: MutableState<Int>,
+        // 新增网络设置状态参数
+        multiplayerMode: MutableState<Int>,
+        enableInternet: MutableState<Boolean>,
+        networkInterface: MutableState<Int>
     ) {
 
         isHostMapped.value = sharedPref.getBoolean("isHostMapped", true)
@@ -125,6 +142,11 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         customTimeHour.value = sharedPref.getInt("customTimeHour", 10)
         customTimeMinute.value = sharedPref.getInt("customTimeMinute", 27)
         customTimeSecond.value = sharedPref.getInt("customTimeSecond", 0)
+
+        // 初始化网络设置
+        multiplayerMode.value = sharedPref.getInt("multiplayerModeIndex", 0)
+        enableInternet.value = sharedPref.getBoolean("enableInternetAccess", false)
+        networkInterface.value = sharedPref.getInt("networkInterfaceIndex", 0)
 
         enableDebugLogs.value = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs.value = sharedPref.getBoolean("enableStubLogs", false)
@@ -179,7 +201,11 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         customTimeDay: MutableState<Int>,
         customTimeHour: MutableState<Int>,
         customTimeMinute: MutableState<Int>,
-        customTimeSecond: MutableState<Int>
+        customTimeSecond: MutableState<Int>,
+        // 新增网络设置参数
+        multiplayerMode: MutableState<Int>,
+        enableInternet: MutableState<Boolean>,
+        networkInterface: MutableState<Int>
     ) {
         val editor = sharedPref.edit()
 
@@ -217,6 +243,11 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.putInt("customTimeHour", customTimeHour.value)
         editor.putInt("customTimeMinute", customTimeMinute.value)
         editor.putInt("customTimeSecond", customTimeSecond.value)
+
+        // 保存网络设置
+        editor.putInt("multiplayerModeIndex", multiplayerMode.value)
+        editor.putBoolean("enableInternetAccess", enableInternet.value)
+        editor.putInt("networkInterfaceIndex", networkInterface.value)
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs.value)
         editor.putBoolean("enableStubLogs", enableStubLogs.value)
@@ -399,6 +430,33 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         selectedFirmwareFile = null
         selectedFirmwareVersion = ""
         installState.value = FirmwareInstallState.None
+    }
+
+    /**
+     * 获取多人游戏模式名称
+     */
+    fun getMultiplayerModeName(index: Int): String {
+        return when (index) {
+            0 -> "禁用"
+            1 -> "LDN 本地无线"
+            else -> "未知"
+        }
+    }
+
+    /**
+     * 获取网络接口列表（用于显示）
+     */
+    fun getNetworkInterfaceNames(): List<String> {
+        val networkViewModel = NetworkViewModel(activity)
+        return networkViewModel.networkInterfaceList.map { it.name }
+    }
+
+    /**
+     * 刷新网络接口列表
+     */
+    fun refreshNetworkInterfaces() {
+        val networkViewModel = NetworkViewModel(activity)
+        networkViewModel.refreshNetworkInterfaces()
     }
 }
 
