@@ -9,6 +9,7 @@ namespace Ryujinx.Graphics.Vulkan
     {
         private const int RequiredSubgroupSize = 32;
         private const int MaxDynamicStatesCount = 9;
+        private const uint DefaultMaxTessellationPatchSize = 32; // Vulkan 规范要求的最小值
 
         public PipelineUid Internal;
 
@@ -708,8 +709,8 @@ namespace Ryujinx.Graphics.Vulkan
                 return false;
             }
 
-            // 检查细分控制点数量是否合理
-            if (PatchControlPoints > gd.Capabilities.MaxTessellationPatchSize)
+            // 检查细分控制点数量是否合理 - 使用默认值而不是不存在的属性
+            if (HasTessellationControlShader && PatchControlPoints > DefaultMaxTessellationPatchSize)
             {
                 return false;
             }
