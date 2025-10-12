@@ -131,35 +131,8 @@ namespace LibRyujinx
                                     lanInterfaceId);
         }
 
-        // 添加设置多人游戏模式的 JNI 方法
-        [UnmanagedCallersOnly(EntryPoint = "setMultiplayerMode")]
-        public static void SetMultiplayerModeNative(int multiplayerMode)
-        {
-            SetMultiplayerMode((MultiplayerMode)multiplayerMode);
-        }
-
-        // 添加获取多人游戏模式的 JNI 方法
-        [UnmanagedCallersOnly(EntryPoint = "getMultiplayerMode")]
-        public static int GetMultiplayerModeNative()
-        {
-            return (int)GetMultiplayerMode();
-        }
-
-        // 添加设置网络接口的 JNI 方法
-        [UnmanagedCallersOnly(EntryPoint = "setLanInterface")]
-        public static void SetLanInterfaceNative(IntPtr interfaceIdPtr)
-        {
-            string interfaceId = Marshal.PtrToStringAnsi(interfaceIdPtr) ?? "0";
-            SetLanInterface(interfaceId);
-        }
-
-        // 添加获取网络接口的 JNI 方法
-        [UnmanagedCallersOnly(EntryPoint = "getLanInterface")]
-        public static IntPtr GetLanInterfaceNative()
-        {
-            string interfaceId = GetLanInterface();
-            return Marshal.StringToHGlobalAnsi(interfaceId);
-        }
+        // 删除重复的 setMultiplayerMode 方法，已在 JniExportedMethods.cs 中定义
+        // 删除重复的 setLanInterface 方法，已在 JniExportedMethods.cs 中定义
 
         [UnmanagedCallersOnly(EntryPoint = "device_reload_file_system")]
         public static void ReloadFileSystemNative()
@@ -580,49 +553,7 @@ namespace LibRyujinx
             CloseUser(userId);
         }
 
-        [UnmanagedCallersOnly(EntryPoint = "set_scaling_filter")]
-        public static void SetScalingFilterNative(int filter)
-        {
-            try
-            {
-                // 更新配置状态
-                ConfigurationState.Instance.Graphics.ScalingFilter.Value = (ScalingFilter)filter;
-                
-                // 如果渲染器已初始化，直接应用设置
-                if (Renderer != null && Renderer.Window != null)
-                {
-                    Renderer.Window.SetScalingFilter((Ryujinx.Graphics.GAL.ScalingFilter)filter);
-                }
-                
-                Logger.Info?.Print(LogClass.Application, $"Scaling filter set to: {(ScalingFilter)filter}");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.Application, $"Failed to set scaling filter: {ex.Message}");
-            }
-        }
-
-        [UnmanagedCallersOnly(EntryPoint = "set_scaling_filter_level")]
-        public static void SetScalingFilterLevelNative(int level)
-        {
-            try
-            {
-                // 更新配置状态
-                ConfigurationState.Instance.Graphics.ScalingFilterLevel.Value = level;
-                
-                // 如果渲染器已初始化，直接应用设置
-                if (Renderer != null && Renderer.Window != null)
-                {
-                    Renderer.Window.SetScalingFilterLevel(level);
-                }
-                
-                Logger.Info?.Print(LogClass.Application, $"Scaling filter level set to: {level}");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.Application, $"Failed to set scaling filter level: {ex.Message}");
-            }
-        }
+        // 删除重复的 SetScalingFilterNative 和 SetScalingFilterLevelNative 方法，已在 JniExportedMethods.cs 中定义
 
         // 添加金手指相关的 JNI 方法
         [UnmanagedCallersOnly(EntryPoint = "cheatGetCheats")]
