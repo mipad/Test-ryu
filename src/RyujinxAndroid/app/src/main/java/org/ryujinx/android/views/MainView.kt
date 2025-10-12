@@ -30,6 +30,11 @@ class MainView {
                         ), mainViewModel
                     )
                 }
+                // 添加网络设置界面路由
+                composable("network_settings") {
+                    val settingsViewModel = SettingsViewModel(navController, mainViewModel.activity)
+                    NetworkViews.NetworkView(settingsViewModel)
+                }
                 // 添加金手指界面导航，包含 titleId 和 gamePath 参数
                 composable(
                     "cheats/{titleId}?gamePath={gamePath}",

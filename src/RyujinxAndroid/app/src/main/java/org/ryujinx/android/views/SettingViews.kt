@@ -86,6 +86,7 @@ import org.ryujinx.android.viewmodels.FirmwareInstallState
 import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.SettingsViewModel
 import org.ryujinx.android.viewmodels.VulkanDriverViewModel
+import org.ryujinx.android.viewmodels.NetworkViewModel
 import kotlin.concurrent.thread
 
 class SettingViews {
@@ -175,6 +176,11 @@ class SettingViews {
            val customTimeMinute = remember { mutableStateOf(27) }
            val customTimeSecond = remember { mutableStateOf(0) }
            
+           // 新增网络设置状态变量
+           val enableInternet = remember { mutableStateOf(false) }
+           val multiplayerMode = remember { mutableStateOf(0) }
+           val networkInterface = remember { mutableStateOf(0) }
+           
            val showCustomTimeDialog = remember { mutableStateOf(false) }          
             val showAntiAliasingDialog = remember { mutableStateOf(false) } // 控制抗锯齿对话框显示
             // 新增状态变量用于控制选项显示
@@ -224,7 +230,10 @@ class SettingViews {
         customTimeDay,
         customTimeHour,
         customTimeMinute,
-        customTimeSecond
+        customTimeSecond,
+        multiplayerMode,
+        enableInternet,
+        networkInterface
                 )
                 loaded.value = true
             }
@@ -288,7 +297,10 @@ class SettingViews {
         customTimeDay,
         customTimeHour,
         customTimeMinute,
-        customTimeSecond
+        customTimeSecond,
+        multiplayerMode,
+        enableInternet,
+        networkInterface
                                 )
                                 settingsViewModel.navController.popBackStack()
                             }) {
@@ -1747,7 +1759,93 @@ if (showCustomTimeDialog.value) {
 }
     }
 }
-                    
+    
+// 网络设置部分 
+ExpandableView(onCardArrowClick = { }, title = "Network") {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // 网络状态概览
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "Network Status")
+            val networkViewModel = NetworkViewModel(settingsViewModel.activity)
+            Text(
+                text = networkViewModel.getNetworkStatusText(),
+                color = when (networkViewModel.getNetworkStatus()) {
+                    NetworkViewModel.NetworkStatus.CONNECTED_WIFI,
+                    NetworkViewModel.NetworkStatus.CONNECTED_MOBILE,
+                    NetworkViewModel.NetworkStatus.CONNECTED_ETHERNET,
+                    NetworkViewModel.NetworkStatus.CONNECTED_UNKNOWN -> MaterialTheme.colorScheme.primary
+                    NetworkViewModel.NetworkStatus.DISCONNECTED -> MaterialTheme.colorScheme.error
+                    NetworkViewModel.NetworkStatus.UNKNOWN -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                }
+            )
+        }
+        
+        // 启用互联网访问开关
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "Enable Internet Access")
+            Switch(
+                checked = enableInternet.value,
+                onCheckedChange = { enableInternet.value = it }
+            )
+        }
+        
+        // 多人游戏模式
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "Multiplayer Mode")
+            Text(
+                text = settingsViewModel.getMultiplayerModeName(multiplayerMode.value),
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        
+        // 网络接口设置
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "Network Interface")
+            val networkViewModel = NetworkViewModel(settingsViewModel.activity)
+            Text(
+                text = networkViewModel.networkInterfaceList.getOrNull(networkInterface.value)?.name ?: "Default",
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        
+        // 快速跳转到完整网络设置
+        Button(
+            onClick = { 
+                settingsViewModel.navController.navigate("network_settings")
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp)
+        ) {
+            Text(text = "Open Network Settings")
+        }
+    }
+}
+// 网络设置部分 
                     ExpandableView(onCardArrowClick = { }, title = "Hack") {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             // 内存配置设置
@@ -2232,7 +2330,10 @@ if (showMemoryConfigDialog.value) {
     customTimeDay,
     customTimeHour,
     customTimeMinute,
-    customTimeSecond
+    customTimeSecond,
+    multiplayerMode,
+        enableInternet,
+        networkInterface
                     )
                     settingsViewModel.navController.popBackStack()
                 }
