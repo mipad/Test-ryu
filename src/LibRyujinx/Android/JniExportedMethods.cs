@@ -23,6 +23,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Ryujinx.HLE; 
+using Ryujinx.Common.Configuration.Multiplayer;
 
 namespace LibRyujinx
 {
@@ -89,9 +90,9 @@ namespace LibRyujinx
                                                     bool ignoreMissingServices,
                                                     int audioEngineType,
                                                     int memoryConfiguration,
-                                                    long systemTimeOffset,     // 新增系统时间偏移参数
-                                                    int multiplayerMode,        // 多人游戏模式
-                                                    IntPtr lanInterfaceIdPtr)   // 网络接口ID
+                                                    long systemTimeOffset,
+                                                    int multiplayerMode,  // 新增网络参数
+                                                    IntPtr lanInterfaceIdPtr)  // 新增网络参数
         {
             debug_break(4);
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
@@ -117,6 +118,8 @@ namespace LibRyujinx
             }
 
             var timezone = Marshal.PtrToStringAnsi(timeZonePtr);
+            var lanInterfaceId = Marshal.PtrToStringAnsi(lanInterfaceIdPtr) ?? "0";
+            
             return InitializeDevice(isHostMapped,
                                     useNce,
                                     (SystemLanguage)systemLanguage,
@@ -129,7 +132,9 @@ namespace LibRyujinx
                                     timezone,
                                     ignoreMissingServices,
                                     (MemoryConfiguration)memoryConfiguration,
-                                    systemTimeOffset);  // 传递系统时间偏移参数
+                                    systemTimeOffset,
+                                    (MultiplayerMode)multiplayerMode,  // 传递网络参数
+                                    lanInterfaceId);  // 传递网络参数
         }
 
         [UnmanagedCallersOnly(EntryPoint = "deviceGetGameFifo")]
@@ -597,6 +602,21 @@ namespace LibRyujinx
         public static void JnaSetSystemTimeOffset(long offset)
         {
             SetSystemTimeOffset(offset);
+        }
+
+        // 新增：设置多人游戏模式的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "setMultiplayerMode")]
+        public static void JnaSetMultiplayerMode(int mode)
+        {
+            SetMultiplayerMode((MultiplayerMode)mode);
+        }
+
+        // 新增：设置网络接口的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "setLanInterface")]
+        public static void JnaSetLanInterface(IntPtr interfaceIdPtr)
+        {
+            var interfaceId = Marshal.PtrToStringAnsi(interfaceIdPtr) ?? "0";
+            SetLanInterface(interfaceId);
         }
 
         // 新增：设置缩放过滤器的JNI方法
