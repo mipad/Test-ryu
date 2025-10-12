@@ -2,9 +2,9 @@ name: Android CI  Fix
 
 on:
   push:
-    branches: [ "rev15" ]
+    branches: [ "网络功能" ]
   pull_request:
-    branches: [ "rev15" ]
+    branches: [ "网络功能" ]
 
 jobs:
   build:
@@ -25,7 +25,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: rev15
+        ref: 网络功能
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
