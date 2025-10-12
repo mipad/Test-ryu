@@ -89,7 +89,9 @@ namespace LibRyujinx
                                                     bool ignoreMissingServices,
                                                     int audioEngineType,
                                                     int memoryConfiguration,
-                                                    long systemTimeOffset)  // 新增系统时间偏移参数
+                                                    long systemTimeOffset,     // 新增系统时间偏移参数
+                                                    int multiplayerMode,        // 多人游戏模式
+                                                    IntPtr lanInterfaceIdPtr)   // 网络接口ID
         {
             debug_break(4);
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
