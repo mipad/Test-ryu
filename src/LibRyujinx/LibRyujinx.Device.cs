@@ -8,11 +8,13 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using Ryujinx.HLE; 
+using Ryujinx.Common.Configuration.Multiplayer;
 
 namespace LibRyujinx
 {
     public static partial class LibRyujinx
     {
+        // 修改 InitializeDevice 方法，添加网络配置参数
         public static bool InitializeDevice(bool isHostMapped,
                                             bool useHypervisor,
                                             SystemLanguage systemLanguage,
@@ -25,26 +27,36 @@ namespace LibRyujinx
                                             string? timeZone,
                                             bool ignoreMissingServices,
                                             MemoryConfiguration memoryConfiguration,
-                                            long systemTimeOffset) // 新增系统时间偏移参数
+                                            long systemTimeOffset,
+                                            // 新增网络参数
+                                            MultiplayerMode multiplayerMode,
+                                            string lanInterfaceId)
         {
             if (SwitchDevice == null)
             {
                 return false;
             }
 
+            // 更新当前网络设置
+            _currentMultiplayerMode = multiplayerMode;
+            _currentLanInterfaceId = lanInterfaceId ?? "0";
+
             return SwitchDevice.InitializeContext(isHostMapped,
-                                                  useHypervisor,
-                                                  systemLanguage,
-                                                  regionCode,
-                                                  enableVsync,
-                                                  enableDockedMode,
-                                                  enablePtc,
-                                                  enableJitCacheEviction,
-                                                  enableInternetAccess,
-                                                  timeZone,
-                                                  ignoreMissingServices,
-                                                  memoryConfiguration,
-                                                  systemTimeOffset); // 传递系统时间偏移参数
+                                                useHypervisor,
+                                                systemLanguage,
+                                                regionCode,
+                                                enableVsync,
+                                                enableDockedMode,
+                                                enablePtc,
+                                                enableJitCacheEviction,
+                                                enableInternetAccess,
+                                                timeZone,
+                                                ignoreMissingServices,
+                                                memoryConfiguration,
+                                                systemTimeOffset,
+                                                // 传递网络参数
+                                                multiplayerMode,
+                                                lanInterfaceId);
         }
 
         public static void InstallFirmware(Stream stream, bool isXci)
