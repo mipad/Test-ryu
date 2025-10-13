@@ -14,7 +14,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
-// 移除不正确的图标导入
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
@@ -39,8 +38,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.ryujinx.android.viewmodels.NetworkViewModel
-import org.ryujinx.android.viewmodels.SettingsViewModel
 import org.ryujinx.android.viewmodels.NetworkViewModel.NetworkStatus
+import org.ryujinx.android.viewmodels.SettingsViewModel
 
 @Composable
 fun NetworkView(settingsViewModel: SettingsViewModel) {
@@ -84,7 +83,7 @@ fun NetworkStatusCard(networkViewModel: NetworkViewModel) {
     }
     
     // 使用可用的图标
-    val statusIcon = Icons.Filled.Info // 使用Info图标作为替代
+    val statusIcon = Icons.Filled.Info
     
     OutlinedCard(
         modifier = Modifier.fillMaxWidth(),
