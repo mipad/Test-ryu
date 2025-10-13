@@ -163,7 +163,7 @@ class MainViewModel(val activity: MainActivity) {
                 val tzId = TimeZone.getDefault().id
                 
                 // 使用带网络参数的设备初始化方法
-                success = RyujinxNative.deviceInitializeWithNetwork(
+                success = RyujinxNative.jnaInstance.deviceInitialize(
                     settings.isHostMapped,
                     settings.useNce,
                     settings.systemLanguage,
@@ -275,7 +275,7 @@ class MainViewModel(val activity: MainActivity) {
                 val tzId = TimeZone.getDefault().id
                 
                 // 使用带网络参数的设备初始化方法
-                success = RyujinxNative.deviceInitializeWithNetwork(
+                success = RyujinxNative.jnaInstance.deviceInitialize(
                     settings.isHostMapped,
                     settings.useNce,
                     settings.systemLanguage,
