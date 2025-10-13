@@ -231,7 +231,8 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.ServiceNifm, $"Android network profile failed: {ex.Message}");
-                return ResultCode.InvalidValue;
+                // 使用 NoInternetConnection 作为通用错误码
+                return ResultCode.NoInternetConnection;
             }
         }
 
@@ -253,7 +254,8 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.ServiceNifm, $"Android IP config failed: {ex.Message}");
-                return ResultCode.InvalidValue;
+                // 使用 NoInternetConnection 作为通用错误码
+                return ResultCode.NoInternetConnection;
             }
         }
 
