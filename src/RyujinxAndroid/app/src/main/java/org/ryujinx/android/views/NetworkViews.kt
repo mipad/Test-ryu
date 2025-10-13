@@ -14,10 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Wifi
-import androidx.compose.material.icons.filled.WifiOff
-import androidx.compose.material.icons.filled.SignalWifi4Bar
-import androidx.compose.material.icons.filled.NetworkCheck
+// 移除不正确的图标导入
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
@@ -43,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.ryujinx.android.viewmodels.NetworkViewModel
 import org.ryujinx.android.viewmodels.SettingsViewModel
+import org.ryujinx.android.viewmodels.NetworkViewModel.NetworkStatus
 
 @Composable
 fun NetworkView(settingsViewModel: SettingsViewModel) {
@@ -77,22 +75,16 @@ fun NetworkView(settingsViewModel: SettingsViewModel) {
 fun NetworkStatusCard(networkViewModel: NetworkViewModel) {
     val networkStatus = networkViewModel.getNetworkStatus()
     val statusColor = when (networkStatus) {
-        NetworkViewModel.NetworkStatus.CONNECTED_WIFI,
-        NetworkViewModel.NetworkStatus.CONNECTED_MOBILE,
-        NetworkViewModel.NetworkStatus.CONNECTED_ETHERNET,
-        NetworkViewModel.NetworkStatus.CONNECTED_UNKNOWN -> MaterialTheme.colorScheme.primary
-        NetworkViewModel.NetworkStatus.DISCONNECTED -> MaterialTheme.colorScheme.error
-        NetworkViewModel.NetworkStatus.UNKNOWN -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        NetworkStatus.CONNECTED_WIFI -> MaterialTheme.colorScheme.primary
+        NetworkStatus.CONNECTED_MOBILE -> MaterialTheme.colorScheme.primary
+        NetworkStatus.CONNECTED_ETHERNET -> MaterialTheme.colorScheme.primary
+        NetworkStatus.CONNECTED_UNKNOWN -> MaterialTheme.colorScheme.primary
+        NetworkStatus.DISCONNECTED -> MaterialTheme.colorScheme.error
+        NetworkStatus.UNKNOWN -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
     }
     
-    val statusIcon = when (networkStatus) {
-        NetworkViewModel.NetworkStatus.CONNECTED_WIFI -> Icons.Filled.SignalWifi4Bar
-        NetworkViewModel.NetworkStatus.CONNECTED_MOBILE -> Icons.Filled.NetworkCheck
-        NetworkViewModel.NetworkStatus.CONNECTED_ETHERNET -> Icons.Filled.Wifi
-        NetworkViewModel.NetworkStatus.CONNECTED_UNKNOWN -> Icons.Filled.Wifi
-        NetworkViewModel.NetworkStatus.DISCONNECTED -> Icons.Filled.WifiOff
-        NetworkViewModel.NetworkStatus.UNKNOWN -> Icons.Filled.Wifi
-    }
+    // 使用可用的图标
+    val statusIcon = Icons.Filled.Info // 使用Info图标作为替代
     
     OutlinedCard(
         modifier = Modifier.fillMaxWidth(),
