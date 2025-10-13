@@ -16,21 +16,11 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService.Types
 
         public IpAddressSetting(IPInterfaceProperties interfaceProperties, UnicastIPAddressInformation unicastIPAddressInformation)
         {
-            // 在 Android 平台上直接使用备用 IP 设置
-            if (OperatingSystem.IsAndroid())
-            {
-                IsDhcpEnabled = true;
-                Address = new IpV4Address(IPAddress.Parse("192.168.1.100"));
-                IPv4Mask = new IpV4Address(IPAddress.Parse("255.255.255.0"));
-                GatewayAddress = new IpV4Address(IPAddress.Parse("192.168.1.1"));
-                return;
-            }
-
-            // 原有逻辑保持不变
-            IsDhcpEnabled = (OperatingSystem.IsMacOS() || OperatingSystem.IsIOS()) || interfaceProperties.DhcpServerAddresses.Count != 0;
-            Address = new IpV4Address(unicastIPAddressInformation.Address);
-            IPv4Mask = new IpV4Address(unicastIPAddressInformation.IPv4Mask);
-            GatewayAddress = (interfaceProperties.GatewayAddresses.Count == 0) ? new IpV4Address() : new IpV4Address(interfaceProperties.GatewayAddresses[0].Address);
+            // 直接使用备用 IP 设置
+            IsDhcpEnabled = true;
+            Address = new IpV4Address(IPAddress.Parse("192.168.1.100"));
+            IPv4Mask = new IpV4Address(IPAddress.Parse("255.255.255.0"));
+            GatewayAddress = new IpV4Address(IPAddress.Parse("192.168.1.1"));
         }
     }
 }
