@@ -3,7 +3,6 @@ package org.ryujinx.android.viewmodels
 import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import android.net.wifi.WifiManager
 import androidx.preference.PreferenceManager
 import org.ryujinx.android.MainActivity
 import java.net.NetworkInterface
