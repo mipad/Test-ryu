@@ -44,22 +44,22 @@ fun NetworkView(settingsViewModel: SettingsViewModel) {
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        // 网络状态概览卡片
+        // Network status overview card
         NetworkStatusCard(networkViewModel)
         
         Spacer(modifier = Modifier.height(16.dp))
         
-        // 多人游戏设置
+        // Multiplayer settings
         MultiplayerSettingsCard(networkViewModel)
         
         Spacer(modifier = Modifier.height(16.dp))
         
-        // 网络接口设置
+        // Network interface settings
         NetworkInterfaceCard(networkViewModel)
         
         Spacer(modifier = Modifier.height(16.dp))
         
-        // 网络信息说明
+        // Network information description
         NetworkInfoCard()
     }
 }
@@ -89,14 +89,14 @@ fun NetworkStatusCard(networkViewModel: NetworkViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                // 使用文字替代图标
+                // Use text instead of icon
                 Text(
-                    text = "🌐", // 使用表情符号作为简单的网络图标
+                    text = "🌐", // Use emoji as simple network icon
                     style = MaterialTheme.typography.titleMedium
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "网络状态",
+                    text = "Network Status",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = statusColor
@@ -105,12 +105,12 @@ fun NetworkStatusCard(networkViewModel: NetworkViewModel) {
             
             Spacer(modifier = Modifier.height(12.dp))
             
-            // 网络连接状态
+            // Network connection status
             Row(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("网络连接:")
+                Text("Network Connection:")
                 Text(
                     text = networkViewModel.getNetworkStatusText(),
                     color = statusColor
@@ -119,14 +119,14 @@ fun NetworkStatusCard(networkViewModel: NetworkViewModel) {
             
             Spacer(modifier = Modifier.height(8.dp))
             
-            // 互联网访问设置状态
+            // Internet access setting status
             Row(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("互联网访问:")
+                Text("Internet Access:")
                 Text(
-                    text = if (networkViewModel.enableInternetAccess) "已启用" else "已禁用",
+                    text = if (networkViewModel.enableInternetAccess) "Enabled" else "Disabled",
                     color = if (networkViewModel.enableInternetAccess) MaterialTheme.colorScheme.primary 
                            else MaterialTheme.colorScheme.error
                 )
@@ -138,7 +138,7 @@ fun NetworkStatusCard(networkViewModel: NetworkViewModel) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("多人游戏模式:")
+                Text("Multiplayer Mode:")
                 Text(
                     text = networkViewModel.getMultiplayerModeName(networkViewModel.multiplayerModeIndex),
                     color = MaterialTheme.colorScheme.secondary
@@ -151,9 +151,9 @@ fun NetworkStatusCard(networkViewModel: NetworkViewModel) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("网络接口:")
+                Text("Network Interface:")
                 Text(
-                    text = networkViewModel.networkInterfaceList.getOrNull(networkViewModel.networkInterfaceIndex)?.name ?: "默认",
+                    text = networkViewModel.networkInterfaceList.getOrNull(networkViewModel.networkInterfaceIndex)?.name ?: "Default",
                     color = MaterialTheme.colorScheme.secondary
                 )
             }
@@ -179,12 +179,12 @@ fun MultiplayerSettingsCard(networkViewModel: NetworkViewModel) {
             ) {
                 Icon(
                     imageVector = Icons.Filled.Settings,
-                    contentDescription = "多人游戏设置",
+                    contentDescription = "Multiplayer Settings",
                     tint = MaterialTheme.colorScheme.primary
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "多人游戏设置",
+                    text = "Multiplayer Settings",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -194,7 +194,7 @@ fun MultiplayerSettingsCard(networkViewModel: NetworkViewModel) {
             Divider()
             Spacer(modifier = Modifier.height(12.dp))
             
-            // 启用互联网访问开关
+            // Enable internet access switch
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -202,11 +202,11 @@ fun MultiplayerSettingsCard(networkViewModel: NetworkViewModel) {
             ) {
                 Column {
                     Text(
-                        text = "启用互联网访问",
+                        text = "Enable Internet Access",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        text = "允许模拟器访问互联网服务",
+                        text = "Allow the emulator to access internet services",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
@@ -219,14 +219,14 @@ fun MultiplayerSettingsCard(networkViewModel: NetworkViewModel) {
             
             Spacer(modifier = Modifier.height(16.dp))
             
-            // 多人游戏模式选择
+            // Multiplayer mode selection
             Text(
-                text = "多人游戏模式:",
+                text = "Multiplayer Mode:",
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
             
-            // 禁用模式
+            // Disabled mode
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
@@ -238,11 +238,11 @@ fun MultiplayerSettingsCard(networkViewModel: NetworkViewModel) {
                 Spacer(modifier = Modifier.width(8.dp))
                 Column {
                     Text(
-                        text = "禁用",
+                        text = "Disabled",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        text = "完全禁用多人游戏功能",
+                        text = "Completely disable multiplayer features",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
@@ -251,7 +251,7 @@ fun MultiplayerSettingsCard(networkViewModel: NetworkViewModel) {
             
             Spacer(modifier = Modifier.height(8.dp))
             
-            // LDN 本地无线模式
+            // LDN local wireless mode
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
@@ -263,11 +263,11 @@ fun MultiplayerSettingsCard(networkViewModel: NetworkViewModel) {
                 Spacer(modifier = Modifier.width(8.dp))
                 Column {
                     Text(
-                        text = "LDN 本地无线",
+                        text = "LDN Local Wireless",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        text = "通过本地网络与其他Ryujinx设备联机",
+                        text = "Connect with other Ryujinx devices over local network",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
@@ -295,25 +295,25 @@ fun NetworkInterfaceCard(networkViewModel: NetworkViewModel) {
             ) {
                 Icon(
                     imageVector = Icons.Filled.Settings,
-                    contentDescription = "网络接口设置",
+                    contentDescription = "Network Interface Settings",
                     tint = MaterialTheme.colorScheme.primary
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "网络接口设置",
+                    text = "Network Interface Settings",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
                 
                 Spacer(modifier = Modifier.weight(1f))
                 
-                // 刷新按钮
+                // Refresh button
                 IconButton(
                     onClick = { networkViewModel.refreshNetworkInterfaces() }
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Refresh,
-                        contentDescription = "刷新网络接口"
+                        contentDescription = "Refresh Network Interfaces"
                     )
                 }
             }
@@ -323,12 +323,12 @@ fun NetworkInterfaceCard(networkViewModel: NetworkViewModel) {
             Spacer(modifier = Modifier.height(12.dp))
             
             Text(
-                text = "选择用于本地无线通信的网络接口:",
+                text = "Select network interface for local wireless communication:",
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(bottom = 12.dp)
             )
             
-            // 网络接口列表
+            // Network interface list
             Column {
                 networkViewModel.networkInterfaceList.forEachIndexed { index, interfaceInfo ->
                     Row(
@@ -366,7 +366,7 @@ fun NetworkInterfaceCard(networkViewModel: NetworkViewModel) {
             Spacer(modifier = Modifier.height(8.dp))
             
             Text(
-                text = "当前选中接口: ${networkViewModel.getSelectedInterfaceId()}",
+                text = "Currently selected interface: ${networkViewModel.getSelectedInterfaceId()}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )
@@ -391,12 +391,12 @@ fun NetworkInfoCard() {
             ) {
                 Icon(
                     imageVector = Icons.Filled.Info,
-                    contentDescription = "网络信息",
+                    contentDescription = "Network Information",
                     tint = MaterialTheme.colorScheme.primary
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "网络功能说明",
+                    text = "Network Features Description",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -406,10 +406,10 @@ fun NetworkInfoCard() {
             Spacer(modifier = Modifier.height(12.dp))
             
             Text(
-                text = "• 互联网访问: 控制模拟器是否能够访问外部网络\n" +
-                       "• LDN 本地无线: 模拟 Switch 本地无线联机功能，需要同一局域网\n" +
-                       "• 网络接口: 选择用于本地无线通信的物理网络适配器\n" +
-                       "• 权限说明: 应用需要网络权限来检测连接状态和接口信息",
+                text = "• Internet Access: Controls whether the emulator can access external networks\n" +
+                       "• LDN Local Wireless: Emulates Switch local wireless multiplayer, requires being on the same network\n" +
+                       "• Network Interface: Select physical network adapter for local wireless communication\n" +
+                       "• Permissions: App requires network permissions to detect connection status and interface information",
                 style = MaterialTheme.typography.bodyMedium,
                 lineHeight = 20.sp
             )
@@ -417,7 +417,7 @@ fun NetworkInfoCard() {
             Spacer(modifier = Modifier.height(8.dp))
             
             Text(
-                text = "注意: 某些网络功能可能需要设备连接到网络才能正常工作",
+                text = "Note: Some network features may require device to be connected to a network to work properly",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )
