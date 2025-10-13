@@ -146,7 +146,6 @@ namespace Ryujinx.HLE.HOS.Services.Ssl.SslService
                     $"SSL handshake failed: {ex.Message}");
                 
                 // 即使握手失败也返回成功，让应用继续运行
-                // 或者根据实际情况返回适当的错误码
             }
             
             EndSslOperation();
@@ -288,7 +287,8 @@ namespace Ryujinx.HLE.HOS.Services.Ssl.SslService
             {
                 storageSize = 0;
                 certificateCount = 0;
-                return ResultCode.InvalidCertificate;
+                // 使用现有的错误码，比如 ConnectionReset 或其他合适的错误码
+                return ResultCode.ConnectionReset;
             }
 
             byte[] rawCertData = _stream.RemoteCertificate.GetRawCertData();
