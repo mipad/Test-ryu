@@ -197,7 +197,15 @@ class QuickSettings(val activity: Activity) {
      * 获取网络接口信息
      */
     fun getNetworkInterfaceInfo(): String {
-        val networkViewModel = NetworkViewModel(activity)
+        val networkViewModel = NetworkViewModel(activity as org.ryujinx.android.MainActivity)
         return networkViewModel.networkInterfaceList.getOrNull(networkInterfaceIndex)?.name ?: "默认"
+    }
+
+    /**
+     * 获取选中的网络接口ID
+     */
+    fun getSelectedInterfaceId(): String {
+        val networkViewModel = NetworkViewModel(activity as org.ryujinx.android.MainActivity)
+        return networkViewModel.getSelectedInterfaceId()
     }
 }
