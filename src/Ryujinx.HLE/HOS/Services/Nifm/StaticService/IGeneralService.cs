@@ -1,5 +1,4 @@
 using Ryujinx.Common;
-using System.Net;
 using Ryujinx.Common.Logging;
 using Ryujinx.Common.Utilities;
 using Ryujinx.HLE.HOS.Services.Nifm.StaticService.GeneralService;
@@ -14,10 +13,6 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
     {
         private readonly GeneralServiceDetail _generalServiceDetail;
 
-        private IPInterfaceProperties _targetPropertiesCache = null;
-        private UnicastIPAddressInformation _targetAddressInfoCache = null;
-        private string _cacheChosenInterface = null;
-
         public IGeneralService()
         {
             _generalServiceDetail = new GeneralServiceDetail
@@ -25,11 +20,6 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
                 ClientId = GeneralServiceManager.Count,
                 IsAnyInternetRequestAccepted = true,
             };
-            
-            if (!Ryujinx.Common.PlatformInfo.IsBionic)
-            {
-                NetworkChange.NetworkAddressChanged += LocalInterfaceCacheHandler;
-            }
 
             GeneralServiceManager.Add(_generalServiceDetail);
         }
@@ -66,16 +56,6 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
         {
             ulong networkProfileDataPosition = context.Request.RecvListBuff[0].Position;
 
-            (IPInterfaceProperties interfaceProperties, UnicastIPAddressInformation unicastAddress) = GetLocalInterface(context);
-
-            // 在 Android 上，即使没有网络接口也继续创建配置
-            if (!OperatingSystem.IsAndroid() && (interfaceProperties == null || unicastAddress == null))
-            {
-                return ResultCode.NoInternetConnection;
-            }
-
-            Logger.Info?.Print(LogClass.ServiceNifm, "Creating network profile...");
-
             context.Response.PtrBuff[0] = context.Response.PtrBuff[0].WithSize((uint)Unsafe.SizeOf<NetworkProfileData>());
 
             NetworkProfileData networkProfile = new()
@@ -83,9 +63,9 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
                 Uuid = UInt128Utils.CreateRandom(),
             };
 
-            // 这些构造函数现在在 Android 上会自动使用备用值
-            networkProfile.IpSettingData.IpAddressSetting = new IpAddressSetting(interfaceProperties, unicastAddress);
-            networkProfile.IpSettingData.DnsSetting = new DnsSetting(interfaceProperties);
+            // 直接创建设置，不依赖网络接口
+            networkProfile.IpSettingData.IpAddressSetting = CreateIpAddressSetting();
+            networkProfile.IpSettingData.DnsSetting = CreateDnsSetting();
 
             "RyujinxNetwork"u8.CopyTo(networkProfile.Name.AsSpan());
 
@@ -98,24 +78,8 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
         // GetCurrentIpAddress() -> nn::nifm::IpV4Address
         public ResultCode GetCurrentIpAddress(ServiceCtx context)
         {
-            (_, UnicastIPAddressInformation unicastAddress) = GetLocalInterface(context);
-
-            // 在 Android 上返回备用 IP
-            if (unicastAddress == null)
-            {
-                if (OperatingSystem.IsAndroid())
-                {
-                    context.ResponseData.WriteStruct(new IpV4Address(IPAddress.Parse("192.168.1.100")));
-                    Logger.Info?.Print(LogClass.ServiceNifm, "Android: Using fallback IP address");
-                    return ResultCode.Success;
-                }
-                return ResultCode.NoInternetConnection;
-            }
-
-            context.ResponseData.WriteStruct(new IpV4Address(unicastAddress.Address));
-
-            Logger.Info?.Print(LogClass.ServiceNifm, $"Console's local IP is \"{unicastAddress.Address}\".");
-
+            // 返回备用 IP 地址
+            context.ResponseData.WriteStruct(new IpV4Address(IPAddress.Parse("192.168.1.100")));
             return ResultCode.Success;
         }
 
@@ -123,19 +87,9 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
         // GetCurrentIpConfigInfo() -> (nn::nifm::IpAddressSetting, nn::nifm::DnsSetting)
         public ResultCode GetCurrentIpConfigInfo(ServiceCtx context)
         {
-            (IPInterfaceProperties interfaceProperties, UnicastIPAddressInformation unicastAddress) = GetLocalInterface(context);
-
-            // 在 Android 上即使没有网络也继续
-            if (!OperatingSystem.IsAndroid() && (interfaceProperties == null || unicastAddress == null))
-            {
-                return ResultCode.NoInternetConnection;
-            }
-
-            Logger.Info?.Print(LogClass.ServiceNifm, "Creating IP config info...");
-
-            // 这些构造函数现在在 Android 上会自动使用备用值
-            context.ResponseData.WriteStruct(new IpAddressSetting(interfaceProperties, unicastAddress));
-            context.ResponseData.WriteStruct(new DnsSetting(interfaceProperties));
+            // 直接创建设置
+            context.ResponseData.WriteStruct(CreateIpAddressSetting());
+            context.ResponseData.WriteStruct(CreateDnsSetting());
 
             return ResultCode.Success;
         }
@@ -144,12 +98,7 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
         // GetInternetConnectionStatus() -> nn::nifm::detail::sf::InternetConnectionStatus
         public ResultCode GetInternetConnectionStatus(ServiceCtx context)
         {
-            // 在 Android 上假设网络总是可用的
-            if (!OperatingSystem.IsAndroid() && !NetworkInterface.GetIsNetworkAvailable())
-            {
-                return ResultCode.NoInternetConnection;
-            }
-
+            // 假设网络总是可用的
             InternetConnectionStatus internetConnectionStatus = new()
             {
                 Type = InternetConnectionType.WiFi,
@@ -176,48 +125,26 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
             return ResultCode.Success;
         }
 
-        private (IPInterfaceProperties, UnicastIPAddressInformation) GetLocalInterface(ServiceCtx context)
+        /// <summary>
+        /// 创建 IP 地址设置
+        /// </summary>
+        private IpAddressSetting CreateIpAddressSetting()
         {
-            // 在 Android 上直接返回 null，让构造函数使用备用值
-            if (OperatingSystem.IsAndroid())
-            {
-                return (null, null);
-            }
-
-            if (!NetworkInterface.GetIsNetworkAvailable())
-            {
-                return (null, null);
-            }
-
-            string chosenInterface = context.Device.Configuration.MultiplayerLanInterfaceId;
-
-            if (_targetPropertiesCache == null || _targetAddressInfoCache == null || _cacheChosenInterface != chosenInterface)
-            {
-                _cacheChosenInterface = chosenInterface;
-
-                (_targetPropertiesCache, _targetAddressInfoCache) = NetworkHelpers.GetLocalInterface(chosenInterface);
-            }
-
-            return (_targetPropertiesCache, _targetAddressInfoCache);
+            return new IpAddressSetting(null, null);
         }
 
-        private void LocalInterfaceCacheHandler(object sender, EventArgs e)
+        /// <summary>
+        /// 创建 DNS 设置
+        /// </summary>
+        private DnsSetting CreateDnsSetting()
         {
-            Logger.Info?.Print(LogClass.ServiceNifm, "NetworkAddress changed, invalidating cached data.");
-
-            _targetPropertiesCache = null;
-            _targetAddressInfoCache = null;
+            return new DnsSetting(null);
         }
 
         protected override void Dispose(bool isDisposing)
         {
             if (isDisposing)
             {
-                if (!Ryujinx.Common.PlatformInfo.IsBionic)
-                {
-                    NetworkChange.NetworkAddressChanged -= LocalInterfaceCacheHandler;
-                }
-
                 GeneralServiceManager.Remove(_generalServiceDetail.ClientId);
             }
         }
