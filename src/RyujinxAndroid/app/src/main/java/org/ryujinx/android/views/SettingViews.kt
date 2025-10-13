@@ -1776,12 +1776,12 @@ ExpandableView(onCardArrowClick = { }, title = "Network") {
             Text(
                 text = networkViewModel.getNetworkStatusText(),
                 color = when (networkViewModel.getNetworkStatus()) {
-                    NetworkViewModel.NetworkStatus.CONNECTED_WIFI,
-                    NetworkViewModel.NetworkStatus.CONNECTED_MOBILE,
-                    NetworkViewModel.NetworkStatus.CONNECTED_ETHERNET,
-                    NetworkViewModel.NetworkStatus.CONNECTED_UNKNOWN -> MaterialTheme.colorScheme.primary
-                    NetworkViewModel.NetworkStatus.DISCONNECTED -> MaterialTheme.colorScheme.error
-                    NetworkViewModel.NetworkStatus.UNKNOWN -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    NetworkStatus.CONNECTED_WIFI -> MaterialTheme.colorScheme.primary
+                    NetworkStatus.CONNECTED_MOBILE -> MaterialTheme.colorScheme.primary
+                    NetworkStatus.CONNECTED_ETHERNET -> MaterialTheme.colorScheme.primary
+                    NetworkStatus.CONNECTED_UNKNOWN -> MaterialTheme.colorScheme.primary
+                    NetworkStatus.DISCONNECTED -> MaterialTheme.colorScheme.error
+                    NetworkStatus.UNKNOWN -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 }
             )
         }
@@ -1798,37 +1798,6 @@ ExpandableView(onCardArrowClick = { }, title = "Network") {
             Switch(
                 checked = enableInternet.value,
                 onCheckedChange = { enableInternet.value = it }
-            )
-        }
-        
-        // 多人游戏模式
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text = "Multiplayer Mode")
-            Text(
-                text = settingsViewModel.getMultiplayerModeName(multiplayerMode.value),
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-        
-        // 网络接口设置
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text = "Network Interface")
-            val networkViewModel = NetworkViewModel(settingsViewModel.activity)
-            Text(
-                text = networkViewModel.networkInterfaceList.getOrNull(networkInterface.value)?.name ?: "Default",
-                color = MaterialTheme.colorScheme.primary
             )
         }
         
