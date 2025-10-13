@@ -16,10 +16,14 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService.Types
 
         public IpAddressSetting(IPInterfaceProperties interfaceProperties, UnicastIPAddressInformation unicastIPAddressInformation)
         {
-            // 在 Android 平台上抛出异常，让上层代码处理
+            // 在 Android 平台上直接使用备用 IP 设置
             if (OperatingSystem.IsAndroid())
             {
-                throw new PlatformNotSupportedException("IPInterfaceProperties is not fully supported on Android");
+                IsDhcpEnabled = true;
+                Address = new IpV4Address(IPAddress.Parse("192.168.1.100"));
+                IPv4Mask = new IpV4Address(IPAddress.Parse("255.255.255.0"));
+                GatewayAddress = new IpV4Address(IPAddress.Parse("192.168.1.1"));
+                return;
             }
 
             // 原有逻辑保持不变
@@ -27,30 +31,6 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService.Types
             Address = new IpV4Address(unicastIPAddressInformation.Address);
             IPv4Mask = new IpV4Address(unicastIPAddressInformation.IPv4Mask);
             GatewayAddress = (interfaceProperties.GatewayAddresses.Count == 0) ? new IpV4Address() : new IpV4Address(interfaceProperties.GatewayAddresses[0].Address);
-        }
-
-        // 为 Android 添加静态创建方法
-        public static IpAddressSetting CreateForAndroid()
-        {
-            return new IpAddressSetting
-            {
-                IsDhcpEnabled = true, // Android 通常使用 DHCP
-                Address = new IpV4Address(IPAddress.Parse("192.168.1.100")),
-                IPv4Mask = new IpV4Address(IPAddress.Parse("255.255.255.0")),
-                GatewayAddress = new IpV4Address(IPAddress.Parse("192.168.1.1"))
-            };
-        }
-
-        // 通用的回退创建方法
-        public static IpAddressSetting CreateFallback()
-        {
-            return new IpAddressSetting
-            {
-                IsDhcpEnabled = true,
-                Address = new IpV4Address(IPAddress.Parse("192.168.1.100")),
-                IPv4Mask = new IpV4Address(IPAddress.Parse("255.255.255.0")),
-                GatewayAddress = new IpV4Address(IPAddress.Parse("192.168.1.1"))
-            };
         }
     }
 }
