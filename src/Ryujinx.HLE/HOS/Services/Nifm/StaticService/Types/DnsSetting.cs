@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;  // 添加这个 using 指令
+using System.IO;                   // 添加这个用于文件操作
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
