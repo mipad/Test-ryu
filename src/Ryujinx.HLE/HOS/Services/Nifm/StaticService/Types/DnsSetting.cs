@@ -15,13 +15,15 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService.Types
         public IpV4Address PrimaryDns;
         public IpV4Address SecondaryDns;
 
-        // 原有的构造函数 - 在 Android 上会抛出异常
         public DnsSetting(IPInterfaceProperties interfaceProperties)
         {
-            // 在 Android 平台上立即抛出异常，让上层代码处理
+            // 在 Android 平台上直接使用备用 DNS，不调用任何可能抛出异常的方法
             if (OperatingSystem.IsAndroid())
             {
-                throw new PlatformNotSupportedException("IPInterfaceProperties.DnsAddresses is not supported on Android");
+                IsDynamicDnsEnabled = false;
+                PrimaryDns = new IpV4Address(IPAddress.Parse("8.8.8.8"));
+                SecondaryDns = new IpV4Address(IPAddress.Parse("8.8.4.4"));
+                return;
             }
 
             // 原有逻辑保持不变
@@ -37,28 +39,6 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService.Types
                 PrimaryDns = new IpV4Address(interfaceProperties.DnsAddresses[0]);
                 SecondaryDns = new IpV4Address(interfaceProperties.DnsAddresses[interfaceProperties.DnsAddresses.Count > 1 ? 1 : 0]);
             }
-        }
-
-        // 为 Android 添加新的静态创建方法
-        public static DnsSetting CreateForAndroid()
-        {
-            return new DnsSetting
-            {
-                IsDynamicDnsEnabled = false,
-                PrimaryDns = new IpV4Address(IPAddress.Parse("8.8.8.8")),
-                SecondaryDns = new IpV4Address(IPAddress.Parse("8.8.4.4"))
-            };
-        }
-
-        // 通用的回退创建方法
-        public static DnsSetting CreateFallback()
-        {
-            return new DnsSetting
-            {
-                IsDynamicDnsEnabled = false,
-                PrimaryDns = new IpV4Address(IPAddress.Parse("8.8.8.8")),
-                SecondaryDns = new IpV4Address(IPAddress.Parse("8.8.4.4"))
-            };
         }
     }
 }
