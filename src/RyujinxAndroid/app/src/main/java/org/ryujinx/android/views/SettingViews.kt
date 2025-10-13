@@ -1,6 +1,5 @@
 package org.ryujinx.android.views
 
-import org.ryujinx.android.views.NetworkStatus
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -88,6 +87,7 @@ import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.SettingsViewModel
 import org.ryujinx.android.viewmodels.VulkanDriverViewModel
 import org.ryujinx.android.viewmodels.NetworkViewModel
+import org.ryujinx.android.viewmodels.NetworkStatus
 import kotlin.concurrent.thread
 
 class SettingViews {
@@ -1765,28 +1765,29 @@ if (showCustomTimeDialog.value) {
 ExpandableView(onCardArrowClick = { }, title = "Network") {
     Column(modifier = Modifier.fillMaxWidth()) {
         // 网络状态概览
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text = "Network Status")
-            val networkViewModel = NetworkViewModel(settingsViewModel.activity)
-            val networkStatus = networkViewModel.getNetworkStatus()
-            Text(
-                text = networkViewModel.getNetworkStatusText(),
-                color = when (networkStatus) {
-                    NetworkStatus.CONNECTED_WIFI -> MaterialTheme.colorScheme.primary
-                    NetworkStatus.CONNECTED_MOBILE -> MaterialTheme.colorScheme.primary
-                    NetworkStatus.CONNECTED_ETHERNET -> MaterialTheme.colorScheme.primary
-                    NetworkStatus.CONNECTED_UNKNOWN -> MaterialTheme.colorScheme.primary
-                    NetworkStatus.DISCONNECTED -> MaterialTheme.colorScheme.error
-                    NetworkStatus.UNKNOWN -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                }
-            )
+        
+Row(
+    modifier = Modifier
+        .fillMaxWidth()
+        .padding(8.dp),
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically
+) {
+    Text(text = "Network Status")
+    val networkViewModel = NetworkViewModel(settingsViewModel.activity)
+    val networkStatus = networkViewModel.getNetworkStatus()
+    Text(
+        text = networkViewModel.getNetworkStatusText(),
+        color = when (networkStatus) {
+            NetworkStatus.CONNECTED_WIFI -> MaterialTheme.colorScheme.primary
+            NetworkStatus.CONNECTED_MOBILE -> MaterialTheme.colorScheme.primary
+            NetworkStatus.CONNECTED_ETHERNET -> MaterialTheme.colorScheme.primary
+            NetworkStatus.CONNECTED_UNKNOWN -> MaterialTheme.colorScheme.primary
+            NetworkStatus.DISCONNECTED -> MaterialTheme.colorScheme.error
+            NetworkStatus.UNKNOWN -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
         }
+    )
+}
         
         // 启用互联网访问开关
         Row(
