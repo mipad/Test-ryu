@@ -26,14 +26,8 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,7 +37,7 @@ import org.ryujinx.android.viewmodels.SettingsViewModel
 
 @Composable
 fun NetworkView(settingsViewModel: SettingsViewModel) {
-    val networkViewModel = remember { NetworkViewModel(settingsViewModel.activity) }
+    val networkViewModel = NetworkViewModel(settingsViewModel.activity)
     
     Column(
         modifier = Modifier
@@ -82,9 +76,6 @@ fun NetworkStatusCard(networkViewModel: NetworkViewModel) {
         NetworkStatus.UNKNOWN -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
     }
     
-    // 使用可用的图标
-    val statusIcon = Icons.Filled.Info
-    
     OutlinedCard(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.outlinedCardColors(
@@ -99,7 +90,7 @@ fun NetworkStatusCard(networkViewModel: NetworkViewModel) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Icon(
-                    imageVector = statusIcon,
+                    imageVector = Icons.Filled.Info,
                     contentDescription = "网络状态",
                     tint = statusColor
                 )
