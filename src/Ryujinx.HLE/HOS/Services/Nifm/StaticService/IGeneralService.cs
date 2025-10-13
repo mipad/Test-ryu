@@ -4,6 +4,7 @@ using Ryujinx.Common.Utilities;
 using Ryujinx.HLE.HOS.Services.Nifm.StaticService.GeneralService;
 using Ryujinx.HLE.HOS.Services.Nifm.StaticService.Types;
 using System;
+using System.Net;
 using System.Net.NetworkInformation;
 using System.Runtime.CompilerServices;
 
@@ -68,6 +69,13 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
         {
             ulong networkProfileDataPosition = context.Request.RecvListBuff[0].Position;
 
+            // Android 平台特殊处理
+            if (AndroidNetworkSupport.IsAndroid)
+            {
+                return GetCurrentNetworkProfileForAndroid(context, networkProfileDataPosition);
+            }
+
+            // 原有非Android逻辑
             (IPInterfaceProperties interfaceProperties, UnicastIPAddressInformation unicastAddress) = GetLocalInterface(context);
 
             if (interfaceProperties == null || unicastAddress == null)
@@ -98,6 +106,15 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
         // GetCurrentIpAddress() -> nn::nifm::IpV4Address
         public ResultCode GetCurrentIpAddress(ServiceCtx context)
         {
+            // Android 平台特殊处理
+            if (AndroidNetworkSupport.IsAndroid)
+            {
+                // 返回一个默认的 IP 地址
+                context.ResponseData.WriteStruct(AndroidNetworkSupport.GetCurrentIpAddress());
+                Logger.Info?.Print(LogClass.ServiceNifm, "Android: Using fallback IP address");
+                return ResultCode.Success;
+            }
+
             (_, UnicastIPAddressInformation unicastAddress) = GetLocalInterface(context);
 
             if (unicastAddress == null)
@@ -116,6 +133,12 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
         // GetCurrentIpConfigInfo() -> (nn::nifm::IpAddressSetting, nn::nifm::DnsSetting)
         public ResultCode GetCurrentIpConfigInfo(ServiceCtx context)
         {
+            // Android 平台特殊处理
+            if (AndroidNetworkSupport.IsAndroid)
+            {
+                return GetCurrentIpConfigInfoForAndroid(context);
+            }
+
             (IPInterfaceProperties interfaceProperties, UnicastIPAddressInformation unicastAddress) = GetLocalInterface(context);
 
             if (interfaceProperties == null || unicastAddress == null)
@@ -135,9 +158,20 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
         // GetInternetConnectionStatus() -> nn::nifm::detail::sf::InternetConnectionStatus
         public ResultCode GetInternetConnectionStatus(ServiceCtx context)
         {
-            if (!NetworkInterface.GetIsNetworkAvailable())
+            // Android 平台特殊处理
+            if (AndroidNetworkSupport.IsAndroid)
             {
-                return ResultCode.NoInternetConnection;
+                if (!AndroidNetworkSupport.IsNetworkAvailable())
+                {
+                    return ResultCode.NoInternetConnection;
+                }
+            }
+            else
+            {
+                if (!NetworkInterface.GetIsNetworkAvailable())
+                {
+                    return ResultCode.NoInternetConnection;
+                }
             }
 
             InternetConnectionStatus internetConnectionStatus = new()
@@ -168,8 +202,69 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
             return ResultCode.Success;
         }
 
+        /// <summary>
+        /// Android 专用的网络配置获取方法
+        /// </summary>
+        private ResultCode GetCurrentNetworkProfileForAndroid(ServiceCtx context, ulong networkProfileDataPosition)
+        {
+            try
+            {
+                Logger.Info?.Print(LogClass.ServiceNifm, "Android: Using fallback network profile");
+
+                context.Response.PtrBuff[0] = context.Response.PtrBuff[0].WithSize((uint)Unsafe.SizeOf<NetworkProfileData>());
+
+                NetworkProfileData networkProfile = new()
+                {
+                    Uuid = UInt128Utils.CreateRandom(),
+                };
+
+                // 使用 Android 支持类获取设置
+                networkProfile.IpSettingData.IpAddressSetting = AndroidNetworkSupport.GetIpAddressSetting();
+                networkProfile.IpSettingData.DnsSetting = AndroidNetworkSupport.GetDnsSetting();
+
+                "RyujinxNetwork"u8.CopyTo(networkProfile.Name.AsSpan());
+
+                context.Memory.Write(networkProfileDataPosition, networkProfile);
+
+                return ResultCode.Success;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceNifm, $"Android network profile failed: {ex.Message}");
+                return ResultCode.InvalidValue;
+            }
+        }
+
+        /// <summary>
+        /// Android 专用的 IP 配置获取方法
+        /// </summary>
+        private ResultCode GetCurrentIpConfigInfoForAndroid(ServiceCtx context)
+        {
+            try
+            {
+                Logger.Info?.Print(LogClass.ServiceNifm, "Android: Using fallback IP config");
+
+                // 使用 Android 支持类获取设置
+                context.ResponseData.WriteStruct(AndroidNetworkSupport.GetIpAddressSetting());
+                context.ResponseData.WriteStruct(AndroidNetworkSupport.GetDnsSetting());
+
+                return ResultCode.Success;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceNifm, $"Android IP config failed: {ex.Message}");
+                return ResultCode.InvalidValue;
+            }
+        }
+
         private (IPInterfaceProperties, UnicastIPAddressInformation) GetLocalInterface(ServiceCtx context)
         {
+            // Android 平台直接返回 null，因为我们使用专门的 Android 实现
+            if (AndroidNetworkSupport.IsAndroid)
+            {
+                return (null, null);
+            }
+
             if (!NetworkInterface.GetIsNetworkAvailable())
             {
                 return (null, null);
@@ -193,6 +288,12 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
 
             _targetPropertiesCache = null;
             _targetAddressInfoCache = null;
+            
+            // 如果是 Android，也清除 Android 特定的缓存
+            if (AndroidNetworkSupport.IsAndroid)
+            {
+                AndroidNetworkSupport.ClearCache();
+            }
         }
 
         protected override void Dispose(bool isDisposing)
