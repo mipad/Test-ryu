@@ -2,6 +2,7 @@ using System;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService.Types
 {
@@ -15,10 +16,13 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService.Types
 
         public DnsSetting(IPInterfaceProperties interfaceProperties)
         {
-            // 直接使用备用 DNS，不调用任何可能失败的方法
+            // 直接使用可靠的公共 DNS
             IsDynamicDnsEnabled = false;
             PrimaryDns = new IpV4Address(IPAddress.Parse("8.8.8.8"));
             SecondaryDns = new IpV4Address(IPAddress.Parse("8.8.4.4"));
+            
+            Logger.Info?.Print(LogClass.ServiceNifm, 
+                "Using PUBLIC DNS: Primary=8.8.8.8, Secondary=8.8.4.4");
         }
     }
 }
