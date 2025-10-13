@@ -30,7 +30,7 @@ class MainView {
                         ), mainViewModel
                     )
                 }
-                // 添加网络设置界面路由
+                // 添加网络设置界面路由 - 直接使用 NetworkView 函数
                 composable("network_settings") {
                     val settingsViewModel = SettingsViewModel(navController, mainViewModel.activity)
                     NetworkView(settingsViewModel)
