@@ -4,7 +4,6 @@ using Ryujinx.Common.Utilities;
 using Ryujinx.HLE.HOS.Services.Nifm.StaticService.GeneralService;
 using Ryujinx.HLE.HOS.Services.Nifm.StaticService.Types;
 using System;
-using System.Net;
 using System.Net.NetworkInformation;
 using System.Runtime.CompilerServices;
 
@@ -23,7 +22,7 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
             _generalServiceDetail = new GeneralServiceDetail
             {
                 ClientId = GeneralServiceManager.Count,
-                IsAnyInternetRequestAccepted = true, // NOTE: Why not accept any internet request?
+                IsAnyInternetRequestAccepted = true,
             };
             
             if (!Ryujinx.Common.PlatformInfo.IsBionic)
@@ -55,9 +54,6 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
 
             MakeObject(context, new IRequest(context.Device.System, version));
 
-            // Doesn't occur in our case.
-            // return ResultCode.ObjectIsNull;
-
             Logger.Stub?.PrintStub(LogClass.ServiceNifm, new { version });
 
             return ResultCode.Success;
@@ -69,21 +65,15 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
         {
             ulong networkProfileDataPosition = context.Request.RecvListBuff[0].Position;
 
-            // Android 平台特殊处理
-            if (AndroidNetworkSupport.IsAndroid)
-            {
-                return GetCurrentNetworkProfileForAndroid(context, networkProfileDataPosition);
-            }
-
-            // 原有非Android逻辑
             (IPInterfaceProperties interfaceProperties, UnicastIPAddressInformation unicastAddress) = GetLocalInterface(context);
 
-            if (interfaceProperties == null || unicastAddress == null)
+            // 在 Android 上，即使没有网络接口也继续创建配置
+            if (!OperatingSystem.IsAndroid() && (interfaceProperties == null || unicastAddress == null))
             {
                 return ResultCode.NoInternetConnection;
             }
 
-            Logger.Info?.Print(LogClass.ServiceNifm, $"Console's local IP is \"{unicastAddress.Address}\".");
+            Logger.Info?.Print(LogClass.ServiceNifm, "Creating network profile...");
 
             context.Response.PtrBuff[0] = context.Response.PtrBuff[0].WithSize((uint)Unsafe.SizeOf<NetworkProfileData>());
 
@@ -92,6 +82,7 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
                 Uuid = UInt128Utils.CreateRandom(),
             };
 
+            // 这些构造函数现在在 Android 上会自动使用备用值
             networkProfile.IpSettingData.IpAddressSetting = new IpAddressSetting(interfaceProperties, unicastAddress);
             networkProfile.IpSettingData.DnsSetting = new DnsSetting(interfaceProperties);
 
@@ -106,19 +97,17 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
         // GetCurrentIpAddress() -> nn::nifm::IpV4Address
         public ResultCode GetCurrentIpAddress(ServiceCtx context)
         {
-            // Android 平台特殊处理
-            if (AndroidNetworkSupport.IsAndroid)
-            {
-                // 返回一个默认的 IP 地址
-                context.ResponseData.WriteStruct(AndroidNetworkSupport.GetCurrentIpAddress());
-                Logger.Info?.Print(LogClass.ServiceNifm, "Android: Using fallback IP address");
-                return ResultCode.Success;
-            }
-
             (_, UnicastIPAddressInformation unicastAddress) = GetLocalInterface(context);
 
+            // 在 Android 上返回备用 IP
             if (unicastAddress == null)
             {
+                if (OperatingSystem.IsAndroid())
+                {
+                    context.ResponseData.WriteStruct(new IpV4Address(IPAddress.Parse("192.168.1.100")));
+                    Logger.Info?.Print(LogClass.ServiceNifm, "Android: Using fallback IP address");
+                    return ResultCode.Success;
+                }
                 return ResultCode.NoInternetConnection;
             }
 
@@ -133,21 +122,17 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
         // GetCurrentIpConfigInfo() -> (nn::nifm::IpAddressSetting, nn::nifm::DnsSetting)
         public ResultCode GetCurrentIpConfigInfo(ServiceCtx context)
         {
-            // Android 平台特殊处理
-            if (AndroidNetworkSupport.IsAndroid)
-            {
-                return GetCurrentIpConfigInfoForAndroid(context);
-            }
-
             (IPInterfaceProperties interfaceProperties, UnicastIPAddressInformation unicastAddress) = GetLocalInterface(context);
 
-            if (interfaceProperties == null || unicastAddress == null)
+            // 在 Android 上即使没有网络也继续
+            if (!OperatingSystem.IsAndroid() && (interfaceProperties == null || unicastAddress == null))
             {
                 return ResultCode.NoInternetConnection;
             }
 
-            Logger.Info?.Print(LogClass.ServiceNifm, $"Console's local IP is \"{unicastAddress.Address}\".");
+            Logger.Info?.Print(LogClass.ServiceNifm, "Creating IP config info...");
 
+            // 这些构造函数现在在 Android 上会自动使用备用值
             context.ResponseData.WriteStruct(new IpAddressSetting(interfaceProperties, unicastAddress));
             context.ResponseData.WriteStruct(new DnsSetting(interfaceProperties));
 
@@ -158,20 +143,10 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
         // GetInternetConnectionStatus() -> nn::nifm::detail::sf::InternetConnectionStatus
         public ResultCode GetInternetConnectionStatus(ServiceCtx context)
         {
-            // Android 平台特殊处理
-            if (AndroidNetworkSupport.IsAndroid)
+            // 在 Android 上假设网络总是可用的
+            if (!OperatingSystem.IsAndroid() && !NetworkInterface.GetIsNetworkAvailable())
             {
-                if (!AndroidNetworkSupport.IsNetworkAvailable())
-                {
-                    return ResultCode.NoInternetConnection;
-                }
-            }
-            else
-            {
-                if (!NetworkInterface.GetIsNetworkAvailable())
-                {
-                    return ResultCode.NoInternetConnection;
-                }
+                return ResultCode.NoInternetConnection;
             }
 
             InternetConnectionStatus internetConnectionStatus = new()
@@ -191,9 +166,7 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
         public ResultCode IsAnyInternetRequestAccepted(ServiceCtx context)
         {
             ulong position = context.Request.PtrBuff[0].Position;
-#pragma warning disable IDE0059 // Remove unnecessary value assignment
             ulong size = context.Request.PtrBuff[0].Size;
-#pragma warning restore IDE0059
 
             int clientId = context.Memory.Read<int>(position);
 
@@ -202,67 +175,10 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
             return ResultCode.Success;
         }
 
-        /// <summary>
-        /// Android 专用的网络配置获取方法
-        /// </summary>
-        private ResultCode GetCurrentNetworkProfileForAndroid(ServiceCtx context, ulong networkProfileDataPosition)
-        {
-            try
-            {
-                Logger.Info?.Print(LogClass.ServiceNifm, "Android: Using fallback network profile");
-
-                context.Response.PtrBuff[0] = context.Response.PtrBuff[0].WithSize((uint)Unsafe.SizeOf<NetworkProfileData>());
-
-                NetworkProfileData networkProfile = new()
-                {
-                    Uuid = UInt128Utils.CreateRandom(),
-                };
-
-                // 使用 Android 支持类获取设置
-                networkProfile.IpSettingData.IpAddressSetting = AndroidNetworkSupport.GetIpAddressSetting();
-                networkProfile.IpSettingData.DnsSetting = AndroidNetworkSupport.GetDnsSetting();
-
-                "RyujinxNetwork"u8.CopyTo(networkProfile.Name.AsSpan());
-
-                context.Memory.Write(networkProfileDataPosition, networkProfile);
-
-                return ResultCode.Success;
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.ServiceNifm, $"Android network profile failed: {ex.Message}");
-                // 使用 NoInternetConnection 作为通用错误码
-                return ResultCode.NoInternetConnection;
-            }
-        }
-
-        /// <summary>
-        /// Android 专用的 IP 配置获取方法
-        /// </summary>
-        private ResultCode GetCurrentIpConfigInfoForAndroid(ServiceCtx context)
-        {
-            try
-            {
-                Logger.Info?.Print(LogClass.ServiceNifm, "Android: Using fallback IP config");
-
-                // 使用 Android 支持类获取设置
-                context.ResponseData.WriteStruct(AndroidNetworkSupport.GetIpAddressSetting());
-                context.ResponseData.WriteStruct(AndroidNetworkSupport.GetDnsSetting());
-
-                return ResultCode.Success;
-            }
-            catch (Exception ex)
-            {
-                Logger.Error?.Print(LogClass.ServiceNifm, $"Android IP config failed: {ex.Message}");
-                // 使用 NoInternetConnection 作为通用错误码
-                return ResultCode.NoInternetConnection;
-            }
-        }
-
         private (IPInterfaceProperties, UnicastIPAddressInformation) GetLocalInterface(ServiceCtx context)
         {
-            // Android 平台直接返回 null，因为我们使用专门的 Android 实现
-            if (AndroidNetworkSupport.IsAndroid)
+            // 在 Android 上直接返回 null，让构造函数使用备用值
+            if (OperatingSystem.IsAndroid())
             {
                 return (null, null);
             }
@@ -290,12 +206,6 @@ namespace Ryujinx.HLE.HOS.Services.Nifm.StaticService
 
             _targetPropertiesCache = null;
             _targetAddressInfoCache = null;
-            
-            // 如果是 Android，也清除 Android 特定的缓存
-            if (AndroidNetworkSupport.IsAndroid)
-            {
-                AndroidNetworkSupport.ClearCache();
-            }
         }
 
         protected override void Dispose(bool isDisposing)
