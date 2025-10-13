@@ -1,4 +1,5 @@
 using Ryujinx.Common;
+using System.Net;
 using Ryujinx.Common.Logging;
 using Ryujinx.Common.Utilities;
 using Ryujinx.HLE.HOS.Services.Nifm.StaticService.GeneralService;
