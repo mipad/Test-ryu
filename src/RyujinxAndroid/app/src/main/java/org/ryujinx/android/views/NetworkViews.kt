@@ -32,17 +32,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.ryujinx.android.viewmodels.NetworkViewModel
+import org.ryujinx.android.viewmodels.NetworkStatus
 import org.ryujinx.android.viewmodels.SettingsViewModel
-
-// 在 NetworkViews.kt 中定义 NetworkStatus 枚举
-enum class NetworkStatus {
-    CONNECTED_WIFI,
-    CONNECTED_MOBILE,
-    CONNECTED_ETHERNET,
-    CONNECTED_UNKNOWN,
-    DISCONNECTED,
-    UNKNOWN
-}
 
 @Composable
 fun NetworkView(settingsViewModel: SettingsViewModel) {
