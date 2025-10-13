@@ -1,5 +1,6 @@
 package org.ryujinx.android.views
 
+import org.ryujinx.android.views.NetworkStatus
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -1773,9 +1774,10 @@ ExpandableView(onCardArrowClick = { }, title = "Network") {
         ) {
             Text(text = "Network Status")
             val networkViewModel = NetworkViewModel(settingsViewModel.activity)
+            val networkStatus = networkViewModel.getNetworkStatus()
             Text(
                 text = networkViewModel.getNetworkStatusText(),
-                color = when (networkViewModel.getNetworkStatus()) {
+                color = when (networkStatus) {
                     NetworkStatus.CONNECTED_WIFI -> MaterialTheme.colorScheme.primary
                     NetworkStatus.CONNECTED_MOBILE -> MaterialTheme.colorScheme.primary
                     NetworkStatus.CONNECTED_ETHERNET -> MaterialTheme.colorScheme.primary
