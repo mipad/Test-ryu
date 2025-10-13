@@ -32,8 +32,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.ryujinx.android.viewmodels.NetworkViewModel
-import org.ryujinx.android.viewmodels.NetworkViewModel.NetworkStatus
 import org.ryujinx.android.viewmodels.SettingsViewModel
+
+// 在 NetworkViews.kt 中定义 NetworkStatus 枚举
+enum class NetworkStatus {
+    CONNECTED_WIFI,
+    CONNECTED_MOBILE,
+    CONNECTED_ETHERNET,
+    CONNECTED_UNKNOWN,
+    DISCONNECTED,
+    UNKNOWN
+}
 
 @Composable
 fun NetworkView(settingsViewModel: SettingsViewModel) {
@@ -89,10 +98,10 @@ fun NetworkStatusCard(networkViewModel: NetworkViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Info,
-                    contentDescription = "网络状态",
-                    tint = statusColor
+                // 使用文字替代图标
+                Text(
+                    text = "🌐", // 使用表情符号作为简单的网络图标
+                    style = MaterialTheme.typography.titleMedium
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
