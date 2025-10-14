@@ -42,6 +42,10 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Ryujinx.Common.Configuration.Multiplayer; // 添加多人游戏模式命名空间
+using System.Net;
+using System.Net.Sockets;
+using System.Threading.Tasks;
+using System.Threading;
 
 namespace LibRyujinx
 {
@@ -61,6 +65,13 @@ namespace LibRyujinx
         
         private static readonly ModMetadataJsonSerializerContext _modSerializerContext = new(JsonHelper.GetDefaultSerializerOptions());
         
+        // 添加 LobbyInfo 序列化上下文
+        [JsonSerializable(typeof(LobbyInfo))]
+        [JsonSerializable(typeof(List<LobbyInfo>))]
+        public partial class LobbyInfoJsonSerializerContext : JsonSerializerContext
+        {
+        }
+        
         public static SwitchDevice? SwitchDevice { get; set; }
 
         // 添加静态字段来存储画面比例
@@ -75,6 +86,13 @@ namespace LibRyujinx
         // 添加网络相关静态字段
         private static MultiplayerMode _currentMultiplayerMode = MultiplayerMode.Disabled;
         private static string _currentLanInterfaceId = "0";
+
+        // 大厅管理相关静态字段
+        private static List<LobbyInfo> _lobbyList = new List<LobbyInfo>();
+        private static LobbyInfo _currentLobby = null;
+        private static bool _isHosting = false;
+        private static CancellationTokenSource _lobbyScanCancellation = null;
+        private static bool _isScanning = false;
 
         // Mod 相关类型定义
         public class ModInfo
@@ -117,6 +135,46 @@ namespace LibRyujinx
             
             [JsonPropertyName("enabled")]
             public bool Enabled { get; set; }
+        }
+
+        // 大厅信息类
+        public class LobbyInfo
+        {
+            [JsonPropertyName("id")]
+            public string Id { get; set; } = string.Empty;
+            
+            [JsonPropertyName("name")]
+            public string Name { get; set; } = string.Empty;
+            
+            [JsonPropertyName("gameTitle")]
+            public string GameTitle { get; set; } = string.Empty;
+            
+            [JsonPropertyName("hostName")]
+            public string HostName { get; set; } = string.Empty;
+            
+            [JsonPropertyName("playerCount")]
+            public int PlayerCount { get; set; }
+            
+            [JsonPropertyName("maxPlayers")]
+            public int MaxPlayers { get; set; }
+            
+            [JsonPropertyName("ping")]
+            public int Ping { get; set; }
+            
+            [JsonPropertyName("isPasswordProtected")]
+            public bool IsPasswordProtected { get; set; }
+            
+            [JsonPropertyName("hostIp")]
+            public string HostIp { get; set; } = string.Empty;
+            
+            [JsonPropertyName("port")]
+            public int Port { get; set; } = 11452; // LDN 默认端口
+            
+            [JsonPropertyName("gameId")]
+            public string GameId { get; set; } = string.Empty;
+            
+            [JsonPropertyName("createdTime")]
+            public DateTime CreatedTime { get; set; } = DateTime.Now;
         }
 
         public static bool Initialize(string? basePath)
@@ -244,6 +302,354 @@ namespace LibRyujinx
         public static string GetLanInterface()
         {
             return _currentLanInterfaceId;
+        }
+
+        // ==================== 大厅管理功能 ====================
+
+        /// <summary>
+        /// 创建大厅
+        /// </summary>
+        public static bool CreateLobby(string lobbyName, string gameTitle, int maxPlayers, string gameId = "")
+        {
+            try
+            {
+                if (_isHosting)
+                {
+                    Logger.Warning?.Print(LogClass.ServiceLdn, "Already hosting a lobby");
+                    return false;
+                }
+
+                string localIp = GetLocalIpAddress();
+                if (string.IsNullOrEmpty(localIp))
+                {
+                    Logger.Error?.Print(LogClass.ServiceLdn, "Cannot get local IP address");
+                    return false;
+                }
+
+                _currentLobby = new LobbyInfo
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    Name = lobbyName,
+                    GameTitle = gameTitle,
+                    HostName = "Player", // 应该获取实际用户名
+                    PlayerCount = 1,
+                    MaxPlayers = maxPlayers,
+                    HostIp = localIp,
+                    GameId = gameId,
+                    CreatedTime = DateTime.Now
+                };
+
+                _isHosting = true;
+
+                // 添加到大厅列表（模拟广播）
+                _lobbyList.Add(_currentLobby);
+
+                Logger.Info?.Print(LogClass.ServiceLdn, $"Lobby created: {lobbyName} for {gameTitle} at {localIp}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error creating lobby: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 加入大厅
+        /// </summary>
+        public static bool JoinLobby(string hostIp, int port = 11452)
+        {
+            try
+            {
+                if (_currentLobby != null)
+                {
+                    Logger.Warning?.Print(LogClass.ServiceLdn, "Already in a lobby");
+                    return false;
+                }
+
+                var lobby = _lobbyList.FirstOrDefault(l => l.HostIp == hostIp && l.Port == port);
+                if (lobby != null)
+                {
+                    _currentLobby = lobby;
+                    _currentLobby.PlayerCount++; // 模拟玩家加入
+
+                    Logger.Info?.Print(LogClass.ServiceLdn, $"Joined lobby: {lobby.Name} at {hostIp}:{port}");
+                    return true;
+                }
+
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Lobby not found at {hostIp}:{port}");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error joining lobby: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 离开大厅
+        /// </summary>
+        public static bool LeaveLobby()
+        {
+            try
+            {
+                if (_currentLobby != null)
+                {
+                    if (_isHosting)
+                    {
+                        // 如果是主机，关闭大厅
+                        _lobbyList.Remove(_currentLobby);
+                        _isHosting = false;
+                        Logger.Info?.Print(LogClass.ServiceLdn, $"Closed lobby: {_currentLobby.Name}");
+                    }
+                    else
+                    {
+                        // 如果是客户端，减少玩家计数
+                        _currentLobby.PlayerCount--;
+                        Logger.Info?.Print(LogClass.ServiceLdn, $"Left lobby: {_currentLobby.Name}");
+                    }
+
+                    _currentLobby = null;
+                    return true;
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error leaving lobby: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 获取大厅列表
+        /// </summary>
+        public static List<LobbyInfo> GetLobbyList()
+        {
+            // 如果正在扫描，返回当前列表
+            if (_isScanning)
+            {
+                return _lobbyList;
+            }
+
+            // 模拟一些大厅数据用于测试
+            if (_lobbyList.Count == 0)
+            {
+                _lobbyList = new List<LobbyInfo>
+                {
+                    new LobbyInfo
+                    {
+                        Id = "1",
+                        Name = "Mario Kart Room",
+                        GameTitle = "Mario Kart 8 Deluxe",
+                        HostName = "Player1",
+                        PlayerCount = 2,
+                        MaxPlayers = 4,
+                        Ping = 25,
+                        HostIp = "192.168.1.100",
+                        GameId = "0100152000022000"
+                    },
+                    new LobbyInfo
+                    {
+                        Id = "2", 
+                        Name = "Splatoon Fun",
+                        GameTitle = "Splatoon 3",
+                        HostName = "Inkling",
+                        PlayerCount = 1,
+                        MaxPlayers = 8,
+                        Ping = 45,
+                        IsPasswordProtected = true,
+                        HostIp = "192.168.1.101",
+                        GameId = "0100C2500FC20000"
+                    },
+                    new LobbyInfo
+                    {
+                        Id = "3",
+                        Name = "Monster Hunters",
+                        GameTitle = "Monster Hunter Rise",
+                        HostName = "Hunter",
+                        PlayerCount = 3,
+                        MaxPlayers = 4,
+                        Ping = 12,
+                        HostIp = "192.168.1.102",
+                        GameId = "0100B04011742000"
+                    }
+                };
+            }
+            
+            return _lobbyList;
+        }
+
+        /// <summary>
+        /// 设置大厅数据
+        /// </summary>
+        public static bool SetLobbyData(string key, string value)
+        {
+            try
+            {
+                if (_currentLobby == null || !_isHosting)
+                {
+                    Logger.Warning?.Print(LogClass.ServiceLdn, "Not hosting a lobby");
+                    return false;
+                }
+
+                // 这里可以设置大厅的元数据
+                // 实际实现需要调用 LDN 的 SetAdvertiseData 方法
+                Logger.Info?.Print(LogClass.ServiceLdn, $"Set lobby data: {key} = {value}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error setting lobby data: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 获取大厅数据
+        /// </summary>
+        public static string GetLobbyData(string key)
+        {
+            try
+            {
+                if (_currentLobby == null)
+                {
+                    return string.Empty;
+                }
+
+                // 这里可以根据key返回相应的大厅数据
+                return string.Empty;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error getting lobby data: {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// 刷新大厅列表
+        /// </summary>
+        public static void RefreshLobbyList()
+        {
+            try
+            {
+                if (_isScanning)
+                {
+                    Logger.Info?.Print(LogClass.ServiceLdn, "Lobby scan already in progress");
+                    return;
+                }
+
+                _isScanning = true;
+                _lobbyScanCancellation = new CancellationTokenSource();
+
+                // 模拟网络扫描
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        Logger.Info?.Print(LogClass.ServiceLdn, "Starting lobby scan...");
+
+                        // 清除旧列表（保留当前大厅）
+                        var currentLobbyIp = _currentLobby?.HostIp;
+                        _lobbyList.Clear();
+
+                        // 模拟网络延迟
+                        await Task.Delay(1000, _lobbyScanCancellation.Token);
+
+                        if (!_lobbyScanCancellation.Token.IsCancellationRequested)
+                        {
+                            // 重新获取大厅列表
+                            GetLobbyList();
+                            Logger.Info?.Print(LogClass.ServiceLdn, $"Lobby scan completed. Found {_lobbyList.Count} lobbies.");
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        Logger.Info?.Print(LogClass.ServiceLdn, "Lobby scan cancelled");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error?.Print(LogClass.ServiceLdn, $"Error during lobby scan: {ex.Message}");
+                    }
+                    finally
+                    {
+                        _isScanning = false;
+                        _lobbyScanCancellation = null;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error refreshing lobby list: {ex.Message}");
+                _isScanning = false;
+            }
+        }
+
+        /// <summary>
+        /// 停止大厅扫描
+        /// </summary>
+        public static void StopLobbyScan()
+        {
+            try
+            {
+                if (_isScanning && _lobbyScanCancellation != null)
+                {
+                    _lobbyScanCancellation.Cancel();
+                    Logger.Info?.Print(LogClass.ServiceLdn, "Stopping lobby scan...");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error stopping lobby scan: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 获取当前大厅信息
+        /// </summary>
+        public static LobbyInfo GetCurrentLobby()
+        {
+            return _currentLobby;
+        }
+
+        /// <summary>
+        /// 检查是否正在托管大厅
+        /// </summary>
+        public static bool IsHostingLobby()
+        {
+            return _isHosting;
+        }
+
+        /// <summary>
+        /// 检查是否正在扫描大厅
+        /// </summary>
+        public static bool IsScanningLobbies()
+        {
+            return _isScanning;
+        }
+
+        // 辅助方法：获取本地 IP 地址
+        private static string GetLocalIpAddress()
+        {
+            try
+            {
+                var host = Dns.GetHostEntry(Dns.GetHostName());
+                foreach (var ip in host.AddressList)
+                {
+                    if (ip.AddressFamily == AddressFamily.InterNetwork)
+                    {
+                        return ip.ToString();
+                    }
+                }
+                return "127.0.0.1";
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error getting local IP: {ex.Message}");
+                return "127.0.0.1";
+            }
         }
 
         // 删除重复的 InitializeDevice 方法，已移至 LibRyujinx.Device.cs
