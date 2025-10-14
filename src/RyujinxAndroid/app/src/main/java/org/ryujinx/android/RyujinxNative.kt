@@ -128,6 +128,10 @@ interface RyujinxNativeJna : Library {
     fun setLanInterface(interfaceId: String)
     fun getLanInterface(): String
     
+    // ==================== 网络初始化相关方法 ====================
+    fun initializeNetwork()
+    fun stopNetwork()
+    
     // 金手指相关方法
     fun cheatGetCheats(titleId: String, gamePath: String): Array<String>
     fun cheatGetEnabledCheats(titleId: String): Array<String>
@@ -292,6 +296,24 @@ class RyujinxNative {
         @JvmStatic
         fun getLanInterface(): String {
             return jnaInstance.getLanInterface()
+        }
+
+        // ==================== 网络初始化相关静态方法 ====================
+
+        /**
+         * 初始化网络通信
+         */
+        @JvmStatic
+        fun initializeNetwork() {
+            jnaInstance.initializeNetwork()
+        }
+
+        /**
+         * 停止网络通信
+         */
+        @JvmStatic
+        fun stopNetwork() {
+            jnaInstance.stopNetwork()
         }
 
         // 金手指相关静态方法
