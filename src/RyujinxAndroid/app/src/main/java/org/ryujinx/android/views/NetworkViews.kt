@@ -1,36 +1,18 @@
 package org.ryujinx.android.views
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import org.ryujinx.android.viewmodels.NetworkViewModel
 import org.ryujinx.android.viewmodels.NetworkStatus
 import org.ryujinx.android.viewmodels.SettingsViewModel
@@ -39,6 +21,17 @@ import org.ryujinx.android.viewmodels.SettingsViewModel
 fun NetworkView(settingsViewModel: SettingsViewModel) {
     val networkViewModel = NetworkViewModel(settingsViewModel.activity)
     
+    // Start discovery when view is created, stop when destroyed
+    LaunchedEffect(Unit) {
+        networkViewModel.startDiscovery()
+    }
+    
+    DisposableEffect(Unit) {
+        onDispose {
+            networkViewModel.stopDiscovery()
+        }
+    }
+    
     Column(
         modifier = Modifier
             .verticalScroll(rememberScrollState())
@@ -46,6 +39,11 @@ fun NetworkView(settingsViewModel: SettingsViewModel) {
     ) {
         // Network status overview card
         NetworkStatusCard(networkViewModel)
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // Device discovery card
+        DeviceDiscoveryCard(networkViewModel)
         
         Spacer(modifier = Modifier.height(16.dp))
         
@@ -89,9 +87,8 @@ fun NetworkStatusCard(networkViewModel: NetworkViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                // Use text instead of icon
                 Text(
-                    text = "🌐", // Use emoji as simple network icon
+                    text = "🌐",
                     style = MaterialTheme.typography.titleMedium
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -157,6 +154,163 @@ fun NetworkStatusCard(networkViewModel: NetworkViewModel) {
                     color = MaterialTheme.colorScheme.secondary
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun DeviceDiscoveryCard(networkViewModel: NetworkViewModel) {
+    val discoveredDevices by networkViewModel.discoveredDevices
+    val isDiscovering by networkViewModel.isDiscovering
+    
+    // Auto-refresh the device list periodically
+    LaunchedEffect(isDiscovering) {
+        while (isDiscovering) {
+            networkViewModel.refreshDiscoveredDevices()
+            delay(2000) // Refresh every 2 seconds
+        }
+    }
+    
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Devices,
+                    contentDescription = "Device Discovery",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Device Discovery",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                
+                Spacer(modifier = Modifier.weight(1f))
+                
+                // Refresh button
+                IconButton(
+                    onClick = { 
+                        networkViewModel.refreshDiscoveredDevices()
+                        // Also trigger a new broadcast
+                        networkViewModel.startDiscovery()
+                    },
+                    enabled = isDiscovering
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = "Refresh Devices"
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            Divider()
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // Discovery status
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Discovery Status:",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                if (isDiscovering) {
+                    Text(
+                        text = "Active",
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                } else {
+                    Text(
+                        text = "Inactive",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // Discovered devices list
+            if (discoveredDevices.isEmpty()) {
+                Text(
+                    text = "No other Ryujinx devices found on the network",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            } else {
+                Text(
+                    text = "Found ${discoveredDevices.size} device(s):",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                
+                Column {
+                    discoveredDevices.forEach { device ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Computer,
+                                contentDescription = "Device",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text = device.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = "IP: ${device.ip}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                )
+                            }
+                            // Online status indicator
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(
+                                        color = MaterialTheme.colorScheme.primary,
+                                        shape = MaterialTheme.shapes.small
+                                    )
+                            )
+                        }
+                        if (device != discoveredDevices.last()) {
+                            Divider(modifier = Modifier.padding(vertical = 4.dp))
+                        }
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Text(
+                text = "Note: Only devices running Ryujinx Android on the same network will be discovered",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            )
         }
     }
 }
@@ -408,6 +562,7 @@ fun NetworkInfoCard() {
             Text(
                 text = "• Internet Access: Controls whether the emulator can access external networks\n" +
                        "• LDN Local Wireless: Emulates Switch local wireless multiplayer, requires being on the same network\n" +
+                       "• Device Discovery: Automatically finds other Ryujinx devices on the same WiFi network\n" +
                        "• Network Interface: Select physical network adapter for local wireless communication\n" +
                        "• Permissions: App requires network permissions to detect connection status and interface information",
                 style = MaterialTheme.typography.bodyMedium,
@@ -417,7 +572,7 @@ fun NetworkInfoCard() {
             Spacer(modifier = Modifier.height(8.dp))
             
             Text(
-                text = "Note: Some network features may require device to be connected to a network to work properly",
+                text = "Note: Device discovery only works when all devices are connected to the same WiFi network",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )
