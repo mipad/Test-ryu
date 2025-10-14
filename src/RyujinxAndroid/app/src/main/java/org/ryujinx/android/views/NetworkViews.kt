@@ -126,8 +126,8 @@ fun NetworkStatusCard(networkViewModel: NetworkViewModel) {
             ) {
                 Text("Internet Access:")
                 Text(
-                    text = if (networkViewModel.enableInternetAccess) "Enabled" else "Disabled",
-                    color = if (networkViewModel.enableInternetAccess) MaterialTheme.colorScheme.primary 
+                    text = if (networkViewModel.enableInternetAccess.value) "Enabled" else "Disabled",
+                    color = if (networkViewModel.enableInternetAccess.value) MaterialTheme.colorScheme.primary 
                            else MaterialTheme.colorScheme.error
                 )
             }
@@ -140,7 +140,7 @@ fun NetworkStatusCard(networkViewModel: NetworkViewModel) {
             ) {
                 Text("Multiplayer Mode:")
                 Text(
-                    text = networkViewModel.getMultiplayerModeName(networkViewModel.multiplayerModeIndex),
+                    text = networkViewModel.getMultiplayerModeName(networkViewModel.multiplayerModeIndex.value),
                     color = MaterialTheme.colorScheme.secondary
                 )
             }
@@ -153,7 +153,7 @@ fun NetworkStatusCard(networkViewModel: NetworkViewModel) {
             ) {
                 Text("Network Interface:")
                 Text(
-                    text = networkViewModel.networkInterfaceList.getOrNull(networkViewModel.networkInterfaceIndex)?.name ?: "Default",
+                    text = networkViewModel.networkInterfaceList.getOrNull(networkViewModel.networkInterfaceIndex.value)?.name ?: "Default",
                     color = MaterialTheme.colorScheme.secondary
                 )
             }
@@ -212,8 +212,8 @@ fun MultiplayerSettingsCard(networkViewModel: NetworkViewModel) {
                     )
                 }
                 Switch(
-                    checked = networkViewModel.enableInternetAccess,
-                    onCheckedChange = { networkViewModel.enableInternetAccess = it }
+                    checked = networkViewModel.enableInternetAccess.value,
+                    onCheckedChange = { networkViewModel.setEnableInternetAccess(it) }
                 )
             }
             
@@ -232,8 +232,8 @@ fun MultiplayerSettingsCard(networkViewModel: NetworkViewModel) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 RadioButton(
-                    selected = networkViewModel.multiplayerModeIndex == 0,
-                    onClick = { networkViewModel.multiplayerModeIndex = 0 }
+                    selected = networkViewModel.multiplayerModeIndex.value == 0,
+                    onClick = { networkViewModel.setMultiplayerMode(0) }
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Column {
@@ -257,8 +257,8 @@ fun MultiplayerSettingsCard(networkViewModel: NetworkViewModel) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 RadioButton(
-                    selected = networkViewModel.multiplayerModeIndex == 1,
-                    onClick = { networkViewModel.multiplayerModeIndex = 1 }
+                    selected = networkViewModel.multiplayerModeIndex.value == 1,
+                    onClick = { networkViewModel.setMultiplayerMode(1) }
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Column {
@@ -336,8 +336,8 @@ fun NetworkInterfaceCard(networkViewModel: NetworkViewModel) {
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         RadioButton(
-                            selected = networkViewModel.networkInterfaceIndex == index,
-                            onClick = { networkViewModel.networkInterfaceIndex = index }
+                            selected = networkViewModel.networkInterfaceIndex.value == index,
+                            onClick = { networkViewModel.setNetworkInterfaceIndex(index) }
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Column(
