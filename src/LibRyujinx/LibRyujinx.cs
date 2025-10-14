@@ -72,6 +72,8 @@ namespace LibRyujinx
         {
         }
         
+        private static readonly LobbyInfoJsonSerializerContext _lobbyInfoJsonSerializerContext = new(JsonHelper.GetDefaultSerializerOptions());
+        
         public static SwitchDevice? SwitchDevice { get; set; }
 
         // 添加静态字段来存储画面比例
