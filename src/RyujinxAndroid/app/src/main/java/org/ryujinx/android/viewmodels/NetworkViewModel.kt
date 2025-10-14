@@ -3,44 +3,45 @@ package org.ryujinx.android.viewmodels
 import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import androidx.compose.runtime.mutableStateOf
+import androidx.lifecycle.ViewModel
 import androidx.preference.PreferenceManager
 import org.ryujinx.android.MainActivity
 import java.net.NetworkInterface
 import java.util.Collections
 
-class NetworkViewModel(activity: MainActivity) {
+class NetworkViewModel(activity: MainActivity) : ViewModel() {
     private var sharedPref: SharedPreferences = PreferenceManager.getDefaultSharedPreferences(activity)
     private val context = activity.applicationContext
-    private val _networkInterfaces = mutableListOf<NetworkInterfaceInfo>()
-    val networkInterfaceList: List<NetworkInterfaceInfo> get() = _networkInterfaces
+    
+    // 使用 mutableStateOf 确保UI自动更新
+    private val _networkInterfaces = mutableStateOf<List<NetworkInterfaceInfo>>(emptyList())
+    val networkInterfaceList: List<NetworkInterfaceInfo> get() = _networkInterfaces.value
 
-    // 多人游戏模式
-    var multiplayerModeIndex: Int
-        get() = sharedPref.getInt("multiplayerModeIndex", 0)
-        set(value) = sharedPref.edit().putInt("multiplayerModeIndex", value).apply()
-
-    // 启用互联网访问
-    var enableInternetAccess: Boolean
-        get() = sharedPref.getBoolean("enableInternetAccess", false)
-        set(value) = sharedPref.edit().putBoolean("enableInternetAccess", value).apply()
-
-    // 网络接口索引
-    var networkInterfaceIndex: Int
-        get() = sharedPref.getInt("networkInterfaceIndex", 0)
-        set(value) = sharedPref.edit().putInt("networkInterfaceIndex", value).apply()
+    // Multiplayer mode - using mutableStateOf
+    var multiplayerModeIndex = mutableStateOf(sharedPref.getInt("multiplayerModeIndex", 0))
+        private set
+    
+    // Enable internet access - using mutableStateOf
+    var enableInternetAccess = mutableStateOf(sharedPref.getBoolean("enableInternetAccess", false))
+        private set
+    
+    // Network interface index - using mutableStateOf
+    var networkInterfaceIndex = mutableStateOf(sharedPref.getInt("networkInterfaceIndex", 0))
+        private set
 
     init {
         loadNetworkInterfaces()
     }
 
     /**
-     * 加载可用的网络接口
+     * Load available network interfaces
      */
     private fun loadNetworkInterfaces() {
-        _networkInterfaces.clear()
+        val interfacesList = mutableListOf<NetworkInterfaceInfo>()
         
-        // 添加默认选项
-        _networkInterfaces.add(NetworkInterfaceInfo("Default", "0", "自动选择最佳网络接口"))
+        // Add default option
+        interfacesList.add(NetworkInterfaceInfo("Default", "0", "Automatically select the best network interface"))
         
         try {
             val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
@@ -52,31 +53,33 @@ class NetworkViewModel(activity: MainActivity) {
                         id = networkInterface.name,
                         description = buildInterfaceDescription(networkInterface)
                     )
-                    _networkInterfaces.add(interfaceInfo)
+                    interfacesList.add(interfaceInfo)
                 }
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            // 如果枚举网络接口失败，至少保证有默认选项
-            if (_networkInterfaces.size == 1) {
-                _networkInterfaces.add(NetworkInterfaceInfo("Fallback", "eth0", "回退网络接口"))
+            // If enumerating network interfaces fails, ensure at least the default option exists
+            if (interfacesList.size == 1) {
+                interfacesList.add(NetworkInterfaceInfo("Fallback", "eth0", "Fallback network interface"))
             }
         }
+        
+        _networkInterfaces.value = interfacesList
     }
 
     /**
-     * 构建网络接口描述信息
+     * Build network interface description
      */
     private fun buildInterfaceDescription(networkInterface: NetworkInterface): String {
         val sb = StringBuilder()
         
-        // 添加接口类型信息
+        // Add interface type information
         sb.append("${getInterfaceType(networkInterface)}")
         
-        // 添加MTU信息
+        // Add MTU information
         sb.append(" • MTU: ${networkInterface.mtu}")
         
-        // 添加接口状态
+        // Add interface status
         val status = when {
             networkInterface.isUp -> "Up"
             else -> "Down"
@@ -87,52 +90,82 @@ class NetworkViewModel(activity: MainActivity) {
     }
 
     /**
-     * 获取网络接口类型
+     * Get network interface type
      */
     private fun getInterfaceType(networkInterface: NetworkInterface): String {
         return when {
             networkInterface.isLoopback -> "Loopback"
             networkInterface.isPointToPoint -> "PPP"
             networkInterface.isVirtual -> "Virtual"
-            networkInterface.name.startsWith("wlan") || networkInterface.name.startsWith("wlp") -> "WiFi"
+            networkInterface.name.startsWith("wlan") -> "WiFi"
+            networkInterface.name.startsWith("wlp") -> "WiFi" 
+            networkInterface.name.startsWith("p2p") -> "WiFi Direct"
+            networkInterface.name.startsWith("ap") -> "WiFi Hotspot"
+            networkInterface.name.endsWith("-mon") -> "WiFi Monitor"
             networkInterface.name.startsWith("eth") || networkInterface.name.startsWith("enp") -> "Ethernet"
             networkInterface.name.startsWith("rmnet") || networkInterface.name.startsWith("pdp") -> "Mobile"
+            networkInterface.name.startsWith("ccmni") -> "Mobile"
             networkInterface.name.startsWith("tun") || networkInterface.name.startsWith("tap") -> "VPN"
+            networkInterface.name.startsWith("dummy") -> "Virtual"
             else -> "Network"
         }
     }
 
     /**
-     * 刷新网络接口列表
+     * Set multiplayer mode
+     */
+    fun setMultiplayerMode(index: Int) {
+        multiplayerModeIndex.value = index
+        sharedPref.edit().putInt("multiplayerModeIndex", index).apply()
+    }
+
+    /**
+     * Set enable internet access
+     */
+    fun setEnableInternetAccess(enabled: Boolean) {
+        enableInternetAccess.value = enabled
+        sharedPref.edit().putBoolean("enableInternetAccess", enabled).apply()
+    }
+
+    /**
+     * Set network interface index
+     */
+    fun setNetworkInterfaceIndex(index: Int) {
+        networkInterfaceIndex.value = index
+        sharedPref.edit().putInt("networkInterfaceIndex", index).apply()
+    }
+
+    /**
+     * Refresh network interfaces list
      */
     fun refreshNetworkInterfaces() {
         loadNetworkInterfaces()
     }
 
     /**
-     * 获取当前选中的网络接口ID
+     * Get currently selected network interface ID
      */
     fun getSelectedInterfaceId(): String {
-        return if (networkInterfaceIndex in 0 until _networkInterfaces.size) {
-            _networkInterfaces[networkInterfaceIndex].id
+        return if (networkInterfaceIndex.value in 0 until _networkInterfaces.value.size) {
+            _networkInterfaces.value[networkInterfaceIndex.value].id
         } else {
-            "0" // 默认
+            "0" // Default
         }
     }
 
     /**
-     * 获取多人游戏模式名称
+     * Get multiplayer mode name
      */
     fun getMultiplayerModeName(index: Int): String {
         return when (index) {
-            0 -> "禁用"
-            1 -> "LDN 本地无线"
-            else -> "未知"
+            0 -> "Disabled"
+            1 -> "LDN Local Wireless"
+            else -> "Unknown"
         }
     }
 
     /**
-     * 检查网络连接状态
+     * Check network connection status
      */
     fun getNetworkStatus(): NetworkStatus {
         return try {
@@ -159,21 +192,21 @@ class NetworkViewModel(activity: MainActivity) {
     }
 
     /**
-     * 获取网络状态显示文本
+     * Get network status display text
      */
     fun getNetworkStatusText(): String {
         return when (getNetworkStatus()) {
-            NetworkStatus.CONNECTED_WIFI -> "已连接 (WiFi)"
-            NetworkStatus.CONNECTED_MOBILE -> "已连接 (移动网络)"
-            NetworkStatus.CONNECTED_ETHERNET -> "已连接 (以太网)"
-            NetworkStatus.CONNECTED_UNKNOWN -> "已连接"
-            NetworkStatus.DISCONNECTED -> "未连接"
-            NetworkStatus.UNKNOWN -> "状态未知"
+            NetworkStatus.CONNECTED_WIFI -> "Connected (WiFi)"
+            NetworkStatus.CONNECTED_MOBILE -> "Connected (Mobile)"
+            NetworkStatus.CONNECTED_ETHERNET -> "Connected (Ethernet)"
+            NetworkStatus.CONNECTED_UNKNOWN -> "Connected"
+            NetworkStatus.DISCONNECTED -> "Disconnected"
+            NetworkStatus.UNKNOWN -> "Status Unknown"
         }
     }
 
     /**
-     * 获取网络状态颜色（在UI中使用）
+     * Get network status color (for UI use)
      */
     fun getNetworkStatusColor(): String {
         return when (getNetworkStatus()) {
@@ -188,7 +221,7 @@ class NetworkViewModel(activity: MainActivity) {
 }
 
 /**
- * 网络接口信息数据类
+ * Network interface information data class
  */
 data class NetworkInterfaceInfo(
     val name: String,
@@ -197,7 +230,7 @@ data class NetworkInterfaceInfo(
 )
 
 /**
- * 网络连接状态枚举
+ * Network connection status enum
  */
 enum class NetworkStatus {
     CONNECTED_WIFI,
