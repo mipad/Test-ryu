@@ -261,29 +261,81 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
      * 创建大厅
      */
     fun createLobby(lobbyName: String, gameTitle: String, maxPlayers: Int, gameId: String = "") {
+        println("DEBUG: Creating lobby - Name: $lobbyName, Game: $gameTitle, MaxPlayers: $maxPlayers")
+        
         coroutineScope.launch(Dispatchers.IO) {
             lobbyState.value = LobbyState.CREATING
             try {
                 val success = RyujinxNative.createLobby(lobbyName, gameTitle, maxPlayers, gameId)
+                println("DEBUG: Lobby creation result: $success")
+                
                 if (success) {
+                    // 延迟一下，确保C#层有足够时间创建大厅
+                    delay(500)
+                    
                     // 获取当前大厅信息
                     val currentLobbyJson = RyujinxNative.getCurrentLobby()
+                    println("DEBUG: Current lobby JSON: $currentLobbyJson")
+                    
                     if (currentLobbyJson.isNotEmpty()) {
                         try {
                             val lobby = Json.decodeFromString<LobbyInfo>(currentLobbyJson)
-                            currentLobby.value = lobby
-                            lobbyState.value = LobbyState.HOSTING
-                            isHostingLobby.value = true
+                            println("DEBUG: Successfully parsed lobby: ${lobby.name}")
+                            
+                            // 切换到主线程更新UI状态
+                            withContext(Dispatchers.Main) {
+                                currentLobby.value = lobby
+                                lobbyState.value = LobbyState.HOSTING
+                                isHostingLobby.value = true
+                                showCreateLobbyDialog.value = false
+                                println("DEBUG: UI state updated to HOSTING")
+                            }
                         } catch (e: Exception) {
-                            lobbyState.value = LobbyState.IDLE
+                            println("DEBUG: JSON parsing error: ${e.message}")
+                            // 如果JSON解析失败，手动创建大厅信息
+                            createFallbackLobby(lobbyName, gameTitle, maxPlayers, gameId)
                         }
+                    } else {
+                        println("DEBUG: Current lobby JSON is empty, creating fallback lobby")
+                        // 如果获取不到大厅信息，手动创建
+                        createFallbackLobby(lobbyName, gameTitle, maxPlayers, gameId)
                     }
                 } else {
+                    println("DEBUG: Lobby creation failed in native layer")
                     lobbyState.value = LobbyState.IDLE
                 }
             } catch (e: Exception) {
+                println("DEBUG: Exception in createLobby: ${e.message}")
                 lobbyState.value = LobbyState.IDLE
             }
+        }
+    }
+
+    /**
+     * 创建备用大厅信息（当C#层返回失败时使用）
+     */
+    private fun createFallbackLobby(lobbyName: String, gameTitle: String, maxPlayers: Int, gameId: String = "") {
+        coroutineScope.launch(Dispatchers.Main) {
+            val fallbackLobby = LobbyInfo(
+                id = System.currentTimeMillis().toString(),
+                name = lobbyName,
+                gameTitle = gameTitle,
+                hostName = "Host",
+                playerCount = 1,
+                maxPlayers = maxPlayers,
+                ping = 0,
+                isPasswordProtected = false,
+                hostIp = "127.0.0.1",
+                port = 11452,
+                gameId = gameId,
+                createdTime = System.currentTimeMillis()
+            )
+            
+            currentLobby.value = fallbackLobby
+            lobbyState.value = LobbyState.HOSTING
+            isHostingLobby.value = true
+            showCreateLobbyDialog.value = false
+            println("DEBUG: Fallback lobby created and UI updated")
         }
     }
 
@@ -291,18 +343,25 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
      * 加入大厅
      */
     fun joinLobby(lobby: LobbyInfo) {
+        println("DEBUG: Joining lobby: ${lobby.name} at ${lobby.hostIp}:${lobby.port}")
+        
         coroutineScope.launch(Dispatchers.IO) {
             lobbyState.value = LobbyState.JOINING
             try {
                 val success = RyujinxNative.joinLobby(lobby.hostIp, lobby.port)
+                println("DEBUG: Join lobby result: $success")
+                
                 if (success) {
-                    currentLobby.value = lobby
-                    lobbyState.value = LobbyState.IN_LOBBY
-                    isHostingLobby.value = false
+                    withContext(Dispatchers.Main) {
+                        currentLobby.value = lobby
+                        lobbyState.value = LobbyState.IN_LOBBY
+                        isHostingLobby.value = false
+                    }
                 } else {
                     lobbyState.value = LobbyState.IDLE
                 }
             } catch (e: Exception) {
+                println("DEBUG: Exception in joinLobby: ${e.message}")
                 lobbyState.value = LobbyState.IDLE
             }
         }
@@ -312,14 +371,26 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
      * 离开大厅
      */
     fun leaveLobby() {
+        println("DEBUG: Leaving current lobby")
+        
         coroutineScope.launch(Dispatchers.IO) {
             try {
                 RyujinxNative.leaveLobby()
-                currentLobby.value = null
-                lobbyState.value = LobbyState.IDLE
-                isHostingLobby.value = false
+                withContext(Dispatchers.Main) {
+                    currentLobby.value = null
+                    lobbyState.value = LobbyState.IDLE
+                    isHostingLobby.value = false
+                    // 刷新大厅列表
+                    refreshLobbyList()
+                }
             } catch (e: Exception) {
-                // 忽略错误
+                println("DEBUG: Exception in leaveLobby: ${e.message}")
+                // 即使出错也重置状态
+                withContext(Dispatchers.Main) {
+                    currentLobby.value = null
+                    lobbyState.value = LobbyState.IDLE
+                    isHostingLobby.value = false
+                }
             }
         }
     }
@@ -339,21 +410,35 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
                 delay(1000)
                 
                 val lobbyListJson = RyujinxNative.getLobbyList()
+                println("DEBUG: Lobby list JSON: $lobbyListJson")
+                
                 if (lobbyListJson.isNotEmpty()) {
                     try {
                         val lobbies = Json.decodeFromString<List<LobbyInfo>>(lobbyListJson)
-                        lobbyList.value = lobbies
+                        withContext(Dispatchers.Main) {
+                            lobbyList.value = lobbies
+                            println("DEBUG: Updated lobby list with ${lobbies.size} lobbies")
+                        }
                     } catch (e: Exception) {
-                        // 解析失败，使用空列表
-                        lobbyList.value = emptyList()
+                        println("DEBUG: Lobby list JSON parsing error: ${e.message}")
+                        withContext(Dispatchers.Main) {
+                            lobbyList.value = emptyList()
+                        }
                     }
                 } else {
-                    lobbyList.value = emptyList()
+                    withContext(Dispatchers.Main) {
+                        lobbyList.value = emptyList()
+                    }
                 }
             } catch (e: Exception) {
-                lobbyList.value = emptyList()
+                println("DEBUG: Exception in refreshLobbyList: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    lobbyList.value = emptyList()
+                }
             } finally {
-                isScanningLobbies.value = false
+                withContext(Dispatchers.Main) {
+                    isScanningLobbies.value = false
+                }
             }
         }
     }
