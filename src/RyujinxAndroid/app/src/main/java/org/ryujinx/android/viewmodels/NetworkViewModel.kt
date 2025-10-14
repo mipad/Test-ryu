@@ -3,12 +3,14 @@ package org.ryujinx.android.viewmodels
 import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.Build
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.preference.PreferenceManager
+import kotlinx.coroutines.*
 import org.ryujinx.android.MainActivity
-import java.net.NetworkInterface
-import java.util.Collections
+import java.net.*
+import java.util.*
 
 class NetworkViewModel(activity: MainActivity) : ViewModel() {
     private var sharedPref: SharedPreferences = PreferenceManager.getDefaultSharedPreferences(activity)
@@ -30,8 +32,206 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
     var networkInterfaceIndex = mutableStateOf(sharedPref.getInt("networkInterfaceIndex", 0))
         private set
 
+    // Device discovery
+    var discoveredDevices = mutableStateOf<List<DiscoveredDevice>>(emptyList())
+        private set
+    
+    var isDiscovering = mutableStateOf(false)
+        private set
+
+    // Network discovery constants
+    companion object {
+        private const val DISCOVERY_PORT = 17777
+        private const val DISCOVERY_MULTICAST_GROUP = "239.177.77.1"
+        private const val DISCOVERY_TIMEOUT = 5000L // 5 seconds
+        private const val BEACON_INTERVAL = 3000L // 3 seconds
+    }
+
+    private var discoveryJob: Job? = null
+    private var beaconJob: Job? = null
+    private var multicastSocket: MulticastSocket? = null
+    private var shouldStopDiscovery = false
+
     init {
         loadNetworkInterfaces()
+    }
+
+    /**
+     * Start device discovery
+     */
+    fun startDiscovery() {
+        if (isDiscovering.value) return
+        
+        isDiscovering.value = true
+        discoveredDevices.value = emptyList()
+        shouldStopDiscovery = false
+        
+        discoveryJob = CoroutineScope(Dispatchers.IO).launch {
+            try {
+                // Join multicast group
+                multicastSocket = MulticastSocket(DISCOVERY_PORT).apply {
+                    reuseAddress = true
+                    soTimeout = 1000 // 1 second timeout for receive
+                    
+                    // Join multicast group on all available interfaces
+                    networkInterfaceList.forEach { iface ->
+                        try {
+                            val networkInterface = NetworkInterface.getByName(iface.id)
+                            if (networkInterface != null && networkInterface.isUp && !networkInterface.isLoopback) {
+                                joinGroup(InetSocketAddress(InetAddress.getByName(DISCOVERY_MULTICAST_GROUP), DISCOVERY_PORT), networkInterface)
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+
+                // Start beacon to announce our presence
+                startBeacon()
+
+                val buffer = ByteArray(1024)
+                val packet = DatagramPacket(buffer, buffer.size)
+
+                while (!shouldStopDiscovery && isActive) {
+                    try {
+                        multicastSocket?.receive(packet)
+                        val message = String(packet.data, 0, packet.length).trim()
+                        
+                        if (message.startsWith("RYUJINX_DISCOVER:")) {
+                            val parts = message.split(":")
+                            if (parts.size >= 3) {
+                                val deviceName = parts[1]
+                                val deviceId = parts[2]
+                                val deviceIp = packet.address.hostAddress
+                                
+                                // Don't add our own device
+                                if (deviceId != getDeviceId()) {
+                                    withContext(Dispatchers.Main) {
+                                        val existingDevice = discoveredDevices.value.find { it.id == deviceId }
+                                        if (existingDevice == null) {
+                                            // New device
+                                            discoveredDevices.value = discoveredDevices.value + DiscoveredDevice(
+                                                name = deviceName,
+                                                id = deviceId,
+                                                ip = deviceIp,
+                                                lastSeen = System.currentTimeMillis()
+                                            )
+                                        } else {
+                                            // Update existing device
+                                            discoveredDevices.value = discoveredDevices.value.map {
+                                                if (it.id == deviceId) {
+                                                    it.copy(lastSeen = System.currentTimeMillis(), ip = deviceIp)
+                                                } else {
+                                                    it
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: SocketTimeoutException) {
+                        // Timeout is expected, continue listening
+                    } catch (e: Exception) {
+                        if (!shouldStopDiscovery) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    isDiscovering.value = false
+                }
+            } finally {
+                multicastSocket?.close()
+                multicastSocket = null
+            }
+        }
+    }
+
+    /**
+     * Stop device discovery
+     */
+    fun stopDiscovery() {
+        shouldStopDiscovery = true
+        isDiscovering.value = false
+        
+        beaconJob?.cancel()
+        discoveryJob?.cancel()
+        
+        multicastSocket?.close()
+        multicastSocket = null
+    }
+
+    /**
+     * Start broadcasting our presence
+     */
+    private fun startBeacon() {
+        beaconJob = CoroutineScope(Dispatchers.IO).launch {
+            while (!shouldStopDiscovery && isActive) {
+                try {
+                    broadcastPresence()
+                    delay(BEACON_INTERVAL)
+                } catch (e: Exception) {
+                    if (!shouldStopDiscovery) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Broadcast our presence to the network
+     */
+    private fun broadcastPresence() {
+        try {
+            val message = "RYUJINX_DISCOVER:${getDeviceName()}:${getDeviceId()}"
+            val data = message.toByteArray()
+            
+            // Send via multicast
+            val group = InetAddress.getByName(DISCOVERY_MULTICAST_GROUP)
+            val packet = DatagramPacket(data, data.size, group, DISCOVERY_PORT)
+            multicastSocket?.send(packet)
+            
+            // Also send broadcast for devices that don't support multicast
+            val broadcastPacket = DatagramPacket(data, data.size, InetAddress.getByName("255.255.255.255"), DISCOVERY_PORT)
+            multicastSocket?.send(broadcastPacket)
+            
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * Get unique device ID
+     */
+    private fun getDeviceId(): String {
+        return Build.SERIAL ?: "unknown"
+    }
+
+    /**
+     * Get device name for display
+     */
+    private fun getDeviceName(): String {
+        return "${Build.MANUFACTURER} ${Build.MODEL}"
+    }
+
+    /**
+     * Refresh discovered devices list
+     */
+    fun refreshDiscoveredDevices() {
+        // Remove devices that haven't been seen in a while
+        val now = System.currentTimeMillis()
+        discoveredDevices.value = discoveredDevices.value.filter {
+            now - it.lastSeen < DISCOVERY_TIMEOUT * 2
+        }
+        
+        // Re-broadcast our presence
+        CoroutineScope(Dispatchers.IO).launch {
+            broadcastPresence()
+        }
     }
 
     /**
@@ -218,6 +418,11 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
             NetworkStatus.UNKNOWN -> "unknown"
         }
     }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopDiscovery()
+    }
 }
 
 /**
@@ -227,6 +432,16 @@ data class NetworkInterfaceInfo(
     val name: String,
     val id: String,
     val description: String = ""
+)
+
+/**
+ * Discovered device information
+ */
+data class DiscoveredDevice(
+    val name: String,
+    val id: String,
+    val ip: String,
+    val lastSeen: Long
 )
 
 /**
