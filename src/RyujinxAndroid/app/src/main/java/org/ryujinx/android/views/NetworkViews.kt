@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -25,12 +26,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -324,6 +329,16 @@ fun MultiplayerSettingsCard(networkViewModel: NetworkViewModel) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LobbyManagementCard(networkViewModel: NetworkViewModel) {
+    // 添加创建大厅对话框状态管理
+    if (networkViewModel.showCreateLobbyDialog.value) {
+        CreateLobbyDialog(
+            onDismiss = { networkViewModel.showCreateLobbyDialog.value = false },
+            onCreate = { lobbyName, gameTitle, maxPlayers ->
+                networkViewModel.createLobby(lobbyName, gameTitle, maxPlayers)
+            }
+        )
+    }
+    
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -386,6 +401,99 @@ fun LobbyManagementCard(networkViewModel: NetworkViewModel) {
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CreateLobbyDialog(
+    onDismiss: () -> Unit,
+    onCreate: (String, String, Int) -> Unit
+) {
+    var lobbyName by remember { mutableStateOf("") }
+    var gameTitle by remember { mutableStateOf("") }
+    var maxPlayers by remember { mutableStateOf(4) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("创建大厅") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = lobbyName,
+                    onValueChange = { lobbyName = it },
+                    label = { Text("大厅名称") },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("输入大厅名称") }
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = gameTitle,
+                    onValueChange = { gameTitle = it },
+                    label = { Text("游戏标题") },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("输入游戏标题") }
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "最大玩家数:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    Button(
+                        onClick = { if (maxPlayers > 1) maxPlayers-- },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                        ),
+                        modifier = Modifier.width(48.dp)
+                    ) {
+                        Text("-")
+                    }
+                    Text(
+                        text = "$maxPlayers",
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                    Button(
+                        onClick = { if (maxPlayers < 8) maxPlayers++ },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                        ),
+                        modifier = Modifier.width(48.dp)
+                    ) {
+                        Text("+")
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (lobbyName.isNotBlank() && gameTitle.isNotBlank()) {
+                        onCreate(lobbyName, gameTitle, maxPlayers)
+                        onDismiss()
+                    }
+                },
+                enabled = lobbyName.isNotBlank() && gameTitle.isNotBlank()
+            ) {
+                Text("创建")
+            }
+        },
+        dismissButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Text("取消")
+            }
+        }
+    )
 }
 
 @Composable
