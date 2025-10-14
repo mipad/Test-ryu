@@ -542,6 +542,14 @@ fun IdleLobbyView(networkViewModel: NetworkViewModel) {
                 }
             }
         }
+        
+        // 自动刷新大厅列表
+        LaunchedEffect(networkViewModel.isScanningLobbies.value) {
+            if (!networkViewModel.isScanningLobbies.value) {
+                delay(5000) // 5秒后自动刷新
+                networkViewModel.refreshLobbyList()
+            }
+        }
     }
 }
 
