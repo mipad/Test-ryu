@@ -1,6 +1,7 @@
 package org.ryujinx.android.viewmodels
 
 import android.content.SharedPreferences
+import kotlinx.coroutines.withContext
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import androidx.compose.runtime.mutableStateOf
