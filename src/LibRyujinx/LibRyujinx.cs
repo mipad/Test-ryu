@@ -41,11 +41,13 @@ using LibHac.FsSrv;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Ryujinx.Common.Configuration.Multiplayer; // 添加多人游戏模式命名空间
+using Ryujinx.Common.Configuration.Multiplayer;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 using System.Threading;
+using System.Net.NetworkInformation;
+using System.Collections.Concurrent;
 
 namespace LibRyujinx
 {
@@ -95,6 +97,16 @@ namespace LibRyujinx
         private static bool _isHosting = false;
         private static CancellationTokenSource _lobbyScanCancellation = null;
         private static bool _isScanning = false;
+
+        // 网络通信相关静态字段
+        private static UdpClient _udpBroadcastClient;
+        private static TcpListener _tcpListener;
+        private static CancellationTokenSource _networkCancellation;
+        private static readonly ConcurrentDictionary<string, LobbyInfo> _networkLobbies = new();
+        private static readonly ConcurrentDictionary<string, DateTime> _lobbyLastSeen = new();
+        private static bool _isNetworkInitialized = false;
+        private static int _broadcastPort = 11451; // 广播端口
+        private static int _tcpPort = 11452; // TCP通信端口
 
         // Mod 相关类型定义
         public class ModInfo
@@ -306,10 +318,313 @@ namespace LibRyujinx
             return _currentLanInterfaceId;
         }
 
+        // ==================== 网络通信功能 ====================
+
+        /// <summary>
+        /// 初始化网络通信
+        /// </summary>
+        public static void InitializeNetwork()
+        {
+            if (_isNetworkInitialized) return;
+
+            try
+            {
+                _networkCancellation = new CancellationTokenSource();
+                _udpBroadcastClient = new UdpClient();
+                _udpBroadcastClient.EnableBroadcast = true;
+                _udpBroadcastClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+
+                // 启动广播监听
+                Task.Run(StartBroadcastListener, _networkCancellation.Token);
+                
+                // 启动TCP服务器（如果是主机）
+                if (_isHosting)
+                {
+                    Task.Run(StartTcpServer, _networkCancellation.Token);
+                }
+
+                // 启动大厅清理任务
+                Task.Run(CleanupStaleLobbies, _networkCancellation.Token);
+
+                _isNetworkInitialized = true;
+                Logger.Info?.Print(LogClass.ServiceLdn, "Network initialized successfully");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Failed to initialize network: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 启动UDP广播监听
+        /// </summary>
+        private static async Task StartBroadcastListener()
+        {
+            using var listener = new UdpClient(_broadcastPort);
+            listener.EnableBroadcast = true;
+            listener.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+
+            Logger.Info?.Print(LogClass.ServiceLdn, $"Started UDP broadcast listener on port {_broadcastPort}");
+
+            while (!_networkCancellation.Token.IsCancellationRequested)
+            {
+                try
+                {
+                    var result = await listener.ReceiveAsync(_networkCancellation.Token);
+                    var message = Encoding.UTF8.GetString(result.Buffer);
+                    ProcessBroadcastMessage(message, result.RemoteEndPoint.Address.ToString());
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.ServiceLdn, $"Error in broadcast listener: {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// 处理广播消息
+        /// </summary>
+        private static void ProcessBroadcastMessage(string message, string remoteIp)
+        {
+            try
+            {
+                if (message.StartsWith("LOBBY_BROADCAST:"))
+                {
+                    var json = message.Substring("LOBBY_BROADCAST:".Length);
+                    var lobby = JsonSerializer.Deserialize<LobbyInfo>(json, _lobbyInfoJsonSerializerContext.LobbyInfo);
+                    
+                    // 更新最后可见时间
+                    _lobbyLastSeen[lobby.Id] = DateTime.Now;
+                    
+                    // 更新或添加大厅信息
+                    if (_networkLobbies.TryGetValue(lobby.Id, out var existingLobby))
+                    {
+                        // 更新玩家数量等信息
+                        existingLobby.PlayerCount = lobby.PlayerCount;
+                        existingLobby.Ping = CalculatePing(remoteIp);
+                    }
+                    else
+                    {
+                        lobby.HostIp = remoteIp;
+                        lobby.Ping = CalculatePing(remoteIp);
+                        _networkLobbies[lobby.Id] = lobby;
+                        Logger.Info?.Print(LogClass.ServiceLdn, $"Discovered new lobby: {lobby.Name} from {remoteIp}");
+                    }
+                }
+                else if (message.StartsWith("LOBBY_QUERY:"))
+                {
+                    // 收到查询请求，如果自己是主机就回复
+                    if (_isHosting && _currentLobby != null)
+                    {
+                        SendBroadcastResponse(remoteIp);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error processing broadcast message: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 发送广播响应
+        /// </summary>
+        private static async void SendBroadcastResponse(string targetIp)
+        {
+            try
+            {
+                var message = $"LOBBY_RESPONSE:{JsonSerializer.Serialize(_currentLobby, _lobbyInfoJsonSerializerContext.LobbyInfo)}";
+                var data = Encoding.UTF8.GetBytes(message);
+                var target = new IPEndPoint(IPAddress.Parse(targetIp), _broadcastPort);
+                
+                await _udpBroadcastClient.SendAsync(data, data.Length, target);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error sending broadcast response: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 启动TCP服务器（用于主机）
+        /// </summary>
+        private static async Task StartTcpServer()
+        {
+            try
+            {
+                _tcpListener = new TcpListener(IPAddress.Any, _tcpPort);
+                _tcpListener.Start();
+                Logger.Info?.Print(LogClass.ServiceLdn, $"Started TCP server on port {_tcpPort}");
+
+                while (!_networkCancellation.Token.IsCancellationRequested)
+                {
+                    var client = await _tcpListener.AcceptTcpClientAsync();
+                    _ = Task.Run(() => HandleTcpClient(client));
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error in TCP server: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 处理TCP客户端连接
+        /// </summary>
+        private static async Task HandleTcpClient(TcpClient client)
+        {
+            try
+            {
+                var stream = client.GetStream();
+                var buffer = new byte[4096];
+                var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+                var message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+
+                if (message.StartsWith("JOIN_LOBBY:"))
+                {
+                    // 处理玩家加入请求
+                    var playerName = message.Substring("JOIN_LOBBY:".Length);
+                    if (_currentLobby != null && _currentLobby.PlayerCount < _currentLobby.MaxPlayers)
+                    {
+                        _currentLobby.PlayerCount++;
+                        
+                        // 发送确认消息
+                        var response = $"JOIN_SUCCESS:{JsonSerializer.Serialize(_currentLobby, _lobbyInfoJsonSerializerContext.LobbyInfo)}";
+                        var responseData = Encoding.UTF8.GetBytes(response);
+                        await stream.WriteAsync(responseData, 0, responseData.Length);
+                        
+                        Logger.Info?.Print(LogClass.ServiceLdn, $"Player {playerName} joined lobby {_currentLobby.Name}");
+                    }
+                    else
+                    {
+                        var response = "JOIN_FAILED:Lobby is full";
+                        var responseData = Encoding.UTF8.GetBytes(response);
+                        await stream.WriteAsync(responseData, 0, responseData.Length);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error handling TCP client: {ex.Message}");
+            }
+            finally
+            {
+                client.Close();
+            }
+        }
+
+        /// <summary>
+        /// 广播大厅存在
+        /// </summary>
+        private static async Task BroadcastLobbyExistence()
+        {
+            if (!_isHosting || _currentLobby == null) return;
+
+            try
+            {
+                var message = $"LOBBY_BROADCAST:{JsonSerializer.Serialize(_currentLobby, _lobbyInfoJsonSerializerContext.LobbyInfo)}";
+                var data = Encoding.UTF8.GetBytes(message);
+                var broadcastAddress = new IPEndPoint(IPAddress.Broadcast, _broadcastPort);
+                
+                await _udpBroadcastClient.SendAsync(data, data.Length, broadcastAddress);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error broadcasting lobby: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 查询网络中的大厅
+        /// </summary>
+        private static async Task QueryNetworkLobbies()
+        {
+            try
+            {
+                var message = "LOBBY_QUERY:REQUEST";
+                var data = Encoding.UTF8.GetBytes(message);
+                var broadcastAddress = new IPEndPoint(IPAddress.Broadcast, _broadcastPort);
+                
+                await _udpBroadcastClient.SendAsync(data, data.Length, broadcastAddress);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error querying lobbies: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 计算Ping值（简化版）
+        /// </summary>
+        private static int CalculatePing(string ipAddress)
+        {
+            try
+            {
+                using var ping = new Ping();
+                var reply = ping.Send(ipAddress, 1000); // 1秒超时
+                return reply?.Status == IPStatus.Success ? (int)reply.RoundtripTime : 999;
+            }
+            catch
+            {
+                return 999;
+            }
+        }
+
+        /// <summary>
+        /// 清理过期的大厅
+        /// </summary>
+        private static async Task CleanupStaleLobbies()
+        {
+            while (!_networkCancellation.Token.IsCancellationRequested)
+            {
+                try
+                {
+                    var cutoffTime = DateTime.Now.AddSeconds(-10); // 10秒未更新视为过期
+                    var staleLobbies = _lobbyLastSeen.Where(x => x.Value < cutoffTime).ToList();
+
+                    foreach (var stale in staleLobbies)
+                    {
+                        _lobbyLastSeen.TryRemove(stale.Key, out _);
+                        _networkLobbies.TryRemove(stale.Key, out _);
+                    }
+
+                    await Task.Delay(5000, _networkCancellation.Token); // 每5秒清理一次
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.ServiceLdn, $"Error cleaning up stale lobbies: {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// 停止网络通信
+        /// </summary>
+        public static void StopNetwork()
+        {
+            _networkCancellation?.Cancel();
+            _udpBroadcastClient?.Close();
+            _tcpListener?.Stop();
+            _isNetworkInitialized = false;
+            
+            _networkLobbies.Clear();
+            _lobbyLastSeen.Clear();
+            
+            Logger.Info?.Print(LogClass.ServiceLdn, "Network stopped");
+        }
+
         // ==================== 大厅管理功能 ====================
 
         /// <summary>
-        /// 创建大厅
+        /// 创建大厅（集成网络功能）
         /// </summary>
         public static bool CreateLobby(string lobbyName, string gameTitle, int maxPlayers, string gameId = "")
         {
@@ -321,10 +636,13 @@ namespace LibRyujinx
                     return false;
                 }
 
+                // 初始化网络
+                InitializeNetwork();
+
                 string localIp = GetLocalIpAddress();
-                if (string.IsNullOrEmpty(localIp))
+                if (string.IsNullOrEmpty(localIp) || localIp == "127.0.0.1")
                 {
-                    Logger.Error?.Print(LogClass.ServiceLdn, "Cannot get local IP address");
+                    Logger.Error?.Print(LogClass.ServiceLdn, "Cannot get valid local IP address for networking");
                     return false;
                 }
 
@@ -333,20 +651,28 @@ namespace LibRyujinx
                     Id = Guid.NewGuid().ToString(),
                     Name = lobbyName,
                     GameTitle = gameTitle,
-                    HostName = "Player", // 应该获取实际用户名
+                    HostName = Environment.MachineName, // 使用设备名
                     PlayerCount = 1,
                     MaxPlayers = maxPlayers,
                     HostIp = localIp,
+                    Port = _tcpPort,
                     GameId = gameId,
                     CreatedTime = DateTime.Now
                 };
 
                 _isHosting = true;
 
-                // 添加到大厅列表（模拟广播）
-                _lobbyList.Add(_currentLobby);
+                // 启动广播任务
+                _ = Task.Run(async () =>
+                {
+                    while (_isHosting && !_networkCancellation.Token.IsCancellationRequested)
+                    {
+                        await BroadcastLobbyExistence();
+                        await Task.Delay(2000, _networkCancellation.Token); // 每2秒广播一次
+                    }
+                }, _networkCancellation.Token);
 
-                Logger.Info?.Print(LogClass.ServiceLdn, $"Lobby created: {lobbyName} for {gameTitle} at {localIp}");
+                Logger.Info?.Print(LogClass.ServiceLdn, $"Lobby created and broadcasting: {lobbyName} at {localIp}:{_tcpPort}");
                 return true;
             }
             catch (Exception ex)
@@ -357,7 +683,7 @@ namespace LibRyujinx
         }
 
         /// <summary>
-        /// 加入大厅
+        /// 加入大厅（集成网络功能）
         /// </summary>
         public static bool JoinLobby(string hostIp, int port = 11452)
         {
@@ -369,17 +695,44 @@ namespace LibRyujinx
                     return false;
                 }
 
-                var lobby = _lobbyList.FirstOrDefault(l => l.HostIp == hostIp && l.Port == port);
-                if (lobby != null)
+                // 初始化网络
+                InitializeNetwork();
+
+                using var client = new TcpClient();
+                var connectTask = client.ConnectAsync(hostIp, port);
+                
+                if (connectTask.Wait(3000)) // 3秒连接超时
                 {
-                    _currentLobby = lobby;
-                    _currentLobby.PlayerCount++; // 模拟玩家加入
-
-                    Logger.Info?.Print(LogClass.ServiceLdn, $"Joined lobby: {lobby.Name} at {hostIp}:{port}");
-                    return true;
+                    if (client.Connected)
+                    {
+                        var stream = client.GetStream();
+                        var message = $"JOIN_LOBBY:{Environment.MachineName}";
+                        var data = Encoding.UTF8.GetBytes(message);
+                        
+                        stream.Write(data, 0, data.Length);
+                        
+                        // 读取响应
+                        var buffer = new byte[4096];
+                        var bytesRead = stream.Read(buffer, 0, buffer.Length);
+                        var response = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                        
+                        if (response.StartsWith("JOIN_SUCCESS:"))
+                        {
+                            var lobbyJson = response.Substring("JOIN_SUCCESS:".Length);
+                            _currentLobby = JsonSerializer.Deserialize<LobbyInfo>(lobbyJson, _lobbyInfoJsonSerializerContext.LobbyInfo);
+                            
+                            Logger.Info?.Print(LogClass.ServiceLdn, $"Joined lobby: {_currentLobby.Name} at {hostIp}:{port}");
+                            return true;
+                        }
+                        else
+                        {
+                            Logger.Error?.Print(LogClass.ServiceLdn, $"Failed to join lobby: {response}");
+                            return false;
+                        }
+                    }
                 }
-
-                Logger.Error?.Print(LogClass.ServiceLdn, $"Lobby not found at {hostIp}:{port}");
+                
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Connection timeout to {hostIp}:{port}");
                 return false;
             }
             catch (Exception ex)
@@ -390,7 +743,7 @@ namespace LibRyujinx
         }
 
         /// <summary>
-        /// 离开大厅
+        /// 离开大厅（集成网络功能）
         /// </summary>
         public static bool LeaveLobby()
         {
@@ -400,19 +753,23 @@ namespace LibRyujinx
                 {
                     if (_isHosting)
                     {
-                        // 如果是主机，关闭大厅
-                        _lobbyList.Remove(_currentLobby);
+                        // 停止广播
                         _isHosting = false;
                         Logger.Info?.Print(LogClass.ServiceLdn, $"Closed lobby: {_currentLobby.Name}");
                     }
                     else
                     {
-                        // 如果是客户端，减少玩家计数
-                        _currentLobby.PlayerCount--;
                         Logger.Info?.Print(LogClass.ServiceLdn, $"Left lobby: {_currentLobby.Name}");
                     }
 
                     _currentLobby = null;
+                    
+                    // 停止网络（如果不是主机或者没有其他网络活动）
+                    if (!_isHosting)
+                    {
+                        StopNetwork();
+                    }
+                    
                     return true;
                 }
                 return false;
@@ -425,62 +782,29 @@ namespace LibRyujinx
         }
 
         /// <summary>
-        /// 获取大厅列表
+        /// 获取大厅列表（集成网络发现）
         /// </summary>
         public static List<LobbyInfo> GetLobbyList()
         {
-            // 如果正在扫描，返回当前列表
-            if (_isScanning)
+            // 查询网络中的大厅
+            _ = Task.Run(QueryNetworkLobbies);
+            
+            // 合并网络发现的大厅和模拟数据（用于演示）
+            var allLobbies = new List<LobbyInfo>();
+            
+            // 添加网络发现的大厅
+            foreach (var lobby in _networkLobbies.Values)
             {
-                return _lobbyList;
-            }
-
-            // 模拟一些大厅数据用于测试
-            if (_lobbyList.Count == 0)
-            {
-                _lobbyList = new List<LobbyInfo>
-                {
-                    new LobbyInfo
-                    {
-                        Id = "1",
-                        Name = "Mario Kart Room",
-                        GameTitle = "Mario Kart 8 Deluxe",
-                        HostName = "Player1",
-                        PlayerCount = 2,
-                        MaxPlayers = 4,
-                        Ping = 25,
-                        HostIp = "192.168.1.100",
-                        GameId = "0100152000022000"
-                    },
-                    new LobbyInfo
-                    {
-                        Id = "2", 
-                        Name = "Splatoon Fun",
-                        GameTitle = "Splatoon 3",
-                        HostName = "Inkling",
-                        PlayerCount = 1,
-                        MaxPlayers = 8,
-                        Ping = 45,
-                        IsPasswordProtected = true,
-                        HostIp = "192.168.1.101",
-                        GameId = "0100C2500FC20000"
-                    },
-                    new LobbyInfo
-                    {
-                        Id = "3",
-                        Name = "Monster Hunters",
-                        GameTitle = "Monster Hunter Rise",
-                        HostName = "Hunter",
-                        PlayerCount = 3,
-                        MaxPlayers = 4,
-                        Ping = 12,
-                        HostIp = "192.168.1.102",
-                        GameId = "0100B04011742000"
-                    }
-                };
+                allLobbies.Add(lobby);
             }
             
-            return _lobbyList;
+            // 如果没有发现网络大厅，添加一些模拟数据用于测试
+            if (allLobbies.Count == 0)
+            {
+                allLobbies.AddRange(GetSimulatedLobbies());
+            }
+            
+            return allLobbies;
         }
 
         /// <summary>
@@ -531,7 +855,7 @@ namespace LibRyujinx
         }
 
         /// <summary>
-        /// 刷新大厅列表
+        /// 刷新大厅列表（主动网络扫描）
         /// </summary>
         public static void RefreshLobbyList()
         {
@@ -546,25 +870,30 @@ namespace LibRyujinx
                 _isScanning = true;
                 _lobbyScanCancellation = new CancellationTokenSource();
 
-                // 模拟网络扫描
                 Task.Run(async () =>
                 {
                     try
                     {
-                        Logger.Info?.Print(LogClass.ServiceLdn, "Starting lobby scan...");
+                        Logger.Info?.Print(LogClass.ServiceLdn, "Starting network lobby scan...");
 
-                        // 清除旧列表（保留当前大厅）
-                        var currentLobbyIp = _currentLobby?.HostIp;
-                        _lobbyList.Clear();
+                        // 清除旧的网络大厅（保留当前大厅）
+                        var currentLobbyId = _currentLobby?.Id;
+                        var lobbiesToRemove = _networkLobbies.Where(x => x.Key != currentLobbyId).Select(x => x.Key).ToList();
+                        foreach (var id in lobbiesToRemove)
+                        {
+                            _networkLobbies.TryRemove(id, out _);
+                            _lobbyLastSeen.TryRemove(id, out _);
+                        }
 
-                        // 模拟网络延迟
-                        await Task.Delay(1000, _lobbyScanCancellation.Token);
+                        // 发送网络查询
+                        await QueryNetworkLobbies();
+
+                        // 等待网络响应
+                        await Task.Delay(3000, _lobbyScanCancellation.Token);
 
                         if (!_lobbyScanCancellation.Token.IsCancellationRequested)
                         {
-                            // 重新获取大厅列表
-                            GetLobbyList();
-                            Logger.Info?.Print(LogClass.ServiceLdn, $"Lobby scan completed. Found {_lobbyList.Count} lobbies.");
+                            Logger.Info?.Print(LogClass.ServiceLdn, $"Lobby scan completed. Found {_networkLobbies.Count} network lobbies.");
                         }
                     }
                     catch (OperationCanceledException)
@@ -630,6 +959,43 @@ namespace LibRyujinx
         public static bool IsScanningLobbies()
         {
             return _isScanning;
+        }
+
+        /// <summary>
+        /// 获取模拟大厅数据（用于测试）
+        /// </summary>
+        private static List<LobbyInfo> GetSimulatedLobbies()
+        {
+            return new List<LobbyInfo>
+            {
+                new LobbyInfo
+                {
+                    Id = "simulated_1",
+                    Name = "Mario Kart Room",
+                    GameTitle = "Mario Kart 8 Deluxe",
+                    HostName = "Player1",
+                    PlayerCount = 2,
+                    MaxPlayers = 4,
+                    Ping = 25,
+                    HostIp = "192.168.1.100",
+                    Port = 11452,
+                    GameId = "0100152000022000"
+                },
+                new LobbyInfo
+                {
+                    Id = "simulated_2", 
+                    Name = "Splatoon Fun",
+                    GameTitle = "Splatoon 3",
+                    HostName = "Inkling",
+                    PlayerCount = 1,
+                    MaxPlayers = 8,
+                    Ping = 45,
+                    IsPasswordProtected = true,
+                    HostIp = "192.168.1.101",
+                    Port = 11452,
+                    GameId = "0100C2500FC20000"
+                }
+            };
         }
 
         // 辅助方法：获取本地 IP 地址
