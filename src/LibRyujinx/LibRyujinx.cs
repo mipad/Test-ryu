@@ -998,76 +998,61 @@ namespace LibRyujinx
             };
         }
 
-        // 辅助方法：获取本地 IP 地址 - 修复版本
+        // 辅助方法：获取本地 IP 地址（改进版本）
         private static string GetLocalIpAddress()
         {
             try
             {
-                // 方法1：使用 NetworkInterface 获取活动网络接口
-                var networkInterfaces = NetworkInterface.GetAllNetworkInterfaces()
-                    .Where(ni => ni.OperationalStatus == OperationalStatus.Up &&
-                                ni.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
-                                (ni.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ||
-                                 ni.NetworkInterfaceType == NetworkInterfaceType.Ethernet))
-                    .ToList();
-
-                foreach (var ni in networkInterfaces)
+                // 首先尝试使用 NetworkHelpers 获取网络接口信息
+                var (properties, addressInfo) = NetworkHelpers.GetLocalInterface(_currentLanInterfaceId);
+                if (addressInfo != null)
                 {
-                    var ipProperties = ni.GetIPProperties();
-                    var unicastAddresses = ipProperties.UnicastAddresses
-                        .Where(addr => addr.Address.AddressFamily == AddressFamily.InterNetwork)
-                        .ToList();
-
-                    foreach (var addr in unicastAddresses)
+                    string ip = addressInfo.Address.ToString();
+                    if (!string.IsNullOrEmpty(ip) && ip != "127.0.0.1")
                     {
-                        string ip = addr.Address.ToString();
-                        // 排除常见的无效IP
-                        if (!ip.StartsWith("169.254.") && // APIPA地址
-                            !ip.StartsWith("127.") &&      // 环回地址
-                            ip != "0.0.0.0")
+                        Logger.Info?.Print(LogClass.ServiceLdn, $"Got local IP from network interface: {ip}");
+                        return ip;
+                    }
+                }
+
+                // 备用方法：使用 NetworkInterface 直接查询
+                foreach (NetworkInterface ni in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    // 只选择已启用且不是回环地址的网络接口
+                    if (ni.OperationalStatus == OperationalStatus.Up && 
+                        ni.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+                    {
+                        foreach (UnicastIPAddressInformation ip in ni.GetIPProperties().UnicastAddresses)
                         {
-                            Logger.Info?.Print(LogClass.ServiceLdn, $"Found valid IP: {ip} on interface {ni.Name}");
-                            return ip;
+                            if (ip.Address.AddressFamily == AddressFamily.InterNetwork)
+                            {
+                                string localIp = ip.Address.ToString();
+                                if (!localIp.StartsWith("169.254.")) // 排除 APIPA 地址
+                                {
+                                    Logger.Info?.Print(LogClass.ServiceLdn, $"Got local IP from {ni.Description}: {localIp}");
+                                    return localIp;
+                                }
+                            }
                         }
                     }
                 }
 
-                // 方法2：回退到旧的Dns方法
+                // 最后回退到原来的方法
                 var host = Dns.GetHostEntry(Dns.GetHostName());
                 foreach (var ip in host.AddressList)
                 {
                     if (ip.AddressFamily == AddressFamily.InterNetwork)
                     {
-                        string ipStr = ip.ToString();
-                        if (!ipStr.StartsWith("127.") && ipStr != "0.0.0.0")
+                        string localIp = ip.ToString();
+                        if (localIp != "127.0.0.1")
                         {
-                            Logger.Info?.Print(LogClass.ServiceLdn, $"Found IP via DNS: {ipStr}");
-                            return ipStr;
-                        }
-                    }
-                }
-
-                // 方法3：尝试连接到外部服务器来获取本地IP
-                try
-                {
-                    using (var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0))
-                    {
-                        socket.Connect("8.8.8.8", 65530);
-                        var endPoint = socket.LocalEndPoint as IPEndPoint;
-                        if (endPoint != null)
-                        {
-                            string localIp = endPoint.Address.ToString();
-                            Logger.Info?.Print(LogClass.ServiceLdn, $"Found IP via socket: {localIp}");
+                            Logger.Info?.Print(LogClass.ServiceLdn, $"Got local IP from host entry: {localIp}");
                             return localIp;
                         }
                     }
                 }
-                catch (Exception socketEx)
-                {
-                    Logger.Warning?.Print(LogClass.ServiceLdn, $"Socket method failed: {socketEx.Message}");
-                }
 
-                Logger.Error?.Print(LogClass.ServiceLdn, "All methods failed to get local IP address");
+                Logger.Warning?.Print(LogClass.ServiceLdn, "No valid local IP address found, using 127.0.0.1");
                 return "127.0.0.1";
             }
             catch (Exception ex)
@@ -2802,29 +2787,29 @@ namespace LibRyujinx
             Logger.Info?.Print(LogClass.Application, $"Found {saveDirs.Count} save directories:");
             
             foreach (var saveDir in saveDirs)
-                {
-                    string saveId = Path.GetFileName(saveDir);
-                    
-                    // 检查 saveMeta
-                    string saveMetaPath = Path.Combine(saveMetaBasePath, saveId);
-                    bool hasSaveMeta = Directory.Exists(saveMetaPath);
-                    
-                    // 检查 ExtraData 文件
-                    string[] extraDataFiles = { "ExtraData0", "ExtraData1" };
-                    bool hasExtraData = extraDataFiles.Any(file => File.Exists(Path.Combine(saveDir, file)));
-                    
-                    // 尝试获取标题ID
-                    string titleIdFromMeta = GetTitleIdFromSaveMeta(saveId);
-                    string titleIdFromExtra = ExtractTitleIdFromExtraData(saveDir);
-                    
-                    Logger.Info?.Print(LogClass.Application, 
-                        $"SaveID: {saveId}, " +
-                        $"HasSaveMeta: {hasSaveMeta}, " +
-                        $"HasExtraData: {hasExtraData}, " +
-                        $"TitleID from Meta: {titleIdFromMeta ?? "N/A"}, " +
-                        $"TitleID from Extra: {titleIdFromExtra ?? "N/A"}");
-                }
+            {
+                string saveId = Path.GetFileName(saveDir);
+                
+                // 检查 saveMeta
+                string saveMetaPath = Path.Combine(saveMetaBasePath, saveId);
+                bool hasSaveMeta = Directory.Exists(saveMetaPath);
+                
+                // 检查 ExtraData 文件
+                string[] extraDataFiles = { "ExtraData0", "ExtraData1" };
+                bool hasExtraData = extraDataFiles.Any(file => File.Exists(Path.Combine(saveDir, file)));
+                
+                // 尝试获取标题ID
+                string titleIdFromMeta = GetTitleIdFromSaveMeta(saveId);
+                string titleIdFromExtra = ExtractTitleIdFromExtraData(saveDir);
+                
+                Logger.Info?.Print(LogClass.Application, 
+                    $"SaveID: {saveId}, " +
+                    $"HasSaveMeta: {hasSaveMeta}, " +
+                    $"HasExtraData: {hasExtraData}, " +
+                    $"TitleID from Meta: {titleIdFromMeta ?? "N/A"}, " +
+                    $"TitleID from Extra: {titleIdFromExtra ?? "N/A"}");
             }
+        }
 
         /// <summary>
         /// 强制刷新存档列表（新增方法）
