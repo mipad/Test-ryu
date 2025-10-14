@@ -2,9 +2,9 @@ name: Android CI  Fix
 
 on:
   push:
-    branches: [ "网络设备发现" ]
+    branches: [ "网络大厅" ]
   pull_request:
-    branches: [ "网络设备发现" ]
+    branches: [ "网络大厅" ]
 
 jobs:
   build:
@@ -25,7 +25,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: 网络设备发现
+        ref: 网络大厅
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
