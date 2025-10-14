@@ -3,19 +3,27 @@ package org.ryujinx.android.viewmodels
 import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import android.os.Build
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.preference.PreferenceManager
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
 import org.ryujinx.android.MainActivity
-import java.net.*
-import java.util.*
+import org.ryujinx.android.RyujinxNative
+import java.net.NetworkInterface
+import java.util.Collections
 
 class NetworkViewModel(activity: MainActivity) : ViewModel() {
     private var sharedPref: SharedPreferences = PreferenceManager.getDefaultSharedPreferences(activity)
     private val context = activity.applicationContext
-    
+    private val coroutineScope = CoroutineScope(Dispatchers.Main)
+    private var lobbyRefreshJob: Job? = null
+
     // 使用 mutableStateOf 确保UI自动更新
     private val _networkInterfaces = mutableStateOf<List<NetworkInterfaceInfo>>(emptyList())
     val networkInterfaceList: List<NetworkInterfaceInfo> get() = _networkInterfaces.value
@@ -32,206 +40,29 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
     var networkInterfaceIndex = mutableStateOf(sharedPref.getInt("networkInterfaceIndex", 0))
         private set
 
-    // Device discovery
-    var discoveredDevices = mutableStateOf<List<DiscoveredDevice>>(emptyList())
+    // 大厅管理相关状态
+    var lobbyList = mutableStateOf<List<LobbyInfo>>(emptyList())
         private set
     
-    var isDiscovering = mutableStateOf(false)
+    var currentLobby = mutableStateOf<LobbyInfo?>(null)
         private set
-
-    // Network discovery constants
-    companion object {
-        private const val DISCOVERY_PORT = 17777
-        private const val DISCOVERY_MULTICAST_GROUP = "239.177.77.1"
-        private const val DISCOVERY_TIMEOUT = 5000L // 5 seconds
-        private const val BEACON_INTERVAL = 3000L // 3 seconds
-    }
-
-    private var discoveryJob: Job? = null
-    private var beaconJob: Job? = null
-    private var multicastSocket: MulticastSocket? = null
-    private var shouldStopDiscovery = false
+    
+    var lobbyState = mutableStateOf(LobbyState.IDLE)
+        private set
+    
+    var isScanningLobbies = mutableStateOf(false)
+        private set
+    
+    var isHostingLobby = mutableStateOf(false)
+        private set
+    
+    var showCreateLobbyDialog = mutableStateOf(false)
+        private set
 
     init {
         loadNetworkInterfaces()
-    }
-
-    /**
-     * Start device discovery
-     */
-    fun startDiscovery() {
-        if (isDiscovering.value) return
-        
-        isDiscovering.value = true
-        discoveredDevices.value = emptyList()
-        shouldStopDiscovery = false
-        
-        discoveryJob = CoroutineScope(Dispatchers.IO).launch {
-            try {
-                // Join multicast group
-                multicastSocket = MulticastSocket(DISCOVERY_PORT).apply {
-                    reuseAddress = true
-                    soTimeout = 1000 // 1 second timeout for receive
-                    
-                    // Join multicast group on all available interfaces
-                    networkInterfaceList.forEach { iface ->
-                        try {
-                            val networkInterface = NetworkInterface.getByName(iface.id)
-                            if (networkInterface != null && networkInterface.isUp && !networkInterface.isLoopback) {
-                                joinGroup(InetSocketAddress(InetAddress.getByName(DISCOVERY_MULTICAST_GROUP), DISCOVERY_PORT), networkInterface)
-                            }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }
-                }
-
-                // Start beacon to announce our presence
-                startBeacon()
-
-                val buffer = ByteArray(1024)
-                val packet = DatagramPacket(buffer, buffer.size)
-
-                while (!shouldStopDiscovery && isActive) {
-                    try {
-                        multicastSocket?.receive(packet)
-                        val message = String(packet.data, 0, packet.length).trim()
-                        
-                        if (message.startsWith("RYUJINX_DISCOVER:")) {
-                            val parts = message.split(":")
-                            if (parts.size >= 3) {
-                                val deviceName = parts[1]
-                                val deviceId = parts[2]
-                                val deviceIp = packet.address.hostAddress
-                                
-                                // Don't add our own device
-                                if (deviceId != getDeviceId()) {
-                                    withContext(Dispatchers.Main) {
-                                        val existingDevice = discoveredDevices.value.find { it.id == deviceId }
-                                        if (existingDevice == null) {
-                                            // New device
-                                            discoveredDevices.value = discoveredDevices.value + DiscoveredDevice(
-                                                name = deviceName,
-                                                id = deviceId,
-                                                ip = deviceIp,
-                                                lastSeen = System.currentTimeMillis()
-                                            )
-                                        } else {
-                                            // Update existing device
-                                            discoveredDevices.value = discoveredDevices.value.map {
-                                                if (it.id == deviceId) {
-                                                    it.copy(lastSeen = System.currentTimeMillis(), ip = deviceIp)
-                                                } else {
-                                                    it
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } catch (e: SocketTimeoutException) {
-                        // Timeout is expected, continue listening
-                    } catch (e: Exception) {
-                        if (!shouldStopDiscovery) {
-                            e.printStackTrace()
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                withContext(Dispatchers.Main) {
-                    isDiscovering.value = false
-                }
-            } finally {
-                multicastSocket?.close()
-                multicastSocket = null
-            }
-        }
-    }
-
-    /**
-     * Stop device discovery
-     */
-    fun stopDiscovery() {
-        shouldStopDiscovery = true
-        isDiscovering.value = false
-        
-        beaconJob?.cancel()
-        discoveryJob?.cancel()
-        
-        multicastSocket?.close()
-        multicastSocket = null
-    }
-
-    /**
-     * Start broadcasting our presence
-     */
-    private fun startBeacon() {
-        beaconJob = CoroutineScope(Dispatchers.IO).launch {
-            while (!shouldStopDiscovery && isActive) {
-                try {
-                    broadcastPresence()
-                    delay(BEACON_INTERVAL)
-                } catch (e: Exception) {
-                    if (!shouldStopDiscovery) {
-                        e.printStackTrace()
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Broadcast our presence to the network
-     */
-    private fun broadcastPresence() {
-        try {
-            val message = "RYUJINX_DISCOVER:${getDeviceName()}:${getDeviceId()}"
-            val data = message.toByteArray()
-            
-            // Send via multicast
-            val group = InetAddress.getByName(DISCOVERY_MULTICAST_GROUP)
-            val packet = DatagramPacket(data, data.size, group, DISCOVERY_PORT)
-            multicastSocket?.send(packet)
-            
-            // Also send broadcast for devices that don't support multicast
-            val broadcastPacket = DatagramPacket(data, data.size, InetAddress.getByName("255.255.255.255"), DISCOVERY_PORT)
-            multicastSocket?.send(broadcastPacket)
-            
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    /**
-     * Get unique device ID
-     */
-    private fun getDeviceId(): String {
-        return Build.SERIAL ?: "unknown"
-    }
-
-    /**
-     * Get device name for display
-     */
-    private fun getDeviceName(): String {
-        return "${Build.MANUFACTURER} ${Build.MODEL}"
-    }
-
-    /**
-     * Refresh discovered devices list
-     */
-    fun refreshDiscoveredDevices() {
-        // Remove devices that haven't been seen in a while
-        val now = System.currentTimeMillis()
-        discoveredDevices.value = discoveredDevices.value.filter {
-            now - it.lastSeen < DISCOVERY_TIMEOUT * 2
-        }
-        
-        // Re-broadcast our presence
-        CoroutineScope(Dispatchers.IO).launch {
-            broadcastPresence()
-        }
+        // 启动大厅自动刷新
+        startLobbyAutoRefresh()
     }
 
     /**
@@ -317,6 +148,11 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
     fun setMultiplayerMode(index: Int) {
         multiplayerModeIndex.value = index
         sharedPref.edit().putInt("multiplayerModeIndex", index).apply()
+        
+        // 如果切换到禁用模式，离开当前大厅
+        if (index == 0) {
+            leaveLobby()
+        }
     }
 
     /**
@@ -419,9 +255,143 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
         }
     }
 
+    // ==================== 大厅管理功能 ====================
+
+    /**
+     * 创建大厅
+     */
+    fun createLobby(lobbyName: String, gameTitle: String, maxPlayers: Int, gameId: String = "") {
+        coroutineScope.launch(Dispatchers.IO) {
+            lobbyState.value = LobbyState.CREATING
+            try {
+                val success = RyujinxNative.createLobby(lobbyName, gameTitle, maxPlayers, gameId)
+                if (success) {
+                    // 获取当前大厅信息
+                    val currentLobbyJson = RyujinxNative.getCurrentLobby()
+                    if (currentLobbyJson.isNotEmpty()) {
+                        try {
+                            val lobby = Json.decodeFromString<LobbyInfo>(currentLobbyJson)
+                            currentLobby.value = lobby
+                            lobbyState.value = LobbyState.HOSTING
+                            isHostingLobby.value = true
+                        } catch (e: Exception) {
+                            lobbyState.value = LobbyState.IDLE
+                        }
+                    }
+                } else {
+                    lobbyState.value = LobbyState.IDLE
+                }
+            } catch (e: Exception) {
+                lobbyState.value = LobbyState.IDLE
+            }
+        }
+    }
+
+    /**
+     * 加入大厅
+     */
+    fun joinLobby(lobby: LobbyInfo) {
+        coroutineScope.launch(Dispatchers.IO) {
+            lobbyState.value = LobbyState.JOINING
+            try {
+                val success = RyujinxNative.joinLobby(lobby.hostIp, lobby.port)
+                if (success) {
+                    currentLobby.value = lobby
+                    lobbyState.value = LobbyState.IN_LOBBY
+                    isHostingLobby.value = false
+                } else {
+                    lobbyState.value = LobbyState.IDLE
+                }
+            } catch (e: Exception) {
+                lobbyState.value = LobbyState.IDLE
+            }
+        }
+    }
+
+    /**
+     * 离开大厅
+     */
+    fun leaveLobby() {
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                RyujinxNative.leaveLobby()
+                currentLobby.value = null
+                lobbyState.value = LobbyState.IDLE
+                isHostingLobby.value = false
+            } catch (e: Exception) {
+                // 忽略错误
+            }
+        }
+    }
+
+    /**
+     * 刷新大厅列表
+     */
+    fun refreshLobbyList() {
+        if (isScanningLobbies.value) return
+        
+        coroutineScope.launch(Dispatchers.IO) {
+            isScanningLobbies.value = true
+            try {
+                RyujinxNative.refreshLobbyList()
+                
+                // 等待扫描完成
+                delay(1000)
+                
+                val lobbyListJson = RyujinxNative.getLobbyList()
+                if (lobbyListJson.isNotEmpty()) {
+                    try {
+                        val lobbies = Json.decodeFromString<List<LobbyInfo>>(lobbyListJson)
+                        lobbyList.value = lobbies
+                    } catch (e: Exception) {
+                        // 解析失败，使用空列表
+                        lobbyList.value = emptyList()
+                    }
+                } else {
+                    lobbyList.value = emptyList()
+                }
+            } catch (e: Exception) {
+                lobbyList.value = emptyList()
+            } finally {
+                isScanningLobbies.value = false
+            }
+        }
+    }
+
+    /**
+     * 启动大厅自动刷新
+     */
+    private fun startLobbyAutoRefresh() {
+        lobbyRefreshJob?.cancel()
+        lobbyRefreshJob = coroutineScope.launch {
+            while (true) {
+                if (multiplayerModeIndex.value == 1 && lobbyState.value == LobbyState.IDLE) {
+                    refreshLobbyList()
+                }
+                delay(10000) // 每10秒刷新一次
+            }
+        }
+    }
+
+    /**
+     * 检查是否正在扫描大厅
+     */
+    fun checkScanningStatus(): Boolean {
+        return RyujinxNative.isScanningLobbies()
+    }
+
+    /**
+     * 检查是否正在托管大厅
+     */
+    fun checkHostingStatus(): Boolean {
+        return RyujinxNative.isHostingLobby()
+    }
+
     override fun onCleared() {
         super.onCleared()
-        stopDiscovery()
+        lobbyRefreshJob?.cancel()
+        // 离开大厅
+        leaveLobby()
     }
 }
 
@@ -435,16 +405,6 @@ data class NetworkInterfaceInfo(
 )
 
 /**
- * Discovered device information
- */
-data class DiscoveredDevice(
-    val name: String,
-    val id: String,
-    val ip: String,
-    val lastSeen: Long
-)
-
-/**
  * Network connection status enum
  */
 enum class NetworkStatus {
@@ -455,3 +415,33 @@ enum class NetworkStatus {
     DISCONNECTED,
     UNKNOWN
 }
+
+/**
+ * 大厅状态枚举
+ */
+enum class LobbyState {
+    IDLE,           // 空闲状态
+    CREATING,       // 正在创建大厅
+    JOINING,        // 正在加入大厅
+    HOSTING,        // 正在托管大厅
+    IN_LOBBY        // 已加入大厅
+}
+
+/**
+ * 大厅信息数据类
+ */
+@kotlinx.serialization.Serializable
+data class LobbyInfo(
+    val id: String = "",
+    val name: String = "",
+    val gameTitle: String = "",
+    val hostName: String = "",
+    val playerCount: Int = 0,
+    val maxPlayers: Int = 4,
+    val ping: Int = 0,
+    val isPasswordProtected: Boolean = false,
+    val hostIp: String = "",
+    val port: Int = 11452,
+    val gameId: String = "",
+    val createdTime: Long = 0
+)
