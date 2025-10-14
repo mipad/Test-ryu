@@ -12,10 +12,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -337,10 +337,10 @@ fun LobbyManagementCard(networkViewModel: NetworkViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(
-                    imageVector = Icons.Filled.People,
-                    contentDescription = "Lobby Management",
-                    tint = MaterialTheme.colorScheme.primary
+                // 使用表情符号代替图标
+                Text(
+                    text = "👥", // 使用人物表情符号
+                    style = MaterialTheme.typography.titleMedium
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
@@ -367,10 +367,11 @@ fun LobbyManagementCard(networkViewModel: NetworkViewModel) {
             Spacer(modifier = Modifier.height(12.dp))
             
             when (networkViewModel.lobbyState.value) {
-                NetworkViewModel.LobbyState.IDLE -> IdleLobbyView(networkViewModel)
-                NetworkViewModel.LobbyState.HOSTING -> HostingLobbyView(networkViewModel)
-                NetworkViewModel.LobbyState.IN_LOBBY -> InLobbyView(networkViewModel)
-                NetworkViewModel.LobbyState.CREATING, NetworkViewModel.LobbyState.JOINING -> {
+                org.ryujinx.android.viewmodels.LobbyState.IDLE -> IdleLobbyView(networkViewModel)
+                org.ryujinx.android.viewmodels.LobbyState.HOSTING -> HostingLobbyView(networkViewModel)
+                org.ryujinx.android.viewmodels.LobbyState.IN_LOBBY -> InLobbyView(networkViewModel)
+                org.ryujinx.android.viewmodels.LobbyState.CREATING, 
+                org.ryujinx.android.viewmodels.LobbyState.JOINING -> {
                     // 加载状态
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -445,7 +446,7 @@ fun IdleLobbyView(networkViewModel: NetworkViewModel) {
 }
 
 @Composable
-fun LobbyListItem(lobby: NetworkViewModel.LobbyInfo, networkViewModel: NetworkViewModel) {
+fun LobbyListItem(lobby: org.ryujinx.android.viewmodels.LobbyInfo, networkViewModel: NetworkViewModel) {
     Card(
         onClick = { networkViewModel.joinLobby(lobby) },
         modifier = Modifier.fillMaxWidth(),
