@@ -6,6 +6,22 @@ import com.sun.jna.Native
 import org.ryujinx.android.viewmodels.GameInfo
 import java.util.Collections
 
+// 大厅信息数据类
+data class LobbyInfoNative(
+    val id: String,
+    val name: String,
+    val gameTitle: String,
+    val hostName: String,
+    val playerCount: Int,
+    val maxPlayers: Int,
+    val ping: Int = 0,
+    val isPasswordProtected: Boolean = false,
+    val hostIp: String = "",
+    val port: Int = 11452,
+    val gameId: String = "",
+    val createdTime: Long = 0
+)
+
 interface RyujinxNativeJna : Library {
     // 更新后的 deviceInitialize 方法，包含网络参数
     fun deviceInitialize(
@@ -145,6 +161,19 @@ interface RyujinxNativeJna : Library {
     fun modsEnableAll(titleId: String): Boolean
     fun modsDisableAll(titleId: String): Boolean
     fun modsAddMod(titleId: String, sourcePath: String, modName: String): Boolean
+    
+    // ==================== 大厅管理相关方法 ====================
+    fun createLobby(lobbyName: String, gameTitle: String, maxPlayers: Int, gameId: String): Boolean
+    fun joinLobby(hostIp: String, port: Int): Boolean
+    fun leaveLobby(): Boolean
+    fun getLobbyList(): String
+    fun setLobbyData(key: String, value: String): Boolean
+    fun getLobbyData(key: String): String
+    fun refreshLobbyList()
+    fun getCurrentLobby(): String
+    fun isHostingLobby(): Boolean
+    fun isScanningLobbies(): Boolean
+    fun stopLobbyScan()
 }
 
 class RyujinxNative {
@@ -369,6 +398,114 @@ class RyujinxNative {
         @JvmStatic
         fun addMod(titleId: String, sourcePath: String, modName: String): Boolean {
             return jnaInstance.modsAddMod(titleId, sourcePath, modName)
+        }
+        
+        // ==================== 大厅管理相关静态方法 ====================
+        
+        /**
+         * 创建大厅
+         * @param lobbyName 大厅名称
+         * @param gameTitle 游戏标题
+         * @param maxPlayers 最大玩家数
+         * @param gameId 游戏ID（可选）
+         * @return 是否创建成功
+         */
+        @JvmStatic
+        fun createLobby(lobbyName: String, gameTitle: String, maxPlayers: Int, gameId: String = ""): Boolean {
+            return jnaInstance.createLobby(lobbyName, gameTitle, maxPlayers, gameId)
+        }
+
+        /**
+         * 加入大厅
+         * @param hostIp 主机IP地址
+         * @param port 端口号（默认11452）
+         * @return 是否加入成功
+         */
+        @JvmStatic
+        fun joinLobby(hostIp: String, port: Int = 11452): Boolean {
+            return jnaInstance.joinLobby(hostIp, port)
+        }
+
+        /**
+         * 离开当前大厅
+         * @return 是否离开成功
+         */
+        @JvmStatic
+        fun leaveLobby(): Boolean {
+            return jnaInstance.leaveLobby()
+        }
+
+        /**
+         * 获取大厅列表（JSON格式）
+         * @return 大厅列表的JSON字符串
+         */
+        @JvmStatic
+        fun getLobbyList(): String {
+            return jnaInstance.getLobbyList() ?: "[]"
+        }
+
+        /**
+         * 设置大厅数据
+         * @param key 数据键
+         * @param value 数据值
+         * @return 是否设置成功
+         */
+        @JvmStatic
+        fun setLobbyData(key: String, value: String): Boolean {
+            return jnaInstance.setLobbyData(key, value)
+        }
+
+        /**
+         * 获取大厅数据
+         * @param key 数据键
+         * @return 数据值
+         */
+        @JvmStatic
+        fun getLobbyData(key: String): String {
+            return jnaInstance.getLobbyData(key) ?: ""
+        }
+
+        /**
+         * 刷新大厅列表
+         */
+        @JvmStatic
+        fun refreshLobbyList() {
+            jnaInstance.refreshLobbyList()
+        }
+
+        /**
+         * 获取当前大厅信息（JSON格式）
+         * @return 当前大厅信息的JSON字符串，如果没有则为空字符串
+         */
+        @JvmStatic
+        fun getCurrentLobby(): String {
+            return jnaInstance.getCurrentLobby() ?: ""
+        }
+
+        /**
+         * 检查是否正在托管大厅
+         * @return 是否正在托管
+         */
+        @JvmStatic
+        fun isHostingLobby(): Boolean {
+            return jnaInstance.isHostingLobby()
+        }
+
+        /**
+         * 检查是否正在扫描大厅
+         * @return 是否正在扫描
+         */
+        @JvmStatic
+        fun isScanningLobbies(): Boolean {
+            return jnaInstance.isScanningLobbies()
+        }
+
+        /**
+         * 停止大厅扫描
+         */
+        @JvmStatic
+        fun stopLobbyScan() {
+            jnaInstance.stopLobbyScan()
         }
     }
 }
