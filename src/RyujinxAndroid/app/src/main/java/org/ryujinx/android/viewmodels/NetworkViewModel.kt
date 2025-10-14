@@ -64,6 +64,9 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
         loadNetworkInterfaces()
         // 启动大厅自动刷新
         startLobbyAutoRefresh()
+        
+        // 初始化网络通信
+        initializeNetwork()
     }
 
     /**
@@ -253,6 +256,36 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
             NetworkStatus.CONNECTED_UNKNOWN -> "connected"
             NetworkStatus.DISCONNECTED -> "disconnected"
             NetworkStatus.UNKNOWN -> "unknown"
+        }
+    }
+
+    // ==================== 网络初始化功能 ====================
+
+    /**
+     * 初始化网络通信
+     */
+    private fun initializeNetwork() {
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                RyujinxNative.initializeNetwork()
+                println("DEBUG: Network initialized successfully")
+            } catch (e: Exception) {
+                println("DEBUG: Network initialization failed: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * 停止网络通信
+     */
+    private fun stopNetwork() {
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                RyujinxNative.stopNetwork()
+                println("DEBUG: Network stopped successfully")
+            } catch (e: Exception) {
+                println("DEBUG: Network stop failed: ${e.message}")
+            }
         }
     }
 
@@ -478,6 +511,8 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
         lobbyRefreshJob?.cancel()
         // 离开大厅
         leaveLobby()
+        // 停止网络
+        stopNetwork()
     }
 }
 
