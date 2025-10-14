@@ -1005,6 +1005,211 @@ namespace LibRyujinx
                 Logger.Error?.Print(LogClass.ServiceLdn, $"Error stopping lobby scan: {ex.Message}");
             }
         }
+
+        // ==================== 网络初始化的JNI方法 ====================
+
+        [UnmanagedCallersOnly(EntryPoint = "initializeNetwork")]
+        public static void JnaInitializeNetwork()
+        {
+            try
+            {
+                InitializeNetwork();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error initializing network: {ex.Message}");
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "stopNetwork")]
+        public static void JnaStopNetwork()
+        {
+            try
+            {
+                StopNetwork();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error stopping network: {ex.Message}");
+            }
+        }
+
+        // ==================== Mod管理的JNI方法 ====================
+
+        [UnmanagedCallersOnly(EntryPoint = "getMods")]
+        public static IntPtr JnaGetMods(IntPtr titleIdPtr)
+        {
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                var mods = GetMods(titleId);
+                var json = JsonSerializer.Serialize(mods, _modSerializerContext.ListModInfo);
+                return Marshal.StringToHGlobalAnsi(json);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ModLoader, $"Error getting mods: {ex.Message}");
+                return IntPtr.Zero;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "setModEnabled")]
+        public static bool JnaSetModEnabled(IntPtr titleIdPtr, IntPtr modPathPtr, bool enabled)
+        {
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                string modPath = Marshal.PtrToStringAnsi(modPathPtr) ?? "";
+                return SetModEnabled(titleId, modPath, enabled);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ModLoader, $"Error setting mod enabled: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "deleteMod")]
+        public static bool JnaDeleteMod(IntPtr titleIdPtr, IntPtr modPathPtr)
+        {
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                string modPath = Marshal.PtrToStringAnsi(modPathPtr) ?? "";
+                return DeleteMod(titleId, modPath);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ModLoader, $"Error deleting mod: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "deleteAllMods")]
+        public static bool JnaDeleteAllMods(IntPtr titleIdPtr)
+        {
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                return DeleteAllMods(titleId);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ModLoader, $"Error deleting all mods: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "enableAllMods")]
+        public static bool JnaEnableAllMods(IntPtr titleIdPtr)
+        {
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                return EnableAllMods(titleId);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ModLoader, $"Error enabling all mods: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "disableAllMods")]
+        public static bool JnaDisableAllMods(IntPtr titleIdPtr)
+        {
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                return DisableAllMods(titleId);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ModLoader, $"Error disabling all mods: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "addMod")]
+        public static bool JnaAddMod(IntPtr titleIdPtr, IntPtr sourcePathPtr, IntPtr modNamePtr)
+        {
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                string sourcePath = Marshal.PtrToStringAnsi(sourcePathPtr) ?? "";
+                string modName = Marshal.PtrToStringAnsi(modNamePtr) ?? "";
+                return AddMod(titleId, sourcePath, modName);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ModLoader, $"Error adding mod: {ex.Message}");
+                return false;
+            }
+        }
+
+        // ==================== 金手指管理的JNI方法 ====================
+
+        [UnmanagedCallersOnly(EntryPoint = "getCheats")]
+        public static IntPtr JnaGetCheats(IntPtr titleIdPtr, IntPtr gamePathPtr)
+        {
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                string gamePath = Marshal.PtrToStringAnsi(gamePathPtr) ?? "";
+                var cheats = GetCheats(titleId, gamePath);
+                return CreateStringArray(cheats);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error getting cheats: {ex.Message}");
+                return IntPtr.Zero;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "getEnabledCheats")]
+        public static IntPtr JnaGetEnabledCheats(IntPtr titleIdPtr)
+        {
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                var enabledCheats = GetEnabledCheats(titleId);
+                return CreateStringArray(enabledCheats);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error getting enabled cheats: {ex.Message}");
+                return IntPtr.Zero;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "setCheatEnabled")]
+        public static void JnaSetCheatEnabled(IntPtr titleIdPtr, IntPtr cheatIdPtr, bool enabled)
+        {
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                string cheatId = Marshal.PtrToStringAnsi(cheatIdPtr) ?? "";
+                SetCheatEnabled(titleId, cheatId, enabled);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error setting cheat enabled: {ex.Message}");
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "saveCheats")]
+        public static void JnaSaveCheats(IntPtr titleIdPtr)
+        {
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                SaveCheats(titleId);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error saving cheats: {ex.Message}");
+            }
+        }
     }
 
     internal static partial class Logcat
