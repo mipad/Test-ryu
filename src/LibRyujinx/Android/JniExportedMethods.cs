@@ -24,6 +24,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Ryujinx.HLE; 
 using Ryujinx.Common.Configuration.Multiplayer;
+using System.Text.Json;
 
 namespace LibRyujinx
 {
@@ -829,6 +830,179 @@ namespace LibRyujinx
             catch (Exception ex)
             {
                 return IntPtr.Zero;
+            }
+        }
+
+        // ==================== 大厅管理的JNI方法 ====================
+
+        [UnmanagedCallersOnly(EntryPoint = "createLobby")]
+        public static bool JnaCreateLobby(IntPtr lobbyNamePtr, IntPtr gameTitlePtr, int maxPlayers, IntPtr gameIdPtr)
+        {
+            try
+            {
+                string lobbyName = Marshal.PtrToStringAnsi(lobbyNamePtr) ?? "";
+                string gameTitle = Marshal.PtrToStringAnsi(gameTitlePtr) ?? "";
+                string gameId = Marshal.PtrToStringAnsi(gameIdPtr) ?? "";
+                
+                return CreateLobby(lobbyName, gameTitle, maxPlayers, gameId);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error creating lobby: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "joinLobby")]
+        public static bool JnaJoinLobby(IntPtr hostIpPtr, int port)
+        {
+            try
+            {
+                string hostIp = Marshal.PtrToStringAnsi(hostIpPtr) ?? "";
+                return JoinLobby(hostIp, port);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error joining lobby: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "leaveLobby")]
+        public static bool JnaLeaveLobby()
+        {
+            try
+            {
+                return LeaveLobby();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error leaving lobby: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "getLobbyList")]
+        public static IntPtr JnaGetLobbyList()
+        {
+            try
+            {
+                var lobbyList = GetLobbyList();
+                var json = JsonSerializer.Serialize(lobbyList, _lobbyInfoJsonSerializerContext.ListLobbyInfo);
+                return Marshal.StringToHGlobalAnsi(json);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error getting lobby list: {ex.Message}");
+                return IntPtr.Zero;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "setLobbyData")]
+        public static bool JnaSetLobbyData(IntPtr keyPtr, IntPtr valuePtr)
+        {
+            try
+            {
+                string key = Marshal.PtrToStringAnsi(keyPtr) ?? "";
+                string value = Marshal.PtrToStringAnsi(valuePtr) ?? "";
+                
+                return SetLobbyData(key, value);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error setting lobby data: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "getLobbyData")]
+        public static IntPtr JnaGetLobbyData(IntPtr keyPtr)
+        {
+            try
+            {
+                string key = Marshal.PtrToStringAnsi(keyPtr) ?? "";
+                string value = GetLobbyData(key);
+                
+                return Marshal.StringToHGlobalAnsi(value ?? "");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error getting lobby data: {ex.Message}");
+                return IntPtr.Zero;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "refreshLobbyList")]
+        public static void JnaRefreshLobbyList()
+        {
+            try
+            {
+                RefreshLobbyList();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error refreshing lobby list: {ex.Message}");
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "getCurrentLobby")]
+        public static IntPtr JnaGetCurrentLobby()
+        {
+            try
+            {
+                var currentLobby = GetCurrentLobby();
+                if (currentLobby != null)
+                {
+                    var json = JsonSerializer.Serialize(currentLobby, _lobbyInfoJsonSerializerContext.LobbyInfo);
+                    return Marshal.StringToHGlobalAnsi(json);
+                }
+                return IntPtr.Zero;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error getting current lobby: {ex.Message}");
+                return IntPtr.Zero;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "isHostingLobby")]
+        public static bool JnaIsHostingLobby()
+        {
+            try
+            {
+                return IsHostingLobby();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error checking if hosting lobby: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "isScanningLobbies")]
+        public static bool JnaIsScanningLobbies()
+        {
+            try
+            {
+                return IsScanningLobbies();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error checking if scanning lobbies: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "stopLobbyScan")]
+        public static void JnaStopLobbyScan()
+        {
+            try
+            {
+                StopLobbyScan();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"Error stopping lobby scan: {ex.Message}");
             }
         }
     }
