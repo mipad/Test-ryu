@@ -68,6 +68,8 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
         loadNetworkInterfaces()
         // 初始化网络通信
         initializeNetwork()
+        // 启动自动刷新大厅列表
+        startAutoLobbyRefresh()
     }
 
     /**
@@ -438,7 +440,7 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
     }
 
     /**
-     * 刷新大厅列表
+     * 刷新大厅列表 - 改进版本
      */
     fun refreshLobbyList() {
         if (isScanningLobbies.value) return
@@ -446,28 +448,36 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
         coroutineScope.launch(Dispatchers.IO) {
             isScanningLobbies.value = true
             try {
+                println("DEBUG: Starting lobby list refresh...")
+                
+                // 调用原生方法刷新大厅列表
                 RyujinxNative.refreshLobbyList()
                 
-                // 等待扫描完成
-                delay(1000)
+                // 等待网络扫描完成
+                delay(2000)
                 
+                // 获取大厅列表
                 val lobbyListJson = RyujinxNative.getLobbyList()
-                println("DEBUG: Lobby list JSON: $lobbyListJson")
+                println("DEBUG: Raw lobby list JSON: $lobbyListJson")
                 
-                if (lobbyListJson.isNotEmpty()) {
+                if (lobbyListJson.isNotEmpty() && lobbyListJson != "[]") {
                     try {
                         val lobbies = Json.decodeFromString<List<LobbyInfo>>(lobbyListJson)
+                        println("DEBUG: Successfully parsed ${lobbies.size} lobbies")
+                        
                         withContext(Dispatchers.Main) {
                             lobbyList.value = lobbies
-                            println("DEBUG: Updated lobby list with ${lobbies.size} lobbies")
+                            println("DEBUG: Updated lobby list with ${lobbies.size} real network lobbies")
                         }
                     } catch (e: Exception) {
                         println("DEBUG: Lobby list JSON parsing error: ${e.message}")
+                        println("DEBUG: JSON content: $lobbyListJson")
                         withContext(Dispatchers.Main) {
                             lobbyList.value = emptyList()
                         }
                     }
                 } else {
+                    println("DEBUG: No lobbies found in network scan")
                     withContext(Dispatchers.Main) {
                         lobbyList.value = emptyList()
                     }
@@ -481,6 +491,22 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
                 withContext(Dispatchers.Main) {
                     isScanningLobbies.value = false
                 }
+            }
+        }
+    }
+
+    /**
+     * 启动自动刷新大厅列表
+     */
+    private fun startAutoLobbyRefresh() {
+        lobbyRefreshJob?.cancel()
+        lobbyRefreshJob = coroutineScope.launch {
+            while (true) {
+                // 只有在启用LDN模式且处于空闲状态时才自动刷新
+                if (multiplayerModeIndex.value == 1 && lobbyState.value == LobbyState.IDLE) {
+                    refreshLobbyList()
+                }
+                delay(5000) // 每5秒刷新一次
             }
         }
     }
