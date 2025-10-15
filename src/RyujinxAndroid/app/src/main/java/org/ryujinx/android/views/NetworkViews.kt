@@ -75,6 +75,9 @@ fun NetworkView(settingsViewModel: SettingsViewModel, mainViewModel: MainViewMod
         networkViewModel.setGameList(gameList)
     }
     
+    // 多人游戏对话框状态
+    var showMultiplayerDialog by remember { mutableStateOf(false) }
+    
     Column(
         modifier = Modifier
             .verticalScroll(rememberScrollState())
@@ -86,7 +89,9 @@ fun NetworkView(settingsViewModel: SettingsViewModel, mainViewModel: MainViewMod
         Spacer(modifier = Modifier.height(16.dp))
         
         // Multiplayer settings
-        MultiplayerSettingsCard(networkViewModel)
+        MultiplayerSettingsCard(networkViewModel, onMultiplayerClick = {
+            showMultiplayerDialog = true
+        })
         
         Spacer(modifier = Modifier.height(16.dp))
         
@@ -103,6 +108,15 @@ fun NetworkView(settingsViewModel: SettingsViewModel, mainViewModel: MainViewMod
         
         // Network information description
         NetworkInfoCard()
+    }
+    
+    // 多人游戏对话框
+    if (showMultiplayerDialog) {
+        MultiplayerDialog(
+            networkViewModel = networkViewModel,
+            mainViewModel = mainViewModel,
+            onDismiss = { showMultiplayerDialog = false }
+        )
     }
 }
 
@@ -245,7 +259,7 @@ fun NetworkStatusCard(networkViewModel: NetworkViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MultiplayerSettingsCard(networkViewModel: NetworkViewModel) {
+fun MultiplayerSettingsCard(networkViewModel: NetworkViewModel, onMultiplayerClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -355,10 +369,471 @@ fun MultiplayerSettingsCard(networkViewModel: NetworkViewModel) {
                     )
                 }
             }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // 多人游戏按钮
+            Button(
+                onClick = onMultiplayerClick,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = networkViewModel.multiplayerModeIndex.value == 1
+            ) {
+                Text("Multiplayer Lobby")
+            }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MultiplayerDialog(
+    networkViewModel: NetworkViewModel,
+    mainViewModel: MainViewModel,
+    onDismiss: () -> Unit
+) {
+    var selectedTab by remember { mutableStateOf(0) } // 0: 加入, 1: 创建
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { 
+            Text(
+                text = "Multiplayer", 
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column {
+                // 标签页选择
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    // 加入标签
+                    Button(
+                        onClick = { selectedTab = 0 },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (selectedTab == 0) MaterialTheme.colorScheme.primary 
+                                           else MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Text("Join")
+                    }
+                    
+                    Spacer(modifier = Modifier.width(8.dp))
+                    
+                    // 创建标签
+                    Button(
+                        onClick = { selectedTab = 1 },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (selectedTab == 1) MaterialTheme.colorScheme.primary 
+                                           else MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Text("Create")
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                when (selectedTab) {
+                    0 -> JoinLobbyView(networkViewModel, onDismiss)
+                    1 -> CreateLobbyView(networkViewModel, mainViewModel, onDismiss)
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
+}
+
+@Composable
+fun JoinLobbyView(networkViewModel: NetworkViewModel, onDismiss: () -> Unit) {
+    var ipAddress by remember { mutableStateOf("") }
+    var port by remember { mutableStateOf("11452") }
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    
+    Column {
+        // 浏览公开房间
+        Text(
+            text = "Browse Public Rooms",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        
+        LobbyListView(networkViewModel)
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Divider()
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // 手动加入
+        Text(
+            text = "Join by IP",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        
+        OutlinedTextField(
+            value = ipAddress,
+            onValueChange = { ipAddress = it },
+            label = { Text("IP Address") },
+            placeholder = { Text("192.168.1.100") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        OutlinedTextField(
+            value = port,
+            onValueChange = { port = it },
+            label = { Text("Port") },
+            placeholder = { Text("11452") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        OutlinedTextField(
+            value = username,
+            onValueChange = { username = it },
+            label = { Text("Username") },
+            placeholder = { Text("Enter your username") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Password (Optional)") },
+            placeholder = { Text("Enter password if required") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Button(
+            onClick = {
+                if (ipAddress.isNotBlank() && port.isNotBlank() && username.isNotBlank()) {
+                    val lobby = org.ryujinx.android.viewmodels.LobbyInfo(
+                        hostIp = ipAddress,
+                        port = port.toIntOrNull() ?: 11452,
+                        name = "Manual Join",
+                        hostName = username
+                    )
+                    networkViewModel.joinLobby(lobby)
+                    onDismiss()
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = ipAddress.isNotBlank() && port.isNotBlank() && username.isNotBlank()
+        ) {
+            Text("Join")
+        }
+    }
+}
+
+@Composable
+fun CreateLobbyView(networkViewModel: NetworkViewModel, mainViewModel: MainViewModel, onDismiss: () -> Unit) {
+    var lobbyName by remember { mutableStateOf("") }
+    var selectedGameName by remember { mutableStateOf("") }
+    var maxPlayers by remember { mutableStateOf(4) }
+    var username by remember { mutableStateOf("") }
+    
+    Column {
+        // 显示当前IP和端口
+        val localIp = networkViewModel.getLocalIpAddress()
+        Text(
+            text = "IP Address: $localIp",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
+        Text(
+            text = "Port: 11452",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+        
+        OutlinedTextField(
+            value = lobbyName,
+            onValueChange = { lobbyName = it },
+            label = { Text("Room Name") },
+            placeholder = { Text("Enter room name") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        OutlinedTextField(
+            value = username,
+            onValueChange = { username = it },
+            label = { Text("Username") },
+            placeholder = { Text("Enter your username") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        // 游戏选择
+        Text("Preferred Game (Required)", style = MaterialTheme.typography.bodyMedium)
+        Spacer(modifier = Modifier.height(4.dp))
+        
+        // 游戏选择框
+        OutlinedTextField(
+            value = selectedGameName,
+            onValueChange = { },
+            label = { Text("Select Game") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { 
+                    networkViewModel.showGameSelectionDialog.value = true 
+                },
+            placeholder = { 
+                if (mainViewModel.homeViewModel.gameList.isEmpty()) {
+                    Text("No games found")
+                } else {
+                    Text("Click to select game")
+                }
+            },
+            readOnly = true,
+            trailingIcon = {
+                Icon(
+                    imageVector = Icons.Filled.ArrowDropDown,
+                    contentDescription = "Select Game",
+                    modifier = Modifier.clickable { 
+                        networkViewModel.showGameSelectionDialog.value = true 
+                    }
+                )
+            },
+            enabled = mainViewModel.homeViewModel.gameList.isNotEmpty()
+        )
+        
+        Spacer(modifier = Modifier.height(12.dp))
+        
+        // 最大玩家数设置
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = "Max Players:",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Button(
+                onClick = { if (maxPlayers > 1) maxPlayers-- },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                ),
+                modifier = Modifier.width(48.dp)
+            ) {
+                Text("-")
+            }
+            Text(
+                text = "$maxPlayers",
+                modifier = Modifier.padding(horizontal = 16.dp),
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
+            Button(
+                onClick = { if (maxPlayers < 8) maxPlayers++ },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                ),
+                modifier = Modifier.width(48.dp)
+            ) {
+                Text("+")
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Button(
+            onClick = {
+                if (lobbyName.isNotBlank() && selectedGameName.isNotBlank() && username.isNotBlank()) {
+                    networkViewModel.createLobby(lobbyName, selectedGameName, maxPlayers, username)
+                    onDismiss()
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = lobbyName.isNotBlank() && selectedGameName.isNotBlank() && username.isNotBlank()
+        ) {
+            Text("Create Room")
+        }
+    }
+    
+    // 游戏选择对话框
+    if (networkViewModel.showGameSelectionDialog.value) {
+        GameSelectionDialog(
+            games = mainViewModel.homeViewModel.gameList.toList(),
+            onDismiss = { networkViewModel.showGameSelectionDialog.value = false },
+            onGameSelected = { gameName ->
+                selectedGameName = gameName
+                networkViewModel.showGameSelectionDialog.value = false
+            }
+        )
+    }
+}
+
+// 房间状态显示对话框
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RoomStatusDialog(
+    networkViewModel: NetworkViewModel,
+    onDismiss: () -> Unit
+) {
+    val currentLobby = networkViewModel.currentLobby.value
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { 
+            Text(
+                text = "Room Status - ${currentLobby?.name ?: "Unknown"}",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column {
+                if (currentLobby != null) {
+                    // 房间信息
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Room Name:")
+                        Text(currentLobby.name, fontWeight = FontWeight.Bold)
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Game:")
+                        Text(currentLobby.gameTitle)
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Players:")
+                        Text("${currentLobby.playerCount}/${currentLobby.maxPlayers}")
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("IP Address:")
+                        Text(currentLobby.hostIp)
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Port:")
+                        Text(currentLobby.port.toString())
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Divider()
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // 玩家列表
+                    Text(
+                        text = "Players in Room:",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    
+                    // 这里显示玩家列表 - 简化版本，实际应该从网络获取
+                    Column {
+                        Text("• ${currentLobby.hostName} (Host)")
+                        // 可以添加更多玩家...
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // 聊天区域（简化）
+                    Text(
+                        text = "Chat",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    
+                    // 聊天消息区域
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .padding(8.dp)
+                    ) {
+                        Text("Chat messages will appear here...")
+                    }
+                } else {
+                    Text("No active room")
+                }
+            }
+        },
+        confirmButton = {
+            Row {
+                Button(
+                    onClick = {
+                        // 管理按钮功能
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    )
+                ) {
+                    Text("Manage")
+                }
+                
+                Spacer(modifier = Modifier.width(8.dp))
+                
+                Button(
+                    onClick = {
+                        networkViewModel.leaveLobby()
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Leave Room")
+                }
+            }
+        }
+    )
+}
+
+// 原有的其他Composable函数保持不变...
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LobbyManagementCard(networkViewModel: NetworkViewModel, mainViewModel: MainViewModel) {
@@ -370,6 +845,14 @@ fun LobbyManagementCard(networkViewModel: NetworkViewModel, mainViewModel: MainV
                 networkViewModel.createLobby(lobbyName, gameTitle, maxPlayers, "")
             },
             gameList = mainViewModel.homeViewModel.gameList.toList() // 直接从 homeViewModel 获取游戏列表
+        )
+    }
+    
+    // 房间状态对话框
+    if (networkViewModel.showRoomStatusDialog.value) {
+        RoomStatusDialog(
+            networkViewModel = networkViewModel,
+            onDismiss = { networkViewModel.showRoomStatusDialog.value = false }
         )
     }
     
