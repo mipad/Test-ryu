@@ -1467,7 +1467,7 @@ namespace LibRyujinx
                     // 从mods.json中移除
                     RemoveModFromJson(titleId, modPath);
                     
-                    Logger.Info?.Print(LogClass.ModLoader, "Mod directory deleted successfully")
+                    Logger.Info?.Print(LogClass.ModLoader, "Mod directory deleted successfully");
                     return true;
                 }
                 else
