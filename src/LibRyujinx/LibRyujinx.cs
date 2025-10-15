@@ -116,7 +116,7 @@ namespace LibRyujinx
         
         // 添加IP地址缓存时间戳
         private static DateTime _lastIpUpdateTime = DateTime.MinValue;
-        private static readonly TimeSpan _ipCacheTimeout = TimeSpan.FromSeconds(5); // 5秒缓存
+        private static readonly System.TimeSpan _ipCacheTimeout = System.TimeSpan.FromSeconds(5); // 5秒缓存
 
         // Mod 相关类型定义
         public class ModInfo
