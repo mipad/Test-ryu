@@ -1761,33 +1761,34 @@ if (showCustomTimeDialog.value) {
     }
 }
     
+
 // 网络设置部分 
 ExpandableView(onCardArrowClick = { }, title = "Network") {
     Column(modifier = Modifier.fillMaxWidth()) {
         // 网络状态概览
         
-Row(
-    modifier = Modifier
-        .fillMaxWidth()
-        .padding(8.dp),
-    horizontalArrangement = Arrangement.SpaceBetween,
-    verticalAlignment = Alignment.CenterVertically
-) {
-    Text(text = "Network Status")
-    val networkViewModel = NetworkViewModel(settingsViewModel.activity)
-    val networkStatus = networkViewModel.getNetworkStatus()
-    Text(
-        text = networkViewModel.getNetworkStatusText(),
-        color = when (networkStatus) {
-            NetworkStatus.CONNECTED_WIFI -> MaterialTheme.colorScheme.primary
-            NetworkStatus.CONNECTED_MOBILE -> MaterialTheme.colorScheme.primary
-            NetworkStatus.CONNECTED_ETHERNET -> MaterialTheme.colorScheme.primary
-            NetworkStatus.CONNECTED_UNKNOWN -> MaterialTheme.colorScheme.primary
-            NetworkStatus.DISCONNECTED -> MaterialTheme.colorScheme.error
-            NetworkStatus.UNKNOWN -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "Network Status")
+            val networkViewModel = NetworkViewModel(settingsViewModel.activity)
+            val networkStatus = networkViewModel.getNetworkStatus()
+            Text(
+                text = networkViewModel.getNetworkStatusText(),
+                color = when (networkStatus) {
+                    NetworkStatus.CONNECTED_WIFI -> MaterialTheme.colorScheme.primary
+                    NetworkStatus.CONNECTED_MOBILE -> MaterialTheme.colorScheme.primary
+                    NetworkStatus.CONNECTED_ETHERNET -> MaterialTheme.colorScheme.primary
+                    NetworkStatus.CONNECTED_UNKNOWN -> MaterialTheme.colorScheme.primary
+                    NetworkStatus.DISCONNECTED -> MaterialTheme.colorScheme.error
+                    NetworkStatus.UNKNOWN -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                }
+            )
         }
-    )
-}
         
         // 启用互联网访问开关
         Row(
@@ -1802,6 +1803,40 @@ Row(
                 checked = enableInternet.value,
                 onCheckedChange = { enableInternet.value = it }
             )
+        }
+        
+        // 多人游戏模式选择
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "Multiplayer Mode")
+            Text(
+                text = when (multiplayerMode.value) {
+                    0 -> "Disabled"
+                    1 -> "LDN Local Wireless"
+                    else -> "Unknown"
+                },
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        
+        // 多人游戏按钮
+        Button(
+            onClick = { 
+                // 这里可以打开多人游戏对话框
+                // 由于设置页面结构限制，建议用户使用主界面的网络视图
+                settingsViewModel.navController.navigate("network_settings")
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            enabled = multiplayerMode.value == 1
+        ) {
+            Text(text = "Open Multiplayer Lobby")
         }
         
         // 快速跳转到完整网络设置
