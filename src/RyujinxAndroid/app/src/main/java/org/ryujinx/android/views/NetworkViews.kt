@@ -14,7 +14,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -32,7 +31,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -54,24 +52,14 @@ import org.ryujinx.android.viewmodels.SettingsViewModel
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import org.ryujinx.android.viewmodels.MainViewModel
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextOverflow
 
 @Composable
 fun NetworkView(settingsViewModel: SettingsViewModel, mainViewModel: MainViewModel) {
-    // 直接使用 mainViewModel 中的 homeViewModel 来获取游戏列表
-    val networkViewModel = remember { NetworkViewModel(settingsViewModel.activity) }
+    val networkViewModel = NetworkViewModel(settingsViewModel.activity)
     
-    // 设置游戏列表 - 使用 homeViewModel 的 gameList
+    // 设置游戏列表
     LaunchedEffect(mainViewModel.homeViewModel.gameList) {
-        val gameList = mainViewModel.homeViewModel.gameList.toList()
-        println("DEBUG: Setting game list with ${gameList.size} games")
-        networkViewModel.setGameList(gameList)
+        networkViewModel.setGameList(mainViewModel.homeViewModel.gameList.toList())
     }
     
     Column(
@@ -91,7 +79,7 @@ fun NetworkView(settingsViewModel: SettingsViewModel, mainViewModel: MainViewMod
         
         // 只在启用 LDN 模式时显示大厅管理
         if (networkViewModel.multiplayerModeIndex.value == 1) {
-            LobbyManagementCard(networkViewModel, mainViewModel)
+            LobbyManagementCard(networkViewModel)
             Spacer(modifier = Modifier.height(16.dp))
         }
         
@@ -360,15 +348,17 @@ fun MultiplayerSettingsCard(networkViewModel: NetworkViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LobbyManagementCard(networkViewModel: NetworkViewModel, mainViewModel: MainViewModel) {
+fun LobbyManagementCard(networkViewModel: NetworkViewModel) {
     // 添加创建大厅对话框状态管理
     if (networkViewModel.showCreateLobbyDialog.value) {
         CreateLobbyDialog(
             onDismiss = { networkViewModel.showCreateLobbyDialog.value = false },
-            onCreate = { lobbyName, gameTitle, maxPlayers ->
-                networkViewModel.createLobby(lobbyName, gameTitle, maxPlayers, "")
+            onCreate = { lobbyName, selectedGame, maxPlayers ->
+                val gameTitle = selectedGame.getDisplayName()
+                val gameId = selectedGame.titleId ?: ""
+                networkViewModel.createLobby(lobbyName, gameTitle, maxPlayers, gameId)
             },
-            gameList = mainViewModel.homeViewModel.gameList.toList() // 直接从 homeViewModel 获取游戏列表
+            gameList = networkViewModel.gameList.value
         )
     }
     
@@ -440,13 +430,13 @@ fun LobbyManagementCard(networkViewModel: NetworkViewModel, mainViewModel: MainV
 @Composable
 fun CreateLobbyDialog(
     onDismiss: () -> Unit,
-    onCreate: (String, String, Int) -> Unit,
+    onCreate: (String, GameModel, Int) -> Unit,
     gameList: List<GameModel>
 ) {
     var lobbyName by remember { mutableStateOf("") }
-    var selectedGameName by remember { mutableStateOf("") }
+    var selectedGame by remember { mutableStateOf<GameModel?>(null) }
     var maxPlayers by remember { mutableStateOf(4) }
-    var showGameSelectionDialog by remember { mutableStateOf(false) }
+    var gameDropdownExpanded by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -462,51 +452,62 @@ fun CreateLobbyDialog(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 
-                // 显示游戏数量信息
-                Text(
-                    text = "找到 ${gameList.size} 个游戏",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-                
-                // 游戏选择
+                // 游戏选择下拉菜单
                 Text("选择游戏:", style = MaterialTheme.typography.bodyMedium)
                 Spacer(modifier = Modifier.height(4.dp))
                 
-                // 游戏选择框 - 使用按钮打开游戏选择对话框
-                OutlinedTextField(
-                    value = selectedGameName,
-                    onValueChange = { }, // 不允许直接编辑
-                    label = { Text("选择游戏") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { 
-                            if (gameList.isNotEmpty()) {
-                                showGameSelectionDialog = true 
-                            }
-                        },
-                    placeholder = { 
-                        if (gameList.isEmpty()) {
-                            Text("没有找到游戏")
-                        } else {
-                            Text("点击选择游戏")
+                // 游戏选择框
+                Box {
+                    OutlinedTextField(
+                        value = selectedGame?.getDisplayName() ?: "",
+                        onValueChange = { }, // 不允许直接编辑
+                        label = { Text("选择游戏") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { gameDropdownExpanded = true },
+                        placeholder = { Text("点击选择游戏") },
+                        readOnly = true,
+                        trailingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.ArrowDropDown,
+                                contentDescription = "选择游戏",
+                                modifier = Modifier.clickable { gameDropdownExpanded = true }
+                            )
                         }
-                    },
-                    readOnly = true,
-                    trailingIcon = {
-                        Icon(
-                            imageVector = Icons.Filled.ArrowDropDown,
-                            contentDescription = "选择游戏",
-                            modifier = Modifier.clickable { 
-                                if (gameList.isNotEmpty()) {
-                                    showGameSelectionDialog = true 
-                                }
+                    )
+                    
+                    DropdownMenu(
+                        expanded = gameDropdownExpanded,
+                        onDismissRequest = { gameDropdownExpanded = false },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (gameList.isEmpty()) {
+                            DropdownMenuItem(
+                                text = { Text("没有找到游戏") },
+                                onClick = { gameDropdownExpanded = false }
+                            )
+                        } else {
+                            gameList.forEach { game ->
+                                DropdownMenuItem(
+                                    text = { 
+                                        Column {
+                                            Text(game.getDisplayName())
+                                            Text(
+                                                game.titleId ?: "Unknown ID", 
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        selectedGame = game
+                                        gameDropdownExpanded = false
+                                    }
+                                )
                             }
-                        )
-                    },
-                    enabled = gameList.isNotEmpty()
-                )
+                        }
+                    }
+                }
                 
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(
@@ -548,12 +549,12 @@ fun CreateLobbyDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (lobbyName.isNotBlank() && selectedGameName.isNotBlank()) {
-                        onCreate(lobbyName, selectedGameName, maxPlayers)
+                    if (lobbyName.isNotBlank() && selectedGame != null) {
+                        onCreate(lobbyName, selectedGame!!, maxPlayers)
                         onDismiss()
                     }
                 },
-                enabled = lobbyName.isNotBlank() && selectedGameName.isNotBlank()
+                enabled = lobbyName.isNotBlank() && selectedGame != null
             ) {
                 Text("创建")
             }
@@ -565,140 +566,6 @@ fun CreateLobbyDialog(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                 )
             ) {
-                Text("取消")
-            }
-        }
-    )
-
-    // 游戏选择对话框
-    if (showGameSelectionDialog) {
-        GameSelectionDialog(
-            games = gameList,
-            onDismiss = { showGameSelectionDialog = false },
-            onGameSelected = { gameName ->
-                selectedGameName = gameName
-                showGameSelectionDialog = false
-            }
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun GameSelectionDialog(
-    games: List<GameModel>,
-    onDismiss: () -> Unit,
-    onGameSelected: (String) -> Unit
-) {
-    var searchText by remember { mutableStateOf("") }
-    val filteredGames = remember(searchText, games) {
-        if (searchText.isBlank()) {
-            games
-        } else {
-            games.filter { game ->
-                game.getDisplayName().contains(searchText, ignoreCase = true) ||
-                (game.titleId?.contains(searchText, ignoreCase = true) == true)
-            }
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { 
-            Column {
-                Text("选择游戏")
-                Text(
-                    text = "找到 ${filteredGames.size} 个游戏",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                )
-            }
-        },
-        text = {
-            Column {
-                // 搜索框
-                OutlinedTextField(
-                    value = searchText,
-                    onValueChange = { searchText = it },
-                    label = { Text("搜索游戏") },
-                    placeholder = { Text("输入游戏名称或ID") },
-                    modifier = Modifier.fillMaxWidth(),
-                    trailingIcon = {
-                        if (searchText.isNotEmpty()) {
-                            IconButton(
-                                onClick = { searchText = "" }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Close,
-                                    contentDescription = "清除搜索"
-                                )
-                            }
-                        } else {
-                            Icon(
-                                imageVector = Icons.Filled.Search,
-                                contentDescription = "搜索"
-                            )
-                        }
-                    },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { /* 搜索已实时进行 */ })
-                )
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                // 游戏列表
-                if (filteredGames.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = if (searchText.isNotEmpty()) "没有找到匹配的游戏" else "没有可用的游戏",
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.height(300.dp)
-                    ) {
-                        items(filteredGames) { game ->
-                            Card(
-                                onClick = { onGameSelected(game.getDisplayName()) },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                                )
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp)
-                                ) {
-                                    Text(
-                                        text = game.getDisplayName(),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    if (game.titleId != null) {
-                                        Text(
-                                            text = "ID: ${game.titleId}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(onClick = onDismiss) {
                 Text("取消")
             }
         }
