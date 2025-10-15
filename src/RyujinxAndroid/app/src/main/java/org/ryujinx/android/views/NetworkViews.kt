@@ -14,7 +14,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Games
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -22,10 +21,9 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -45,17 +43,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
 import org.ryujinx.android.RyujinxNative
+import org.ryujinx.android.viewmodels.GameModel
 import org.ryujinx.android.viewmodels.NetworkViewModel
 import org.ryujinx.android.viewmodels.NetworkStatus
 import org.ryujinx.android.viewmodels.SettingsViewModel
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.json.Json
 
 @Composable
-fun NetworkView(settingsViewModel: SettingsViewModel) {
+fun NetworkView(settingsViewModel: SettingsViewModel, mainViewModel: org.ryujinx.android.viewmodels.MainViewModel) {
     val networkViewModel = NetworkViewModel(settingsViewModel.activity)
+    
+    // 设置游戏列表
+    LaunchedEffect(mainViewModel.homeViewModel.gameList) {
+        networkViewModel.setGameList(mainViewModel.homeViewModel.gameList.toList())
+    }
     
     Column(
         modifier = Modifier
@@ -347,13 +348,13 @@ fun LobbyManagementCard(networkViewModel: NetworkViewModel) {
     // 添加创建大厅对话框状态管理
     if (networkViewModel.showCreateLobbyDialog.value) {
         CreateLobbyDialog(
-            networkViewModel = networkViewModel,
             onDismiss = { networkViewModel.showCreateLobbyDialog.value = false },
             onCreate = { lobbyName, selectedGame, maxPlayers ->
                 val gameTitle = selectedGame.getDisplayName()
                 val gameId = selectedGame.titleId ?: ""
                 networkViewModel.createLobby(lobbyName, gameTitle, maxPlayers, gameId)
-            }
+            },
+            gameList = networkViewModel.gameList.value
         )
     }
     
@@ -393,16 +394,6 @@ fun LobbyManagementCard(networkViewModel: NetworkViewModel) {
                         contentDescription = "Refresh Lobbies"
                     )
                 }
-                
-                // 刷新游戏列表按钮
-                IconButton(
-                    onClick = { networkViewModel.refreshGameList() }
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Games,
-                        contentDescription = "Refresh Games"
-                    )
-                }
             }
             
             Spacer(modifier = Modifier.height(12.dp))
@@ -434,68 +425,71 @@ fun LobbyManagementCard(networkViewModel: NetworkViewModel) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateLobbyDialog(
-    networkViewModel: NetworkViewModel,
     onDismiss: () -> Unit,
-    onCreate: (String, org.ryujinx.android.viewmodels.GameModel, Int) -> Unit
+    onCreate: (String, GameModel, Int) -> Unit,
+    gameList: List<GameModel>
 ) {
     var lobbyName by remember { mutableStateOf("") }
-    var selectedGame by remember { mutableStateOf<org.ryujinx.android.viewmodels.GameModel?>(null) }
+    var selectedGame by remember { mutableStateOf<GameModel?>(null) }
     var maxPlayers by remember { mutableStateOf(4) }
-    var expanded by remember { mutableStateOf(false) }
+    var gameDropdownExpanded by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Create Lobby") },
+        title = { Text("创建大厅") },
         text = {
             Column {
                 OutlinedTextField(
                     value = lobbyName,
                     onValueChange = { lobbyName = it },
-                    label = { Text("Lobby Name") },
+                    label = { Text("大厅名称") },
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Enter lobby name") }
+                    placeholder = { Text("输入大厅名称") }
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 
                 // 游戏选择下拉菜单
-                Text(
-                    text = "Select Game:",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
+                Text("选择游戏:", style = MaterialTheme.typography.bodyMedium)
+                Spacer(modifier = Modifier.height(4.dp))
                 
-                ExposedDropdownMenuBox(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = !expanded }
-                ) {
+                // 游戏选择框
+                Box {
                     OutlinedTextField(
                         value = selectedGame?.getDisplayName() ?: "",
-                        onValueChange = { },
-                        readOnly = true,
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                        placeholder = { Text("Select a game") },
+                        onValueChange = { }, // 不允许直接编辑
+                        label = { Text("选择游戏") },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .menuAnchor()
+                            .clickable { gameDropdownExpanded = true },
+                        placeholder = { Text("点击选择游戏") },
+                        readOnly = true,
+                        trailingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.ArrowDropDown,
+                                contentDescription = "选择游戏",
+                                modifier = Modifier.clickable { gameDropdownExpanded = true }
+                            )
+                        }
                     )
                     
-                    ExposedDropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false }
+                    DropdownMenu(
+                        expanded = gameDropdownExpanded,
+                        onDismissRequest = { gameDropdownExpanded = false },
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        if (networkViewModel.availableGames.value.isEmpty()) {
+                        if (gameList.isEmpty()) {
                             DropdownMenuItem(
-                                text = { Text("No games available") },
-                                onClick = { }
+                                text = { Text("没有找到游戏") },
+                                onClick = { gameDropdownExpanded = false }
                             )
                         } else {
-                            networkViewModel.availableGames.value.forEach { game ->
+                            gameList.forEach { game ->
                                 DropdownMenuItem(
                                     text = { 
                                         Column {
                                             Text(game.getDisplayName())
                                             Text(
-                                                game.titleId ?: "Unknown ID",
+                                                game.titleId ?: "Unknown ID", 
                                                 fontSize = 12.sp,
                                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                                             )
@@ -503,7 +497,7 @@ fun CreateLobbyDialog(
                                     },
                                     onClick = {
                                         selectedGame = game
-                                        expanded = false
+                                        gameDropdownExpanded = false
                                     }
                                 )
                             }
@@ -512,13 +506,12 @@ fun CreateLobbyDialog(
                 }
                 
                 Spacer(modifier = Modifier.height(12.dp))
-                
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "Max Players:",
+                        text = "最大玩家数:",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(modifier = Modifier.weight(1f))
@@ -559,7 +552,7 @@ fun CreateLobbyDialog(
                 },
                 enabled = lobbyName.isNotBlank() && selectedGame != null
             ) {
-                Text("Create")
+                Text("创建")
             }
         },
         dismissButton = {
@@ -569,7 +562,7 @@ fun CreateLobbyDialog(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                 )
             ) {
-                Text("Cancel")
+                Text("取消")
             }
         }
     )
@@ -621,8 +614,6 @@ fun IdleLobbyView(networkViewModel: NetworkViewModel) {
                 }
             }
         }
-        
-        // 移除自动刷新大厅列表的代码，改为手动刷新
     }
 }
 
@@ -716,14 +707,6 @@ fun HostingLobbyView(networkViewModel: NetworkViewModel) {
         
         Spacer(modifier = Modifier.height(16.dp))
         
-        Text(
-            text = "Note: Other players can now find and join your lobby",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.primary
-        )
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
         Button(
             onClick = { networkViewModel.leaveLobby() },
             colors = ButtonDefaults.buttonColors(
@@ -732,6 +715,14 @@ fun HostingLobbyView(networkViewModel: NetworkViewModel) {
         ) {
             Text("Close Lobby")
         }
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        Text(
+            text = "Note: Your lobby is being broadcasted to other players on the network",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        )
     }
 }
 
