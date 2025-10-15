@@ -31,7 +31,6 @@ using OpenTK.Audio.OpenAL;
 using Ryujinx.HLE.Loaders.Npdm;
 using System.Globalization;
 using Ryujinx.UI.Common.Configuration.System;
-using Ryujinx.Common.Logging.Targets;
 using System.Collections.Generic;
 using System.Text;
 using Ryujinx.HLE.UI;
@@ -107,6 +106,11 @@ namespace LibRyujinx
         private static bool _isNetworkInitialized = false;
         private static int _broadcastPort = 11451; // 广播端口
         private static int _tcpPort = 11452; // TCP通信端口
+
+        // 添加子网广播地址相关字段
+        private static IPAddress _currentLocalIp = null;
+        private static IPAddress _currentSubnetMask = null;
+        private static IPAddress _currentBroadcastAddress = null;
 
         // Mod 相关类型定义
         public class ModInfo
@@ -321,6 +325,60 @@ namespace LibRyujinx
         // ==================== 网络通信功能 ====================
 
         /// <summary>
+        /// 计算子网广播地址
+        /// </summary>
+        private static IPAddress CalculateBroadcastAddress(IPAddress ipAddress, IPAddress subnetMask)
+        {
+            byte[] ipBytes = ipAddress.GetAddressBytes();
+            byte[] maskBytes = subnetMask.GetAddressBytes();
+            byte[] broadcastBytes = new byte[4];
+
+            for (int i = 0; i < 4; i++)
+            {
+                broadcastBytes[i] = (byte)(ipBytes[i] | ~maskBytes[i]);
+            }
+
+            return new IPAddress(broadcastBytes);
+        }
+
+        /// <summary>
+        /// 获取子网广播地址
+        /// </summary>
+        private static IPAddress GetBroadcastAddress()
+        {
+            if (_currentBroadcastAddress != null)
+            {
+                return _currentBroadcastAddress;
+            }
+
+            // 如果没有计算过广播地址，尝试计算
+            if (_currentLocalIp != null && _currentSubnetMask != null)
+            {
+                _currentBroadcastAddress = CalculateBroadcastAddress(_currentLocalIp, _currentSubnetMask);
+                Logger.Info?.Print(LogClass.ServiceLdn, $"Calculated broadcast address: {_currentBroadcastAddress} from IP: {_currentLocalIp}, Mask: {_currentSubnetMask}");
+                return _currentBroadcastAddress;
+            }
+
+            // 如果无法计算，回退到子网定向广播（例如192.168.21.255）
+            if (_currentLocalIp != null)
+            {
+                byte[] ipBytes = _currentLocalIp.GetAddressBytes();
+                if (ipBytes.Length == 4)
+                {
+                    // 假设是 /24 子网
+                    byte[] broadcastBytes = new byte[] { ipBytes[0], ipBytes[1], ipBytes[2], 255 };
+                    _currentBroadcastAddress = new IPAddress(broadcastBytes);
+                    Logger.Info?.Print(LogClass.ServiceLdn, $"Using fallback broadcast address: {_currentBroadcastAddress}");
+                    return _currentBroadcastAddress;
+                }
+            }
+
+            // 最后回退到全局广播
+            Logger.Warning?.Print(LogClass.ServiceLdn, "Using global broadcast address as fallback");
+            return IPAddress.Broadcast;
+        }
+
+        /// <summary>
         /// 初始化网络通信
         /// </summary>
         public static void InitializeNetwork()
@@ -518,7 +576,7 @@ namespace LibRyujinx
         }
 
         /// <summary>
-        /// 广播大厅存在
+        /// 广播大厅存在 - 使用子网广播地址
         /// </summary>
         private static async Task BroadcastLobbyExistence()
         {
@@ -528,9 +586,15 @@ namespace LibRyujinx
             {
                 var message = $"LOBBY_BROADCAST:{JsonSerializer.Serialize(_currentLobby, _lobbyInfoJsonSerializerContext.LobbyInfo)}";
                 var data = Encoding.UTF8.GetBytes(message);
-                var broadcastAddress = new IPEndPoint(IPAddress.Broadcast, _broadcastPort);
+                
+                // 使用子网广播地址而不是全局广播
+                var broadcastAddress = new IPEndPoint(GetBroadcastAddress(), _broadcastPort);
                 
                 await _udpBroadcastClient.SendAsync(data, data.Length, broadcastAddress);
+                
+                // 同时发送到全局广播作为备用
+                var globalBroadcastAddress = new IPEndPoint(IPAddress.Broadcast, _broadcastPort);
+                await _udpBroadcastClient.SendAsync(data, data.Length, globalBroadcastAddress);
             }
             catch (Exception ex)
             {
@@ -539,7 +603,7 @@ namespace LibRyujinx
         }
 
         /// <summary>
-        /// 查询网络中的大厅
+        /// 查询网络中的大厅 - 使用子网广播地址
         /// </summary>
         private static async Task QueryNetworkLobbies()
         {
@@ -547,9 +611,14 @@ namespace LibRyujinx
             {
                 var message = "LOBBY_QUERY:REQUEST";
                 var data = Encoding.UTF8.GetBytes(message);
-                var broadcastAddress = new IPEndPoint(IPAddress.Broadcast, _broadcastPort);
                 
+                // 使用子网广播地址而不是全局广播
+                var broadcastAddress = new IPEndPoint(GetBroadcastAddress(), _broadcastPort);
                 await _udpBroadcastClient.SendAsync(data, data.Length, broadcastAddress);
+                
+                // 同时发送到全局广播作为备用
+                var globalBroadcastAddress = new IPEndPoint(IPAddress.Broadcast, _broadcastPort);
+                await _udpBroadcastClient.SendAsync(data, data.Length, globalBroadcastAddress);
             }
             catch (Exception ex)
             {
@@ -617,6 +686,7 @@ namespace LibRyujinx
             
             _networkLobbies.Clear();
             _lobbyLastSeen.Clear();
+            _currentBroadcastAddress = null;
             
             Logger.Info?.Print(LogClass.ServiceLdn, "Network stopped");
         }
@@ -673,6 +743,7 @@ namespace LibRyujinx
                 }, _networkCancellation.Token);
 
                 Logger.Info?.Print(LogClass.ServiceLdn, $"Lobby created and broadcasting: {lobbyName} at {localIp}:{_tcpPort}");
+                Logger.Info?.Print(LogClass.ServiceLdn, $"Using broadcast address: {GetBroadcastAddress()}");
                 return true;
             }
             catch (Exception ex)
@@ -1011,6 +1082,8 @@ namespace LibRyujinx
                     if (!string.IsNullOrEmpty(ip) && ip != "127.0.0.1")
                     {
                         Logger.Info?.Print(LogClass.ServiceLdn, $"Got local IP from network interface: {ip}");
+                        _currentLocalIp = addressInfo.Address;
+                        _currentSubnetMask = addressInfo.IPv4Mask;
                         return ip;
                     }
                 }
@@ -1030,6 +1103,8 @@ namespace LibRyujinx
                                 if (!localIp.StartsWith("169.254.")) // 排除 APIPA 地址
                                 {
                                     Logger.Info?.Print(LogClass.ServiceLdn, $"Got local IP from {ni.Description}: {localIp}");
+                                    _currentLocalIp = ip.Address;
+                                    _currentSubnetMask = ip.IPv4Mask;
                                     return localIp;
                                 }
                             }
@@ -1047,17 +1122,23 @@ namespace LibRyujinx
                         if (localIp != "127.0.0.1")
                         {
                             Logger.Info?.Print(LogClass.ServiceLdn, $"Got local IP from host entry: {localIp}");
+                            _currentLocalIp = ip;
+                            _currentSubnetMask = IPAddress.Parse("255.255.255.0"); // 假设默认子网掩码
                             return localIp;
                         }
                     }
                 }
 
                 Logger.Warning?.Print(LogClass.ServiceLdn, "No valid local IP address found, using 127.0.0.1");
+                _currentLocalIp = IPAddress.Parse("127.0.0.1");
+                _currentSubnetMask = IPAddress.Parse("255.255.255.0");
                 return "127.0.0.1";
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.ServiceLdn, $"Error getting local IP: {ex.Message}");
+                _currentLocalIp = IPAddress.Parse("127.0.0.1");
+                _currentSubnetMask = IPAddress.Parse("255.255.255.0");
                 return "127.0.0.1";
             }
         }
