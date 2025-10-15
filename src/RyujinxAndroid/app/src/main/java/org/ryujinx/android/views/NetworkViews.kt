@@ -623,6 +623,9 @@ fun GameSelectionDialog(
                     label = { Text("搜索游戏") },
                     placeholder = { Text("输入游戏名称或ID") },
                     modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { /* 搜索已自动执行 */ }),
                     trailingIcon = {
                         if (searchText.isNotEmpty()) {
                             IconButton(
@@ -633,64 +636,41 @@ fun GameSelectionDialog(
                                     contentDescription = "清除搜索"
                                 )
                             }
-                        } else {
-                            Icon(
-                                imageVector = Icons.Filled.Search,
-                                contentDescription = "搜索"
-                            )
                         }
-                    },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { /* 搜索已实时进行 */ })
+                    }
                 )
-                
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 // 游戏列表
-                if (filteredGames.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = if (searchText.isNotEmpty()) "没有找到匹配的游戏" else "没有可用的游戏",
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.height(300.dp)
-                    ) {
-                        items(filteredGames) { game ->
-                            Card(
-                                onClick = { onGameSelected(game.getDisplayName()) },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                                )
+                LazyColumn(
+                    modifier = Modifier.height(300.dp)
+                ) {
+                    items(filteredGames) { game ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .clickable { onGameSelected(game.getDisplayName()) },
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp)
                             ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp)
-                                ) {
-                                    Text(
-                                        text = game.getDisplayName(),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    if (game.titleId != null) {
-                                        Text(
-                                            text = "ID: ${game.titleId}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                        )
-                                    }
-                                }
+                                Text(
+                                    text = game.getDisplayName(),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "ID: ${game.titleId ?: "Unknown"}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                )
                             }
                         }
                     }
@@ -699,7 +679,7 @@ fun GameSelectionDialog(
         },
         confirmButton = {
             Button(onClick = onDismiss) {
-                Text("取消")
+                Text("关闭")
             }
         }
     )
@@ -711,63 +691,120 @@ fun IdleLobbyView(networkViewModel: NetworkViewModel) {
         // 创建大厅按钮
         Button(
             onClick = { 
-                networkViewModel.showCreateLobbyDialog.value = true
+                println("DEBUG: Create lobby button clicked")
+                networkViewModel.showCreateLobbyDialog.value = true 
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary
+            )
         ) {
-            Text("Create New Lobby")
+            Icon(
+                imageVector = Icons.Filled.Settings,
+                contentDescription = "Create Lobby"
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("创建大厅")
         }
         
         Spacer(modifier = Modifier.height(16.dp))
         
         // 大厅列表
-        Text(
-            text = "Available Lobbies (${networkViewModel.lobbyList.value.size} found):",
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-        
-        if (networkViewModel.isScanningLobbies.value) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                CircularProgressIndicator()
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Scanning for lobbies...")
-            }
-        } else if (networkViewModel.lobbyList.value.isEmpty()) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 32.dp)
-            ) {
+        LobbyListView(networkViewModel)
+    }
+}
+
+@Composable
+fun LobbyListView(networkViewModel: NetworkViewModel) {
+    Column {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = "可用大厅",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            
+            Spacer(modifier = Modifier.weight(1f))
+            
+            // 扫描状态指示器
+            if (networkViewModel.isScanningLobbies.value) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "扫描中...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            } else {
                 Text(
-                    text = "No lobbies found",
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = "找到 ${networkViewModel.lobbyList.value.size} 个大厅",
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Make sure you're on the same network as other players",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(
-                    onClick = { networkViewModel.refreshLobbyList() }
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        when {
+            networkViewModel.isScanningLobbies.value -> {
+                // 扫描中
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp)
                 ) {
-                    Text("Try Again")
+                    CircularProgressIndicator()
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("正在扫描网络中的大厅...")
                 }
             }
-        } else {
-            LazyColumn {
-                items(networkViewModel.lobbyList.value) { lobby ->
-                    LobbyListItem(lobby, networkViewModel)
+            
+            networkViewModel.lobbyList.value.isEmpty() -> {
+                // 没有大厅
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Search,
+                        contentDescription = "No Lobbies",
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                    )
                     Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "没有找到大厅",
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "点击刷新按钮扫描网络",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                    )
+                }
+            }
+            
+            else -> {
+                // 显示大厅列表
+                LazyColumn {
+                    items(networkViewModel.lobbyList.value) { lobby ->
+                        LobbyItem(lobby = lobby, onJoinClick = {
+                            networkViewModel.joinLobby(lobby)
+                        })
+                    }
                 }
             }
         }
@@ -775,10 +812,11 @@ fun IdleLobbyView(networkViewModel: NetworkViewModel) {
 }
 
 @Composable
-fun LobbyListItem(lobby: org.ryujinx.android.viewmodels.LobbyInfo, networkViewModel: NetworkViewModel) {
+fun LobbyItem(lobby: org.ryujinx.android.viewmodels.LobbyInfo, onJoinClick: () -> Unit) {
     Card(
-        onClick = { networkViewModel.joinLobby(lobby) },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
@@ -796,132 +834,237 @@ fun LobbyListItem(lobby: org.ryujinx.android.viewmodels.LobbyInfo, networkViewMo
                     Text(
                         text = lobby.name,
                         style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "${lobby.gameTitle} • Host: ${lobby.hostName}",
-                        style = MaterialTheme.typography.bodySmall
+                        text = lobby.gameTitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
                 }
                 
-                Column(
-                    horizontalAlignment = Alignment.End
+                Button(
+                    onClick = onJoinClick,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
                 ) {
-                    Text(
-                        text = "${lobby.playerCount}/${lobby.maxPlayers}",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        text = "${lobby.ping}ms",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = when {
-                            lobby.ping < 50 -> MaterialTheme.colorScheme.primary
-                            lobby.ping < 100 -> MaterialTheme.colorScheme.secondary
-                            else -> MaterialTheme.colorScheme.error
-                        }
-                    )
+                    Text("加入")
                 }
             }
             
-            if (lobby.isPasswordProtected) {
-                Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Row(
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Text(
-                    text = "🔒 Password Protected",
+                    text = "玩家: ${lobby.playerCount}/${lobby.maxPlayers}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text(
+                    text = "延迟: ${lobby.ping}ms",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text(
+                    text = lobby.hostIp,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.secondary
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
             }
-            
-            // 显示主机IP地址（调试用）
-            Text(
-                text = "IP: ${lobby.hostIp}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                fontSize = 10.sp
-            )
         }
     }
 }
 
 @Composable
 fun HostingLobbyView(networkViewModel: NetworkViewModel) {
-    val currentLobby = networkViewModel.currentLobby.value ?: return
+    val currentLobby = networkViewModel.currentLobby.value
     
-    Column {
-        Text(
-            text = "Hosting Lobby: ${currentLobby.name}",
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold
-        )
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        Text("Game: ${currentLobby.gameTitle}")
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        // 玩家列表
-        Text("Players in lobby:")
-        Column(
-            modifier = Modifier.padding(start = 8.dp)
-        ) {
-            Text("• ${currentLobby.hostName} (Host)")
-            // 这里应该显示实际连接的玩家列表
-            Text("• Waiting for players...")
+    if (currentLobby != null) {
+        Column {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        // 使用表情符号
+                        Text(
+                            text = "🎮", // 使用游戏手柄表情符号
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "正在托管大厅",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("大厅名称:")
+                        Text(
+                            text = currentLobby.name,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(4.dp))
+                    
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("游戏:")
+                        Text(currentLobby.gameTitle)
+                    }
+                    
+                    Spacer(modifier = Modifier.height(4.dp))
+                    
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("玩家:")
+                        Text("${currentLobby.playerCount}/${currentLobby.maxPlayers}")
+                    }
+                    
+                    Spacer(modifier = Modifier.height(4.dp))
+                    
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("IP地址:")
+                        Text(currentLobby.hostIp)
+                    }
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    Button(
+                        onClick = { networkViewModel.leaveLobby() },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("关闭大厅")
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // 显示其他可用大厅
+            LobbyListView(networkViewModel)
         }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        Button(
-            onClick = { networkViewModel.leaveLobby() },
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.error
-            )
-        ) {
-            Text("Close Lobby")
-        }
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        Text(
-            text = "Note: Your lobby is being broadcasted to other players on the network",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-        )
     }
 }
 
 @Composable
 fun InLobbyView(networkViewModel: NetworkViewModel) {
-    val currentLobby = networkViewModel.currentLobby.value ?: return
+    val currentLobby = networkViewModel.currentLobby.value
     
-    Column {
-        Text(
-            text = "Joined: ${currentLobby.name}",
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold
-        )
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        Text("Game: ${currentLobby.gameTitle}")
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        Text("Players in lobby:")
-        Column(
-            modifier = Modifier.padding(start = 8.dp)
+    if (currentLobby != null) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer
+            )
         ) {
-            Text("• ${currentLobby.hostName} (Host)")
-            Text("• You")
-        }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        Button(
-            onClick = { networkViewModel.leaveLobby() }
-        ) {
-            Text("Leave Lobby")
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // 使用表情符号
+                    Text(
+                        text = "🎯", // 使用靶心表情符号
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "已加入大厅",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                Row(
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("大厅名称:")
+                    Text(
+                        text = currentLobby.name,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                Row(
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("游戏:")
+                    Text(currentLobby.gameTitle)
+                }
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                Row(
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("玩家:")
+                    Text("${currentLobby.playerCount}/${currentLobby.maxPlayers}")
+                }
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                Row(
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("主机:")
+                    Text(currentLobby.hostIp)
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                Button(
+                    onClick = { networkViewModel.leaveLobby() },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("离开大厅")
+                }
+            }
         }
     }
 }
@@ -929,6 +1072,8 @@ fun InLobbyView(networkViewModel: NetworkViewModel) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NetworkInterfaceCard(networkViewModel: NetworkViewModel) {
+    var expanded by remember { mutableStateOf(false) }
+    
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -944,81 +1089,89 @@ fun NetworkInterfaceCard(networkViewModel: NetworkViewModel) {
             ) {
                 Icon(
                     imageVector = Icons.Filled.Settings,
-                    contentDescription = "Network Interface Settings",
+                    contentDescription = "Network Interface",
                     tint = MaterialTheme.colorScheme.primary
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Network Interface Settings",
+                    text = "Network Interface",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
-                
-                Spacer(modifier = Modifier.weight(1f))
-                
-                // Refresh button
-                IconButton(
-                    onClick = { networkViewModel.refreshNetworkInterfaces() }
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Refresh,
-                        contentDescription = "Refresh Network Interfaces"
-                    )
-                }
             }
             
             Spacer(modifier = Modifier.height(12.dp))
             Divider()
             Spacer(modifier = Modifier.height(12.dp))
             
-            Text(
-                text = "Select network interface for local wireless communication:",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-            
-            // Network interface list
+            // Network interface selection
             Column {
-                networkViewModel.networkInterfaceList.forEachIndexed { index, interfaceInfo ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        RadioButton(
-                            selected = networkViewModel.networkInterfaceIndex.value == index,
-                            onClick = { networkViewModel.setNetworkInterfaceIndex(index) }
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column(
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = interfaceInfo.name,
-                                style = MaterialTheme.typography.bodyMedium
+                Text(
+                    text = "Select Network Interface:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                
+                Box {
+                    // Network interface dropdown
+                    OutlinedTextField(
+                        value = networkViewModel.networkInterfaceList.getOrNull(networkViewModel.networkInterfaceIndex.value)?.name ?: "Default",
+                        onValueChange = { },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { expanded = true },
+                        readOnly = true,
+                        trailingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.ArrowDropDown,
+                                contentDescription = "Network Interfaces"
                             )
-                            if (interfaceInfo.description.isNotEmpty()) {
-                                Text(
-                                    text = interfaceInfo.description,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                    fontSize = 12.sp
-                                )
-                            }
                         }
-                    }
-                    if (index < networkViewModel.networkInterfaceList.size - 1) {
-                        Spacer(modifier = Modifier.height(4.dp))
+                    )
+                    
+                    DropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
+                    ) {
+                        networkViewModel.networkInterfaceList.forEachIndexed { index, interfaceInfo ->
+                            DropdownMenuItem(
+                                text = { 
+                                    Column {
+                                        Text(interfaceInfo.name)
+                                        Text(
+                                            text = interfaceInfo.description,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    networkViewModel.setNetworkInterfaceIndex(index)
+                                    expanded = false
+                                }
+                            )
+                        }
                     }
                 }
             }
             
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             
-            Text(
-                text = "Currently selected interface: ${networkViewModel.getSelectedInterfaceId()}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
+            // Refresh interfaces button
+            Button(
+                onClick = { networkViewModel.refreshNetworkInterfaces() },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Refresh,
+                    contentDescription = "Refresh Interfaces"
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Refresh Network Interfaces")
+            }
         }
     }
 }
@@ -1045,31 +1198,39 @@ fun NetworkInfoCard() {
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Network Features Description",
+                    text = "Network Information",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+                    fontWeight = FontWeight.Bold
                 )
             }
             
             Spacer(modifier = Modifier.height(12.dp))
+            Divider()
+            Spacer(modifier = Modifier.height(12.dp))
             
             Text(
-                text = "• Internet Access: Controls whether the emulator can access external networks\n" +
-                       "• LDN Local Wireless: Emulates Switch local wireless multiplayer, requires being on the same network\n" +
-                       "• Game Lobby: Create or join multiplayer game sessions over local network\n" +
-                       "• Network Interface: Select physical network adapter for local wireless communication\n" +
-                       "• Permissions: App requires network permissions to detect connection status and interface information",
+                text = "LDN Local Wireless Network",
                 style = MaterialTheme.typography.bodyMedium,
-                lineHeight = 20.sp
+                fontWeight = FontWeight.Bold
             )
             
             Spacer(modifier = Modifier.height(8.dp))
             
             Text(
-                text = "Note: Some network features may require device to be connected to a network to work properly",
+                text = "LDN (Local Distribution Network) allows you to connect with other Ryujinx devices on the same local network for multiplayer gaming experiences.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Text(
+                text = "• Make sure all devices are on the same Wi-Fi network\n" +
+                       "• Enable LDN Local Wireless mode\n" +
+                       "• Create or join a game lobby\n" +
+                       "• Start compatible multiplayer games",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
         }
     }
