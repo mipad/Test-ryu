@@ -183,6 +183,31 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
     fun setNetworkInterfaceIndex(index: Int) {
         networkInterfaceIndex.value = index
         sharedPref.edit().putInt("networkInterfaceIndex", index).apply()
+        
+        // 设置网络接口到原生层
+        val interfaceId = getSelectedInterfaceId()
+        RyujinxNative.setLanInterface(interfaceId)
+        
+        // 重新初始化网络以应用新的接口设置
+        reinitializeNetwork()
+    }
+
+    /**
+     * 重新初始化网络
+     */
+    private fun reinitializeNetwork() {
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                // 先停止网络
+                RyujinxNative.stopNetwork()
+                delay(500) // 等待网络完全停止
+                // 重新初始化网络
+                RyujinxNative.initializeNetwork()
+                println("DEBUG: Network reinitialized with interface: ${getSelectedInterfaceId()}")
+            } catch (e: Exception) {
+                println("DEBUG: Network reinitialization failed: ${e.message}")
+            }
+        }
     }
 
     /**
@@ -277,8 +302,13 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
     private fun initializeNetwork() {
         coroutineScope.launch(Dispatchers.IO) {
             try {
+                // 设置网络接口
+                val interfaceId = getSelectedInterfaceId()
+                RyujinxNative.setLanInterface(interfaceId)
+                
+                // 初始化网络
                 RyujinxNative.initializeNetwork()
-                println("DEBUG: Network initialized successfully")
+                println("DEBUG: Network initialized successfully with interface: $interfaceId")
             } catch (e: Exception) {
                 println("DEBUG: Network initialization failed: ${e.message}")
             }
@@ -620,3 +650,47 @@ data class LobbyInfo(
     val gameId: String = "",
     val createdTime: Long = 0
 )
+
+/**
+ * 游戏模型数据类
+ */
+data class GameModel(
+    val titleName: String,
+    val titleId: String,
+    val developer: String,
+    val version: String,
+    val icon: ByteArray?,
+    val fileSize: Double,
+    val filePath: String
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as GameModel
+
+        if (titleName != other.titleName) return false
+        if (titleId != other.titleId) return false
+        if (developer != other.developer) return false
+        if (version != other.version) return false
+        if (fileSize != other.fileSize) return false
+        if (filePath != other.filePath) return false
+        if (icon != null) {
+            if (other.icon == null) return false
+            if (!icon.contentEquals(other.icon)) return false
+        } else if (other.icon != null) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = titleName.hashCode()
+        result = 31 * result + titleId.hashCode()
+        result = 31 * result + developer.hashCode()
+        result = 31 * result + version.hashCode()
+        result = 31 * result + fileSize.hashCode()
+        result = 31 * result + filePath.hashCode()
+        result = 31 * result + (icon?.contentHashCode() ?: 0)
+        return result
+    }
+}
