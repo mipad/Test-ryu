@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Games
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -21,7 +22,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -205,6 +209,17 @@ fun NetworkStatusCard(networkViewModel: NetworkViewModel) {
                         color = MaterialTheme.colorScheme.secondary
                     )
                 }
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Game:")
+                    Text(
+                        text = lobby.gameTitle,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
             }
         }
     }
@@ -332,9 +347,12 @@ fun LobbyManagementCard(networkViewModel: NetworkViewModel) {
     // 添加创建大厅对话框状态管理
     if (networkViewModel.showCreateLobbyDialog.value) {
         CreateLobbyDialog(
+            networkViewModel = networkViewModel,
             onDismiss = { networkViewModel.showCreateLobbyDialog.value = false },
-            onCreate = { lobbyName, gameTitle, maxPlayers ->
-                networkViewModel.createLobby(lobbyName, gameTitle, maxPlayers)
+            onCreate = { lobbyName, selectedGame, maxPlayers ->
+                val gameTitle = selectedGame.getDisplayName()
+                val gameId = selectedGame.titleId ?: ""
+                networkViewModel.createLobby(lobbyName, gameTitle, maxPlayers, gameId)
             }
         )
     }
@@ -375,6 +393,16 @@ fun LobbyManagementCard(networkViewModel: NetworkViewModel) {
                         contentDescription = "Refresh Lobbies"
                     )
                 }
+                
+                // 刷新游戏列表按钮
+                IconButton(
+                    onClick = { networkViewModel.refreshGameList() }
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Games,
+                        contentDescription = "Refresh Games"
+                    )
+                }
             }
             
             Spacer(modifier = Modifier.height(12.dp))
@@ -406,40 +434,91 @@ fun LobbyManagementCard(networkViewModel: NetworkViewModel) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateLobbyDialog(
+    networkViewModel: NetworkViewModel,
     onDismiss: () -> Unit,
-    onCreate: (String, String, Int) -> Unit
+    onCreate: (String, org.ryujinx.android.viewmodels.GameModel, Int) -> Unit
 ) {
     var lobbyName by remember { mutableStateOf("") }
-    var gameTitle by remember { mutableStateOf("") }
+    var selectedGame by remember { mutableStateOf<org.ryujinx.android.viewmodels.GameModel?>(null) }
     var maxPlayers by remember { mutableStateOf(4) }
+    var expanded by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("创建大厅") },
+        title = { Text("Create Lobby") },
         text = {
             Column {
                 OutlinedTextField(
                     value = lobbyName,
                     onValueChange = { lobbyName = it },
-                    label = { Text("大厅名称") },
+                    label = { Text("Lobby Name") },
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("输入大厅名称") }
+                    placeholder = { Text("Enter lobby name") }
                 )
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = gameTitle,
-                    onValueChange = { gameTitle = it },
-                    label = { Text("游戏标题") },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("输入游戏标题") }
+                
+                // 游戏选择下拉菜单
+                Text(
+                    text = "Select Game:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 4.dp)
                 )
+                
+                ExposedDropdownMenuBox(
+                    expanded = expanded,
+                    onExpandedChange = { expanded = !expanded }
+                ) {
+                    OutlinedTextField(
+                        value = selectedGame?.getDisplayName() ?: "",
+                        onValueChange = { },
+                        readOnly = true,
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        placeholder = { Text("Select a game") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor()
+                    )
+                    
+                    ExposedDropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
+                    ) {
+                        if (networkViewModel.availableGames.value.isEmpty()) {
+                            DropdownMenuItem(
+                                text = { Text("No games available") },
+                                onClick = { }
+                            )
+                        } else {
+                            networkViewModel.availableGames.value.forEach { game ->
+                                DropdownMenuItem(
+                                    text = { 
+                                        Column {
+                                            Text(game.getDisplayName())
+                                            Text(
+                                                game.titleId ?: "Unknown ID",
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        selectedGame = game
+                                        expanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+                
                 Spacer(modifier = Modifier.height(12.dp))
+                
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "最大玩家数:",
+                        text = "Max Players:",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(modifier = Modifier.weight(1f))
@@ -473,14 +552,14 @@ fun CreateLobbyDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (lobbyName.isNotBlank() && gameTitle.isNotBlank()) {
-                        onCreate(lobbyName, gameTitle, maxPlayers)
+                    if (lobbyName.isNotBlank() && selectedGame != null) {
+                        onCreate(lobbyName, selectedGame!!, maxPlayers)
                         onDismiss()
                     }
                 },
-                enabled = lobbyName.isNotBlank() && gameTitle.isNotBlank()
+                enabled = lobbyName.isNotBlank() && selectedGame != null
             ) {
-                Text("创建")
+                Text("Create")
             }
         },
         dismissButton = {
@@ -490,7 +569,7 @@ fun CreateLobbyDialog(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                 )
             ) {
-                Text("取消")
+                Text("Cancel")
             }
         }
     )
@@ -543,13 +622,7 @@ fun IdleLobbyView(networkViewModel: NetworkViewModel) {
             }
         }
         
-        // 自动刷新大厅列表
-        LaunchedEffect(networkViewModel.isScanningLobbies.value) {
-            if (!networkViewModel.isScanningLobbies.value) {
-                delay(5000) // 5秒后自动刷新
-                networkViewModel.refreshLobbyList()
-            }
-        }
+        // 移除自动刷新大厅列表的代码，改为手动刷新
     }
 }
 
@@ -627,6 +700,10 @@ fun HostingLobbyView(networkViewModel: NetworkViewModel) {
         
         Spacer(modifier = Modifier.height(8.dp))
         
+        Text("Game: ${currentLobby.gameTitle}")
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
         // 玩家列表
         Text("Players in lobby:")
         Column(
@@ -636,6 +713,14 @@ fun HostingLobbyView(networkViewModel: NetworkViewModel) {
             // 这里应该显示实际连接的玩家列表
             Text("• Waiting for players...")
         }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Text(
+            text = "Note: Other players can now find and join your lobby",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary
+        )
         
         Spacer(modifier = Modifier.height(16.dp))
         
@@ -660,6 +745,10 @@ fun InLobbyView(networkViewModel: NetworkViewModel) {
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold
         )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        Text("Game: ${currentLobby.gameTitle}")
         
         Spacer(modifier = Modifier.height(8.dp))
         
