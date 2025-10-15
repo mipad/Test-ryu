@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -48,9 +49,12 @@ import org.ryujinx.android.viewmodels.GameModel
 import org.ryujinx.android.viewmodels.NetworkViewModel
 import org.ryujinx.android.viewmodels.NetworkStatus
 import org.ryujinx.android.viewmodels.SettingsViewModel
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import org.ryujinx.android.viewmodels.MainViewModel
 
 @Composable
-fun NetworkView(settingsViewModel: SettingsViewModel, mainViewModel: org.ryujinx.android.viewmodels.MainViewModel) {
+fun NetworkView(settingsViewModel: SettingsViewModel, mainViewModel: MainViewModel) {
     val networkViewModel = NetworkViewModel(settingsViewModel.activity)
     
     // 设置游戏列表
