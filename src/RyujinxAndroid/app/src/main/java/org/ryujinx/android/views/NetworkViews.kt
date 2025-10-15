@@ -722,7 +722,7 @@ fun IdleLobbyView(networkViewModel: NetworkViewModel) {
         
         // 大厅列表
         Text(
-            text = "Available Lobbies:",
+            text = "Available Lobbies (${networkViewModel.lobbyList.value.size} found):",
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(bottom = 8.dp)
@@ -738,14 +738,34 @@ fun IdleLobbyView(networkViewModel: NetworkViewModel) {
                 Text("Scanning for lobbies...")
             }
         } else if (networkViewModel.lobbyList.value.isEmpty()) {
-            Text(
-                text = "No lobbies found. Make sure you're on the same network.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 32.dp)
+            ) {
+                Text(
+                    text = "No lobbies found",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Make sure you're on the same network as other players",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = { networkViewModel.refreshLobbyList() }
+                ) {
+                    Text("Try Again")
+                }
+            }
         } else {
-            Column {
-                networkViewModel.lobbyList.value.forEach { lobby ->
+            LazyColumn {
+                items(networkViewModel.lobbyList.value) { lobby ->
                     LobbyListItem(lobby, networkViewModel)
                     Spacer(modifier = Modifier.height(8.dp))
                 }
@@ -811,6 +831,14 @@ fun LobbyListItem(lobby: org.ryujinx.android.viewmodels.LobbyInfo, networkViewMo
                     color = MaterialTheme.colorScheme.secondary
                 )
             }
+            
+            // 显示主机IP地址（调试用）
+            Text(
+                text = "IP: ${lobby.hostIp}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                fontSize = 10.sp
+            )
         }
     }
 }
