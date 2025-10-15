@@ -898,14 +898,11 @@ namespace LibRyujinx
         }
 
         /// <summary>
-        /// 获取大厅列表（集成网络发现）
+        /// 获取大厅列表（集成网络发现）- 移除模拟大厅
         /// </summary>
         public static List<LobbyInfo> GetLobbyList()
         {
-            // 查询网络中的大厅
-            _ = Task.Run(QueryNetworkLobbies);
-            
-            // 合并网络发现的大厅和模拟数据（用于演示）
+            // 只返回网络发现的大厅，不再添加模拟数据
             var allLobbies = new List<LobbyInfo>();
             
             // 添加网络发现的大厅
@@ -914,12 +911,7 @@ namespace LibRyujinx
                 allLobbies.Add(lobby);
             }
             
-            // 如果没有发现网络大厅，添加一些模拟数据用于测试
-            if (allLobbies.Count == 0)
-            {
-                allLobbies.AddRange(GetSimulatedLobbies());
-            }
-            
+            // 移除模拟大厅数据，只返回真实网络中发现的大厅
             return allLobbies;
         }
 
@@ -1081,43 +1073,6 @@ namespace LibRyujinx
         public static bool IsScanningLobbies()
         {
             return _isScanning;
-        }
-
-        /// <summary>
-        /// 获取模拟大厅数据（用于测试）
-        /// </summary>
-        private static List<LobbyInfo> GetSimulatedLobbies()
-        {
-            return new List<LobbyInfo>
-            {
-                new LobbyInfo
-                {
-                    Id = "simulated_1",
-                    Name = "Mario Kart Room",
-                    GameTitle = "Mario Kart 8 Deluxe",
-                    HostName = "Player1",
-                    PlayerCount = 2,
-                    MaxPlayers = 4,
-                    Ping = 25,
-                    HostIp = "192.168.1.100",
-                    Port = 11452,
-                    GameId = "0100152000022000"
-                },
-                new LobbyInfo
-                {
-                    Id = "simulated_2", 
-                    Name = "Splatoon Fun",
-                    GameTitle = "Splatoon 3",
-                    HostName = "Inkling",
-                    PlayerCount = 1,
-                    MaxPlayers = 8,
-                    Ping = 45,
-                    IsPasswordProtected = true,
-                    HostIp = "192.168.1.101",
-                    Port = 11452,
-                    GameId = "0100C2500FC20000"
-                }
-            };
         }
 
         // 辅助方法：获取本地 IP 地址（改进版本）
