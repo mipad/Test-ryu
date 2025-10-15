@@ -60,19 +60,21 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
     var showCreateLobbyDialog = mutableStateOf(false)
         private set
 
-    // 游戏列表 - 从 HomeViewModel 获取
-    var availableGames = mutableStateOf<List<GameModel>>(emptyList())
+    // 添加游戏列表
+    var gameList = mutableStateOf<List<GameModel>>(emptyList())
         private set
 
     init {
         loadNetworkInterfaces()
-        // 不再自动启动大厅刷新，改为手动刷新
-        
         // 初始化网络通信
         initializeNetwork()
-        
-        // 加载可用游戏列表
-        loadAvailableGames()
+    }
+
+    /**
+     * 设置游戏列表（从HomeViewModel传入）
+     */
+    fun setGameList(games: List<GameModel>) {
+        gameList.value = games
     }
 
     /**
@@ -106,17 +108,6 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
         }
         
         _networkInterfaces.value = interfacesList
-    }
-
-    /**
-     * 加载可用游戏列表
-     */
-    private fun loadAvailableGames() {
-        // 从主视图模型获取游戏列表
-        val mainViewModel = MainActivity.mainViewModel
-        mainViewModel?.homeViewModel?.gameList?.let { gameList ->
-            availableGames.value = gameList.toList()
-        }
     }
 
     /**
@@ -312,7 +303,7 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
      * 创建大厅
      */
     fun createLobby(lobbyName: String, gameTitle: String, maxPlayers: Int, gameId: String = "") {
-        println("DEBUG: Creating lobby - Name: $lobbyName, Game: $gameTitle, MaxPlayers: $maxPlayers, GameId: $gameId")
+        println("DEBUG: Creating lobby - Name: $lobbyName, Game: $gameTitle, MaxPlayers: $maxPlayers, GameID: $gameId")
         
         coroutineScope.launch(Dispatchers.IO) {
             lobbyState.value = LobbyState.CREATING
@@ -450,10 +441,7 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
      * 刷新大厅列表
      */
     fun refreshLobbyList() {
-        // 如果正在托管大厅或已加入大厅，则不刷新
-        if (isScanningLobbies.value || lobbyState.value == LobbyState.HOSTING || lobbyState.value == LobbyState.IN_LOBBY) {
-            return
-        }
+        if (isScanningLobbies.value) return
         
         coroutineScope.launch(Dispatchers.IO) {
             isScanningLobbies.value = true
@@ -498,18 +486,24 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
     }
 
     /**
-     * 刷新游戏列表
+     * 检查是否正在扫描大厅
      */
-    fun refreshGameList() {
-        loadAvailableGames()
+    fun checkScanningStatus(): Boolean {
+        return RyujinxNative.isScanningLobbies()
+    }
+
+    /**
+     * 检查是否正在托管大厅
+     */
+    fun checkHostingStatus(): Boolean {
+        return RyujinxNative.isHostingLobby()
     }
 
     override fun onCleared() {
         super.onCleared()
         lobbyRefreshJob?.cancel()
-        // 离开大厅
-        leaveLobby()
-        // 停止网络
+        // 注意：这里不自动离开大厅，让用户手动管理
+        // 停止网络通信
         stopNetwork()
     }
 }
