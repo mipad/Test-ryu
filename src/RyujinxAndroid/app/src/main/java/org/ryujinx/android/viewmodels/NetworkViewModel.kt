@@ -1,958 +1,560 @@
-package org.ryujinx.android.views
+package org.ryujinx.android.viewmodels
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
+import android.content.SharedPreferences
+import kotlinx.coroutines.withContext
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.lifecycle.ViewModel
+import androidx.preference.PreferenceManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
+import org.ryujinx.android.MainActivity
 import org.ryujinx.android.RyujinxNative
-import org.ryujinx.android.viewmodels.GameModel
-import org.ryujinx.android.viewmodels.NetworkViewModel
-import org.ryujinx.android.viewmodels.NetworkStatus
-import org.ryujinx.android.viewmodels.SettingsViewModel
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import org.ryujinx.android.viewmodels.MainViewModel
+import java.net.NetworkInterface
+import java.util.Collections
 
-@Composable
-fun NetworkView(settingsViewModel: SettingsViewModel, mainViewModel: MainViewModel) {
-    // 直接使用 mainViewModel 中的 homeViewModel 来获取游戏列表
-    val networkViewModel = remember { NetworkViewModel(settingsViewModel.activity) }
+class NetworkViewModel(activity: MainActivity) : ViewModel() {
+    private var sharedPref: SharedPreferences = PreferenceManager.getDefaultSharedPreferences(activity)
+    private val context = activity.applicationContext
+    private val coroutineScope = CoroutineScope(Dispatchers.Main)
+    private var lobbyRefreshJob: Job? = null
+
+    // 使用 mutableStateOf 确保UI自动更新
+    private val _networkInterfaces = mutableStateOf<List<NetworkInterfaceInfo>>(emptyList())
+    val networkInterfaceList: List<NetworkInterfaceInfo> get() = _networkInterfaces.value
+
+    // Multiplayer mode - using mutableStateOf
+    var multiplayerModeIndex = mutableStateOf(sharedPref.getInt("multiplayerModeIndex", 0))
+        private set
     
-    // 设置游戏列表 - 使用 homeViewModel 的 gameList
-    LaunchedEffect(mainViewModel.homeViewModel.gameList) {
-        val gameList = mainViewModel.homeViewModel.gameList.toList()
-        println("DEBUG: Setting game list with ${gameList.size} games")
-        networkViewModel.setGameList(gameList)
-    }
+    // Enable internet access - using mutableStateOf
+    var enableInternetAccess = mutableStateOf(sharedPref.getBoolean("enableInternetAccess", false))
+        private set
     
-    Column(
-        modifier = Modifier
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp)
-    ) {
-        // Network status overview card
-        NetworkStatusCard(networkViewModel)
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // Multiplayer settings
-        MultiplayerSettingsCard(networkViewModel)
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // 只在启用 LDN 模式时显示大厅管理
-        if (networkViewModel.multiplayerModeIndex.value == 1) {
-            LobbyManagementCard(networkViewModel, mainViewModel)
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-        
-        // Network interface settings
-        NetworkInterfaceCard(networkViewModel)
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // Network information description
-        NetworkInfoCard()
-    }
-}
+    // Network interface index - using mutableStateOf
+    var networkInterfaceIndex = mutableStateOf(sharedPref.getInt("networkInterfaceIndex", 0))
+        private set
 
-@Composable
-fun NetworkStatusCard(networkViewModel: NetworkViewModel) {
-    val networkStatus = networkViewModel.getNetworkStatus()
-    val statusColor = when (networkStatus) {
-        NetworkStatus.CONNECTED_WIFI -> MaterialTheme.colorScheme.primary
-        NetworkStatus.CONNECTED_MOBILE -> MaterialTheme.colorScheme.primary
-        NetworkStatus.CONNECTED_ETHERNET -> MaterialTheme.colorScheme.primary
-        NetworkStatus.CONNECTED_UNKNOWN -> MaterialTheme.colorScheme.primary
-        NetworkStatus.DISCONNECTED -> MaterialTheme.colorScheme.error
-        NetworkStatus.UNKNOWN -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-    }
+    // 大厅管理相关状态
+    var lobbyList = mutableStateOf<List<LobbyInfo>>(emptyList())
+        private set
     
-    OutlinedCard(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.outlinedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                // Use text instead of icon
-                Text(
-                    text = "🌐", // Use emoji as simple network icon
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Network Status",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = statusColor
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // Network connection status
-            Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Network Connection:")
-                Text(
-                    text = networkViewModel.getNetworkStatusText(),
-                    color = statusColor
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            // Internet access setting status
-            Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Internet Access:")
-                Text(
-                    text = if (networkViewModel.enableInternetAccess.value) "Enabled" else "Disabled",
-                    color = if (networkViewModel.enableInternetAccess.value) MaterialTheme.colorScheme.primary 
-                           else MaterialTheme.colorScheme.error
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Multiplayer Mode:")
-                Text(
-                    text = networkViewModel.getMultiplayerModeName(networkViewModel.multiplayerModeIndex.value),
-                    color = MaterialTheme.colorScheme.secondary
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Network Interface:")
-                Text(
-                    text = networkViewModel.networkInterfaceList.getOrNull(networkViewModel.networkInterfaceIndex.value)?.name ?: "Default",
-                    color = MaterialTheme.colorScheme.secondary
-                )
-            }
-            
-            // 显示当前大厅状态
-            networkViewModel.currentLobby.value?.let { lobby ->
-                Spacer(modifier = Modifier.height(8.dp))
-                Divider()
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Current Lobby:")
-                    Text(
-                        text = lobby.name,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Players:")
-                    Text(
-                        text = "${lobby.playerCount}/${lobby.maxPlayers}",
-                        color = MaterialTheme.colorScheme.secondary
-                    )
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Game:")
-                    Text(
-                        text = lobby.gameTitle,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun MultiplayerSettingsCard(networkViewModel: NetworkViewModel) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Settings,
-                    contentDescription = "Multiplayer Settings",
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Multiplayer Settings",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            Divider()
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // Enable internet access switch
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column {
-                    Text(
-                        text = "Enable Internet Access",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        text = "Allow the emulator to access internet services",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-                }
-                Switch(
-                    checked = networkViewModel.enableInternetAccess.value,
-                    onCheckedChange = { networkViewModel.setEnableInternetAccess(it) }
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // Multiplayer mode selection
-            Text(
-                text = "Multiplayer Mode:",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            
-            // Disabled mode
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                RadioButton(
-                    selected = networkViewModel.multiplayerModeIndex.value == 0,
-                    onClick = { networkViewModel.setMultiplayerMode(0) }
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Text(
-                        text = "Disabled",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        text = "Completely disable multiplayer features",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            // LDN local wireless mode
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                RadioButton(
-                    selected = networkViewModel.multiplayerModeIndex.value == 1,
-                    onClick = { networkViewModel.setMultiplayerMode(1) }
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Text(
-                        text = "LDN Local Wireless",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        text = "Connect with other Ryujinx devices over local network",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun LobbyManagementCard(networkViewModel: NetworkViewModel, mainViewModel: MainViewModel) {
-    // 添加创建大厅对话框状态管理
-    if (networkViewModel.showCreateLobbyDialog.value) {
-        CreateLobbyDialog(
-            onDismiss = { networkViewModel.showCreateLobbyDialog.value = false },
-            onCreate = { lobbyName, selectedGame, maxPlayers ->
-                val gameTitle = selectedGame.getDisplayName()
-                val gameId = selectedGame.titleId ?: ""
-                networkViewModel.createLobby(lobbyName, gameTitle, maxPlayers, gameId)
-            },
-            gameList = mainViewModel.homeViewModel.gameList.toList() // 直接从 homeViewModel 获取游戏列表
-        )
-    }
+    var currentLobby = mutableStateOf<LobbyInfo?>(null)
+        private set
     
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                // 使用表情符号代替图标
-                Text(
-                    text = "👥", // 使用人物表情符号
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Game Lobby",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                
-                Spacer(modifier = Modifier.weight(1f))
-                
-                // 刷新大厅列表按钮
-                IconButton(
-                    onClick = { networkViewModel.refreshLobbyList() }
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Refresh,
-                        contentDescription = "Refresh Lobbies"
+    var lobbyState = mutableStateOf(LobbyState.IDLE)
+        private set
+    
+    var isScanningLobbies = mutableStateOf(false)
+        private set
+    
+    var isHostingLobby = mutableStateOf(false)
+        private set
+    
+    var showCreateLobbyDialog = mutableStateOf(false)
+        private set
+
+    // 添加游戏列表
+    var gameList = mutableStateOf<List<GameModel>>(emptyList())
+        private set
+
+    init {
+        loadNetworkInterfaces()
+        // 初始化网络通信
+        initializeNetwork()
+    }
+
+    /**
+     * 设置游戏列表（从HomeViewModel传入）
+     */
+    fun setGameList(games: List<GameModel>) {
+        gameList.value = games
+    }
+
+    /**
+     * Load available network interfaces
+     */
+    private fun loadNetworkInterfaces() {
+        val interfacesList = mutableListOf<NetworkInterfaceInfo>()
+        
+        // Add default option
+        interfacesList.add(NetworkInterfaceInfo("Default", "0", "Automatically select the best network interface"))
+        
+        try {
+            val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+            for (networkInterface in interfaces) {
+                if (networkInterface.isUp && !networkInterface.isLoopback) {
+                    val displayName = networkInterface.displayName ?: networkInterface.name
+                    val interfaceInfo = NetworkInterfaceInfo(
+                        name = displayName,
+                        id = networkInterface.name,
+                        description = buildInterfaceDescription(networkInterface)
                     )
+                    interfacesList.add(interfaceInfo)
                 }
             }
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            Divider()
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            when (networkViewModel.lobbyState.value) {
-                org.ryujinx.android.viewmodels.LobbyState.IDLE -> IdleLobbyView(networkViewModel)
-                org.ryujinx.android.viewmodels.LobbyState.HOSTING -> HostingLobbyView(networkViewModel)
-                org.ryujinx.android.viewmodels.LobbyState.IN_LOBBY -> InLobbyView(networkViewModel)
-                org.ryujinx.android.viewmodels.LobbyState.CREATING, 
-                org.ryujinx.android.viewmodels.LobbyState.JOINING -> {
-                    // 加载状态
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        CircularProgressIndicator()
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Connecting...")
-                    }
-                }
-                else -> {}
+        } catch (e: Exception) {
+            e.printStackTrace()
+            // If enumerating network interfaces fails, ensure at least the default option exists
+            if (interfacesList.size == 1) {
+                interfacesList.add(NetworkInterfaceInfo("Fallback", "eth0", "Fallback network interface"))
             }
+        }
+        
+        _networkInterfaces.value = interfacesList
+    }
+
+    /**
+     * Build network interface description
+     */
+    private fun buildInterfaceDescription(networkInterface: NetworkInterface): String {
+        val sb = StringBuilder()
+        
+        // Add interface type information
+        sb.append("${getInterfaceType(networkInterface)}")
+        
+        // Add MTU information
+        sb.append(" • MTU: ${networkInterface.mtu}")
+        
+        // Add interface status
+        val status = when {
+            networkInterface.isUp -> "Up"
+            else -> "Down"
+        }
+        sb.append(" • $status")
+        
+        return sb.toString()
+    }
+
+    /**
+     * Get network interface type
+     */
+    private fun getInterfaceType(networkInterface: NetworkInterface): String {
+        return when {
+            networkInterface.isLoopback -> "Loopback"
+            networkInterface.isPointToPoint -> "PPP"
+            networkInterface.isVirtual -> "Virtual"
+            networkInterface.name.startsWith("wlan") -> "WiFi"
+            networkInterface.name.startsWith("wlp") -> "WiFi" 
+            networkInterface.name.startsWith("p2p") -> "WiFi Direct"
+            networkInterface.name.startsWith("ap") -> "WiFi Hotspot"
+            networkInterface.name.endsWith("-mon") -> "WiFi Monitor"
+            networkInterface.name.startsWith("eth") || networkInterface.name.startsWith("enp") -> "Ethernet"
+            networkInterface.name.startsWith("rmnet") || networkInterface.name.startsWith("pdp") -> "Mobile"
+            networkInterface.name.startsWith("ccmni") -> "Mobile"
+            networkInterface.name.startsWith("tun") || networkInterface.name.startsWith("tap") -> "VPN"
+            networkInterface.name.startsWith("dummy") -> "Virtual"
+            else -> "Network"
         }
     }
-}
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun CreateLobbyDialog(
-    onDismiss: () -> Unit,
-    onCreate: (String, GameModel, Int) -> Unit,
-    gameList: List<GameModel>
-) {
-    var lobbyName by remember { mutableStateOf("") }
-    var selectedGame by remember { mutableStateOf<GameModel?>(null) }
-    var maxPlayers by remember { mutableStateOf(4) }
-    var gameDropdownExpanded by remember { mutableStateOf(false) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("创建大厅") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = lobbyName,
-                    onValueChange = { lobbyName = it },
-                    label = { Text("大厅名称") },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("输入大厅名称") }
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                
-                // 显示游戏数量信息
-                Text(
-                    text = "找到 ${gameList.size} 个游戏",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-                
-                // 游戏选择下拉菜单
-                Text("选择游戏:", style = MaterialTheme.typography.bodyMedium)
-                Spacer(modifier = Modifier.height(4.dp))
-                
-                // 游戏选择框
-                Box {
-                    OutlinedTextField(
-                        value = selectedGame?.getDisplayName() ?: "",
-                        onValueChange = { }, // 不允许直接编辑
-                        label = { Text("选择游戏") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { gameDropdownExpanded = true },
-                        placeholder = { 
-                            if (gameList.isEmpty()) {
-                                Text("没有找到游戏")
-                            } else {
-                                Text("点击选择游戏")
-                            }
-                        },
-                        readOnly = true,
-                        trailingIcon = {
-                            Icon(
-                                imageVector = Icons.Filled.ArrowDropDown,
-                                contentDescription = "选择游戏",
-                                modifier = Modifier.clickable { 
-                                    if (gameList.isNotEmpty()) {
-                                        gameDropdownExpanded = true 
-                                    }
-                                }
-                            )
-                        },
-                        enabled = gameList.isNotEmpty()
-                    )
-                    
-                    DropdownMenu(
-                        expanded = gameDropdownExpanded,
-                        onDismissRequest = { gameDropdownExpanded = false },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        if (gameList.isEmpty()) {
-                            DropdownMenuItem(
-                                text = { Text("没有找到游戏，请先添加游戏") },
-                                onClick = { gameDropdownExpanded = false }
-                            )
-                        } else {
-                            // 限制显示数量，避免列表过长
-                            val displayGames = if (gameList.size > 50) gameList.take(50) else gameList
-                            
-                            displayGames.forEach { game ->
-                                DropdownMenuItem(
-                                    text = { 
-                                        Column {
-                                            Text(
-                                                game.getDisplayName(),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                game.titleId ?: "Unknown ID", 
-                                                fontSize = 12.sp,
-                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                            )
-                                        }
-                                    },
-                                    onClick = {
-                                        selectedGame = game
-                                        gameDropdownExpanded = false
-                                        println("DEBUG: Selected game: ${game.getDisplayName()}, ID: ${game.titleId}")
-                                    }
-                                )
-                            }
-                            
-                            if (gameList.size > 50) {
-                                DropdownMenuItem(
-                                    text = { 
-                                        Text(
-                                            "... 还有 ${gameList.size - 50} 个游戏", 
-                                            fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                        )
-                                    },
-                                    onClick = { gameDropdownExpanded = false }
-                                )
-                            }
-                        }
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "最大玩家数:",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    Button(
-                        onClick = { if (maxPlayers > 1) maxPlayers-- },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer
-                        ),
-                        modifier = Modifier.width(48.dp)
-                    ) {
-                        Text("-")
-                    }
-                    Text(
-                        text = "$maxPlayers",
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-                    Button(
-                        onClick = { if (maxPlayers < 8) maxPlayers++ },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer
-                        ),
-                        modifier = Modifier.width(48.dp)
-                    ) {
-                        Text("+")
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (lobbyName.isNotBlank() && selectedGame != null) {
-                        onCreate(lobbyName, selectedGame!!, maxPlayers)
-                        onDismiss()
-                    }
-                },
-                enabled = lobbyName.isNotBlank() && selectedGame != null
-            ) {
-                Text("创建")
-            }
-        },
-        dismissButton = {
-            Button(
-                onClick = onDismiss,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Text("取消")
-            }
+    /**
+     * Set multiplayer mode
+     */
+    fun setMultiplayerMode(index: Int) {
+        multiplayerModeIndex.value = index
+        sharedPref.edit().putInt("multiplayerModeIndex", index).apply()
+        
+        // 如果切换到禁用模式，离开当前大厅
+        if (index == 0) {
+            leaveLobby()
         }
-    )
-}
+    }
 
-@Composable
-fun IdleLobbyView(networkViewModel: NetworkViewModel) {
-    Column {
-        // 创建大厅按钮
-        Button(
-            onClick = { 
-                networkViewModel.showCreateLobbyDialog.value = true
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Create New Lobby")
-        }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // 大厅列表
-        Text(
-            text = "Available Lobbies:",
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-        
-        if (networkViewModel.isScanningLobbies.value) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                CircularProgressIndicator()
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Scanning for lobbies...")
-            }
-        } else if (networkViewModel.lobbyList.value.isEmpty()) {
-            Text(
-                text = "No lobbies found. Make sure you're on the same network.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
+    /**
+     * Set enable internet access
+     */
+    fun setEnableInternetAccess(enabled: Boolean) {
+        enableInternetAccess.value = enabled
+        sharedPref.edit().putBoolean("enableInternetAccess", enabled).apply()
+    }
+
+    /**
+     * Set network interface index
+     */
+    fun setNetworkInterfaceIndex(index: Int) {
+        networkInterfaceIndex.value = index
+        sharedPref.edit().putInt("networkInterfaceIndex", index).apply()
+    }
+
+    /**
+     * Refresh network interfaces list
+     */
+    fun refreshNetworkInterfaces() {
+        loadNetworkInterfaces()
+    }
+
+    /**
+     * Get currently selected network interface ID
+     */
+    fun getSelectedInterfaceId(): String {
+        return if (networkInterfaceIndex.value in 0 until _networkInterfaces.value.size) {
+            _networkInterfaces.value[networkInterfaceIndex.value].id
         } else {
-            Column {
-                networkViewModel.lobbyList.value.forEach { lobby ->
-                    LobbyListItem(lobby, networkViewModel)
-                    Spacer(modifier = Modifier.height(8.dp))
+            "0" // Default
+        }
+    }
+
+    /**
+     * Get multiplayer mode name
+     */
+    fun getMultiplayerModeName(index: Int): String {
+        return when (index) {
+            0 -> "Disabled"
+            1 -> "LDN Local Wireless"
+            else -> "Unknown"
+        }
+    }
+
+    /**
+     * Check network connection status
+     */
+    fun getNetworkStatus(): NetworkStatus {
+        return try {
+            val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
+            val network = connectivityManager.activeNetwork
+            val capabilities = connectivityManager.getNetworkCapabilities(network)
+            
+            if (capabilities != null) {
+                when {
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> 
+                        NetworkStatus.CONNECTED_WIFI
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> 
+                        NetworkStatus.CONNECTED_MOBILE
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> 
+                        NetworkStatus.CONNECTED_ETHERNET
+                    else -> NetworkStatus.CONNECTED_UNKNOWN
                 }
+            } else {
+                NetworkStatus.DISCONNECTED
+            }
+        } catch (e: Exception) {
+            NetworkStatus.UNKNOWN
+        }
+    }
+
+    /**
+     * Get network status display text
+     */
+    fun getNetworkStatusText(): String {
+        return when (getNetworkStatus()) {
+            NetworkStatus.CONNECTED_WIFI -> "Connected (WiFi)"
+            NetworkStatus.CONNECTED_MOBILE -> "Connected (Mobile)"
+            NetworkStatus.CONNECTED_ETHERNET -> "Connected (Ethernet)"
+            NetworkStatus.CONNECTED_UNKNOWN -> "Connected"
+            NetworkStatus.DISCONNECTED -> "Disconnected"
+            NetworkStatus.UNKNOWN -> "Status Unknown"
+        }
+    }
+
+    /**
+     * Get network status color (for UI use)
+     */
+    fun getNetworkStatusColor(): String {
+        return when (getNetworkStatus()) {
+            NetworkStatus.CONNECTED_WIFI,
+            NetworkStatus.CONNECTED_MOBILE,
+            NetworkStatus.CONNECTED_ETHERNET,
+            NetworkStatus.CONNECTED_UNKNOWN -> "connected"
+            NetworkStatus.DISCONNECTED -> "disconnected"
+            NetworkStatus.UNKNOWN -> "unknown"
+        }
+    }
+
+    // ==================== 网络初始化功能 ====================
+
+    /**
+     * 初始化网络通信
+     */
+    private fun initializeNetwork() {
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                RyujinxNative.initializeNetwork()
+                println("DEBUG: Network initialized successfully")
+            } catch (e: Exception) {
+                println("DEBUG: Network initialization failed: ${e.message}")
             }
         }
     }
-}
 
-@Composable
-fun LobbyListItem(lobby: org.ryujinx.android.viewmodels.LobbyInfo, networkViewModel: NetworkViewModel) {
-    Card(
-        onClick = { networkViewModel.joinLobby(lobby) },
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(
-                        text = lobby.name,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "${lobby.gameTitle} • Host: ${lobby.hostName}",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
+    /**
+     * 停止网络通信
+     */
+    private fun stopNetwork() {
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                RyujinxNative.stopNetwork()
+                println("DEBUG: Network stopped successfully")
+            } catch (e: Exception) {
+                println("DEBUG: Network stop failed: ${e.message}")
+            }
+        }
+    }
+
+    // ==================== 大厅管理功能 ====================
+
+    /**
+     * 创建大厅
+     */
+    fun createLobby(lobbyName: String, gameTitle: String, maxPlayers: Int, gameId: String = "") {
+        println("DEBUG: Creating lobby - Name: $lobbyName, Game: $gameTitle, MaxPlayers: $maxPlayers, GameID: $gameId")
+        
+        coroutineScope.launch(Dispatchers.IO) {
+            lobbyState.value = LobbyState.CREATING
+            try {
+                val success = RyujinxNative.createLobby(lobbyName, gameTitle, maxPlayers, gameId)
+                println("DEBUG: Lobby creation result: $success")
                 
-                Column(
-                    horizontalAlignment = Alignment.End
-                ) {
-                    Text(
-                        text = "${lobby.playerCount}/${lobby.maxPlayers}",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        text = "${lobby.ping}ms",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = when {
-                            lobby.ping < 50 -> MaterialTheme.colorScheme.primary
-                            lobby.ping < 100 -> MaterialTheme.colorScheme.secondary
-                            else -> MaterialTheme.colorScheme.error
-                        }
-                    )
-                }
-            }
-            
-            if (lobby.isPasswordProtected) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "🔒 Password Protected",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.secondary
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun HostingLobbyView(networkViewModel: NetworkViewModel) {
-    val currentLobby = networkViewModel.currentLobby.value ?: return
-    
-    Column {
-        Text(
-            text = "Hosting Lobby: ${currentLobby.name}",
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold
-        )
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        Text("Game: ${currentLobby.gameTitle}")
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        // 玩家列表
-        Text("Players in lobby:")
-        Column(
-            modifier = Modifier.padding(start = 8.dp)
-        ) {
-            Text("• ${currentLobby.hostName} (Host)")
-            // 这里应该显示实际连接的玩家列表
-            Text("• Waiting for players...")
-        }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        Button(
-            onClick = { networkViewModel.leaveLobby() },
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.error
-            )
-        ) {
-            Text("Close Lobby")
-        }
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        Text(
-            text = "Note: Your lobby is being broadcasted to other players on the network",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-        )
-    }
-}
-
-@Composable
-fun InLobbyView(networkViewModel: NetworkViewModel) {
-    val currentLobby = networkViewModel.currentLobby.value ?: return
-    
-    Column {
-        Text(
-            text = "Joined: ${currentLobby.name}",
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold
-        )
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        Text("Game: ${currentLobby.gameTitle}")
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        Text("Players in lobby:")
-        Column(
-            modifier = Modifier.padding(start = 8.dp)
-        ) {
-            Text("• ${currentLobby.hostName} (Host)")
-            Text("• You")
-        }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        Button(
-            onClick = { networkViewModel.leaveLobby() }
-        ) {
-            Text("Leave Lobby")
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun NetworkInterfaceCard(networkViewModel: NetworkViewModel) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Settings,
-                    contentDescription = "Network Interface Settings",
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Network Interface Settings",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                
-                Spacer(modifier = Modifier.weight(1f))
-                
-                // Refresh button
-                IconButton(
-                    onClick = { networkViewModel.refreshNetworkInterfaces() }
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Refresh,
-                        contentDescription = "Refresh Network Interfaces"
-                    )
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            Divider()
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            Text(
-                text = "Select network interface for local wireless communication:",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-            
-            // Network interface list
-            Column {
-                networkViewModel.networkInterfaceList.forEachIndexed { index, interfaceInfo ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        RadioButton(
-                            selected = networkViewModel.networkInterfaceIndex.value == index,
-                            onClick = { networkViewModel.setNetworkInterfaceIndex(index) }
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column(
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = interfaceInfo.name,
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            if (interfaceInfo.description.isNotEmpty()) {
-                                Text(
-                                    text = interfaceInfo.description,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                    fontSize = 12.sp
-                                )
+                if (success) {
+                    // 延迟一下，确保C#层有足够时间创建大厅
+                    delay(500)
+                    
+                    // 获取当前大厅信息
+                    val currentLobbyJson = RyujinxNative.getCurrentLobby()
+                    println("DEBUG: Current lobby JSON: $currentLobbyJson")
+                    
+                    if (currentLobbyJson.isNotEmpty()) {
+                        try {
+                            val lobby = Json.decodeFromString<LobbyInfo>(currentLobbyJson)
+                            println("DEBUG: Successfully parsed lobby: ${lobby.name}")
+                            
+                            // 切换到主线程更新UI状态
+                            withContext(Dispatchers.Main) {
+                                currentLobby.value = lobby
+                                lobbyState.value = LobbyState.HOSTING
+                                isHostingLobby.value = true
+                                showCreateLobbyDialog.value = false
+                                println("DEBUG: UI state updated to HOSTING")
                             }
+                        } catch (e: Exception) {
+                            println("DEBUG: JSON parsing error: ${e.message}")
+                            // 如果JSON解析失败，手动创建大厅信息
+                            createFallbackLobby(lobbyName, gameTitle, maxPlayers, gameId)
                         }
+                    } else {
+                        println("DEBUG: Current lobby JSON is empty, creating fallback lobby")
+                        // 如果获取不到大厅信息，手动创建
+                        createFallbackLobby(lobbyName, gameTitle, maxPlayers, gameId)
                     }
-                    if (index < networkViewModel.networkInterfaceList.size - 1) {
-                        Spacer(modifier = Modifier.height(4.dp))
+                } else {
+                    println("DEBUG: Lobby creation failed in native layer")
+                    lobbyState.value = LobbyState.IDLE
+                }
+            } catch (e: Exception) {
+                println("DEBUG: Exception in createLobby: ${e.message}")
+                lobbyState.value = LobbyState.IDLE
+            }
+        }
+    }
+
+    /**
+     * 创建备用大厅信息（当C#层返回失败时使用）
+     */
+    private fun createFallbackLobby(lobbyName: String, gameTitle: String, maxPlayers: Int, gameId: String = "") {
+        coroutineScope.launch(Dispatchers.Main) {
+            val fallbackLobby = LobbyInfo(
+                id = System.currentTimeMillis().toString(),
+                name = lobbyName,
+                gameTitle = gameTitle,
+                hostName = "Host",
+                playerCount = 1,
+                maxPlayers = maxPlayers,
+                ping = 0,
+                isPasswordProtected = false,
+                hostIp = "127.0.0.1",
+                port = 11452,
+                gameId = gameId,
+                createdTime = System.currentTimeMillis()
+            )
+            
+            currentLobby.value = fallbackLobby
+            lobbyState.value = LobbyState.HOSTING
+            isHostingLobby.value = true
+            showCreateLobbyDialog.value = false
+            println("DEBUG: Fallback lobby created and UI updated")
+        }
+    }
+
+    /**
+     * 加入大厅
+     */
+    fun joinLobby(lobby: LobbyInfo) {
+        println("DEBUG: Joining lobby: ${lobby.name} at ${lobby.hostIp}:${lobby.port}")
+        
+        coroutineScope.launch(Dispatchers.IO) {
+            lobbyState.value = LobbyState.JOINING
+            try {
+                val success = RyujinxNative.joinLobby(lobby.hostIp, lobby.port)
+                println("DEBUG: Join lobby result: $success")
+                
+                if (success) {
+                    withContext(Dispatchers.Main) {
+                        currentLobby.value = lobby
+                        lobbyState.value = LobbyState.IN_LOBBY
+                        isHostingLobby.value = false
                     }
+                } else {
+                    lobbyState.value = LobbyState.IDLE
+                }
+            } catch (e: Exception) {
+                println("DEBUG: Exception in joinLobby: ${e.message}")
+                lobbyState.value = LobbyState.IDLE
+            }
+        }
+    }
+
+    /**
+     * 离开大厅
+     */
+    fun leaveLobby() {
+        println("DEBUG: Leaving current lobby")
+        
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                RyujinxNative.leaveLobby()
+                withContext(Dispatchers.Main) {
+                    currentLobby.value = null
+                    lobbyState.value = LobbyState.IDLE
+                    isHostingLobby.value = false
+                    // 刷新大厅列表
+                    refreshLobbyList()
+                }
+            } catch (e: Exception) {
+                println("DEBUG: Exception in leaveLobby: ${e.message}")
+                // 即使出错也重置状态
+                withContext(Dispatchers.Main) {
+                    currentLobby.value = null
+                    lobbyState.value = LobbyState.IDLE
+                    isHostingLobby.value = false
                 }
             }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            Text(
-                text = "Currently selected interface: ${networkViewModel.getSelectedInterfaceId()}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
         }
+    }
+
+    /**
+     * 刷新大厅列表
+     */
+    fun refreshLobbyList() {
+        if (isScanningLobbies.value) return
+        
+        coroutineScope.launch(Dispatchers.IO) {
+            isScanningLobbies.value = true
+            try {
+                RyujinxNative.refreshLobbyList()
+                
+                // 等待扫描完成
+                delay(1000)
+                
+                val lobbyListJson = RyujinxNative.getLobbyList()
+                println("DEBUG: Lobby list JSON: $lobbyListJson")
+                
+                if (lobbyListJson.isNotEmpty()) {
+                    try {
+                        val lobbies = Json.decodeFromString<List<LobbyInfo>>(lobbyListJson)
+                        withContext(Dispatchers.Main) {
+                            lobbyList.value = lobbies
+                            println("DEBUG: Updated lobby list with ${lobbies.size} lobbies")
+                        }
+                    } catch (e: Exception) {
+                        println("DEBUG: Lobby list JSON parsing error: ${e.message}")
+                        withContext(Dispatchers.Main) {
+                            lobbyList.value = emptyList()
+                        }
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        lobbyList.value = emptyList()
+                    }
+                }
+            } catch (e: Exception) {
+                println("DEBUG: Exception in refreshLobbyList: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    lobbyList.value = emptyList()
+                }
+            } finally {
+                withContext(Dispatchers.Main) {
+                    isScanningLobbies.value = false
+                }
+            }
+        }
+    }
+
+    /**
+     * 检查是否正在扫描大厅
+     */
+    fun checkScanningStatus(): Boolean {
+        return RyujinxNative.isScanningLobbies()
+    }
+
+    /**
+     * 检查是否正在托管大厅
+     */
+    fun checkHostingStatus(): Boolean {
+        return RyujinxNative.isHostingLobby()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        lobbyRefreshJob?.cancel()
+        // 注意：这里不自动离开大厅，让用户手动管理
+        // 停止网络通信
+        stopNetwork()
     }
 }
 
-@Composable
-fun NetworkInfoCard() {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Info,
-                    contentDescription = "Network Information",
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Network Features Description",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            Text(
-                text = "• Internet Access: Controls whether the emulator can access external networks\n" +
-                       "• LDN Local Wireless: Emulates Switch local wireless multiplayer, requires being on the same network\n" +
-                       "• Game Lobby: Create or join multiplayer game sessions over local network\n" +
-                       "• Network Interface: Select physical network adapter for local wireless communication\n" +
-                       "• Permissions: App requires network permissions to detect connection status and interface information",
-                style = MaterialTheme.typography.bodyMedium,
-                lineHeight = 20.sp
-            )
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            Text(
-                text = "Note: Some network features may require device to be connected to a network to work properly",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
-        }
-    }
+/**
+ * Network interface information data class
+ */
+data class NetworkInterfaceInfo(
+    val name: String,
+    val id: String,
+    val description: String = ""
+)
+
+/**
+ * Network connection status enum
+ */
+enum class NetworkStatus {
+    CONNECTED_WIFI,
+    CONNECTED_MOBILE,
+    CONNECTED_ETHERNET,
+    CONNECTED_UNKNOWN,
+    DISCONNECTED,
+    UNKNOWN
 }
+
+/**
+ * 大厅状态枚举
+ */
+enum class LobbyState {
+    IDLE,           // 空闲状态
+    CREATING,       // 正在创建大厅
+    JOINING,        // 正在加入大厅
+    HOSTING,        // 正在托管大厅
+    IN_LOBBY        // 已加入大厅
+}
+
+/**
+ * 大厅信息数据类
+ */
+@kotlinx.serialization.Serializable
+data class LobbyInfo(
+    val id: String = "",
+    val name: String = "",
+    val gameTitle: String = "",
+    val hostName: String = "",
+    val playerCount: Int = 0,
+    val maxPlayers: Int = 4,
+    val ping: Int = 0,
+    val isPasswordProtected: Boolean = false,
+    val hostIp: String = "",
+    val port: Int = 11452,
+    val gameId: String = "",
+    val createdTime: Long = 0
+)
