@@ -47,7 +47,6 @@ using System.Threading.Tasks;
 using System.Threading;
 using System.Net.NetworkInformation;
 using System.Collections.Concurrent;
-// 添加缺失的日志相关命名空间
 using Ryujinx.Common.Logging.Targets;
 
 namespace LibRyujinx
@@ -212,30 +211,15 @@ namespace LibRyujinx
                 LoggerModule.Initialize();
 
                 string logDir = Path.Combine(AppDataManager.BaseDirPath, "Logs");
-                
-                // 使用简单的文件日志目标，避免复杂的依赖
-                try
-                {
-                    // 确保日志目录存在
-                    Directory.CreateDirectory(logDir);
-                    string logFilePath = Path.Combine(logDir, "Ryujinx.log");
-                    
-                    // 使用简单的文件流记录日志
-                    var logFile = new FileStream(logFilePath, FileMode.Create, FileAccess.Write, FileShare.Read);
-                    var streamWriter = new StreamWriter(logFile) { AutoFlush = true };
-                    
-                    // 添加控制台日志目标用于调试
-                    Logger.AddTarget(new ConsoleLogTarget("console"));
-                    
-                    Logger.Notice.Print(LogClass.Application, "Initializing...");
-                    Logger.Notice.Print(LogClass.Application, $"Using base path: {AppDataManager.BaseDirPath}");
-                }
-                catch (Exception logEx)
-                {
-                    // 如果文件日志初始化失败，至少确保控制台日志可用
-                    Logger.AddTarget(new ConsoleLogTarget("console"));
-                    Logger.Warning?.Print(LogClass.Application, $"Failed to initialize file logging: {logEx.Message}");
-                }
+                FileStream logFile = FileLogTarget.PrepareLogFile(logDir);
+                Logger.AddTarget(new AsyncLogTargetWrapper(
+                    new FileLogTarget("file", logFile),
+                    1000,
+                    AsyncLogTargetOverflowAction.Block
+                ));
+
+                Logger.Notice.Print(LogClass.Application, "Initializing...");
+                Logger.Notice.Print(LogClass.Application, $"Using base path: {AppDataManager.BaseDirPath}");
 
                 SwitchDevice = new SwitchDevice();
             }
@@ -870,14 +854,14 @@ namespace LibRyujinx
         }
 
         /// <summary>
-        /// 获取大厅列表（集成网络发现） - 移除模拟大厅
+        /// 获取大厅列表（集成网络发现）
         /// </summary>
         public static List<LobbyInfo> GetLobbyList()
         {
             // 查询网络中的大厅
             _ = Task.Run(QueryNetworkLobbies);
             
-            // 只返回网络发现的大厅，不包含模拟数据
+            // 合并网络发现的大厅和模拟数据（用于演示）
             var allLobbies = new List<LobbyInfo>();
             
             // 添加网络发现的大厅
@@ -886,7 +870,12 @@ namespace LibRyujinx
                 allLobbies.Add(lobby);
             }
             
-            Logger.Info?.Print(LogClass.ServiceLdn, $"Returning {allLobbies.Count} real network lobbies");
+            // 如果没有发现网络大厅，添加一些模拟数据用于测试
+            if (allLobbies.Count == 0)
+            {
+                allLobbies.AddRange(GetSimulatedLobbies());
+            }
+            
             return allLobbies;
         }
 
@@ -1042,6 +1031,43 @@ namespace LibRyujinx
         public static bool IsScanningLobbies()
         {
             return _isScanning;
+        }
+
+        /// <summary>
+        /// 获取模拟大厅数据（用于测试）
+        /// </summary>
+        private static List<LobbyInfo> GetSimulatedLobbies()
+        {
+            return new List<LobbyInfo>
+            {
+                new LobbyInfo
+                {
+                    Id = "simulated_1",
+                    Name = "Mario Kart Room",
+                    GameTitle = "Mario Kart 8 Deluxe",
+                    HostName = "Player1",
+                    PlayerCount = 2,
+                    MaxPlayers = 4,
+                    Ping = 25,
+                    HostIp = "192.168.1.100",
+                    Port = 11452,
+                    GameId = "0100152000022000"
+                },
+                new LobbyInfo
+                {
+                    Id = "simulated_2", 
+                    Name = "Splatoon Fun",
+                    GameTitle = "Splatoon 3",
+                    HostName = "Inkling",
+                    PlayerCount = 1,
+                    MaxPlayers = 8,
+                    Ping = 45,
+                    IsPasswordProtected = true,
+                    HostIp = "192.168.1.101",
+                    Port = 11452,
+                    GameId = "0100C2500FC20000"
+                }
+            };
         }
 
         // 辅助方法：获取本地 IP 地址（改进版本）
