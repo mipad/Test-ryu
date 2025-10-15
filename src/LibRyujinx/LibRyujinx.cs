@@ -48,6 +48,7 @@ using System.Threading;
 using System.Net.NetworkInformation;
 using System.Collections.Concurrent;
 using Ryujinx.Common.Logging.Targets;
+using SystemTimeSpan = System.TimeSpan;
 
 namespace LibRyujinx
 {
