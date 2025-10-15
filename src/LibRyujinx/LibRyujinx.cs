@@ -47,6 +47,8 @@ using System.Threading.Tasks;
 using System.Threading;
 using System.Net.NetworkInformation;
 using System.Collections.Concurrent;
+// 添加缺失的日志相关命名空间
+using Ryujinx.Common.Logging.Targets;
 
 namespace LibRyujinx
 {
@@ -210,15 +212,30 @@ namespace LibRyujinx
                 LoggerModule.Initialize();
 
                 string logDir = Path.Combine(AppDataManager.BaseDirPath, "Logs");
-                FileStream logFile = FileLogTarget.PrepareLogFile(logDir);
-                Logger.AddTarget(new AsyncLogTargetWrapper(
-                    new FileLogTarget("file", logFile),
-                    1000,
-                    AsyncLogTargetOverflowAction.Block
-                ));
-
-                Logger.Notice.Print(LogClass.Application, "Initializing...");
-                Logger.Notice.Print(LogClass.Application, $"Using base path: {AppDataManager.BaseDirPath}");
+                
+                // 使用简单的文件日志目标，避免复杂的依赖
+                try
+                {
+                    // 确保日志目录存在
+                    Directory.CreateDirectory(logDir);
+                    string logFilePath = Path.Combine(logDir, "Ryujinx.log");
+                    
+                    // 使用简单的文件流记录日志
+                    var logFile = new FileStream(logFilePath, FileMode.Create, FileAccess.Write, FileShare.Read);
+                    var streamWriter = new StreamWriter(logFile) { AutoFlush = true };
+                    
+                    // 添加控制台日志目标用于调试
+                    Logger.AddTarget(new ConsoleLogTarget("console"));
+                    
+                    Logger.Notice.Print(LogClass.Application, "Initializing...");
+                    Logger.Notice.Print(LogClass.Application, $"Using base path: {AppDataManager.BaseDirPath}");
+                }
+                catch (Exception logEx)
+                {
+                    // 如果文件日志初始化失败，至少确保控制台日志可用
+                    Logger.AddTarget(new ConsoleLogTarget("console"));
+                    Logger.Warning?.Print(LogClass.Application, $"Failed to initialize file logging: {logEx.Message}");
+                }
 
                 SwitchDevice = new SwitchDevice();
             }
