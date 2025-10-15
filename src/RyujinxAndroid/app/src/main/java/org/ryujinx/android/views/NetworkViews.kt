@@ -61,6 +61,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.size
 
 @Composable
 fun NetworkView(settingsViewModel: SettingsViewModel, mainViewModel: MainViewModel) {
