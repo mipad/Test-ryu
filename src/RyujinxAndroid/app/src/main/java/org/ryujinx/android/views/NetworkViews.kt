@@ -62,6 +62,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
 
 @Composable
 fun NetworkView(settingsViewModel: SettingsViewModel, mainViewModel: MainViewModel) {
