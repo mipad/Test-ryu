@@ -16,6 +16,7 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import org.ryujinx.android.MainActivity
 import org.ryujinx.android.RyujinxNative
+import java.net.InetAddress
 import java.net.NetworkInterface
 import java.util.Collections
 
@@ -58,6 +59,13 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
         private set
     
     var showCreateLobbyDialog = mutableStateOf(false)
+        private set
+
+    // 新增状态变量
+    var showGameSelectionDialog = mutableStateOf(false)
+        private set
+    
+    var showRoomStatusDialog = mutableStateOf(false)
         private set
 
     // 添加游戏列表
@@ -332,55 +340,48 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
     // ==================== 大厅管理功能 ====================
 
     /**
-     * 创建大厅 - 修复版本
+     * 创建大厅
      */
-    fun createLobby(lobbyName: String, gameTitle: String, maxPlayers: Int, gameId: String = "") {
-        println("DEBUG: Creating lobby - Name: $lobbyName, Game: $gameTitle, MaxPlayers: $maxPlayers, GameID: $gameId")
+    fun createLobby(lobbyName: String, gameTitle: String, maxPlayers: Int, username: String = "") {
+        println("DEBUG: Creating lobby - Name: $lobbyName, Game: $gameTitle, MaxPlayers: $maxPlayers, Username: $username")
         
         coroutineScope.launch(Dispatchers.IO) {
             lobbyState.value = LobbyState.CREATING
             try {
-                val success = RyujinxNative.createLobby(lobbyName, gameTitle, maxPlayers, gameId)
+                val success = RyujinxNative.createLobby(lobbyName, gameTitle, maxPlayers, username)
                 println("DEBUG: Lobby creation result: $success")
                 
                 if (success) {
                     // 延迟一下，确保C#层有足够时间创建大厅
-                    delay(1000)
+                    delay(500)
                     
                     // 获取当前大厅信息
                     val currentLobbyJson = RyujinxNative.getCurrentLobby()
                     println("DEBUG: Current lobby JSON: $currentLobbyJson")
                     
-                    if (currentLobbyJson.isNotEmpty() && currentLobbyJson != "null") {
+                    if (currentLobbyJson.isNotEmpty()) {
                         try {
                             val lobby = Json.decodeFromString<LobbyInfo>(currentLobbyJson)
-                            println("DEBUG: Successfully parsed lobby: ${lobby.name}, IP: ${lobby.hostIp}")
-                            
-                            // 如果IP是127.0.0.1，尝试修复
-                            val finalLobby = if (lobby.hostIp == "127.0.0.1") {
-                                println("DEBUG: Detected localhost IP, creating corrected lobby")
-                                lobby.copy(hostIp = getLocalIpAddress())
-                            } else {
-                                lobby
-                            }
+                            println("DEBUG: Successfully parsed lobby: ${lobby.name}")
                             
                             // 切换到主线程更新UI状态
                             withContext(Dispatchers.Main) {
-                                currentLobby.value = finalLobby
+                                currentLobby.value = lobby
                                 lobbyState.value = LobbyState.HOSTING
                                 isHostingLobby.value = true
                                 showCreateLobbyDialog.value = false
-                                println("DEBUG: UI state updated to HOSTING with IP: ${finalLobby.hostIp}")
+                                showRoomStatusDialog.value = true // 显示房间状态对话框
+                                println("DEBUG: UI state updated to HOSTING")
                             }
                         } catch (e: Exception) {
                             println("DEBUG: JSON parsing error: ${e.message}")
                             // 如果JSON解析失败，手动创建大厅信息
-                            createFallbackLobby(lobbyName, gameTitle, maxPlayers, gameId)
+                            createFallbackLobby(lobbyName, gameTitle, maxPlayers, username)
                         }
                     } else {
                         println("DEBUG: Current lobby JSON is empty, creating fallback lobby")
                         // 如果获取不到大厅信息，手动创建
-                        createFallbackLobby(lobbyName, gameTitle, maxPlayers, gameId)
+                        createFallbackLobby(lobbyName, gameTitle, maxPlayers, username)
                     }
                 } else {
                     println("DEBUG: Lobby creation failed in native layer")
@@ -394,35 +395,22 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
     }
 
     /**
-     * 获取本地IP地址
+     * 创建备用大厅信息（当C#层返回失败时使用）
      */
-    private fun getLocalIpAddress(): String {
-        return try {
-            // 这里应该实现获取本地真实IP的逻辑
-            // 简化处理，返回一个占位符
-            "192.168.21.100" // 从日志中看到的IP
-        } catch (e: Exception) {
-            "192.168.1.100" // 默认IP
-        }
-    }
-
-    /**
-     * 创建备用大厅信息（当C#层返回失败时使用）- 修复版本
-     */
-    private fun createFallbackLobby(lobbyName: String, gameTitle: String, maxPlayers: Int, gameId: String = "") {
+    private fun createFallbackLobby(lobbyName: String, gameTitle: String, maxPlayers: Int, username: String = "") {
         coroutineScope.launch(Dispatchers.Main) {
             val fallbackLobby = LobbyInfo(
                 id = System.currentTimeMillis().toString(),
                 name = lobbyName,
                 gameTitle = gameTitle,
-                hostName = "Host",
+                hostName = if (username.isNotBlank()) username else "Host",
                 playerCount = 1,
                 maxPlayers = maxPlayers,
                 ping = 0,
                 isPasswordProtected = false,
-                hostIp = getLocalIpAddress(), // 使用真实IP而不是127.0.0.1
+                hostIp = getLocalIpAddress(),
                 port = 11452,
-                gameId = gameId,
+                gameId = "",
                 createdTime = System.currentTimeMillis()
             )
             
@@ -430,7 +418,8 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
             lobbyState.value = LobbyState.HOSTING
             isHostingLobby.value = true
             showCreateLobbyDialog.value = false
-            println("DEBUG: Fallback lobby created with IP: ${fallbackLobby.hostIp}")
+            showRoomStatusDialog.value = true // 显示房间状态对话框
+            println("DEBUG: Fallback lobby created and UI updated")
         }
     }
 
@@ -451,6 +440,7 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
                         currentLobby.value = lobby
                         lobbyState.value = LobbyState.IN_LOBBY
                         isHostingLobby.value = false
+                        showRoomStatusDialog.value = true // 显示房间状态对话框
                     }
                 } else {
                     lobbyState.value = LobbyState.IDLE
@@ -475,6 +465,7 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
                     currentLobby.value = null
                     lobbyState.value = LobbyState.IDLE
                     isHostingLobby.value = false
+                    showRoomStatusDialog.value = false // 隐藏房间状态对话框
                     // 刷新大厅列表
                     refreshLobbyList()
                 }
@@ -485,6 +476,7 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
                     currentLobby.value = null
                     lobbyState.value = LobbyState.IDLE
                     isHostingLobby.value = false
+                    showRoomStatusDialog.value = false
                 }
             }
         }
@@ -507,7 +499,7 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
                 // 调用原生方法刷新大厅列表
                 RyujinxNative.refreshLobbyList()
                 
-                // 等待网络扫描完成
+                // 等待网络扫描完成 - 增加到3秒
                 delay(3000)
                 
                 // 获取大厅列表
@@ -519,27 +511,21 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
                         val lobbies = Json.decodeFromString<List<LobbyInfo>>(lobbyListJson)
                         println("DEBUG: Successfully parsed ${lobbies.size} lobbies")
                         
-                        // 过滤掉无效的大厅，并修复IP地址
+                        // 过滤掉无效的大厅
                         val validLobbies = lobbies.filter { 
-                            it.name.isNotBlank() && it.hostIp.isNotBlank()
-                        }.map { lobby ->
-                            // 如果IP是127.0.0.1，替换为正确的IP
-                            if (lobby.hostIp == "127.0.0.1") {
-                                lobby.copy(hostIp = getLocalIpAddress())
-                            } else {
-                                lobby
-                            }
+                            it.name.isNotBlank() && it.hostIp.isNotBlank() && it.hostIp != "127.0.0.1"
                         }
                         
                         println("DEBUG: Filtered to ${validLobbies.size} valid lobbies")
                         
                         withContext(Dispatchers.Main) {
                             lobbyList.value = validLobbies
-                            println("DEBUG: Updated lobby list with ${validLobbies.size} lobbies")
+                            println("DEBUG: Updated lobby list with ${validLobbies.size} real network lobbies")
                         }
                     } catch (e: Exception) {
                         println("DEBUG: Lobby list JSON parsing error: ${e.message}")
                         println("DEBUG: JSON content: $lobbyListJson")
+                        // 移除模拟大厅创建，只返回空列表
                         withContext(Dispatchers.Main) {
                             lobbyList.value = emptyList()
                         }
@@ -561,6 +547,31 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
                     println("DEBUG: Lobby scan completed, isScanning set to false")
                 }
             }
+        }
+    }
+
+    /**
+     * 获取本地IP地址
+     */
+    fun getLocalIpAddress(): String {
+        return try {
+            val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+            for (intf in interfaces) {
+                if (intf.isUp && !intf.isLoopback) {
+                    val addrs = Collections.list(intf.inetAddresses)
+                    for (addr in addrs) {
+                        if (!addr.isLoopbackAddress && addr is InetAddress) {
+                            val sAddr = addr.hostAddress
+                            if (sAddr != null && sAddr.indexOf(':') < 0) {
+                                return sAddr
+                            }
+                        }
+                    }
+                }
+            }
+            "127.0.0.1"
+        } catch (e: Exception) {
+            "127.0.0.1"
         }
     }
 
