@@ -68,8 +68,8 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
         loadNetworkInterfaces()
         // 初始化网络通信
         initializeNetwork()
-        // 启动自动刷新大厅列表
-        startAutoLobbyRefresh()
+        // 移除自动刷新大厅列表，改为手动刷新
+        // startAutoLobbyRefresh()
     }
 
     /**
@@ -512,8 +512,10 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
                     } catch (e: Exception) {
                         println("DEBUG: Lobby list JSON parsing error: ${e.message}")
                         println("DEBUG: JSON content: $lobbyListJson")
-                        // 即使解析失败也尝试手动创建测试大厅用于调试
-                        createTestLobbyForDebug()
+                        // 移除模拟大厅创建，只返回空列表
+                        withContext(Dispatchers.Main) {
+                            lobbyList.value = emptyList()
+                        }
                     }
                 } else {
                     println("DEBUG: No lobbies found in network scan or empty JSON")
@@ -536,45 +538,11 @@ class NetworkViewModel(activity: MainActivity) : ViewModel() {
     }
 
     /**
-     * 创建测试大厅用于调试
-     */
-    private fun createTestLobbyForDebug() {
-        coroutineScope.launch(Dispatchers.Main) {
-            // 只在调试模式下创建测试大厅
-            val testLobby = LobbyInfo(
-                id = "test-lobby-1",
-                name = "测试大厅",
-                gameTitle = "测试游戏",
-                hostName = "TestHost",
-                playerCount = 2,
-                maxPlayers = 4,
-                ping = 25,
-                isPasswordProtected = false,
-                hostIp = "192.168.21.103", // 使用日志中看到的真实IP
-                port = 11452,
-                gameId = "0100000000001000",
-                createdTime = System.currentTimeMillis()
-            )
-            
-            lobbyList.value = listOf(testLobby)
-            println("DEBUG: Created test lobby for debugging: ${testLobby.name}")
-        }
-    }
-
-    /**
-     * 启动自动刷新大厅列表
+     * 启动自动刷新大厅列表 - 已移除
      */
     private fun startAutoLobbyRefresh() {
+        // 不再自动刷新，改为手动刷新
         lobbyRefreshJob?.cancel()
-        lobbyRefreshJob = coroutineScope.launch {
-            while (true) {
-                // 只有在启用LDN模式且处于空闲状态时才自动刷新
-                if (multiplayerModeIndex.value == 1 && lobbyState.value == LobbyState.IDLE) {
-                    refreshLobbyList()
-                }
-                delay(5000) // 每5秒刷新一次
-            }
-        }
     }
 
     /**
