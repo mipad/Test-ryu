@@ -112,6 +112,10 @@ namespace LibRyujinx
         private static IPAddress _currentLocalIp = null;
         private static IPAddress _currentSubnetMask = null;
         private static IPAddress _currentBroadcastAddress = null;
+        
+        // 添加IP地址缓存时间戳
+        private static DateTime _lastIpUpdateTime = DateTime.MinValue;
+        private static readonly TimeSpan _ipCacheTimeout = TimeSpan.FromSeconds(5); // 5秒缓存
 
         // Mod 相关类型定义
         public class ModInfo
@@ -310,6 +314,12 @@ namespace LibRyujinx
         {
             _currentLanInterfaceId = interfaceId ?? "0";
             
+            // 清除IP缓存，强制下次重新获取
+            _currentLocalIp = null;
+            _currentSubnetMask = null;
+            _currentBroadcastAddress = null;
+            _lastIpUpdateTime = DateTime.MinValue;
+            
             // 如果设备已初始化，记录需要重启才能生效
             if (SwitchDevice?.EmulationContext != null)
             {
@@ -347,6 +357,15 @@ namespace LibRyujinx
         /// </summary>
         private static IPAddress GetBroadcastAddress()
         {
+            // 检查是否需要更新IP地址
+            if (DateTime.Now - _lastIpUpdateTime > _ipCacheTimeout || _currentBroadcastAddress == null)
+            {
+                // 强制更新IP地址
+                _currentLocalIp = null;
+                _currentSubnetMask = null;
+                string currentIp = GetLocalIpAddress();
+            }
+
             if (_currentBroadcastAddress != null)
             {
                 return _currentBroadcastAddress;
@@ -392,6 +411,12 @@ namespace LibRyujinx
                 _udpBroadcastClient = new UdpClient();
                 _udpBroadcastClient.EnableBroadcast = true;
                 _udpBroadcastClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+
+                // 清除IP缓存
+                _currentLocalIp = null;
+                _currentSubnetMask = null;
+                _currentBroadcastAddress = null;
+                _lastIpUpdateTime = DateTime.MinValue;
 
                 // 启动广播监听
                 Task.Run(StartBroadcastListener, _networkCancellation.Token);
@@ -465,6 +490,7 @@ namespace LibRyujinx
                         // 更新玩家数量等信息
                         existingLobby.PlayerCount = lobby.PlayerCount;
                         existingLobby.Ping = CalculatePing(remoteIp);
+                        existingLobby.HostIp = remoteIp; // 确保使用最新的IP地址
                     }
                     else
                     {
@@ -585,6 +611,14 @@ namespace LibRyujinx
 
             try
             {
+                // 每次广播前强制更新IP地址
+                string currentIp = GetLocalIpAddress();
+                if (_currentLobby.HostIp != currentIp)
+                {
+                    _currentLobby.HostIp = currentIp;
+                    Logger.Info?.Print(LogClass.ServiceLdn, $"Updated lobby host IP to: {currentIp}");
+                }
+
                 var message = $"LOBBY_BROADCAST:{JsonSerializer.Serialize(_currentLobby, _lobbyInfoJsonSerializerContext.LobbyInfo)}";
                 var data = Encoding.UTF8.GetBytes(message);
                 
@@ -688,6 +722,9 @@ namespace LibRyujinx
             _networkLobbies.Clear();
             _lobbyLastSeen.Clear();
             _currentBroadcastAddress = null;
+            _currentLocalIp = null;
+            _currentSubnetMask = null;
+            _lastIpUpdateTime = DateTime.MinValue;
             
             Logger.Info?.Print(LogClass.ServiceLdn, "Network stopped");
         }
@@ -709,6 +746,12 @@ namespace LibRyujinx
 
                 // 初始化网络
                 InitializeNetwork();
+
+                // 强制清除IP缓存
+                _currentLocalIp = null;
+                _currentSubnetMask = null;
+                _currentBroadcastAddress = null;
+                _lastIpUpdateTime = DateTime.MinValue;
 
                 string localIp = GetLocalIpAddress();
                 if (string.IsNullOrEmpty(localIp) || localIp == "127.0.0.1")
@@ -957,6 +1000,12 @@ namespace LibRyujinx
                             _lobbyLastSeen.TryRemove(id, out _);
                         }
 
+                        // 清除IP缓存，确保使用最新的网络配置
+                        _currentLocalIp = null;
+                        _currentSubnetMask = null;
+                        _currentBroadcastAddress = null;
+                        _lastIpUpdateTime = DateTime.MinValue;
+
                         // 发送网络查询
                         await QueryNetworkLobbies();
 
@@ -1073,6 +1122,12 @@ namespace LibRyujinx
         // 辅助方法：获取本地 IP 地址（改进版本）
         private static string GetLocalIpAddress()
         {
+            // 检查缓存是否有效
+            if (_currentLocalIp != null && DateTime.Now - _lastIpUpdateTime < _ipCacheTimeout)
+            {
+                return _currentLocalIp.ToString();
+            }
+
             try
             {
                 // 首先尝试使用 NetworkHelpers 获取网络接口信息
@@ -1085,6 +1140,7 @@ namespace LibRyujinx
                         Logger.Info?.Print(LogClass.ServiceLdn, $"Got local IP from network interface: {ip}");
                         _currentLocalIp = addressInfo.Address;
                         _currentSubnetMask = addressInfo.IPv4Mask;
+                        _lastIpUpdateTime = DateTime.Now;
                         return ip;
                     }
                 }
@@ -1106,6 +1162,7 @@ namespace LibRyujinx
                                     Logger.Info?.Print(LogClass.ServiceLdn, $"Got local IP from {ni.Description}: {localIp}");
                                     _currentLocalIp = ip.Address;
                                     _currentSubnetMask = ip.IPv4Mask;
+                                    _lastIpUpdateTime = DateTime.Now;
                                     return localIp;
                                 }
                             }
@@ -1125,6 +1182,7 @@ namespace LibRyujinx
                             Logger.Info?.Print(LogClass.ServiceLdn, $"Got local IP from host entry: {localIp}");
                             _currentLocalIp = ip;
                             _currentSubnetMask = IPAddress.Parse("255.255.255.0"); // 假设默认子网掩码
+                            _lastIpUpdateTime = DateTime.Now;
                             return localIp;
                         }
                     }
@@ -1133,6 +1191,7 @@ namespace LibRyujinx
                 Logger.Warning?.Print(LogClass.ServiceLdn, "No valid local IP address found, using 127.0.0.1");
                 _currentLocalIp = IPAddress.Parse("127.0.0.1");
                 _currentSubnetMask = IPAddress.Parse("255.255.255.0");
+                _lastIpUpdateTime = DateTime.Now;
                 return "127.0.0.1";
             }
             catch (Exception ex)
@@ -1140,6 +1199,7 @@ namespace LibRyujinx
                 Logger.Error?.Print(LogClass.ServiceLdn, $"Error getting local IP: {ex.Message}");
                 _currentLocalIp = IPAddress.Parse("127.0.0.1");
                 _currentSubnetMask = IPAddress.Parse("255.255.255.0");
+                _lastIpUpdateTime = DateTime.Now;
                 return "127.0.0.1";
             }
         }
@@ -1407,7 +1467,7 @@ namespace LibRyujinx
                     // 从mods.json中移除
                     RemoveModFromJson(titleId, modPath);
                     
-                    Logger.Info?.Print(LogClass.ModLoader, "Mod directory deleted successfully");
+                    Logger.Info?.Print(LogClass.ModLoader, "Mod directory deleted successfully")
                     return true;
                 }
                 else
