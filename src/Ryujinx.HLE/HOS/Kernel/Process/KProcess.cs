@@ -118,6 +118,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
             KPageList pageList,
             KResourceLimit resourceLimit,
             MemoryRegion memRegion,
+            MemoryConfiguration memConfig,
             IProcessContextFactory contextFactory,
             ThreadStart customThreadStart = null)
         {
@@ -147,6 +148,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
                 creationInfo.Flags,
                 !creationInfo.Flags.HasFlag(ProcessCreationFlags.EnableAslr),
                 memRegion,
+                memConfig,
                 codeAddress,
                 codeSize,
                 Context.ReservedSize,
@@ -184,6 +186,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
             ReadOnlySpan<uint> capabilities,
             KResourceLimit resourceLimit,
             MemoryRegion memRegion,
+            MemoryConfiguration memConfig,
             IProcessContextFactory contextFactory,
             ThreadStart customThreadStart = null,
             ulong entrypointOffset = 0UL)
@@ -248,6 +251,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
                 creationInfo.Flags,
                 !creationInfo.Flags.HasFlag(ProcessCreationFlags.EnableAslr),
                 memRegion,
+                memConfig,
                 codeAddress,
                 codeSize,
                 Context.ReservedSize,
