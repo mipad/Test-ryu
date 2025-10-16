@@ -51,6 +51,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Popup
 import compose.icons.CssGgIcons
 import compose.icons.cssggicons.ToolbarBottom
+import compose.icons.FontAwesomeIcons
+import compose.icons.fontawesomeicons.Solid
+import compose.icons.fontawesomeicons.solid.Edit
 import org.ryujinx.android.GameController
 import org.ryujinx.android.GameHost
 import org.ryujinx.android.Icons
@@ -99,6 +102,9 @@ class GameViews {
             val showBatteryTemperature = remember { mutableStateOf(false) }
             val showBatteryLevel = remember { mutableStateOf(false) }
             val showFifo = remember { mutableStateOf(true) } // 添加FIFO显示状态
+
+            // 编辑模式状态
+            val isEditing = remember { mutableStateOf(false) }
 
             Box(modifier = Modifier.fillMaxSize()) {
                 if (showStats.value) {
@@ -150,7 +156,7 @@ class GameViews {
                         awaitPointerEventScope {
                             while (true) {
                                 val event = awaitPointerEvent()
-                                if (showController.value)
+                                if (showController.value || isEditing.value)
                                     continue
 
                                 val change = event
@@ -261,6 +267,17 @@ class GameViews {
                                                 imageVector = Icons.vSync(),
                                                 tint = if (enableVsync.value) Color.Green else Color.Red,
                                                 contentDescription = "Toggle VSync"
+                                            )
+                                        }
+                                        // 编辑按钮
+                                        IconButton(modifier = Modifier.padding(4.dp), onClick = {
+                                            showMore.value = false
+                                            isEditing.value = true
+                                            mainViewModel.controller?.setEditingMode(true)
+                                        }) {
+                                            Icon(
+                                                imageVector = FontAwesomeIcons.Solid.Edit,
+                                                contentDescription = "Edit Button Layout"
                                             )
                                         }
                                         // 性能设置图标
