@@ -2,9 +2,9 @@ name: Android CI  Fix
 
 on:
   push:
-    branches: [ "heap" ]
+    branches: [ "屏键" ]
   pull_request:
-    branches: [ "heap" ]
+    branches: [ "屏键" ]
 
 jobs:
   build:
@@ -25,7 +25,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: heap
+        ref: 屏键
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
