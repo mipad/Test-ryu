@@ -135,7 +135,7 @@ class JoystickView @JvmOverloads constructor(
     }
 }
 
-// 美化后的方向键视图
+// 美化后的方向键视图 - 移除圆形底座
 class DpadView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -152,12 +152,6 @@ class DpadView @JvmOverloads constructor(
         color = Color.argb(200, 180, 180, 180)
         style = Paint.Style.STROKE
         strokeWidth = 3f
-        isAntiAlias = true
-    }
-    
-    private val dpadCenterPaint = Paint().apply {
-        color = Color.argb(200, 100, 100, 100)
-        style = Paint.Style.FILL
         isAntiAlias = true
     }
     
@@ -182,17 +176,7 @@ class DpadView @JvmOverloads constructor(
         val armWidth = size / 2f
         val armLength = size
         
-        // 绘制方向键底座
-        canvas.drawCircle(centerX, centerY, size * 0.7f, dpadBasePaint)
-        canvas.drawCircle(centerX, centerY, size * 0.7f, dpadBorderPaint)
-        
-        // 根据按下的方向绘制高亮
-        val paintToUse = when (currentDirection) {
-            DpadDirection.NONE -> dpadBasePaint
-            else -> dpadPressedPaint
-        }
-        
-        // 绘制方向键臂（十字形）
+        // 绘制方向键臂（十字形）- 移除圆形底座
         // 上臂
         if (currentDirection == DpadDirection.UP || 
             currentDirection == DpadDirection.UP_LEFT || 
@@ -277,8 +261,14 @@ class DpadView @JvmOverloads constructor(
             )
         }
         
-        // 绘制中心圆
-        canvas.drawCircle(centerX, centerY, armWidth/2, dpadCenterPaint)
+        // 绘制中心方块
+        canvas.drawRect(
+            centerX - armWidth/2, 
+            centerY - armWidth/2, 
+            centerX + armWidth/2, 
+            centerY + armWidth/2, 
+            dpadBasePaint
+        )
         
         // 绘制边框
         canvas.drawRect(
@@ -306,6 +296,13 @@ class DpadView @JvmOverloads constructor(
             centerX + armWidth/2, 
             centerY - armWidth/2, 
             centerX + armLength, 
+            centerY + armWidth/2, 
+            dpadBorderPaint
+        )
+        canvas.drawRect(
+            centerX - armWidth/2, 
+            centerY - armWidth/2, 
+            centerX + armWidth/2, 
             centerY + armWidth/2, 
             dpadBorderPaint
         )
@@ -630,49 +627,55 @@ class GameController(var activity: Activity) {
                             .background(ComposeColor.Black.copy(alpha = 0.6f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = MaterialTheme.colorScheme.surface,
-                            shadowElevation = 8.dp,
-                            modifier = Modifier
-                                .width(280.dp)
-                                .padding(16.dp)
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier.fillMaxSize()
                         ) {
-                            Column(
-                                modifier = Modifier.padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                shadowElevation = 8.dp,
+                                modifier = Modifier
+                                    .width(280.dp)
+                                    .padding(16.dp)
                             ) {
-                                Text(
-                                    text = "编辑模式",
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.padding(bottom = 12.dp)
-                                )
-                                Text(
-                                    text = "拖动按钮到合适位置",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                                    modifier = Modifier.padding(bottom = 4.dp)
-                                )
-                                Text(
-                                    text = "完成后点击保存",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                                    modifier = Modifier.padding(bottom = 24.dp)
-                                )
-                                Button(
-                                    onClick = {
-                                        isEditing = false
-                                        viewModel.controller?.saveLayout()
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(50.dp)
+                                Column(
+                                    modifier = Modifier.padding(24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Text(
-                                        text = "保存布局", 
-                                        style = MaterialTheme.typography.bodyLarge
+                                        text = "编辑模式",
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.padding(bottom = 12.dp)
                                     )
+                                    Text(
+                                        text = "拖动按钮到合适位置",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                                        modifier = Modifier.padding(bottom = 4.dp)
+                                    )
+                                    Text(
+                                        text = "完成后点击保存",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                                        modifier = Modifier.padding(bottom = 24.dp)
+                                    )
+                                    Button(
+                                        onClick = {
+                                            isEditing = false
+                                            viewModel.controller?.saveLayout()
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(50.dp)
+                                    ) {
+                                        Text(
+                                            text = "保存布局", 
+                                            style = MaterialTheme.typography.bodyLarge
+                                        )
+                                    }
                                 }
                             }
                         }
