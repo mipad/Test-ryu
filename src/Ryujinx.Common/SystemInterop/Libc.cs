@@ -1,7 +1,6 @@
 using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
-using System.IO;
 using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Common.SystemInterop
