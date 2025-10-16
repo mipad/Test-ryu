@@ -51,9 +51,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Popup
 import compose.icons.CssGgIcons
 import compose.icons.cssggicons.ToolbarBottom
-import compose.icons.FontAwesomeIcons
-import compose.icons.fontawesomeicons.Solid
-import compose.icons.fontawesomeicons.solid.Edit
 import org.ryujinx.android.GameController
 import org.ryujinx.android.GameHost
 import org.ryujinx.android.Icons
@@ -269,15 +266,15 @@ class GameViews {
                                                 contentDescription = "Toggle VSync"
                                             )
                                         }
-                                        // 编辑按钮
+                                        // 编辑按钮 - 使用文本表情符号
                                         IconButton(modifier = Modifier.padding(4.dp), onClick = {
                                             showMore.value = false
                                             isEditing.value = true
                                             mainViewModel.controller?.setEditingMode(true)
                                         }) {
-                                            Icon(
-                                                imageVector = FontAwesomeIcons.Solid.Edit,
-                                                contentDescription = "Edit Button Layout"
+                                            Text(
+                                                text = "✏️", // 编辑表情符号
+                                                fontSize = 20.sp
                                             )
                                         }
                                         // 性能设置图标
