@@ -1,7 +1,8 @@
 using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
-using System.Diagnostics;
+using System.IO;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Common.SystemInterop
 {
@@ -14,14 +15,16 @@ namespace Ryujinx.Common.SystemInterop
 
         public static void SetAffinity(int pid, long affinityMask)
         {
+            Logger.Info?.Print(LogClass.Application, $"[Libc] SetAffinity called with PID: {pid}, Mask: 0x{affinityMask:X}");
+            
             if (_isAndroid)
             {
-                Debug.WriteLine($"[Libc] Android/Bionic detected, using Android-specific affinity setting");
+                Logger.Info?.Print(LogClass.Application, "[Libc] Android/Bionic detected, using Android-specific implementation");
                 SetAffinityAndroid(pid, affinityMask);
                 return;
             }
 
-            Debug.WriteLine($"[Libc] Setting CPU affinity for PID {pid} with mask 0x{affinityMask:X}");
+            Logger.Info?.Print(LogClass.Application, "[Libc] Non-Android platform, using standard implementation");
 
             try
             {
@@ -31,17 +34,17 @@ namespace Ryujinx.Common.SystemInterop
                 {
                     int error = Marshal.GetLastWin32Error();
                     string errorMsg = $"[Libc] sched_setaffinity failed for PID {pid} with mask 0x{affinityMask:X} (Error: {error})";
-                    Debug.WriteLine(errorMsg);
+                    Logger.Error?.Print(LogClass.Application, errorMsg);
                     throw new Win32Exception(error, errorMsg);
                 }
                 else
                 {
-                    Debug.WriteLine($"[Libc] Successfully set CPU affinity for PID {pid}");
+                    Logger.Info?.Print(LogClass.Application, $"[Libc] Successfully set CPU affinity for PID {pid}");
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[Libc] Exception in SetAffinity: {ex}");
+                Logger.Error?.Print(LogClass.Application, $"[Libc] Exception in SetAffinity: {ex}");
                 throw;
             }
         }
@@ -51,15 +54,15 @@ namespace Ryujinx.Common.SystemInterop
 
         private static void SetAffinityAndroid(int pid, long affinityMask)
         {
-            Debug.WriteLine($"[Libc] Setting Android CPU affinity for PID {pid} with mask 0x{affinityMask:X}");
+            Logger.Info?.Print(LogClass.Application, $"[Libc] Setting Android CPU affinity for PID {pid} with mask 0x{affinityMask:X}");
 
             try
             {
                 int cpuCount = Environment.ProcessorCount;
-                Debug.WriteLine($"[Libc] Android CPU count: {cpuCount}");
+                Logger.Info?.Print(LogClass.Application, $"[Libc] Android CPU count: {cpuCount}");
                 
                 byte[] mask = new byte[(cpuCount + 7) / 8];
-                Debug.WriteLine($"[Libc] Created mask byte array of length {mask.Length}");
+                Logger.Debug?.Print(LogClass.Application, $"[Libc] Created mask byte array of length {mask.Length}");
                 
                 // 将 affinityMask 转换为字节数组
                 bool hasSetCores = false;
@@ -71,49 +74,49 @@ namespace Ryujinx.Common.SystemInterop
                         int bitIndex = i % 8;
                         mask[byteIndex] |= (byte)(1 << bitIndex);
                         hasSetCores = true;
-                        Debug.WriteLine($"[Libc] Set CPU {i} in mask (byteIndex: {byteIndex}, bitIndex: {bitIndex})");
+                        Logger.Debug?.Print(LogClass.Application, $"[Libc] Set CPU {i} in mask (byteIndex: {byteIndex}, bitIndex: {bitIndex})");
                     }
                 }
 
                 if (!hasSetCores)
                 {
-                    Debug.WriteLine($"[Libc] Warning: No CPU cores were selected in affinity mask 0x{affinityMask:X}");
+                    Logger.Warning?.Print(LogClass.Application, $"[Libc] Warning: No CPU cores were selected in affinity mask 0x{affinityMask:X}");
                     return;
                 }
 
                 // 记录mask内容用于调试
-                Debug.Write($"[Libc] Mask bytes: ");
+                string maskBytesStr = "";
                 foreach (byte b in mask)
                 {
-                    Debug.Write($"{b:X2} ");
+                    maskBytesStr += $"{b:X2} ";
                 }
-                Debug.WriteLine("");
+                Logger.Debug?.Print(LogClass.Application, $"[Libc] Mask bytes: {maskBytesStr}");
 
                 int result = sched_setaffinity_bionic(pid, (IntPtr)mask.Length, mask);
                 if (result != 0)
                 {
                     int error = Marshal.GetLastWin32Error();
                     string errorMsg = $"[Libc] sched_setaffinity failed on Android for PID {pid} (Error: {error})";
-                    Debug.WriteLine(errorMsg);
+                    Logger.Warning?.Print(LogClass.Application, errorMsg);
                     
                     // 在Android上这通常是权限问题，尝试使用syscall作为备用方案
-                    Debug.WriteLine($"[Libc] Trying syscall fallback for Android...");
+                    Logger.Info?.Print(LogClass.Application, "[Libc] Trying syscall fallback for Android...");
                     SetAffinitySyscall(pid, affinityMask);
                 }
                 else
                 {
-                    Debug.WriteLine($"[Libc] Successfully set Android CPU affinity for PID {pid}");
+                    Logger.Info?.Print(LogClass.Application, $"[Libc] Successfully set Android CPU affinity for PID {pid}");
                 }
             }
             catch (DllNotFoundException dllEx)
             {
-                Debug.WriteLine($"[Libc] DllNotFoundException in SetAffinityAndroid: {dllEx.Message}");
+                Logger.Error?.Print(LogClass.Application, $"[Libc] DllNotFoundException in SetAffinityAndroid: {dllEx.Message}");
                 // 尝试使用syscall作为备用方案
                 SetAffinitySyscall(pid, affinityMask);
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[Libc] Exception in SetAffinityAndroid: {ex}");
+                Logger.Error?.Print(LogClass.Application, $"[Libc] Exception in SetAffinityAndroid: {ex}");
                 // 尝试使用syscall作为备用方案
                 SetAffinitySyscall(pid, affinityMask);
             }
@@ -125,7 +128,7 @@ namespace Ryujinx.Common.SystemInterop
 
         private static void SetAffinitySyscall(int pid, long affinityMask)
         {
-            Debug.WriteLine($"[Libc] Using syscall fallback for PID {pid} with mask 0x{affinityMask:X}");
+            Logger.Info?.Print(LogClass.Application, $"[Libc] Using syscall fallback for PID {pid} with mask 0x{affinityMask:X}");
 
             IntPtr maskPtr = IntPtr.Zero;
             
@@ -134,7 +137,7 @@ namespace Ryujinx.Common.SystemInterop
                 // sched_setaffinity 的系统调用号 (架构相关)
                 // 注意：不同架构的系统调用号不同，这里使用常见值
                 int SYS_sched_setaffinity = 241; // 对于ARM64 Android
-                Debug.WriteLine($"[Libc] Using syscall number: {SYS_sched_setaffinity}");
+                Logger.Debug?.Print(LogClass.Application, $"[Libc] Using syscall number: {SYS_sched_setaffinity}");
                 
                 int cpuCount = Environment.ProcessorCount;
                 byte[] maskBytes = new byte[(cpuCount + 7) / 8];
@@ -153,7 +156,7 @@ namespace Ryujinx.Common.SystemInterop
 
                 if (!hasSetCores)
                 {
-                    Debug.WriteLine($"[Libc] Warning: No CPU cores selected for syscall fallback");
+                    Logger.Warning?.Print(LogClass.Application, "[Libc] Warning: No CPU cores selected for syscall fallback");
                     return;
                 }
 
@@ -166,16 +169,16 @@ namespace Ryujinx.Common.SystemInterop
                 if (result != 0)
                 {
                     int error = Marshal.GetLastWin32Error();
-                    Debug.WriteLine($"[Libc] syscall sched_setaffinity failed (Error: {error})");
+                    Logger.Warning?.Print(LogClass.Application, $"[Libc] syscall sched_setaffinity failed (Error: {error})");
                 }
                 else
                 {
-                    Debug.WriteLine($"[Libc] Successfully set CPU affinity via syscall for PID {pid}");
+                    Logger.Info?.Print(LogClass.Application, $"[Libc] Successfully set CPU affinity via syscall for PID {pid}");
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[Libc] Exception in SetAffinitySyscall: {ex}");
+                Logger.Error?.Print(LogClass.Application, $"[Libc] Exception in SetAffinitySyscall: {ex}");
             }
             finally
             {
@@ -183,7 +186,7 @@ namespace Ryujinx.Common.SystemInterop
                 if (maskPtr != IntPtr.Zero)
                 {
                     Marshal.FreeHGlobal(maskPtr);
-                    Debug.WriteLine($"[Libc] Freed unmanaged memory for syscall mask");
+                    Logger.Debug?.Print(LogClass.Application, "[Libc] Freed unmanaged memory for syscall mask");
                 }
             }
         }
@@ -193,17 +196,32 @@ namespace Ryujinx.Common.SystemInterop
         {
             try
             {
+                Logger.Info?.Print(LogClass.Application, "[Libc] Starting CPU affinity support test");
+                
                 // 尝试设置当前进程到所有CPU（通常应该成功）
                 long allCoresMask = (1L << Environment.ProcessorCount) - 1;
+                Logger.Info?.Print(LogClass.Application, $"[Libc] Testing with all cores mask: 0x{allCoresMask:X}");
+                
                 SetAffinity(0, allCoresMask);
-                Debug.WriteLine($"[Libc] CPU affinity test successful");
+                
+                Logger.Info?.Print(LogClass.Application, "[Libc] CPU affinity test successful");
                 return true;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[Libc] CPU affinity test failed: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"[Libc] CPU affinity test failed: {ex.Message}");
                 return false;
             }
+        }
+
+        // 添加一个简单的初始化检查方法
+        public static void Initialize()
+        {
+            Logger.Info?.Print(LogClass.Application, $"[Libc] Initialize called - Android: {OperatingSystem.IsAndroid()}, Bionic: {PlatformInfo.IsBionic}");
+            Logger.Info?.Print(LogClass.Application, $"[Libc] Processor count: {Environment.ProcessorCount}");
+            
+            // 测试CPU亲和性支持
+            TestAffinitySupport();
         }
     }
 }
