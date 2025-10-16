@@ -213,36 +213,47 @@ namespace LibRyujinx
         // 添加设置多人游戏模式的方法
         public static void SetMultiplayerMode(MultiplayerMode mode)
         {
+            Logger.Info?.Print(LogClass.ServiceLdn, $"=== LDN DEBUG: Setting multiplayer mode from {_currentMultiplayerMode} to {mode} ===");
+            Logger.Info?.Print(LogClass.ServiceLdn, $"Device state: {SwitchDevice?.EmulationContext != null}");
+            
             _currentMultiplayerMode = mode;
             
             // 如果设备已初始化，记录需要重启才能生效
             if (SwitchDevice?.EmulationContext != null)
             {
-                Logger.Info?.Print(LogClass.Application, $"Multiplayer mode changed to: {mode}. Restart required to take effect.");
+                Logger.Info?.Print(LogClass.ServiceLdn, $"Multiplayer mode changed to: {mode}. Restart required to take effect.");
             }
+            
+            Logger.Info?.Print(LogClass.ServiceLdn, $"=== LDN DEBUG: Multiplayer mode set to {_currentMultiplayerMode} ===");
         }
 
         // 添加获取多人游戏模式的方法
         public static MultiplayerMode GetMultiplayerMode()
         {
+            Logger.Info?.Print(LogClass.ServiceLdn, $"=== LDN DEBUG: Getting multiplayer mode: {_currentMultiplayerMode} ===");
             return _currentMultiplayerMode;
         }
 
         // 添加设置网络接口的方法
         public static void SetLanInterface(string interfaceId)
         {
+            Logger.Info?.Print(LogClass.ServiceLdn, $"=== LDN DEBUG: Setting LAN interface from {_currentLanInterfaceId} to {interfaceId} ===");
+            
             _currentLanInterfaceId = interfaceId ?? "0";
             
             // 如果设备已初始化，记录需要重启才能生效
             if (SwitchDevice?.EmulationContext != null)
             {
-                Logger.Info?.Print(LogClass.Application, $"LAN interface changed to: {interfaceId}. Restart required to take effect.");
+                Logger.Info?.Print(LogClass.ServiceLdn, $"LAN interface changed to: {interfaceId}. Restart required to take effect.");
             }
+            
+            Logger.Info?.Print(LogClass.ServiceLdn, $"=== LDN DEBUG: LAN interface set to {_currentLanInterfaceId} ===");
         }
 
         // 添加获取网络接口的方法
         public static string GetLanInterface()
         {
+            Logger.Info?.Print(LogClass.ServiceLdn, $"=== LDN DEBUG: Getting LAN interface: {_currentLanInterfaceId} ===");
             return _currentLanInterfaceId;
         }
 
@@ -1971,8 +1982,8 @@ namespace LibRyujinx
             Logger.Info?.Print(LogClass.Application, $"Found {saveDirs.Count} save directories:");
             
             foreach (var saveDir in saveDirs)
-            {
-                string saveId = Path.GetFileName(saveDir);
+                {
+                    string saveId = Path.GetFileName(saveDir);
                 
                 // 检查 saveMeta
                 string saveMetaPath = Path.Combine(saveMetaBasePath, saveId);
@@ -2030,6 +2041,8 @@ namespace LibRyujinx
 
         public SwitchDevice()
         {
+            Logger.Info?.Print(LogClass.ServiceLdn, "=== LDN DEBUG: Creating SwitchDevice ===");
+            
             VirtualFileSystem = VirtualFileSystem.CreateInstance();
             LibHacHorizonManager = new LibHacHorizonManager();
 
@@ -2049,6 +2062,8 @@ namespace LibRyujinx
             if (_firmwareVersion != null)
             {
             }
+            
+            Logger.Info?.Print(LogClass.ServiceLdn, "=== LDN DEBUG: SwitchDevice created successfully ===");
         }
 
         public bool InitializeContext(bool isHostMapped,
@@ -2068,8 +2083,14 @@ namespace LibRyujinx
                                       MultiplayerMode multiplayerMode,
                                       string lanInterfaceId)
         {
+            Logger.Info?.Print(LogClass.ServiceLdn, "=== LDN DEBUG: Starting InitializeContext ===");
+            Logger.Info?.Print(LogClass.ServiceLdn, $"MultiplayerMode: {multiplayerMode}");
+            Logger.Info?.Print(LogClass.ServiceLdn, $"LanInterfaceId: {lanInterfaceId}");
+            Logger.Info?.Print(LogClass.ServiceLdn, $"EnableInternetAccess: {enableInternetAccess}");
+
             if (LibRyujinx.Renderer == null)
             {
+                Logger.Error?.Print(LogClass.ServiceLdn, "=== LDN DEBUG: Renderer is null, initialization failed ===");
                 return false;
             }
 
@@ -2083,6 +2104,8 @@ namespace LibRyujinx
                 renderer = new ThreadedRenderer(renderer);
             }
 
+            Logger.Info?.Print(LogClass.ServiceLdn, "=== LDN DEBUG: Creating HLEConfiguration with network parameters ===");
+            
             HLEConfiguration configuration = new HLEConfiguration(VirtualFileSystem,
                                                                   LibHacHorizonManager,
                                                                   ContentManager,
@@ -2111,13 +2134,18 @@ namespace LibRyujinx
                                                                   lanInterfaceId, // 修正：移除多余的""参数，直接使用lanInterfaceId
                                                                   multiplayerMode);
 
+            Logger.Info?.Print(LogClass.ServiceLdn, "=== LDN DEBUG: HLEConfiguration created successfully ===");
+
             try
             {
                 EmulationContext = new Switch(configuration);
+                Logger.Info?.Print(LogClass.ServiceLdn, "=== LDN DEBUG: Switch context initialized successfully ===");
                 return true;
             }
             catch (Exception ex)
             {
+                Logger.Error?.Print(LogClass.ServiceLdn, $"=== LDN DEBUG: Failed to initialize Switch context: {ex.Message} ===");
+                Logger.Error?.Print(LogClass.ServiceLdn, $"=== LDN DEBUG: Stack trace: {ex.StackTrace} ===");
                 return false;
             }
         }
@@ -2131,10 +2159,12 @@ namespace LibRyujinx
 
         internal void DisposeContext()
         {
+            Logger.Info?.Print(LogClass.ServiceLdn, "=== LDN DEBUG: Disposing context ===");
             EmulationContext?.Dispose();
             EmulationContext?.DisposeGpu();
             EmulationContext = null;
             LibRyujinx.Renderer = null;
+            Logger.Info?.Print(LogClass.ServiceLdn, "=== LDN DEBUG: Context disposed ===");
         }
     }
 
