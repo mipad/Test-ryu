@@ -14,6 +14,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.Button
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -579,12 +580,16 @@ class GameController(var activity: Activity) {
             
             // 获取按钮容器
             val buttonContainer = view.findViewById<FrameLayout>(R.id.buttonContainer)!!
+            val editModeContainer = view.findViewById<FrameLayout>(R.id.editModeContainer)!!
             
             // 初始化按钮管理器
             controller.buttonLayoutManager = ButtonLayoutManager(context)
             
             // 创建所有虚拟控件
             controller.createVirtualControls(buttonContainer)
+            
+            // 创建保存按钮
+            controller.createSaveButton(editModeContainer)
             
             return view
         }
@@ -606,86 +611,23 @@ class GameController(var activity: Activity) {
                 viewModel.controller?.setEditingMode(isEditing)
             }
             
-            Box(modifier = Modifier.fillMaxSize()) {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(), 
-                    factory = { context ->
-                        val controller = GameController(viewModel.activity)
-                        val c = Create(context, controller)
-                        controller.controllerView = c
-                        viewModel.setGameController(controller)
-                        controller.setVisible(QuickSettings(viewModel.activity).useVirtualController)
-                        c
-                    }
-                )
-                
-                // 编辑模式下的保存按钮 - 确保在最上层
-                if (isEditing) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(ComposeColor.Black.copy(alpha = 0.6f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center,
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(20.dp),
-                                color = MaterialTheme.colorScheme.surface,
-                                shadowElevation = 8.dp,
-                                modifier = Modifier
-                                    .width(280.dp)
-                                    .padding(16.dp)
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(24.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        text = "编辑模式",
-                                        style = MaterialTheme.typography.headlineSmall,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.padding(bottom = 12.dp)
-                                    )
-                                    Text(
-                                        text = "拖动按钮到合适位置",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                                        modifier = Modifier.padding(bottom = 4.dp)
-                                    )
-                                    Text(
-                                        text = "完成后点击保存",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                                        modifier = Modifier.padding(bottom = 24.dp)
-                                    )
-                                    Button(
-                                        onClick = {
-                                            isEditing = false
-                                            viewModel.controller?.saveLayout()
-                                        },
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(50.dp)
-                                    ) {
-                                        Text(
-                                            text = "保存布局", 
-                                            style = MaterialTheme.typography.bodyLarge
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
+            AndroidView(
+                modifier = Modifier.fillMaxSize(), 
+                factory = { context ->
+                    val controller = GameController(viewModel.activity)
+                    val c = Create(context, controller)
+                    controller.controllerView = c
+                    viewModel.setGameController(controller)
+                    controller.setVisible(QuickSettings(viewModel.activity).useVirtualController)
+                    c
                 }
-            }
+            )
         }
     }
 
     private var controllerView: View? = null
+    private var editModeContainer: FrameLayout? = null
+    private var saveButton: Button? = null
     var buttonLayoutManager: ButtonLayoutManager? = null
     private val virtualButtons = mutableMapOf<Int, DraggableButtonView>()
     private val virtualJoysticks = mutableMapOf<Int, JoystickView>()
@@ -785,6 +727,43 @@ class GameController(var activity: Activity) {
                 virtualButtons[config.id] = button
             }
         }
+    }
+    
+    private fun createSaveButton(editModeContainer: FrameLayout) {
+        this.editModeContainer = editModeContainer
+        
+        // 创建保存按钮
+        saveButton = Button(editModeContainer.context).apply {
+            text = "保存布局"
+            setBackgroundColor(Color.argb(200, 0, 100, 200))
+            setTextColor(Color.WHITE)
+            textSize = 18f
+            setOnClickListener {
+                saveLayout()
+                setEditingMode(false)
+            }
+            
+            // 设置按钮位置在屏幕中央
+            val params = FrameLayout.LayoutParams(
+                dpToPx(200),
+                dpToPx(60)
+            ).apply {
+                gravity = android.view.Gravity.CENTER
+            }
+            layoutParams = params
+        }
+        
+        editModeContainer.addView(saveButton)
+        editModeContainer.setBackgroundColor(Color.argb(150, 0, 0, 0))
+        editModeContainer.isVisible = false
+    }
+    
+    private fun dpToPx(dp: Int): Int {
+        return TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP, 
+            dp.toFloat(), 
+            activity.resources.displayMetrics
+        ).toInt()
     }
     
     private fun handleJoystickDragEvent(event: MotionEvent, joystickId: Int): Boolean {
@@ -1051,6 +1030,8 @@ class GameController(var activity: Activity) {
     
     fun setEditingMode(editing: Boolean) {
         isEditing = editing
+        editModeContainer?.isVisible = editing
+        
         virtualButtons.values.forEach { button ->
             button.buttonPressed = false
         }
