@@ -195,15 +195,14 @@ class GameController(var activity: Activity) {
             val inflator = LayoutInflater.from(context)
             val view = inflator.inflate(R.layout.game_layout, null)
             
-            // 创建按钮容器
-            val leftContainer = view.findViewById<FrameLayout>(R.id.leftcontainer)!!
-            val rightContainer = view.findViewById<FrameLayout>(R.id.rightcontainer)!!
+            // 获取按钮容器
+            val buttonContainer = view.findViewById<FrameLayout>(R.id.buttonContainer)!!
             
             // 初始化按钮管理器
             controller.buttonLayoutManager = ButtonLayoutManager(context)
             
             // 创建所有虚拟按钮
-            controller.createVirtualButtons(leftContainer, rightContainer)
+            controller.createVirtualButtons(buttonContainer)
             
             return view
         }
@@ -296,16 +295,16 @@ class GameController(var activity: Activity) {
         // 移除原有的 RadialGamePad 相关代码
     }
 
-    private fun createVirtualButtons(leftContainer: FrameLayout, rightContainer: FrameLayout) {
+    private fun createVirtualButtons(buttonContainer: FrameLayout) {
         val manager = buttonLayoutManager ?: return
         
         // 测量容器尺寸
-        leftContainer.post {
-            containerWidth = leftContainer.width + rightContainer.width
-            containerHeight = leftContainer.height
+        buttonContainer.post {
+            containerWidth = buttonContainer.width
+            containerHeight = buttonContainer.height
             
             manager.getAllButtonConfigs().forEach { config ->
-                val button = DraggableButtonView(leftContainer.context).apply {
+                val button = DraggableButtonView(buttonContainer.context).apply {
                     buttonId = config.id
                     buttonText = config.text
                     
@@ -326,13 +325,8 @@ class GameController(var activity: Activity) {
                     }
                 }
                 
-                // 根据位置决定放在哪个容器
-                val position = button.getPosition()
-                if (position.first < containerWidth / 2) {
-                    leftContainer.addView(button)
-                } else {
-                    rightContainer.addView(button)
-                }
+                // 添加到全屏容器
+                buttonContainer.addView(button)
                 
                 virtualButtons[config.id] = button
             }
