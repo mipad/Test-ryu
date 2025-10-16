@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.math.MathUtils
 import androidx.core.view.isVisible
@@ -670,8 +671,7 @@ class GameController(var activity: Activity) {
                                 ) {
                                     Text(
                                         text = "保存布局", 
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        fontSize = 16.sp
+                                        style = MaterialTheme.typography.bodyLarge
                                     )
                                 }
                             }
