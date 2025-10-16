@@ -102,6 +102,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             ProcessCreationFlags flags,
             bool fromBack,
             MemoryRegion memRegion,
+            MemoryConfiguration memConfig,
             ulong address,
             ulong size,
             ulong reservedSize,
@@ -118,6 +119,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
                 addrSpaceBase,
                 addrSpaceSize,
                 memRegion,
+                memConfig,
                 address,
                 size,
                 reservedSize,
@@ -161,6 +163,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             ulong addrSpaceStart,
             ulong addrSpaceEnd,
             MemoryRegion memRegion,
+            MemoryConfiguration memConfig,
             ulong address,
             ulong size,
             ulong reservedSize,
@@ -196,7 +199,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
 
                 case ProcessCreationFlags.AddressSpace64BitDeprecated:
                     aliasRegion.Size = 0x180000000;
-                    heapRegion.Size = 0x180000000;
+                    heapRegion.Size = memConfig == MemoryConfiguration.MemoryConfiguration8GiB ? 0x200000000u : 0x180000000u;
                     stackRegion.Size = 0;
                     tlsIoRegion.Size = 0;
                     CodeRegionStart = 0x8000000;
@@ -227,7 +230,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
                         int addressSpaceWidth = (int)ulong.Log2(reservedAddressSpaceSize);
 
                         aliasRegion.Size = reservedAddressSpaceSize >= 0x1800000000 ? 0x1000000000 : 1UL << (addressSpaceWidth - 3);
-                        heapRegion.Size = 0x180000000;
+                        heapRegion.Size = memConfig == MemoryConfiguration.MemoryConfiguration8GiB ? 0x200000000u : 0x180000000u;
                         stackRegion.Size = 1UL << (addressSpaceWidth - 8);
                         tlsIoRegion.Size = 1UL << (addressSpaceWidth - 3);
                         CodeRegionStart = BitUtils.AlignDown(address, RegionAlignment);
@@ -241,7 +244,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
                     else
                     {
                         aliasRegion.Size = 0x1000000000;
-                        heapRegion.Size = 0x180000000;
+                        heapRegion.Size = memConfig == MemoryConfiguration.MemoryConfiguration8GiB ? 0x200000000u : 0x180000000u;
                         stackRegion.Size = 0x80000000;
                         tlsIoRegion.Size = 0x1000000000;
                         CodeRegionStart = BitUtils.AlignDown(address, RegionAlignment);
