@@ -45,14 +45,28 @@ class JoystickView @JvmOverloads constructor(
     var stickY: Float = 0f
     
     private val basePaint = Paint().apply {
-        color = Color.argb(128, 100, 100, 100)
+        color = Color.argb(180, 80, 80, 80)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
+    private val baseBorderPaint = Paint().apply {
+        color = Color.argb(200, 200, 200, 200)
+        style = Paint.Style.STROKE
+        strokeWidth = 4f
+        isAntiAlias = true
+    }
+    
     private val stickPaint = Paint().apply {
-        color = Color.argb(180, 255, 255, 255)
+        color = Color.argb(220, 240, 240, 240)
         style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+    
+    private val stickBorderPaint = Paint().apply {
+        color = Color.argb(200, 180, 180, 180)
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
         isAntiAlias = true
     }
     
@@ -67,12 +81,22 @@ class JoystickView @JvmOverloads constructor(
         
         // 绘制摇杆底座
         canvas.drawCircle(centerX, centerY, baseRadius, basePaint)
+        canvas.drawCircle(centerX, centerY, baseRadius, baseBorderPaint)
         
         // 绘制摇杆
         val stickRadius = baseRadius * 0.5f
         val stickPosX = centerX + stickX * baseRadius * 0.7f
         val stickPosY = centerY + stickY * baseRadius * 0.7f
         canvas.drawCircle(stickPosX, stickPosY, stickRadius, stickPaint)
+        canvas.drawCircle(stickPosX, stickPosY, stickRadius, stickBorderPaint)
+        
+        // 绘制中心点
+        val centerDotPaint = Paint().apply {
+            color = Color.argb(150, 100, 100, 100)
+            style = Paint.Style.FILL
+            isAntiAlias = true
+        }
+        canvas.drawCircle(centerX, centerY, 5f, centerDotPaint)
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -110,21 +134,34 @@ class JoystickView @JvmOverloads constructor(
     }
 }
 
-// 方向键视图
+// 美化后的方向键视图
 class DpadView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
     
-    private val dpadPaint = Paint().apply {
-        color = Color.argb(128, 100, 100, 100)
+    private val dpadBasePaint = Paint().apply {
+        color = Color.argb(180, 60, 60, 60)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
-    private val centerPaint = Paint().apply {
-        color = Color.argb(180, 200, 200, 200)
+    private val dpadBorderPaint = Paint().apply {
+        color = Color.argb(200, 180, 180, 180)
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+        isAntiAlias = true
+    }
+    
+    private val dpadCenterPaint = Paint().apply {
+        color = Color.argb(200, 100, 100, 100)
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+    
+    private val dpadPressedPaint = Paint().apply {
+        color = Color.argb(220, 80, 160, 255)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
@@ -141,18 +178,136 @@ class DpadView @JvmOverloads constructor(
         val centerX = width / 2f
         val centerY = height / 2f
         val size = (width.coerceAtMost(height) / 2f) * 0.8f
+        val armWidth = size / 2f
+        val armLength = size
         
-        // 绘制方向键形状（十字形）
-        // 上
-        canvas.drawRect(centerX - size/3, centerY - size, centerX + size/3, centerY - size/3, dpadPaint)
-        // 下
-        canvas.drawRect(centerX - size/3, centerY + size/3, centerX + size/3, centerY + size, dpadPaint)
-        // 左
-        canvas.drawRect(centerX - size, centerY - size/3, centerX - size/3, centerY + size/3, dpadPaint)
-        // 右
-        canvas.drawRect(centerX + size/3, centerY - size/3, centerX + size, centerY + size/3, dpadPaint)
-        // 中心
-        canvas.drawCircle(centerX, centerY, size/3, centerPaint)
+        // 绘制方向键底座
+        canvas.drawCircle(centerX, centerY, size * 0.7f, dpadBasePaint)
+        canvas.drawCircle(centerX, centerY, size * 0.7f, dpadBorderPaint)
+        
+        // 根据按下的方向绘制高亮
+        val paintToUse = when (currentDirection) {
+            DpadDirection.NONE -> dpadBasePaint
+            else -> dpadPressedPaint
+        }
+        
+        // 绘制方向键臂（十字形）
+        // 上臂
+        if (currentDirection == DpadDirection.UP || 
+            currentDirection == DpadDirection.UP_LEFT || 
+            currentDirection == DpadDirection.UP_RIGHT) {
+            canvas.drawRect(
+                centerX - armWidth/2, 
+                centerY - armLength, 
+                centerX + armWidth/2, 
+                centerY - armWidth/2, 
+                dpadPressedPaint
+            )
+        } else {
+            canvas.drawRect(
+                centerX - armWidth/2, 
+                centerY - armLength, 
+                centerX + armWidth/2, 
+                centerY - armWidth/2, 
+                dpadBasePaint
+            )
+        }
+        
+        // 下臂
+        if (currentDirection == DpadDirection.DOWN || 
+            currentDirection == DpadDirection.DOWN_LEFT || 
+            currentDirection == DpadDirection.DOWN_RIGHT) {
+            canvas.drawRect(
+                centerX - armWidth/2, 
+                centerY + armWidth/2, 
+                centerX + armWidth/2, 
+                centerY + armLength, 
+                dpadPressedPaint
+            )
+        } else {
+            canvas.drawRect(
+                centerX - armWidth/2, 
+                centerY + armWidth/2, 
+                centerX + armWidth/2, 
+                centerY + armLength, 
+                dpadBasePaint
+            )
+        }
+        
+        // 左臂
+        if (currentDirection == DpadDirection.LEFT || 
+            currentDirection == DpadDirection.UP_LEFT || 
+            currentDirection == DpadDirection.DOWN_LEFT) {
+            canvas.drawRect(
+                centerX - armLength, 
+                centerY - armWidth/2, 
+                centerX - armWidth/2, 
+                centerY + armWidth/2, 
+                dpadPressedPaint
+            )
+        } else {
+            canvas.drawRect(
+                centerX - armLength, 
+                centerY - armWidth/2, 
+                centerX - armWidth/2, 
+                centerY + armWidth/2, 
+                dpadBasePaint
+            )
+        }
+        
+        // 右臂
+        if (currentDirection == DpadDirection.RIGHT || 
+            currentDirection == DpadDirection.UP_RIGHT || 
+            currentDirection == DpadDirection.DOWN_RIGHT) {
+            canvas.drawRect(
+                centerX + armWidth/2, 
+                centerY - armWidth/2, 
+                centerX + armLength, 
+                centerY + armWidth/2, 
+                dpadPressedPaint
+            )
+        } else {
+            canvas.drawRect(
+                centerX + armWidth/2, 
+                centerY - armWidth/2, 
+                centerX + armLength, 
+                centerY + armWidth/2, 
+                dpadBasePaint
+            )
+        }
+        
+        // 绘制中心圆
+        canvas.drawCircle(centerX, centerY, armWidth/2, dpadCenterPaint)
+        
+        // 绘制边框
+        canvas.drawRect(
+            centerX - armWidth/2, 
+            centerY - armLength, 
+            centerX + armWidth/2, 
+            centerY - armWidth/2, 
+            dpadBorderPaint
+        )
+        canvas.drawRect(
+            centerX - armWidth/2, 
+            centerY + armWidth/2, 
+            centerX + armWidth/2, 
+            centerY + armLength, 
+            dpadBorderPaint
+        )
+        canvas.drawRect(
+            centerX - armLength, 
+            centerY - armWidth/2, 
+            centerX - armWidth/2, 
+            centerY + armWidth/2, 
+            dpadBorderPaint
+        )
+        canvas.drawRect(
+            centerX + armWidth/2, 
+            centerY - armWidth/2, 
+            centerX + armLength, 
+            centerY + armWidth/2, 
+            dpadBorderPaint
+        )
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -224,6 +379,13 @@ class DraggableButtonView @JvmOverloads constructor(
         isAntiAlias = true
     }
     
+    private val outerBorderPaint = Paint().apply {
+        color = Color.argb(200, 180, 180, 180)
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+        isAntiAlias = true
+    }
+    
     private val innerCirclePaint = Paint().apply {
         color = Color.argb(128, 100, 100, 255)
         style = Paint.Style.FILL
@@ -253,6 +415,7 @@ class DraggableButtonView @JvmOverloads constructor(
         
         // 绘制外圈
         canvas.drawCircle(centerX, centerY, radius, outerCirclePaint)
+        canvas.drawCircle(centerX, centerY, radius, outerBorderPaint)
         
         // 绘制内圈（按压时变色）
         val fillPaint = if (buttonPressed) pressedPaint else innerCirclePaint
@@ -440,35 +603,39 @@ class GameController(var activity: Activity) {
         fun Compose(viewModel: MainViewModel): Unit {
             var isEditing by remember { mutableStateOf(false) }
             
-            AndroidView(
-                modifier = Modifier.fillMaxSize(), 
-                factory = { context ->
-                    val controller = GameController(viewModel.activity)
-                    val c = Create(context, controller)
-                    controller.controllerView = c
-                    controller.setEditingMode(false)
-                    viewModel.setGameController(controller)
-                    controller.setVisible(QuickSettings(viewModel.activity).useVirtualController)
-                    c
-                }
-            )
+            // 监听编辑模式变化
+            LaunchedEffect(isEditing) {
+                viewModel.controller?.setEditingMode(isEditing)
+            }
             
-            // 编辑模式下的保存按钮
-            if (isEditing) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(ComposeColor.Black.copy(alpha = 0.5f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(16.dp)
+            Box(modifier = Modifier.fillMaxSize()) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(), 
+                    factory = { context ->
+                        val controller = GameController(viewModel.activity)
+                        val c = Create(context, controller)
+                        controller.controllerView = c
+                        viewModel.setGameController(controller)
+                        controller.setVisible(QuickSettings(viewModel.activity).useVirtualController)
+                        c
+                    }
+                )
+                
+                // 编辑模式下的保存按钮 - 确保在最上层
+                if (isEditing) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(ComposeColor.Black.copy(alpha = 0.6f)),
+                        contentAlignment = Alignment.Center
                     ) {
                         Surface(
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(20.dp),
                             color = MaterialTheme.colorScheme.surface,
-                            modifier = Modifier.padding(16.dp)
+                            shadowElevation = 8.dp,
+                            modifier = Modifier
+                                .width(280.dp)
+                                .padding(16.dp)
                         ) {
                             Column(
                                 modifier = Modifier.padding(24.dp),
@@ -477,26 +644,35 @@ class GameController(var activity: Activity) {
                                 Text(
                                     text = "编辑模式",
                                     style = MaterialTheme.typography.headlineSmall,
-                                    modifier = Modifier.padding(bottom = 16.dp)
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(bottom = 12.dp)
                                 )
                                 Text(
                                     text = "拖动按钮到合适位置",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.padding(bottom = 8.dp)
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                                    modifier = Modifier.padding(bottom = 4.dp)
                                 )
                                 Text(
                                     text = "完成后点击保存",
                                     style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
                                     modifier = Modifier.padding(bottom = 24.dp)
                                 )
                                 Button(
                                     onClick = {
                                         isEditing = false
-                                        viewModel.controller?.setEditingMode(false)
                                         viewModel.controller?.saveLayout()
-                                    }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(50.dp)
                                 ) {
-                                    Text(text = "保存布局", style = MaterialTheme.typography.bodyLarge)
+                                    Text(
+                                        text = "保存布局", 
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontSize = 16.sp
+                                    )
                                 }
                             }
                         }
@@ -729,14 +905,19 @@ class GameController(var activity: Activity) {
             when (event.action) {
                 MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
                     val direction = dpad.getDirectionFromTouch(event.x, event.y)
-                    dpad.currentDirection = direction
-                    
-                    // 发送方向键事件
-                    handleDpadDirection(direction, true)
+                    if (dpad.currentDirection != direction) {
+                        // 方向改变，先释放旧方向
+                        handleDpadDirection(dpad.currentDirection, false)
+                        // 设置新方向
+                        dpad.currentDirection = direction
+                        handleDpadDirection(direction, true)
+                        dpad.invalidate() // 重绘以显示高亮效果
+                    }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     handleDpadDirection(dpad.currentDirection, false)
                     dpad.currentDirection = DpadView.DpadDirection.NONE
+                    dpad.invalidate() // 重绘以清除高亮效果
                 }
             }
         }
@@ -873,6 +1054,8 @@ class GameController(var activity: Activity) {
         virtualJoysticks.values.forEach { joystick ->
             joystick.updateStickPosition(0f, 0f)
         }
+        dpadView?.currentDirection = DpadView.DpadDirection.NONE
+        dpadView?.invalidate()
     }
     
     fun saveLayout() {
