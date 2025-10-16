@@ -60,7 +60,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator
             // TODO: Call nn::arp::GetApplicationControlProperty here when implemented.
             ApplicationControlProperty controlProperty = context.Device.Processes.ActiveApplication.ApplicationControlProperties;
 
-            foreach (ulong localCommunicationId in controlProperty.LocalCommunicationId)
+            foreach (var localCommunicationId in controlProperty.LocalCommunicationId.ItemsRo)
             {
                 if (localCommunicationId == localCommunicationIdChecked)
                 {
@@ -1075,7 +1075,7 @@ namespace Ryujinx.HLE.HOS.Services.Ldn.UserServiceCreator
                         }
 
                         // TODO: Call nn::arp::GetApplicationLaunchProperty here when implemented.
-                        NetworkClient.SetGameVersion(context.Device.Processes.ActiveApplication.ApplicationControlProperties.DisplayVersion);
+                        NetworkClient.SetGameVersion(context.Device.Processes.ActiveApplication.ApplicationControlProperties.DisplayVersion.Items.ToArray());
 
                         resultCode = ResultCode.Success;
 
