@@ -51,7 +51,7 @@ class DraggableButtonView @JvmOverloads constructor(
     
     var buttonId: Int = 0
     var buttonText: String = ""
-    var isPressed: Boolean = false
+    var buttonPressed: Boolean = false
         set(value) {
             field = value
             invalidate()
@@ -98,7 +98,7 @@ class DraggableButtonView @JvmOverloads constructor(
         canvas.drawCircle(centerX, centerY, radius, outerCirclePaint)
         
         // 绘制内圈（按压时变色）
-        val fillPaint = if (isPressed) pressedPaint else innerCirclePaint
+        val fillPaint = if (buttonPressed) pressedPaint else innerCirclePaint
         canvas.drawCircle(centerX, centerY, radius * 0.7f, fillPaint)
         
         // 绘制文字
@@ -344,7 +344,7 @@ class GameController(var activity: Activity) {
             MotionEvent.ACTION_DOWN -> {
                 // 开始拖动
                 virtualButtons[buttonId]?.let { button ->
-                    button.isPressed = true
+                    button.buttonPressed = true
                 }
             }
             MotionEvent.ACTION_MOVE -> {
@@ -363,7 +363,7 @@ class GameController(var activity: Activity) {
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 // 结束拖动
-                virtualButtons[buttonId]?.isPressed = false
+                virtualButtons[buttonId]?.buttonPressed = false
             }
         }
         return true
@@ -376,11 +376,11 @@ class GameController(var activity: Activity) {
         
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                virtualButtons.values.find { it.buttonId == keyCode }?.isPressed = true
+                virtualButtons.values.find { it.buttonId == keyCode }?.buttonPressed = true
                 RyujinxNative.jnaInstance.inputSetButtonPressed(keyCode, controllerId)
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                virtualButtons.values.find { it.buttonId == keyCode }?.isPressed = false
+                virtualButtons.values.find { it.buttonId == keyCode }?.buttonPressed = false
                 RyujinxNative.jnaInstance.inputSetButtonReleased(keyCode, controllerId)
             }
         }
@@ -390,7 +390,7 @@ class GameController(var activity: Activity) {
     fun setEditingMode(editing: Boolean) {
         isEditing = editing
         virtualButtons.values.forEach { button ->
-            button.isPressed = false
+            button.buttonPressed = false
         }
     }
     
