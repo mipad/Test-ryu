@@ -1,7 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/buttonContainer"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
+
+    <!-- 虚拟按键容器 -->
+    <FrameLayout
+        android:id="@+id/buttonContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- 编辑模式容器 - 专门用于显示保存按钮 -->
+    <FrameLayout
+        android:id="@+id/editModeContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
 
 </FrameLayout>
