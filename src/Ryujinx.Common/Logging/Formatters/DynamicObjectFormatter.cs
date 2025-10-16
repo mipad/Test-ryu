@@ -2,7 +2,6 @@
 using System;
 using System.Reflection;
 using System.Text;
-using System.Diagnostics.CodeAnalysis;
 
 namespace Ryujinx.Common.Logging.Formatters
 {
@@ -31,7 +30,7 @@ namespace Ryujinx.Common.Logging.Formatters
             }
         }
 
-        public static void Format(StringBuilder sb, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] object? dynamicObject)
+        public static void Format(StringBuilder sb, object? dynamicObject)
         {
             if (dynamicObject is null)
             {
