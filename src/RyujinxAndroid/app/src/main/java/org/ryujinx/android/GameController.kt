@@ -47,26 +47,26 @@ class JoystickView @JvmOverloads constructor(
     var stickY: Float = 0f
     
     private val basePaint = Paint().apply {
-        color = Color.argb(180, 80, 80, 80)
+        color = Color.argb(120, 80, 80, 80) // 改为半透明
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val baseBorderPaint = Paint().apply {
-        color = Color.argb(200, 200, 200, 200)
+        color = Color.argb(150, 200, 200, 200) // 改为半透明
         style = Paint.Style.STROKE
         strokeWidth = 4f
         isAntiAlias = true
     }
     
     private val stickPaint = Paint().apply {
-        color = Color.argb(220, 240, 240, 240)
+        color = Color.argb(180, 240, 240, 240) // 改为半透明
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val stickBorderPaint = Paint().apply {
-        color = Color.argb(200, 180, 180, 180)
+        color = Color.argb(150, 180, 180, 180) // 改为半透明
         style = Paint.Style.STROKE
         strokeWidth = 3f
         isAntiAlias = true
@@ -94,7 +94,7 @@ class JoystickView @JvmOverloads constructor(
         
         // 绘制中心点
         val centerDotPaint = Paint().apply {
-            color = Color.argb(150, 100, 100, 100)
+            color = Color.argb(100, 100, 100, 100) // 改为半透明
             style = Paint.Style.FILL
             isAntiAlias = true
         }
@@ -144,20 +144,20 @@ class DpadView @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
     
     private val dpadBasePaint = Paint().apply {
-        color = Color.argb(180, 60, 60, 60)
+        color = Color.argb(120, 60, 60, 60) // 改为半透明
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val dpadBorderPaint = Paint().apply {
-        color = Color.argb(200, 180, 180, 180)
+        color = Color.argb(150, 180, 180, 180) // 改为半透明
         style = Paint.Style.STROKE
         strokeWidth = 3f
         isAntiAlias = true
     }
     
     private val dpadPressedPaint = Paint().apply {
-        color = Color.argb(220, 80, 160, 255)
+        color = Color.argb(180, 80, 160, 255) // 改为半透明
         style = Paint.Style.FILL
         isAntiAlias = true
     }
@@ -373,26 +373,26 @@ class DraggableButtonView @JvmOverloads constructor(
         }
     
     private val outerCirclePaint = Paint().apply {
-        color = Color.argb(180, 255, 255, 255)
+        color = Color.argb(120, 255, 255, 255) // 改为半透明无色
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val outerBorderPaint = Paint().apply {
-        color = Color.argb(200, 180, 180, 180)
+        color = Color.argb(150, 180, 180, 180) // 改为半透明
         style = Paint.Style.STROKE
         strokeWidth = 3f
         isAntiAlias = true
     }
     
     private val innerCirclePaint = Paint().apply {
-        color = Color.argb(128, 100, 100, 255)
+        color = Color.argb(100, 100, 100, 100) // 改为半透明无色
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val pressedPaint = Paint().apply {
-        color = Color.argb(200, 255, 100, 100)
+        color = Color.argb(150, 255, 100, 100) // 改为半透明
         style = Paint.Style.FILL
         isAntiAlias = true
     }
@@ -492,7 +492,10 @@ class ButtonLayoutManager(private val context: Context) {
         ButtonConfig(7, "ZL", 0.1f, 0.1f, GamePadButtonInputId.LeftTrigger.ordinal),
         ButtonConfig(8, "ZR", 0.9f, 0.1f, GamePadButtonInputId.RightTrigger.ordinal),
         ButtonConfig(9, "+", 0.8f, 0.1f, GamePadButtonInputId.Plus.ordinal),
-        ButtonConfig(10, "-", 0.2f, 0.1f, GamePadButtonInputId.Minus.ordinal)
+        ButtonConfig(10, "-", 0.2f, 0.1f, GamePadButtonInputId.Minus.ordinal),
+        // 添加L3和R3按钮
+        ButtonConfig(11, "L3", 0.2f, 0.8f, GamePadButtonInputId.LeftThumb.ordinal),
+        ButtonConfig(12, "R3", 0.7f, 0.8f, GamePadButtonInputId.RightThumb.ordinal)
     )
     
     private val joystickConfigs = listOf(
@@ -1045,22 +1048,26 @@ class GameController(var activity: Activity) {
     fun saveLayout() {
         val manager = buttonLayoutManager ?: return
         
+        // 重新获取容器尺寸，确保使用最新的尺寸
+        val currentContainerWidth = controllerView?.width ?: containerWidth
+        val currentContainerHeight = controllerView?.height ?: containerHeight
+        
         // 保存按钮位置
         virtualButtons.forEach { (buttonId, button) ->
             val (x, y) = button.getPosition()
-            manager.saveButtonPosition(buttonId, x, y, containerWidth, containerHeight)
+            manager.saveButtonPosition(buttonId, x, y, currentContainerWidth, currentContainerHeight)
         }
         
         // 保存摇杆位置
         virtualJoysticks.forEach { (joystickId, joystick) ->
             val (x, y) = joystick.getPosition()
-            manager.saveJoystickPosition(joystickId, x, y, containerWidth, containerHeight)
+            manager.saveJoystickPosition(joystickId, x, y, currentContainerWidth, currentContainerHeight)
         }
         
         // 保存方向键位置
         dpadView?.let { dpad ->
             val (x, y) = dpad.getPosition()
-            manager.saveDpadPosition(x, y, containerWidth, containerHeight)
+            manager.saveDpadPosition(x, y, currentContainerWidth, currentContainerHeight)
         }
     }
 
