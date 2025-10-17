@@ -47,28 +47,28 @@ class JoystickView @JvmOverloads constructor(
     var stickY: Float = 0f
     
     private val basePaint = Paint().apply {
-        color = Color.argb(128, 80, 80, 80) // 增加透明度
+        color = Color.argb(180, 60, 60, 60) // 深灰色，较高透明度
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val baseBorderPaint = Paint().apply {
-        color = Color.argb(128, 200, 200, 200) // 增加透明度
+        color = Color.argb(180, 120, 120, 120) // 浅灰色边框
         style = Paint.Style.STROKE
-        strokeWidth = 4f
+        strokeWidth = 3f
         isAntiAlias = true
     }
     
     private val stickPaint = Paint().apply {
-        color = Color.argb(128, 240, 240, 240) // 增加透明度
+        color = Color.argb(180, 100, 100, 100) // 中等灰色
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val stickBorderPaint = Paint().apply {
-        color = Color.argb(128, 180, 180, 180) // 增加透明度
+        color = Color.argb(180, 150, 150, 150) // 浅灰色边框
         style = Paint.Style.STROKE
-        strokeWidth = 3f
+        strokeWidth = 2f
         isAntiAlias = true
     }
     
@@ -92,7 +92,7 @@ class JoystickView @JvmOverloads constructor(
         
         // 绘制中心点
         val centerDotPaint = Paint().apply {
-            color = Color.argb(128, 100, 100, 100)
+            color = Color.argb(180, 80, 80, 80)
             style = Paint.Style.FILL
             isAntiAlias = true
         }
@@ -134,7 +134,7 @@ class JoystickView @JvmOverloads constructor(
     }
 }
 
-// 方向键视图
+// 方向键视图 - 修改为圆角矩形风格
 class DpadView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -142,20 +142,20 @@ class DpadView @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
     
     private val dpadBasePaint = Paint().apply {
-        color = Color.argb(128, 60, 60, 60) // 增加透明度
+        color = Color.argb(180, 60, 60, 60) // 深灰色背景
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val dpadBorderPaint = Paint().apply {
-        color = Color.argb(128, 180, 180, 180) // 增加透明度
+        color = Color.argb(180, 120, 120, 120) // 浅灰色边框
         style = Paint.Style.STROKE
         strokeWidth = 3f
         isAntiAlias = true
     }
     
     private val dpadPressedPaint = Paint().apply {
-        color = Color.argb(128, 80, 160, 255) // 增加透明度
+        color = Color.argb(180, 80, 160, 255) // 蓝色按压状态
         style = Paint.Style.FILL
         isAntiAlias = true
     }
@@ -174,137 +174,137 @@ class DpadView @JvmOverloads constructor(
         val size = (width.coerceAtMost(height) / 2f) * 0.8f
         val armWidth = size / 2f
         val armLength = size
+        val cornerRadius = 15f // 圆角半径
         
-        // 绘制方向键臂
+        // 绘制方向键臂 - 使用圆角矩形
         // 上臂
         if (currentDirection == DpadDirection.UP || 
             currentDirection == DpadDirection.UP_LEFT || 
             currentDirection == DpadDirection.UP_RIGHT) {
-            canvas.drawRect(
+            drawRoundRect(canvas, 
                 centerX - armWidth/2, 
                 centerY - armLength, 
                 centerX + armWidth/2, 
                 centerY - armWidth/2, 
-                dpadPressedPaint
-            )
+                cornerRadius, dpadPressedPaint)
         } else {
-            canvas.drawRect(
+            drawRoundRect(canvas, 
                 centerX - armWidth/2, 
                 centerY - armLength, 
                 centerX + armWidth/2, 
                 centerY - armWidth/2, 
-                dpadBasePaint
-            )
+                cornerRadius, dpadBasePaint)
         }
         
         // 下臂
         if (currentDirection == DpadDirection.DOWN || 
             currentDirection == DpadDirection.DOWN_LEFT || 
             currentDirection == DpadDirection.DOWN_RIGHT) {
-            canvas.drawRect(
+            drawRoundRect(canvas, 
                 centerX - armWidth/2, 
                 centerY + armWidth/2, 
                 centerX + armWidth/2, 
                 centerY + armLength, 
-                dpadPressedPaint
-            )
+                cornerRadius, dpadPressedPaint)
         } else {
-            canvas.drawRect(
+            drawRoundRect(canvas, 
                 centerX - armWidth/2, 
                 centerY + armWidth/2, 
                 centerX + armWidth/2, 
                 centerY + armLength, 
-                dpadBasePaint
-            )
+                cornerRadius, dpadBasePaint)
         }
         
         // 左臂
         if (currentDirection == DpadDirection.LEFT || 
             currentDirection == DpadDirection.UP_LEFT || 
             currentDirection == DpadDirection.DOWN_LEFT) {
-            canvas.drawRect(
+            drawRoundRect(canvas, 
                 centerX - armLength, 
                 centerY - armWidth/2, 
                 centerX - armWidth/2, 
                 centerY + armWidth/2, 
-                dpadPressedPaint
-            )
+                cornerRadius, dpadPressedPaint)
         } else {
-            canvas.drawRect(
+            drawRoundRect(canvas, 
                 centerX - armLength, 
                 centerY - armWidth/2, 
                 centerX - armWidth/2, 
                 centerY + armWidth/2, 
-                dpadBasePaint
-            )
+                cornerRadius, dpadBasePaint)
         }
         
         // 右臂
         if (currentDirection == DpadDirection.RIGHT || 
             currentDirection == DpadDirection.UP_RIGHT || 
             currentDirection == DpadDirection.DOWN_RIGHT) {
-            canvas.drawRect(
+            drawRoundRect(canvas, 
                 centerX + armWidth/2, 
                 centerY - armWidth/2, 
                 centerX + armLength, 
                 centerY + armWidth/2, 
-                dpadPressedPaint
-            )
+                cornerRadius, dpadPressedPaint)
         } else {
-            canvas.drawRect(
+            drawRoundRect(canvas, 
                 centerX + armWidth/2, 
                 centerY - armWidth/2, 
                 centerX + armLength, 
                 centerY + armWidth/2, 
-                dpadBasePaint
-            )
+                cornerRadius, dpadBasePaint)
         }
         
-        // 绘制中心方块
-        canvas.drawRect(
+        // 绘制中心方块 - 圆角矩形
+        drawRoundRect(canvas, 
             centerX - armWidth/2, 
             centerY - armWidth/2, 
             centerX + armWidth/2, 
             centerY + armWidth/2, 
-            dpadBasePaint
-        )
+            cornerRadius, dpadBasePaint)
         
         // 绘制边框
-        canvas.drawRect(
+        drawRoundRectBorder(canvas, 
             centerX - armWidth/2, 
             centerY - armLength, 
             centerX + armWidth/2, 
             centerY - armWidth/2, 
-            dpadBorderPaint
-        )
-        canvas.drawRect(
+            cornerRadius, dpadBorderPaint)
+        drawRoundRectBorder(canvas, 
             centerX - armWidth/2, 
             centerY + armWidth/2, 
             centerX + armWidth/2, 
             centerY + armLength, 
-            dpadBorderPaint
-        )
-        canvas.drawRect(
+            cornerRadius, dpadBorderPaint)
+        drawRoundRectBorder(canvas, 
             centerX - armLength, 
             centerY - armWidth/2, 
             centerX - armWidth/2, 
             centerY + armWidth/2, 
-            dpadBorderPaint
-        )
-        canvas.drawRect(
+            cornerRadius, dpadBorderPaint)
+        drawRoundRectBorder(canvas, 
             centerX + armWidth/2, 
             centerY - armWidth/2, 
             centerX + armLength, 
             centerY + armWidth/2, 
-            dpadBorderPaint
-        )
-        canvas.drawRect(
+            cornerRadius, dpadBorderPaint)
+        drawRoundRectBorder(canvas, 
             centerX - armWidth/2, 
             centerY - armWidth/2, 
             centerX + armWidth/2, 
             centerY + armWidth/2, 
-            dpadBorderPaint
-        )
+            cornerRadius, dpadBorderPaint)
+    }
+    
+    // 绘制圆角矩形填充
+    private fun drawRoundRect(canvas: Canvas, left: Float, top: Float, right: Float, bottom: Float, radius: Float, paint: Paint) {
+        canvas.drawRoundRect(left, top, right, bottom, radius, radius, paint)
+    }
+    
+    // 绘制圆角矩形边框
+    private fun drawRoundRectBorder(canvas: Canvas, left: Float, top: Float, right: Float, bottom: Float, radius: Float, paint: Paint) {
+        val fillPaint = Paint(paint).apply {
+            style = Paint.Style.STROKE
+        }
+        canvas.drawRoundRect(left, top, right, bottom, radius, radius, fillPaint)
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -355,7 +355,7 @@ class DpadView @JvmOverloads constructor(
     }
 }
 
-// 自定义可拖拽按钮
+// 自定义可拖拽按钮 - 修改为圆角矩形风格
 class DraggableButtonView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -370,34 +370,28 @@ class DraggableButtonView @JvmOverloads constructor(
             invalidate()
         }
     
-    private val outerCirclePaint = Paint().apply {
-        color = Color.argb(128, 255, 255, 255) // 增加透明度
+    private val basePaint = Paint().apply {
+        color = Color.argb(180, 60, 60, 60) // 深灰色背景
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
-    private val outerBorderPaint = Paint().apply {
-        color = Color.argb(128, 180, 180, 180) // 增加透明度
+    private val borderPaint = Paint().apply {
+        color = Color.argb(180, 120, 120, 120) // 浅灰色边框
         style = Paint.Style.STROKE
         strokeWidth = 3f
         isAntiAlias = true
     }
     
-    private val innerCirclePaint = Paint().apply {
-        color = Color.argb(128, 100, 100, 100) // 增加透明度
-        style = Paint.Style.FILL
-        isAntiAlias = true
-    }
-    
     private val pressedPaint = Paint().apply {
-        color = Color.argb(128, 255, 100, 100) // 增加透明度
+        color = Color.argb(180, 80, 160, 255) // 蓝色按压状态
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val textPaint = Paint().apply {
-        color = Color.argb(128, 255, 255, 255) // 增加透明度
-        textSize = 18f
+        color = Color.argb(220, 255, 255, 255) // 白色文字，较高对比度
+        textSize = 20f
         textAlign = Paint.Align.CENTER
         typeface = Typeface.DEFAULT_BOLD
         isAntiAlias = true
@@ -408,15 +402,21 @@ class DraggableButtonView @JvmOverloads constructor(
         
         val centerX = width / 2f
         val centerY = height / 2f
-        val radius = (width.coerceAtMost(height) / 2f) * 0.8f
+        val rectWidth = width * 0.8f
+        val rectHeight = height * 0.8f
+        val cornerRadius = 20f // 圆角半径
         
-        // 绘制外圈
-        canvas.drawCircle(centerX, centerY, radius, outerCirclePaint)
-        canvas.drawCircle(centerX, centerY, radius, outerBorderPaint)
+        val left = centerX - rectWidth / 2
+        val top = centerY - rectHeight / 2
+        val right = centerX + rectWidth / 2
+        val bottom = centerY + rectHeight / 2
         
-        // 绘制内圈（按压时变色）
-        val fillPaint = if (buttonPressed) pressedPaint else innerCirclePaint
-        canvas.drawCircle(centerX, centerY, radius * 0.7f, fillPaint)
+        // 绘制按钮背景
+        val fillPaint = if (buttonPressed) pressedPaint else basePaint
+        canvas.drawRoundRect(left, top, right, bottom, cornerRadius, cornerRadius, fillPaint)
+        
+        // 绘制边框
+        canvas.drawRoundRect(left, top, right, bottom, cornerRadius, cornerRadius, borderPaint)
         
         // 绘制文字
         val textY = centerY - (textPaint.descent() + textPaint.ascent()) / 2
@@ -424,7 +424,7 @@ class DraggableButtonView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(60)
+        val size = dpToPx(70) // 稍微增大按钮尺寸
         setMeasuredDimension(size, size)
     }
     
