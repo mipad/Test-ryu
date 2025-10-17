@@ -589,9 +589,23 @@ class ButtonLayoutManager(private val context: Context) {
         return Pair(width, height)
     }
     
+    // 检查屏幕尺寸是否显著变化
+    fun isScreenSizeChanged(currentWidth: Int, currentHeight: Int): Boolean {
+        val (savedWidth, savedHeight) = getSavedScreenSize()
+        if (savedWidth == 0 || savedHeight == 0) return false
+        
+        val widthDiff = abs(currentWidth - savedWidth)
+        val heightDiff = abs(currentHeight - savedHeight)
+        
+        // 如果宽度或高度变化超过100像素，认为是显著变化
+        return widthDiff > 100 || heightDiff > 100
+    }
+    
     fun getAllButtonConfigs(): List<ButtonConfig> = buttonConfigs
     fun getAllJoystickConfigs(): List<JoystickConfig> = joystickConfigs
     fun getDpadConfig(): DpadConfig = dpadConfig
+    
+    private fun abs(value: Int): Int = if (value < 0) -value else value
 }
 
 class GameController(var activity: Activity) {
@@ -677,90 +691,112 @@ class GameController(var activity: Activity) {
         this.buttonContainer = buttonContainer
         val manager = buttonLayoutManager ?: return
         
-        // 测量容器尺寸
-        buttonContainer.post {
-            containerWidth = buttonContainer.width
-            containerHeight = buttonContainer.height
-            
-            // 检查屏幕尺寸是否显著变化
-            val (savedWidth, savedHeight) = manager.getSavedScreenSize()
-            val sizeChanged = savedWidth > 0 && savedHeight > 0 && 
-                (abs(containerWidth - savedWidth) > 100 || abs(containerHeight - savedHeight) > 100)
-            
-            if (sizeChanged) {
-                // 如果屏幕尺寸显著变化，重置布局
-                clearSavedLayout()
-            }
-            
-            // 创建摇杆
-            manager.getAllJoystickConfigs().forEach { config ->
-                val joystick = JoystickView(buttonContainer.context).apply {
-                    stickId = config.id
-                    isLeftStick = config.isLeft
-                    
-                    // 设置初始位置
-                    val (x, y) = manager.getJoystickPosition(config.id, containerWidth, containerHeight)
-                    setPosition(x, y)
-                    
-                    // 设置触摸监听器
-                    setOnTouchListener { _, event ->
-                        if (isEditing) {
-                            // 编辑模式：可拖拽
-                            handleJoystickDragEvent(event, config.id)
-                        } else {
-                            // 游戏模式：发送摇杆事件
-                            handleJoystickEvent(event, config.isLeft)
-                        }
-                        true
-                    }
+        // 使用ViewTreeObserver确保在布局完成后获取正确的尺寸
+        buttonContainer.viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                // 移除监听器，避免重复调用
+                buttonContainer.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                
+                containerWidth = buttonContainer.width
+                containerHeight = buttonContainer.height
+                
+                if (containerWidth <= 0 || containerHeight <= 0) {
+                    // 如果尺寸仍然无效，延迟重试
+                    buttonContainer.postDelayed({
+                        containerWidth = buttonContainer.width
+                        containerHeight = buttonContainer.height
+                        createControlsWithValidSize()
+                    }, 100)
+                } else {
+                    createControlsWithValidSize()
                 }
-                
-                buttonContainer.addView(joystick)
-                virtualJoysticks[config.id] = joystick
             }
-            
-            // 创建方向键
-            val (dpadX, dpadY) = manager.getDpadPosition(containerWidth, containerHeight)
-            dpadView = DpadView(buttonContainer.context).apply {
-                setPosition(dpadX, dpadY)
+        })
+    }
+    
+    private fun createControlsWithValidSize() {
+        val manager = buttonLayoutManager ?: return
+        val buttonContainer = this.buttonContainer ?: return
+        
+        // 检查屏幕尺寸是否显著变化
+        val sizeChanged = manager.isScreenSizeChanged(containerWidth, containerHeight)
+        
+        if (sizeChanged) {
+            // 如果屏幕尺寸显著变化，清除保存的布局并使用默认位置
+            clearSavedLayout()
+        }
+        
+        // 保存当前屏幕尺寸
+        manager.saveScreenSize(containerWidth, containerHeight)
+        
+        // 创建摇杆
+        manager.getAllJoystickConfigs().forEach { config ->
+            val joystick = JoystickView(buttonContainer.context).apply {
+                stickId = config.id
+                isLeftStick = config.isLeft
                 
+                // 设置初始位置
+                val (x, y) = manager.getJoystickPosition(config.id, containerWidth, containerHeight)
+                setPosition(x, y)
+                
+                // 设置触摸监听器
                 setOnTouchListener { _, event ->
                     if (isEditing) {
-                        handleDpadDragEvent(event)
+                        // 编辑模式：可拖拽
+                        handleJoystickDragEvent(event, config.id)
                     } else {
-                        handleDpadEvent(event)
+                        // 游戏模式：发送摇杆事件
+                        handleJoystickEvent(event, config.isLeft)
                     }
                     true
                 }
             }
-            buttonContainer.addView(dpadView)
             
-            // 创建按钮
-            manager.getAllButtonConfigs().forEach { config ->
-                val button = DraggableButtonView(buttonContainer.context).apply {
-                    buttonId = config.id
-                    buttonText = config.text
-                    
-                    // 设置初始位置
-                    val (x, y) = manager.getButtonPosition(config.id, containerWidth, containerHeight)
-                    setPosition(x, y)
-                    
-                    // 设置触摸监听器
-                    setOnTouchListener { _, event ->
-                        if (isEditing) {
-                            // 编辑模式：可拖拽
-                            handleButtonDragEvent(event, config.id)
-                        } else {
-                            // 游戏模式：发送按键事件
-                            handleButtonEvent(event, config.keyCode)
-                        }
-                        true
-                    }
+            buttonContainer.addView(joystick)
+            virtualJoysticks[config.id] = joystick
+        }
+        
+        // 创建方向键
+        val (dpadX, dpadY) = manager.getDpadPosition(containerWidth, containerHeight)
+        dpadView = DpadView(buttonContainer.context).apply {
+            setPosition(dpadX, dpadY)
+            
+            setOnTouchListener { _, event ->
+                if (isEditing) {
+                    handleDpadDragEvent(event)
+                } else {
+                    handleDpadEvent(event)
                 }
-                
-                buttonContainer.addView(button)
-                virtualButtons[config.id] = button
+                true
             }
+        }
+        buttonContainer.addView(dpadView)
+        
+        // 创建按钮
+        manager.getAllButtonConfigs().forEach { config ->
+            val button = DraggableButtonView(buttonContainer.context).apply {
+                buttonId = config.id
+                buttonText = config.text
+                
+                // 设置初始位置
+                val (x, y) = manager.getButtonPosition(config.id, containerWidth, containerHeight)
+                setPosition(x, y)
+                
+                // 设置触摸监听器
+                setOnTouchListener { _, event ->
+                    if (isEditing) {
+                        // 编辑模式：可拖拽
+                        handleButtonDragEvent(event, config.id)
+                    } else {
+                        // 游戏模式：发送按键事件
+                        handleButtonEvent(event, config.keyCode)
+                    }
+                    true
+                }
+            }
+            
+            buttonContainer.addView(button)
+            virtualButtons[config.id] = button
         }
     }
     
