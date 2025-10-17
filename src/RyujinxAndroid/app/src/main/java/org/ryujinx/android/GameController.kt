@@ -65,8 +65,8 @@ class JoystickView @JvmOverloads constructor(
         stickX = MathUtils.clamp(x, -1f, 1f)
         stickY = MathUtils.clamp(y, -1f, 1f)
         
-        // 根据摇杆位置更新视觉反馈
-        val maxOffset = width * 0.25f
+        // 增大移动范围，实现从中心到边缘的效果
+        val maxOffset = width * 0.4f // 从0.25f增加到0.4f
         translationX = stickX * maxOffset
         translationY = stickY * maxOffset
         
@@ -149,14 +149,17 @@ class DpadView @JvmOverloads constructor(
     fun updateDirection(direction: DpadDirection) {
         currentDirection = direction
         
-        // 根据方向更新图片资源 - 确保使用矢量图资源
+        // 根据方向更新图片资源 - 使用单个方向的动画
         when (direction) {
-            DpadDirection.UP, DpadDirection.DOWN, DpadDirection.LEFT, DpadDirection.RIGHT ->
-                setImageResource(R.drawable.dpad_standard_cardinal_depressed)
-            DpadDirection.UP_LEFT, DpadDirection.UP_RIGHT, DpadDirection.DOWN_LEFT, DpadDirection.DOWN_RIGHT ->
-                setImageResource(R.drawable.dpad_standard_diagonal_depressed)
-            else ->
-                setImageResource(R.drawable.dpad_standard)
+            DpadDirection.UP -> setImageResource(R.drawable.dpad_up_depressed)
+            DpadDirection.DOWN -> setImageResource(R.drawable.dpad_down_depressed)
+            DpadDirection.LEFT -> setImageResource(R.drawable.dpad_left_depressed)
+            DpadDirection.RIGHT -> setImageResource(R.drawable.dpad_right_depressed)
+            DpadDirection.UP_LEFT -> setImageResource(R.drawable.dpad_up_left_depressed)
+            DpadDirection.UP_RIGHT -> setImageResource(R.drawable.dpad_up_right_depressed)
+            DpadDirection.DOWN_LEFT -> setImageResource(R.drawable.dpad_down_left_depressed)
+            DpadDirection.DOWN_RIGHT -> setImageResource(R.drawable.dpad_down_right_depressed)
+            else -> setImageResource(R.drawable.dpad_standard)
         }
     }
     
@@ -731,7 +734,8 @@ class GameController(var activity: Activity) {
         virtualJoysticks.values.find { it.isLeftStick == isLeftStick }?.let { joystick ->
             val centerX = joystick.width / 2f
             val centerY = joystick.height / 2f
-            val maxDistance = centerX * 0.7f
+            // 增大最大距离，让摇杆可以移动到边缘
+            val maxDistance = centerX * 0.9f // 从0.7f增加到0.9f
             
             when (event.action) {
                 MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
