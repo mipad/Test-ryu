@@ -326,11 +326,11 @@ class DpadView @JvmOverloads constructor(
             currentDirection == DpadDirection.UP_RIGHT) {
             drawRoundedRect(canvas, upRect[0], upRect[1], upRect[2], upRect[3], cornerRadius, dpadPressedPaint)
             // 高光效果
-            canvas.drawRoundRect(upRect[0] + 2, upRect[1] + 2, upRect[2] - 2, upRect[3] - 2, cornerRadius - 2, dpadPressedDarkPaint)
+            drawRoundedRect(canvas, upRect[0] + 2, upRect[1] + 2, upRect[2] - 2, upRect[3] - 2, cornerRadius - 2, dpadPressedDarkPaint)
         } else {
             drawRoundedRect(canvas, upRect[0], upRect[1], upRect[2], upRect[3], cornerRadius, dpadBasePaint)
             // 高光效果
-            canvas.drawRoundRect(upRect[0] + 2, upRect[1] + 2, upRect[2] - 2, upRect[3] - 2, cornerRadius - 2, dpadBaseDarkPaint)
+            drawRoundedRect(canvas, upRect[0] + 2, upRect[1] + 2, upRect[2] - 2, upRect[3] - 2, cornerRadius - 2, dpadBaseDarkPaint)
         }
         
         // 绘制下臂
@@ -338,10 +338,10 @@ class DpadView @JvmOverloads constructor(
             currentDirection == DpadDirection.DOWN_LEFT || 
             currentDirection == DpadDirection.DOWN_RIGHT) {
             drawRoundedRect(canvas, downRect[0], downRect[1], downRect[2], downRect[3], cornerRadius, dpadPressedPaint)
-            canvas.drawRoundRect(downRect[0] + 2, downRect[1] + 2, downRect[2] - 2, downRect[3] - 2, cornerRadius - 2, dpadPressedDarkPaint)
+            drawRoundedRect(canvas, downRect[0] + 2, downRect[1] + 2, downRect[2] - 2, downRect[3] - 2, cornerRadius - 2, dpadPressedDarkPaint)
         } else {
             drawRoundedRect(canvas, downRect[0], downRect[1], downRect[2], downRect[3], cornerRadius, dpadBasePaint)
-            canvas.drawRoundRect(downRect[0] + 2, downRect[1] + 2, downRect[2] - 2, downRect[3] - 2, cornerRadius - 2, dpadBaseDarkPaint)
+            drawRoundedRect(canvas, downRect[0] + 2, downRect[1] + 2, downRect[2] - 2, downRect[3] - 2, cornerRadius - 2, dpadBaseDarkPaint)
         }
         
         // 绘制左臂
@@ -349,10 +349,10 @@ class DpadView @JvmOverloads constructor(
             currentDirection == DpadDirection.UP_LEFT || 
             currentDirection == DpadDirection.DOWN_LEFT) {
             drawRoundedRect(canvas, leftRect[0], leftRect[1], leftRect[2], leftRect[3], cornerRadius, dpadPressedPaint)
-            canvas.drawRoundRect(leftRect[0] + 2, leftRect[1] + 2, leftRect[2] - 2, leftRect[3] - 2, cornerRadius - 2, dpadPressedDarkPaint)
+            drawRoundedRect(canvas, leftRect[0] + 2, leftRect[1] + 2, leftRect[2] - 2, leftRect[3] - 2, cornerRadius - 2, dpadPressedDarkPaint)
         } else {
             drawRoundedRect(canvas, leftRect[0], leftRect[1], leftRect[2], leftRect[3], cornerRadius, dpadBasePaint)
-            canvas.drawRoundRect(leftRect[0] + 2, leftRect[1] + 2, leftRect[2] - 2, leftRect[3] - 2, cornerRadius - 2, dpadBaseDarkPaint)
+            drawRoundedRect(canvas, leftRect[0] + 2, leftRect[1] + 2, leftRect[2] - 2, leftRect[3] - 2, cornerRadius - 2, dpadBaseDarkPaint)
         }
         
         // 绘制右臂
@@ -360,15 +360,15 @@ class DpadView @JvmOverloads constructor(
             currentDirection == DpadDirection.UP_RIGHT || 
             currentDirection == DpadDirection.DOWN_RIGHT) {
             drawRoundedRect(canvas, rightRect[0], rightRect[1], rightRect[2], rightRect[3], cornerRadius, dpadPressedPaint)
-            canvas.drawRoundRect(rightRect[0] + 2, rightRect[1] + 2, rightRect[2] - 2, rightRect[3] - 2, cornerRadius - 2, dpadPressedDarkPaint)
+            drawRoundedRect(canvas, rightRect[0] + 2, rightRect[1] + 2, rightRect[2] - 2, rightRect[3] - 2, cornerRadius - 2, dpadPressedDarkPaint)
         } else {
             drawRoundedRect(canvas, rightRect[0], rightRect[1], rightRect[2], rightRect[3], cornerRadius, dpadBasePaint)
-            canvas.drawRoundRect(rightRect[0] + 2, rightRect[1] + 2, rightRect[2] - 2, rightRect[3] - 2, cornerRadius - 2, dpadBaseDarkPaint)
+            drawRoundedRect(canvas, rightRect[0] + 2, rightRect[1] + 2, rightRect[2] - 2, rightRect[3] - 2, cornerRadius - 2, dpadBaseDarkPaint)
         }
         
         // 绘制中心区域
         drawRoundedRect(canvas, centerRect[0], centerRect[1], centerRect[2], centerRect[3], cornerRadius, dpadBasePaint)
-        canvas.drawRoundRect(centerRect[0] + 2, centerRect[1] + 2, centerRect[2] - 2, centerRect[3] - 2, cornerRadius - 2, dpadBaseDarkPaint)
+        drawRoundedRect(canvas, centerRect[0] + 2, centerRect[1] + 2, centerRect[2] - 2, centerRect[3] - 2, cornerRadius - 2, dpadBaseDarkPaint)
         
         // 绘制边框
         drawRoundedRect(canvas, upRect[0], upRect[1], upRect[2], upRect[3], cornerRadius, dpadBorderPaint)
@@ -378,10 +378,10 @@ class DpadView @JvmOverloads constructor(
         drawRoundedRect(canvas, centerRect[0], centerRect[1], centerRect[2], centerRect[3], cornerRadius, dpadBorderPaint)
         
         // 绘制高光
-        canvas.drawRoundRect(upRect[0] + 1, upRect[1] + 1, upRect[2] - 1, upRect[3] - 1, cornerRadius - 1, dpadHighlightPaint)
-        canvas.drawRoundRect(downRect[0] + 1, downRect[1] + 1, downRect[2] - 1, downRect[3] - 1, cornerRadius - 1, dpadHighlightPaint)
-        canvas.drawRoundRect(leftRect[0] + 1, leftRect[1] + 1, leftRect[2] - 1, leftRect[3] - 1, cornerRadius - 1, dpadHighlightPaint)
-        canvas.drawRoundRect(rightRect[0] + 1, rightRect[1] + 1, rightRect[2] - 1, rightRect[3] - 1, cornerRadius - 1, dpadHighlightPaint)
+        drawRoundedRect(canvas, upRect[0] + 1, upRect[1] + 1, upRect[2] - 1, upRect[3] - 1, cornerRadius - 1, dpadHighlightPaint)
+        drawRoundedRect(canvas, downRect[0] + 1, downRect[1] + 1, downRect[2] - 1, downRect[3] - 1, cornerRadius - 1, dpadHighlightPaint)
+        drawRoundedRect(canvas, leftRect[0] + 1, leftRect[1] + 1, leftRect[2] - 1, leftRect[3] - 1, cornerRadius - 1, dpadHighlightPaint)
+        drawRoundedRect(canvas, rightRect[0] + 1, rightRect[1] + 1, rightRect[2] - 1, rightRect[3] - 1, cornerRadius - 1, dpadHighlightPaint)
     }
     
     private fun drawRoundedRect(canvas: Canvas, left: Float, top: Float, right: Float, bottom: Float, radius: Float, paint: Paint) {
