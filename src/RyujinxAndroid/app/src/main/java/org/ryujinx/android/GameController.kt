@@ -34,7 +34,7 @@ import androidx.core.view.isVisible
 import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.QuickSettings
 
-// 摇杆视图
+// 摇杆视图 - 修改为截图样式
 class JoystickView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -46,29 +46,72 @@ class JoystickView @JvmOverloads constructor(
     var stickX: Float = 0f
     var stickY: Float = 0f
     
+    // 摇杆底座渐变颜色
+    private val baseGradientColors = intArrayOf(
+        Color.argb(180, 80, 80, 80),   // 深灰色
+        Color.argb(180, 120, 120, 120), // 中灰色
+        Color.argb(180, 60, 60, 60)    // 更深灰色
+    )
+    
     private val basePaint = Paint().apply {
-        color = Color.argb(128, 80, 80, 80) // 增加透明度
+        color = Color.argb(180, 90, 90, 90)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val baseBorderPaint = Paint().apply {
-        color = Color.argb(128, 200, 200, 200) // 增加透明度
+        color = Color.argb(180, 40, 40, 40)
         style = Paint.Style.STROKE
-        strokeWidth = 4f
+        strokeWidth = 6f
         isAntiAlias = true
     }
     
+    private val baseHighlightPaint = Paint().apply {
+        color = Color.argb(120, 200, 200, 200)
+        style = Paint.Style.STROKE
+        strokeWidth = 2f
+        isAntiAlias = true
+    }
+    
+    // 摇杆中心渐变颜色
+    private val stickGradientColors = intArrayOf(
+        Color.argb(200, 200, 200, 200), // 浅灰色
+        Color.argb(200, 120, 120, 120), // 中灰色
+        Color.argb(200, 80, 80, 80)     // 深灰色
+    )
+    
     private val stickPaint = Paint().apply {
-        color = Color.argb(128, 240, 240, 240) // 增加透明度
+        color = Color.argb(200, 160, 160, 160)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val stickBorderPaint = Paint().apply {
-        color = Color.argb(128, 180, 180, 180) // 增加透明度
+        color = Color.argb(200, 60, 60, 60)
+        style = Paint.Style.STROKE
+        strokeWidth = 4f
+        isAntiAlias = true
+    }
+    
+    private val stickHighlightPaint = Paint().apply {
+        color = Color.argb(150, 255, 255, 255)
+        style = Paint.Style.STROKE
+        strokeWidth = 2f
+        isAntiAlias = true
+    }
+    
+    // 凹槽效果
+    private val groovePaint = Paint().apply {
+        color = Color.argb(180, 50, 50, 50)
         style = Paint.Style.STROKE
         strokeWidth = 3f
+        isAntiAlias = true
+    }
+    
+    private val grooveHighlightPaint = Paint().apply {
+        color = Color.argb(120, 180, 180, 180)
+        style = Paint.Style.STROKE
+        strokeWidth = 1f
         isAntiAlias = true
     }
     
@@ -77,26 +120,64 @@ class JoystickView @JvmOverloads constructor(
         
         val centerX = width / 2f
         val centerY = height / 2f
-        val baseRadius = (width.coerceAtMost(height) / 2f) * 0.8f
+        val baseRadius = (width.coerceAtMost(height) / 2f) * 0.85f
         
-        // 绘制摇杆底座
+        // 绘制摇杆底座 - 多层同心圆实现立体感
+        // 最外层底座
         canvas.drawCircle(centerX, centerY, baseRadius, basePaint)
         canvas.drawCircle(centerX, centerY, baseRadius, baseBorderPaint)
         
-        // 绘制摇杆
-        val stickRadius = baseRadius * 0.5f
-        val stickPosX = centerX + stickX * baseRadius * 0.7f
-        val stickPosY = centerY + stickY * baseRadius * 0.7f
-        canvas.drawCircle(stickPosX, stickPosY, stickRadius, stickPaint)
-        canvas.drawCircle(stickPosX, stickPosY, stickRadius, stickBorderPaint)
+        // 底座高光效果
+        canvas.drawCircle(centerX - baseRadius * 0.2f, centerY - baseRadius * 0.2f, baseRadius * 0.9f, baseHighlightPaint)
         
-        // 绘制中心点
-        val centerDotPaint = Paint().apply {
-            color = Color.argb(128, 100, 100, 100)
+        // 绘制环形凹槽
+        val grooveRadius = baseRadius * 0.7f
+        canvas.drawCircle(centerX, centerY, grooveRadius, groovePaint)
+        canvas.drawCircle(centerX, centerY, grooveRadius, grooveHighlightPaint)
+        
+        // 内层凹槽
+        val innerGrooveRadius = baseRadius * 0.5f
+        canvas.drawCircle(centerX, centerY, innerGrooveRadius, groovePaint)
+        canvas.drawCircle(centerX, centerY, innerGrooveRadius, grooveHighlightPaint)
+        
+        // 绘制摇杆 - 中心凸起按钮
+        val stickRadius = baseRadius * 0.4f
+        val stickPosX = centerX + stickX * baseRadius * 0.6f
+        val stickPosY = centerY + stickY * baseRadius * 0.6f
+        
+        // 摇杆底座阴影
+        val shadowPaint = Paint().apply {
+            color = Color.argb(100, 0, 0, 0)
             style = Paint.Style.FILL
             isAntiAlias = true
         }
-        canvas.drawCircle(centerX, centerY, 5f, centerDotPaint)
+        canvas.drawCircle(stickPosX + 2, stickPosY + 2, stickRadius, shadowPaint)
+        
+        // 摇杆主体
+        canvas.drawCircle(stickPosX, stickPosY, stickRadius, stickPaint)
+        canvas.drawCircle(stickPosX, stickPosY, stickRadius, stickBorderPaint)
+        
+        // 摇杆高光效果 - 模拟3D凸起
+        canvas.drawCircle(stickPosX - stickRadius * 0.3f, stickPosY - stickRadius * 0.3f, stickRadius * 0.8f, stickHighlightPaint)
+        
+        // 中心点标识
+        val centerDotPaint = Paint().apply {
+            color = Color.argb(180, 100, 100, 100)
+            style = Paint.Style.FILL
+            isAntiAlias = true
+        }
+        val centerIndicatorPaint = Paint().apply {
+            color = Color.argb(180, 60, 60, 60)
+            style = Paint.Style.STROKE
+            strokeWidth = 1.5f
+            isAntiAlias = true
+        }
+        canvas.drawCircle(centerX, centerY, 3f, centerDotPaint)
+        
+        // 绘制中心十字标识
+        val crossSize = stickRadius * 0.3f
+        canvas.drawLine(centerX - crossSize, centerY, centerX + crossSize, centerY, centerIndicatorPaint)
+        canvas.drawLine(centerX, centerY - crossSize, centerX, centerY + crossSize, centerIndicatorPaint)
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -134,29 +215,57 @@ class JoystickView @JvmOverloads constructor(
     }
 }
 
-// 方向键视图 - 修改为截图样式
+// 方向键视图 - 修改为对称十字形带箭头
 class DpadView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
     
+    // 深灰色渐变颜色
     private val dpadBasePaint = Paint().apply {
-        color = Color.argb(128, 60, 60, 60) // 增加透明度
+        color = Color.argb(180, 70, 70, 70)
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+    
+    private val dpadBaseDarkPaint = Paint().apply {
+        color = Color.argb(180, 50, 50, 50)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val dpadBorderPaint = Paint().apply {
-        color = Color.argb(128, 180, 180, 180) // 增加透明度
+        color = Color.argb(180, 40, 40, 40)
         style = Paint.Style.STROKE
-        strokeWidth = 3f
+        strokeWidth = 4f
+        isAntiAlias = true
+    }
+    
+    private val dpadHighlightPaint = Paint().apply {
+        color = Color.argb(120, 180, 180, 180)
+        style = Paint.Style.STROKE
+        strokeWidth = 2f
         isAntiAlias = true
     }
     
     private val dpadPressedPaint = Paint().apply {
-        color = Color.argb(128, 80, 160, 255) // 增加透明度
+        color = Color.argb(180, 100, 150, 255)
         style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+    
+    private val dpadPressedDarkPaint = Paint().apply {
+        color = Color.argb(180, 80, 120, 220)
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+    
+    // 箭头绘制
+    private val arrowPaint = Paint().apply {
+        color = Color.argb(220, 30, 30, 30)
+        style = Paint.Style.FILL_AND_STROKE
+        strokeWidth = 2f
         isAntiAlias = true
     }
     
@@ -171,152 +280,180 @@ class DpadView @JvmOverloads constructor(
         
         val centerX = width / 2f
         val centerY = height / 2f
-        val size = (width.coerceAtMost(height) / 2f) * 0.9f // 增大尺寸
-        val armWidth = size / 2.5f
-        val armLength = size * 1.1f
+        val size = (width.coerceAtMost(height) / 2f) * 0.8f
+        val armWidth = size / 2.2f
+        val armLength = size * 0.9f
         
-        // 绘制十字方向键底座（圆形）
-        val baseRadius = size * 1.2f
-        canvas.drawCircle(centerX, centerY, baseRadius, dpadBasePaint)
-        canvas.drawCircle(centerX, centerY, baseRadius, dpadBorderPaint)
+        // 绘制对称十字形方向键底座
+        drawRoundedCross(canvas, centerX, centerY, armWidth, armLength, 12f)
         
-        // 绘制方向键臂 - 修改为更明显的十字形状
-        // 上臂
+        // 绘制方向箭头
+        drawDirectionArrows(canvas, centerX, centerY, armLength)
+    }
+    
+    private fun drawRoundedCross(canvas: Canvas, centerX: Float, centerY: Float, armWidth: Float, armLength: Float, cornerRadius: Float) {
+        val halfArmWidth = armWidth / 2
+        
+        // 定义四个方向的矩形区域
+        val upRect = floatArrayOf(
+            centerX - halfArmWidth, centerY - armLength,
+            centerX + halfArmWidth, centerY - halfArmWidth
+        )
+        
+        val downRect = floatArrayOf(
+            centerX - halfArmWidth, centerY + halfArmWidth,
+            centerX + halfArmWidth, centerY + armLength
+        )
+        
+        val leftRect = floatArrayOf(
+            centerX - armLength, centerY - halfArmWidth,
+            centerX - halfArmWidth, centerY + halfArmWidth
+        )
+        
+        val rightRect = floatArrayOf(
+            centerX + halfArmWidth, centerY - halfArmWidth,
+            centerX + armLength, centerY + halfArmWidth
+        )
+        
+        val centerRect = floatArrayOf(
+            centerX - halfArmWidth, centerY - halfArmWidth,
+            centerX + halfArmWidth, centerY + halfArmWidth
+        )
+        
+        // 绘制上臂
         if (currentDirection == DpadDirection.UP || 
             currentDirection == DpadDirection.UP_LEFT || 
             currentDirection == DpadDirection.UP_RIGHT) {
-            canvas.drawRoundRect(
-                centerX - armWidth/2, 
-                centerY - armLength, 
-                centerX + armWidth/2, 
-                centerY - armWidth/2, 
-                armWidth/4, armWidth/4, 
-                dpadPressedPaint
-            )
+            drawRoundedRect(canvas, upRect[0], upRect[1], upRect[2], upRect[3], cornerRadius, dpadPressedPaint)
+            // 高光效果
+            canvas.drawRoundRect(upRect[0] + 2, upRect[1] + 2, upRect[2] - 2, upRect[3] - 2, cornerRadius - 2, dpadPressedDarkPaint)
         } else {
-            canvas.drawRoundRect(
-                centerX - armWidth/2, 
-                centerY - armLength, 
-                centerX + armWidth/2, 
-                centerY - armWidth/2, 
-                armWidth/4, armWidth/4, 
-                dpadBasePaint
-            )
+            drawRoundedRect(canvas, upRect[0], upRect[1], upRect[2], upRect[3], cornerRadius, dpadBasePaint)
+            // 高光效果
+            canvas.drawRoundRect(upRect[0] + 2, upRect[1] + 2, upRect[2] - 2, upRect[3] - 2, cornerRadius - 2, dpadBaseDarkPaint)
         }
         
-        // 下臂
+        // 绘制下臂
         if (currentDirection == DpadDirection.DOWN || 
             currentDirection == DpadDirection.DOWN_LEFT || 
             currentDirection == DpadDirection.DOWN_RIGHT) {
-            canvas.drawRoundRect(
-                centerX - armWidth/2, 
-                centerY + armWidth/2, 
-                centerX + armWidth/2, 
-                centerY + armLength, 
-                armWidth/4, armWidth/4, 
-                dpadPressedPaint
-            )
+            drawRoundedRect(canvas, downRect[0], downRect[1], downRect[2], downRect[3], cornerRadius, dpadPressedPaint)
+            canvas.drawRoundRect(downRect[0] + 2, downRect[1] + 2, downRect[2] - 2, downRect[3] - 2, cornerRadius - 2, dpadPressedDarkPaint)
         } else {
-            canvas.drawRoundRect(
-                centerX - armWidth/2, 
-                centerY + armWidth/2, 
-                centerX + armWidth/2, 
-                centerY + armLength, 
-                armWidth/4, armWidth/4, 
-                dpadBasePaint
-            )
+            drawRoundedRect(canvas, downRect[0], downRect[1], downRect[2], downRect[3], cornerRadius, dpadBasePaint)
+            canvas.drawRoundRect(downRect[0] + 2, downRect[1] + 2, downRect[2] - 2, downRect[3] - 2, cornerRadius - 2, dpadBaseDarkPaint)
         }
         
-        // 左臂
+        // 绘制左臂
         if (currentDirection == DpadDirection.LEFT || 
             currentDirection == DpadDirection.UP_LEFT || 
             currentDirection == DpadDirection.DOWN_LEFT) {
-            canvas.drawRoundRect(
-                centerX - armLength, 
-                centerY - armWidth/2, 
-                centerX - armWidth/2, 
-                centerY + armWidth/2, 
-                armWidth/4, armWidth/4, 
-                dpadPressedPaint
-            )
+            drawRoundedRect(canvas, leftRect[0], leftRect[1], leftRect[2], leftRect[3], cornerRadius, dpadPressedPaint)
+            canvas.drawRoundRect(leftRect[0] + 2, leftRect[1] + 2, leftRect[2] - 2, leftRect[3] - 2, cornerRadius - 2, dpadPressedDarkPaint)
         } else {
-            canvas.drawRoundRect(
-                centerX - armLength, 
-                centerY - armWidth/2, 
-                centerX - armWidth/2, 
-                centerY + armWidth/2, 
-                armWidth/4, armWidth/4, 
-                dpadBasePaint
-            )
+            drawRoundedRect(canvas, leftRect[0], leftRect[1], leftRect[2], leftRect[3], cornerRadius, dpadBasePaint)
+            canvas.drawRoundRect(leftRect[0] + 2, leftRect[1] + 2, leftRect[2] - 2, leftRect[3] - 2, cornerRadius - 2, dpadBaseDarkPaint)
         }
         
-        // 右臂
+        // 绘制右臂
         if (currentDirection == DpadDirection.RIGHT || 
             currentDirection == DpadDirection.UP_RIGHT || 
             currentDirection == DpadDirection.DOWN_RIGHT) {
-            canvas.drawRoundRect(
-                centerX + armWidth/2, 
-                centerY - armWidth/2, 
-                centerX + armLength, 
-                centerY + armWidth/2, 
-                armWidth/4, armWidth/4, 
-                dpadPressedPaint
-            )
+            drawRoundedRect(canvas, rightRect[0], rightRect[1], rightRect[2], rightRect[3], cornerRadius, dpadPressedPaint)
+            canvas.drawRoundRect(rightRect[0] + 2, rightRect[1] + 2, rightRect[2] - 2, rightRect[3] - 2, cornerRadius - 2, dpadPressedDarkPaint)
         } else {
-            canvas.drawRoundRect(
-                centerX + armWidth/2, 
-                centerY - armWidth/2, 
-                centerX + armLength, 
-                centerY + armWidth/2, 
-                armWidth/4, armWidth/4, 
-                dpadBasePaint
-            )
+            drawRoundedRect(canvas, rightRect[0], rightRect[1], rightRect[2], rightRect[3], cornerRadius, dpadBasePaint)
+            canvas.drawRoundRect(rightRect[0] + 2, rightRect[1] + 2, rightRect[2] - 2, rightRect[3] - 2, cornerRadius - 2, dpadBaseDarkPaint)
         }
         
-        // 绘制中心方块 - 增大中心方块
-        val centerSize = armWidth * 1.2f
-        canvas.drawRoundRect(
-            centerX - centerSize/2, 
-            centerY - centerSize/2, 
-            centerX + centerSize/2, 
-            centerY + centerSize/2, 
-            centerSize/4, centerSize/4, 
-            dpadBasePaint
-        )
+        // 绘制中心区域
+        drawRoundedRect(canvas, centerRect[0], centerRect[1], centerRect[2], centerRect[3], cornerRadius, dpadBasePaint)
+        canvas.drawRoundRect(centerRect[0] + 2, centerRect[1] + 2, centerRect[2] - 2, centerRect[3] - 2, cornerRadius - 2, dpadBaseDarkPaint)
         
-        // 绘制方向指示箭头
-        drawDirectionArrows(canvas, centerX, centerY, size)
+        // 绘制边框
+        drawRoundedRect(canvas, upRect[0], upRect[1], upRect[2], upRect[3], cornerRadius, dpadBorderPaint)
+        drawRoundedRect(canvas, downRect[0], downRect[1], downRect[2], downRect[3], cornerRadius, dpadBorderPaint)
+        drawRoundedRect(canvas, leftRect[0], leftRect[1], leftRect[2], leftRect[3], cornerRadius, dpadBorderPaint)
+        drawRoundedRect(canvas, rightRect[0], rightRect[1], rightRect[2], rightRect[3], cornerRadius, dpadBorderPaint)
+        drawRoundedRect(canvas, centerRect[0], centerRect[1], centerRect[2], centerRect[3], cornerRadius, dpadBorderPaint)
+        
+        // 绘制高光
+        canvas.drawRoundRect(upRect[0] + 1, upRect[1] + 1, upRect[2] - 1, upRect[3] - 1, cornerRadius - 1, dpadHighlightPaint)
+        canvas.drawRoundRect(downRect[0] + 1, downRect[1] + 1, downRect[2] - 1, downRect[3] - 1, cornerRadius - 1, dpadHighlightPaint)
+        canvas.drawRoundRect(leftRect[0] + 1, leftRect[1] + 1, leftRect[2] - 1, leftRect[3] - 1, cornerRadius - 1, dpadHighlightPaint)
+        canvas.drawRoundRect(rightRect[0] + 1, rightRect[1] + 1, rightRect[2] - 1, rightRect[3] - 1, cornerRadius - 1, dpadHighlightPaint)
     }
     
-    private fun drawDirectionArrows(canvas: Canvas, centerX: Float, centerY: Float, size: Float) {
-        val arrowPaint = Paint().apply {
-            color = Color.argb(128, 220, 220, 220)
-            style = Paint.Style.FILL_AND_STROKE
-            strokeWidth = 2f
-            isAntiAlias = true
-        }
-        
-        val arrowSize = size * 0.15f
+    private fun drawRoundedRect(canvas: Canvas, left: Float, top: Float, right: Float, bottom: Float, radius: Float, paint: Paint) {
+        canvas.drawRoundRect(left, top, right, bottom, radius, radius, paint)
+    }
+    
+    private fun drawDirectionArrows(canvas: Canvas, centerX: Float, centerY: Float, armLength: Float) {
+        val arrowSize = armLength * 0.15f
+        val arrowOffset = armLength * 0.6f
         
         // 上箭头
-        canvas.drawLine(centerX, centerY - size * 0.6f, centerX - arrowSize, centerY - size * 0.4f, arrowPaint)
-        canvas.drawLine(centerX, centerY - size * 0.6f, centerX + arrowSize, centerY - size * 0.4f, arrowPaint)
-        
-        // 下箭头
-        canvas.drawLine(centerX, centerY + size * 0.6f, centerX - arrowSize, centerY + size * 0.4f, arrowPaint)
-        canvas.drawLine(centerX, centerY + size * 0.6f, centerX + arrowSize, centerY + size * 0.4f, arrowPaint)
-        
-        // 左箭头
-        canvas.drawLine(centerX - size * 0.6f, centerY, centerX - size * 0.4f, centerY - arrowSize, arrowPaint)
-        canvas.drawLine(centerX - size * 0.6f, centerY, centerX - size * 0.4f, centerY + arrowSize, arrowPaint)
+        val upArrowX = centerX
+        val upArrowY = centerY - arrowOffset
+        drawTriangleArrow(canvas, upArrowX, upArrowY, arrowSize, 0f)
         
         // 右箭头
-        canvas.drawLine(centerX + size * 0.6f, centerY, centerX + size * 0.4f, centerY - arrowSize, arrowPaint)
-        canvas.drawLine(centerX + size * 0.6f, centerY, centerX + size * 0.4f, centerY + arrowSize, arrowPaint)
+        val rightArrowX = centerX + arrowOffset
+        val rightArrowY = centerY
+        drawTriangleArrow(canvas, rightArrowX, rightArrowY, arrowSize, 90f)
+        
+        // 下箭头
+        val downArrowX = centerX
+        val downArrowY = centerY + arrowOffset
+        drawTriangleArrow(canvas, downArrowX, downArrowY, arrowSize, 180f)
+        
+        // 左箭头
+        val leftArrowX = centerX - arrowOffset
+        val leftArrowY = centerY
+        drawTriangleArrow(canvas, leftArrowX, leftArrowY, arrowSize, 270f)
+    }
+    
+    private fun drawTriangleArrow(canvas: Canvas, x: Float, y: Float, size: Float, rotation: Float) {
+        val path = android.graphics.Path()
+        
+        when (rotation) {
+            0f -> { // 上箭头
+                path.moveTo(x, y - size)
+                path.lineTo(x - size/2, y + size/2)
+                path.lineTo(x + size/2, y + size/2)
+            }
+            90f -> { // 右箭头
+                path.moveTo(x + size, y)
+                path.lineTo(x - size/2, y - size/2)
+                path.lineTo(x - size/2, y + size/2)
+            }
+            180f -> { // 下箭头
+                path.moveTo(x, y + size)
+                path.lineTo(x - size/2, y - size/2)
+                path.lineTo(x + size/2, y - size/2)
+            }
+            270f -> { // 左箭头
+                path.moveTo(x - size, y)
+                path.lineTo(x + size/2, y - size/2)
+                path.lineTo(x + size/2, y + size/2)
+            }
+        }
+        
+        path.close()
+        canvas.drawPath(path, arrowPaint)
+        
+        // 箭头高光
+        val highlightPaint = Paint().apply {
+            color = Color.argb(100, 255, 255, 255)
+            style = Paint.Style.STROKE
+            strokeWidth = 1f
+            isAntiAlias = true
+        }
+        canvas.drawPath(path, highlightPaint)
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(150) // 增大尺寸
+        val size = dpToPx(140) // 增大尺寸
         setMeasuredDimension(size, size)
     }
     
@@ -352,10 +489,6 @@ class DpadView @JvmOverloads constructor(
             relX > 0.3 -> DpadDirection.RIGHT
             else -> DpadDirection.NONE
         }
-    }
-    
-    private fun Canvas.drawRoundRect(left: Float, top: Float, right: Float, bottom: Float, rx: Float, ry: Float, paint: Paint) {
-        this.drawRoundRect(left, top, right, bottom, rx, ry, paint)
     }
     
     private fun dpToPx(dp: Int): Int {
