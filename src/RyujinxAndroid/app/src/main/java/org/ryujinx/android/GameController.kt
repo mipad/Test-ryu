@@ -53,7 +53,7 @@ class JoystickView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(120)
+        val size = dpToPx(80) // 从120dp减小到80dp，使其更合适
         setMeasuredDimension(size, size)
     }
     
@@ -77,7 +77,7 @@ class JoystickView @JvmOverloads constructor(
         stickY = MathUtils.clamp(y, -1f, 1f)
         
         // 根据摇杆位置更新视觉反馈
-        val maxOffset = width * 0.3f
+        val maxOffset = width * 0.25f // 减小偏移量
         translationX = stickX * maxOffset
         translationY = stickY * maxOffset
         
@@ -117,7 +117,7 @@ class DpadView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(140)
+        val size = dpToPx(100) // 从140dp减小到100dp，使其更合适
         setMeasuredDimension(size, size)
     }
     
@@ -193,31 +193,13 @@ class DraggableButtonView @JvmOverloads constructor(
             updateButtonAppearance()
         }
     
-    private val textPaint = Paint().apply {
-        color = Color.argb(180, 255, 255, 255)
-        textSize = 18f
-        textAlign = Paint.Align.CENTER
-        typeface = Typeface.DEFAULT_BOLD
-        isAntiAlias = true
-    }
-    
     init {
         scaleType = ScaleType.FIT_CENTER
         updateButtonAppearance()
     }
     
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        
-        // 绘制按钮文字
-        val centerX = width / 2f
-        val centerY = height / 2f
-        val textY = centerY - (textPaint.descent() + textPaint.ascent()) / 2
-        canvas.drawText(buttonText, centerX, textY, textPaint)
-    }
-    
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(60)
+        val size = dpToPx(50) // 从60dp减小到50dp，使其更合适
         setMeasuredDimension(size, size)
     }
     
@@ -239,11 +221,41 @@ class DraggableButtonView @JvmOverloads constructor(
     private fun updateButtonAppearance() {
         // 根据按钮ID和按压状态设置不同的图片资源
         when (buttonId) {
-            5, 7 -> { // L 和 ZL 按钮
+            1 -> { // A按钮
+                setImageResource(if (buttonPressed) R.drawable.facebutton_a_depressed else R.drawable.facebutton_a)
+            }
+            2 -> { // B按钮
+                setImageResource(if (buttonPressed) R.drawable.facebutton_b_depressed else R.drawable.facebutton_b)
+            }
+            3 -> { // X按钮
+                setImageResource(if (buttonPressed) R.drawable.facebutton_x_depressed else R.drawable.facebutton_x)
+            }
+            4 -> { // Y按钮
+                setImageResource(if (buttonPressed) R.drawable.facebutton_y_depressed else R.drawable.facebutton_y)
+            }
+            5 -> { // L按钮
+                setImageResource(if (buttonPressed) R.drawable.l_shoulder_depressed else R.drawable.l_shoulder)
+            }
+            6 -> { // R按钮
+                setImageResource(if (buttonPressed) R.drawable.r_shoulder_depressed else R.drawable.r_shoulder)
+            }
+            7 -> { // ZL按钮
                 setImageResource(if (buttonPressed) R.drawable.zl_trigger_depressed else R.drawable.zl_trigger)
             }
-            6, 8 -> { // R 和 ZR 按钮
-                setImageResource(if (buttonPressed) R.drawable.zl_trigger_depressed else R.drawable.zl_trigger)
+            8 -> { // ZR按钮
+                setImageResource(if (buttonPressed) R.drawable.zr_trigger_depressed else R.drawable.zr_trigger)
+            }
+            9 -> { // +按钮
+                setImageResource(if (buttonPressed) R.drawable.facebutton_plus_depressed else R.drawable.facebutton_plus)
+            }
+            10 -> { // -按钮
+                setImageResource(if (buttonPressed) R.drawable.facebutton_minus_depressed else R.drawable.facebutton_minus)
+            }
+            11 -> { // L3按钮
+                setImageResource(if (buttonPressed) R.drawable.button_l3_depressed else R.drawable.button_l3)
+            }
+            12 -> { // R3按钮
+                setImageResource(if (buttonPressed) R.drawable.button_r3_depressed else R.drawable.button_r3)
             }
             else -> {
                 // 其他按钮使用默认样式
@@ -278,7 +290,7 @@ class JoystickRangeView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(200)
+        val size = dpToPx(160) // 从200dp减小到160dp，使其更合适
         setMeasuredDimension(size, size)
     }
     
