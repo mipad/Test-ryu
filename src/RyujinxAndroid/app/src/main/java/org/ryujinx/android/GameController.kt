@@ -149,17 +149,14 @@ class DpadView @JvmOverloads constructor(
     fun updateDirection(direction: DpadDirection) {
         currentDirection = direction
         
-        // 根据方向更新图片资源 - 使用单个方向的动画
+        // 根据方向更新图片资源 - 使用现有的资源文件
         when (direction) {
-            DpadDirection.UP -> setImageResource(R.drawable.dpad_up_depressed)
-            DpadDirection.DOWN -> setImageResource(R.drawable.dpad_down_depressed)
-            DpadDirection.LEFT -> setImageResource(R.drawable.dpad_left_depressed)
-            DpadDirection.RIGHT -> setImageResource(R.drawable.dpad_right_depressed)
-            DpadDirection.UP_LEFT -> setImageResource(R.drawable.dpad_up_left_depressed)
-            DpadDirection.UP_RIGHT -> setImageResource(R.drawable.dpad_up_right_depressed)
-            DpadDirection.DOWN_LEFT -> setImageResource(R.drawable.dpad_down_left_depressed)
-            DpadDirection.DOWN_RIGHT -> setImageResource(R.drawable.dpad_down_right_depressed)
-            else -> setImageResource(R.drawable.dpad_standard)
+            DpadDirection.UP, DpadDirection.DOWN, DpadDirection.LEFT, DpadDirection.RIGHT ->
+                setImageResource(R.drawable.dpad_standard_cardinal_depressed)
+            DpadDirection.UP_LEFT, DpadDirection.UP_RIGHT, DpadDirection.DOWN_LEFT, DpadDirection.DOWN_RIGHT ->
+                setImageResource(R.drawable.dpad_standard_diagonal_depressed)
+            else ->
+                setImageResource(R.drawable.dpad_standard)
         }
     }
     
