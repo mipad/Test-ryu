@@ -108,7 +108,7 @@ class DpadView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(100)
+        val size = dpToPx(135) // 增大到135dp
         setMeasuredDimension(size, size)
     }
     
@@ -193,8 +193,8 @@ class DraggableButtonView @JvmOverloads constructor(
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val size = when (buttonId) {
-            5, 6, 7, 8 -> dpToPx(70) // L, R, ZL, ZR 按钮增大到70dp
-            9, 10 -> dpToPx(40) // +, - 按钮减小到40dp
+            5, 6, 7, 8 -> dpToPx(90) // L, R, ZL, ZR 按钮增大到90dp
+            9, 10 -> dpToPx(30) // +, - 按钮减小到30dp
             11, 12 -> dpToPx(45) // L3, R3 按钮调整为45dp
             else -> dpToPx(50) // 其他按钮保持50dp
         }
@@ -658,9 +658,12 @@ class GameController(var activity: Activity) {
     private fun createSaveButton(editModeContainer: FrameLayout) {
         this.editModeContainer = editModeContainer
         
-        // 创建保存按钮
+        // 创建保存按钮 - 设置为半透明
         saveButton = Button(editModeContainer.context).apply {
             text = "保存布局"
+            setBackgroundColor(android.graphics.Color.argb(150, 0, 100, 200)) // 半透明背景
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 18f
             setOnClickListener {
                 saveLayout()
                 setEditingMode(false)
