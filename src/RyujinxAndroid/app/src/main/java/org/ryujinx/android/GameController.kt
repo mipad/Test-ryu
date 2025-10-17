@@ -47,26 +47,26 @@ class JoystickView @JvmOverloads constructor(
     var stickY: Float = 0f
     
     private val basePaint = Paint().apply {
-        color = Color.argb(120, 80, 80, 80) // 改为半透明
+        color = Color.argb(76, 80, 80, 80) // 改为0.3透明度 (255 * 0.3 ≈ 76)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val baseBorderPaint = Paint().apply {
-        color = Color.argb(150, 200, 200, 200) // 改为半透明
+        color = Color.argb(76, 200, 200, 200) // 改为0.3透明度
         style = Paint.Style.STROKE
         strokeWidth = 4f
         isAntiAlias = true
     }
     
     private val stickPaint = Paint().apply {
-        color = Color.argb(180, 240, 240, 240) // 改为半透明
+        color = Color.argb(76, 240, 240, 240) // 改为0.3透明度
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val stickBorderPaint = Paint().apply {
-        color = Color.argb(150, 180, 180, 180) // 改为半透明
+        color = Color.argb(76, 180, 180, 180) // 改为0.3透明度
         style = Paint.Style.STROKE
         strokeWidth = 3f
         isAntiAlias = true
@@ -94,7 +94,7 @@ class JoystickView @JvmOverloads constructor(
         
         // 绘制中心点
         val centerDotPaint = Paint().apply {
-            color = Color.argb(100, 100, 100, 100) // 改为半透明
+            color = Color.argb(76, 100, 100, 100) // 改为0.3透明度
             style = Paint.Style.FILL
             isAntiAlias = true
         }
@@ -144,20 +144,20 @@ class DpadView @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
     
     private val dpadBasePaint = Paint().apply {
-        color = Color.argb(120, 60, 60, 60) // 改为半透明
+        color = Color.argb(76, 60, 60, 60) // 改为0.3透明度
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val dpadBorderPaint = Paint().apply {
-        color = Color.argb(150, 180, 180, 180) // 改为半透明
+        color = Color.argb(76, 180, 180, 180) // 改为0.3透明度
         style = Paint.Style.STROKE
         strokeWidth = 3f
         isAntiAlias = true
     }
     
     private val dpadPressedPaint = Paint().apply {
-        color = Color.argb(180, 80, 160, 255) // 改为半透明
+        color = Color.argb(76, 80, 160, 255) // 改为0.3透明度
         style = Paint.Style.FILL
         isAntiAlias = true
     }
@@ -215,7 +215,7 @@ class DpadView @JvmOverloads constructor(
                 centerX - armWidth/2, 
                 centerY + armWidth/2, 
                 centerX + armWidth/2, 
-                centerY + armLength, 
+                containerHeight + armLength, 
                 dpadBasePaint
             )
         }
@@ -373,32 +373,32 @@ class DraggableButtonView @JvmOverloads constructor(
         }
     
     private val outerCirclePaint = Paint().apply {
-        color = Color.argb(120, 255, 255, 255) // 改为半透明无色
+        color = Color.argb(76, 255, 255, 255) // 改为0.3透明度无色
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val outerBorderPaint = Paint().apply {
-        color = Color.argb(150, 180, 180, 180) // 改为半透明
+        color = Color.argb(76, 180, 180, 180) // 改为0.3透明度
         style = Paint.Style.STROKE
         strokeWidth = 3f
         isAntiAlias = true
     }
     
     private val innerCirclePaint = Paint().apply {
-        color = Color.argb(100, 100, 100, 100) // 改为半透明无色
+        color = Color.argb(76, 100, 100, 100) // 改为0.3透明度无色
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val pressedPaint = Paint().apply {
-        color = Color.argb(150, 255, 100, 100) // 改为半透明
+        color = Color.argb(76, 255, 100, 100) // 改为0.3透明度
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val textPaint = Paint().apply {
-        color = Color.WHITE
+        color = Color.argb(76, 255, 255, 255) // 文字也改为0.3透明度
         textSize = 18f
         textAlign = Paint.Align.CENTER
         typeface = Typeface.DEFAULT_BOLD
@@ -493,7 +493,7 @@ class ButtonLayoutManager(private val context: Context) {
         ButtonConfig(8, "ZR", 0.9f, 0.1f, GamePadButtonInputId.RightTrigger.ordinal),
         ButtonConfig(9, "+", 0.8f, 0.1f, GamePadButtonInputId.Plus.ordinal),
         ButtonConfig(10, "-", 0.2f, 0.1f, GamePadButtonInputId.Minus.ordinal),
-        // 添加L3和R3按钮 - 使用Stick按钮枚举值
+        // 添加L3和R3按钮
         ButtonConfig(11, "L3", 0.2f, 0.8f, GamePadButtonInputId.LeftStick.ordinal),
         ButtonConfig(12, "R3", 0.7f, 0.8f, GamePadButtonInputId.RightStick.ordinal)
     )
@@ -511,6 +511,7 @@ class ButtonLayoutManager(private val context: Context) {
         
         val config = buttonConfigs.find { it.id == buttonId } ?: return Pair(0, 0)
         
+        // 如果保存的位置存在，使用保存的位置，否则使用默认位置
         val x = if (xPref != -1f) (xPref * containerWidth) else (config.defaultX * containerWidth)
         val y = if (yPref != -1f) (yPref * containerHeight) else (config.defaultY * containerHeight)
         
@@ -540,6 +541,8 @@ class ButtonLayoutManager(private val context: Context) {
     }
     
     fun saveButtonPosition(buttonId: Int, x: Int, y: Int, containerWidth: Int, containerHeight: Int) {
+        if (containerWidth == 0 || containerHeight == 0) return
+        
         val xNormalized = x.toFloat() / containerWidth
         val yNormalized = y.toFloat() / containerHeight
         
@@ -550,6 +553,8 @@ class ButtonLayoutManager(private val context: Context) {
     }
     
     fun saveJoystickPosition(joystickId: Int, x: Int, y: Int, containerWidth: Int, containerHeight: Int) {
+        if (containerWidth == 0 || containerHeight == 0) return
+        
         val xNormalized = x.toFloat() / containerWidth
         val yNormalized = y.toFloat() / containerHeight
         
@@ -560,6 +565,8 @@ class ButtonLayoutManager(private val context: Context) {
     }
     
     fun saveDpadPosition(x: Int, y: Int, containerWidth: Int, containerHeight: Int) {
+        if (containerWidth == 0 || containerHeight == 0) return
+        
         val xNormalized = x.toFloat() / containerWidth
         val yNormalized = y.toFloat() / containerHeight
         
@@ -567,6 +574,16 @@ class ButtonLayoutManager(private val context: Context) {
             .putFloat("dpad_x", xNormalized)
             .putFloat("dpad_y", yNormalized)
             .apply()
+    }
+    
+    // 保存屏幕方向信息
+    fun saveScreenOrientation(isLandscape: Boolean) {
+        prefs.edit().putBoolean("screen_orientation", isLandscape).apply()
+    }
+    
+    // 获取保存的屏幕方向
+    fun getSavedScreenOrientation(): Boolean {
+        return prefs.getBoolean("screen_orientation", false)
     }
     
     fun getAllButtonConfigs(): List<ButtonConfig> = buttonConfigs
@@ -659,6 +676,18 @@ class GameController(var activity: Activity) {
         buttonContainer.post {
             containerWidth = buttonContainer.width
             containerHeight = buttonContainer.height
+            
+            // 检查屏幕方向是否改变
+            val isLandscapeNow = containerWidth > containerHeight
+            val wasLandscapeBefore = manager.getSavedScreenOrientation()
+            
+            // 如果屏幕方向改变，重置布局
+            if (isLandscapeNow != wasLandscapeBefore) {
+                // 清除保存的位置，使用默认布局
+                clearSavedLayout()
+                // 保存新的屏幕方向
+                manager.saveScreenOrientation(isLandscapeNow)
+            }
             
             // 创建摇杆
             manager.getAllJoystickConfigs().forEach { config ->
@@ -1052,6 +1081,10 @@ class GameController(var activity: Activity) {
         val currentContainerWidth = controllerView?.width ?: containerWidth
         val currentContainerHeight = controllerView?.height ?: containerHeight
         
+        // 保存当前屏幕方向
+        val isLandscape = currentContainerWidth > currentContainerHeight
+        manager.saveScreenOrientation(isLandscape)
+        
         // 保存按钮位置
         virtualButtons.forEach { (buttonId, button) ->
             val (x, y) = button.getPosition()
@@ -1069,6 +1102,12 @@ class GameController(var activity: Activity) {
             val (x, y) = dpad.getPosition()
             manager.saveDpadPosition(x, y, currentContainerWidth, currentContainerHeight)
         }
+    }
+    
+    private fun clearSavedLayout() {
+        val manager = buttonLayoutManager ?: return
+        val prefs = activity.getSharedPreferences("virtual_controls", Context.MODE_PRIVATE)
+        prefs.edit().clear().apply()
     }
 
     fun setVisible(isVisible: Boolean) {
