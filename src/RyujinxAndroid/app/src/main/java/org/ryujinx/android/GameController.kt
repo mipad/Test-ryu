@@ -13,7 +13,6 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import android.widget.Button
 import androidx.compose.foundation.background
@@ -105,7 +104,7 @@ class JoystickView @JvmOverloads constructor(
         setMeasuredDimension(size, size)
     }
     
-    fun setPosition(x: Int, y: Int) {
+    fun setAbsolutePosition(x: Int, y: Int) {
         val params = layoutParams as? FrameLayout.LayoutParams ?: FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
@@ -115,7 +114,7 @@ class JoystickView @JvmOverloads constructor(
         layoutParams = params
     }
     
-    fun getPosition(): Pair<Int, Int> {
+    fun getAbsolutePosition(): Pair<Int, Int> {
         val params = layoutParams as? FrameLayout.LayoutParams ?: return Pair(0, 0)
         return Pair(params.leftMargin + width / 2, params.topMargin + height / 2)
     }
@@ -313,7 +312,7 @@ class DpadView @JvmOverloads constructor(
         setMeasuredDimension(size, size)
     }
     
-    fun setPosition(x: Int, y: Int) {
+    fun setAbsolutePosition(x: Int, y: Int) {
         val params = layoutParams as? FrameLayout.LayoutParams ?: FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
@@ -323,7 +322,7 @@ class DpadView @JvmOverloads constructor(
         layoutParams = params
     }
     
-    fun getPosition(): Pair<Int, Int> {
+    fun getAbsolutePosition(): Pair<Int, Int> {
         val params = layoutParams as? FrameLayout.LayoutParams ?: return Pair(0, 0)
         return Pair(params.leftMargin + width / 2, params.topMargin + height / 2)
     }
@@ -429,7 +428,7 @@ class DraggableButtonView @JvmOverloads constructor(
         setMeasuredDimension(size, size)
     }
     
-    fun setPosition(x: Int, y: Int) {
+    fun setAbsolutePosition(x: Int, y: Int) {
         val params = layoutParams as? FrameLayout.LayoutParams ?: FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
@@ -439,7 +438,7 @@ class DraggableButtonView @JvmOverloads constructor(
         layoutParams = params
     }
     
-    fun getPosition(): Pair<Int, Int> {
+    fun getAbsolutePosition(): Pair<Int, Int> {
         val params = layoutParams as? FrameLayout.LayoutParams ?: return Pair(0, 0)
         return Pair(params.leftMargin + width / 2, params.topMargin + height / 2)
     }
@@ -457,8 +456,8 @@ class DraggableButtonView @JvmOverloads constructor(
 data class ButtonConfig(
     val id: Int,
     val text: String,
-    val defaultX: Float,
-    val defaultY: Float,
+    val defaultX: Int, // 改为绝对坐标
+    val defaultY: Int, // 改为绝对坐标
     val keyCode: Int
 )
 
@@ -466,147 +465,130 @@ data class ButtonConfig(
 data class JoystickConfig(
     val id: Int,
     val isLeft: Boolean,
-    val defaultX: Float,
-    val defaultY: Float
+    val defaultX: Int, // 改为绝对坐标
+    val defaultY: Int  // 改为绝对坐标
 )
 
 // 方向键配置数据类
 data class DpadConfig(
     val id: Int,
-    val defaultX: Float,
-    val defaultY: Float
+    val defaultX: Int, // 改为绝对坐标
+    val defaultY: Int  // 改为绝对坐标
 )
 
 // 按键管理器
 class ButtonLayoutManager(private val context: Context) {
     private val prefs = context.getSharedPreferences("virtual_controls", Context.MODE_PRIVATE)
     
+    // 使用绝对坐标（基于横屏1280x720的默认位置，会在运行时根据实际屏幕调整）
     private val buttonConfigs = listOf(
-        ButtonConfig(1, "A", 0.85f, 0.7f, GamePadButtonInputId.A.ordinal),
-        ButtonConfig(2, "B", 0.92f, 0.6f, GamePadButtonInputId.B.ordinal),
-        ButtonConfig(3, "X", 0.78f, 0.6f, GamePadButtonInputId.X.ordinal),
-        ButtonConfig(4, "Y", 0.85f, 0.5f, GamePadButtonInputId.Y.ordinal),
-        ButtonConfig(5, "L", 0.1f, 0.2f, GamePadButtonInputId.LeftShoulder.ordinal),
-        ButtonConfig(6, "R", 0.9f, 0.2f, GamePadButtonInputId.RightShoulder.ordinal),
-        ButtonConfig(7, "ZL", 0.1f, 0.1f, GamePadButtonInputId.LeftTrigger.ordinal),
-        ButtonConfig(8, "ZR", 0.9f, 0.1f, GamePadButtonInputId.RightTrigger.ordinal),
-        ButtonConfig(9, "+", 0.8f, 0.1f, GamePadButtonInputId.Plus.ordinal),
-        ButtonConfig(10, "-", 0.2f, 0.1f, GamePadButtonInputId.Minus.ordinal),
-        // 添加L3和R3按钮
-        ButtonConfig(11, "L3", 0.2f, 0.8f, GamePadButtonInputId.LeftStick.ordinal),
-        ButtonConfig(12, "R3", 0.7f, 0.8f, GamePadButtonInputId.RightStick.ordinal)
+        ButtonConfig(1, "A", 1088, 504, GamePadButtonInputId.A.ordinal),      // 0.85f, 0.7f
+        ButtonConfig(2, "B", 1178, 432, GamePadButtonInputId.B.ordinal),      // 0.92f, 0.6f
+        ButtonConfig(3, "X", 998, 432, GamePadButtonInputId.X.ordinal),       // 0.78f, 0.6f
+        ButtonConfig(4, "Y", 1088, 360, GamePadButtonInputId.Y.ordinal),      // 0.85f, 0.5f
+        ButtonConfig(5, "L", 128, 144, GamePadButtonInputId.LeftShoulder.ordinal),   // 0.1f, 0.2f
+        ButtonConfig(6, "R", 1152, 144, GamePadButtonInputId.RightShoulder.ordinal), // 0.9f, 0.2f
+        ButtonConfig(7, "ZL", 128, 72, GamePadButtonInputId.LeftTrigger.ordinal),    // 0.1f, 0.1f
+        ButtonConfig(8, "ZR", 1152, 72, GamePadButtonInputId.RightTrigger.ordinal),  // 0.9f, 0.1f
+        ButtonConfig(9, "+", 1024, 72, GamePadButtonInputId.Plus.ordinal),    // 0.8f, 0.1f
+        ButtonConfig(10, "-", 256, 72, GamePadButtonInputId.Minus.ordinal),   // 0.2f, 0.1f
+        ButtonConfig(11, "L3", 256, 576, GamePadButtonInputId.LeftStick.ordinal),    // 0.2f, 0.8f
+        ButtonConfig(12, "R3", 896, 576, GamePadButtonInputId.RightStick.ordinal)    // 0.7f, 0.8f
     )
     
     private val joystickConfigs = listOf(
-        JoystickConfig(101, true, 0.2f, 0.7f),
-        JoystickConfig(102, false, 0.7f, 0.7f)
+        JoystickConfig(101, true, 256, 504),   // 0.2f, 0.7f
+        JoystickConfig(102, false, 896, 504)   // 0.7f, 0.7f
     )
     
-    private val dpadConfig = DpadConfig(201, 0.1f, 0.5f)
+    private val dpadConfig = DpadConfig(201, 128, 360)  // 0.1f, 0.5f
     
-    fun getButtonPosition(buttonId: Int, containerWidth: Int, containerHeight: Int): Pair<Int, Int> {
-        val xPref = prefs.getFloat("button_${buttonId}_x", -1f)
-        val yPref = prefs.getFloat("button_${buttonId}_y", -1f)
+    // 获取屏幕尺寸
+    private fun getScreenWidth(): Int {
+        return context.resources.displayMetrics.widthPixels
+    }
+    
+    private fun getScreenHeight(): Int {
+        return context.resources.displayMetrics.heightPixels
+    }
+    
+    // 调整默认位置到当前屏幕尺寸
+    private fun adjustDefaultPosition(defaultX: Int, defaultY: Int): Pair<Int, Int> {
+        val screenWidth = getScreenWidth()
+        val screenHeight = getScreenHeight()
+        
+        // 基于1280x720的默认位置进行缩放
+        val scaleX = screenWidth / 1280f
+        val scaleY = screenHeight / 720f
+        
+        val adjustedX = (defaultX * scaleX).toInt()
+        val adjustedY = (defaultY * scaleY).toInt()
+        
+        return Pair(adjustedX, adjustedY)
+    }
+    
+    fun getButtonPosition(buttonId: Int): Pair<Int, Int> {
+        val xPref = prefs.getInt("button_${buttonId}_x", -1)
+        val yPref = prefs.getInt("button_${buttonId}_y", -1)
         
         val config = buttonConfigs.find { it.id == buttonId } ?: return Pair(0, 0)
         
-        // 使用保存的位置或默认位置
-        val x = if (xPref != -1f) (xPref * containerWidth) else (config.defaultX * containerWidth)
-        val y = if (yPref != -1f) (yPref * containerHeight) else (config.defaultY * containerHeight)
-        
-        return Pair(x.toInt(), y.toInt())
+        // 使用保存的绝对位置或调整后的默认位置
+        return if (xPref != -1 && yPref != -1) {
+            Pair(xPref, yPref)
+        } else {
+            adjustDefaultPosition(config.defaultX, config.defaultY)
+        }
     }
     
-    fun getJoystickPosition(joystickId: Int, containerWidth: Int, containerHeight: Int): Pair<Int, Int> {
-        val xPref = prefs.getFloat("joystick_${joystickId}_x", -1f)
-        val yPref = prefs.getFloat("joystick_${joystickId}_y", -1f)
+    fun getJoystickPosition(joystickId: Int): Pair<Int, Int> {
+        val xPref = prefs.getInt("joystick_${joystickId}_x", -1)
+        val yPref = prefs.getInt("joystick_${joystickId}_y", -1)
         
         val config = joystickConfigs.find { it.id == joystickId } ?: return Pair(0, 0)
         
-        val x = if (xPref != -1f) (xPref * containerWidth) else (config.defaultX * containerWidth)
-        val y = if (yPref != -1f) (yPref * containerHeight) else (config.defaultY * containerHeight)
-        
-        return Pair(x.toInt(), y.toInt())
+        return if (xPref != -1 && yPref != -1) {
+            Pair(xPref, yPref)
+        } else {
+            adjustDefaultPosition(config.defaultX, config.defaultY)
+        }
     }
     
-    fun getDpadPosition(containerWidth: Int, containerHeight: Int): Pair<Int, Int> {
-        val xPref = prefs.getFloat("dpad_x", -1f)
-        val yPref = prefs.getFloat("dpad_y", -1f)
+    fun getDpadPosition(): Pair<Int, Int> {
+        val xPref = prefs.getInt("dpad_x", -1)
+        val yPref = prefs.getInt("dpad_y", -1)
         
-        val x = if (xPref != -1f) (xPref * containerWidth) else (dpadConfig.defaultX * containerWidth)
-        val y = if (yPref != -1f) (yPref * containerHeight) else (dpadConfig.defaultY * containerHeight)
-        
-        return Pair(x.toInt(), y.toInt())
+        return if (xPref != -1 && yPref != -1) {
+            Pair(xPref, yPref)
+        } else {
+            adjustDefaultPosition(dpadConfig.defaultX, dpadConfig.defaultY)
+        }
     }
     
-    fun saveButtonPosition(buttonId: Int, x: Int, y: Int, containerWidth: Int, containerHeight: Int) {
-        if (containerWidth <= 0 || containerHeight <= 0) return
-        
-        val xNormalized = x.toFloat() / containerWidth
-        val yNormalized = y.toFloat() / containerHeight
-        
+    fun saveButtonPosition(buttonId: Int, x: Int, y: Int) {
         prefs.edit()
-            .putFloat("button_${buttonId}_x", xNormalized)
-            .putFloat("button_${buttonId}_y", yNormalized)
+            .putInt("button_${buttonId}_x", x)
+            .putInt("button_${buttonId}_y", y)
             .apply()
     }
     
-    fun saveJoystickPosition(joystickId: Int, x: Int, y: Int, containerWidth: Int, containerHeight: Int) {
-        if (containerWidth <= 0 || containerHeight <= 0) return
-        
-        val xNormalized = x.toFloat() / containerWidth
-        val yNormalized = y.toFloat() / containerHeight
-        
+    fun saveJoystickPosition(joystickId: Int, x: Int, y: Int) {
         prefs.edit()
-            .putFloat("joystick_${joystickId}_x", xNormalized)
-            .putFloat("joystick_${joystickId}_y", yNormalized)
+            .putInt("joystick_${joystickId}_x", x)
+            .putInt("joystick_${joystickId}_y", y)
             .apply()
     }
     
-    fun saveDpadPosition(x: Int, y: Int, containerWidth: Int, containerHeight: Int) {
-        if (containerWidth <= 0 || containerHeight <= 0) return
-        
-        val xNormalized = x.toFloat() / containerWidth
-        val yNormalized = y.toFloat() / containerHeight
-        
+    fun saveDpadPosition(x: Int, y: Int) {
         prefs.edit()
-            .putFloat("dpad_x", xNormalized)
-            .putFloat("dpad_y", yNormalized)
+            .putInt("dpad_x", x)
+            .putInt("dpad_y", y)
             .apply()
-    }
-    
-    // 保存屏幕尺寸信息
-    fun saveScreenSize(width: Int, height: Int) {
-        prefs.edit()
-            .putInt("saved_screen_width", width)
-            .putInt("saved_screen_height", height)
-            .apply()
-    }
-    
-    // 获取保存的屏幕尺寸
-    fun getSavedScreenSize(): Pair<Int, Int> {
-        val width = prefs.getInt("saved_screen_width", 0)
-        val height = prefs.getInt("saved_screen_height", 0)
-        return Pair(width, height)
-    }
-    
-    // 检查屏幕尺寸是否显著变化
-    fun isScreenSizeChanged(currentWidth: Int, currentHeight: Int): Boolean {
-        val (savedWidth, savedHeight) = getSavedScreenSize()
-        if (savedWidth == 0 || savedHeight == 0) return false
-        
-        val widthDiff = abs(currentWidth - savedWidth)
-        val heightDiff = abs(currentHeight - savedHeight)
-        
-        // 如果宽度或高度变化超过100像素，认为是显著变化
-        return widthDiff > 100 || heightDiff > 100
     }
     
     fun getAllButtonConfigs(): List<ButtonConfig> = buttonConfigs
     fun getAllJoystickConfigs(): List<JoystickConfig> = joystickConfigs
     fun getDpadConfig(): DpadConfig = dpadConfig
-    
-    private fun abs(value: Int): Int = if (value < 0) -value else value
 }
 
 class GameController(var activity: Activity) {
@@ -673,8 +655,6 @@ class GameController(var activity: Activity) {
     private var dpadView: DpadView? = null
     var controllerId: Int = -1
     private var isEditing = false
-    private var containerWidth = 0
-    private var containerHeight = 0
 
     val isVisible: Boolean
         get() {
@@ -694,36 +674,13 @@ class GameController(var activity: Activity) {
         
         // 使用post确保在布局完成后执行
         buttonContainer.post {
-            containerWidth = buttonContainer.width
-            containerHeight = buttonContainer.height
-
-            if (containerWidth <= 0 || containerHeight <= 0) {
-                // 如果尺寸仍然无效，延迟重试
-                buttonContainer.postDelayed({
-                    containerWidth = buttonContainer.width
-                    containerHeight = buttonContainer.height
-                    createControlsWithValidSize()
-                }, 100)
-            } else {
-                createControlsWithValidSize()
-            }
+            createControls()
         }
     }
     
-    private fun createControlsWithValidSize() {
+    private fun createControls() {
         val manager = buttonLayoutManager ?: return
         val buttonContainer = this.buttonContainer ?: return
-        
-        // 检查屏幕尺寸是否显著变化
-        val sizeChanged = manager.isScreenSizeChanged(containerWidth, containerHeight)
-        
-        if (sizeChanged) {
-            // 如果屏幕尺寸显著变化，清除保存的布局并使用默认位置
-            clearSavedLayout()
-        }
-        
-        // 保存当前屏幕尺寸
-        manager.saveScreenSize(containerWidth, containerHeight)
         
         // 创建摇杆
         manager.getAllJoystickConfigs().forEach { config ->
@@ -732,8 +689,8 @@ class GameController(var activity: Activity) {
                 isLeftStick = config.isLeft
                 
                 // 设置初始位置
-                val (x, y) = manager.getJoystickPosition(config.id, containerWidth, containerHeight)
-                setPosition(x, y)
+                val (x, y) = manager.getJoystickPosition(config.id)
+                setAbsolutePosition(x, y)
                 
                 // 设置触摸监听器
                 setOnTouchListener { _, event ->
@@ -753,9 +710,9 @@ class GameController(var activity: Activity) {
         }
         
         // 创建方向键
-        val (dpadX, dpadY) = manager.getDpadPosition(containerWidth, containerHeight)
+        val (dpadX, dpadY) = manager.getDpadPosition()
         dpadView = DpadView(buttonContainer.context).apply {
-            setPosition(dpadX, dpadY)
+            setAbsolutePosition(dpadX, dpadY)
             
             setOnTouchListener { _, event ->
                 if (isEditing) {
@@ -775,8 +732,8 @@ class GameController(var activity: Activity) {
                 buttonText = config.text
                 
                 // 设置初始位置
-                val (x, y) = manager.getButtonPosition(config.id, containerWidth, containerHeight)
-                setPosition(x, y)
+                val (x, y) = manager.getButtonPosition(config.id)
+                setAbsolutePosition(x, y)
                 
                 // 设置触摸监听器
                 setOnTouchListener { _, event ->
@@ -854,7 +811,7 @@ class GameController(var activity: Activity) {
                     val clampedX = MathUtils.clamp(x, 0, parent.width)
                     val clampedY = MathUtils.clamp(y, 0, parent.height)
                     
-                    joystick.setPosition(clampedX, clampedY)
+                    joystick.setAbsolutePosition(clampedX, clampedY)
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -937,7 +894,7 @@ class GameController(var activity: Activity) {
                     val clampedX = MathUtils.clamp(x, 0, parent.width)
                     val clampedY = MathUtils.clamp(y, 0, parent.height)
                     
-                    dpad.setPosition(clampedX, clampedY)
+                    dpad.setAbsolutePosition(clampedX, clampedY)
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -1068,7 +1025,7 @@ class GameController(var activity: Activity) {
                     val clampedX = MathUtils.clamp(x, 0, parent.width)
                     val clampedY = MathUtils.clamp(y, 0, parent.height)
                     
-                    button.setPosition(clampedX, clampedY)
+                    button.setAbsolutePosition(clampedX, clampedY)
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -1114,32 +1071,22 @@ class GameController(var activity: Activity) {
     fun saveLayout() {
         val manager = buttonLayoutManager ?: return
         
-        // 使用buttonContainer的当前尺寸
-        val currentContainer = buttonContainer
-        val currentContainerWidth = currentContainer?.width ?: containerWidth
-        val currentContainerHeight = currentContainer?.height ?: containerHeight
-        
-        if (currentContainerWidth <= 0 || currentContainerHeight <= 0) return
-        
-        // 保存屏幕尺寸
-        manager.saveScreenSize(currentContainerWidth, currentContainerHeight)
-        
         // 保存按钮位置
         virtualButtons.forEach { (buttonId, button) ->
-            val (x, y) = button.getPosition()
-            manager.saveButtonPosition(buttonId, x, y, currentContainerWidth, currentContainerHeight)
+            val (x, y) = button.getAbsolutePosition()
+            manager.saveButtonPosition(buttonId, x, y)
         }
         
         // 保存摇杆位置
         virtualJoysticks.forEach { (joystickId, joystick) ->
-            val (x, y) = joystick.getPosition()
-            manager.saveJoystickPosition(joystickId, x, y, currentContainerWidth, currentContainerHeight)
+            val (x, y) = joystick.getAbsolutePosition()
+            manager.saveJoystickPosition(joystickId, x, y)
         }
         
         // 保存方向键位置
         dpadView?.let { dpad ->
-            val (x, y) = dpad.getPosition()
-            manager.saveDpadPosition(x, y, currentContainerWidth, currentContainerHeight)
+            val (x, y) = dpad.getAbsolutePosition()
+            manager.saveDpadPosition(x, y)
         }
     }
     
