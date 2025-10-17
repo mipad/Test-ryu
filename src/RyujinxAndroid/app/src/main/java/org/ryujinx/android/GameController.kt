@@ -15,6 +15,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.Button
+import android.widget.ImageView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,76 +35,25 @@ import androidx.core.view.isVisible
 import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.QuickSettings
 
-// 摇杆视图 - 完全按照截图样式
+// 摇杆视图 - 使用矢量图资源
 class JoystickView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
-) : View(context, attrs, defStyleAttr) {
+) : ImageView(context, attrs, defStyleAttr) {
     
     var stickId: Int = 0
     var isLeftStick: Boolean = true
     var stickX: Float = 0f
     var stickY: Float = 0f
     
-    // 根据截图：简单的灰色圆形，中心有凸起
-    private val basePaint = Paint().apply {
-        color = Color.argb(180, 100, 100, 100)
-        style = Paint.Style.FILL
-        isAntiAlias = true
-    }
-    
-    private val baseBorderPaint = Paint().apply {
-        color = Color.argb(180, 60, 60, 60)
-        style = Paint.Style.STROKE
-        strokeWidth = 2f
-        isAntiAlias = true
-    }
-    
-    private val stickPaint = Paint().apply {
-        color = Color.argb(180, 120, 120, 120)
-        style = Paint.Style.FILL
-        isAntiAlias = true
-    }
-    
-    private val stickBorderPaint = Paint().apply {
-        color = Color.argb(180, 80, 80, 80)
-        style = Paint.Style.STROKE
-        strokeWidth = 2f
-        isAntiAlias = true
-    }
-    
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        
-        val centerX = width / 2f
-        val centerY = height / 2f
-        val baseRadius = (width.coerceAtMost(height) / 2f) * 0.9f
-        
-        // 绘制摇杆底座 - 简单的灰色圆形
-        canvas.drawCircle(centerX, centerY, baseRadius, basePaint)
-        canvas.drawCircle(centerX, centerY, baseRadius, baseBorderPaint)
-        
-        // 绘制摇杆
-        val stickRadius = baseRadius * 0.4f
-        val stickPosX = centerX + stickX * baseRadius * 0.5f
-        val stickPosY = centerY + stickY * baseRadius * 0.5f
-        
-        // 摇杆主体
-        canvas.drawCircle(stickPosX, stickPosY, stickRadius, stickPaint)
-        canvas.drawCircle(stickPosX, stickPosY, stickRadius, stickBorderPaint)
-        
-        // 中心点标识 - 截图中的摇杆中心有一个小点
-        val centerDotPaint = Paint().apply {
-            color = Color.argb(180, 80, 80, 80)
-            style = Paint.Style.FILL
-            isAntiAlias = true
-        }
-        canvas.drawCircle(centerX, centerY, 3f, centerDotPaint)
+    init {
+        setImageResource(R.drawable.joystick)
+        scaleType = ScaleType.FIT_CENTER
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(90)
+        val size = dpToPx(120)
         setMeasuredDimension(size, size)
     }
     
@@ -125,7 +75,18 @@ class JoystickView @JvmOverloads constructor(
     fun updateStickPosition(x: Float, y: Float) {
         stickX = MathUtils.clamp(x, -1f, 1f)
         stickY = MathUtils.clamp(y, -1f, 1f)
-        invalidate()
+        
+        // 根据摇杆位置更新视觉反馈
+        val maxOffset = width * 0.3f
+        translationX = stickX * maxOffset
+        translationY = stickY * maxOffset
+        
+        // 按压状态改变图片
+        if (stickX != 0f || stickY != 0f) {
+            setImageResource(R.drawable.joystick_depressed)
+        } else {
+            setImageResource(R.drawable.joystick)
+        }
     }
     
     private fun dpToPx(dp: Int): Int {
@@ -137,32 +98,12 @@ class JoystickView @JvmOverloads constructor(
     }
 }
 
-// 方向键视图 - 完全按照截图样式
+// 方向键视图 - 使用矢量图资源
 class DpadView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
-) : View(context, attrs, defStyleAttr) {
-    
-    // 根据截图：简单的灰色十字形
-    private val dpadPaint = Paint().apply {
-        color = Color.argb(180, 100, 100, 100)
-        style = Paint.Style.FILL
-        isAntiAlias = true
-    }
-    
-    private val dpadBorderPaint = Paint().apply {
-        color = Color.argb(180, 60, 60, 60)
-        style = Paint.Style.STROKE
-        strokeWidth = 2f
-        isAntiAlias = true
-    }
-    
-    private val dpadPressedPaint = Paint().apply {
-        color = Color.argb(180, 140, 140, 140)
-        style = Paint.Style.FILL
-        isAntiAlias = true
-    }
+) : ImageView(context, attrs, defStyleAttr) {
     
     var currentDirection: DpadDirection = DpadDirection.NONE
     
@@ -170,149 +111,13 @@ class DpadView @JvmOverloads constructor(
         NONE, UP, DOWN, LEFT, RIGHT, UP_LEFT, UP_RIGHT, DOWN_LEFT, DOWN_RIGHT
     }
     
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        
-        val centerX = width / 2f
-        val centerY = height / 2f
-        val size = (width.coerceAtMost(height) / 2f) * 0.8f
-        val armWidth = size / 2.5f
-        val armLength = size
-        
-        // 绘制方向键臂
-        // 上臂
-        if (currentDirection == DpadDirection.UP || 
-            currentDirection == DpadDirection.UP_LEFT || 
-            currentDirection == DpadDirection.UP_RIGHT) {
-            canvas.drawRect(
-                centerX - armWidth/2, 
-                centerY - armLength, 
-                centerX + armWidth/2, 
-                centerY - armWidth/2, 
-                dpadPressedPaint
-            )
-        } else {
-            canvas.drawRect(
-                centerX - armWidth/2, 
-                centerY - armLength, 
-                centerX + armWidth/2, 
-                centerY - armWidth/2, 
-                dpadPaint
-            )
-        }
-        
-        // 下臂
-        if (currentDirection == DpadDirection.DOWN || 
-            currentDirection == DpadDirection.DOWN_LEFT || 
-            currentDirection == DpadDirection.DOWN_RIGHT) {
-            canvas.drawRect(
-                centerX - armWidth/2, 
-                centerY + armWidth/2, 
-                centerX + armWidth/2, 
-                centerY + armLength, 
-                dpadPressedPaint
-            )
-        } else {
-            canvas.drawRect(
-                centerX - armWidth/2, 
-                centerY + armWidth/2, 
-                centerX + armWidth/2, 
-                centerY + armLength, 
-                dpadPaint
-            )
-        }
-        
-        // 左臂
-        if (currentDirection == DpadDirection.LEFT || 
-            currentDirection == DpadDirection.UP_LEFT || 
-            currentDirection == DpadDirection.DOWN_LEFT) {
-            canvas.drawRect(
-                centerX - armLength, 
-                centerY - armWidth/2, 
-                centerX - armWidth/2, 
-                centerY + armWidth/2, 
-                dpadPressedPaint
-            )
-        } else {
-            canvas.drawRect(
-                centerX - armLength, 
-                centerY - armWidth/2, 
-                centerX - armWidth/2, 
-                centerY + armWidth/2, 
-                dpadPaint
-            )
-        }
-        
-        // 右臂
-        if (currentDirection == DpadDirection.RIGHT || 
-            currentDirection == DpadDirection.UP_RIGHT || 
-            currentDirection == DpadDirection.DOWN_RIGHT) {
-            canvas.drawRect(
-                centerX + armWidth/2, 
-                centerY - armWidth/2, 
-                centerX + armLength, 
-                centerY + armWidth/2, 
-                dpadPressedPaint
-            )
-        } else {
-            canvas.drawRect(
-                centerX + armWidth/2, 
-                centerY - armWidth/2, 
-                centerX + armLength, 
-                centerY + armWidth/2, 
-                dpadPaint
-            )
-        }
-        
-        // 绘制中心方块
-        canvas.drawRect(
-            centerX - armWidth/2, 
-            centerY - armWidth/2, 
-            centerX + armWidth/2, 
-            centerY + armWidth/2, 
-            dpadPaint
-        )
-        
-        // 绘制边框
-        canvas.drawRect(
-            centerX - armWidth/2, 
-            centerY - armLength, 
-            centerX + armWidth/2, 
-            centerY - armWidth/2, 
-            dpadBorderPaint
-        )
-        canvas.drawRect(
-            centerX - armWidth/2, 
-            centerY + armWidth/2, 
-            centerX + armWidth/2, 
-            centerY + armLength, 
-            dpadBorderPaint
-        )
-        canvas.drawRect(
-            centerX - armLength, 
-            centerY - armWidth/2, 
-            centerX - armWidth/2, 
-            centerY + armWidth/2, 
-            dpadBorderPaint
-        )
-        canvas.drawRect(
-            centerX + armWidth/2, 
-            centerY - armWidth/2, 
-            centerX + armLength, 
-            centerY + armWidth/2, 
-            dpadBorderPaint
-        )
-        canvas.drawRect(
-            centerX - armWidth/2, 
-            centerY - armWidth/2, 
-            centerX + armWidth/2, 
-            centerY + armWidth/2, 
-            dpadBorderPaint
-        )
+    init {
+        setImageResource(R.drawable.dpad_standard)
+        scaleType = ScaleType.FIT_CENTER
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(90)
+        val size = dpToPx(140)
         setMeasuredDimension(size, size)
     }
     
@@ -350,6 +155,20 @@ class DpadView @JvmOverloads constructor(
         }
     }
     
+    fun updateDirection(direction: DpadDirection) {
+        currentDirection = direction
+        
+        // 根据方向更新图片资源
+        when (direction) {
+            DpadDirection.UP, DpadDirection.DOWN, DpadDirection.LEFT, DpadDirection.RIGHT ->
+                setImageResource(R.drawable.dpad_standard_cardinal_depressed)
+            DpadDirection.UP_LEFT, DpadDirection.UP_RIGHT, DpadDirection.DOWN_LEFT, DpadDirection.DOWN_RIGHT ->
+                setImageResource(R.drawable.dpad_standard_diagonal_depressed)
+            else ->
+                setImageResource(R.drawable.dpad_standard)
+        }
+    }
+    
     private fun dpToPx(dp: Int): Int {
         return TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP, 
@@ -359,68 +178,46 @@ class DpadView @JvmOverloads constructor(
     }
 }
 
-// 自定义可拖拽按钮 - 按照截图样式
+// 自定义可拖拽按钮 - 使用矢量图资源
 class DraggableButtonView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
-) : View(context, attrs, defStyleAttr) {
+) : ImageView(context, attrs, defStyleAttr) {
     
     var buttonId: Int = 0
     var buttonText: String = ""
     var buttonPressed: Boolean = false
         set(value) {
             field = value
-            invalidate()
+            updateButtonAppearance()
         }
     
-    // 根据截图：简单的灰色圆形按钮
-    private val buttonPaint = Paint().apply {
-        color = Color.argb(180, 100, 100, 100)
-        style = Paint.Style.FILL
-        isAntiAlias = true
-    }
-    
-    private val buttonBorderPaint = Paint().apply {
-        color = Color.argb(180, 60, 60, 60)
-        style = Paint.Style.STROKE
-        strokeWidth = 2f
-        isAntiAlias = true
-    }
-    
-    private val buttonPressedPaint = Paint().apply {
-        color = Color.argb(180, 140, 140, 140)
-        style = Paint.Style.FILL
-        isAntiAlias = true
-    }
-    
     private val textPaint = Paint().apply {
-        color = Color.argb(220, 255, 255, 255)
-        textSize = 16f
+        color = Color.argb(180, 255, 255, 255)
+        textSize = 18f
         textAlign = Paint.Align.CENTER
         typeface = Typeface.DEFAULT_BOLD
         isAntiAlias = true
     }
     
+    init {
+        scaleType = ScaleType.FIT_CENTER
+        updateButtonAppearance()
+    }
+    
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         
+        // 绘制按钮文字
         val centerX = width / 2f
         val centerY = height / 2f
-        val radius = (width.coerceAtMost(height) / 2f) * 0.8f
-        
-        // 绘制按钮（按压时变色）
-        val fillPaint = if (buttonPressed) buttonPressedPaint else buttonPaint
-        canvas.drawCircle(centerX, centerY, radius, fillPaint)
-        canvas.drawCircle(centerX, centerY, radius, buttonBorderPaint)
-        
-        // 绘制文字
         val textY = centerY - (textPaint.descent() + textPaint.ascent()) / 2
         canvas.drawText(buttonText, centerX, textY, textPaint)
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(50)
+        val size = dpToPx(60)
         setMeasuredDimension(size, size)
     }
     
@@ -437,6 +234,62 @@ class DraggableButtonView @JvmOverloads constructor(
     fun getPosition(): Pair<Int, Int> {
         val params = layoutParams as? FrameLayout.LayoutParams ?: return Pair(0, 0)
         return Pair(params.leftMargin + width / 2, params.topMargin + height / 2)
+    }
+    
+    private fun updateButtonAppearance() {
+        // 根据按钮ID和按压状态设置不同的图片资源
+        when (buttonId) {
+            5, 7 -> { // L 和 ZL 按钮
+                setImageResource(if (buttonPressed) R.drawable.zl_trigger_depressed else R.drawable.zl_trigger)
+            }
+            6, 8 -> { // R 和 ZR 按钮
+                setImageResource(if (buttonPressed) R.drawable.zl_trigger_depressed else R.drawable.zl_trigger)
+            }
+            else -> {
+                // 其他按钮使用默认样式
+                if (buttonPressed) {
+                    setBackgroundColor(Color.argb(128, 255, 100, 100))
+                } else {
+                    setBackgroundColor(Color.argb(128, 100, 100, 100))
+                }
+            }
+        }
+    }
+    
+    private fun dpToPx(dp: Int): Int {
+        return TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP, 
+            dp.toFloat(), 
+            resources.displayMetrics
+        ).toInt()
+    }
+}
+
+// 摇杆范围视图
+class JoystickRangeView @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = 0
+) : ImageView(context, attrs, defStyleAttr) {
+    
+    init {
+        setImageResource(R.drawable.joystick_range)
+        scaleType = ScaleType.FIT_CENTER
+    }
+    
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val size = dpToPx(200)
+        setMeasuredDimension(size, size)
+    }
+    
+    fun setPosition(x: Int, y: Int) {
+        val params = layoutParams as? FrameLayout.LayoutParams ?: FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+        params.leftMargin = x - width / 2
+        params.topMargin = y - height / 2
+        layoutParams = params
     }
     
     private fun dpToPx(dp: Int): Int {
@@ -640,6 +493,7 @@ class GameController(var activity: Activity) {
     var buttonLayoutManager: ButtonLayoutManager? = null
     private val virtualButtons = mutableMapOf<Int, DraggableButtonView>()
     private val virtualJoysticks = mutableMapOf<Int, JoystickView>()
+    private val virtualJoystickRanges = mutableMapOf<Int, JoystickRangeView>()
     private var dpadView: DpadView? = null
     var controllerId: Int = -1
     private var isEditing = false
@@ -673,6 +527,18 @@ class GameController(var activity: Activity) {
         val effectiveWidth = if (containerWidth > 0) containerWidth else activity.resources.displayMetrics.widthPixels
         val effectiveHeight = if (containerHeight > 0) containerHeight else activity.resources.displayMetrics.heightPixels
         
+        // 创建摇杆范围
+        manager.getAllJoystickConfigs().forEach { config ->
+            val joystickRange = JoystickRangeView(buttonContainer.context).apply {
+                // 设置初始位置
+                val (x, y) = manager.getJoystickPosition(config.id, effectiveWidth, effectiveHeight)
+                setPosition(x, y)
+            }
+            
+            buttonContainer.addView(joystickRange)
+            virtualJoystickRanges[config.id] = joystickRange
+        }
+        
         // 创建摇杆
         manager.getAllJoystickConfigs().forEach { config ->
             val joystick = JoystickView(buttonContainer.context).apply {
@@ -700,7 +566,7 @@ class GameController(var activity: Activity) {
             virtualJoysticks[config.id] = joystick
         }
         
-        // 创建方向键 - 使用新的DpadView
+        // 创建方向键
         val (dpadX, dpadY) = manager.getDpadPosition(effectiveWidth, effectiveHeight)
         dpadView = DpadView(buttonContainer.context).apply {
             setPosition(dpadX, dpadY)
@@ -759,6 +625,12 @@ class GameController(var activity: Activity) {
         val containerHeight = buttonContainer.height
         
         if (containerWidth <= 0 || containerHeight <= 0) return
+        
+        // 刷新摇杆范围位置
+        virtualJoystickRanges.forEach { (joystickId, joystickRange) ->
+            val (x, y) = manager.getJoystickPosition(joystickId, containerWidth, containerHeight)
+            joystickRange.setPosition(x, y)
+        }
         
         // 刷新摇杆位置
         virtualJoysticks.forEach { (joystickId, joystick) ->
@@ -836,6 +708,7 @@ class GameController(var activity: Activity) {
                     val clampedY = MathUtils.clamp(y, 0, parent.height)
                     
                     joystick.setPosition(clampedX, clampedY)
+                    virtualJoystickRanges[joystickId]?.setPosition(clampedX, clampedY)
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -942,14 +815,14 @@ class GameController(var activity: Activity) {
                         handleDpadDirection(dpad.currentDirection, false)
                         // 设置新方向
                         dpad.currentDirection = direction
+                        dpad.updateDirection(direction)
                         handleDpadDirection(direction, true)
-                        dpad.invalidate()
                     }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     handleDpadDirection(dpad.currentDirection, false)
                     dpad.currentDirection = DpadView.DpadDirection.NONE
-                    dpad.invalidate()
+                    dpad.updateDirection(DpadView.DpadDirection.NONE)
                 }
             }
         }
@@ -1095,7 +968,7 @@ class GameController(var activity: Activity) {
             joystick.updateStickPosition(0f, 0f)
         }
         dpadView?.currentDirection = DpadView.DpadDirection.NONE
-        dpadView?.invalidate()
+        dpadView?.updateDirection(DpadView.DpadDirection.NONE)
     }
     
     fun saveLayout() {
@@ -1131,6 +1004,7 @@ class GameController(var activity: Activity) {
             this.isVisible = isVisible
             virtualButtons.values.forEach { it.isVisible = isVisible }
             virtualJoysticks.values.forEach { it.isVisible = isVisible }
+            virtualJoystickRanges.values.forEach { it.isVisible = isVisible }
             dpadView?.isVisible = isVisible
 
             if (isVisible)
