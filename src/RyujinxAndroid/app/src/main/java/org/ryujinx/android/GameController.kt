@@ -2,13 +2,8 @@ package org.ryujinx.android
 
 import android.app.Activity
 import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Typeface
 import android.util.AttributeSet
 import android.util.TypedValue
-import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
@@ -16,19 +11,11 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.Button
 import android.widget.ImageView
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color as ComposeColor
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.math.MathUtils
 import androidx.core.view.isVisible
@@ -50,10 +37,12 @@ class JoystickView @JvmOverloads constructor(
     init {
         setImageResource(R.drawable.joystick)
         scaleType = ScaleType.FIT_CENTER
+        // 移除任何可能的背景
+        setBackgroundResource(0)
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(70) // 从80dp减小到70dp
+        val size = dpToPx(70)
         setMeasuredDimension(size, size)
     }
     
@@ -81,7 +70,7 @@ class JoystickView @JvmOverloads constructor(
         translationX = stickX * maxOffset
         translationY = stickY * maxOffset
         
-        // 按压状态改变图片
+        // 按压状态改变图片 - 确保使用矢量图资源
         if (stickX != 0f || stickY != 0f) {
             setImageResource(R.drawable.joystick_depressed)
         } else {
@@ -114,6 +103,8 @@ class DpadView @JvmOverloads constructor(
     init {
         setImageResource(R.drawable.dpad_standard)
         scaleType = ScaleType.FIT_CENTER
+        // 移除任何可能的背景
+        setBackgroundResource(0)
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -158,7 +149,7 @@ class DpadView @JvmOverloads constructor(
     fun updateDirection(direction: DpadDirection) {
         currentDirection = direction
         
-        // 根据方向更新图片资源
+        // 根据方向更新图片资源 - 确保使用矢量图资源
         when (direction) {
             DpadDirection.UP, DpadDirection.DOWN, DpadDirection.LEFT, DpadDirection.RIGHT ->
                 setImageResource(R.drawable.dpad_standard_cardinal_depressed)
@@ -195,6 +186,8 @@ class DraggableButtonView @JvmOverloads constructor(
     
     init {
         scaleType = ScaleType.FIT_CENTER
+        // 移除任何可能的背景
+        setBackgroundResource(0)
         updateButtonAppearance()
     }
     
@@ -224,7 +217,7 @@ class DraggableButtonView @JvmOverloads constructor(
     }
     
     private fun updateButtonAppearance() {
-        // 根据按钮ID和按压状态设置不同的图片资源
+        // 根据按钮ID和按压状态设置不同的矢量图资源
         when (buttonId) {
             1 -> { // A按钮
                 setImageResource(if (buttonPressed) R.drawable.facebutton_a_depressed else R.drawable.facebutton_a)
@@ -262,14 +255,6 @@ class DraggableButtonView @JvmOverloads constructor(
             12 -> { // R3按钮
                 setImageResource(if (buttonPressed) R.drawable.button_r3_depressed else R.drawable.button_r3)
             }
-            else -> {
-                // 其他按钮使用默认样式
-                if (buttonPressed) {
-                    setBackgroundColor(Color.argb(128, 255, 100, 100))
-                } else {
-                    setBackgroundColor(Color.argb(128, 100, 100, 100))
-                }
-            }
         }
     }
     
@@ -292,10 +277,12 @@ class JoystickRangeView @JvmOverloads constructor(
     init {
         setImageResource(R.drawable.joystick_range)
         scaleType = ScaleType.FIT_CENTER
+        // 移除任何可能的背景
+        setBackgroundResource(0)
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(140) // 从160dp减小到140dp
+        val size = dpToPx(140)
         setMeasuredDimension(size, size)
     }
     
@@ -674,9 +661,6 @@ class GameController(var activity: Activity) {
         // 创建保存按钮
         saveButton = Button(editModeContainer.context).apply {
             text = "保存布局"
-            setBackgroundColor(Color.argb(200, 0, 100, 200))
-            setTextColor(Color.WHITE)
-            textSize = 18f
             setOnClickListener {
                 saveLayout()
                 setEditingMode(false)
@@ -693,7 +677,7 @@ class GameController(var activity: Activity) {
         }
         
         editModeContainer.addView(saveButton)
-        editModeContainer.setBackgroundColor(Color.argb(150, 0, 0, 0))
+        editModeContainer.setBackgroundColor(android.graphics.Color.argb(150, 0, 0, 0))
         editModeContainer.isVisible = false
     }
     
