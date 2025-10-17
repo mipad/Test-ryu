@@ -34,7 +34,7 @@ import androidx.core.view.isVisible
 import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.QuickSettings
 
-// 摇杆视图 - 根据截图样式重新设计
+// 摇杆视图 - 完全按照截图样式
 class JoystickView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -46,36 +46,28 @@ class JoystickView @JvmOverloads constructor(
     var stickX: Float = 0f
     var stickY: Float = 0f
     
-    // 根据截图样式：深灰色底座，中心有凸起圆形
+    // 根据截图：简单的灰色圆形，中心有凸起
     private val basePaint = Paint().apply {
-        color = Color.argb(200, 60, 60, 60)
+        color = Color.argb(180, 100, 100, 100)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val baseBorderPaint = Paint().apply {
-        color = Color.argb(200, 30, 30, 30)
+        color = Color.argb(180, 60, 60, 60)
         style = Paint.Style.STROKE
-        strokeWidth = 4f
+        strokeWidth = 2f
         isAntiAlias = true
     }
     
     private val stickPaint = Paint().apply {
-        color = Color.argb(200, 80, 80, 80)
+        color = Color.argb(180, 120, 120, 120)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val stickBorderPaint = Paint().apply {
-        color = Color.argb(200, 40, 40, 40)
-        style = Paint.Style.STROKE
-        strokeWidth = 3f
-        isAntiAlias = true
-    }
-    
-    // 凹槽效果
-    private val groovePaint = Paint().apply {
-        color = Color.argb(200, 40, 40, 40)
+        color = Color.argb(180, 80, 80, 80)
         style = Paint.Style.STROKE
         strokeWidth = 2f
         isAntiAlias = true
@@ -88,42 +80,30 @@ class JoystickView @JvmOverloads constructor(
         val centerY = height / 2f
         val baseRadius = (width.coerceAtMost(height) / 2f) * 0.9f
         
-        // 绘制摇杆底座 - 简单的深灰色圆形
+        // 绘制摇杆底座 - 简单的灰色圆形
         canvas.drawCircle(centerX, centerY, baseRadius, basePaint)
         canvas.drawCircle(centerX, centerY, baseRadius, baseBorderPaint)
-        
-        // 绘制环形凹槽
-        val grooveRadius = baseRadius * 0.7f
-        canvas.drawCircle(centerX, centerY, grooveRadius, groovePaint)
         
         // 绘制摇杆
         val stickRadius = baseRadius * 0.4f
         val stickPosX = centerX + stickX * baseRadius * 0.5f
         val stickPosY = centerY + stickY * baseRadius * 0.5f
         
-        // 摇杆阴影
-        val shadowPaint = Paint().apply {
-            color = Color.argb(100, 0, 0, 0)
-            style = Paint.Style.FILL
-            isAntiAlias = true
-        }
-        canvas.drawCircle(stickPosX + 2, stickPosY + 2, stickRadius, shadowPaint)
-        
         // 摇杆主体
         canvas.drawCircle(stickPosX, stickPosY, stickRadius, stickPaint)
         canvas.drawCircle(stickPosX, stickPosY, stickRadius, stickBorderPaint)
         
-        // 中心点标识
+        // 中心点标识 - 截图中的摇杆中心有一个小点
         val centerDotPaint = Paint().apply {
-            color = Color.argb(200, 120, 120, 120)
+            color = Color.argb(180, 80, 80, 80)
             style = Paint.Style.FILL
             isAntiAlias = true
         }
-        canvas.drawCircle(centerX, centerY, 4f, centerDotPaint)
+        canvas.drawCircle(centerX, centerY, 3f, centerDotPaint)
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(100)
+        val size = dpToPx(90)
         setMeasuredDimension(size, size)
     }
     
@@ -157,29 +137,29 @@ class JoystickView @JvmOverloads constructor(
     }
 }
 
-// 方向键视图 - 根据截图样式重新设计
+// 方向键视图 - 完全按照截图样式
 class DpadView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
     
-    // 根据截图：简单的十字形，深灰色
-    private val dpadBasePaint = Paint().apply {
-        color = Color.argb(200, 60, 60, 60)
+    // 根据截图：简单的灰色十字形
+    private val dpadPaint = Paint().apply {
+        color = Color.argb(180, 100, 100, 100)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val dpadBorderPaint = Paint().apply {
-        color = Color.argb(200, 30, 30, 30)
+        color = Color.argb(180, 60, 60, 60)
         style = Paint.Style.STROKE
-        strokeWidth = 3f
+        strokeWidth = 2f
         isAntiAlias = true
     }
     
     private val dpadPressedPaint = Paint().apply {
-        color = Color.argb(200, 100, 150, 255)
+        color = Color.argb(180, 140, 140, 140)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
@@ -196,10 +176,10 @@ class DpadView @JvmOverloads constructor(
         val centerX = width / 2f
         val centerY = height / 2f
         val size = (width.coerceAtMost(height) / 2f) * 0.8f
-        val armWidth = size / 2f
+        val armWidth = size / 2.5f
         val armLength = size
         
-        // 绘制方向键臂 - 简单的矩形
+        // 绘制方向键臂
         // 上臂
         if (currentDirection == DpadDirection.UP || 
             currentDirection == DpadDirection.UP_LEFT || 
@@ -217,7 +197,7 @@ class DpadView @JvmOverloads constructor(
                 centerY - armLength, 
                 centerX + armWidth/2, 
                 centerY - armWidth/2, 
-                dpadBasePaint
+                dpadPaint
             )
         }
         
@@ -238,7 +218,7 @@ class DpadView @JvmOverloads constructor(
                 centerY + armWidth/2, 
                 centerX + armWidth/2, 
                 centerY + armLength, 
-                dpadBasePaint
+                dpadPaint
             )
         }
         
@@ -259,7 +239,7 @@ class DpadView @JvmOverloads constructor(
                 centerY - armWidth/2, 
                 centerX - armWidth/2, 
                 centerY + armWidth/2, 
-                dpadBasePaint
+                dpadPaint
             )
         }
         
@@ -280,7 +260,7 @@ class DpadView @JvmOverloads constructor(
                 centerY - armWidth/2, 
                 centerX + armLength, 
                 centerY + armWidth/2, 
-                dpadBasePaint
+                dpadPaint
             )
         }
         
@@ -290,7 +270,7 @@ class DpadView @JvmOverloads constructor(
             centerY - armWidth/2, 
             centerX + armWidth/2, 
             centerY + armWidth/2, 
-            dpadBasePaint
+            dpadPaint
         )
         
         // 绘制边框
@@ -332,7 +312,7 @@ class DpadView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(100)
+        val size = dpToPx(90)
         setMeasuredDimension(size, size)
     }
     
@@ -379,7 +359,7 @@ class DpadView @JvmOverloads constructor(
     }
 }
 
-// 自定义可拖拽按钮
+// 自定义可拖拽按钮 - 按照截图样式
 class DraggableButtonView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -394,34 +374,29 @@ class DraggableButtonView @JvmOverloads constructor(
             invalidate()
         }
     
-    private val outerCirclePaint = Paint().apply {
-        color = Color.argb(200, 60, 60, 60)
+    // 根据截图：简单的灰色圆形按钮
+    private val buttonPaint = Paint().apply {
+        color = Color.argb(180, 100, 100, 100)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
-    private val outerBorderPaint = Paint().apply {
-        color = Color.argb(200, 30, 30, 30)
+    private val buttonBorderPaint = Paint().apply {
+        color = Color.argb(180, 60, 60, 60)
         style = Paint.Style.STROKE
-        strokeWidth = 3f
+        strokeWidth = 2f
         isAntiAlias = true
     }
     
-    private val innerCirclePaint = Paint().apply {
-        color = Color.argb(200, 80, 80, 80)
-        style = Paint.Style.FILL
-        isAntiAlias = true
-    }
-    
-    private val pressedPaint = Paint().apply {
-        color = Color.argb(200, 100, 150, 255)
+    private val buttonPressedPaint = Paint().apply {
+        color = Color.argb(180, 140, 140, 140)
         style = Paint.Style.FILL
         isAntiAlias = true
     }
     
     private val textPaint = Paint().apply {
-        color = Color.argb(200, 255, 255, 255)
-        textSize = 18f
+        color = Color.argb(220, 255, 255, 255)
+        textSize = 16f
         textAlign = Paint.Align.CENTER
         typeface = Typeface.DEFAULT_BOLD
         isAntiAlias = true
@@ -434,13 +409,10 @@ class DraggableButtonView @JvmOverloads constructor(
         val centerY = height / 2f
         val radius = (width.coerceAtMost(height) / 2f) * 0.8f
         
-        // 绘制外圈
-        canvas.drawCircle(centerX, centerY, radius, outerCirclePaint)
-        canvas.drawCircle(centerX, centerY, radius, outerBorderPaint)
-        
-        // 绘制内圈（按压时变色）
-        val fillPaint = if (buttonPressed) pressedPaint else innerCirclePaint
-        canvas.drawCircle(centerX, centerY, radius * 0.7f, fillPaint)
+        // 绘制按钮（按压时变色）
+        val fillPaint = if (buttonPressed) buttonPressedPaint else buttonPaint
+        canvas.drawCircle(centerX, centerY, radius, fillPaint)
+        canvas.drawCircle(centerX, centerY, radius, buttonBorderPaint)
         
         // 绘制文字
         val textY = centerY - (textPaint.descent() + textPaint.ascent()) / 2
@@ -448,7 +420,7 @@ class DraggableButtonView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(60)
+        val size = dpToPx(50)
         setMeasuredDimension(size, size)
     }
     
