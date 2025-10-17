@@ -53,7 +53,7 @@ class JoystickView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(80) // 从120dp减小到80dp，使其更合适
+        val size = dpToPx(70) // 从80dp减小到70dp
         setMeasuredDimension(size, size)
     }
     
@@ -77,7 +77,7 @@ class JoystickView @JvmOverloads constructor(
         stickY = MathUtils.clamp(y, -1f, 1f)
         
         // 根据摇杆位置更新视觉反馈
-        val maxOffset = width * 0.25f // 减小偏移量
+        val maxOffset = width * 0.25f
         translationX = stickX * maxOffset
         translationY = stickY * maxOffset
         
@@ -117,7 +117,7 @@ class DpadView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(100) // 从140dp减小到100dp，使其更合适
+        val size = dpToPx(100)
         setMeasuredDimension(size, size)
     }
     
@@ -199,7 +199,12 @@ class DraggableButtonView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(50) // 从60dp减小到50dp，使其更合适
+        val size = when (buttonId) {
+            5, 6, 7, 8 -> dpToPx(70) // L, R, ZL, ZR 按钮增大到70dp
+            9, 10 -> dpToPx(40) // +, - 按钮减小到40dp
+            11, 12 -> dpToPx(45) // L3, R3 按钮调整为45dp
+            else -> dpToPx(50) // 其他按钮保持50dp
+        }
         setMeasuredDimension(size, size)
     }
     
@@ -290,7 +295,7 @@ class JoystickRangeView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(160) // 从200dp减小到160dp，使其更合适
+        val size = dpToPx(140) // 从160dp减小到140dp
         setMeasuredDimension(size, size)
     }
     
