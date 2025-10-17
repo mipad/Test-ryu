@@ -493,9 +493,9 @@ class ButtonLayoutManager(private val context: Context) {
         ButtonConfig(8, "ZR", 0.9f, 0.1f, GamePadButtonInputId.RightTrigger.ordinal),
         ButtonConfig(9, "+", 0.8f, 0.1f, GamePadButtonInputId.Plus.ordinal),
         ButtonConfig(10, "-", 0.2f, 0.1f, GamePadButtonInputId.Minus.ordinal),
-        // 添加L3和R3按钮
-        ButtonConfig(11, "L3", 0.2f, 0.8f, GamePadButtonInputId.LeftThumb.ordinal),
-        ButtonConfig(12, "R3", 0.7f, 0.8f, GamePadButtonInputId.RightThumb.ordinal)
+        // 添加L3和R3按钮 - 使用Stick按钮枚举值
+        ButtonConfig(11, "L3", 0.2f, 0.8f, GamePadButtonInputId.LeftStick.ordinal),
+        ButtonConfig(12, "R3", 0.7f, 0.8f, GamePadButtonInputId.RightStick.ordinal)
     )
     
     private val joystickConfigs = listOf(
