@@ -215,7 +215,7 @@ class DpadView @JvmOverloads constructor(
                 centerX - armWidth/2, 
                 centerY + armWidth/2, 
                 centerX + armWidth/2, 
-                containerHeight + armLength, 
+                centerY + armLength,  // 修复：之前错误地使用了 containerHeight
                 dpadBasePaint
             )
         }
