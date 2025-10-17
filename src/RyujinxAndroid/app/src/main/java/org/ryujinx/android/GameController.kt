@@ -13,6 +13,7 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import android.widget.Button
 import androidx.compose.foundation.background
@@ -691,27 +692,22 @@ class GameController(var activity: Activity) {
         this.buttonContainer = buttonContainer
         val manager = buttonLayoutManager ?: return
         
-        // 使用ViewTreeObserver确保在布局完成后获取正确的尺寸
-        buttonContainer.viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
-            override fun onGlobalLayout() {
-                // 移除监听器，避免重复调用
-                buttonContainer.viewTreeObserver.removeOnGlobalLayoutListener(this)
-                
-                containerWidth = buttonContainer.width
-                containerHeight = buttonContainer.height
-                
-                if (containerWidth <= 0 || containerHeight <= 0) {
-                    // 如果尺寸仍然无效，延迟重试
-                    buttonContainer.postDelayed({
-                        containerWidth = buttonContainer.width
-                        containerHeight = buttonContainer.height
-                        createControlsWithValidSize()
-                    }, 100)
-                } else {
+        // 使用post确保在布局完成后执行
+        buttonContainer.post {
+            containerWidth = buttonContainer.width
+            containerHeight = buttonContainer.height
+
+            if (containerWidth <= 0 || containerHeight <= 0) {
+                // 如果尺寸仍然无效，延迟重试
+                buttonContainer.postDelayed({
+                    containerWidth = buttonContainer.width
+                    containerHeight = buttonContainer.height
                     createControlsWithValidSize()
-                }
+                }, 100)
+            } else {
+                createControlsWithValidSize()
             }
-        })
+        }
     }
     
     private fun createControlsWithValidSize() {
