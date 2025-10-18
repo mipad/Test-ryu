@@ -33,6 +33,7 @@ class JoystickView @JvmOverloads constructor(
     var isLeftStick: Boolean = true
     var stickX: Float = 0f
     var stickY: Float = 0f
+    private var isTouching: Boolean = false
     
     init {
         setImageResource(R.drawable.joystick)
@@ -61,17 +62,18 @@ class JoystickView @JvmOverloads constructor(
         return Pair(params.leftMargin + width / 2, params.topMargin + height / 2)
     }
     
-    fun updateStickPosition(x: Float, y: Float) {
+    fun updateStickPosition(x: Float, y: Float, isTouching: Boolean = this.isTouching) {
         stickX = MathUtils.clamp(x, -1f, 1f)
         stickY = MathUtils.clamp(y, -1f, 1f)
+        this.isTouching = isTouching
         
         // 增大移动范围，实现从中心到边缘的效果
-        val maxOffset = width * 0.4f // 从0.25f增加到0.4f
+        val maxOffset = width * 0.4f
         translationX = stickX * maxOffset
         translationY = stickY * maxOffset
         
         // 按压状态改变图片 - 确保使用矢量图资源
-        if (stickX != 0f || stickY != 0f) {
+        if (isTouching && (stickX != 0f || stickY != 0f)) {
             setImageResource(R.drawable.joystick_depressed)
         } else {
             setImageResource(R.drawable.joystick)
@@ -147,18 +149,21 @@ class DpadView @JvmOverloads constructor(
     }
     
     fun updateDirection(direction: DpadDirection) {
-        currentDirection = direction
-        
-        // 根据方向更新图片资源 - 使用整体动画
-        when (direction) {
-            DpadDirection.UP, DpadDirection.DOWN, DpadDirection.LEFT, DpadDirection.RIGHT ->
-                setImageResource(R.drawable.dpad_standard_cardinal_depressed)
-            DpadDirection.UP_LEFT, DpadDirection.UP_RIGHT, DpadDirection.DOWN_LEFT, DpadDirection.DOWN_RIGHT ->
-                setImageResource(R.drawable.dpad_standard_diagonal_depressed)
-            else ->
-                setImageResource(R.drawable.dpad_standard)
-        }
+    currentDirection = direction
+    
+    // 根据方向更新图片资源 - 使用单个方向的资源
+    when (direction) {
+        DpadDirection.UP -> setImageResource(R.drawable.dpad_up_depressed)
+        DpadDirection.DOWN -> setImageResource(R.drawable.dpad_down_depressed)
+        DpadDirection.LEFT -> setImageResource(R.drawable.dpad_left_depressed)
+        DpadDirection.RIGHT -> setImageResource(R.drawable.dpad_right_depressed)
+        DpadDirection.UP_LEFT -> setImageResource(R.drawable.dpad_up_depressed) // 斜方向暂时使用上或左
+        DpadDirection.UP_RIGHT -> setImageResource(R.drawable.dpad_up_depressed) // 斜方向暂时使用上或右
+        DpadDirection.DOWN_LEFT -> setImageResource(R.drawable.dpad_down_depressed) // 斜方向暂时使用下或左
+        DpadDirection.DOWN_RIGHT -> setImageResource(R.drawable.dpad_down_depressed) // 斜方向暂时使用下或右
+        else -> setImageResource(R.drawable.dpad_standard)
     }
+}
     
     private fun dpToPx(dp: Int): Int {
         return TypedValue.applyDimension(
@@ -560,7 +565,7 @@ class GameController(var activity: Activity) {
                         handleJoystickDragEvent(event, config.id)
                     } else {
                         // 游戏模式：发送摇杆事件
-                        handleJoystickEvent(event, config.isLeft)
+                        handleJoystickEvent(event, config.id, config.isLeft)
                     }
                     true
                 }
@@ -697,7 +702,7 @@ class GameController(var activity: Activity) {
             MotionEvent.ACTION_DOWN -> {
                 // 开始拖动
                 virtualJoysticks[joystickId]?.let { joystick ->
-                    joystick.updateStickPosition(0f, 0f)
+                    joystick.updateStickPosition(0f, 0f, true)
                 }
             }
             MotionEvent.ACTION_MOVE -> {
@@ -717,25 +722,29 @@ class GameController(var activity: Activity) {
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 // 结束拖动
-                virtualJoysticks[joystickId]?.updateStickPosition(0f, 0f)
+                virtualJoysticks[joystickId]?.updateStickPosition(0f, 0f, false)
             }
         }
         return true
     }
     
-    private fun handleJoystickEvent(event: MotionEvent, isLeftStick: Boolean): Boolean {
+    private fun handleJoystickEvent(event: MotionEvent, joystickId: Int, isLeftStick: Boolean): Boolean {
         if (controllerId == -1) {
             controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
         }
         
-        virtualJoysticks.values.find { it.isLeftStick == isLeftStick }?.let { joystick ->
+        virtualJoysticks[joystickId]?.let { joystick ->
             val centerX = joystick.width / 2f
             val centerY = joystick.height / 2f
             // 增大最大距离，让摇杆可以移动到边缘
-            val maxDistance = centerX * 0.9f // 从0.7f增加到0.9f
+            val maxDistance = centerX * 0.9f
             
             when (event.action) {
-                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                MotionEvent.ACTION_DOWN -> {
+                    // 手指按下时立即变色
+                    joystick.updateStickPosition(0f, 0f, true)
+                }
+                MotionEvent.ACTION_MOVE -> {
                     val x = event.x - centerX
                     val y = event.y - centerY
                     
@@ -743,7 +752,7 @@ class GameController(var activity: Activity) {
                     val normalizedX = MathUtils.clamp(x / maxDistance, -1f, 1f)
                     val normalizedY = MathUtils.clamp(y / maxDistance, -1f, 1f)
                     
-                    joystick.updateStickPosition(normalizedX, normalizedY)
+                    joystick.updateStickPosition(normalizedX, normalizedY, true)
                     
                     // 发送摇杆数据
                     val setting = QuickSettings(activity)
@@ -766,7 +775,7 @@ class GameController(var activity: Activity) {
                     }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    joystick.updateStickPosition(0f, 0f)
+                    joystick.updateStickPosition(0f, 0f, false)
                     
                     // 重置摇杆位置
                     if (isLeftStick) {
@@ -970,7 +979,7 @@ class GameController(var activity: Activity) {
             button.buttonPressed = false
         }
         virtualJoysticks.values.forEach { joystick ->
-            joystick.updateStickPosition(0f, 0f)
+            joystick.updateStickPosition(0f, 0f, false)
         }
         dpadView?.currentDirection = DpadView.DpadDirection.NONE
         dpadView?.updateDirection(DpadView.DpadDirection.NONE)
