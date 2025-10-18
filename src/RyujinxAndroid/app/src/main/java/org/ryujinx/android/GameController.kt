@@ -3,6 +3,7 @@ package org.ryujinx.android
 import android.app.Activity
 import android.content.Context
 import android.graphics.*
+import android.graphics.drawable.Drawable
 import android.util.AttributeSet
 import android.util.TypedValue
 import android.view.LayoutInflater
@@ -18,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import androidx.core.math.MathUtils
 import androidx.core.view.isVisible
 import org.ryujinx.android.viewmodels.MainViewModel
@@ -67,14 +69,13 @@ class JoystickOverlayView @JvmOverloads constructor(
         val drawable = ContextCompat.getDrawable(context, drawableId) ?: 
             throw IllegalArgumentException("Drawable not found: $drawableId")
         
-        val bitmap = Bitmap.createBitmap(
-            (drawable.intrinsicWidth * scale).toInt(),
-            (drawable.intrinsicHeight * scale).toInt(),
-            Bitmap.Config.ARGB_8888
-        )
+        val width = (drawable.intrinsicWidth * scale).toInt().takeIf { it > 0 } ?: 100
+        val height = (drawable.intrinsicHeight * scale).toInt().takeIf { it > 0 } ?: 100
+        
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         
         val canvas = Canvas(bitmap)
-        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.setBounds(0, 0, width, height)
         drawable.draw(canvas)
         return bitmap
     }
@@ -186,14 +187,13 @@ class DpadOverlayView @JvmOverloads constructor(
         val drawable = ContextCompat.getDrawable(context, drawableId) ?: 
             throw IllegalArgumentException("Drawable not found: $drawableId")
         
-        val bitmap = Bitmap.createBitmap(
-            (drawable.intrinsicWidth * scale).toInt(),
-            (drawable.intrinsicHeight * scale).toInt(),
-            Bitmap.Config.ARGB_8888
-        )
+        val width = (drawable.intrinsicWidth * scale).toInt().takeIf { it > 0 } ?: 100
+        val height = (drawable.intrinsicHeight * scale).toInt().takeIf { it > 0 } ?: 100
+        
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         
         val canvas = Canvas(bitmap)
-        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.setBounds(0, 0, width, height)
         drawable.draw(canvas)
         return bitmap
     }
@@ -328,14 +328,13 @@ class ButtonOverlayView @JvmOverloads constructor(
         val drawable = ContextCompat.getDrawable(context, drawableId) ?: 
             throw IllegalArgumentException("Drawable not found: $drawableId")
         
-        val bitmap = Bitmap.createBitmap(
-            (drawable.intrinsicWidth * scale).toInt(),
-            (drawable.intrinsicHeight * scale).toInt(),
-            Bitmap.Config.ARGB_8888
-        )
+        val width = (drawable.intrinsicWidth * scale).toInt().takeIf { it > 0 } ?: 50
+        val height = (drawable.intrinsicHeight * scale).toInt().takeIf { it > 0 } ?: 50
+        
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         
         val canvas = Canvas(bitmap)
-        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.setBounds(0, 0, width, height)
         drawable.draw(canvas)
         return bitmap
     }
