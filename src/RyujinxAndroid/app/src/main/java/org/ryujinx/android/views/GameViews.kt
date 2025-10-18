@@ -3,35 +3,11 @@
 package org.ryujinx.android.views
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.layout.wrapContentWidth
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.background
-import androidx.compose.material3.AlertDialogDefaults
-import androidx.compose.material3.BasicAlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.Divider
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableDoubleStateOf
@@ -128,6 +104,9 @@ class GameViews {
                     mutableStateOf(false)
                 }
                 val showPerformanceSettings = remember {
+                    mutableStateOf(false)
+                }
+                val showAdjustControlsDialog = remember {
                     mutableStateOf(false)
                 }
 
@@ -288,6 +267,16 @@ class GameViews {
                                                 contentDescription = "Performance Settings"
                                             )
                                         }
+                                        // 调整按键图标
+                                        IconButton(modifier = Modifier.padding(4.dp), onClick = {
+                                            showMore.value = false
+                                            showAdjustControlsDialog.value = true
+                                        }) {
+                                            Text(
+                                                text = "🎮", // 游戏手柄表情符号
+                                                fontSize = 20.sp
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -304,6 +293,14 @@ class GameViews {
                             showBatteryLevel = showBatteryLevel,
                             showFifo = showFifo,
                             onDismiss = { showPerformanceSettings.value = false }
+                        )
+                    }
+
+                    // 调整按键对话框
+                    if (showAdjustControlsDialog.value) {
+                        AdjustControlsDialog(
+                            mainViewModel = mainViewModel,
+                            onDismiss = { showAdjustControlsDialog.value = false }
                         )
                     }
                 }
@@ -565,6 +562,430 @@ class GameViews {
                     }
                 }
             }
+        }
+
+        @Composable
+        fun AdjustControlsDialog(
+            mainViewModel: MainViewModel,
+            onDismiss: () -> Unit
+        ) {
+            val selectedControl = remember { mutableStateOf<ControlItem?>(null) }
+            val globalScale = remember { mutableStateOf(50) }
+            val globalOpacity = remember { mutableStateOf(100) }
+
+            // 如果选择了具体控件，显示控件调整对话框
+            if (selectedControl.value != null) {
+                ControlAdjustmentDialog(
+                    control = selectedControl.value!!,
+                    onDismiss = { selectedControl.value = null },
+                    mainViewModel = mainViewModel
+                )
+                return
+            }
+
+            // 主调整对话框
+            BasicAlertDialog(onDismissRequest = onDismiss) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .wrapContentHeight(),
+                    shape = MaterialTheme.shapes.large,
+                    tonalElevation = AlertDialogDefaults.TonalElevation,
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            text = "调整按键设置",
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier
+                                .padding(bottom = 16.dp)
+                                .align(Alignment.CenterHorizontally)
+                        )
+
+                        // 全局设置
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
+                            ) {
+                                Text(
+                                    text = "全局设置",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.padding(bottom = 12.dp)
+                                )
+                                
+                                // 全局缩放
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(text = "全局缩放")
+                                    Text(text = "${globalScale.value}%")
+                                }
+                                Slider(
+                                    value = globalScale.value.toFloat(),
+                                    onValueChange = { 
+                                        globalScale.value = it.toInt()
+                                        mainViewModel.controller?.updateGlobalSettings(globalScale.value, globalOpacity.value)
+                                    },
+                                    valueRange = 0f..100f,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                
+                                Spacer(modifier = Modifier.height(8.dp))
+                                
+                                // 全局透明度
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(text = "全局透明度")
+                                    Text(text = "${globalOpacity.value}%")
+                                }
+                                Slider(
+                                    value = globalOpacity.value.toFloat(),
+                                    onValueChange = { 
+                                        globalOpacity.value = it.toInt()
+                                        mainViewModel.controller?.updateGlobalSettings(globalScale.value, globalOpacity.value)
+                                    },
+                                    valueRange = 0f..100f,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+
+                        // 分隔线
+                        HorizontalDivider(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            thickness = 1.dp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                        )
+
+                        Text(
+                            text = "单个按键设置",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+
+                        // 按键列表
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(200.dp)
+                        ) {
+                            itemsIndexed(getControlItems()) { index, control ->
+                                ControlListItem(
+                                    control = control,
+                                    onClick = { selectedControl.value = control }
+                                )
+                                if (index < getControlItems().size - 1) {
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(horizontal = 8.dp),
+                                        thickness = 0.5.dp,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // 底部按钮
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            // 左下角：全局还原
+                            Button(
+                                onClick = {
+                                    globalScale.value = 50
+                                    globalOpacity.value = 100
+                                    mainViewModel.controller?.updateGlobalSettings(50, 100)
+                                    // 重置所有单独设置
+                                    getControlItems().forEach { control ->
+                                        when (control.type) {
+                                            ControlType.BUTTON -> {
+                                                mainViewModel.controller?.setControlOpacity(control.id, 100)
+                                                mainViewModel.controller?.setControlEnabled(control.id, true)
+                                            }
+                                            ControlType.JOYSTICK -> {
+                                                mainViewModel.controller?.setControlOpacity(control.id, 100)
+                                                mainViewModel.controller?.setControlEnabled(control.id, true)
+                                            }
+                                            ControlType.DPAD -> {
+                                                mainViewModel.controller?.setControlOpacity(control.id, 100)
+                                                mainViewModel.controller?.setControlEnabled(control.id, true)
+                                            }
+                                        }
+                                    }
+                                    mainViewModel.controller?.refreshControls()
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                                )
+                            ) {
+                                Text(text = "全局还原")
+                            }
+
+                            // 右下角：确定
+                            Button(
+                                onClick = onDismiss
+                            ) {
+                                Text(text = "确定")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        @Composable
+        fun ControlListItem(
+            control: ControlItem,
+            onClick: () -> Unit
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                color = Color.Transparent,
+                onClick = onClick
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = control.emoji,
+                            fontSize = 20.sp,
+                            modifier = Modifier.padding(end = 12.dp)
+                        )
+                        Column {
+                            Text(
+                                text = control.name,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                text = control.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+                    Icon(
+                        imageVector = Icons.Default.ArrowForwardIos,
+                        contentDescription = "Adjust",
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            }
+        }
+
+        @Composable
+        fun ControlAdjustmentDialog(
+            control: ControlItem,
+            onDismiss: () -> Unit,
+            mainViewModel: MainViewModel
+        ) {
+            val scale = remember { mutableStateOf(50) }
+            val opacity = remember { mutableStateOf(100) }
+            val enabled = remember { mutableStateOf(true) }
+
+            BasicAlertDialog(onDismissRequest = onDismiss) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth(0.8f)
+                        .wrapContentHeight(),
+                    shape = MaterialTheme.shapes.large,
+                    tonalElevation = AlertDialogDefaults.TonalElevation,
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        // 标题
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = control.emoji,
+                                fontSize = 24.sp,
+                                modifier = Modifier.padding(end = 12.dp)
+                            )
+                            Column {
+                                Text(
+                                    text = control.name,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    text = control.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // 单独缩放
+                        Text(
+                            text = "单独缩放",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "大小")
+                            Text(text = "${scale.value}%")
+                        }
+                        Slider(
+                            value = scale.value.toFloat(),
+                            onValueChange = { 
+                                scale.value = it.toInt()
+                                // 这里需要实现单独缩放逻辑
+                            },
+                            valueRange = 0f..100f,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // 单独透明度
+                        Text(
+                            text = "单独透明度",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "透明度")
+                            Text(text = "${opacity.value}%")
+                        }
+                        Slider(
+                            value = opacity.value.toFloat(),
+                            onValueChange = { 
+                                opacity.value = it.toInt()
+                                mainViewModel.controller?.setControlOpacity(control.id, opacity.value)
+                            },
+                            valueRange = 0f..100f,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // 隐藏显示开关
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "显示")
+                            Switch(
+                                checked = enabled.value,
+                                onCheckedChange = { 
+                                    enabled.value = it
+                                    mainViewModel.controller?.setControlEnabled(control.id, enabled.value)
+                                }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        // 底部按钮
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Button(
+                                onClick = {
+                                    scale.value = 50
+                                    opacity.value = 100
+                                    enabled.value = true
+                                    mainViewModel.controller?.setControlOpacity(control.id, 100)
+                                    mainViewModel.controller?.setControlEnabled(control.id, true)
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                                )
+                            ) {
+                                Text(text = "重置")
+                            }
+
+                            Button(
+                                onClick = onDismiss
+                            ) {
+                                Text(text = "确定")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 控件数据类
+        data class ControlItem(
+            val id: Int,
+            val name: String,
+            val description: String,
+            val emoji: String,
+            val type: ControlType
+        )
+
+        enum class ControlType {
+            BUTTON, JOYSTICK, DPAD
+        }
+
+        // 获取所有控件列表
+        fun getControlItems(): List<ControlItem> {
+            return listOf(
+                // 按钮
+                ControlItem(1, "A 按钮", "确认/主要动作", "🅰️", ControlType.BUTTON),
+                ControlItem(2, "B 按钮", "取消/次要动作", "🅱️", ControlType.BUTTON),
+                ControlItem(3, "X 按钮", "特殊功能", "❎", ControlType.BUTTON),
+                ControlItem(4, "Y 按钮", "特殊功能", "💠", ControlType.BUTTON),
+                ControlItem(5, "L 肩键", "左肩部按键", "🔗", ControlType.BUTTON),
+                ControlItem(6, "R 肩键", "右肩部按键", "🔗", ControlType.BUTTON),
+                ControlItem(7, "ZL 扳机", "左扳机键", "🎯", ControlType.BUTTON),
+                ControlItem(8, "ZR 扳机", "右扳机键", "🎯", ControlType.BUTTON),
+                ControlItem(9, "+ 按钮", "开始/菜单", "➕", ControlType.BUTTON),
+                ControlItem(10, "- 按钮", "选择/返回", "➖", ControlType.BUTTON),
+                ControlItem(11, "L3 按钮", "左摇杆按下", "🎮", ControlType.BUTTON),
+                ControlItem(12, "R3 按钮", "右摇杆按下", "🎮", ControlType.BUTTON),
+                
+                // 摇杆
+                ControlItem(101, "左摇杆", "移动/方向控制", "🕹️", ControlType.JOYSTICK),
+                ControlItem(102, "右摇杆", "视角/镜头控制", "🕹️", ControlType.JOYSTICK),
+                
+                // 方向键
+                ControlItem(201, "方向键", "方向选择", "✛", ControlType.DPAD)
+            )
         }
 
         @Composable
