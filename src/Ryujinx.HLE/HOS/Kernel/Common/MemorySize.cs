@@ -5,5 +5,9 @@ namespace Ryujinx.HLE.HOS.Kernel.Common
         MemorySize4GiB = 0,
         MemorySize6GiB = 1,
         MemorySize8GiB = 2,
+        MemorySize10GiB = 3,
+        MemorySize12GiB = 4,
+        MemorySize14GiB = 5,
+        MemorySize16GiB = 6,
     }
 }
