@@ -62,16 +62,25 @@ class JoystickView @JvmOverloads constructor(
         return Pair(params.leftMargin + width / 2, params.topMargin + height / 2)
     }
     
-    fun updateStickPosition(x: Float, y: Float, isTouching: Boolean = this.isTouching) {
+    fun updateStickPosition(x: Float, y: Float, isTouching: Boolean = this.isTouching, animate: Boolean = true) {
         stickX = MathUtils.clamp(x, -1f, 1f)
         stickY = MathUtils.clamp(y, -1f, 1f)
         this.isTouching = isTouching
         
-        // 使用属性动画实现流畅的移动
-        animate().translationX(stickX * width * 0.4f)
-                 .translationY(stickY * width * 0.4f)
-                 .setDuration(50) // 50ms的动画时间，保证流畅性
-                 .start()
+        // 增大移动范围，实现从中心到边缘的效果
+        val maxOffset = width * 0.4f
+        
+        if (animate && !isEditing) {
+            // 使用属性动画实现流畅的移动
+            animate().translationX(stickX * maxOffset)
+                    .translationY(stickY * maxOffset)
+                    .setDuration(16) // 16ms约等于60fps，保证流畅性
+                    .start()
+        } else {
+            // 编辑模式或无动画时直接设置位置
+            translationX = stickX * maxOffset
+            translationY = stickY * maxOffset
+        }
         
         // 修复：摇杆移动时不要改变资源，保持原有外观
         // 只在编辑模式下显示按压状态
@@ -98,6 +107,8 @@ class JoystickView @JvmOverloads constructor(
         // 重置到正常状态
         if (!editing) {
             setImageResource(R.drawable.joystick)
+            // 重置位置
+            updateStickPosition(0f, 0f, false, false)
         }
     }
 }
@@ -743,7 +754,7 @@ class GameController(var activity: Activity) {
             MotionEvent.ACTION_DOWN -> {
                 // 开始拖动
                 virtualJoysticks[joystickId]?.let { joystick ->
-                    joystick.updateStickPosition(0f, 0f, true)
+                    joystick.updateStickPosition(0f, 0f, true, false)
                 }
             }
             MotionEvent.ACTION_MOVE -> {
@@ -763,7 +774,7 @@ class GameController(var activity: Activity) {
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 // 结束拖动
-                virtualJoysticks[joystickId]?.updateStickPosition(0f, 0f, false)
+                virtualJoysticks[joystickId]?.updateStickPosition(0f, 0f, false, false)
             }
         }
         return true
@@ -783,7 +794,7 @@ class GameController(var activity: Activity) {
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     // 手指按下时不要变色，保持原有状态
-                    joystick.updateStickPosition(0f, 0f, false)
+                    joystick.updateStickPosition(0f, 0f, false, true)
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val x = event.x - centerX
@@ -794,7 +805,7 @@ class GameController(var activity: Activity) {
                     val normalizedY = MathUtils.clamp(y / maxDistance, -1f, 1f)
                     
                     // 使用流畅的动画更新摇杆位置
-                    joystick.updateStickPosition(normalizedX, normalizedY, false)
+                    joystick.updateStickPosition(normalizedX, normalizedY, false, true)
                     
                     // 参考31版本添加灵敏度调节
                     val setting = QuickSettings(activity)
@@ -822,7 +833,7 @@ class GameController(var activity: Activity) {
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     // 使用动画平滑回到中心位置
-                    joystick.updateStickPosition(0f, 0f, false)
+                    joystick.updateStickPosition(0f, 0f, false, true)
                     
                     // 重置摇杆位置
                     if (isLeftStick) {
@@ -1029,7 +1040,7 @@ class GameController(var activity: Activity) {
             button.buttonPressed = false
         }
         virtualJoysticks.values.forEach { joystick ->
-            joystick.updateStickPosition(0f, 0f, false)
+            joystick.updateStickPosition(0f, 0f, false, false)
         }
         dpadView?.currentDirection = DpadView.DpadDirection.NONE
         dpadView?.updateDirection(DpadView.DpadDirection.NONE)
