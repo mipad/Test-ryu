@@ -327,11 +327,14 @@ class ButtonOverlayView @JvmOverloads constructor(
     }
     
     private fun getScaleForButton(): Float {
+        // 根据yuzu的实现，不同类型的按钮使用不同的缩放因子
         return when (buttonId) {
-            5, 6, 7, 8 -> 1f // L, R, ZL, ZR
-            9, 10 -> 1f // +, - - 大幅增加菜单按钮大小
-            11, 12 -> 1f // L3, R3 - 大幅增加摇杆按钮大小
-            else -> 1f // 其他按钮 (ABXY) - 大幅增加主要按钮大小
+            1, 2, 3, 4 -> 0.11f // ABXY 按钮 - 使用yuzu的原始比例
+            5, 6 -> 0.26f // L, R 肩键 - 使用yuzu的原始比例
+            7, 8 -> 0.26f // ZL, ZR 扳机键 - 使用yuzu的原始比例
+            9, 10 -> 0.07f // +, - 按钮 - 使用yuzu的原始比例
+            11, 12 -> 0.155f // L3, R3 摇杆按钮 - 使用yuzu的原始比例
+            else -> 0.11f // 默认使用ABXY的比例
         }
     }
     
@@ -351,11 +354,14 @@ class ButtonOverlayView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        // 根据yuzu的实现，使用不同的尺寸
         val size = when (buttonId) {
-            5, 6, 7, 8 -> dpToPx(80) // 肩键和扳机键
-            9, 10 -> dpToPx(60) // +和-按钮 - 大幅增加
-            11, 12 -> dpToPx(80) // L3和R3按钮 - 大幅增加
-            else -> dpToPx(70) // 主要按钮 (A, B, X, Y) - 大幅增加
+            1, 2, 3, 4 -> dpToPx(70) // ABXY 按钮
+            5, 6 -> dpToPx(80) // L, R 肩键
+            7, 8 -> dpToPx(80) // ZL, ZR 扳机键
+            9, 10 -> dpToPx(60) // +, - 按钮
+            11, 12 -> dpToPx(80) // L3, R3 摇杆按钮
+            else -> dpToPx(70) // 默认尺寸
         }
         setMeasuredDimension(size, size)
     }
