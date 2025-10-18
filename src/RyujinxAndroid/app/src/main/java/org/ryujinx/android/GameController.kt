@@ -67,10 +67,11 @@ class JoystickView @JvmOverloads constructor(
         stickY = MathUtils.clamp(y, -1f, 1f)
         this.isTouching = isTouching
         
-        // 增大移动范围，实现从中心到边缘的效果
-        val maxOffset = width * 0.4f  // 从0.5f减小到0.4f，减小移动范围使其更合理
-        translationX = stickX * maxOffset
-        translationY = stickY * maxOffset
+        // 使用属性动画实现流畅的移动
+        animate().translationX(stickX * width * 0.4f)
+                 .translationY(stickY * width * 0.4f)
+                 .setDuration(50) // 50ms的动画时间，保证流畅性
+                 .start()
         
         // 修复：摇杆移动时不要改变资源，保持原有外观
         // 只在编辑模式下显示按压状态
@@ -293,10 +294,10 @@ class DraggableButtonView @JvmOverloads constructor(
             10 -> { // -按钮
                 setImageResource(if (buttonPressed) R.drawable.facebutton_minus_depressed else R.drawable.facebutton_minus)
             }
-            11 -> { // L3按钮
+            11 -> { // L3按钮 - 修复：使用正确的按键代码
                 setImageResource(if (buttonPressed) R.drawable.button_l3_depressed else R.drawable.button_l3)
             }
-            12 -> { // R3按钮
+            12 -> { // R3按钮 - 修复：使用正确的按键代码
                 setImageResource(if (buttonPressed) R.drawable.button_r3_depressed else R.drawable.button_r3)
             }
         }
@@ -388,8 +389,9 @@ class ButtonLayoutManager(private val context: Context) {
         ButtonConfig(8, "ZR", 0.9f, 0.1f, GamePadButtonInputId.RightTrigger.ordinal),
         ButtonConfig(9, "+", 0.8f, 0.1f, GamePadButtonInputId.Plus.ordinal),
         ButtonConfig(10, "-", 0.2f, 0.1f, GamePadButtonInputId.Minus.ordinal),
-        ButtonConfig(11, "L3", 0.2f, 0.8f, GamePadButtonInputId.LeftStick.ordinal),
-        ButtonConfig(12, "R3", 0.7f, 0.8f, GamePadButtonInputId.RightStick.ordinal)
+        // 修复：L3和R3使用正确的按键代码 - 参考31版本
+        ButtonConfig(11, "L3", 0.2f, 0.8f, GamePadButtonInputId.LeftStickButton.ordinal),
+        ButtonConfig(12, "R3", 0.7f, 0.8f, GamePadButtonInputId.RightStickButton.ordinal)
     )
     
     private val joystickConfigs = listOf(
@@ -791,7 +793,7 @@ class GameController(var activity: Activity) {
                     val normalizedX = MathUtils.clamp(x / maxDistance, -1f, 1f)
                     val normalizedY = MathUtils.clamp(y / maxDistance, -1f, 1f)
                     
-                    // 修复：摇杆移动时不要改变外观
+                    // 使用流畅的动画更新摇杆位置
                     joystick.updateStickPosition(normalizedX, normalizedY, false)
                     
                     // 参考31版本添加灵敏度调节
@@ -819,6 +821,7 @@ class GameController(var activity: Activity) {
                     }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    // 使用动画平滑回到中心位置
                     joystick.updateStickPosition(0f, 0f, false)
                     
                     // 重置摇杆位置
