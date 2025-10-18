@@ -790,10 +790,10 @@ class GameViews {
                             )
                         }
                     }
-                    Icon(
-                        imageVector = Icons.Default.ArrowForwardIos,
-                        contentDescription = "Adjust",
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    Text(
+                         text = "系统默认",
+                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                         fontSize = 16.sp
                     )
                 }
             }
