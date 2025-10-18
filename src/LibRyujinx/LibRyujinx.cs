@@ -66,7 +66,7 @@ namespace LibRyujinx
         private static AspectRatio _currentAspectRatio = AspectRatio.Stretched;
 
         // 添加静态字段来存储内存配置
-        private static MemoryConfiguration _currentMemoryConfiguration = MemoryConfiguration.MemoryConfiguration8GiB;
+        private static MemoryConfiguration _currentMemoryConfiguration = MemoryConfiguration.MemoryConfiguration16GiB;
 
         // 添加静态字段来存储系统时间偏移
         private static long _systemTimeOffset = 0;
