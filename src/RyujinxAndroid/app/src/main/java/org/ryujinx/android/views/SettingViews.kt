@@ -1790,7 +1790,6 @@ if (showMemoryConfigDialog.value) {
                 
                 val memoryOptions = listOf("4GB", "4GB Applet Dev", "4GB System Dev", "6GB", "6GB Applet Dev", "8GB", "10GB", "10GB Applet Dev", "12GB", "12GB Applet Dev", "14GB", "14GB Applet Dev", "16GB", "16GB Applet Dev")
                 
-    Text(
                 memoryOptions.forEachIndexed { index, option ->
                     Row(
                         modifier = Modifier
