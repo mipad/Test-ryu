@@ -352,10 +352,10 @@ class ButtonOverlayView @JvmOverloads constructor(
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val size = when (buttonId) {
-            5, 6, 7, 8 -> dpToPx(110) // 肩键和扳机键
-            9, 10 -> dpToPx(70) // +和-按钮 - 大幅增加
-            11, 12 -> dpToPx(85) // L3和R3按钮 - 大幅增加
-            else -> dpToPx(95) // 主要按钮 (A, B, X, Y) - 大幅增加
+            5, 6, 7, 8 -> dpToPx(80) // 肩键和扳机键
+            9, 10 -> dpToPx(60) // +和-按钮 - 大幅增加
+            11, 12 -> dpToPx(80) // L3和R3按钮 - 大幅增加
+            else -> dpToPx(70) // 主要按钮 (A, B, X, Y) - 大幅增加
         }
         setMeasuredDimension(size, size)
     }
