@@ -151,16 +151,46 @@ class DpadView @JvmOverloads constructor(
     fun updateDirection(direction: DpadDirection) {
         currentDirection = direction
         
-        // 根据方向更新图片资源 - 使用整体动画
+        // 修正：根据实际按下的方向设置正确的资源并通过旋转实现正确的视觉反馈
         when (direction) {
-            DpadDirection.UP, DpadDirection.DOWN, DpadDirection.LEFT, DpadDirection.RIGHT ->
+            DpadDirection.UP -> {
                 setImageResource(R.drawable.dpad_standard_cardinal_depressed)
-            DpadDirection.UP_LEFT, DpadDirection.UP_RIGHT, DpadDirection.DOWN_LEFT, DpadDirection.DOWN_RIGHT ->
+                rotation = 0f
+            }
+            DpadDirection.DOWN -> {
+                setImageResource(R.drawable.dpad_standard_cardinal_depressed)
+                rotation = 180f
+            }
+            DpadDirection.LEFT -> {
+                setImageResource(R.drawable.dpad_standard_cardinal_depressed)
+                rotation = 270f
+            }
+            DpadDirection.RIGHT -> {
+                setImageResource(R.drawable.dpad_standard_cardinal_depressed)
+                rotation = 90f
+            }
+            DpadDirection.UP_LEFT -> {
                 setImageResource(R.drawable.dpad_standard_diagonal_depressed)
-            else ->
+                rotation = 0f
+            }
+            DpadDirection.UP_RIGHT -> {
+                setImageResource(R.drawable.dpad_standard_diagonal_depressed)
+                rotation = 90f
+            }
+            DpadDirection.DOWN_RIGHT -> {
+                setImageResource(R.drawable.dpad_standard_diagonal_depressed)
+                rotation = 180f
+            }
+            DpadDirection.DOWN_LEFT -> {
+                setImageResource(R.drawable.dpad_standard_diagonal_depressed)
+                rotation = 270f
+            }
+            else -> {
                 setImageResource(R.drawable.dpad_standard)
+                rotation = 0f
+            }
         }
-}
+    }
     
     private fun dpToPx(dp: Int): Int {
         return TypedValue.applyDimension(
@@ -751,22 +781,26 @@ class GameController(var activity: Activity) {
                     
                     joystick.updateStickPosition(normalizedX, normalizedY, true)
                     
-                    // 发送摇杆数据
+                    // 添加灵敏度调节 - 这是修复的关键部分
                     val setting = QuickSettings(activity)
                     val sensitivity = setting.controllerStickSensitivity
                     
+                    val adjustedX = normalizedX * sensitivity
+                    val adjustedY = normalizedY * sensitivity
+                    
+                    // 发送摇杆数据
                     if (isLeftStick) {
                         RyujinxNative.jnaInstance.inputSetStickAxis(
                             1,
-                            normalizedX * sensitivity,
-                            -normalizedY * sensitivity,
+                            adjustedX,
+                            -adjustedY,
                             controllerId
                         )
                     } else {
                         RyujinxNative.jnaInstance.inputSetStickAxis(
                             2,
-                            normalizedX * sensitivity,
-                            -normalizedY * sensitivity,
+                            adjustedX,
+                            -adjustedY,
                             controllerId
                         )
                     }
