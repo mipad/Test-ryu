@@ -53,7 +53,7 @@ namespace Ryujinx.HLE.HOS.Services.Spl
 
             if (result == SmcResult.Success)
                 return ResultCode.Success;
-                
+
             return (ResultCode)((int)result << 9) | ResultCode.ModuleId;
         }
 
@@ -72,18 +72,16 @@ namespace Ryujinx.HLE.HOS.Services.Spl
                     configValue = 0;
                     break;
                 case ConfigItem.DramId:
-                    if (memorySize == MemorySize.MemorySize8GiB)
+                    configValue = memorySize switch
                     {
-                        configValue = (ulong)DramId.IowaSamsung8GiB;
-                    }
-                    else if (memorySize == MemorySize.MemorySize6GiB)
-                    {
-                        configValue = (ulong)DramId.IcosaSamsung6GiB;
-                    }
-                    else
-                    {
-                        configValue = (ulong)DramId.IcosaSamsung4GiB;
-                    }
+                        MemorySize.MemorySize16GiB => (ulong)DramId.IowaSamsung16GiB,
+                        MemorySize.MemorySize14GiB => (ulong)DramId.IowaSamsung14GiB,
+                        MemorySize.MemorySize12GiB => (ulong)DramId.IowaSamsung12GiB,
+                        MemorySize.MemorySize10GiB => (ulong)DramId.IowaSamsung10GiB,
+                        MemorySize.MemorySize8GiB => (ulong)DramId.IowaSamsung8GiB,
+                        MemorySize.MemorySize6GiB => (ulong)DramId.IcosaSamsung6GiB,
+                        _ => (ulong)DramId.IcosaSamsung4GiB,
+                    };
                     break;
                 case ConfigItem.SecurityEngineInterruptNumber:
                     return SmcResult.NotImplemented;
