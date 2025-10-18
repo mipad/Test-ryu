@@ -328,10 +328,10 @@ class ButtonOverlayView @JvmOverloads constructor(
     
     private fun getScaleForButton(): Float {
         return when (buttonId) {
-            5, 6, 7, 8 -> 0.5f // L, R, ZL, ZR
-            9, 10 -> 0.5f // +, - - 大幅增加菜单按钮大小
-            11, 12 -> 0.5f // L3, R3 - 大幅增加摇杆按钮大小
-            else -> 0.5f // 其他按钮 (ABXY) - 大幅增加主要按钮大小
+            5, 6, 7, 8 -> 1f // L, R, ZL, ZR
+            9, 10 -> 1f // +, - - 大幅增加菜单按钮大小
+            11, 12 -> 1f // L3, R3 - 大幅增加摇杆按钮大小
+            else -> 1f // 其他按钮 (ABXY) - 大幅增加主要按钮大小
         }
     }
     
