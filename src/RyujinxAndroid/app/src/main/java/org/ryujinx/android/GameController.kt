@@ -60,8 +60,8 @@ class JoystickOverlayView @JvmOverloads constructor(
     
     private fun loadBitmaps() {
         // 使用矢量图资源，借鉴yuzu的位图加载方式
-        outerBitmap = getBitmapFromVectorDrawable(R.drawable.joystick_range, 0.4f) // 增加外圈大小
-        innerDefaultBitmap = getBitmapFromVectorDrawable(R.drawable.joystick, 0.35f) // 调整内圈大小比例
+        outerBitmap = getBitmapFromVectorDrawable(R.drawable.joystick_range, 0.4f)
+        innerDefaultBitmap = getBitmapFromVectorDrawable(R.drawable.joystick, 0.35f)
         innerPressedBitmap = getBitmapFromVectorDrawable(R.drawable.joystick_depressed, 0.35f)
     }
     
@@ -81,7 +81,7 @@ class JoystickOverlayView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(160) // 增加摇杆外圈大小
+        val size = dpToPx(160)
         setMeasuredDimension(size, size)
     }
     
@@ -94,13 +94,13 @@ class JoystickOverlayView @JvmOverloads constructor(
         // 设置外圈矩形 - 整个View大小
         outerRect.set(0, 0, w, h)
         
-        // 设置内圈矩形 - 借鉴yuzu的比例计算，调整比例
-        val outerScale = 2.0f // 调整比例，让内圈更小
+        // 设置内圈矩形 - 借鉴yuzu的比例计算
+        val outerScale = 2.0f
         val innerSize = (w / outerScale).toInt()
         innerRect.set(0, 0, innerSize, innerSize)
         
-        // 计算移动半径 - 关键：让摇杆可以移动到边缘
-        movementRadius = (w - innerSize) / 3f // 减小移动半径，避免内圈超出外圈
+        // 计算移动半径
+        movementRadius = (w - innerSize) / 3f
     }
     
     fun setPosition(x: Int, y: Int) {
@@ -123,7 +123,6 @@ class JoystickOverlayView @JvmOverloads constructor(
         stickY = MathUtils.clamp(y, -1f, 1f)
         this.isTouching = isTouching
         
-        // 立即重绘，没有动画延迟
         invalidate()
     }
     
@@ -132,27 +131,23 @@ class JoystickOverlayView @JvmOverloads constructor(
         
         // 绘制外圈
         outerBitmap?.let { bitmap ->
-            // 居中绘制外圈
             val outerLeft = (width - bitmap.width) / 2f
             val outerTop = (height - bitmap.height) / 2f
             canvas.drawBitmap(bitmap, outerLeft, outerTop, null)
         }
         
-        // 计算内圈位置 - 修复位置计算
+        // 计算内圈位置
         val innerBitmap = if (isTouching) innerPressedBitmap else innerDefaultBitmap
         innerBitmap?.let { bitmap ->
-            // 计算内圈实际绘制位置，确保在内圈范围内
             val innerDrawWidth = bitmap.width
             val innerDrawHeight = bitmap.height
             
-            // 限制移动范围，确保内圈不会超出外圈
             val maxMoveX = (width - innerDrawWidth) / 2f
             val maxMoveY = (height - innerDrawHeight) / 2f
             
             val innerX = centerX + stickX * maxMoveX - innerDrawWidth / 2
             val innerY = centerY + stickY * maxMoveY - innerDrawHeight / 2
             
-            // 确保内圈不会超出View边界
             val clampedX = MathUtils.clamp(innerX, 0f, (width - innerDrawWidth).toFloat())
             val clampedY = MathUtils.clamp(innerY, 0f, (height - innerDrawHeight).toFloat())
             
@@ -192,7 +187,7 @@ class DpadOverlayView @JvmOverloads constructor(
     }
     
     private fun loadBitmaps() {
-        defaultBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard, 0.35f) // 增加方向键大小
+        defaultBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard, 0.35f)
         pressedOneDirectionBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard_cardinal_depressed, 0.35f)
         pressedTwoDirectionsBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard_diagonal_depressed, 0.35f)
     }
@@ -213,7 +208,7 @@ class DpadOverlayView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(150) // 增加方向键大小
+        val size = dpToPx(150)
         setMeasuredDimension(size, size)
     }
     
@@ -253,7 +248,7 @@ class DpadOverlayView @JvmOverloads constructor(
     
     fun updateDirection(direction: DpadDirection) {
         currentDirection = direction
-        invalidate() // 立即重绘
+        invalidate()
     }
     
     override fun onDraw(canvas: Canvas) {
@@ -289,7 +284,6 @@ class DpadOverlayView @JvmOverloads constructor(
         }
         
         bitmap?.let {
-            // 居中绘制方向键
             val left = (width - it.width) / 2f
             val top = (height - it.height) / 2f
             canvas.drawBitmap(it, left, top, null)
@@ -334,10 +328,10 @@ class ButtonOverlayView @JvmOverloads constructor(
     
     private fun getScaleForButton(): Float {
         return when (buttonId) {
-            5, 6, 7, 8 -> 0.35f // L, R, ZL, ZR - 增加肩键大小
-            9, 10 -> 0.12f // +, - - 增加菜单按钮大小
-            11, 12 -> 0.22f // L3, R3 - 增加摇杆按钮大小
-            else -> 0.18f // 其他按钮 - 增加主要按钮大小
+            5, 6, 7, 8 -> 0.35f // L, R, ZL, ZR
+            9, 10 -> 0.18f // +, - - 大幅增加菜单按钮大小
+            11, 12 -> 0.28f // L3, R3 - 大幅增加摇杆按钮大小
+            else -> 0.25f // 其他按钮 (ABXY) - 大幅增加主要按钮大小
         }
     }
     
@@ -345,8 +339,8 @@ class ButtonOverlayView @JvmOverloads constructor(
         val drawable = ContextCompat.getDrawable(context, drawableId) ?: 
             throw IllegalArgumentException("Drawable not found: $drawableId")
         
-        val width = (drawable.intrinsicWidth * scale).toInt().takeIf { it > 0 } ?: 80
-        val height = (drawable.intrinsicHeight * scale).toInt().takeIf { it > 0 } ?: 80
+        val width = (drawable.intrinsicWidth * scale).toInt().takeIf { it > 0 } ?: 100
+        val height = (drawable.intrinsicHeight * scale).toInt().takeIf { it > 0 } ?: 100
         
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         
@@ -359,9 +353,9 @@ class ButtonOverlayView @JvmOverloads constructor(
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val size = when (buttonId) {
             5, 6, 7, 8 -> dpToPx(110) // 肩键和扳机键
-            9, 10 -> dpToPx(45) // +和-按钮
-            11, 12 -> dpToPx(65) // L3和R3按钮
-            else -> dpToPx(75) // 主要按钮 (A, B, X, Y)
+            9, 10 -> dpToPx(70) // +和-按钮 - 大幅增加
+            11, 12 -> dpToPx(85) // L3和R3按钮 - 大幅增加
+            else -> dpToPx(95) // 主要按钮 (A, B, X, Y) - 大幅增加
         }
         setMeasuredDimension(size, size)
     }
@@ -383,7 +377,7 @@ class ButtonOverlayView @JvmOverloads constructor(
     
     fun setPressedState(pressed: Boolean) {
         buttonPressed = pressed
-        invalidate() // 立即重绘
+        invalidate()
     }
     
     override fun onDraw(canvas: Canvas) {
@@ -391,7 +385,6 @@ class ButtonOverlayView @JvmOverloads constructor(
         
         val bitmap = if (buttonPressed) pressedBitmap else defaultBitmap
         bitmap?.let {
-            // 居中绘制按钮
             val left = (width - it.width) / 2f
             val top = (height - it.height) / 2f
             canvas.drawBitmap(it, left, top, null)
@@ -797,8 +790,7 @@ class GameController(var activity: Activity) {
                     val x = event.x - centerX
                     val y = event.y - centerY
                     
-                    // 借鉴yuzu的摇杆计算方式，调整灵敏度
-                    val maxDistance = centerX * 0.8f // 调整灵敏度
+                    val maxDistance = centerX * 0.8f
                     val normalizedX = MathUtils.clamp(x / maxDistance, -1f, 1f)
                     val normalizedY = MathUtils.clamp(y / maxDistance, -1f, 1f)
                     
