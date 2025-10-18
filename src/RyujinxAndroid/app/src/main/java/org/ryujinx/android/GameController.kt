@@ -60,17 +60,17 @@ class JoystickOverlayView @JvmOverloads constructor(
     
     private fun loadBitmaps() {
         // 使用矢量图资源，借鉴yuzu的位图加载方式
-        outerBitmap = getBitmapFromVectorDrawable(R.drawable.joystick_range, 1.0f) // 使用1f原始大小
-        innerDefaultBitmap = getBitmapFromVectorDrawable(R.drawable.joystick, 1.0f) // 使用1f原始大小
-        innerPressedBitmap = getBitmapFromVectorDrawable(R.drawable.joystick_depressed, 1.0f) // 使用1f原始大小
+        outerBitmap = getBitmapFromVectorDrawable(R.drawable.joystick_range, 1.0f)
+        innerDefaultBitmap = getBitmapFromVectorDrawable(R.drawable.joystick, 1.0f)
+        innerPressedBitmap = getBitmapFromVectorDrawable(R.drawable.joystick_depressed, 1.0f)
     }
     
     private fun getBitmapFromVectorDrawable(drawableId: Int, scale: Float): Bitmap {
         val drawable = ContextCompat.getDrawable(context, drawableId) ?: 
             throw IllegalArgumentException("Drawable not found: $drawableId")
         
-        val width = (drawable.intrinsicWidth * scale).toInt().takeIf { it > 0 } ?: 150
-        val height = (drawable.intrinsicHeight * scale).toInt().takeIf { it > 0 } ?: 150
+        val width = (drawable.intrinsicWidth * scale).toInt().takeIf { it > 0 } ?: 120
+        val height = (drawable.intrinsicHeight * scale).toInt().takeIf { it > 0 } ?: 120
         
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         
@@ -81,7 +81,7 @@ class JoystickOverlayView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(160)
+        val size = dpToPx(120) // 减小摇杆尺寸到120dp
         setMeasuredDimension(size, size)
     }
     
@@ -187,7 +187,7 @@ class DpadOverlayView @JvmOverloads constructor(
     }
     
     private fun loadBitmaps() {
-        defaultBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard, 1.0f) // 使用1f原始大小
+        defaultBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard, 1.0f)
         pressedOneDirectionBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard_cardinal_depressed, 1.0f)
         pressedTwoDirectionsBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard_diagonal_depressed, 1.0f)
     }
@@ -196,8 +196,8 @@ class DpadOverlayView @JvmOverloads constructor(
         val drawable = ContextCompat.getDrawable(context, drawableId) ?: 
             throw IllegalArgumentException("Drawable not found: $drawableId")
         
-        val width = (drawable.intrinsicWidth * scale).toInt().takeIf { it > 0 } ?: 200
-        val height = (drawable.intrinsicHeight * scale).toInt().takeIf { it > 0 } ?: 200
+        val width = (drawable.intrinsicWidth * scale).toInt().takeIf { it > 0 } ?: 120
+        val height = (drawable.intrinsicHeight * scale).toInt().takeIf { it > 0 } ?: 120
         
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         
@@ -208,7 +208,7 @@ class DpadOverlayView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(150)
+        val size = dpToPx(120) // 减小方向键尺寸到120dp
         setMeasuredDimension(size, size)
     }
     
@@ -322,16 +322,16 @@ class ButtonOverlayView @JvmOverloads constructor(
     }
     
     fun setBitmaps(defaultResId: Int, pressedResId: Int) {
-        defaultBitmap = getBitmapFromVectorDrawable(defaultResId, 1.0f) // 使用1f原始大小
-        pressedBitmap = getBitmapFromVectorDrawable(pressedResId, 1.0f) // 使用1f原始大小
+        defaultBitmap = getBitmapFromVectorDrawable(defaultResId, 1.0f)
+        pressedBitmap = getBitmapFromVectorDrawable(pressedResId, 1.0f)
     }
     
     private fun getBitmapFromVectorDrawable(drawableId: Int, scale: Float): Bitmap {
         val drawable = ContextCompat.getDrawable(context, drawableId) ?: 
             throw IllegalArgumentException("Drawable not found: $drawableId")
         
-        val width = (drawable.intrinsicWidth * scale).toInt().takeIf { it > 0 } ?: 150
-        val height = (drawable.intrinsicHeight * scale).toInt().takeIf { it > 0 } ?: 150
+        val width = (drawable.intrinsicWidth * scale).toInt().takeIf { it > 0 } ?: 80
+        val height = (drawable.intrinsicHeight * scale).toInt().takeIf { it > 0 } ?: 80
         
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         
@@ -343,10 +343,10 @@ class ButtonOverlayView @JvmOverloads constructor(
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val size = when (buttonId) {
-            5, 6, 7, 8 -> dpToPx(120) // 肩键和扳机键
-            9, 10 -> dpToPx(80) // +和-按钮
-            11, 12 -> dpToPx(90) // L3和R3按钮
-            else -> dpToPx(100) // 主要按钮 (A, B, X, Y)
+            5, 6, 7, 8 -> dpToPx(70) // 肩键和扳机键 - 减小到70dp
+            9, 10 -> dpToPx(50) // +和-按钮 - 减小到50dp
+            11, 12 -> dpToPx(60) // L3和R3按钮 - 减小到60dp
+            else -> dpToPx(65) // 主要按钮 (A, B, X, Y) - 减小到65dp
         }
         setMeasuredDimension(size, size)
     }
