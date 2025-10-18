@@ -752,7 +752,7 @@ class GameController(var activity: Activity) {
     private fun handleJoystickDragEvent(event: MotionEvent, joystickId: Int): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                virtualJoysticks[joystickId]?.updateStickPosition(0f, 0f, true)
+                // 编辑模式下不显示按压动画
             }
             MotionEvent.ACTION_MOVE -> {
                 virtualJoysticks[joystickId]?.let { joystick ->
@@ -767,7 +767,7 @@ class GameController(var activity: Activity) {
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                virtualJoysticks[joystickId]?.updateStickPosition(0f, 0f, false)
+                // 编辑模式下不显示按压动画
             }
         }
         return true
@@ -950,7 +950,7 @@ class GameController(var activity: Activity) {
     private fun handleButtonDragEvent(event: MotionEvent, buttonId: Int): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                virtualButtons[buttonId]?.setPressedState(true)
+                // 编辑模式下不显示按压状态
             }
             MotionEvent.ACTION_MOVE -> {
                 virtualButtons[buttonId]?.let { button ->
@@ -965,7 +965,7 @@ class GameController(var activity: Activity) {
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                virtualButtons[buttonId]?.setPressedState(false)
+                // 编辑模式下不显示按压状态
             }
         }
         return true
