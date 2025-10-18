@@ -56,6 +56,15 @@ class JoystickOverlayView @JvmOverloads constructor(
             invalidate()
         }
     
+    // 添加 overlayScale 属性
+    var overlayScale: Int = 50
+        set(value) {
+            field = value.coerceIn(0, 100)
+            loadBitmaps()
+            requestLayout()
+            invalidate()
+        }
+    
     init {
         setBackgroundResource(0)
         loadBitmaps()
@@ -182,6 +191,15 @@ class DpadOverlayView @JvmOverloads constructor(
     var opacity: Int = 255
         set(value) {
             field = value
+            invalidate()
+        }
+    
+    // 添加 overlayScale 属性
+    var overlayScale: Int = 50
+        set(value) {
+            field = value.coerceIn(0, 100)
+            loadBitmaps()
+            requestLayout()
             invalidate()
         }
     
@@ -393,6 +411,16 @@ class ButtonOverlayView @JvmOverloads constructor(
             invalidate()
         }
     
+    // 添加 overlayScale 属性
+    var overlayScale: Int = 50
+        set(value) {
+            field = value.coerceIn(0, 100)
+            // 重新加载位图
+            setBitmapsForButton()
+            requestLayout()
+            invalidate()
+        }
+    
     private var defaultBitmap: Bitmap? = null
     private var pressedBitmap: Bitmap? = null
     
@@ -406,8 +434,24 @@ class ButtonOverlayView @JvmOverloads constructor(
         pressedBitmap = getBitmapFromVectorDrawable(pressedResId, scale)
     }
     
+    private fun setBitmapsForButton() {
+        when (buttonId) {
+            1 -> setBitmaps(R.drawable.facebutton_a, R.drawable.facebutton_a_depressed)
+            2 -> setBitmaps(R.drawable.facebutton_b, R.drawable.facebutton_b_depressed)
+            3 -> setBitmaps(R.drawable.facebutton_x, R.drawable.facebutton_x_depressed)
+            4 -> setBitmaps(R.drawable.facebutton_y, R.drawable.facebutton_y_depressed)
+            5 -> setBitmaps(R.drawable.l_shoulder, R.drawable.l_shoulder_depressed)
+            6 -> setBitmaps(R.drawable.r_shoulder, R.drawable.r_shoulder_depressed)
+            7 -> setBitmaps(R.drawable.zl_trigger, R.drawable.zl_trigger_depressed)
+            8 -> setBitmaps(R.drawable.zr_trigger, R.drawable.zr_trigger_depressed)
+            9 -> setBitmaps(R.drawable.facebutton_plus, R.drawable.facebutton_plus_depressed)
+            10 -> setBitmaps(R.drawable.facebutton_minus, R.drawable.facebutton_minus_depressed)
+            11 -> setBitmaps(R.drawable.button_l3, R.drawable.button_l3_depressed)
+            12 -> setBitmaps(R.drawable.button_r3, R.drawable.button_r3_depressed)
+        }
+    }
+    
     private fun getScaleForButton(): Float {
-        
         return when (buttonId) {
             1, 2, 3, 4 -> 0.11f // ABXY 按钮
             5, 6 -> 0.26f // L, R 肩键
@@ -803,6 +847,7 @@ class GameController(var activity: Activity) {
                 stickId = config.id
                 isLeftStick = config.isLeft
                 opacity = (manager.getJoystickOpacity(config.id) * 255 / 100)
+                overlayScale = manager.overlayScale
                 
                 val (x, y) = manager.getJoystickPosition(config.id, effectiveWidth, effectiveHeight)
                 setPosition(x, y)
@@ -826,6 +871,7 @@ class GameController(var activity: Activity) {
             val (dpadX, dpadY) = manager.getDpadPosition(effectiveWidth, effectiveHeight)
             dpadView = DpadOverlayView(buttonContainer.context).apply {
                 opacity = (manager.getDpadOpacity() * 255 / 100)
+                overlayScale = manager.overlayScale
                 setPosition(dpadX, dpadY)
                 
                 setOnTouchListener { _, event ->
@@ -848,21 +894,9 @@ class GameController(var activity: Activity) {
                 buttonId = config.id
                 buttonText = config.text
                 opacity = (manager.getButtonOpacity(config.id) * 255 / 100)
+                overlayScale = manager.overlayScale
                 
-                when (config.id) {
-                    1 -> setBitmaps(R.drawable.facebutton_a, R.drawable.facebutton_a_depressed)
-                    2 -> setBitmaps(R.drawable.facebutton_b, R.drawable.facebutton_b_depressed)
-                    3 -> setBitmaps(R.drawable.facebutton_x, R.drawable.facebutton_x_depressed)
-                    4 -> setBitmaps(R.drawable.facebutton_y, R.drawable.facebutton_y_depressed)
-                    5 -> setBitmaps(R.drawable.l_shoulder, R.drawable.l_shoulder_depressed)
-                    6 -> setBitmaps(R.drawable.r_shoulder, R.drawable.r_shoulder_depressed)
-                    7 -> setBitmaps(R.drawable.zl_trigger, R.drawable.zl_trigger_depressed)
-                    8 -> setBitmaps(R.drawable.zr_trigger, R.drawable.zr_trigger_depressed)
-                    9 -> setBitmaps(R.drawable.facebutton_plus, R.drawable.facebutton_plus_depressed)
-                    10 -> setBitmaps(R.drawable.facebutton_minus, R.drawable.facebutton_minus_depressed)
-                    11 -> setBitmaps(R.drawable.button_l3, R.drawable.button_l3_depressed)
-                    12 -> setBitmaps(R.drawable.button_r3, R.drawable.button_r3_depressed)
-                }
+                setBitmapsForButton()
                 
                 val (x, y) = manager.getButtonPosition(config.id, effectiveWidth, effectiveHeight)
                 setPosition(x, y)
@@ -909,6 +943,10 @@ class GameController(var activity: Activity) {
     // 更新全局设置
     fun updateGlobalSettings(scale: Int, opacity: Int) {
         buttonLayoutManager?.saveGlobalSettings(scale, opacity)
+        // 更新所有现有控件的缩放
+        virtualButtons.values.forEach { it.overlayScale = scale }
+        virtualJoysticks.values.forEach { it.overlayScale = scale }
+        dpadView?.overlayScale = scale
         refreshControls()
     }
     
