@@ -2,6 +2,7 @@ package org.ryujinx.android
 
 import android.app.Activity
 import android.content.Context
+import android.graphics.*
 import android.util.AttributeSet
 import android.util.TypedValue
 import android.view.LayoutInflater
@@ -22,12 +23,12 @@ import androidx.core.view.isVisible
 import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.QuickSettings
 
-// 摇杆视图 - 使用矢量图资源
-class JoystickView @JvmOverloads constructor(
+// 借鉴yuzu的绘制方式 - 使用Canvas直接绘制
+class JoystickOverlayView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
-) : ImageView(context, attrs, defStyleAttr) {
+) : View(context, attrs, defStyleAttr) {
     
     var stickId: Int = 0
     var isLeftStick: Boolean = true
@@ -35,16 +36,70 @@ class JoystickView @JvmOverloads constructor(
     var stickY: Float = 0f
     private var isTouching: Boolean = false
     
+    // 借鉴yuzu的摇杆范围控制
+    private var outerRect: Rect = Rect()
+    private var innerRect: Rect = Rect()
+    private var centerX: Float = 0f
+    private var centerY: Float = 0f
+    
+    // 位图资源
+    private var outerBitmap: Bitmap? = null
+    private var innerDefaultBitmap: Bitmap? = null
+    private var innerPressedBitmap: Bitmap? = null
+    
+    // 移动范围 - 借鉴yuzu的计算方式
+    private var movementRadius: Float = 0f
+    
     init {
-        setImageResource(R.drawable.joystick)
-        scaleType = ScaleType.FIT_CENTER
-        // 移除任何可能的背景
+        // 移除背景
         setBackgroundResource(0)
+        loadBitmaps()
+    }
+    
+    private fun loadBitmaps() {
+        // 使用矢量图资源，借鉴yuzu的位图加载方式
+        outerBitmap = getBitmapFromVectorDrawable(R.drawable.joystick_range, 0.3f)
+        innerDefaultBitmap = getBitmapFromVectorDrawable(R.drawable.joystick, 1.0f)
+        innerPressedBitmap = getBitmapFromVectorDrawable(R.drawable.joystick_depressed, 1.0f)
+    }
+    
+    private fun getBitmapFromVectorDrawable(drawableId: Int, scale: Float): Bitmap {
+        val drawable = ContextCompat.getDrawable(context, drawableId) ?: 
+            throw IllegalArgumentException("Drawable not found: $drawableId")
+        
+        val bitmap = Bitmap.createBitmap(
+            (drawable.intrinsicWidth * scale).toInt(),
+            (drawable.intrinsicHeight * scale).toInt(),
+            Bitmap.Config.ARGB_8888
+        )
+        
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+        return bitmap
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(80) // 从70dp增加到80dp，增大摇杆杆子
+        val size = dpToPx(140) // 摇杆外圈大小
         setMeasuredDimension(size, size)
+    }
+    
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        
+        centerX = w / 2f
+        centerY = h / 2f
+        
+        // 设置外圈矩形 - 整个View大小
+        outerRect.set(0, 0, w, h)
+        
+        // 设置内圈矩形 - 借鉴yuzu的比例计算
+        val outerScale = 1.66f // yuzu使用的比例
+        val innerSize = (w / outerScale).toInt()
+        innerRect.set(0, 0, innerSize, innerSize)
+        
+        // 计算移动半径 - 关键：让摇杆可以移动到边缘
+        movementRadius = (w - innerSize) / 2f
     }
     
     fun setPosition(x: Int, y: Int) {
@@ -67,23 +122,26 @@ class JoystickView @JvmOverloads constructor(
         stickY = MathUtils.clamp(y, -1f, 1f)
         this.isTouching = isTouching
         
-        // 增大移动范围，实现从中心到边缘的效果
-        val maxOffset = width * 0.4f
+        // 立即重绘，没有动画延迟
+        invalidate()
+    }
+    
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
         
-        // 立即设置位置，不要动画延迟
-        translationX = stickX * maxOffset
-        translationY = stickY * maxOffset
+        // 绘制外圈
+        outerBitmap?.let { bitmap ->
+            canvas.drawBitmap(bitmap, null, outerRect, null)
+        }
         
-        // 使用按压动画风格：根据触摸状态改变外观
-        if (isTouching) {
-            setImageResource(R.drawable.joystick_depressed)
-            // 添加轻微缩放效果，模拟按压
-            scaleX = 0.9f
-            scaleY = 0.9f
-        } else {
-            setImageResource(R.drawable.joystick)
-            scaleX = 1.0f
-            scaleY = 1.0f
+        // 计算内圈位置 - 借鉴yuzu的移动计算
+        val innerX = centerX + stickX * movementRadius - innerRect.width() / 2
+        val innerY = centerY + stickY * movementRadius - innerRect.height() / 2
+        
+        // 绘制内圈
+        val innerBitmap = if (isTouching) innerPressedBitmap else innerDefaultBitmap
+        innerBitmap?.let { bitmap ->
+            canvas.drawBitmap(bitmap, innerX, innerY, null)
         }
     }
     
@@ -94,29 +152,14 @@ class JoystickView @JvmOverloads constructor(
             resources.displayMetrics
         ).toInt()
     }
-    
-    // 添加编辑模式状态
-    private var isEditing: Boolean = false
-    
-    fun setEditingMode(editing: Boolean) {
-        isEditing = editing
-        // 重置到正常状态
-        if (!editing) {
-            setImageResource(R.drawable.joystick)
-            scaleX = 1.0f
-            scaleY = 1.0f
-            // 重置位置
-            updateStickPosition(0f, 0f, false)
-        }
-    }
 }
 
-// 方向键视图 - 使用矢量图资源
-class DpadView @JvmOverloads constructor(
+// 简化的方向键视图 - 使用Canvas绘制
+class DpadOverlayView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
-) : ImageView(context, attrs, defStyleAttr) {
+) : View(context, attrs, defStyleAttr) {
     
     var currentDirection: DpadDirection = DpadDirection.NONE
     
@@ -124,15 +167,39 @@ class DpadView @JvmOverloads constructor(
         NONE, UP, DOWN, LEFT, RIGHT, UP_LEFT, UP_RIGHT, DOWN_LEFT, DOWN_RIGHT
     }
     
+    private var defaultBitmap: Bitmap? = null
+    private var pressedOneDirectionBitmap: Bitmap? = null
+    private var pressedTwoDirectionsBitmap: Bitmap? = null
+    
     init {
-        setImageResource(R.drawable.dpad_standard)
-        scaleType = ScaleType.FIT_CENTER
-        // 移除任何可能的背景
         setBackgroundResource(0)
+        loadBitmaps()
+    }
+    
+    private fun loadBitmaps() {
+        defaultBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard, 0.25f)
+        pressedOneDirectionBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard_cardinal_depressed, 0.25f)
+        pressedTwoDirectionsBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard_diagonal_depressed, 0.25f)
+    }
+    
+    private fun getBitmapFromVectorDrawable(drawableId: Int, scale: Float): Bitmap {
+        val drawable = ContextCompat.getDrawable(context, drawableId) ?: 
+            throw IllegalArgumentException("Drawable not found: $drawableId")
+        
+        val bitmap = Bitmap.createBitmap(
+            (drawable.intrinsicWidth * scale).toInt(),
+            (drawable.intrinsicHeight * scale).toInt(),
+            Bitmap.Config.ARGB_8888
+        )
+        
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+        return bitmap
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(135) // 增大到135dp
+        val size = dpToPx(135)
         setMeasuredDimension(size, size)
     }
     
@@ -172,45 +239,47 @@ class DpadView @JvmOverloads constructor(
     
     fun updateDirection(direction: DpadDirection) {
         currentDirection = direction
+        invalidate() // 立即重绘
+    }
+    
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
         
-        // 修正：根据实际按下的方向设置正确的资源并通过旋转实现正确的视觉反馈
-        when (direction) {
-            DpadDirection.UP -> {
-                setImageResource(R.drawable.dpad_standard_cardinal_depressed)
-                rotation = 0f
+        val bitmap = when (currentDirection) {
+            DpadDirection.UP, DpadDirection.DOWN, DpadDirection.LEFT, DpadDirection.RIGHT -> {
+                pressedOneDirectionBitmap?.also { 
+                    canvas.save()
+                    when (currentDirection) {
+                        DpadDirection.UP -> canvas.rotate(0f, width / 2f, height / 2f)
+                        DpadDirection.DOWN -> canvas.rotate(180f, width / 2f, height / 2f)
+                        DpadDirection.LEFT -> canvas.rotate(270f, width / 2f, height / 2f)
+                        DpadDirection.RIGHT -> canvas.rotate(90f, width / 2f, height / 2f)
+                        else -> {}
+                    }
+                }
             }
-            DpadDirection.DOWN -> {
-                setImageResource(R.drawable.dpad_standard_cardinal_depressed)
-                rotation = 180f
+            DpadDirection.UP_LEFT, DpadDirection.UP_RIGHT, 
+            DpadDirection.DOWN_LEFT, DpadDirection.DOWN_RIGHT -> {
+                pressedTwoDirectionsBitmap?.also {
+                    canvas.save()
+                    when (currentDirection) {
+                        DpadDirection.UP_LEFT -> canvas.rotate(0f, width / 2f, height / 2f)
+                        DpadDirection.UP_RIGHT -> canvas.rotate(90f, width / 2f, height / 2f)
+                        DpadDirection.DOWN_RIGHT -> canvas.rotate(180f, width / 2f, height / 2f)
+                        DpadDirection.DOWN_LEFT -> canvas.rotate(270f, width / 2f, height / 2f)
+                        else -> {}
+                    }
+                }
             }
-            DpadDirection.LEFT -> {
-                setImageResource(R.drawable.dpad_standard_cardinal_depressed)
-                rotation = 270f
-            }
-            DpadDirection.RIGHT -> {
-                setImageResource(R.drawable.dpad_standard_cardinal_depressed)
-                rotation = 90f
-            }
-            DpadDirection.UP_LEFT -> {
-                setImageResource(R.drawable.dpad_standard_diagonal_depressed)
-                rotation = 0f
-            }
-            DpadDirection.UP_RIGHT -> {
-                setImageResource(R.drawable.dpad_standard_diagonal_depressed)
-                rotation = 90f
-            }
-            DpadDirection.DOWN_RIGHT -> {
-                setImageResource(R.drawable.dpad_standard_diagonal_depressed)
-                rotation = 180f
-            }
-            DpadDirection.DOWN_LEFT -> {
-                setImageResource(R.drawable.dpad_standard_diagonal_depressed)
-                rotation = 270f
-            }
-            else -> {
-                setImageResource(R.drawable.dpad_standard)
-                rotation = 0f
-            }
+            else -> defaultBitmap
+        }
+        
+        bitmap?.let {
+            canvas.drawBitmap(it, 0f, 0f, null)
+        }
+        
+        if (currentDirection != DpadDirection.NONE) {
+            canvas.restore()
         }
     }
     
@@ -223,34 +292,60 @@ class DpadView @JvmOverloads constructor(
     }
 }
 
-// 自定义可拖拽按钮 - 使用矢量图资源
-class DraggableButtonView @JvmOverloads constructor(
+// 简化的按钮视图 - 使用Canvas绘制
+class ButtonOverlayView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
-) : ImageView(context, attrs, defStyleAttr) {
+) : View(context, attrs, defStyleAttr) {
     
     var buttonId: Int = 0
     var buttonText: String = ""
     var buttonPressed: Boolean = false
-        set(value) {
-            field = value
-            updateButtonAppearance()
-        }
+    
+    private var defaultBitmap: Bitmap? = null
+    private var pressedBitmap: Bitmap? = null
     
     init {
-        scaleType = ScaleType.FIT_CENTER
-        // 移除任何可能的背景
         setBackgroundResource(0)
-        updateButtonAppearance()
+    }
+    
+    fun setBitmaps(defaultResId: Int, pressedResId: Int) {
+        defaultBitmap = getBitmapFromVectorDrawable(defaultResId, getScaleForButton())
+        pressedBitmap = getBitmapFromVectorDrawable(pressedResId, getScaleForButton())
+    }
+    
+    private fun getScaleForButton(): Float {
+        return when (buttonId) {
+            5, 6, 7, 8 -> 0.26f // L, R, ZL, ZR
+            9, 10 -> 0.07f // +, -
+            11, 12 -> 0.155f // L3, R3
+            else -> 0.11f // 其他按钮
+        }
+    }
+    
+    private fun getBitmapFromVectorDrawable(drawableId: Int, scale: Float): Bitmap {
+        val drawable = ContextCompat.getDrawable(context, drawableId) ?: 
+            throw IllegalArgumentException("Drawable not found: $drawableId")
+        
+        val bitmap = Bitmap.createBitmap(
+            (drawable.intrinsicWidth * scale).toInt(),
+            (drawable.intrinsicHeight * scale).toInt(),
+            Bitmap.Config.ARGB_8888
+        )
+        
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+        return bitmap
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val size = when (buttonId) {
-            5, 6, 7, 8 -> dpToPx(90) // L, R, ZL, ZR 按钮增大到90dp
-            9, 10 -> dpToPx(30) // +, - 按钮减小到30dp
-            11, 12 -> dpToPx(50) // L3, R3 按钮调整为50dp（从45dp增大）
-            else -> dpToPx(50) // 其他按钮保持50dp
+            5, 6, 7, 8 -> dpToPx(90)
+            9, 10 -> dpToPx(30)
+            11, 12 -> dpToPx(50)
+            else -> dpToPx(50)
         }
         setMeasuredDimension(size, size)
     }
@@ -270,84 +365,18 @@ class DraggableButtonView @JvmOverloads constructor(
         return Pair(params.leftMargin + width / 2, params.topMargin + height / 2)
     }
     
-    private fun updateButtonAppearance() {
-        // 根据按钮ID和按压状态设置不同的矢量图资源
-        when (buttonId) {
-            1 -> { // A按钮
-                setImageResource(if (buttonPressed) R.drawable.facebutton_a_depressed else R.drawable.facebutton_a)
-            }
-            2 -> { // B按钮
-                setImageResource(if (buttonPressed) R.drawable.facebutton_b_depressed else R.drawable.facebutton_b)
-            }
-            3 -> { // X按钮
-                setImageResource(if (buttonPressed) R.drawable.facebutton_x_depressed else R.drawable.facebutton_x)
-            }
-            4 -> { // Y按钮
-                setImageResource(if (buttonPressed) R.drawable.facebutton_y_depressed else R.drawable.facebutton_y)
-            }
-            5 -> { // L按钮
-                setImageResource(if (buttonPressed) R.drawable.l_shoulder_depressed else R.drawable.l_shoulder)
-            }
-            6 -> { // R按钮
-                setImageResource(if (buttonPressed) R.drawable.r_shoulder_depressed else R.drawable.r_shoulder)
-            }
-            7 -> { // ZL按钮
-                setImageResource(if (buttonPressed) R.drawable.zl_trigger_depressed else R.drawable.zl_trigger)
-            }
-            8 -> { // ZR按钮
-                setImageResource(if (buttonPressed) R.drawable.zr_trigger_depressed else R.drawable.zr_trigger)
-            }
-            9 -> { // +按钮
-                setImageResource(if (buttonPressed) R.drawable.facebutton_plus_depressed else R.drawable.facebutton_plus)
-            }
-            10 -> { // -按钮
-                setImageResource(if (buttonPressed) R.drawable.facebutton_minus_depressed else R.drawable.facebutton_minus)
-            }
-            11 -> { // L3按钮 - 修复：使用正确的按键代码
-                setImageResource(if (buttonPressed) R.drawable.button_l3_depressed else R.drawable.button_l3)
-            }
-            12 -> { // R3按钮 - 修复：使用正确的按键代码
-                setImageResource(if (buttonPressed) R.drawable.button_r3_depressed else R.drawable.button_r3)
-            }
+    fun setPressedState(pressed: Boolean) {
+        buttonPressed = pressed
+        invalidate() // 立即重绘
+    }
+    
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        
+        val bitmap = if (buttonPressed) pressedBitmap else defaultBitmap
+        bitmap?.let {
+            canvas.drawBitmap(it, 0f, 0f, null)
         }
-    }
-    
-    private fun dpToPx(dp: Int): Int {
-        return TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP, 
-            dp.toFloat(), 
-            resources.displayMetrics
-        ).toInt()
-    }
-}
-
-// 摇杆范围视图
-class JoystickRangeView @JvmOverloads constructor(
-    context: Context,
-    attrs: AttributeSet? = null,
-    defStyleAttr: Int = 0
-) : ImageView(context, attrs, defStyleAttr) {
-    
-    init {
-        setImageResource(R.drawable.joystick_range)
-        scaleType = ScaleType.FIT_CENTER
-        // 移除任何可能的背景
-        setBackgroundResource(0)
-    }
-    
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(140) // 从180dp减小到140dp，减小摇杆范围
-        setMeasuredDimension(size, size)
-    }
-    
-    fun setPosition(x: Int, y: Int) {
-        val params = layoutParams as? FrameLayout.LayoutParams ?: FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-        params.leftMargin = x - width / 2
-        params.topMargin = y - height / 2
-        layoutParams = params
     }
     
     private fun dpToPx(dp: Int): Int {
@@ -398,7 +427,6 @@ class ButtonLayoutManager(private val context: Context) {
         ButtonConfig(8, "ZR", 0.9f, 0.1f, GamePadButtonInputId.RightTrigger.ordinal),
         ButtonConfig(9, "+", 0.8f, 0.1f, GamePadButtonInputId.Plus.ordinal),
         ButtonConfig(10, "-", 0.2f, 0.1f, GamePadButtonInputId.Minus.ordinal),
-        // 修复：L3和R3使用正确的按键代码 - 参考31版本
         ButtonConfig(11, "L3", 0.2f, 0.8f, GamePadButtonInputId.LeftStickButton.ordinal),
         ButtonConfig(12, "R3", 0.7f, 0.8f, GamePadButtonInputId.RightStickButton.ordinal)
     )
@@ -416,7 +444,6 @@ class ButtonLayoutManager(private val context: Context) {
         
         val config = buttonConfigs.find { it.id == buttonId } ?: return Pair(0, 0)
         
-        // 使用保存的位置或默认位置
         val x = if (xPref != -1f) (xPref * containerWidth) else (config.defaultX * containerWidth)
         val y = if (yPref != -1f) (yPref * containerHeight) else (config.defaultY * containerHeight)
         
@@ -484,11 +511,6 @@ class ButtonLayoutManager(private val context: Context) {
     fun getAllButtonConfigs(): List<ButtonConfig> = buttonConfigs
     fun getAllJoystickConfigs(): List<JoystickConfig> = joystickConfigs
     fun getDpadConfig(): DpadConfig = dpadConfig
-    
-    // 新增方法：通过keyCode获取按钮配置
-    fun getButtonConfigByKeyCode(keyCode: Int): ButtonConfig? {
-        return buttonConfigs.find { it.keyCode == keyCode }
-    }
 }
 
 class GameController(var activity: Activity) {
@@ -498,17 +520,11 @@ class GameController(var activity: Activity) {
             val inflator = LayoutInflater.from(context)
             val view = inflator.inflate(R.layout.game_layout, null)
             
-            // 获取按钮容器
             val buttonContainer = view.findViewById<FrameLayout>(R.id.buttonContainer)!!
             val editModeContainer = view.findViewById<FrameLayout>(R.id.editModeContainer)!!
             
-            // 初始化按钮管理器
             controller.buttonLayoutManager = ButtonLayoutManager(context)
-            
-            // 创建所有虚拟控件
             controller.createVirtualControls(buttonContainer)
-            
-            // 创建保存按钮
             controller.createSaveButton(editModeContainer)
             
             return view
@@ -526,7 +542,6 @@ class GameController(var activity: Activity) {
         fun Compose(viewModel: MainViewModel): Unit {
             var isEditing by remember { mutableStateOf(false) }
             
-            // 监听编辑模式变化
             LaunchedEffect(isEditing) {
                 viewModel.controller?.setEditingMode(isEditing)
             }
@@ -550,10 +565,9 @@ class GameController(var activity: Activity) {
     private var editModeContainer: FrameLayout? = null
     private var saveButton: Button? = null
     var buttonLayoutManager: ButtonLayoutManager? = null
-    private val virtualButtons = mutableMapOf<Int, DraggableButtonView>()
-    private val virtualJoysticks = mutableMapOf<Int, JoystickView>()
-    private val virtualJoystickRanges = mutableMapOf<Int, JoystickRangeView>()
-    private var dpadView: DpadView? = null
+    private val virtualButtons = mutableMapOf<Int, ButtonOverlayView>()
+    private val virtualJoysticks = mutableMapOf<Int, JoystickOverlayView>()
+    private var dpadView: DpadOverlayView? = null
     var controllerId: Int = -1
     private var isEditing = false
 
@@ -565,56 +579,32 @@ class GameController(var activity: Activity) {
             return false
         }
 
-    init {
-        // 初始化控制器
-    }
-
     private fun createVirtualControls(buttonContainer: FrameLayout) {
         this.buttonContainer = buttonContainer
         val manager = buttonLayoutManager ?: return
-        
-        // 直接创建控件，不等待布局完成
         createControlsImmediately(buttonContainer, manager)
     }
     
     private fun createControlsImmediately(buttonContainer: FrameLayout, manager: ButtonLayoutManager) {
-        // 获取容器尺寸
         val containerWidth = buttonContainer.width
         val containerHeight = buttonContainer.height
         
-        // 如果容器尺寸为0，使用屏幕尺寸作为后备
         val effectiveWidth = if (containerWidth > 0) containerWidth else activity.resources.displayMetrics.widthPixels
         val effectiveHeight = if (containerHeight > 0) containerHeight else activity.resources.displayMetrics.heightPixels
         
-        // 创建摇杆范围
-        manager.getAllJoystickConfigs().forEach { config ->
-            val joystickRange = JoystickRangeView(buttonContainer.context).apply {
-                // 设置初始位置
-                val (x, y) = manager.getJoystickPosition(config.id, effectiveWidth, effectiveHeight)
-                setPosition(x, y)
-            }
-            
-            buttonContainer.addView(joystickRange)
-            virtualJoystickRanges[config.id] = joystickRange
-        }
-        
         // 创建摇杆
         manager.getAllJoystickConfigs().forEach { config ->
-            val joystick = JoystickView(buttonContainer.context).apply {
+            val joystick = JoystickOverlayView(buttonContainer.context).apply {
                 stickId = config.id
                 isLeftStick = config.isLeft
                 
-                // 设置初始位置
                 val (x, y) = manager.getJoystickPosition(config.id, effectiveWidth, effectiveHeight)
                 setPosition(x, y)
                 
-                // 设置触摸监听器
                 setOnTouchListener { _, event ->
                     if (isEditing) {
-                        // 编辑模式：可拖拽
                         handleJoystickDragEvent(event, config.id)
                     } else {
-                        // 游戏模式：发送摇杆事件
                         handleJoystickEvent(event, config.id, config.isLeft)
                     }
                     true
@@ -627,7 +617,7 @@ class GameController(var activity: Activity) {
         
         // 创建方向键
         val (dpadX, dpadY) = manager.getDpadPosition(effectiveWidth, effectiveHeight)
-        dpadView = DpadView(buttonContainer.context).apply {
+        dpadView = DpadOverlayView(buttonContainer.context).apply {
             setPosition(dpadX, dpadY)
             
             setOnTouchListener { _, event ->
@@ -643,21 +633,33 @@ class GameController(var activity: Activity) {
         
         // 创建按钮
         manager.getAllButtonConfigs().forEach { config ->
-            val button = DraggableButtonView(buttonContainer.context).apply {
+            val button = ButtonOverlayView(buttonContainer.context).apply {
                 buttonId = config.id
                 buttonText = config.text
                 
-                // 设置初始位置
+                // 设置按钮位图
+                when (config.id) {
+                    1 -> setBitmaps(R.drawable.facebutton_a, R.drawable.facebutton_a_depressed)
+                    2 -> setBitmaps(R.drawable.facebutton_b, R.drawable.facebutton_b_depressed)
+                    3 -> setBitmaps(R.drawable.facebutton_x, R.drawable.facebutton_x_depressed)
+                    4 -> setBitmaps(R.drawable.facebutton_y, R.drawable.facebutton_y_depressed)
+                    5 -> setBitmaps(R.drawable.l_shoulder, R.drawable.l_shoulder_depressed)
+                    6 -> setBitmaps(R.drawable.r_shoulder, R.drawable.r_shoulder_depressed)
+                    7 -> setBitmaps(R.drawable.zl_trigger, R.drawable.zl_trigger_depressed)
+                    8 -> setBitmaps(R.drawable.zr_trigger, R.drawable.zr_trigger_depressed)
+                    9 -> setBitmaps(R.drawable.facebutton_plus, R.drawable.facebutton_plus_depressed)
+                    10 -> setBitmaps(R.drawable.facebutton_minus, R.drawable.facebutton_minus_depressed)
+                    11 -> setBitmaps(R.drawable.button_l3, R.drawable.button_l3_depressed)
+                    12 -> setBitmaps(R.drawable.button_r3, R.drawable.button_r3_depressed)
+                }
+                
                 val (x, y) = manager.getButtonPosition(config.id, effectiveWidth, effectiveHeight)
                 setPosition(x, y)
                 
-                // 设置触摸监听器
                 setOnTouchListener { _, event ->
                     if (isEditing) {
-                        // 编辑模式：可拖拽
                         handleButtonDragEvent(event, config.id)
                     } else {
-                        // 游戏模式：发送按键事件
                         handleButtonEvent(event, config.keyCode, config.id)
                     }
                     true
@@ -668,7 +670,6 @@ class GameController(var activity: Activity) {
             virtualButtons[config.id] = button
         }
         
-        // 如果容器尺寸为0，延迟刷新位置
         if (containerWidth <= 0 || containerHeight <= 0) {
             buttonContainer.post {
                 refreshControlPositions()
@@ -685,25 +686,16 @@ class GameController(var activity: Activity) {
         
         if (containerWidth <= 0 || containerHeight <= 0) return
         
-        // 刷新摇杆范围位置
-        virtualJoystickRanges.forEach { (joystickId, joystickRange) ->
-            val (x, y) = manager.getJoystickPosition(joystickId, containerWidth, containerHeight)
-            joystickRange.setPosition(x, y)
-        }
-        
-        // 刷新摇杆位置
         virtualJoysticks.forEach { (joystickId, joystick) ->
             val (x, y) = manager.getJoystickPosition(joystickId, containerWidth, containerHeight)
             joystick.setPosition(x, y)
         }
         
-        // 刷新方向键位置
         dpadView?.let { dpad ->
             val (x, y) = manager.getDpadPosition(containerWidth, containerHeight)
             dpad.setPosition(x, y)
         }
         
-        // 刷新按钮位置
         virtualButtons.forEach { (buttonId, button) ->
             val (x, y) = manager.getButtonPosition(buttonId, containerWidth, containerHeight)
             button.setPosition(x, y)
@@ -713,10 +705,9 @@ class GameController(var activity: Activity) {
     private fun createSaveButton(editModeContainer: FrameLayout) {
         this.editModeContainer = editModeContainer
         
-        // 创建保存按钮 - 设置为半透明
         saveButton = Button(editModeContainer.context).apply {
             text = "保存布局"
-            setBackgroundColor(android.graphics.Color.argb(150, 0, 100, 200)) // 半透明背景
+            setBackgroundColor(android.graphics.Color.argb(150, 0, 100, 200))
             setTextColor(android.graphics.Color.WHITE)
             textSize = 18f
             setOnClickListener {
@@ -724,7 +715,6 @@ class GameController(var activity: Activity) {
                 setEditingMode(false)
             }
             
-            // 设置按钮位置在屏幕中央
             val params = FrameLayout.LayoutParams(
                 dpToPx(200),
                 dpToPx(60)
@@ -750,28 +740,21 @@ class GameController(var activity: Activity) {
     private fun handleJoystickDragEvent(event: MotionEvent, joystickId: Int): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                // 开始拖动
-                virtualJoysticks[joystickId]?.let { joystick ->
-                    joystick.updateStickPosition(0f, 0f, true)
-                }
+                virtualJoysticks[joystickId]?.updateStickPosition(0f, 0f, true)
             }
             MotionEvent.ACTION_MOVE -> {
-                // 更新摇杆位置
                 virtualJoysticks[joystickId]?.let { joystick ->
                     val parent = joystick.parent as? ViewGroup ?: return@let
                     val x = event.rawX.toInt() - parent.left
                     val y = event.rawY.toInt() - parent.top
                     
-                    // 限制在屏幕范围内
                     val clampedX = MathUtils.clamp(x, 0, parent.width)
                     val clampedY = MathUtils.clamp(y, 0, parent.height)
                     
                     joystick.setPosition(clampedX, clampedY)
-                    virtualJoystickRanges[joystickId]?.setPosition(clampedX, clampedY)
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                // 结束拖动
                 virtualJoysticks[joystickId]?.updateStickPosition(0f, 0f, false)
             }
         }
@@ -786,54 +769,37 @@ class GameController(var activity: Activity) {
         virtualJoysticks[joystickId]?.let { joystick ->
             val centerX = joystick.width / 2f
             val centerY = joystick.height / 2f
-            // 参考31版本调整最大距离，使用更合理的值
-            val maxDistance = centerX * 0.9f  // 从1.2f减小到0.9f，使摇动范围更合理
             
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    // 手指按下时使用按压动画风格
                     joystick.updateStickPosition(0f, 0f, true)
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val x = event.x - centerX
                     val y = event.y - centerY
                     
-                    // 计算摇杆偏移量（归一化到 -1 到 1）
+                    // 借鉴yuzu的摇杆计算方式
+                    val maxDistance = centerX * 0.9f
                     val normalizedX = MathUtils.clamp(x / maxDistance, -1f, 1f)
                     val normalizedY = MathUtils.clamp(y / maxDistance, -1f, 1f)
                     
-                    // 立即更新摇杆位置，不要动画延迟
                     joystick.updateStickPosition(normalizedX, normalizedY, true)
                     
-                    // 参考31版本添加灵敏度调节
                     val setting = QuickSettings(activity)
                     val sensitivity = setting.controllerStickSensitivity
                     
                     val adjustedX = MathUtils.clamp(normalizedX * sensitivity, -1f, 1f)
                     val adjustedY = MathUtils.clamp(normalizedY * sensitivity, -1f, 1f)
                     
-                    // 发送摇杆数据
                     if (isLeftStick) {
-                        RyujinxNative.jnaInstance.inputSetStickAxis(
-                            1,
-                            adjustedX,
-                            -adjustedY,
-                            controllerId
-                        )
+                        RyujinxNative.jnaInstance.inputSetStickAxis(1, adjustedX, -adjustedY, controllerId)
                     } else {
-                        RyujinxNative.jnaInstance.inputSetStickAxis(
-                            2,
-                            adjustedX,
-                            -adjustedY,
-                            controllerId
-                        )
+                        RyujinxNative.jnaInstance.inputSetStickAxis(2, adjustedX, -adjustedY, controllerId)
                     }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    // 立即回到中心位置，不要动画延迟
                     joystick.updateStickPosition(0f, 0f, false)
                     
-                    // 重置摇杆位置
                     if (isLeftStick) {
                         RyujinxNative.jnaInstance.inputSetStickAxis(1, 0f, 0f, controllerId)
                     } else {
@@ -851,13 +817,11 @@ class GameController(var activity: Activity) {
                 // 开始拖动
             }
             MotionEvent.ACTION_MOVE -> {
-                // 更新方向键位置
                 dpadView?.let { dpad ->
                     val parent = dpad.parent as? ViewGroup ?: return@let
                     val x = event.rawX.toInt() - parent.left
                     val y = event.rawY.toInt() - parent.top
                     
-                    // 限制在屏幕范围内
                     val clampedX = MathUtils.clamp(x, 0, parent.width)
                     val clampedY = MathUtils.clamp(y, 0, parent.height)
                     
@@ -881,9 +845,7 @@ class GameController(var activity: Activity) {
                 MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
                     val direction = dpad.getDirectionFromTouch(event.x, event.y)
                     if (dpad.currentDirection != direction) {
-                        // 方向改变，先释放旧方向
                         handleDpadDirection(dpad.currentDirection, false)
-                        // 设置新方向
                         dpad.currentDirection = direction
                         dpad.updateDirection(direction)
                         handleDpadDirection(direction, true)
@@ -891,45 +853,45 @@ class GameController(var activity: Activity) {
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     handleDpadDirection(dpad.currentDirection, false)
-                    dpad.currentDirection = DpadView.DpadDirection.NONE
-                    dpad.updateDirection(DpadView.DpadDirection.NONE)
+                    dpad.currentDirection = DpadOverlayView.DpadDirection.NONE
+                    dpad.updateDirection(DpadOverlayView.DpadDirection.NONE)
                 }
             }
         }
         return true
     }
     
-    private fun handleDpadDirection(direction: DpadView.DpadDirection, pressed: Boolean) {
+    private fun handleDpadDirection(direction: DpadOverlayView.DpadDirection, pressed: Boolean) {
         when (direction) {
-            DpadView.DpadDirection.UP -> {
+            DpadOverlayView.DpadDirection.UP -> {
                 if (pressed) {
                     RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadUp.ordinal, controllerId)
                 } else {
                     RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadUp.ordinal, controllerId)
                 }
             }
-            DpadView.DpadDirection.DOWN -> {
+            DpadOverlayView.DpadDirection.DOWN -> {
                 if (pressed) {
                     RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadDown.ordinal, controllerId)
                 } else {
                     RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadDown.ordinal, controllerId)
                 }
             }
-            DpadView.DpadDirection.LEFT -> {
+            DpadOverlayView.DpadDirection.LEFT -> {
                 if (pressed) {
                     RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadLeft.ordinal, controllerId)
                 } else {
                     RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadLeft.ordinal, controllerId)
                 }
             }
-            DpadView.DpadDirection.RIGHT -> {
+            DpadOverlayView.DpadDirection.RIGHT -> {
                 if (pressed) {
                     RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadRight.ordinal, controllerId)
                 } else {
                     RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadRight.ordinal, controllerId)
                 }
             }
-            DpadView.DpadDirection.UP_LEFT -> {
+            DpadOverlayView.DpadDirection.UP_LEFT -> {
                 if (pressed) {
                     RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadUp.ordinal, controllerId)
                     RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadLeft.ordinal, controllerId)
@@ -938,7 +900,7 @@ class GameController(var activity: Activity) {
                     RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadLeft.ordinal, controllerId)
                 }
             }
-            DpadView.DpadDirection.UP_RIGHT -> {
+            DpadOverlayView.DpadDirection.UP_RIGHT -> {
                 if (pressed) {
                     RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadUp.ordinal, controllerId)
                     RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadRight.ordinal, controllerId)
@@ -947,7 +909,7 @@ class GameController(var activity: Activity) {
                     RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadRight.ordinal, controllerId)
                 }
             }
-            DpadView.DpadDirection.DOWN_LEFT -> {
+            DpadOverlayView.DpadDirection.DOWN_LEFT -> {
                 if (pressed) {
                     RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadDown.ordinal, controllerId)
                     RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadLeft.ordinal, controllerId)
@@ -956,7 +918,7 @@ class GameController(var activity: Activity) {
                     RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadLeft.ordinal, controllerId)
                 }
             }
-            DpadView.DpadDirection.DOWN_RIGHT -> {
+            DpadOverlayView.DpadDirection.DOWN_RIGHT -> {
                 if (pressed) {
                     RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadDown.ordinal, controllerId)
                     RyujinxNative.jnaInstance.inputSetButtonPressed(GamePadButtonInputId.DpadRight.ordinal, controllerId)
@@ -966,7 +928,6 @@ class GameController(var activity: Activity) {
                 }
             }
             else -> {
-                // 释放所有方向键
                 RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadUp.ordinal, controllerId)
                 RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadDown.ordinal, controllerId)
                 RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadLeft.ordinal, controllerId)
@@ -978,17 +939,14 @@ class GameController(var activity: Activity) {
     private fun handleButtonDragEvent(event: MotionEvent, buttonId: Int): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                // 开始拖动
-                virtualButtons[buttonId]?.buttonPressed = true
+                virtualButtons[buttonId]?.setPressedState(true)
             }
             MotionEvent.ACTION_MOVE -> {
-                // 更新按钮位置
                 virtualButtons[buttonId]?.let { button ->
                     val parent = button.parent as? ViewGroup ?: return@let
                     val x = event.rawX.toInt() - parent.left
                     val y = event.rawY.toInt() - parent.top
                     
-                    // 限制在屏幕范围内
                     val clampedX = MathUtils.clamp(x, 0, parent.width)
                     val clampedY = MathUtils.clamp(y, 0, parent.height)
                     
@@ -996,8 +954,7 @@ class GameController(var activity: Activity) {
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                // 结束拖动
-                virtualButtons[buttonId]?.buttonPressed = false
+                virtualButtons[buttonId]?.setPressedState(false)
             }
         }
         return true
@@ -1010,13 +967,11 @@ class GameController(var activity: Activity) {
         
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                // 设置按钮按压状态
-                virtualButtons[buttonId]?.buttonPressed = true
+                virtualButtons[buttonId]?.setPressedState(true)
                 RyujinxNative.jnaInstance.inputSetButtonPressed(keyCode, controllerId)
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                // 设置按钮释放状态
-                virtualButtons[buttonId]?.buttonPressed = false
+                virtualButtons[buttonId]?.setPressedState(false)
                 RyujinxNative.jnaInstance.inputSetButtonReleased(keyCode, controllerId)
             }
         }
@@ -1027,21 +982,14 @@ class GameController(var activity: Activity) {
         isEditing = editing
         editModeContainer?.isVisible = editing
         
-        // 设置所有摇杆的编辑模式
-        virtualJoysticks.values.forEach { joystick ->
-            if (joystick is JoystickView) {
-                joystick.setEditingMode(editing)
-            }
-        }
-        
         virtualButtons.values.forEach { button ->
-            button.buttonPressed = false
+            button.setPressedState(false)
         }
         virtualJoysticks.values.forEach { joystick ->
             joystick.updateStickPosition(0f, 0f, false)
         }
-        dpadView?.currentDirection = DpadView.DpadDirection.NONE
-        dpadView?.updateDirection(DpadView.DpadDirection.NONE)
+        dpadView?.currentDirection = DpadOverlayView.DpadDirection.NONE
+        dpadView?.updateDirection(DpadOverlayView.DpadDirection.NONE)
     }
     
     fun saveLayout() {
@@ -1053,19 +1001,16 @@ class GameController(var activity: Activity) {
         
         if (containerWidth <= 0 || containerHeight <= 0) return
         
-        // 保存按钮位置
         virtualButtons.forEach { (buttonId, button) ->
             val (x, y) = button.getPosition()
             manager.saveButtonPosition(buttonId, x, y, containerWidth, containerHeight)
         }
         
-        // 保存摇杆位置
         virtualJoysticks.forEach { (joystickId, joystick) ->
             val (x, y) = joystick.getPosition()
             manager.saveJoystickPosition(joystickId, x, y, containerWidth, containerHeight)
         }
         
-        // 保存方向键位置
         dpadView?.let { dpad ->
             val (x, y) = dpad.getPosition()
             manager.saveDpadPosition(x, y, containerWidth, containerHeight)
@@ -1077,7 +1022,6 @@ class GameController(var activity: Activity) {
             this.isVisible = isVisible
             virtualButtons.values.forEach { it.isVisible = isVisible }
             virtualJoysticks.values.forEach { it.isVisible = isVisible }
-            virtualJoystickRanges.values.forEach { it.isVisible = isVisible }
             dpadView?.isVisible = isVisible
 
             if (isVisible)
