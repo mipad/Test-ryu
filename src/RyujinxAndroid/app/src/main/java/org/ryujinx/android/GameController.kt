@@ -60,9 +60,9 @@ class JoystickOverlayView @JvmOverloads constructor(
     
     private fun loadBitmaps() {
         // 使用矢量图资源，借鉴yuzu的位图加载方式
-        outerBitmap = getBitmapFromVectorDrawable(R.drawable.joystick_range, 0.4f)
-        innerDefaultBitmap = getBitmapFromVectorDrawable(R.drawable.joystick, 0.35f)
-        innerPressedBitmap = getBitmapFromVectorDrawable(R.drawable.joystick_depressed, 0.35f)
+        outerBitmap = getBitmapFromVectorDrawable(R.drawable.joystick_range, 0.3f)
+        innerDefaultBitmap = getBitmapFromVectorDrawable(R.drawable.joystick, 1.0f)
+        innerPressedBitmap = getBitmapFromVectorDrawable(R.drawable.joystick_depressed, 1.0f)
     }
     
     private fun getBitmapFromVectorDrawable(drawableId: Int, scale: Float): Bitmap {
@@ -81,7 +81,11 @@ class JoystickOverlayView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(160)
+        // 借鉴yuzu的摇杆尺寸计算
+        val scale = 0.3f * (100 + 50) / 100f // 默认缩放比例
+        val defaultSize = dpToPx(160)
+        val calculatedSize = (defaultSize * scale).toInt()
+        val size = Math.max(calculatedSize, dpToPx(80))
         setMeasuredDimension(size, size)
     }
     
@@ -95,7 +99,7 @@ class JoystickOverlayView @JvmOverloads constructor(
         outerRect.set(0, 0, w, h)
         
         // 设置内圈矩形 - 借鉴yuzu的比例计算
-        val outerScale = 2.0f
+        val outerScale = 1.66f
         val innerSize = (w / outerScale).toInt()
         innerRect.set(0, 0, innerSize, innerSize)
         
@@ -187,9 +191,9 @@ class DpadOverlayView @JvmOverloads constructor(
     }
     
     private fun loadBitmaps() {
-        defaultBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard, 0.35f)
-        pressedOneDirectionBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard_cardinal_depressed, 0.35f)
-        pressedTwoDirectionsBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard_diagonal_depressed, 0.35f)
+        defaultBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard, 0.25f)
+        pressedOneDirectionBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard_cardinal_depressed, 0.25f)
+        pressedTwoDirectionsBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard_diagonal_depressed, 0.25f)
     }
     
     private fun getBitmapFromVectorDrawable(drawableId: Int, scale: Float): Bitmap {
@@ -208,7 +212,11 @@ class DpadOverlayView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(150)
+        // 借鉴yuzu的方向键尺寸计算
+        val scale = 0.25f * (100 + 50) / 100f // 默认缩放比例
+        val defaultSize = dpToPx(150)
+        val calculatedSize = (defaultSize * scale).toInt()
+        val size = Math.max(calculatedSize, dpToPx(80))
         setMeasuredDimension(size, size)
     }
     
@@ -327,13 +335,13 @@ class ButtonOverlayView @JvmOverloads constructor(
     }
     
     private fun getScaleForButton(): Float {
-        // 根据yuzu的实现，不同类型的按钮使用不同的缩放因子
+        // 完全借鉴yuzu的缩放因子设置
         return when (buttonId) {
-            1, 2, 3, 4 -> 0.11f // ABXY 按钮 - 使用yuzu的原始比例
-            5, 6 -> 0.26f // L, R 肩键 - 使用yuzu的原始比例
-            7, 8 -> 0.26f // ZL, ZR 扳机键 - 使用yuzu的原始比例
-            9, 10 -> 0.07f // +, - 按钮 - 使用yuzu的原始比例
-            11, 12 -> 0.155f // L3, R3 摇杆按钮 - 使用yuzu的原始比例
+            1, 2, 3, 4 -> 0.11f // ABXY 按钮
+            5, 6 -> 0.26f // L, R 肩键
+            7, 8 -> 0.26f // ZL, ZR 扳机键
+            9, 10 -> 0.07f // +, - 按钮
+            11, 12 -> 0.155f // L3, R3 摇杆按钮
             else -> 0.11f // 默认使用ABXY的比例
         }
     }
@@ -342,8 +350,11 @@ class ButtonOverlayView @JvmOverloads constructor(
         val drawable = ContextCompat.getDrawable(context, drawableId) ?: 
             throw IllegalArgumentException("Drawable not found: $drawableId")
         
-        val width = (drawable.intrinsicWidth * scale).toInt().takeIf { it > 0 } ?: 100
-        val height = (drawable.intrinsicHeight * scale).toInt().takeIf { it > 0 } ?: 100
+        // 借鉴yuzu的计算方式，考虑用户缩放设置（这里使用默认值100）
+        val userScale = (100 + 50) / 100f // 默认缩放比例
+        
+        val width = (drawable.intrinsicWidth * scale * userScale).toInt().takeIf { it > 0 } ?: 100
+        val height = (drawable.intrinsicHeight * scale * userScale).toInt().takeIf { it > 0 } ?: 100
         
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         
@@ -354,16 +365,24 @@ class ButtonOverlayView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        // 根据yuzu的实现，使用不同的尺寸
-        val size = when (buttonId) {
-            1, 2, 3, 4 -> dpToPx(70) // ABXY 按钮
+        // 根据位图尺寸设置View尺寸
+        val desiredWidth = defaultBitmap?.width ?: dpToPx(70)
+        val desiredHeight = defaultBitmap?.height ?: dpToPx(70)
+        
+        // 确保最小尺寸
+        val minSize = when (buttonId) {
+            1, 2, 3, 4 -> dpToPx(60) // ABXY 按钮
             5, 6 -> dpToPx(80) // L, R 肩键
             7, 8 -> dpToPx(80) // ZL, ZR 扳机键
-            9, 10 -> dpToPx(60) // +, - 按钮
-            11, 12 -> dpToPx(80) // L3, R3 摇杆按钮
-            else -> dpToPx(70) // 默认尺寸
+            9, 10 -> dpToPx(50) // +, - 按钮
+            11, 12 -> dpToPx(70) // L3, R3 摇杆按钮
+            else -> dpToPx(60) // 默认尺寸
         }
-        setMeasuredDimension(size, size)
+        
+        val width = Math.max(desiredWidth, minSize)
+        val height = Math.max(desiredHeight, minSize)
+        
+        setMeasuredDimension(width, height)
     }
     
     fun setPosition(x: Int, y: Int) {
