@@ -199,7 +199,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
 
                 case ProcessCreationFlags.AddressSpace64BitDeprecated:
                     aliasRegion.Size = 0x180000000;
-                    heapRegion.Size = GetHeapSizeForMemoryConfiguration(memConfig);
+                    heapRegion.Size = memConfig == MemoryConfiguration.MemoryConfiguration8GiB ? 0x200000000u : 0x180000000u;
                     stackRegion.Size = 0;
                     tlsIoRegion.Size = 0;
                     CodeRegionStart = 0x8000000;
@@ -230,7 +230,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
                         int addressSpaceWidth = (int)ulong.Log2(reservedAddressSpaceSize);
 
                         aliasRegion.Size = reservedAddressSpaceSize >= 0x1800000000 ? 0x1000000000 : 1UL << (addressSpaceWidth - 3);
-                        heapRegion.Size = GetHeapSizeForMemoryConfiguration(memConfig);
+                        heapRegion.Size = memConfig == MemoryConfiguration.MemoryConfiguration8GiB ? 0x200000000u : 0x180000000u;
                         stackRegion.Size = 1UL << (addressSpaceWidth - 8);
                         tlsIoRegion.Size = 1UL << (addressSpaceWidth - 3);
                         CodeRegionStart = BitUtils.AlignDown(address, RegionAlignment);
@@ -244,7 +244,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
                     else
                     {
                         aliasRegion.Size = 0x1000000000;
-                        heapRegion.Size = GetHeapSizeForMemoryConfiguration(memConfig);
+                        heapRegion.Size = memConfig == MemoryConfiguration.MemoryConfiguration8GiB ? 0x200000000u : 0x180000000u;
                         stackRegion.Size = 0x80000000;
                         tlsIoRegion.Size = 0x1000000000;
                         CodeRegionStart = BitUtils.AlignDown(address, RegionAlignment);
@@ -371,28 +371,6 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
             _allocateFromBack = fromBack;
 
             return _blockManager.Initialize(addrSpaceStart, addrSpaceEnd, slabManager);
-        }
-
-        private static ulong GetHeapSizeForMemoryConfiguration(MemoryConfiguration memConfig)
-        {
-            return memConfig switch
-            {
-                MemoryConfiguration.MemoryConfiguration4GiB or
-                MemoryConfiguration.MemoryConfiguration4GiBAppletDev or
-                MemoryConfiguration.MemoryConfiguration4GiBSystemDev or
-                MemoryConfiguration.MemoryConfiguration6GiB or
-                MemoryConfiguration.MemoryConfiguration6GiBAppletDev => 0x180000000u,
-                MemoryConfiguration.MemoryConfiguration8GiB => 0x200000000u,
-                MemoryConfiguration.MemoryConfiguration10GiB or
-                MemoryConfiguration.MemoryConfiguration10GiBAppletDev => 0x280000000u,
-                MemoryConfiguration.MemoryConfiguration12GiB or
-                MemoryConfiguration.MemoryConfiguration12GiBAppletDev => 0x300000000u,
-                MemoryConfiguration.MemoryConfiguration14GiB or
-                MemoryConfiguration.MemoryConfiguration14GiBAppletDev => 0x380000000u,
-                MemoryConfiguration.MemoryConfiguration16GiB or
-                MemoryConfiguration.MemoryConfiguration16GiBAppletDev => 0x400000000u,
-                _ => 0x180000000u
-            };
         }
 
         private static void SortRegion(ref Region lhs, ref Region rhs, bool checkForEquality = false)
