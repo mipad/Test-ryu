@@ -31,5 +31,13 @@ namespace Ryujinx.HLE.HOS.Services.Spl.Types
         HoagMicron1y4GiB,
         AulaMicron1y4GiB,
         AulaSamsung1y8GiBX,
+        IowaSamsung10GiB,
+        IowaSamsung12GiB,
+        IowaSamsung14GiB,
+        IowaSamsung16GiB,
+        HoagSamsung10GiB,
+        HoagSamsung12GiB,
+        HoagSamsung14GiB,
+        HoagSamsung16GiB,
     }
 }
