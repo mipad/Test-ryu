@@ -43,7 +43,7 @@ class JoystickView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(70)
+        val size = dpToPx(80) // 从70dp增加到80dp，增大摇杆杆子
         setMeasuredDimension(size, size)
     }
     
@@ -68,7 +68,7 @@ class JoystickView @JvmOverloads constructor(
         this.isTouching = isTouching
         
         // 增大移动范围，实现从中心到边缘的效果
-        val maxOffset = width * 0.5f  // 从0.4f增加到0.5f，增大移动范围
+        val maxOffset = width * 0.4f  // 从0.5f减小到0.4f，减小移动范围使其更合理
         translationX = stickX * maxOffset
         translationY = stickY * maxOffset
         
@@ -326,7 +326,7 @@ class JoystickRangeView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(180) // 从140dp增加到180dp，增大摇杆范围
+        val size = dpToPx(140) // 从180dp减小到140dp，减小摇杆范围
         setMeasuredDimension(size, size)
     }
     
@@ -775,8 +775,8 @@ class GameController(var activity: Activity) {
         virtualJoysticks[joystickId]?.let { joystick ->
             val centerX = joystick.width / 2f
             val centerY = joystick.height / 2f
-            // 增大最大距离，让摇杆可以移动到边缘
-            val maxDistance = centerX * 1.2f  // 从0.9f增加到1.2f，进一步增大范围
+            // 参考31版本调整最大距离，使用更合理的值
+            val maxDistance = centerX * 0.9f  // 从1.2f减小到0.9f，使摇动范围更合理
             
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -794,12 +794,12 @@ class GameController(var activity: Activity) {
                     // 修复：摇杆移动时不要改变外观
                     joystick.updateStickPosition(normalizedX, normalizedY, false)
                     
-                    // 添加灵敏度调节
+                    // 参考31版本添加灵敏度调节
                     val setting = QuickSettings(activity)
                     val sensitivity = setting.controllerStickSensitivity
                     
-                    val adjustedX = normalizedX * sensitivity
-                    val adjustedY = normalizedY * sensitivity
+                    val adjustedX = MathUtils.clamp(normalizedX * sensitivity, -1f, 1f)
+                    val adjustedY = MathUtils.clamp(normalizedY * sensitivity, -1f, 1f)
                     
                     // 发送摇杆数据
                     if (isLeftStick) {
