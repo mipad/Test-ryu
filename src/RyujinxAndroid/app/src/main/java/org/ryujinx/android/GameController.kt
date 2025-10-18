@@ -68,12 +68,13 @@ class JoystickView @JvmOverloads constructor(
         this.isTouching = isTouching
         
         // 增大移动范围，实现从中心到边缘的效果
-        val maxOffset = width * 0.4f
+        val maxOffset = width * 0.5f  // 从0.4f增加到0.5f，增大移动范围
         translationX = stickX * maxOffset
         translationY = stickY * maxOffset
         
-        // 按压状态改变图片 - 确保使用矢量图资源
-        if (isTouching && (stickX != 0f || stickY != 0f)) {
+        // 修复：摇杆移动时不要改变资源，保持原有外观
+        // 只在编辑模式下显示按压状态
+        if (isEditing && isTouching) {
             setImageResource(R.drawable.joystick_depressed)
         } else {
             setImageResource(R.drawable.joystick)
@@ -86,6 +87,17 @@ class JoystickView @JvmOverloads constructor(
             dp.toFloat(), 
             resources.displayMetrics
         ).toInt()
+    }
+    
+    // 添加编辑模式状态
+    private var isEditing: Boolean = false
+    
+    fun setEditingMode(editing: Boolean) {
+        isEditing = editing
+        // 重置到正常状态
+        if (!editing) {
+            setImageResource(R.drawable.joystick)
+        }
     }
 }
 
@@ -227,7 +239,7 @@ class DraggableButtonView @JvmOverloads constructor(
         val size = when (buttonId) {
             5, 6, 7, 8 -> dpToPx(90) // L, R, ZL, ZR 按钮增大到90dp
             9, 10 -> dpToPx(30) // +, - 按钮减小到30dp
-            11, 12 -> dpToPx(45) // L3, R3 按钮调整为45dp
+            11, 12 -> dpToPx(50) // L3, R3 按钮调整为50dp（从45dp增大）
             else -> dpToPx(50) // 其他按钮保持50dp
         }
         setMeasuredDimension(size, size)
@@ -314,7 +326,7 @@ class JoystickRangeView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val size = dpToPx(140)
+        val size = dpToPx(180) // 从140dp增加到180dp，增大摇杆范围
         setMeasuredDimension(size, size)
     }
     
@@ -635,7 +647,7 @@ class GameController(var activity: Activity) {
                         handleButtonDragEvent(event, config.id)
                     } else {
                         // 游戏模式：发送按键事件
-                        handleButtonEvent(event, config.keyCode)
+                        handleButtonEvent(event, config.keyCode, config.id)
                     }
                     true
                 }
@@ -764,12 +776,12 @@ class GameController(var activity: Activity) {
             val centerX = joystick.width / 2f
             val centerY = joystick.height / 2f
             // 增大最大距离，让摇杆可以移动到边缘
-            val maxDistance = centerX * 0.9f
+            val maxDistance = centerX * 1.2f  // 从0.9f增加到1.2f，进一步增大范围
             
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    // 手指按下时立即变色
-                    joystick.updateStickPosition(0f, 0f, true)
+                    // 手指按下时不要变色，保持原有状态
+                    joystick.updateStickPosition(0f, 0f, false)
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val x = event.x - centerX
@@ -779,9 +791,10 @@ class GameController(var activity: Activity) {
                     val normalizedX = MathUtils.clamp(x / maxDistance, -1f, 1f)
                     val normalizedY = MathUtils.clamp(y / maxDistance, -1f, 1f)
                     
-                    joystick.updateStickPosition(normalizedX, normalizedY, true)
+                    // 修复：摇杆移动时不要改变外观
+                    joystick.updateStickPosition(normalizedX, normalizedY, false)
                     
-                    // 添加灵敏度调节 - 这是修复的关键部分
+                    // 添加灵敏度调节
                     val setting = QuickSettings(activity)
                     val sensitivity = setting.controllerStickSensitivity
                     
@@ -978,23 +991,19 @@ class GameController(var activity: Activity) {
         return true
     }
     
-    private fun handleButtonEvent(event: MotionEvent, keyCode: Int): Boolean {
+    private fun handleButtonEvent(event: MotionEvent, keyCode: Int, buttonId: Int): Boolean {
         if (controllerId == -1) {
             controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
         }
         
-        // 修正：通过keyCode找到对应的按钮配置，然后通过按钮id找到正确的按钮视图
-        val config = buttonLayoutManager?.getButtonConfigByKeyCode(keyCode)
-        val buttonId = config?.id ?: -1
-        
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                // 修正：使用正确的按钮id来设置按压状态
+                // 设置按钮按压状态
                 virtualButtons[buttonId]?.buttonPressed = true
                 RyujinxNative.jnaInstance.inputSetButtonPressed(keyCode, controllerId)
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                // 修正：使用正确的按钮id来设置按压状态
+                // 设置按钮释放状态
                 virtualButtons[buttonId]?.buttonPressed = false
                 RyujinxNative.jnaInstance.inputSetButtonReleased(keyCode, controllerId)
             }
@@ -1005,6 +1014,13 @@ class GameController(var activity: Activity) {
     fun setEditingMode(editing: Boolean) {
         isEditing = editing
         editModeContainer?.isVisible = editing
+        
+        // 设置所有摇杆的编辑模式
+        virtualJoysticks.values.forEach { joystick ->
+            if (joystick is JoystickView) {
+                joystick.setEditingMode(editing)
+            }
+        }
         
         virtualButtons.values.forEach { button ->
             button.buttonPressed = false
