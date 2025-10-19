@@ -57,8 +57,8 @@ class JoystickOverlayView @JvmOverloads constructor(
             invalidate()
         }
     
-    // 外圈基础缩放
-    private val outerBaseScale = 0.3f
+    // 外圈基础缩放 - 改为0.4f
+    private val outerBaseScale = 0.4f
     // 内圈相对于外圈的比例
     private val innerRelativeScale = 1.0f / 1.66f
     
@@ -158,7 +158,7 @@ class JoystickOverlayView @JvmOverloads constructor(
             canvas.drawBitmap(bitmap, outerLeft, outerTop, paint)
         }
         
-        // 绘制内圈
+        // 绘制内圈 - 确保在中心位置
         val innerBitmap = if (isTouching) innerPressedBitmap else innerDefaultBitmap
         innerBitmap?.let { bitmap ->
             val innerDrawWidth = innerRect.width()
@@ -167,9 +167,11 @@ class JoystickOverlayView @JvmOverloads constructor(
             val maxMoveX = movementRadius
             val maxMoveY = movementRadius
             
+            // 计算内圈位置，确保在中心
             val innerX = centerX + stickX * maxMoveX - innerDrawWidth / 2
             val innerY = centerY + stickY * maxMoveY - innerDrawHeight / 2
             
+            // 确保内圈不会超出外圈边界
             val clampedX = MathUtils.clamp(innerX, 0f, (width - innerDrawWidth).toFloat())
             val clampedY = MathUtils.clamp(innerY, 0f, (height - innerDrawHeight).toFloat())
             
@@ -209,8 +211,8 @@ class DpadOverlayView @JvmOverloads constructor(
     private var pressedOneDirectionBitmap: Bitmap? = null
     private var pressedTwoDirectionsBitmap: Bitmap? = null
     
-    // 方向键基础缩放
-    private val dpadBaseScale = 0.25f
+    // 方向键基础缩放 - 改为0.35f
+    private val dpadBaseScale = 0.35f
     
     init {
         setBackgroundResource(0)
@@ -427,14 +429,14 @@ class ButtonOverlayView @JvmOverloads constructor(
     }
     
     private fun getScaleForButton(): Float {
-        // 修改按钮基础缩放：ABXY、L3、R3改为0.5f，+、-按钮改为0.3f
+        // 修改按钮基础缩放：ABXY改为0.38f，L3、R3改为0.65f
         return when (buttonId) {
-            1, 2, 3, 4 -> 0.5f // ABXY 按钮 - 改为0.5f
+            1, 2, 3, 4 -> 0.38f // ABXY 按钮 - 改为0.38f
             5, 6 -> 0.26f // L, R 肩键 - 保持不变
             7, 8 -> 0.26f // ZL, ZR 扳机键 - 保持不变
-            9, 10 -> 0.3f // +, - 按钮 - 改为0.3f
-            11, 12 -> 0.5f // L3, R3 摇杆按钮 - 改为0.5f
-            else -> 0.5f // 其他按钮默认0.5f
+            9, 10 -> 0.3f // +, - 按钮 - 保持不变
+            11, 12 -> 0.65f // L3, R3 摇杆按钮 - 改为0.65f
+            else -> 0.38f // 其他按钮默认0.38f
         }
     }
     
