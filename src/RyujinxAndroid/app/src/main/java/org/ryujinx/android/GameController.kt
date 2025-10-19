@@ -922,6 +922,14 @@ class GameController(var activity: Activity) {
         val manager = buttonLayoutManager ?: return
         val buttonContainer = this.buttonContainer ?: return
         
+        // 确保容器已经测量完成
+        if (buttonContainer.width <= 0 || buttonContainer.height <= 0) {
+            buttonContainer.post {
+                refreshControls()
+            }
+            return
+        }
+        
         virtualButtons.values.forEach { buttonContainer.removeView(it) }
         virtualJoysticks.values.forEach { buttonContainer.removeView(it) }
         dpadView?.let { buttonContainer.removeView(it) }
@@ -939,7 +947,6 @@ class GameController(var activity: Activity) {
             controlId in 101..102 -> buttonLayoutManager?.setJoystickEnabled(controlId, enabled)
             controlId == 201 -> buttonLayoutManager?.setDpadEnabled(enabled)
         }
-        refreshControls()
     }
     
     fun setControlOpacity(controlId: Int, opacity: Int) {
@@ -965,7 +972,6 @@ class GameController(var activity: Activity) {
             controlId in 101..102 -> buttonLayoutManager?.setJoystickScale(controlId, scale)
             controlId == 201 -> buttonLayoutManager?.setDpadScale(scale)
         }
-        refreshControls()
     }
     
     fun getControlScale(controlId: Int): Int {
