@@ -1,4 +1,4 @@
-package org.karyujinx.android.providers
+package org.ryujinx.android.providers
 
 import android.database.Cursor
 import android.database.MatrixCursor
@@ -7,9 +7,9 @@ import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import android.provider.DocumentsProvider
 import android.webkit.MimeTypeMap
-import org.karyujinx.android.BuildConfig
-import org.karyujinx.android.R
-import org.karyujinx.android.KaryujinxApplication
+import org.ryujinx.android.BuildConfig
+import org.ryujinx.android.R
+import org.ryujinx.android.KaryujinxApplication
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileNotFoundException
