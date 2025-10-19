@@ -580,8 +580,8 @@ class ButtonLayoutManager(private val context: Context) {
         ButtonConfig(8, "ZR", 0.9f, 0.1f, GamePadButtonInputId.RightTrigger.ordinal),
         ButtonConfig(9, "+", 0.8f, 0.1f, GamePadButtonInputId.Plus.ordinal),
         ButtonConfig(10, "-", 0.2f, 0.1f, GamePadButtonInputId.Minus.ordinal),
-        ButtonConfig(11, "L3", 0.2f, 0.3f, GamePadButtonInputId.LeftStickButton.ordinal), // L3放在-下面
-        ButtonConfig(12, "R3", 0.8f, 0.3f, GamePadButtonInputId.RightStickButton.ordinal) // R3放在+下面
+        ButtonConfig(11, "L3", 0.2f, 0.2f, GamePadButtonInputId.LeftStickButton.ordinal), // L3放在-下面
+        ButtonConfig(12, "R3", 0.8f, 0.2f, GamePadButtonInputId.RightStickButton.ordinal) // R3放在+下面
     )
     
     private val joystickConfigs = listOf(
