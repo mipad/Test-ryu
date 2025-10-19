@@ -119,7 +119,8 @@ class JoystickOverlayView @JvmOverloads constructor(
         val innerSize = (w * innerRelativeScale).toInt()
         innerRect.set(0, 0, innerSize, innerSize)
         
-        movementRadius = (w - innerSize) / 2.5f
+        // 修正移动半径计算，确保内圈能在外圈内正常移动
+        movementRadius = (w - innerSize) / 3f
     }
     
     fun setPosition(x: Int, y: Int) {
@@ -151,29 +152,43 @@ class JoystickOverlayView @JvmOverloads constructor(
             alpha = opacity
         }
         
-        // 绘制外圈
+        // 绘制外圈 - 确保居中
         outerBitmap?.let { bitmap ->
             val outerLeft = (width - bitmap.width) / 2f
             val outerTop = (height - bitmap.height) / 2f
             canvas.drawBitmap(bitmap, outerLeft, outerTop, paint)
         }
         
-        // 绘制内圈 - 确保在中心位置
+        // 绘制内圈 - 修正位置计算，确保内圈在外圈的中心
         val innerBitmap = if (isTouching) innerPressedBitmap else innerDefaultBitmap
         innerBitmap?.let { bitmap ->
-            val innerDrawWidth = innerRect.width()
-            val innerDrawHeight = innerRect.height()
+            val innerWidth = bitmap.width
+            val innerHeight = bitmap.height
             
-            val maxMoveX = movementRadius
-            val maxMoveY = movementRadius
+            // 计算内圈在外圈内的可移动范围
+            val outerWidth = outerBitmap?.width ?: width
+            val outerHeight = outerBitmap?.height ?: height
             
-            // 计算内圈位置，确保在中心
-            val innerX = centerX + stickX * maxMoveX - innerDrawWidth / 2
-            val innerY = centerY + stickY * maxMoveY - innerDrawHeight / 2
+            // 外圈的实际绘制区域
+            val outerDrawLeft = (width - outerWidth) / 2f
+            val outerDrawTop = (height - outerHeight) / 2f
+            val outerDrawRight = outerDrawLeft + outerWidth
+            val outerDrawBottom = outerDrawTop + outerHeight
+            
+            // 外圈的中心点（实际绘制区域的中心）
+            val outerCenterX = outerDrawLeft + outerWidth / 2f
+            val outerCenterY = outerDrawTop + outerHeight / 2f
+            
+            // 内圈在外圈内的最大移动距离
+            val maxMoveDistance = (outerWidth - innerWidth) / 2.5f
+            
+            // 计算内圈位置，确保在内圈始终在外圈范围内
+            val innerTargetX = outerCenterX + stickX * maxMoveDistance - innerWidth / 2f
+            val innerTargetY = outerCenterY + stickY * maxMoveDistance - innerHeight / 2f
             
             // 确保内圈不会超出外圈边界
-            val clampedX = MathUtils.clamp(innerX, 0f, (width - innerDrawWidth).toFloat())
-            val clampedY = MathUtils.clamp(innerY, 0f, (height - innerDrawHeight).toFloat())
+            val clampedX = MathUtils.clamp(innerTargetX, outerDrawLeft, outerDrawRight - innerWidth)
+            val clampedY = MathUtils.clamp(innerTargetY, outerDrawTop, outerDrawBottom - innerHeight)
             
             canvas.drawBitmap(bitmap, clampedX, clampedY, paint)
         }
