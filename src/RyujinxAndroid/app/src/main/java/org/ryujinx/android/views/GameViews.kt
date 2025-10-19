@@ -662,7 +662,7 @@ class GameViews {
                                             }
                                         }
                                     }
-                                    mainViewModel.controller?.refreshControls()
+                                    // 不立即刷新，等待用户确认
                                 },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.secondaryContainer
@@ -673,7 +673,11 @@ class GameViews {
 
                             // 右下角：确定
                             Button(
-                                onClick = onDismiss
+                                onClick = {
+                                    // 在关闭对话框时应用所有更改
+                                    mainViewModel.controller?.refreshControls()
+                                    onDismiss()
+                                }
                             ) {
                                 Text(text = "确定")
                             }
@@ -825,7 +829,7 @@ class GameViews {
                             onValueChange = { 
                                 scale.value = it.toInt()
                                 mainViewModel.controller?.setControlScale(control.id, scale.value)
-                                mainViewModel.controller?.refreshControls()
+                                // 不立即刷新，避免位置偏移
                             },
                             valueRange = 10f..200f,
                             modifier = Modifier.fillMaxWidth()
@@ -852,7 +856,7 @@ class GameViews {
                             onValueChange = { 
                                 opacity.value = it.toInt()
                                 mainViewModel.controller?.setControlOpacity(control.id, opacity.value)
-                                mainViewModel.controller?.refreshControls()
+                                // 不立即刷新，避免位置偏移
                             },
                             valueRange = 0f..100f,
                             modifier = Modifier.fillMaxWidth()
@@ -872,7 +876,7 @@ class GameViews {
                                 onCheckedChange = { 
                                     enabled.value = it
                                     mainViewModel.controller?.setControlEnabled(control.id, enabled.value)
-                                    mainViewModel.controller?.refreshControls()
+                                    // 不立即刷新，避免位置偏移
                                 }
                             )
                         }
@@ -892,7 +896,7 @@ class GameViews {
                                     mainViewModel.controller?.setControlScale(control.id, 50)
                                     mainViewModel.controller?.setControlOpacity(control.id, 100)
                                     mainViewModel.controller?.setControlEnabled(control.id, true)
-                                    mainViewModel.controller?.refreshControls()
+                                    // 不立即刷新，避免位置偏移
                                 },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.secondaryContainer
@@ -902,7 +906,11 @@ class GameViews {
                             }
 
                             Button(
-                                onClick = onDismiss
+                                onClick = {
+                                    // 在返回时刷新一次
+                                    mainViewModel.controller?.refreshControls()
+                                    onDismiss()
+                                }
                             ) {
                                 Text(text = "确定")
                             }
