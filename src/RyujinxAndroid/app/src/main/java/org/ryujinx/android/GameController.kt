@@ -27,11 +27,12 @@ import androidx.core.view.isVisible
 import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.QuickSettings
 
-// 修正的摇杆视图 - 内圈按外圈比例缩放
+// 修正的摇杆视图 - 添加 overlayScale 参数
 class JoystickOverlayView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
-    defStyleAttr: Int = 0
+    defStyleAttr: Int = 0,
+    var overlayScale: Int = 50 // 添加 overlayScale 参数
 ) : View(context, attrs, defStyleAttr) {
     
     var stickId: Int = 0
@@ -81,9 +82,9 @@ class JoystickOverlayView @JvmOverloads constructor(
         val drawable = ContextCompat.getDrawable(context, drawableId) ?: 
             throw IllegalArgumentException("Drawable not found: $drawableId")
         
-        // 计算最终缩放
+        // 计算最终缩放 - 修正类型转换问题
         val finalScale = if (applyUserScale) {
-            baseScale * (overlayScale + 50) / 100f
+            baseScale * (overlayScale.toFloat() + 50) / 100f
         } else {
             baseScale
         }
@@ -100,9 +101,9 @@ class JoystickOverlayView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        // 基于外圈尺寸计算
+        // 基于外圈尺寸计算 - 修正类型转换
         val baseSize = (context.resources.displayMetrics.widthPixels * 0.2).toInt()
-        val scaledSize = (baseSize * outerBaseScale * (overlayScale + 50) / 100f).toInt()
+        val scaledSize = (baseSize * outerBaseScale * (overlayScale.toFloat() + 50) / 100f).toInt()
         val size = Math.max(scaledSize, dpToPx(120))
         setMeasuredDimension(size, size)
     }
@@ -185,11 +186,12 @@ class JoystickOverlayView @JvmOverloads constructor(
     }
 }
 
-// 修正的方向键视图
+// 修正的方向键视图 - 添加 overlayScale 参数
 class DpadOverlayView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
-    defStyleAttr: Int = 0
+    defStyleAttr: Int = 0,
+    var overlayScale: Int = 50 // 添加 overlayScale 参数
 ) : View(context, attrs, defStyleAttr) {
     
     var currentDirection: DpadDirection = DpadDirection.NONE
@@ -225,7 +227,7 @@ class DpadOverlayView @JvmOverloads constructor(
         val drawable = ContextCompat.getDrawable(context, drawableId) ?: 
             throw IllegalArgumentException("Drawable not found: $drawableId")
         
-        val userScale = (overlayScale + 50) / 100f
+        val userScale = (overlayScale.toFloat() + 50) / 100f
         val finalScale = baseScale * userScale
         
         val width = (drawable.intrinsicWidth * finalScale).toInt().takeIf { it > 0 } ?: 120
@@ -241,7 +243,7 @@ class DpadOverlayView @JvmOverloads constructor(
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val baseSize = (context.resources.displayMetrics.widthPixels * 0.25).toInt()
-        val scaledSize = (baseSize * dpadBaseScale * (overlayScale + 50) / 100f).toInt()
+        val scaledSize = (baseSize * dpadBaseScale * (overlayScale.toFloat() + 50) / 100f).toInt()
         val size = Math.max(scaledSize, dpToPx(100))
         setMeasuredDimension(size, size)
     }
@@ -394,11 +396,12 @@ class DpadOverlayView @JvmOverloads constructor(
     }
 }
 
-// 修正的按钮视图
+// 修正的按钮视图 - 添加 overlayScale 参数
 class ButtonOverlayView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
-    defStyleAttr: Int = 0
+    defStyleAttr: Int = 0,
+    var overlayScale: Int = 50 // 添加 overlayScale 参数
 ) : View(context, attrs, defStyleAttr) {
     
     var buttonId: Int = 0
@@ -439,7 +442,7 @@ class ButtonOverlayView @JvmOverloads constructor(
         val drawable = ContextCompat.getDrawable(context, drawableId) ?: 
             throw IllegalArgumentException("Drawable not found: $drawableId")
         
-        val userScale = (overlayScale + 50) / 100f
+        val userScale = (overlayScale.toFloat() + 50) / 100f
         val finalScale = baseScale * userScale
         
         val width = (drawable.intrinsicWidth * finalScale).toInt().takeIf { it > 0 } ?: 100
@@ -718,7 +721,7 @@ class ButtonLayoutManager(private val context: Context) {
     fun getDpadConfig(): DpadConfig = dpadConfig
 }
 
-// GameController 类保持不变...
+// 修正的 GameController 类
 class GameController(var activity: Activity) {
 
     companion object {
@@ -804,11 +807,14 @@ class GameController(var activity: Activity) {
         val effectiveWidth = if (containerWidth > 0) containerWidth else activity.resources.displayMetrics.widthPixels
         val effectiveHeight = if (containerHeight > 0) containerHeight else activity.resources.displayMetrics.heightPixels
         
-        // 创建摇杆
+        // 创建摇杆 - 传递 overlayScale 参数
         manager.getAllJoystickConfigs().forEach { config ->
             if (!manager.isJoystickEnabled(config.id)) return@forEach
             
-            val joystick = JoystickOverlayView(buttonContainer.context).apply {
+            val joystick = JoystickOverlayView(
+                buttonContainer.context,
+                overlayScale = manager.overlayScale // 传递 overlayScale
+            ).apply {
                 stickId = config.id
                 isLeftStick = config.isLeft
                 opacity = (manager.getJoystickOpacity(config.id) * 255 / 100)
@@ -830,10 +836,13 @@ class GameController(var activity: Activity) {
             virtualJoysticks[config.id] = joystick
         }
         
-        // 创建方向键
+        // 创建方向键 - 传递 overlayScale 参数
         if (manager.isDpadEnabled()) {
             val (dpadX, dpadY) = manager.getDpadPosition(effectiveWidth, effectiveHeight)
-            dpadView = DpadOverlayView(buttonContainer.context).apply {
+            dpadView = DpadOverlayView(
+                buttonContainer.context,
+                overlayScale = manager.overlayScale // 传递 overlayScale
+            ).apply {
                 opacity = (manager.getDpadOpacity() * 255 / 100)
                 setPosition(dpadX, dpadY)
                 
@@ -849,11 +858,14 @@ class GameController(var activity: Activity) {
             buttonContainer.addView(dpadView)
         }
         
-        // 创建按钮
+        // 创建按钮 - 传递 overlayScale 参数
         manager.getAllButtonConfigs().forEach { config ->
             if (!manager.isButtonEnabled(config.id)) return@forEach
             
-            val button = ButtonOverlayView(buttonContainer.context).apply {
+            val button = ButtonOverlayView(
+                buttonContainer.context,
+                overlayScale = manager.overlayScale // 传递 overlayScale
+            ).apply {
                 buttonId = config.id
                 buttonText = config.text
                 opacity = (manager.getButtonOpacity(config.id) * 255 / 100)
