@@ -434,7 +434,7 @@ class ButtonOverlayView @JvmOverloads constructor(
         pressedBitmap = getBitmapFromVectorDrawable(pressedResId, scale)
     }
     
-    private fun setBitmapsForButton() {
+    fun setBitmapsForButton() {
         when (buttonId) {
             1 -> setBitmaps(R.drawable.facebutton_a, R.drawable.facebutton_a_depressed)
             2 -> setBitmaps(R.drawable.facebutton_b, R.drawable.facebutton_b_depressed)
