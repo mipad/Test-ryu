@@ -1760,7 +1760,7 @@ Row(
     verticalAlignment = Alignment.CenterVertically
 ) {
     Text(text = "DRAM Configuration")
-    val memoryConfigNames = listOf("4GB", "4GB Applet Dev", "4GB System Dev", "6GB", "6GB Applet Dev", "8GB", "10GB", "12GB", "14GB")
+    val memoryConfigNames = listOf("4GB", "4GB Applet Dev", "4GB System Dev", "6GB", "6GB Applet Dev", "8GB", "10GB", "12GB", "14GB", "16GB")
     Text(
         text = memoryConfigNames[memoryConfiguration.value],
         color = MaterialTheme.colorScheme.primary
@@ -1788,7 +1788,7 @@ if (showMemoryConfigDialog.value) {
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
                 
-                val memoryOptions = listOf("4GB", "4GB Applet Dev", "4GB System Dev", "6GB", "6GB Applet Dev", "8GB", "10GB", "12GB", "14GB")
+                val memoryOptions = listOf("4GB", "4GB Applet Dev", "4GB System Dev", "6GB", "6GB Applet Dev", "8GB", "10GB", "12GB", "14GB", "16GB")
                 
                 memoryOptions.forEachIndexed { index, option ->
                     Row(
