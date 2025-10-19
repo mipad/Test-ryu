@@ -570,8 +570,6 @@ class GameViews {
             onDismiss: () -> Unit
         ) {
             val selectedControl = remember { mutableStateOf<ControlItem?>(null) }
-            val globalScale = remember { mutableStateOf(50) }
-            val globalOpacity = remember { mutableStateOf(100) }
 
             // 如果选择了具体控件，显示控件调整对话框
             if (selectedControl.value != null) {
@@ -606,75 +604,6 @@ class GameViews {
                                 .align(Alignment.CenterHorizontally)
                         )
 
-                        // 全局设置
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp)
-                            ) {
-                                Text(
-                                    text = "全局设置",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    modifier = Modifier.padding(bottom = 12.dp)
-                                )
-                                
-                                // 全局缩放
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(text = "全局缩放")
-                                    Text(text = "${globalScale.value}%")
-                                }
-                                Slider(
-                                    value = globalScale.value.toFloat(),
-                                    onValueChange = { 
-                                        globalScale.value = it.toInt()
-                                        mainViewModel.controller?.updateGlobalSettings(globalScale.value, globalOpacity.value)
-                                    },
-                                    valueRange = 0f..100f,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                
-                                Spacer(modifier = Modifier.height(8.dp))
-                                
-                                // 全局透明度
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(text = "全局透明度")
-                                    Text(text = "${globalOpacity.value}%")
-                                }
-                                Slider(
-                                    value = globalOpacity.value.toFloat(),
-                                    onValueChange = { 
-                                        globalOpacity.value = it.toInt()
-                                        mainViewModel.controller?.updateGlobalSettings(globalScale.value, globalOpacity.value)
-                                    },
-                                    valueRange = 0f..100f,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-                        }
-
-                        // 分隔线
-                        HorizontalDivider(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            thickness = 1.dp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-                        )
-
                         Text(
                             text = "单个按键设置",
                             style = MaterialTheme.typography.titleMedium,
@@ -685,11 +614,12 @@ class GameViews {
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(200.dp)
+                                .height(300.dp)
                         ) {
                             itemsIndexed(getControlItems()) { index, control ->
                                 ControlListItem(
                                     control = control,
+                                    mainViewModel = mainViewModel,
                                     onClick = { selectedControl.value = control }
                                 )
                                 if (index < getControlItems().size - 1) {
@@ -712,21 +642,21 @@ class GameViews {
                             // 左下角：全局还原
                             Button(
                                 onClick = {
-                                    globalScale.value = 50
-                                    globalOpacity.value = 100
-                                    mainViewModel.controller?.updateGlobalSettings(50, 100)
                                     // 重置所有单独设置
                                     getControlItems().forEach { control ->
                                         when (control.type) {
                                             ControlType.BUTTON -> {
+                                                mainViewModel.controller?.setControlScale(control.id, 50)
                                                 mainViewModel.controller?.setControlOpacity(control.id, 100)
                                                 mainViewModel.controller?.setControlEnabled(control.id, true)
                                             }
                                             ControlType.JOYSTICK -> {
+                                                mainViewModel.controller?.setControlScale(control.id, 50)
                                                 mainViewModel.controller?.setControlOpacity(control.id, 100)
                                                 mainViewModel.controller?.setControlEnabled(control.id, true)
                                             }
                                             ControlType.DPAD -> {
+                                                mainViewModel.controller?.setControlScale(control.id, 50)
                                                 mainViewModel.controller?.setControlOpacity(control.id, 100)
                                                 mainViewModel.controller?.setControlEnabled(control.id, true)
                                             }
@@ -738,7 +668,7 @@ class GameViews {
                                     containerColor = MaterialTheme.colorScheme.secondaryContainer
                                 )
                             ) {
-                                Text(text = "全局还原")
+                                Text(text = "全部重置")
                             }
 
                             // 右下角：确定
@@ -756,8 +686,19 @@ class GameViews {
         @Composable
         fun ControlListItem(
             control: ControlItem,
+            mainViewModel: MainViewModel,
             onClick: () -> Unit
         ) {
+            val scale = remember { 
+                mutableStateOf(mainViewModel.controller?.getControlScale(control.id) ?: 50)
+            }
+            val opacity = remember { 
+                mutableStateOf(mainViewModel.controller?.getControlOpacity(control.id) ?: 100)
+            }
+            val enabled = remember { 
+                mutableStateOf(mainViewModel.controller?.isControlEnabled(control.id) ?: true)
+            }
+
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -790,11 +731,22 @@ class GameViews {
                             )
                         }
                     }
-                    Text(
-                         text = "系统默认",
-                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                         fontSize = 16.sp
-                    )
+                    
+                    // 显示当前设置状态
+                    Column(
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        Text(
+                            text = if (enabled.value) "显示中" else "已隐藏",
+                            color = if (enabled.value) Color.Green else Color.Red,
+                            fontSize = 12.sp
+                        )
+                        Text(
+                            text = "大小:${scale.value}% 透明:${opacity.value}%",
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            fontSize = 10.sp
+                        )
+                    }
                 }
             }
         }
@@ -805,9 +757,15 @@ class GameViews {
             onDismiss: () -> Unit,
             mainViewModel: MainViewModel
         ) {
-            val scale = remember { mutableStateOf(50) }
-            val opacity = remember { mutableStateOf(100) }
-            val enabled = remember { mutableStateOf(true) }
+            val scale = remember { 
+                mutableStateOf(mainViewModel.controller?.getControlScale(control.id) ?: 50)
+            }
+            val opacity = remember { 
+                mutableStateOf(mainViewModel.controller?.getControlOpacity(control.id) ?: 100)
+            }
+            val enabled = remember { 
+                mutableStateOf(mainViewModel.controller?.isControlEnabled(control.id) ?: true)
+            }
 
             BasicAlertDialog(onDismissRequest = onDismiss) {
                 Surface(
@@ -850,7 +808,7 @@ class GameViews {
 
                         // 单独缩放
                         Text(
-                            text = "单独缩放",
+                            text = "按键大小",
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
@@ -866,9 +824,10 @@ class GameViews {
                             value = scale.value.toFloat(),
                             onValueChange = { 
                                 scale.value = it.toInt()
-                                // 这里需要实现单独缩放逻辑
+                                mainViewModel.controller?.setControlScale(control.id, scale.value)
+                                mainViewModel.controller?.refreshControls()
                             },
-                            valueRange = 0f..100f,
+                            valueRange = 10f..200f,
                             modifier = Modifier.fillMaxWidth()
                         )
 
@@ -876,7 +835,7 @@ class GameViews {
 
                         // 单独透明度
                         Text(
-                            text = "单独透明度",
+                            text = "按键透明度",
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
@@ -893,6 +852,7 @@ class GameViews {
                             onValueChange = { 
                                 opacity.value = it.toInt()
                                 mainViewModel.controller?.setControlOpacity(control.id, opacity.value)
+                                mainViewModel.controller?.refreshControls()
                             },
                             valueRange = 0f..100f,
                             modifier = Modifier.fillMaxWidth()
@@ -906,12 +866,13 @@ class GameViews {
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(text = "显示")
+                            Text(text = "显示按键")
                             Switch(
                                 checked = enabled.value,
                                 onCheckedChange = { 
                                     enabled.value = it
                                     mainViewModel.controller?.setControlEnabled(control.id, enabled.value)
+                                    mainViewModel.controller?.refreshControls()
                                 }
                             )
                         }
@@ -928,8 +889,10 @@ class GameViews {
                                     scale.value = 50
                                     opacity.value = 100
                                     enabled.value = true
+                                    mainViewModel.controller?.setControlScale(control.id, 50)
                                     mainViewModel.controller?.setControlOpacity(control.id, 100)
                                     mainViewModel.controller?.setControlEnabled(control.id, true)
+                                    mainViewModel.controller?.refreshControls()
                                 },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.secondaryContainer
