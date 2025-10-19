@@ -570,10 +570,10 @@ class ButtonLayoutManager(private val context: Context) {
     
     // 修改按钮初始位置：交换A和B、X和Y的位置，调整L3和R3位置
     private val buttonConfigs = listOf(
-        ButtonConfig(1, "A", 0.92f, 0.6f, GamePadButtonInputId.A.ordinal), // A和B交换位置
+        ButtonConfig(1, "A", 0.90f, 0.6f, GamePadButtonInputId.A.ordinal), // A和B交换位置
         ButtonConfig(2, "B", 0.85f, 0.7f, GamePadButtonInputId.B.ordinal), // B和A交换位置
         ButtonConfig(3, "X", 0.85f, 0.5f, GamePadButtonInputId.X.ordinal), // X和Y交换位置
-        ButtonConfig(4, "Y", 0.78f, 0.6f, GamePadButtonInputId.Y.ordinal), // Y和X交换位置
+        ButtonConfig(4, "Y", 0.80f, 0.6f, GamePadButtonInputId.Y.ordinal), // Y和X交换位置
         ButtonConfig(5, "L", 0.1f, 0.2f, GamePadButtonInputId.LeftShoulder.ordinal),
         ButtonConfig(6, "R", 0.9f, 0.2f, GamePadButtonInputId.RightShoulder.ordinal),
         ButtonConfig(7, "ZL", 0.1f, 0.1f, GamePadButtonInputId.LeftTrigger.ordinal),
