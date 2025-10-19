@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace 'org.karyujinx.android'
+    namespace 'org.ryujinx.android'
     compileSdk 35
     ndkVersion "27.2.12479018"
     
