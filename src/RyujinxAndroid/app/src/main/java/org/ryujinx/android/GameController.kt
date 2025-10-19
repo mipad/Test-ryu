@@ -57,8 +57,8 @@ class JoystickOverlayView @JvmOverloads constructor(
             invalidate()
         }
     
-    // 外圈基础缩放 - 改为0.4f
-    private val outerBaseScale = 0.4f
+    // 外圈基础缩放 - 还原为0.3f
+    private val outerBaseScale = 0.3f
     // 内圈相对于外圈的比例
     private val innerRelativeScale = 1.0f / 1.66f
     
@@ -226,8 +226,8 @@ class DpadOverlayView @JvmOverloads constructor(
     private var pressedOneDirectionBitmap: Bitmap? = null
     private var pressedTwoDirectionsBitmap: Bitmap? = null
     
-    // 方向键基础缩放 - 改为0.35f
-    private val dpadBaseScale = 0.35f
+    // 方向键基础缩放 - 还原为0.25f，但尺寸要大一点，改为0.3f
+    private val dpadBaseScale = 0.3f
     
     init {
         setBackgroundResource(0)
