@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Emulator Project
+// SPDX-FileCopyrightText: 2023 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package org.ryujinx.android
@@ -27,7 +27,7 @@ import androidx.core.view.isVisible
 import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.QuickSettings
 
-// 完全修正的摇杆视图
+// 修正的摇杆视图 - 内圈按外圈比例缩放
 class JoystickOverlayView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -56,14 +56,10 @@ class JoystickOverlayView @JvmOverloads constructor(
             invalidate()
         }
     
-    // 添加 overlayScale 属性
-    var overlayScale: Int = 50
-        set(value) {
-            field = value.coerceIn(0, 100)
-            loadBitmaps()
-            requestLayout()
-            invalidate()
-        }
+    // 外圈基础缩放
+    private val outerBaseScale = 0.3f
+    // 内圈相对于外圈的比例
+    private val innerRelativeScale = 1.0f / 1.66f
     
     init {
         setBackgroundResource(0)
@@ -71,21 +67,29 @@ class JoystickOverlayView @JvmOverloads constructor(
     }
     
     private fun loadBitmaps() {
-        // 修正：外圈使用 0.3f 缩放，内圈使用 1.0f 缩放
-        outerBitmap = getBitmapFromVectorDrawable(R.drawable.joystick_range, 0.3f)
-        innerDefaultBitmap = getBitmapFromVectorDrawable(R.drawable.joystick, 1.0f)
-        innerPressedBitmap = getBitmapFromVectorDrawable(R.drawable.joystick_depressed, 1.0f)
+        // 外圈使用基础缩放 + 用户缩放
+        outerBitmap = getBitmapFromVectorDrawable(R.drawable.joystick_range, outerBaseScale, applyUserScale = true)
+        
+        // 内圈使用相对比例计算，不单独应用用户缩放
+        // 内圈的实际缩放 = 外圈基础缩放 * 内圈相对比例
+        val innerActualScale = outerBaseScale * innerRelativeScale
+        innerDefaultBitmap = getBitmapFromVectorDrawable(R.drawable.joystick, innerActualScale, applyUserScale = true)
+        innerPressedBitmap = getBitmapFromVectorDrawable(R.drawable.joystick_depressed, innerActualScale, applyUserScale = true)
     }
     
-    private fun getBitmapFromVectorDrawable(drawableId: Int, baseScale: Float): Bitmap {
+    private fun getBitmapFromVectorDrawable(drawableId: Int, baseScale: Float, applyUserScale: Boolean = true): Bitmap {
         val drawable = ContextCompat.getDrawable(context, drawableId) ?: 
             throw IllegalArgumentException("Drawable not found: $drawableId")
         
-        // 修正：用户缩放只应用于外圈，内圈保持 1.0f
-        val userScale = if (baseScale == 1.0f) 1.0f else (overlayScale + 50) / 100f
+        // 计算最终缩放
+        val finalScale = if (applyUserScale) {
+            baseScale * (overlayScale + 50) / 100f
+        } else {
+            baseScale
+        }
         
-        val width = (drawable.intrinsicWidth * baseScale * userScale).toInt().takeIf { it > 0 } ?: 100
-        val height = (drawable.intrinsicHeight * baseScale * userScale).toInt().takeIf { it > 0 } ?: 100
+        val width = (drawable.intrinsicWidth * finalScale).toInt().takeIf { it > 0 } ?: 100
+        val height = (drawable.intrinsicHeight * finalScale).toInt().takeIf { it > 0 } ?: 100
         
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         
@@ -96,9 +100,9 @@ class JoystickOverlayView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        // 修正：使用正确的尺寸计算
+        // 基于外圈尺寸计算
         val baseSize = (context.resources.displayMetrics.widthPixels * 0.2).toInt()
-        val scaledSize = (baseSize * 0.3f * (overlayScale + 50) / 100f).toInt()
+        val scaledSize = (baseSize * outerBaseScale * (overlayScale + 50) / 100f).toInt()
         val size = Math.max(scaledSize, dpToPx(120))
         setMeasuredDimension(size, size)
     }
@@ -110,9 +114,8 @@ class JoystickOverlayView @JvmOverloads constructor(
         centerY = h / 2f
         outerRect.set(0, 0, w, h)
         
-        // 修正：内圈使用固定比例，不应用用户缩放
-        val outerScale = 1.66f
-        val innerSize = (w / outerScale).toInt()
+        // 内圈尺寸基于外圈尺寸的比例计算
+        val innerSize = (w * innerRelativeScale).toInt()
         innerRect.set(0, 0, innerSize, innerSize)
         
         movementRadius = (w - innerSize) / 2.5f
@@ -147,12 +150,14 @@ class JoystickOverlayView @JvmOverloads constructor(
             alpha = opacity
         }
         
+        // 绘制外圈
         outerBitmap?.let { bitmap ->
             val outerLeft = (width - bitmap.width) / 2f
             val outerTop = (height - bitmap.height) / 2f
             canvas.drawBitmap(bitmap, outerLeft, outerTop, paint)
         }
         
+        // 绘制内圈
         val innerBitmap = if (isTouching) innerPressedBitmap else innerDefaultBitmap
         innerBitmap?.let { bitmap ->
             val innerDrawWidth = innerRect.width()
@@ -194,15 +199,6 @@ class DpadOverlayView @JvmOverloads constructor(
             invalidate()
         }
     
-    // 添加 overlayScale 属性
-    var overlayScale: Int = 50
-        set(value) {
-            field = value.coerceIn(0, 100)
-            loadBitmaps()
-            requestLayout()
-            invalidate()
-        }
-    
     enum class DpadDirection {
         NONE, UP, DOWN, LEFT, RIGHT, UP_LEFT, UP_RIGHT, DOWN_LEFT, DOWN_RIGHT
     }
@@ -211,16 +207,18 @@ class DpadOverlayView @JvmOverloads constructor(
     private var pressedOneDirectionBitmap: Bitmap? = null
     private var pressedTwoDirectionsBitmap: Bitmap? = null
     
+    // 方向键基础缩放
+    private val dpadBaseScale = 0.25f
+    
     init {
         setBackgroundResource(0)
         loadBitmaps()
     }
     
     private fun loadBitmaps() {
-        // 修正：方向键使用 0.25f 基础缩放
-        defaultBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard, 0.25f)
-        pressedOneDirectionBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard_cardinal_depressed, 0.25f)
-        pressedTwoDirectionsBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard_diagonal_depressed, 0.25f)
+        defaultBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard, dpadBaseScale)
+        pressedOneDirectionBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard_cardinal_depressed, dpadBaseScale)
+        pressedTwoDirectionsBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard_diagonal_depressed, dpadBaseScale)
     }
     
     private fun getBitmapFromVectorDrawable(drawableId: Int, baseScale: Float): Bitmap {
@@ -228,9 +226,10 @@ class DpadOverlayView @JvmOverloads constructor(
             throw IllegalArgumentException("Drawable not found: $drawableId")
         
         val userScale = (overlayScale + 50) / 100f
+        val finalScale = baseScale * userScale
         
-        val width = (drawable.intrinsicWidth * baseScale * userScale).toInt().takeIf { it > 0 } ?: 120
-        val height = (drawable.intrinsicHeight * baseScale * userScale).toInt().takeIf { it > 0 } ?: 120
+        val width = (drawable.intrinsicWidth * finalScale).toInt().takeIf { it > 0 } ?: 120
+        val height = (drawable.intrinsicHeight * finalScale).toInt().takeIf { it > 0 } ?: 120
         
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         
@@ -242,7 +241,7 @@ class DpadOverlayView @JvmOverloads constructor(
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val baseSize = (context.resources.displayMetrics.widthPixels * 0.25).toInt()
-        val scaledSize = (baseSize * 0.25f * (overlayScale + 50) / 100f).toInt()
+        val scaledSize = (baseSize * dpadBaseScale * (overlayScale + 50) / 100f).toInt()
         val size = Math.max(scaledSize, dpToPx(100))
         setMeasuredDimension(size, size)
     }
@@ -411,16 +410,6 @@ class ButtonOverlayView @JvmOverloads constructor(
             invalidate()
         }
     
-    // 添加 overlayScale 属性
-    var overlayScale: Int = 50
-        set(value) {
-            field = value.coerceIn(0, 100)
-            // 重新加载位图
-            setBitmapsForButton()
-            requestLayout()
-            invalidate()
-        }
-    
     private var defaultBitmap: Bitmap? = null
     private var pressedBitmap: Bitmap? = null
     
@@ -434,24 +423,8 @@ class ButtonOverlayView @JvmOverloads constructor(
         pressedBitmap = getBitmapFromVectorDrawable(pressedResId, scale)
     }
     
-    fun setBitmapsForButton() {
-        when (buttonId) {
-            1 -> setBitmaps(R.drawable.facebutton_a, R.drawable.facebutton_a_depressed)
-            2 -> setBitmaps(R.drawable.facebutton_b, R.drawable.facebutton_b_depressed)
-            3 -> setBitmaps(R.drawable.facebutton_x, R.drawable.facebutton_x_depressed)
-            4 -> setBitmaps(R.drawable.facebutton_y, R.drawable.facebutton_y_depressed)
-            5 -> setBitmaps(R.drawable.l_shoulder, R.drawable.l_shoulder_depressed)
-            6 -> setBitmaps(R.drawable.r_shoulder, R.drawable.r_shoulder_depressed)
-            7 -> setBitmaps(R.drawable.zl_trigger, R.drawable.zl_trigger_depressed)
-            8 -> setBitmaps(R.drawable.zr_trigger, R.drawable.zr_trigger_depressed)
-            9 -> setBitmaps(R.drawable.facebutton_plus, R.drawable.facebutton_plus_depressed)
-            10 -> setBitmaps(R.drawable.facebutton_minus, R.drawable.facebutton_minus_depressed)
-            11 -> setBitmaps(R.drawable.button_l3, R.drawable.button_l3_depressed)
-            12 -> setBitmaps(R.drawable.button_r3, R.drawable.button_r3_depressed)
-        }
-    }
-    
     private fun getScaleForButton(): Float {
+        // 使用 yuzu 完全相同的缩放因子
         return when (buttonId) {
             1, 2, 3, 4 -> 0.11f // ABXY 按钮
             5, 6 -> 0.26f // L, R 肩键
@@ -467,9 +440,10 @@ class ButtonOverlayView @JvmOverloads constructor(
             throw IllegalArgumentException("Drawable not found: $drawableId")
         
         val userScale = (overlayScale + 50) / 100f
+        val finalScale = baseScale * userScale
         
-        val width = (drawable.intrinsicWidth * baseScale * userScale).toInt().takeIf { it > 0 } ?: 100
-        val height = (drawable.intrinsicHeight * baseScale * userScale).toInt().takeIf { it > 0 } ?: 100
+        val width = (drawable.intrinsicWidth * finalScale).toInt().takeIf { it > 0 } ?: 100
+        val height = (drawable.intrinsicHeight * finalScale).toInt().takeIf { it > 0 } ?: 100
         
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         
@@ -542,7 +516,7 @@ class ButtonOverlayView @JvmOverloads constructor(
     }
 }
 
-// 扩展数据类
+// 数据类保持不变...
 data class ButtonConfig(
     val id: Int,
     val text: String,
@@ -570,11 +544,10 @@ data class DpadConfig(
     var opacity: Int = 100
 )
 
-// 增强的按键管理器
+// 按键管理器保持不变...
 class ButtonLayoutManager(private val context: Context) {
     private val prefs = context.getSharedPreferences("virtual_controls", Context.MODE_PRIVATE)
     
-    // 添加启用状态和透明度设置
     private val buttonConfigs = listOf(
         ButtonConfig(1, "A", 0.85f, 0.7f, GamePadButtonInputId.A.ordinal),
         ButtonConfig(2, "B", 0.92f, 0.6f, GamePadButtonInputId.B.ordinal),
@@ -597,7 +570,6 @@ class ButtonLayoutManager(private val context: Context) {
     
     private val dpadConfig = DpadConfig(201, 0.1f, 0.5f)
     
-    // 全局缩放设置
     var overlayScale: Int = 50
         set(value) {
             field = value.coerceIn(0, 100)
@@ -608,6 +580,7 @@ class ButtonLayoutManager(private val context: Context) {
             field = value.coerceIn(0, 100)
         }
     
+    // 其他方法保持不变...
     fun getButtonPosition(buttonId: Int, containerWidth: Int, containerHeight: Int): Pair<Int, Int> {
         val xPref = prefs.getFloat("button_${buttonId}_x", -1f)
         val yPref = prefs.getFloat("button_${buttonId}_y", -1f)
@@ -642,7 +615,6 @@ class ButtonLayoutManager(private val context: Context) {
         return Pair(x.toInt(), y.toInt())
     }
     
-    // 启用状态管理
     fun isButtonEnabled(buttonId: Int): Boolean {
         return prefs.getBoolean("button_${buttonId}_enabled", true)
     }
@@ -655,7 +627,6 @@ class ButtonLayoutManager(private val context: Context) {
         return prefs.getBoolean("dpad_enabled", true)
     }
     
-    // 透明度管理
     fun getButtonOpacity(buttonId: Int): Int {
         return prefs.getInt("button_${buttonId}_opacity", 100)
     }
@@ -704,7 +675,6 @@ class ButtonLayoutManager(private val context: Context) {
             .apply()
     }
     
-    // 保存启用状态
     fun setButtonEnabled(buttonId: Int, enabled: Boolean) {
         prefs.edit().putBoolean("button_${buttonId}_enabled", enabled).apply()
     }
@@ -717,7 +687,6 @@ class ButtonLayoutManager(private val context: Context) {
         prefs.edit().putBoolean("dpad_enabled", enabled).apply()
     }
     
-    // 保存透明度
     fun setButtonOpacity(buttonId: Int, opacity: Int) {
         prefs.edit().putInt("button_${buttonId}_opacity", opacity.coerceIn(0, 100)).apply()
     }
@@ -730,7 +699,6 @@ class ButtonLayoutManager(private val context: Context) {
         prefs.edit().putInt("dpad_opacity", opacity.coerceIn(0, 100)).apply()
     }
     
-    // 保存全局设置
     fun saveGlobalSettings(scale: Int, opacity: Int) {
         prefs.edit()
             .putInt("overlay_scale", scale)
@@ -740,7 +708,6 @@ class ButtonLayoutManager(private val context: Context) {
         this.overlayOpacity = opacity
     }
     
-    // 加载全局设置
     fun loadGlobalSettings() {
         overlayScale = prefs.getInt("overlay_scale", 50)
         overlayOpacity = prefs.getInt("overlay_opacity", 100)
@@ -751,15 +718,13 @@ class ButtonLayoutManager(private val context: Context) {
     fun getDpadConfig(): DpadConfig = dpadConfig
 }
 
-// 扩展的 GameController
+// GameController 类保持不变...
 class GameController(var activity: Activity) {
 
     companion object {
-        // 全局缩放设置
         var overlayScale: Int = 50
             set(value) {
                 field = value.coerceIn(0, 100)
-                // 通知所有实例更新
             }
         
         private fun Create(context: Context, controller: GameController): View {
@@ -839,7 +804,7 @@ class GameController(var activity: Activity) {
         val effectiveWidth = if (containerWidth > 0) containerWidth else activity.resources.displayMetrics.widthPixels
         val effectiveHeight = if (containerHeight > 0) containerHeight else activity.resources.displayMetrics.heightPixels
         
-        // 创建摇杆 - 只创建启用的摇杆
+        // 创建摇杆
         manager.getAllJoystickConfigs().forEach { config ->
             if (!manager.isJoystickEnabled(config.id)) return@forEach
             
@@ -847,7 +812,6 @@ class GameController(var activity: Activity) {
                 stickId = config.id
                 isLeftStick = config.isLeft
                 opacity = (manager.getJoystickOpacity(config.id) * 255 / 100)
-                overlayScale = manager.overlayScale
                 
                 val (x, y) = manager.getJoystickPosition(config.id, effectiveWidth, effectiveHeight)
                 setPosition(x, y)
@@ -866,12 +830,11 @@ class GameController(var activity: Activity) {
             virtualJoysticks[config.id] = joystick
         }
         
-        // 创建方向键 - 只创建启用的方向键
+        // 创建方向键
         if (manager.isDpadEnabled()) {
             val (dpadX, dpadY) = manager.getDpadPosition(effectiveWidth, effectiveHeight)
             dpadView = DpadOverlayView(buttonContainer.context).apply {
                 opacity = (manager.getDpadOpacity() * 255 / 100)
-                overlayScale = manager.overlayScale
                 setPosition(dpadX, dpadY)
                 
                 setOnTouchListener { _, event ->
@@ -886,7 +849,7 @@ class GameController(var activity: Activity) {
             buttonContainer.addView(dpadView)
         }
         
-        // 创建按钮 - 只创建启用的按钮
+        // 创建按钮
         manager.getAllButtonConfigs().forEach { config ->
             if (!manager.isButtonEnabled(config.id)) return@forEach
             
@@ -894,9 +857,21 @@ class GameController(var activity: Activity) {
                 buttonId = config.id
                 buttonText = config.text
                 opacity = (manager.getButtonOpacity(config.id) * 255 / 100)
-                overlayScale = manager.overlayScale
                 
-                setBitmapsForButton()
+                when (config.id) {
+                    1 -> setBitmaps(R.drawable.facebutton_a, R.drawable.facebutton_a_depressed)
+                    2 -> setBitmaps(R.drawable.facebutton_b, R.drawable.facebutton_b_depressed)
+                    3 -> setBitmaps(R.drawable.facebutton_x, R.drawable.facebutton_x_depressed)
+                    4 -> setBitmaps(R.drawable.facebutton_y, R.drawable.facebutton_y_depressed)
+                    5 -> setBitmaps(R.drawable.l_shoulder, R.drawable.l_shoulder_depressed)
+                    6 -> setBitmaps(R.drawable.r_shoulder, R.drawable.r_shoulder_depressed)
+                    7 -> setBitmaps(R.drawable.zl_trigger, R.drawable.zl_trigger_depressed)
+                    8 -> setBitmaps(R.drawable.zr_trigger, R.drawable.zr_trigger_depressed)
+                    9 -> setBitmaps(R.drawable.facebutton_plus, R.drawable.facebutton_plus_depressed)
+                    10 -> setBitmaps(R.drawable.facebutton_minus, R.drawable.facebutton_minus_depressed)
+                    11 -> setBitmaps(R.drawable.button_l3, R.drawable.button_l3_depressed)
+                    12 -> setBitmaps(R.drawable.button_r3, R.drawable.button_r3_depressed)
+                }
                 
                 val (x, y) = manager.getButtonPosition(config.id, effectiveWidth, effectiveHeight)
                 setPosition(x, y)
@@ -922,12 +897,10 @@ class GameController(var activity: Activity) {
         }
     }
     
-    // 刷新所有控件的位置和状态
     fun refreshControls() {
         val manager = buttonLayoutManager ?: return
         val buttonContainer = this.buttonContainer ?: return
         
-        // 移除所有现有控件
         virtualButtons.values.forEach { buttonContainer.removeView(it) }
         virtualJoysticks.values.forEach { buttonContainer.removeView(it) }
         dpadView?.let { buttonContainer.removeView(it) }
@@ -936,21 +909,14 @@ class GameController(var activity: Activity) {
         virtualJoysticks.clear()
         dpadView = null
         
-        // 重新创建控件
         createControlsImmediately(buttonContainer, manager)
     }
     
-    // 更新全局设置
     fun updateGlobalSettings(scale: Int, opacity: Int) {
         buttonLayoutManager?.saveGlobalSettings(scale, opacity)
-        // 更新所有现有控件的缩放
-        virtualButtons.values.forEach { it.overlayScale = scale }
-        virtualJoysticks.values.forEach { it.overlayScale = scale }
-        dpadView?.overlayScale = scale
         refreshControls()
     }
     
-    // 设置单个控件的启用状态
     fun setControlEnabled(controlId: Int, enabled: Boolean) {
         when {
             controlId in 1..12 -> buttonLayoutManager?.setButtonEnabled(controlId, enabled)
@@ -960,7 +926,6 @@ class GameController(var activity: Activity) {
         refreshControls()
     }
     
-    // 设置单个控件的透明度
     fun setControlOpacity(controlId: Int, opacity: Int) {
         when {
             controlId in 1..12 -> {
@@ -1038,7 +1003,7 @@ class GameController(var activity: Activity) {
         ).toInt()
     }
     
-    // 其他事件处理方法保持不变...
+    // 事件处理方法保持不变...
     private fun handleJoystickDragEvent(event: MotionEvent, joystickId: Int): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {}
