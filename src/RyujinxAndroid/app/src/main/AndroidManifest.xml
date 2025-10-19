@@ -34,7 +34,7 @@
             android:exported="true"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:hardwareAccelerated="true"
-            android:theme="@style/Theme.KaryujinxAndroid">
+            android:theme="@style/Theme.Karyujinx">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
