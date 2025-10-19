@@ -1,4 +1,4 @@
-package org.ryujinx.android.providers
+package org.karyujinx.android.providers
 
 import android.database.Cursor
 import android.database.MatrixCursor
@@ -7,9 +7,9 @@ import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import android.provider.DocumentsProvider
 import android.webkit.MimeTypeMap
-import org.ryujinx.android.BuildConfig
-import org.ryujinx.android.R
-import org.ryujinx.android.RyujinxApplication
+import org.karyujinx.android.BuildConfig
+import org.karyujinx.android.R
+import org.karyujinx.android.KaryujinxApplication
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileNotFoundException
@@ -17,8 +17,8 @@ import java.io.FileOutputStream
 import java.io.IOException
 
 class DocumentProvider : DocumentsProvider() {
-    private val baseDirectory = File(RyujinxApplication.instance.getPublicFilesDir().canonicalPath)
-    private val applicationName = "Ryujinx"
+    private val baseDirectory = File(KaryujinxApplication.instance.getPublicFilesDir().canonicalPath)
+    private val applicationName = "Karyujinx"
 
     companion object {
         private val DEFAULT_ROOT_PROJECTION: Array<String> = arrayOf(
