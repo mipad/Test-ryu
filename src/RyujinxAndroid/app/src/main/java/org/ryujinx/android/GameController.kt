@@ -427,14 +427,14 @@ class ButtonOverlayView @JvmOverloads constructor(
     }
     
     private fun getScaleForButton(): Float {
-        // 使用 yuzu 完全相同的缩放因子
+        // 修改按钮基础缩放：ABXY、L3、R3改为0.5f，+、-按钮改为0.3f
         return when (buttonId) {
-            1, 2, 3, 4 -> 0.11f // ABXY 按钮
-            5, 6 -> 0.26f // L, R 肩键
-            7, 8 -> 0.26f // ZL, ZR 扳机键
-            9, 10 -> 0.07f // +, - 按钮
-            11, 12 -> 0.155f // L3, R3 摇杆按钮
-            else -> 0.11f
+            1, 2, 3, 4 -> 0.5f // ABXY 按钮 - 改为0.5f
+            5, 6 -> 0.26f // L, R 肩键 - 保持不变
+            7, 8 -> 0.26f // ZL, ZR 扳机键 - 保持不变
+            9, 10 -> 0.3f // +, - 按钮 - 改为0.3f
+            11, 12 -> 0.5f // L3, R3 摇杆按钮 - 改为0.5f
+            else -> 0.5f // 其他按钮默认0.5f
         }
     }
     
