@@ -230,7 +230,18 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
                         int addressSpaceWidth = (int)ulong.Log2(reservedAddressSpaceSize);
 
                         aliasRegion.Size = reservedAddressSpaceSize >= 0x400000000u ? 0x1000000000 : 1UL << (addressSpaceWidth - 3);
-                        heapRegion.Size = memConfig == MemoryConfiguration.MemoryConfiguration16GiB ? 0x200000000u : 0x180000000u;
+                        
+                        // 修复堆区域大小设置，根据内存配置使用正确的堆大小
+                        heapRegion.Size = memConfig switch
+                        {
+                            MemoryConfiguration.MemoryConfiguration8GiB => 0x200000000u,  // 8GB
+                            MemoryConfiguration.MemoryConfiguration10GiB => 0x280000000u, // 10GB
+                            MemoryConfiguration.MemoryConfiguration12GiB => 0x300000000u, // 12GB
+                            MemoryConfiguration.MemoryConfiguration14GiB => 0x380000000u, // 14GB
+                            MemoryConfiguration.MemoryConfiguration16GiB => 0x400000000u, // 16GB
+                            _ => 0x180000000u // 默认6GB
+                        };
+                        
                         stackRegion.Size = 1UL << (addressSpaceWidth - 8);
                         tlsIoRegion.Size = 1UL << (addressSpaceWidth - 3);
                         CodeRegionStart = BitUtils.AlignDown(address, RegionAlignment);
@@ -244,7 +255,18 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
                     else
                     {
                         aliasRegion.Size = 0x1000000000;
-                        heapRegion.Size = memConfig == MemoryConfiguration.MemoryConfiguration8GiB ? 0x200000000u : 0x180000000u;
+                        
+                        // 修复堆区域大小设置，根据内存配置使用正确的堆大小
+                        heapRegion.Size = memConfig switch
+                        {
+                            MemoryConfiguration.MemoryConfiguration8GiB => 0x200000000u,  // 8GB
+                            MemoryConfiguration.MemoryConfiguration10GiB => 0x280000000u, // 10GB
+                            MemoryConfiguration.MemoryConfiguration12GiB => 0x300000000u, // 12GB
+                            MemoryConfiguration.MemoryConfiguration14GiB => 0x380000000u, // 14GB
+                            MemoryConfiguration.MemoryConfiguration16GiB => 0x400000000u, // 16GB
+                            _ => 0x180000000u // 默认6GB
+                        };
+                        
                         stackRegion.Size = 0x80000000;
                         tlsIoRegion.Size = 0x1000000000;
                         CodeRegionStart = BitUtils.AlignDown(address, RegionAlignment);
