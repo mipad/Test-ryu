@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 yuzu Emulator Project
+// SPDX-FileCopyrightText: Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package org.ryujinx.android
