@@ -601,7 +601,7 @@ class ButtonLayoutManager(private val context: Context) {
             field = value.coerceIn(0, 100)
         }
     
-    // 其他方法保持不变...
+    
     fun getButtonPosition(buttonId: Int, containerWidth: Int, containerHeight: Int): Pair<Int, Int> {
         val xPref = prefs.getFloat("button_${buttonId}_x", -1f)
         val yPref = prefs.getFloat("button_${buttonId}_y", -1f)
