@@ -9,7 +9,7 @@ android {
     ndkVersion "27.2.12479018"
     
     defaultConfig {
-        applicationId "org.Karyujinx.android"
+        applicationId "org.karyujinx.android"
         minSdk 30
         targetSdk 35
         versionCode 10044
