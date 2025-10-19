@@ -27,7 +27,7 @@
         android:isGame="true"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.KaryujinxAndroid"
+        android:theme="@style/Theme.Karyujinx"
         tools:targetApi="29">
         <activity
             android:name=".MainActivity"
