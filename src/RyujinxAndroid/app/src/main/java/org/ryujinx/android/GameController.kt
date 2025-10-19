@@ -447,8 +447,8 @@ class ButtonOverlayView @JvmOverloads constructor(
         // 修改按钮基础缩放：L3、R3改为0.8f（增大）
         return when (buttonId) {
             1, 2, 3, 4 -> 0.45f // ABXY 按钮 - 保持不变
-            5, 6 -> 0.4f // L, R 肩键 - 保持不变
-            7, 8 -> 0.4f // ZL, ZR 扳机键 - 保持不变
+            5, 6 -> 0.35f // L, R 肩键 - 保持不变
+            7, 8 -> 0.35f // ZL, ZR 扳机键 - 保持不变
             9, 10 -> 0.3f // +, - 按钮 - 保持不变
             11, 12 -> 1f // L3, R3 摇杆按钮 - 改为0.8f（增大）
             else -> 0.38f // 其他按钮默认0.38f
