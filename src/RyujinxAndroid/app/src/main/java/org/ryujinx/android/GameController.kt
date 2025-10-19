@@ -58,9 +58,9 @@ class JoystickOverlayView @JvmOverloads constructor(
         }
     
     // 外圈基础缩放 - 改为0.4f
-    private val outerBaseScale = 0.4f
+    private val outerBaseScale = 0.45f
     // 内圈相对于外圈的比例 - 增大内圈尺寸
-    private val innerRelativeScale = 1.0f / 1.4f // 从1.66f改为1.4f，增大内圈
+    private val innerRelativeScale = 1.0f / 1.25f // 从1.66f改为1.4f，增大内圈
     
     init {
         setBackgroundResource(0)
@@ -227,7 +227,7 @@ class DpadOverlayView @JvmOverloads constructor(
     private var pressedTwoDirectionsBitmap: Bitmap? = null
     
     // 方向键基础缩放 - 改为0.35f
-    private val dpadBaseScale = 0.35f
+    private val dpadBaseScale = 0.45f
     
     init {
         setBackgroundResource(0)
@@ -446,11 +446,11 @@ class ButtonOverlayView @JvmOverloads constructor(
     private fun getScaleForButton(): Float {
         // 修改按钮基础缩放：L3、R3改为0.8f（增大）
         return when (buttonId) {
-            1, 2, 3, 4 -> 0.38f // ABXY 按钮 - 保持不变
-            5, 6 -> 0.26f // L, R 肩键 - 保持不变
-            7, 8 -> 0.26f // ZL, ZR 扳机键 - 保持不变
+            1, 2, 3, 4 -> 0.45f // ABXY 按钮 - 保持不变
+            5, 6 -> 0.4f // L, R 肩键 - 保持不变
+            7, 8 -> 0.4f // ZL, ZR 扳机键 - 保持不变
             9, 10 -> 0.3f // +, - 按钮 - 保持不变
-            11, 12 -> 0.8f // L3, R3 摇杆按钮 - 改为0.8f（增大）
+            11, 12 -> 1f // L3, R3 摇杆按钮 - 改为0.8f（增大）
             else -> 0.38f // 其他按钮默认0.38f
         }
     }
