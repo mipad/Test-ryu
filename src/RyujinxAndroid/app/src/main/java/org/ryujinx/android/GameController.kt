@@ -57,10 +57,10 @@ class JoystickOverlayView @JvmOverloads constructor(
             invalidate()
         }
     
-    // 外圈基础缩放 - 还原为0.3f
-    private val outerBaseScale = 0.3f
-    // 内圈相对于外圈的比例
-    private val innerRelativeScale = 1.0f / 1.66f
+    // 外圈基础缩放 - 改为0.4f
+    private val outerBaseScale = 0.4f
+    // 内圈相对于外圈的比例 - 增大内圈尺寸
+    private val innerRelativeScale = 1.0f / 1.4f // 从1.66f改为1.4f，增大内圈
     
     init {
         setBackgroundResource(0)
@@ -226,8 +226,8 @@ class DpadOverlayView @JvmOverloads constructor(
     private var pressedOneDirectionBitmap: Bitmap? = null
     private var pressedTwoDirectionsBitmap: Bitmap? = null
     
-    // 方向键基础缩放 - 还原为0.25f，但尺寸要大一点，改为0.3f
-    private val dpadBaseScale = 0.3f
+    // 方向键基础缩放 - 改为0.35f
+    private val dpadBaseScale = 0.35f
     
     init {
         setBackgroundResource(0)
@@ -444,13 +444,13 @@ class ButtonOverlayView @JvmOverloads constructor(
     }
     
     private fun getScaleForButton(): Float {
-        // 修改按钮基础缩放：ABXY改为0.38f，L3、R3改为0.65f
+        // 修改按钮基础缩放：L3、R3改为0.8f（增大）
         return when (buttonId) {
-            1, 2, 3, 4 -> 0.38f // ABXY 按钮 - 改为0.38f
+            1, 2, 3, 4 -> 0.38f // ABXY 按钮 - 保持不变
             5, 6 -> 0.26f // L, R 肩键 - 保持不变
             7, 8 -> 0.26f // ZL, ZR 扳机键 - 保持不变
             9, 10 -> 0.3f // +, - 按钮 - 保持不变
-            11, 12 -> 0.65f // L3, R3 摇杆按钮 - 改为0.65f
+            11, 12 -> 0.8f // L3, R3 摇杆按钮 - 改为0.8f（增大）
             else -> 0.38f // 其他按钮默认0.38f
         }
     }
@@ -564,23 +564,24 @@ data class DpadConfig(
     var opacity: Int = 100
 )
 
-// 按键管理器保持不变...
+// 按键管理器 - 修改按钮初始位置
 class ButtonLayoutManager(private val context: Context) {
     private val prefs = context.getSharedPreferences("virtual_controls", Context.MODE_PRIVATE)
     
+    // 修改按钮初始位置：交换A和B、X和Y的位置，调整L3和R3位置
     private val buttonConfigs = listOf(
-        ButtonConfig(1, "A", 0.85f, 0.7f, GamePadButtonInputId.A.ordinal),
-        ButtonConfig(2, "B", 0.92f, 0.6f, GamePadButtonInputId.B.ordinal),
-        ButtonConfig(3, "X", 0.78f, 0.6f, GamePadButtonInputId.X.ordinal),
-        ButtonConfig(4, "Y", 0.85f, 0.5f, GamePadButtonInputId.Y.ordinal),
+        ButtonConfig(1, "A", 0.92f, 0.6f, GamePadButtonInputId.A.ordinal), // A和B交换位置
+        ButtonConfig(2, "B", 0.85f, 0.7f, GamePadButtonInputId.B.ordinal), // B和A交换位置
+        ButtonConfig(3, "X", 0.85f, 0.5f, GamePadButtonInputId.X.ordinal), // X和Y交换位置
+        ButtonConfig(4, "Y", 0.78f, 0.6f, GamePadButtonInputId.Y.ordinal), // Y和X交换位置
         ButtonConfig(5, "L", 0.1f, 0.2f, GamePadButtonInputId.LeftShoulder.ordinal),
         ButtonConfig(6, "R", 0.9f, 0.2f, GamePadButtonInputId.RightShoulder.ordinal),
         ButtonConfig(7, "ZL", 0.1f, 0.1f, GamePadButtonInputId.LeftTrigger.ordinal),
         ButtonConfig(8, "ZR", 0.9f, 0.1f, GamePadButtonInputId.RightTrigger.ordinal),
         ButtonConfig(9, "+", 0.8f, 0.1f, GamePadButtonInputId.Plus.ordinal),
         ButtonConfig(10, "-", 0.2f, 0.1f, GamePadButtonInputId.Minus.ordinal),
-        ButtonConfig(11, "L3", 0.2f, 0.8f, GamePadButtonInputId.LeftStickButton.ordinal),
-        ButtonConfig(12, "R3", 0.7f, 0.8f, GamePadButtonInputId.RightStickButton.ordinal)
+        ButtonConfig(11, "L3", 0.2f, 0.3f, GamePadButtonInputId.LeftStickButton.ordinal), // L3放在-下面
+        ButtonConfig(12, "R3", 0.8f, 0.3f, GamePadButtonInputId.RightStickButton.ordinal) // R3放在+下面
     )
     
     private val joystickConfigs = listOf(
