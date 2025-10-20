@@ -15,6 +15,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.Button
+import android.widget.LinearLayout
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
@@ -749,7 +750,7 @@ class GameController(var activity: Activity) {
             
             controller.buttonLayoutManager = ButtonLayoutManager(context)
             controller.createVirtualControls(buttonContainer)
-            controller.createSaveButton(editModeContainer)
+            controller.createEditButtons(editModeContainer)
             
             return view
         }
@@ -788,6 +789,8 @@ class GameController(var activity: Activity) {
     private var buttonContainer: FrameLayout? = null
     private var editModeContainer: FrameLayout? = null
     private var saveButton: Button? = null
+    private var cancelButton: Button? = null
+    private var buttonLayout: LinearLayout? = null
     var buttonLayoutManager: ButtonLayoutManager? = null
     private val virtualButtons = mutableMapOf<Int, ButtonOverlayView>()
     private val virtualJoysticks = mutableMapOf<Int, JoystickOverlayView>()
@@ -1030,29 +1033,70 @@ class GameController(var activity: Activity) {
         }
     }
     
-    private fun createSaveButton(editModeContainer: FrameLayout) {
+    private fun createEditButtons(editModeContainer: FrameLayout) {
         this.editModeContainer = editModeContainer
         
-        saveButton = Button(editModeContainer.context).apply {
-            text = "保存布局"
-            setBackgroundColor(Color.argb(150, 0, 100, 200))
-            setTextColor(Color.WHITE)
-            textSize = 12f
-            setOnClickListener {
-                saveLayout()
-                setEditingMode(false)
+        // 创建水平布局容器
+        buttonLayout = LinearLayout(editModeContainer.context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            
+            // 创建保存按钮
+            saveButton = Button(editModeContainer.context).apply {
+                text = "保存布局"
+                setBackgroundColor(Color.argb(200, 0, 150, 0))
+                setTextColor(Color.WHITE)
+                textSize = 14f
+                setOnClickListener {
+                    saveLayout()
+                    setEditingMode(false)
+                }
+                
+                val params = LinearLayout.LayoutParams(
+                    dpToPx(120),
+                    dpToPx(60)
+                ).apply {
+                    marginEnd = dpToPx(20)
+                }
+                layoutParams = params
             }
             
-            val params = FrameLayout.LayoutParams(
-                dpToPx(200),
-                dpToPx(60)
-            ).apply {
-                gravity = android.view.Gravity.CENTER
+            // 创建取消按钮
+            cancelButton = Button(editModeContainer.context).apply {
+                text = "取消"
+                setBackgroundColor(Color.argb(200, 200, 0, 0))
+                setTextColor(Color.WHITE)
+                textSize = 14f
+                setOnClickListener {
+                    // 取消编辑，不保存更改
+                    setEditingMode(false)
+                    refreshControlPositions() // 恢复之前的位置
+                }
+                
+                val params = LinearLayout.LayoutParams(
+                    dpToPx(120),
+                    dpToPx(60)
+                ).apply {
+                    marginStart = dpToPx(20)
+                }
+                layoutParams = params
             }
-            layoutParams = params
+            
+            // 添加按钮到水平布局
+            addView(saveButton)
+            addView(cancelButton)
         }
         
-        editModeContainer.addView(saveButton)
+        // 将水平布局添加到编辑模式容器
+        val containerParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = android.view.Gravity.CENTER
+        }
+        buttonLayout?.layoutParams = containerParams
+        editModeContainer.addView(buttonLayout)
+        
         editModeContainer.setBackgroundColor(Color.argb(150, 0, 0, 0))
         editModeContainer.isVisible = false
     }
