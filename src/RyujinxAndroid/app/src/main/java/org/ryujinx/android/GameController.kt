@@ -810,12 +810,31 @@ class GameController(var activity: Activity) {
     private fun createVirtualControls(buttonContainer: FrameLayout) {
         this.buttonContainer = buttonContainer
         val manager = buttonLayoutManager ?: return
-        createControlsImmediately(buttonContainer, manager)
+        
+        // 延迟创建控件，确保容器尺寸已确定
+        if (buttonContainer.width <= 0 || buttonContainer.height <= 0) {
+            buttonContainer.post {
+                createControlsImmediately(buttonContainer, manager)
+            }
+        } else {
+            createControlsImmediately(buttonContainer, manager)
+        }
     }
     
     private fun createControlsImmediately(buttonContainer: FrameLayout, manager: ButtonLayoutManager) {
         val containerWidth = buttonContainer.width
         val containerHeight = buttonContainer.height
+        
+        if (containerWidth <= 0 || containerHeight <= 0) return
+        
+        // 清除现有控件
+        virtualButtons.values.forEach { buttonContainer.removeView(it) }
+        virtualJoysticks.values.forEach { buttonContainer.removeView(it) }
+        dpadView?.let { buttonContainer.removeView(it) }
+        
+        virtualButtons.clear()
+        virtualJoysticks.clear()
+        dpadView = null
         
         // 创建摇杆 - 传递 individualScale 参数
         manager.getAllJoystickConfigs().forEach { config ->
@@ -829,7 +848,9 @@ class GameController(var activity: Activity) {
                 isLeftStick = config.isLeft
                 opacity = (manager.getJoystickOpacity(config.id) * 255 / 100)
                 
-                // 不在这里设置位置，统一在 refreshControlPositions 中设置
+                // 设置位置
+                val (x, y) = manager.getJoystickPosition(config.id, containerWidth, containerHeight)
+                setPosition(x, y)
                 
                 setOnTouchListener { _, event ->
                     if (isEditing) {
@@ -853,7 +874,9 @@ class GameController(var activity: Activity) {
             ).apply {
                 opacity = (manager.getDpadOpacity() * 255 / 100)
                 
-                // 不在这里设置位置，统一在 refreshControlPositions 中设置
+                // 设置位置
+                val (x, y) = manager.getDpadPosition(containerWidth, containerHeight)
+                setPosition(x, y)
                 
                 setOnTouchListener { _, event ->
                     if (isEditing) {
@@ -894,7 +917,9 @@ class GameController(var activity: Activity) {
                     12 -> setBitmaps(R.drawable.button_r3, R.drawable.button_r3_depressed)
                 }
                 
-                // 不在这里设置位置，统一在 refreshControlPositions 中设置
+                // 设置位置
+                val (x, y) = manager.getButtonPosition(config.id, containerWidth, containerHeight)
+                setPosition(x, y)
                 
                 setOnTouchListener { _, event ->
                     if (isEditing) {
@@ -909,37 +934,41 @@ class GameController(var activity: Activity) {
             buttonContainer.addView(button)
             virtualButtons[config.id] = button
         }
-        
-        // 统一设置位置
-        refreshControlPositions()
-        
-        // 如果容器尺寸为0，延迟刷新位置
-        if (containerWidth <= 0 || containerHeight <= 0) {
-            buttonContainer.post {
-                refreshControlPositions()
-            }
-        }
     }
     
     fun refreshControls() {
         val manager = buttonLayoutManager ?: return
         val buttonContainer = this.buttonContainer ?: return
         
-        // 获取当前容器尺寸
+        // 重新创建控件
+        createControlsImmediately(buttonContainer, manager)
+    }
+    
+    // 刷新控件位置（不重新创建控件）
+    fun refreshControlPositions() {
+        val manager = buttonLayoutManager ?: return
+        val buttonContainer = this.buttonContainer ?: return
+        
         val containerWidth = buttonContainer.width
         val containerHeight = buttonContainer.height
         
-        // 清除现有控件
-        virtualButtons.values.forEach { buttonContainer.removeView(it) }
-        virtualJoysticks.values.forEach { buttonContainer.removeView(it) }
-        dpadView?.let { buttonContainer.removeView(it) }
+        if (containerWidth <= 0 || containerHeight <= 0) return
         
-        virtualButtons.clear()
-        virtualJoysticks.clear()
-        dpadView = null
+        // 更新所有控件位置
+        virtualJoysticks.forEach { (joystickId, joystick) ->
+            val (x, y) = manager.getJoystickPosition(joystickId, containerWidth, containerHeight)
+            joystick.setPosition(x, y)
+        }
         
-        // 重新创建控件，使用相同的逻辑
-        createControlsImmediately(buttonContainer, manager)
+        dpadView?.let { dpad ->
+            val (x, y) = manager.getDpadPosition(containerWidth, containerHeight)
+            dpad.setPosition(x, y)
+        }
+        
+        virtualButtons.forEach { (buttonId, button) ->
+            val (x, y) = manager.getButtonPosition(buttonId, containerWidth, containerHeight)
+            button.setPosition(x, y)
+        }
     }
     
     fun setControlEnabled(controlId: Int, enabled: Boolean) {
@@ -1004,32 +1033,6 @@ class GameController(var activity: Activity) {
         }
     }
     
-    private fun refreshControlPositions() {
-        val manager = buttonLayoutManager ?: return
-        val buttonContainer = this.buttonContainer ?: return
-        
-        val containerWidth = buttonContainer.width
-        val containerHeight = buttonContainer.height
-        
-        if (containerWidth <= 0 || containerHeight <= 0) return
-        
-        // 统一使用布局管理器读取位置
-        virtualJoysticks.forEach { (joystickId, joystick) ->
-            val (x, y) = manager.getJoystickPosition(joystickId, containerWidth, containerHeight)
-            joystick.setPosition(x, y)
-        }
-        
-        dpadView?.let { dpad ->
-            val (x, y) = manager.getDpadPosition(containerWidth, containerHeight)
-            dpad.setPosition(x, y)
-        }
-        
-        virtualButtons.forEach { (buttonId, button) ->
-            val (x, y) = manager.getButtonPosition(buttonId, containerWidth, containerHeight)
-            button.setPosition(x, y)
-        }
-    }
-    
     private fun createEditButtons(editModeContainer: FrameLayout) {
     this.editModeContainer = editModeContainer
     
@@ -1081,7 +1084,7 @@ class GameController(var activity: Activity) {
             textSize = 14f
             setOnClickListener {
                 setEditingMode(false)
-                refreshControlPositions()
+                refreshControlPositions() // 刷新位置而不是重新创建
             }
             
             val params = LinearLayout.LayoutParams(
