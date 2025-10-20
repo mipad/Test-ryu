@@ -28,7 +28,6 @@ import androidx.core.view.isVisible
 import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.QuickSettings
 import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.Drawable
 
 // 修正的摇杆视图 - 添加 individualScale 参数
 class JoystickOverlayView @JvmOverloads constructor(
