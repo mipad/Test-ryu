@@ -69,7 +69,8 @@ class JoystickOverlayView @JvmOverloads constructor(
         loadBitmaps()
     }
     
-    private fun loadBitmaps() {
+    // 将 loadBitmaps 改为 public
+    fun loadBitmaps() {
         // 外圈使用基础缩放 + 单个缩放
         outerBitmap = getBitmapFromVectorDrawable(R.drawable.joystick_range, outerBaseScale)
         
@@ -231,7 +232,8 @@ class DpadOverlayView @JvmOverloads constructor(
         loadBitmaps()
     }
     
-    private fun loadBitmaps() {
+    // 将 loadBitmaps 改为 public
+    fun loadBitmaps() {
         defaultBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard, dpadBaseScale)
         pressedOneDirectionBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard_cardinal_depressed, dpadBaseScale)
         pressedTwoDirectionsBitmap = getBitmapFromVectorDrawable(R.drawable.dpad_standard_diagonal_depressed, dpadBaseScale)
@@ -1027,7 +1029,7 @@ class GameController(var activity: Activity) {
         // 更新单个摇杆的缩放
         joystick.individualScale = scale
         
-        // 重新加载位图
+        // 重新加载位图 - 现在可以访问 public 的 loadBitmaps 方法
         joystick.loadBitmaps()
         
         // 请求重新测量和绘制
@@ -1042,7 +1044,7 @@ class GameController(var activity: Activity) {
         // 更新方向键的缩放
         dpad.individualScale = scale
         
-        // 重新加载位图
+        // 重新加载位图 - 现在可以访问 public 的 loadBitmaps 方法
         dpad.loadBitmaps()
         
         // 请求重新测量和绘制
