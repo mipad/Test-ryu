@@ -29,7 +29,7 @@ import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.QuickSettings
 import android.graphics.drawable.GradientDrawable
 
-// 修正的摇杆视图 - 添加 individualScale 参数
+// 修正的摇杆视图 - 修复尺寸计算和绘制问题
 class JoystickOverlayView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -62,7 +62,7 @@ class JoystickOverlayView @JvmOverloads constructor(
     // 外圈基础缩放
     private val outerBaseScale = 0.45f
     // 内圈相对于外圈的比例
-    private val innerRelativeScale = 1.0f / 1.25f
+    private val innerRelativeScale = 0.6f // 减小内圈相对比例，避免裁剪
     
     init {
         setBackgroundResource(0)
@@ -99,11 +99,19 @@ class JoystickOverlayView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        // 基于外圈尺寸计算 - 使用单个缩放
-        val baseSize = (context.resources.displayMetrics.widthPixels * 0.2).toInt()
-        val scaledSize = (baseSize * outerBaseScale * (individualScale.toFloat() + 50) / 100f).toInt()
-        val size = Math.max(scaledSize, dpToPx(120))
-        setMeasuredDimension(size, size)
+        // 基于外圈位图尺寸计算，确保视图足够大以容纳位图
+        val outerWidth = outerBitmap?.width ?: dpToPx(120)
+        val outerHeight = outerBitmap?.height ?: dpToPx(120)
+        
+        // 确保视图尺寸至少为位图尺寸 + 一些边距，避免裁剪
+        val desiredWidth = (outerWidth * 1.2f).toInt() // 增加20%边距
+        val desiredHeight = (outerHeight * 1.2f).toInt()
+        
+        val minSize = dpToPx(120)
+        val width = Math.max(desiredWidth, minSize)
+        val height = Math.max(desiredHeight, minSize)
+        
+        setMeasuredDimension(width, height)
     }
     
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -113,12 +121,13 @@ class JoystickOverlayView @JvmOverloads constructor(
         centerY = h / 2f
         outerRect.set(0, 0, w, h)
         
-        // 内圈尺寸基于外圈尺寸的比例计算
-        val innerSize = (w * innerRelativeScale).toInt()
+        // 内圈尺寸基于外圈位图尺寸的比例计算
+        val innerSize = innerDefaultBitmap?.width ?: (w * innerRelativeScale).toInt()
         innerRect.set(0, 0, innerSize, innerSize)
         
         // 修正移动半径计算，确保内圈能在外圈内正常移动
-        movementRadius = (w - innerSize) / 3f
+        val outerWidth = outerBitmap?.width ?: w
+        movementRadius = (outerWidth - innerSize) / 2.5f
     }
     
     fun setPosition(x: Int, y: Int) {
@@ -148,9 +157,10 @@ class JoystickOverlayView @JvmOverloads constructor(
         
         val paint = Paint().apply {
             alpha = opacity
+            isFilterBitmap = true
         }
         
-        // 绘制外圈 - 确保居中
+        // 绘制外圈 - 确保居中且不会被裁剪
         outerBitmap?.let { bitmap ->
             val outerLeft = (width - bitmap.width) / 2f
             val outerTop = (height - bitmap.height) / 2f
@@ -177,8 +187,8 @@ class JoystickOverlayView @JvmOverloads constructor(
             val outerCenterX = outerDrawLeft + outerWidth / 2f
             val outerCenterY = outerDrawTop + outerHeight / 2f
             
-            // 内圈在外圈内的最大移动距离
-            val maxMoveDistance = (outerWidth - innerWidth) / 2.5f
+            // 内圈在外圈内的最大移动距离 - 确保不会超出外圈边界
+            val maxMoveDistance = (outerWidth - innerWidth) / 2.8f
             
             // 计算内圈位置，确保在内圈始终在外圈范围内
             val innerTargetX = outerCenterX + stickX * maxMoveDistance - innerWidth / 2f
@@ -201,7 +211,7 @@ class JoystickOverlayView @JvmOverloads constructor(
     }
 }
 
-// 修正的方向键视图 - 添加 individualScale 参数
+// 修正的方向键视图 - 修复尺寸计算和绘制问题
 class DpadOverlayView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -258,10 +268,19 @@ class DpadOverlayView @JvmOverloads constructor(
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val baseSize = (context.resources.displayMetrics.widthPixels * 0.25).toInt()
-        val scaledSize = (baseSize * dpadBaseScale * (individualScale.toFloat() + 50) / 100f).toInt()
-        val size = Math.max(scaledSize, dpToPx(100))
-        setMeasuredDimension(size, size)
+        // 基于位图尺寸计算，确保视图足够大以容纳位图
+        val bitmapWidth = defaultBitmap?.width ?: dpToPx(100)
+        val bitmapHeight = defaultBitmap?.height ?: dpToPx(100)
+        
+        // 确保视图尺寸至少为位图尺寸 + 一些边距，避免裁剪
+        val desiredWidth = (bitmapWidth * 1.2f).toInt() // 增加20%边距
+        val desiredHeight = (bitmapHeight * 1.2f).toInt()
+        
+        val minSize = dpToPx(100)
+        val width = Math.max(desiredWidth, minSize)
+        val height = Math.max(desiredHeight, minSize)
+        
+        setMeasuredDimension(width, height)
     }
     
     fun setPosition(x: Int, y: Int) {
@@ -310,94 +329,67 @@ class DpadOverlayView @JvmOverloads constructor(
         
         val paint = Paint().apply {
             alpha = opacity
+            isFilterBitmap = true
         }
         
         val centerX = width / 2f
         val centerY = height / 2f
         
-        when (currentDirection) {
-            DpadDirection.UP -> {
-                canvas.save()
-                canvas.rotate(0f, centerX, centerY)
-                pressedOneDirectionBitmap?.let { 
-                    val left = (width - it.width) / 2f
-                    val top = (height - it.height) / 2f
-                    canvas.drawBitmap(it, left, top, paint)
+        val bitmapToDraw = when (currentDirection) {
+            DpadDirection.UP, DpadDirection.DOWN, DpadDirection.LEFT, DpadDirection.RIGHT -> pressedOneDirectionBitmap
+            DpadDirection.UP_LEFT, DpadDirection.UP_RIGHT, DpadDirection.DOWN_LEFT, DpadDirection.DOWN_RIGHT -> pressedTwoDirectionsBitmap
+            else -> defaultBitmap
+        }
+        
+        bitmapToDraw?.let { bitmap ->
+            val left = (width - bitmap.width) / 2f
+            val top = (height - bitmap.height) / 2f
+            
+            when (currentDirection) {
+                DpadDirection.UP -> {
+                    canvas.save()
+                    canvas.rotate(0f, centerX, centerY)
+                    canvas.drawBitmap(bitmap, left, top, paint)
+                    canvas.restore()
                 }
-                canvas.restore()
-            }
-            DpadDirection.DOWN -> {
-                canvas.save()
-                canvas.rotate(180f, centerX, centerY)
-                pressedOneDirectionBitmap?.let { 
-                    val left = (width - it.width) / 2f
-                    val top = (height - it.height) / 2f
-                    canvas.drawBitmap(it, left, top, paint)
+                DpadDirection.DOWN -> {
+                    canvas.save()
+                    canvas.rotate(180f, centerX, centerY)
+                    canvas.drawBitmap(bitmap, left, top, paint)
+                    canvas.restore()
                 }
-                canvas.restore()
-            }
-            DpadDirection.LEFT -> {
-                canvas.save()
-                canvas.rotate(270f, centerX, centerY)
-                pressedOneDirectionBitmap?.let { 
-                    val left = (width - it.width) / 2f
-                    val top = (height - it.height) / 2f
-                    canvas.drawBitmap(it, left, top, paint)
+                DpadDirection.LEFT -> {
+                    canvas.save()
+                    canvas.rotate(270f, centerX, centerY)
+                    canvas.drawBitmap(bitmap, left, top, paint)
+                    canvas.restore()
                 }
-                canvas.restore()
-            }
-            DpadDirection.RIGHT -> {
-                canvas.save()
-                canvas.rotate(90f, centerX, centerY)
-                pressedOneDirectionBitmap?.let { 
-                    val left = (width - it.width) / 2f
-                    val top = (height - it.height) / 2f
-                    canvas.drawBitmap(it, left, top, paint)
+                DpadDirection.RIGHT -> {
+                    canvas.save()
+                    canvas.rotate(90f, centerX, centerY)
+                    canvas.drawBitmap(bitmap, left, top, paint)
+                    canvas.restore()
                 }
-                canvas.restore()
-            }
-            DpadDirection.UP_LEFT -> {
-                pressedTwoDirectionsBitmap?.let { 
-                    val left = (width - it.width) / 2f
-                    val top = (height - it.height) / 2f
-                    canvas.drawBitmap(it, left, top, paint)
+                DpadDirection.UP_RIGHT -> {
+                    canvas.save()
+                    canvas.rotate(90f, centerX, centerY)
+                    canvas.drawBitmap(bitmap, left, top, paint)
+                    canvas.restore()
                 }
-            }
-            DpadDirection.UP_RIGHT -> {
-                canvas.save()
-                canvas.rotate(90f, centerX, centerY)
-                pressedTwoDirectionsBitmap?.let { 
-                    val left = (width - it.width) / 2f
-                    val top = (height - it.height) / 2f
-                    canvas.drawBitmap(it, left, top, paint)
+                DpadDirection.DOWN_RIGHT -> {
+                    canvas.save()
+                    canvas.rotate(180f, centerX, centerY)
+                    canvas.drawBitmap(bitmap, left, top, paint)
+                    canvas.restore()
                 }
-                canvas.restore()
-            }
-            DpadDirection.DOWN_RIGHT -> {
-                canvas.save()
-                canvas.rotate(180f, centerX, centerY)
-                pressedTwoDirectionsBitmap?.let { 
-                    val left = (width - it.width) / 2f
-                    val top = (height - it.height) / 2f
-                    canvas.drawBitmap(it, left, top, paint)
+                DpadDirection.DOWN_LEFT -> {
+                    canvas.save()
+                    canvas.rotate(270f, centerX, centerY)
+                    canvas.drawBitmap(bitmap, left, top, paint)
+                    canvas.restore()
                 }
-                canvas.restore()
-            }
-            DpadDirection.DOWN_LEFT -> {
-                canvas.save()
-                canvas.rotate(270f, centerX, centerY)
-                pressedTwoDirectionsBitmap?.let { 
-                    val left = (width - it.width) / 2f
-                    val top = (height - it.height) / 2f
-                    canvas.drawBitmap(it, left, top, paint)
-                }
-                canvas.restore()
-            }
-            else -> {
-                defaultBitmap?.let { 
-                    val left = (width - it.width) / 2f
-                    val top = (height - it.height) / 2f
-                    canvas.drawBitmap(it, left, top, paint)
+                else -> {
+                    canvas.drawBitmap(bitmap, left, top, paint)
                 }
             }
         }
@@ -516,6 +508,7 @@ class ButtonOverlayView @JvmOverloads constructor(
         
         val paint = Paint().apply {
             alpha = opacity
+            isFilterBitmap = true
         }
         
         val bitmap = if (buttonPressed) pressedBitmap else defaultBitmap
