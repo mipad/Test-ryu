@@ -1097,7 +1097,7 @@ class GameController(var activity: Activity) {
         buttonLayout?.layoutParams = containerParams
         editModeContainer.addView(buttonLayout)
         
-        editModeContainer.setBackgroundColor(Color.argb(150, 0, 0, 0))
+        editModeContainer.setBackgroundColor(Color.argb(100, 0, 0, 0))
         editModeContainer.isVisible = false
     }
     
