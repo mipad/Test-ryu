@@ -968,13 +968,86 @@ class GameController(var activity: Activity) {
         }
     }
     
+    // 修改后的 setControlScale 方法 - 只更新单个控件而不是重建所有控件
     fun setControlScale(controlId: Int, scale: Int) {
         when {
-            controlId in 1..12 -> buttonLayoutManager?.setButtonScale(controlId, scale)
-            controlId in 101..102 -> buttonLayoutManager?.setJoystickScale(controlId, scale)
-            controlId == 201 -> buttonLayoutManager?.setDpadScale(scale)
+            controlId in 1..12 -> {
+                buttonLayoutManager?.setButtonScale(controlId, scale)
+                // 只更新单个按钮
+                updateSingleButtonScale(controlId, scale)
+            }
+            controlId in 101..102 -> {
+                buttonLayoutManager?.setJoystickScale(controlId, scale)
+                // 只更新单个摇杆
+                updateSingleJoystickScale(controlId, scale)
+            }
+            controlId == 201 -> {
+                buttonLayoutManager?.setDpadScale(scale)
+                // 只更新方向键
+                updateSingleDpadScale(scale)
+            }
         }
-        refreshControls()
+        // 刷新位置确保控件正确布局
+        refreshControlPositions()
+    }
+    
+    // 新增方法：更新单个按钮的缩放
+    private fun updateSingleButtonScale(buttonId: Int, scale: Int) {
+        val button = virtualButtons[buttonId] ?: return
+        val manager = buttonLayoutManager ?: return
+        
+        // 更新单个按钮的缩放
+        button.individualScale = scale
+        
+        // 重新加载位图
+        when (buttonId) {
+            1 -> button.setBitmaps(R.drawable.facebutton_a, R.drawable.facebutton_a_depressed)
+            2 -> button.setBitmaps(R.drawable.facebutton_b, R.drawable.facebutton_b_depressed)
+            3 -> button.setBitmaps(R.drawable.facebutton_x, R.drawable.facebutton_x_depressed)
+            4 -> button.setBitmaps(R.drawable.facebutton_y, R.drawable.facebutton_y_depressed)
+            5 -> button.setBitmaps(R.drawable.l_shoulder, R.drawable.l_shoulder_depressed)
+            6 -> button.setBitmaps(R.drawable.r_shoulder, R.drawable.r_shoulder_depressed)
+            7 -> button.setBitmaps(R.drawable.zl_trigger, R.drawable.zl_trigger_depressed)
+            8 -> button.setBitmaps(R.drawable.zr_trigger, R.drawable.zr_trigger_depressed)
+            9 -> button.setBitmaps(R.drawable.facebutton_plus, R.drawable.facebutton_plus_depressed)
+            10 -> button.setBitmaps(R.drawable.facebutton_minus, R.drawable.facebutton_minus_depressed)
+            11 -> button.setBitmaps(R.drawable.button_l3, R.drawable.button_l3_depressed)
+            12 -> button.setBitmaps(R.drawable.button_r3, R.drawable.button_r3_depressed)
+        }
+        
+        // 请求重新测量和绘制
+        button.requestLayout()
+        button.invalidate()
+    }
+    
+    // 新增方法：更新单个摇杆的缩放
+    private fun updateSingleJoystickScale(joystickId: Int, scale: Int) {
+        val joystick = virtualJoysticks[joystickId] ?: return
+        
+        // 更新单个摇杆的缩放
+        joystick.individualScale = scale
+        
+        // 重新加载位图
+        joystick.loadBitmaps()
+        
+        // 请求重新测量和绘制
+        joystick.requestLayout()
+        joystick.invalidate()
+    }
+    
+    // 新增方法：更新单个方向键的缩放
+    private fun updateSingleDpadScale(scale: Int) {
+        val dpad = dpadView ?: return
+        
+        // 更新方向键的缩放
+        dpad.individualScale = scale
+        
+        // 重新加载位图
+        dpad.loadBitmaps()
+        
+        // 请求重新测量和绘制
+        dpad.requestLayout()
+        dpad.invalidate()
     }
     
     fun getControlScale(controlId: Int): Int {
