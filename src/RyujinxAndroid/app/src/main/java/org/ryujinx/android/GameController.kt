@@ -832,7 +832,9 @@ class GameController(var activity: Activity) {
                 isLeftStick = config.isLeft
                 opacity = (manager.getJoystickOpacity(config.id) * 255 / 100)
                 
-                // 不在这里设置位置，统一在 refreshControlPositions 中设置
+                // 使用与 refreshControlPositions 相同的位置逻辑
+                val (x, y) = manager.getJoystickPosition(config.id, effectiveWidth, effectiveHeight)
+                setPosition(x, y)
                 
                 setOnTouchListener { _, event ->
                     if (isEditing) {
@@ -850,13 +852,13 @@ class GameController(var activity: Activity) {
         
         // 创建方向键 - 传递 individualScale 参数
         if (manager.isDpadEnabled()) {
+            val (dpadX, dpadY) = manager.getDpadPosition(effectiveWidth, effectiveHeight)
             dpadView = DpadOverlayView(
                 buttonContainer.context,
                 individualScale = manager.getDpadScale() // 传递 individualScale
             ).apply {
                 opacity = (manager.getDpadOpacity() * 255 / 100)
-                
-                // 不在这里设置位置，统一在 refreshControlPositions 中设置
+                setPosition(dpadX, dpadY)
                 
                 setOnTouchListener { _, event ->
                     if (isEditing) {
@@ -897,7 +899,9 @@ class GameController(var activity: Activity) {
                     12 -> setBitmaps(R.drawable.button_r3, R.drawable.button_r3_depressed)
                 }
                 
-                // 不在这里设置位置，统一在 refreshControlPositions 中设置
+                // 使用与 refreshControlPositions 相同的位置逻辑
+                val (x, y) = manager.getButtonPosition(config.id, effectiveWidth, effectiveHeight)
+                setPosition(x, y)
                 
                 setOnTouchListener { _, event ->
                     if (isEditing) {
@@ -913,10 +917,6 @@ class GameController(var activity: Activity) {
             virtualButtons[config.id] = button
         }
         
-        // 统一设置位置
-        refreshControlPositions()
-        
-        // 如果容器尺寸为0，延迟刷新位置
         if (containerWidth <= 0 || containerHeight <= 0) {
             buttonContainer.post {
                 refreshControlPositions()
