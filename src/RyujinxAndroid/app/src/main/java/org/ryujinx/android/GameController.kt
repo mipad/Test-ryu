@@ -952,7 +952,7 @@ class GameController(var activity: Activity) {
             controlId in 101..102 -> buttonLayoutManager?.setJoystickEnabled(controlId, enabled)
             controlId == 201 -> buttonLayoutManager?.setDpadEnabled(enabled)
         }
-        refreshControls()
+        refreshControlPositions()
     }
     
     fun setControlOpacity(controlId: Int, opacity: Int) {
@@ -978,7 +978,7 @@ class GameController(var activity: Activity) {
             controlId in 101..102 -> buttonLayoutManager?.setJoystickScale(controlId, scale)
             controlId == 201 -> buttonLayoutManager?.setDpadScale(scale)
         }
-        refreshControls()
+        refreshControlPositions()
     }
     
     fun getControlScale(controlId: Int): Int {
