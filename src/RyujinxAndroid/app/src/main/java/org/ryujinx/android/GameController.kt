@@ -62,7 +62,7 @@ class JoystickOverlayView @JvmOverloads constructor(
     // 外圈基础缩放
     private val outerBaseScale = 0.45f
     // 内圈相对于外圈的比例
-    private val innerRelativeScale = 0.6f // 减小内圈相对比例，避免裁剪
+    private val innerRelativeScale = 0.85f // 减小内圈相对比例，避免裁剪
     
     init {
         setBackgroundResource(0)
