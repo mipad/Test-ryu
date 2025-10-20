@@ -944,28 +944,105 @@ class GameController(var activity: Activity) {
         createControlsImmediately(buttonContainer, manager)
     }
     
+    // 修改后的 setControlEnabled 方法 - 只更新单个控件而不是重建所有控件
     fun setControlEnabled(controlId: Int, enabled: Boolean) {
         when {
-            controlId in 1..12 -> buttonLayoutManager?.setButtonEnabled(controlId, enabled)
-            controlId in 101..102 -> buttonLayoutManager?.setJoystickEnabled(controlId, enabled)
-            controlId == 201 -> buttonLayoutManager?.setDpadEnabled(enabled)
+            controlId in 1..12 -> {
+                buttonLayoutManager?.setButtonEnabled(controlId, enabled)
+                // 只更新单个按钮
+                updateSingleButtonEnabled(controlId, enabled)
+            }
+            controlId in 101..102 -> {
+                buttonLayoutManager?.setJoystickEnabled(controlId, enabled)
+                // 只更新单个摇杆
+                updateSingleJoystickEnabled(controlId, enabled)
+            }
+            controlId == 201 -> {
+                buttonLayoutManager?.setDpadEnabled(enabled)
+                // 只更新方向键
+                updateSingleDpadEnabled(enabled)
+            }
         }
-        refreshControls()
+    }
+    
+    // 新增方法：更新单个按钮的启用状态
+    private fun updateSingleButtonEnabled(buttonId: Int, enabled: Boolean) {
+        val button = virtualButtons[buttonId] ?: return
+        
+        // 更新单个按钮的可见性
+        button.isVisible = enabled
+        
+        // 如果禁用按钮，确保按钮状态重置
+        if (!enabled) {
+            button.setPressedState(false)
+            // 发送释放事件，确保不会卡住按键状态
+            RyujinxNative.jnaInstance.inputSetButtonReleased(
+                buttonLayoutManager?.getAllButtonConfigs()?.find { it.id == buttonId }?.keyCode ?: 0, 
+                controllerId
+            )
+        }
+    }
+    
+    // 新增方法：更新单个摇杆的启用状态
+    private fun updateSingleJoystickEnabled(joystickId: Int, enabled: Boolean) {
+        val joystick = virtualJoysticks[joystickId] ?: return
+        
+        // 更新单个摇杆的可见性
+        joystick.isVisible = enabled
+        
+        // 如果禁用摇杆，确保摇杆状态重置
+        if (!enabled) {
+            joystick.updateStickPosition(0f, 0f, false)
+            // 发送归零事件，确保不会卡住摇杆状态
+            val config = buttonLayoutManager?.getAllJoystickConfigs()?.find { it.id == joystickId }
+            if (config != null) {
+                if (config.isLeft) {
+                    RyujinxNative.jnaInstance.inputSetStickAxis(1, 0f, 0f, controllerId)
+                } else {
+                    RyujinxNative.jnaInstance.inputSetStickAxis(2, 0f, 0f, controllerId)
+                }
+            }
+        }
+    }
+    
+    // 新增方法：更新单个方向键的启用状态
+    private fun updateSingleDpadEnabled(enabled: Boolean) {
+        val dpad = dpadView ?: return
+        
+        // 更新方向键的可见性
+        dpad.isVisible = enabled
+        
+        // 如果禁用方向键，确保方向键状态重置
+        if (!enabled) {
+            dpad.currentDirection = DpadOverlayView.DpadDirection.NONE
+            dpad.updateDirection(DpadOverlayView.DpadDirection.NONE)
+            // 发送释放所有方向的事件，确保不会卡住方向键状态
+            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadUp.ordinal, controllerId)
+            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadDown.ordinal, controllerId)
+            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadLeft.ordinal, controllerId)
+            RyujinxNative.jnaInstance.inputSetButtonReleased(GamePadButtonInputId.DpadRight.ordinal, controllerId)
+        }
     }
     
     fun setControlOpacity(controlId: Int, opacity: Int) {
         when {
             controlId in 1..12 -> {
                 buttonLayoutManager?.setButtonOpacity(controlId, opacity)
+                // 只更新单个按钮的透明度
                 virtualButtons[controlId]?.opacity = (opacity * 255 / 100)
+                virtualButtons[controlId]?.invalidate()
             }
             controlId in 101..102 -> {
                 buttonLayoutManager?.setJoystickOpacity(controlId, opacity)
+                // 只更新单个摇杆的透明度
                 virtualJoysticks[controlId]?.opacity = (opacity * 255 / 100)
+                virtualJoysticks[controlId]?.invalidate()
             }
             controlId == 201 -> {
                 buttonLayoutManager?.setDpadOpacity(opacity)
+                // 只更新方向键的透明度
                 dpadView?.opacity = (opacity * 255 / 100)
+                dpadView?.invalidate()
             }
         }
     }
