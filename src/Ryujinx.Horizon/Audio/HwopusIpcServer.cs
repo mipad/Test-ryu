@@ -6,7 +6,7 @@ namespace Ryujinx.Horizon.Audio
 {
     class HwopusIpcServer
     {
-        private const int MaxSessionsCount = 24;
+        private const int MaxSessionsCount = 25;
 
         private const int PointerBufferSize = 0x4000;
         private const int MaxDomains = 8;
