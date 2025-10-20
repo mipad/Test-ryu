@@ -1041,43 +1041,45 @@ class GameController(var activity: Activity) {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER
             
-            // 创建保存按钮
+            // 创建保存按钮 - 减小尺寸
             saveButton = Button(editModeContainer.context).apply {
-                text = "保存布局"
+                text = "保存"
                 setBackgroundColor(Color.argb(200, 0, 150, 0))
                 setTextColor(Color.WHITE)
-                textSize = 14f
+                textSize = 12f // 减小字体大小
+                setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4)) // 减小内边距
                 setOnClickListener {
                     saveLayout()
                     setEditingMode(false)
                 }
                 
                 val params = LinearLayout.LayoutParams(
-                    dpToPx(120),
-                    dpToPx(60)
+                    dpToPx(80), // 减小宽度
+                    dpToPx(40)  // 减小高度
                 ).apply {
-                    marginEnd = dpToPx(20)
+                    marginEnd = dpToPx(12) // 减小间距
                 }
                 layoutParams = params
             }
             
-            // 创建取消按钮
+            // 创建取消按钮 - 减小尺寸
             cancelButton = Button(editModeContainer.context).apply {
                 text = "取消"
                 setBackgroundColor(Color.argb(200, 200, 0, 0))
                 setTextColor(Color.WHITE)
-                textSize = 14f
+                textSize = 12f // 减小字体大小
+                setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4)) // 减小内边距
                 setOnClickListener {
                     // 取消编辑，不保存更改
                     setEditingMode(false)
-                    refreshControlPositions() // 恢复之前的位置
+                    refreshControls() // 重新加载控件以恢复之前的位置
                 }
                 
                 val params = LinearLayout.LayoutParams(
-                    dpToPx(120),
-                    dpToPx(60)
+                    dpToPx(80), // 减小宽度
+                    dpToPx(40)  // 减小高度
                 ).apply {
-                    marginStart = dpToPx(20)
+                    marginStart = dpToPx(12) // 减小间距
                 }
                 layoutParams = params
             }
