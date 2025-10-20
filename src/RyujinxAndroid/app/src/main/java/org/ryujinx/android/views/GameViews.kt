@@ -605,7 +605,7 @@ class GameViews {
                             // 左侧：全部重置按钮
                             TextButton(
                                 onClick = {
-                                    // 重置所有单独设置
+                                    // 重置所有单独设置 - 使用优化后的方法
                                     getControlItems().forEach { control ->
                                         when (control.type) {
                                             ControlType.BUTTON -> {
@@ -625,8 +625,7 @@ class GameViews {
                                             }
                                         }
                                     }
-                                    // 立即刷新控件
-                                    mainViewModel.controller?.refreshControls()
+                                    // 不需要调用 refreshControls()，因为单个更新方法已经优化
                                 },
                                 colors = ButtonDefaults.textButtonColors(
                                     contentColor = MaterialTheme.colorScheme.secondary
@@ -644,8 +643,7 @@ class GameViews {
                             // 右侧：确定按钮
                             TextButton(
                                 onClick = {
-                                    // 在关闭对话框时应用所有更改
-                                    mainViewModel.controller?.refreshControls()
+                                    // 在关闭对话框时不需要调用 refreshControls()，因为单个更新方法已经优化
                                     onDismiss()
                                 }
                             ) {
@@ -800,7 +798,7 @@ class GameViews {
                                     mainViewModel.controller?.setControlScale(control.id, 50)
                                     mainViewModel.controller?.setControlOpacity(control.id, 100)
                                     mainViewModel.controller?.setControlEnabled(control.id, true)
-                                    // 不立即刷新，避免位置偏移
+                                    // 不需要调用 refreshControls()，因为单个更新方法已经优化
                                 },
                                 colors = ButtonDefaults.textButtonColors(
                                     contentColor = MaterialTheme.colorScheme.secondary
@@ -834,8 +832,7 @@ class GameViews {
                             // 右侧：确定按钮
                             TextButton(
                                 onClick = {
-                                    // 在返回时刷新一次
-                                    mainViewModel.controller?.refreshControls()
+                                    // 在返回时不需要调用 refreshControls()，因为单个更新方法已经优化
                                     onDismiss()
                                 }
                             ) {
@@ -864,7 +861,7 @@ class GameViews {
                             onValueChange = { 
                                 scale.value = it.toInt()
                                 mainViewModel.controller?.setControlScale(control.id, scale.value)
-                                // 不立即刷新，避免位置偏移
+                                // 不需要调用 refreshControls()，因为单个更新方法已经优化
                             },
                             valueRange = 10f..200f,
                             modifier = Modifier.fillMaxWidth()
@@ -891,7 +888,7 @@ class GameViews {
                             onValueChange = { 
                                 opacity.value = it.toInt()
                                 mainViewModel.controller?.setControlOpacity(control.id, opacity.value)
-                                // 不立即刷新，避免位置偏移
+                                // 不需要调用 refreshControls()，因为单个更新方法已经优化
                             },
                             valueRange = 0f..100f,
                             modifier = Modifier.fillMaxWidth()
@@ -911,7 +908,7 @@ class GameViews {
                                 onCheckedChange = { 
                                     enabled.value = it
                                     mainViewModel.controller?.setControlEnabled(control.id, enabled.value)
-                                    // 不立即刷新，避免位置偏移
+                                    // 不需要调用 refreshControls()，因为单个更新方法已经优化
                                 }
                             )
                         }
