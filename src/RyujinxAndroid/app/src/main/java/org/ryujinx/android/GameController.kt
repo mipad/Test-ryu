@@ -1034,72 +1034,84 @@ class GameController(var activity: Activity) {
     }
     
     private fun createEditButtons(editModeContainer: FrameLayout) {
-        this.editModeContainer = editModeContainer
-        
-        // 创建水平布局容器
-        buttonLayout = LinearLayout(editModeContainer.context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER
-            
-            // 创建保存按钮
-            saveButton = Button(editModeContainer.context).apply {
-                text = "保存布局"
-                setBackgroundColor(Color.argb(200, 0, 150, 0))
-                setTextColor(Color.WHITE)
-                textSize = 14f
-                setOnClickListener {
-                    saveLayout()
-                    setEditingMode(false)
-                }
-                
-                val params = LinearLayout.LayoutParams(
-                    dpToPx(120),
-                    dpToPx(60)
-                ).apply {
-                    marginEnd = dpToPx(20)
-                }
-                layoutParams = params
-            }
-            
-            // 创建取消按钮
-            cancelButton = Button(editModeContainer.context).apply {
-                text = "取消"
-                setBackgroundColor(Color.argb(200, 200, 0, 0))
-                setTextColor(Color.WHITE)
-                textSize = 14f
-                setOnClickListener {
-                    // 取消编辑，不保存更改
-                    setEditingMode(false)
-                    refreshControlPositions() // 恢复之前的位置
-                }
-                
-                val params = LinearLayout.LayoutParams(
-                    dpToPx(120),
-                    dpToPx(60)
-                ).apply {
-                    marginStart = dpToPx(20)
-                }
-                layoutParams = params
-            }
-            
-            // 添加按钮到水平布局
-            addView(saveButton)
-            addView(cancelButton)
-        }
-        
-        // 将水平布局添加到编辑模式容器
-        val containerParams = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT
-        ).apply {
-            gravity = android.view.Gravity.CENTER
-        }
-        buttonLayout?.layoutParams = containerParams
-        editModeContainer.addView(buttonLayout)
-        
-        editModeContainer.setBackgroundColor(Color.argb(100, 0, 0, 0))
-        editModeContainer.isVisible = false
+    this.editModeContainer = editModeContainer
+    
+    // 创建圆角矩形背景的方法
+    fun createRoundedRectDrawable(color: Int, cornerRadius: Float): Drawable {
+        val shape = GradientDrawable()
+        shape.shape = GradientDrawable.RECTANGLE
+        shape.cornerRadius = cornerRadius
+        shape.setColor(color)
+        return shape
     }
+    
+    // 创建水平布局容器
+    buttonLayout = LinearLayout(editModeContainer.context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = android.view.Gravity.CENTER
+        
+        // 创建保存按钮 - 圆角矩形背景
+        saveButton = Button(editModeContainer.context).apply {
+            text = "保存布局"
+            background = createRoundedRectDrawable(
+                Color.argb(200, 0, 150, 0), 
+                dpToPx(12).toFloat() // 12dp圆角
+            )
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            setOnClickListener {
+                saveLayout()
+                setEditingMode(false)
+            }
+            
+            val params = LinearLayout.LayoutParams(
+                dpToPx(120),
+                dpToPx(60)
+            ).apply {
+                marginEnd = dpToPx(20)
+            }
+            layoutParams = params
+        }
+        
+        // 创建取消按钮 - 圆角矩形背景
+        cancelButton = Button(editModeContainer.context).apply {
+            text = "取消"
+            background = createRoundedRectDrawable(
+                Color.argb(200, 200, 0, 0), 
+                dpToPx(12).toFloat() // 12dp圆角
+            )
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            setOnClickListener {
+                setEditingMode(false)
+                refreshControlPositions()
+            }
+            
+            val params = LinearLayout.LayoutParams(
+                dpToPx(120),
+                dpToPx(60)
+            ).apply {
+                marginStart = dpToPx(20)
+            }
+            layoutParams = params
+        }
+        
+        addView(saveButton)
+        addView(cancelButton)
+    }
+    
+    val containerParams = FrameLayout.LayoutParams(
+        FrameLayout.LayoutParams.WRAP_CONTENT,
+        FrameLayout.LayoutParams.WRAP_CONTENT
+    ).apply {
+        gravity = android.view.Gravity.CENTER
+    }
+    buttonLayout?.layoutParams = containerParams
+    editModeContainer.addView(buttonLayout)
+    
+    editModeContainer.setBackgroundColor(Color.argb(100, 0, 0, 0)) // 调整为更亮的背景
+    editModeContainer.isVisible = false
+}
     
     private fun dpToPx(dp: Int): Int {
         return TypedValue.applyDimension(
