@@ -832,8 +832,7 @@ class GameController(var activity: Activity) {
                 isLeftStick = config.isLeft
                 opacity = (manager.getJoystickOpacity(config.id) * 255 / 100)
                 
-                val (x, y) = manager.getJoystickPosition(config.id, effectiveWidth, effectiveHeight)
-                setPosition(x, y)
+                // 不在这里设置位置，统一在 refreshControlPositions 中设置
                 
                 setOnTouchListener { _, event ->
                     if (isEditing) {
@@ -851,13 +850,13 @@ class GameController(var activity: Activity) {
         
         // 创建方向键 - 传递 individualScale 参数
         if (manager.isDpadEnabled()) {
-            val (dpadX, dpadY) = manager.getDpadPosition(effectiveWidth, effectiveHeight)
             dpadView = DpadOverlayView(
                 buttonContainer.context,
                 individualScale = manager.getDpadScale() // 传递 individualScale
             ).apply {
                 opacity = (manager.getDpadOpacity() * 255 / 100)
-                setPosition(dpadX, dpadY)
+                
+                // 不在这里设置位置，统一在 refreshControlPositions 中设置
                 
                 setOnTouchListener { _, event ->
                     if (isEditing) {
@@ -898,8 +897,7 @@ class GameController(var activity: Activity) {
                     12 -> setBitmaps(R.drawable.button_r3, R.drawable.button_r3_depressed)
                 }
                 
-                val (x, y) = manager.getButtonPosition(config.id, effectiveWidth, effectiveHeight)
-                setPosition(x, y)
+                // 不在这里设置位置，统一在 refreshControlPositions 中设置
                 
                 setOnTouchListener { _, event ->
                     if (isEditing) {
@@ -915,6 +913,10 @@ class GameController(var activity: Activity) {
             virtualButtons[config.id] = button
         }
         
+        // 统一设置位置
+        refreshControlPositions()
+        
+        // 如果容器尺寸为0，延迟刷新位置
         if (containerWidth <= 0 || containerHeight <= 0) {
             buttonContainer.post {
                 refreshControlPositions()
@@ -930,9 +932,6 @@ class GameController(var activity: Activity) {
         val containerWidth = buttonContainer.width
         val containerHeight = buttonContainer.height
         
-        val effectiveWidth = if (containerWidth > 0) containerWidth else activity.resources.displayMetrics.widthPixels
-        val effectiveHeight = if (containerHeight > 0) containerHeight else activity.resources.displayMetrics.heightPixels
-        
         // 清除现有控件
         virtualButtons.values.forEach { buttonContainer.removeView(it) }
         virtualJoysticks.values.forEach { buttonContainer.removeView(it) }
@@ -942,7 +941,7 @@ class GameController(var activity: Activity) {
         virtualJoysticks.clear()
         dpadView = null
         
-        // 重新创建控件，使用与初始加载相同的位置读取方式
+        // 重新创建控件，使用相同的逻辑
         createControlsImmediately(buttonContainer, manager)
     }
     
@@ -952,7 +951,7 @@ class GameController(var activity: Activity) {
             controlId in 101..102 -> buttonLayoutManager?.setJoystickEnabled(controlId, enabled)
             controlId == 201 -> buttonLayoutManager?.setDpadEnabled(enabled)
         }
-        refreshControlPositions()
+        refreshControls()
     }
     
     fun setControlOpacity(controlId: Int, opacity: Int) {
@@ -978,7 +977,7 @@ class GameController(var activity: Activity) {
             controlId in 101..102 -> buttonLayoutManager?.setJoystickScale(controlId, scale)
             controlId == 201 -> buttonLayoutManager?.setDpadScale(scale)
         }
-        refreshControlPositions()
+        refreshControls()
     }
     
     fun getControlScale(controlId: Int): Int {
@@ -1017,7 +1016,7 @@ class GameController(var activity: Activity) {
         
         if (containerWidth <= 0 || containerHeight <= 0) return
         
-        // 使用与初始加载相同的位置读取方式
+        // 统一使用布局管理器读取位置
         virtualJoysticks.forEach { (joystickId, joystick) ->
             val (x, y) = manager.getJoystickPosition(joystickId, containerWidth, containerHeight)
             joystick.setPosition(x, y)
