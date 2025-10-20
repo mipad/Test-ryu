@@ -1,4 +1,3 @@
-
 // SPDX-FileCopyrightText: Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -948,10 +947,9 @@ class GameController(var activity: Activity) {
             controlId in 1..12 -> buttonLayoutManager?.setButtonEnabled(controlId, enabled)
             controlId in 101..102 -> buttonLayoutManager?.setJoystickEnabled(controlId, enabled)
             controlId == 201 -> buttonLayoutManager?.setDpadEnabled(enabled)
-         }
-            refreshControlPositions()   
-         }
-    
+        }
+        refreshControls()
+    }
     
     fun setControlOpacity(controlId: Int, opacity: Int) {
         when {
@@ -971,14 +969,13 @@ class GameController(var activity: Activity) {
     }
     
     fun setControlScale(controlId: Int, scale: Int) {
-    when {
-        controlId in 1..12 -> buttonLayoutManager?.setButtonScale(controlId, scale)
-        controlId in 101..102 -> buttonLayoutManager?.setJoystickScale(controlId, scale)
-        controlId == 201 -> buttonLayoutManager?.setDpadScale(scale)
+        when {
+            controlId in 1..12 -> buttonLayoutManager?.setButtonScale(controlId, scale)
+            controlId in 101..102 -> buttonLayoutManager?.setJoystickScale(controlId, scale)
+            controlId == 201 -> buttonLayoutManager?.setDpadScale(scale)
+        }
+        refreshControls()
     }
-    refreshControls()           // 先刷新控件（重建）
-    refreshControlPositions()   // 再刷新位置（重新定位）
-}
     
     fun getControlScale(controlId: Int): Int {
         return when {
