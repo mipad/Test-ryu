@@ -596,51 +596,14 @@ class GameViews {
                             .fillMaxWidth()
                             .padding(16.dp)
                     ) {
-                        Text(
-                            text = "调整按键设置",
-                            style = MaterialTheme.typography.headlineSmall,
-                            modifier = Modifier
-                                .padding(bottom = 16.dp)
-                                .align(Alignment.CenterHorizontally)
-                        )
-
-                        Text(
-                            text = "单个按键设置",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(vertical = 8.dp)
-                        )
-
-                        // 按键列表
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(300.dp)
-                        ) {
-                            itemsIndexed(getControlItems()) { index, control ->
-                                ControlListItem(
-                                    control = control,
-                                    mainViewModel = mainViewModel,
-                                    onClick = { selectedControl.value = control }
-                                )
-                                if (index < getControlItems().size - 1) {
-                                    HorizontalDivider(
-                                        modifier = Modifier.padding(horizontal = 8.dp),
-                                        thickness = 0.5.dp,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // 底部按钮
+                        // 标题行和按钮行 - 修改为按钮在标题左右
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // 左下角：全局还原
-                            Button(
+                            // 左侧：全部重置按钮
+                            TextButton(
                                 onClick = {
                                     // 重置所有单独设置
                                     getControlItems().forEach { control ->
@@ -662,17 +625,24 @@ class GameViews {
                                             }
                                         }
                                     }
-                                    // 不立即刷新，等待用户确认
+                                    // 立即刷新控件
+                                    mainViewModel.controller?.refreshControls()
                                 },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                                colors = ButtonDefaults.textButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.secondary
                                 )
                             ) {
                                 Text(text = "全部重置")
                             }
 
-                            // 右下角：确定
-                            Button(
+                            // 中间：标题
+                            Text(
+                                text = "调整按键设置",
+                                style = MaterialTheme.typography.headlineSmall
+                            )
+
+                            // 右侧：确定按钮
+                            TextButton(
                                 onClick = {
                                     // 在关闭对话框时应用所有更改
                                     mainViewModel.controller?.refreshControls()
@@ -680,6 +650,36 @@ class GameViews {
                                 }
                             ) {
                                 Text(text = "确定")
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = "单个按键设置",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+
+                        // 按键列表 - 增加高度以充分利用空间
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(400.dp) // 增加高度
+                        ) {
+                            itemsIndexed(getControlItems()) { index, control ->
+                                ControlListItem(
+                                    control = control,
+                                    mainViewModel = mainViewModel,
+                                    onClick = { selectedControl.value = control }
+                                )
+                                if (index < getControlItems().size - 1) {
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(horizontal = 8.dp),
+                                        thickness = 0.5.dp,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                                    )
+                                }
                             }
                         }
                     }
@@ -785,26 +785,61 @@ class GameViews {
                             .fillMaxWidth()
                             .padding(16.dp)
                     ) {
-                        // 标题
+                        // 标题行和按钮行 - 同样修改为按钮在标题左右
                         Row(
                             modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = control.emoji,
-                                fontSize = 24.sp,
-                                modifier = Modifier.padding(end = 12.dp)
-                            )
-                            Column {
-                                Text(
-                                    text = control.name,
-                                    style = MaterialTheme.typography.titleMedium
+                            // 左侧：重置按钮
+                            TextButton(
+                                onClick = {
+                                    scale.value = 50
+                                    opacity.value = 100
+                                    enabled.value = true
+                                    mainViewModel.controller?.setControlScale(control.id, 50)
+                                    mainViewModel.controller?.setControlOpacity(control.id, 100)
+                                    mainViewModel.controller?.setControlEnabled(control.id, true)
+                                    // 不立即刷新，避免位置偏移
+                                },
+                                colors = ButtonDefaults.textButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.secondary
                                 )
+                            ) {
+                                Text(text = "重置")
+                            }
+
+                            // 中间：标题
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Text(
-                                    text = control.description,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                    text = control.emoji,
+                                    fontSize = 24.sp,
+                                    modifier = Modifier.padding(end = 12.dp)
                                 )
+                                Column {
+                                    Text(
+                                        text = control.name,
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
+                                    Text(
+                                        text = control.description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                    )
+                                }
+                            }
+
+                            // 右侧：确定按钮
+                            TextButton(
+                                onClick = {
+                                    // 在返回时刷新一次
+                                    mainViewModel.controller?.refreshControls()
+                                    onDismiss()
+                                }
+                            ) {
+                                Text(text = "确定")
                             }
                         }
 
@@ -879,41 +914,6 @@ class GameViews {
                                     // 不立即刷新，避免位置偏移
                                 }
                             )
-                        }
-
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        // 底部按钮
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Button(
-                                onClick = {
-                                    scale.value = 50
-                                    opacity.value = 100
-                                    enabled.value = true
-                                    mainViewModel.controller?.setControlScale(control.id, 50)
-                                    mainViewModel.controller?.setControlOpacity(control.id, 100)
-                                    mainViewModel.controller?.setControlEnabled(control.id, true)
-                                    // 不立即刷新，避免位置偏移
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer
-                                )
-                            ) {
-                                Text(text = "重置")
-                            }
-
-                            Button(
-                                onClick = {
-                                    // 在返回时刷新一次
-                                    mainViewModel.controller?.refreshControls()
-                                    onDismiss()
-                                }
-                            ) {
-                                Text(text = "确定")
-                            }
                         }
                     }
                 }
