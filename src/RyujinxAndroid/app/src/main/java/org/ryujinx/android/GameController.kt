@@ -16,9 +16,6 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.Button
 import android.widget.LinearLayout
-import android.widget.SeekBar
-import android.widget.TextView
-import android.widget.CheckBox
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
@@ -794,9 +791,6 @@ class GameController(var activity: Activity) {
     private var saveButton: Button? = null
     private var cancelButton: Button? = null
     private var buttonLayout: LinearLayout? = null
-    private var controlSettingsLayout: LinearLayout? = null
-    private var currentEditingControlId: Int = -1
-    private var currentEditingControlType: String = "" // "button", "joystick", "dpad"
     var buttonLayoutManager: ButtonLayoutManager? = null
     private val virtualButtons = mutableMapOf<Int, ButtonOverlayView>()
     private val virtualJoysticks = mutableMapOf<Int, JoystickOverlayView>()
@@ -842,33 +836,11 @@ class GameController(var activity: Activity) {
                 
                 setOnTouchListener { _, event ->
                     if (isEditing) {
-                        when (event.action) {
-                            MotionEvent.ACTION_DOWN -> {
-                                // 开始拖动
-                                handleJoystickDragEvent(event, config.id)
-                            }
-                            MotionEvent.ACTION_MOVE -> {
-                                // 继续拖动
-                                handleJoystickDragEvent(event, config.id)
-                            }
-                            MotionEvent.ACTION_UP -> {
-                                // 结束拖动
-                            }
-                        }
+                        handleJoystickDragEvent(event, config.id)
                     } else {
                         handleJoystickEvent(event, config.id, config.isLeft)
                     }
                     true
-                }
-                
-                // 添加长按监听器用于编辑控件属性
-                setOnLongClickListener {
-                    if (isEditing) {
-                        showControlSettingsMenu(config.id, "joystick", it)
-                        true
-                    } else {
-                        false
-                    }
                 }
             }
             
@@ -888,33 +860,11 @@ class GameController(var activity: Activity) {
                 
                 setOnTouchListener { _, event ->
                     if (isEditing) {
-                        when (event.action) {
-                            MotionEvent.ACTION_DOWN -> {
-                                // 开始拖动
-                                handleDpadDragEvent(event)
-                            }
-                            MotionEvent.ACTION_MOVE -> {
-                                // 继续拖动
-                                handleDpadDragEvent(event)
-                            }
-                            MotionEvent.ACTION_UP -> {
-                                // 结束拖动
-                            }
-                        }
+                        handleDpadDragEvent(event)
                     } else {
                         handleDpadEvent(event)
                     }
                     true
-                }
-                
-                // 添加长按监听器用于编辑控件属性
-                setOnLongClickListener {
-                    if (isEditing) {
-                        showControlSettingsMenu(201, "dpad", it)
-                        true
-                    } else {
-                        false
-                    }
                 }
             }
             buttonContainer.addView(dpadView)
@@ -952,33 +902,11 @@ class GameController(var activity: Activity) {
                 
                 setOnTouchListener { _, event ->
                     if (isEditing) {
-                        when (event.action) {
-                            MotionEvent.ACTION_DOWN -> {
-                                // 开始拖动
-                                handleButtonDragEvent(event, config.id)
-                            }
-                            MotionEvent.ACTION_MOVE -> {
-                                // 继续拖动
-                                handleButtonDragEvent(event, config.id)
-                            }
-                            MotionEvent.ACTION_UP -> {
-                                // 结束拖动
-                            }
-                        }
+                        handleButtonDragEvent(event, config.id)
                     } else {
                         handleButtonEvent(event, config.keyCode, config.id)
                     }
                     true
-                }
-                
-                // 添加长按监听器用于编辑控件属性
-                setOnLongClickListener {
-                    if (isEditing) {
-                        showControlSettingsMenu(config.id, "button", it)
-                        true
-                    } else {
-                        false
-                    }
                 }
             }
             
@@ -1113,45 +1041,43 @@ class GameController(var activity: Activity) {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER
             
-            // 创建保存按钮 - 减小尺寸
+            // 创建保存按钮
             saveButton = Button(editModeContainer.context).apply {
-                text = "保存"
+                text = "保存布局"
                 setBackgroundColor(Color.argb(200, 0, 150, 0))
                 setTextColor(Color.WHITE)
-                textSize = 12f // 减小字体大小
-                setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4)) // 减小内边距
+                textSize = 14f
                 setOnClickListener {
                     saveLayout()
                     setEditingMode(false)
                 }
                 
                 val params = LinearLayout.LayoutParams(
-                    dpToPx(80), // 减小宽度
-                    dpToPx(40)  // 减小高度
+                    dpToPx(120),
+                    dpToPx(60)
                 ).apply {
-                    marginEnd = dpToPx(12) // 减小间距
+                    marginEnd = dpToPx(20)
                 }
                 layoutParams = params
             }
             
-            // 创建取消按钮 - 减小尺寸
+            // 创建取消按钮
             cancelButton = Button(editModeContainer.context).apply {
                 text = "取消"
                 setBackgroundColor(Color.argb(200, 200, 0, 0))
                 setTextColor(Color.WHITE)
-                textSize = 12f // 减小字体大小
-                setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4)) // 减小内边距
+                textSize = 14f
                 setOnClickListener {
                     // 取消编辑，不保存更改
                     setEditingMode(false)
-                    refreshControls() // 重新加载控件以恢复之前的位置
+                    refreshControlPositions() // 恢复之前的位置
                 }
                 
                 val params = LinearLayout.LayoutParams(
-                    dpToPx(80), // 减小宽度
-                    dpToPx(40)  // 减小高度
+                    dpToPx(120),
+                    dpToPx(60)
                 ).apply {
-                    marginStart = dpToPx(12) // 减小间距
+                    marginStart = dpToPx(20)
                 }
                 layoutParams = params
             }
@@ -1173,143 +1099,6 @@ class GameController(var activity: Activity) {
         
         editModeContainer.setBackgroundColor(Color.argb(150, 0, 0, 0))
         editModeContainer.isVisible = false
-    }
-    
-    private fun showControlSettingsMenu(controlId: Int, controlType: String, view: View) {
-        currentEditingControlId = controlId
-        currentEditingControlType = controlType
-        
-        // 创建控件设置菜单
-        controlSettingsLayout = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.argb(220, 60, 60, 60))
-            setPadding(dpToPx(16), dpToPx(16), dpToPx(16), dpToPx(16))
-            
-            // 标题
-            val title = TextView(activity).apply {
-                text = when (controlType) {
-                    "button" -> "按钮设置"
-                    "joystick" -> "摇杆设置"
-                    "dpad" -> "方向键设置"
-                    else -> "控件设置"
-                }
-                setTextColor(Color.WHITE)
-                textSize = 16f
-            }
-            addView(title)
-            
-            // 间距
-            addView(TextView(activity).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dpToPx(8)
-                )
-            })
-            
-            // 缩放滑块
-            val scaleLabel = TextView(activity).apply {
-                text = "缩放: ${getControlScale(controlId)}%"
-                setTextColor(Color.WHITE)
-                textSize = 14f
-            }
-            addView(scaleLabel)
-            
-            val scaleSeekBar = SeekBar(activity).apply {
-                max = 190 // 10-200 -> 0-190
-                progress = getControlScale(controlId) - 10
-                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                    override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                        val scale = progress + 10
-                        scaleLabel.text = "缩放: ${scale}%"
-                        setControlScale(controlId, scale)
-                    }
-                    
-                    override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-                    override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-                })
-            }
-            addView(scaleSeekBar)
-            
-            // 间距
-            addView(TextView(activity).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dpToPx(8)
-                )
-            })
-            
-            // 透明度滑块
-            val opacityLabel = TextView(activity).apply {
-                text = "透明度: ${getControlOpacity(controlId)}%"
-                setTextColor(Color.WHITE)
-                textSize = 14f
-            }
-            addView(opacityLabel)
-            
-            val opacitySeekBar = SeekBar(activity).apply {
-                max = 100
-                progress = getControlOpacity(controlId)
-                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                    override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                        opacityLabel.text = "透明度: ${progress}%"
-                        setControlOpacity(controlId, progress)
-                    }
-                    
-                    override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-                    override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-                })
-            }
-            addView(opacitySeekBar)
-            
-            // 间距
-            addView(TextView(activity).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dpToPx(8)
-                )
-            })
-            
-            // 显示/隐藏复选框
-            val visibilityCheckBox = CheckBox(activity).apply {
-                text = "显示控件"
-                setTextColor(Color.WHITE)
-                isChecked = isControlEnabled(controlId)
-                setOnCheckedChangeListener { _, isChecked ->
-                    setControlEnabled(controlId, isChecked)
-                }
-            }
-            addView(visibilityCheckBox)
-            
-            // 间距
-            addView(TextView(activity).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dpToPx(16)
-                )
-            })
-            
-            // 关闭按钮
-            val closeButton = Button(activity).apply {
-                text = "关闭"
-                setBackgroundColor(Color.argb(200, 100, 100, 100))
-                setTextColor(Color.WHITE)
-                setOnClickListener {
-                    editModeContainer?.removeView(controlSettingsLayout)
-                    controlSettingsLayout = null
-                }
-            }
-            addView(closeButton)
-        }
-        
-        // 将设置菜单添加到编辑模式容器
-        val params = FrameLayout.LayoutParams(
-            dpToPx(280),
-            FrameLayout.LayoutParams.WRAP_CONTENT
-        ).apply {
-            gravity = android.view.Gravity.CENTER
-        }
-        controlSettingsLayout?.layoutParams = params
-        editModeContainer?.addView(controlSettingsLayout)
     }
     
     private fun dpToPx(dp: Int): Int {
@@ -1552,12 +1341,6 @@ class GameController(var activity: Activity) {
     fun setEditingMode(editing: Boolean) {
         isEditing = editing
         editModeContainer?.isVisible = editing
-        
-        // 关闭控件设置菜单
-        controlSettingsLayout?.let {
-            editModeContainer?.removeView(it)
-            controlSettingsLayout = null
-        }
         
         virtualButtons.values.forEach { button ->
             button.setPressedState(false)
