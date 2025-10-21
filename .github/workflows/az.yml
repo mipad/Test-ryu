@@ -2,9 +2,9 @@ name: Android CI  Fix
 
 on:
   push:
-    branches: [ "内存配置" ]
+    branches: [ "MemoryManagerMode" ]
   pull_request:
-    branches: [ "内存配置" ]
+    branches: [ "MemoryManagerMode" ]
 
 jobs:
   build:
@@ -25,7 +25,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: 内存配置
+        ref: MemoryManagerMode
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
