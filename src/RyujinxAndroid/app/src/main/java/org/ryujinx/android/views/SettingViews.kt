@@ -950,7 +950,7 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                 Text(text = "Enable Texture Recompression")
                                 Switch(
                                     checked = enableTextureRecompression.value,
-                                    onValueChange = {
+                                    onCheckedChange = {
                                         enableTextureRecompression.value =
                                             !enableTextureRecompression.value
                                     })
