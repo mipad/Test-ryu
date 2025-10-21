@@ -100,8 +100,8 @@ class SettingViews {
                 mutableStateOf(false)
             }
 
-            val isHostMapped = remember {
-                mutableStateOf(false)
+            val memoryManagerMode = remember {  // 修改：替换isHostMapped为memoryManagerMode
+                mutableStateOf(2)  // 默认使用HostMappedUnsafe
             }
             val useNce = remember {
                 mutableStateOf(false)
@@ -183,11 +183,11 @@ class SettingViews {
             val showAudioEngineDialog = remember { mutableStateOf(false) } // 控制音频引擎对话框显示
             val showScalingFilterDialog = remember { mutableStateOf(false) } // 控制Scaling Filter对话框显示
             val showMemoryConfigDialog = remember { mutableStateOf(false) } // 控制内存配置对话框显示
-            
+            val showMemoryManagerDialog = remember { mutableStateOf(false) } // 控制内存管理器对话框显示
 
             if (!loaded.value) {
                 settingsViewModel.initializeState(
-                    isHostMapped,
+                    memoryManagerMode,  // 修改：传递memoryManagerMode参数
                     useNce,
                     enableVsync, enableDocked, enablePtc, enableJitCacheEviction, ignoreMissingServices,
                     enableShaderCache,
@@ -247,7 +247,7 @@ class SettingViews {
                         navigationIcon = {
                             IconButton(onClick = {
                                 settingsViewModel.save(
-                                    isHostMapped,
+                                    memoryManagerMode,  // 修改：传递memoryManagerMode参数
                                     useNce,
                                     enableVsync,
                                     enableDocked,
@@ -509,6 +509,27 @@ class SettingViews {
                     }
                     ExpandableView(onCardArrowClick = { }, title = "System") {
                         Column(modifier = Modifier.fillMaxWidth()) {
+                            // 内存管理器模式设置
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp)
+                                    .clickable { showMemoryManagerDialog.value = true },
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Memory Manager Mode")
+                                Text(
+                                    text = when (memoryManagerMode.value) {
+                                        0 -> "Software Page Table"
+                                        1 -> "Host Mapped"
+                                        2 -> "Host Mapped Unsafe"
+                                        else -> "Host Mapped Unsafe"
+                                    },
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -552,18 +573,6 @@ class SettingViews {
                         }
                     }
                             
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(text = "Is Host Mapped")
-                                Switch(checked = isHostMapped.value, onCheckedChange = {
-                                    isHostMapped.value = !isHostMapped.value
-                                })
-                            }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -941,7 +950,7 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                 Text(text = "Enable Texture Recompression")
                                 Switch(
                                     checked = enableTextureRecompression.value,
-                                    onCheckedChange = {
+                                    onValueChange = {
                                         enableTextureRecompression.value =
                                             !enableTextureRecompression.value
                                     })
@@ -2059,6 +2068,117 @@ if (showMemoryConfigDialog.value) {
                     }
                 }
 
+                // 内存管理器模式选择对话框
+                if (showMemoryManagerDialog.value) {
+                    BasicAlertDialog(
+                        onDismissRequest = { showMemoryManagerDialog.value = false }
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .wrapContentWidth()
+                                .wrapContentHeight(),
+                            shape = MaterialTheme.shapes.large,
+                            tonalElevation = AlertDialogDefaults.TonalElevation
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp)
+                            ) {
+                                Text(
+                                    text = "Select Memory Manager Mode",
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    modifier = Modifier.padding(bottom = 16.dp)
+                                )
+                                
+                                // Software Page Table 选项
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            memoryManagerMode.value = 0
+                                            showMemoryManagerDialog.value = false
+                                        }
+                                        .padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = memoryManagerMode.value == 0,
+                                        onClick = {
+                                            memoryManagerMode.value = 0
+                                            showMemoryManagerDialog.value = false
+                                        }
+                                    )
+                                    Text(
+                                        text = "Software Page Table",
+                                        modifier = Modifier.padding(start = 16.dp)
+                                    )
+                                }
+                                
+                                // Host Mapped 选项
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            memoryManagerMode.value = 1
+                                            showMemoryManagerDialog.value = false
+                                        }
+                                        .padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = memoryManagerMode.value == 1,
+                                        onClick = {
+                                            memoryManagerMode.value = 1
+                                            showMemoryManagerDialog.value = false
+                                        }
+                                    )
+                                    Text(
+                                        text = "Host Mapped",
+                                        modifier = Modifier.padding(start = 16.dp)
+                                    )
+                                }
+                                
+                                // Host Mapped Unsafe 选项
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            memoryManagerMode.value = 2
+                                            showMemoryManagerDialog.value = false
+                                        }
+                                        .padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = memoryManagerMode.value == 2,
+                                        onClick = {
+                                            memoryManagerMode.value = 2
+                                            showMemoryManagerDialog.value = false
+                                        }
+                                    )
+                                    Text(
+                                        text = "Host Mapped Unsafe",
+                                        modifier = Modifier.padding(start = 16.dp)
+                                    )
+                                }
+                                
+                                // 添加取消按钮
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 16.dp),
+                                    horizontalArrangement = Arrangement.End
+                                ) {
+                                    TextButton(
+                                        onClick = { showMemoryManagerDialog.value = false }
+                                    ) {
+                                        Text("Cancel")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // 音频引擎选择对话框
                 if (showAudioEngineDialog.value) {
                     BasicAlertDialog(
@@ -2196,7 +2316,7 @@ if (showMemoryConfigDialog.value) {
 
                 BackHandler {
                     settingsViewModel.save(
-                        isHostMapped,
+                        memoryManagerMode,  // 修改：传递memoryManagerMode参数
                         useNce, enableVsync, enableDocked, enablePtc, enableJitCacheEviction, ignoreMissingServices,
                         enableShaderCache,
                         enableTextureRecompression,
@@ -2355,3 +2475,4 @@ if (showMemoryConfigDialog.value) {
         }
     }
 }
+
