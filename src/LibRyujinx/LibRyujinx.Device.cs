@@ -8,12 +8,13 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using Ryujinx.HLE; 
+using Ryujinx.Common.Configuration;
 
 namespace LibRyujinx
 {
     public static partial class LibRyujinx
     {
-        public static bool InitializeDevice(bool isHostMapped,
+        public static bool InitializeDevice(MemoryManagerMode memoryManagerMode,
                                             bool useHypervisor,
                                             SystemLanguage systemLanguage,
                                             RegionCode regionCode,
@@ -25,14 +26,14 @@ namespace LibRyujinx
                                             string? timeZone,
                                             bool ignoreMissingServices,
                                             MemoryConfiguration memoryConfiguration,
-                                            long systemTimeOffset) // 新增系统时间偏移参数
+                                            long systemTimeOffset)
         {
             if (SwitchDevice == null)
             {
                 return false;
             }
 
-            return SwitchDevice.InitializeContext(isHostMapped,
+            return SwitchDevice.InitializeContext(memoryManagerMode,
                                                   useHypervisor,
                                                   systemLanguage,
                                                   regionCode,
@@ -44,7 +45,7 @@ namespace LibRyujinx
                                                   timeZone,
                                                   ignoreMissingServices,
                                                   memoryConfiguration,
-                                                  systemTimeOffset); // 传递系统时间偏移参数
+                                                  systemTimeOffset);
         }
 
         public static void InstallFirmware(Stream stream, bool isXci)
