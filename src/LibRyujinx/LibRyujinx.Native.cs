@@ -71,7 +71,7 @@ namespace LibRyujinx
         }
 
         [UnmanagedCallersOnly(EntryPoint = "device_initialize")]
-        public static bool InitializeDeviceNative(bool isHostMapped,
+        public static bool InitializeDeviceNative(int memoryManagerMode,
                                                   bool useHypervisor,
                                                   SystemLanguage systemLanguage,
                                                   RegionCode regionCode,
@@ -84,7 +84,7 @@ namespace LibRyujinx
                                                   bool ignoreMissingServices,
                                                   int audioEngineType,
                                                   int memoryConfiguration,
-                                                  long systemTimeOffset)  // 新增系统时间偏移参数
+                                                  long systemTimeOffset)
         {
             // 根据音频引擎类型设置音频驱动
             switch (audioEngineType)
@@ -106,7 +106,7 @@ namespace LibRyujinx
                     break;
             }
             
-            return InitializeDevice(isHostMapped,
+            return InitializeDevice((MemoryManagerMode)memoryManagerMode,
                                     useHypervisor,
                                     systemLanguage,
                                     regionCode,
@@ -118,7 +118,7 @@ namespace LibRyujinx
                                     Marshal.PtrToStringAnsi(timeZone),
                                     ignoreMissingServices,
                                     (MemoryConfiguration)memoryConfiguration,
-                                    systemTimeOffset);  // 传递系统时间偏移参数
+                                    systemTimeOffset);
         }
 
         [UnmanagedCallersOnly(EntryPoint = "device_reload_file_system")]
@@ -177,7 +177,7 @@ namespace LibRyujinx
             bool enableShaderCache,
             bool enableTextureRecompression,
             int backendThreading,
-            int aspectRatio)  // 新增参数：画面比例
+            int aspectRatio)
         {
             if (OperatingSystem.IsIOS())
             {
@@ -195,7 +195,7 @@ namespace LibRyujinx
                 EnableShaderCache = enableShaderCache,
                 EnableTextureRecompression = enableTextureRecompression,
                 BackendThreading = (BackendThreading)backendThreading,
-                AspectRatio = (AspectRatio)aspectRatio  // 设置画面比例
+                AspectRatio = (AspectRatio)aspectRatio
             });
         }
 
@@ -632,7 +632,10 @@ namespace LibRyujinx
                 var titleId = Marshal.PtrToStringAnsi(titleIdPtr);
                 var cheatId = Marshal.PtrToStringAnsi(cheatIdPtr);
                 
+                // 设置金手指启用状态
                 SetCheatEnabled(titleId, cheatId, enabled);
+                
+                Logger.Info?.Print(LogClass.Application, $"Cheat {cheatId} {(enabled ? "enabled" : "disabled")} for title {titleId}");
             }
             catch (Exception ex)
             {
@@ -647,7 +650,10 @@ namespace LibRyujinx
             {
                 var titleId = Marshal.PtrToStringAnsi(titleIdPtr);
                 
+                // 保存金手指设置
                 SaveCheats(titleId);
+                
+                Logger.Info?.Print(LogClass.Application, $"Cheats saved for title {titleId}");
             }
             catch (Exception ex)
             {
@@ -655,25 +661,23 @@ namespace LibRyujinx
             }
         }
 
-        // ==================== Mod 管理相关的 JNI 方法 ====================
+        // ==================== Mod 管理相关 JNI 方法 ====================
 
         [UnmanagedCallersOnly(EntryPoint = "modsGetMods")]
         public static IntPtr ModsGetModsNative(IntPtr titleIdPtr)
         {
             try
             {
-                var titleId = Marshal.PtrToStringAnsi(titleIdPtr);
+                var titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
                 var mods = GetMods(titleId);
                 
-                // 使用源生成器进行序列化，避免反射
+                // 使用新的序列化上下文
                 var json = JsonSerializer.Serialize(mods, _modSerializerContext.ListModInfo);
-                
                 return Marshal.StringToHGlobalAnsi(json);
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Error in ModsGetModsNative: {ex.Message}");
-                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
                 return IntPtr.Zero;
             }
         }
@@ -683,15 +687,14 @@ namespace LibRyujinx
         {
             try
             {
-                var titleId = Marshal.PtrToStringAnsi(titleIdPtr);
-                var modPath = Marshal.PtrToStringAnsi(modPathPtr);
+                var titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                var modPath = Marshal.PtrToStringAnsi(modPathPtr) ?? "";
                 
                 return SetModEnabled(titleId, modPath, enabled);
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Error in ModsSetEnabledNative: {ex.Message}");
-                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
@@ -701,15 +704,14 @@ namespace LibRyujinx
         {
             try
             {
-                var titleId = Marshal.PtrToStringAnsi(titleIdPtr);
-                var modPath = Marshal.PtrToStringAnsi(modPathPtr);
+                var titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                var modPath = Marshal.PtrToStringAnsi(modPathPtr) ?? "";
                 
                 return DeleteMod(titleId, modPath);
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Error in ModsDeleteModNative: {ex.Message}");
-                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
@@ -719,14 +721,13 @@ namespace LibRyujinx
         {
             try
             {
-                var titleId = Marshal.PtrToStringAnsi(titleIdPtr);
+                var titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
                 
                 return DeleteAllMods(titleId);
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Error in ModsDeleteAllNative: {ex.Message}");
-                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
@@ -736,14 +737,13 @@ namespace LibRyujinx
         {
             try
             {
-                var titleId = Marshal.PtrToStringAnsi(titleIdPtr);
+                var titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
                 
                 return EnableAllMods(titleId);
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Error in ModsEnableAllNative: {ex.Message}");
-                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
@@ -753,14 +753,13 @@ namespace LibRyujinx
         {
             try
             {
-                var titleId = Marshal.PtrToStringAnsi(titleIdPtr);
+                var titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
                 
                 return DisableAllMods(titleId);
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Error in ModsDisableAllNative: {ex.Message}");
-                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
                 return false;
             }
         }
@@ -770,17 +769,157 @@ namespace LibRyujinx
         {
             try
             {
-                var titleId = Marshal.PtrToStringAnsi(titleIdPtr);
-                var sourcePath = Marshal.PtrToStringAnsi(sourcePathPtr);
-                var modName = Marshal.PtrToStringAnsi(modNamePtr);
+                var titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                var sourcePath = Marshal.PtrToStringAnsi(sourcePathPtr) ?? "";
+                var modName = Marshal.PtrToStringAnsi(modNamePtr) ?? "";
                 
                 return AddMod(titleId, sourcePath, modName);
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Error in ModsAddModNative: {ex.Message}");
-                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
                 return false;
+            }
+        }
+
+        // ==================== 存档管理相关 JNI 方法 ====================
+
+        [UnmanagedCallersOnly(EntryPoint = "saveDataExport")]
+        public static bool SaveDataExportNative(IntPtr titleIdPtr, IntPtr outputPathPtr)
+        {
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                string outputPath = Marshal.PtrToStringAnsi(outputPathPtr) ?? "";
+                
+                return ExportSaveData(titleId, outputPath);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in SaveDataExportNative: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "saveDataImport")]
+        public static bool SaveDataImportNative(IntPtr titleIdPtr, IntPtr zipFilePathPtr)
+        {
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                string zipFilePath = Marshal.PtrToStringAnsi(zipFilePathPtr) ?? "";
+                
+                return ImportSaveData(titleId, zipFilePath);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in SaveDataImportNative: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "saveDataDelete")]
+        public static bool SaveDataDeleteNative(IntPtr titleIdPtr)
+        {
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                return DeleteSaveData(titleId);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in SaveDataDeleteNative: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "saveDataDeleteFiles")]
+        public static bool SaveDataDeleteFilesNative(IntPtr titleIdPtr)
+        {
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                return DeleteSaveFiles(titleId);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in SaveDataDeleteFilesNative: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "saveDataGetSaveId")]
+        public static IntPtr SaveDataGetSaveIdNative(IntPtr titleIdPtr)
+        {
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                string saveId = GetSaveIdByTitleId(titleId);
+                
+                return Marshal.StringToHGlobalAnsi(saveId ?? "");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in SaveDataGetSaveIdNative: {ex.Message}");
+                return IntPtr.Zero;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "saveDataExists")]
+        public static bool SaveDataExistsNative(IntPtr titleIdPtr)
+        {
+            try
+            {
+                string titleId = Marshal.PtrToStringAnsi(titleIdPtr) ?? "";
+                return SaveDataExists(titleId);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in SaveDataExistsNative: {ex.Message}");
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "saveDataRefresh")]
+        public static void SaveDataRefreshNative()
+        {
+            try
+            {
+                RefreshSaveData();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in SaveDataRefreshNative: {ex.Message}");
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "saveDataDebug")]
+        public static void SaveDataDebugNative()
+        {
+            try
+            {
+                DebugSaveData();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in SaveDataDebugNative: {ex.Message}");
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "saveDataGetAll")]
+        public static IntPtr SaveDataGetAllNative()
+        {
+            try
+            {
+                var saveDataList = GetSaveDataList();
+                var titleIds = saveDataList.Select(s => s.TitleId).Where(id => !string.IsNullOrEmpty(id) && id != "0000000000000000").ToList();
+                
+                return CreateStringArray(titleIds);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error in SaveDataGetAllNative: {ex.Message}");
+                return IntPtr.Zero;
             }
         }
     }
