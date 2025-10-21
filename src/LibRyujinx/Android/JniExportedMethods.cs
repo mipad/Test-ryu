@@ -76,7 +76,7 @@ namespace LibRyujinx
         }
 
         [UnmanagedCallersOnly(EntryPoint = "deviceInitialize")]
-        public static bool JnaDeviceInitialize(int memoryManagerMode,
+        public static bool JnaDeviceInitialize(bool isHostMapped,
                                                     bool useNce,
                                                     int systemLanguage,
                                                     int regionCode,
@@ -89,7 +89,7 @@ namespace LibRyujinx
                                                     bool ignoreMissingServices,
                                                     int audioEngineType,
                                                     int memoryConfiguration,
-                                                    long systemTimeOffset)
+                                                    long systemTimeOffset)  // 新增系统时间偏移参数
         {
             debug_break(4);
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
@@ -115,7 +115,7 @@ namespace LibRyujinx
             }
 
             var timezone = Marshal.PtrToStringAnsi(timeZonePtr);
-            return InitializeDevice((MemoryManagerMode)memoryManagerMode,
+            return InitializeDevice(isHostMapped,
                                     useNce,
                                     (SystemLanguage)systemLanguage,
                                     (RegionCode)regionCode,
@@ -127,7 +127,7 @@ namespace LibRyujinx
                                     timezone,
                                     ignoreMissingServices,
                                     (MemoryConfiguration)memoryConfiguration,
-                                    systemTimeOffset);
+                                    systemTimeOffset);  // 传递系统时间偏移参数
         }
 
         [UnmanagedCallersOnly(EntryPoint = "deviceGetGameFifo")]
@@ -270,7 +270,7 @@ namespace LibRyujinx
                 bool enableShaderCache,
                 bool enableTextureRecompression,
                 int backendThreading,
-                int aspectRatio)
+                int aspectRatio)  // 新增参数
         {
             Logger.Trace?.Print(LogClass.Application, "Jni Function Call");
             SearchPathContainer.Platform = UnderlyingPlatform.Android;
@@ -285,7 +285,7 @@ namespace LibRyujinx
                 EnableShaderCache = enableShaderCache,
                 EnableTextureRecompression = enableTextureRecompression,
                 BackendThreading = (BackendThreading)backendThreading,
-                AspectRatio = (AspectRatio)aspectRatio
+                AspectRatio = (AspectRatio)aspectRatio  // 设置画面比例
             });
         }
 
