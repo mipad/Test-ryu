@@ -8,7 +8,8 @@ import java.util.Collections
 
 interface RyujinxNativeJna : Library {
     fun deviceInitialize(
-        isHostMapped: Boolean, useNce: Boolean,
+        memoryManagerMode: Int,  // 修改：使用MemoryManagerMode枚举值
+        useNce: Boolean,
         systemLanguage: Int,
         regionCode: Int,
         enableVsync: Boolean,
@@ -18,9 +19,9 @@ interface RyujinxNativeJna : Library {
         enableInternetAccess: Boolean,
         timeZone: String,
         ignoreMissingServices: Boolean,
-        audioEngineType: Int,  // 新增音频引擎参数
-        memoryConfiguration: Int,  // 新增内存配置参数
-        systemTimeOffset: Long  // 新增系统时间偏移参数
+        audioEngineType: Int,
+        memoryConfiguration: Int,
+        systemTimeOffset: Long
     ): Boolean
 
     fun graphicsInitialize(
@@ -33,7 +34,7 @@ interface RyujinxNativeJna : Library {
         enableShaderCache: Boolean = true,
         enableTextureRecompression: Boolean = false,
         backendThreading: Int = BackendThreading.Auto.ordinal,
-        aspectRatio: Int = 0 // 新增参数：画面比例
+        aspectRatio: Int = 0
     ): Boolean
 
     fun graphicsInitializeRenderer(
