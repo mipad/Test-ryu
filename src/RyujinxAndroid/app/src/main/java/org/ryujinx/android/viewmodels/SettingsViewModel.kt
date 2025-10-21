@@ -45,7 +45,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
     }
 
     fun initializeState(
-        isHostMapped: MutableState<Boolean>,
+        memoryManagerMode: MutableState<Int>,  // 新增：内存管理器模式
         useNce: MutableState<Boolean>,
         enableVsync: MutableState<Boolean>,
         enableDocked: MutableState<Boolean>,
@@ -89,7 +89,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         customTimeSecond: MutableState<Int>
     ) {
 
-        isHostMapped.value = sharedPref.getBoolean("isHostMapped", true)
+        memoryManagerMode.value = sharedPref.getInt("memoryManagerMode", 2)  // 默认使用HostMappedUnsafe
         useNce.value = sharedPref.getBoolean("useNce", true)
         enableVsync.value = sharedPref.getBoolean("enableVsync", true)
         enableDocked.value = sharedPref.getBoolean("enableDocked", true)
@@ -138,7 +138,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
     }
 
     fun save(
-        isHostMapped: MutableState<Boolean>,
+        memoryManagerMode: MutableState<Int>,  // 新增：内存管理器模式
         useNce: MutableState<Boolean>,
         enableVsync: MutableState<Boolean>,
         enableDocked: MutableState<Boolean>,
@@ -183,7 +183,7 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
     ) {
         val editor = sharedPref.edit()
 
-        editor.putBoolean("isHostMapped", isHostMapped.value)
+        editor.putInt("memoryManagerMode", memoryManagerMode.value)  // 保存内存管理器模式
         editor.putBoolean("useNce", useNce.value)
         editor.putBoolean("enableVsync", enableVsync.value)
         editor.putBoolean("enableDocked", enableDocked.value)

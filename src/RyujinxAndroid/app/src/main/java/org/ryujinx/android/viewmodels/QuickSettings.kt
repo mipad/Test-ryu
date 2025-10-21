@@ -14,7 +14,7 @@ class QuickSettings(val activity: Activity) {
     var enableVsync: Boolean
     var useNce: Boolean
     var useVirtualController: Boolean
-    var isHostMapped: Boolean
+    var memoryManagerMode: Int // 新增：内存管理器模式 0=SoftwarePageTable, 1=HostMapped, 2=HostMappedUnsafe
     var enableShaderCache: Boolean
     var enableTextureRecompression: Boolean
     var resScale: Float
@@ -58,7 +58,7 @@ class QuickSettings(val activity: Activity) {
         PreferenceManager.getDefaultSharedPreferences(activity)
 
     init {
-        isHostMapped = sharedPref.getBoolean("isHostMapped", true)
+        memoryManagerMode = sharedPref.getInt("memoryManagerMode", 2) // 默认使用HostMappedUnsafe
         useNce = sharedPref.getBoolean("useNce", true)
         enableVsync = sharedPref.getBoolean("enableVsync", true)
         enableDocked = sharedPref.getBoolean("enableDocked", true)
@@ -108,7 +108,7 @@ class QuickSettings(val activity: Activity) {
     fun save() {
         val editor = sharedPref.edit()
 
-        editor.putBoolean("isHostMapped", isHostMapped)
+        editor.putInt("memoryManagerMode", memoryManagerMode)  // 保存内存管理器模式
         editor.putBoolean("useNce", useNce)
         editor.putBoolean("enableVsync", enableVsync)
         editor.putBoolean("enableDocked", enableDocked)

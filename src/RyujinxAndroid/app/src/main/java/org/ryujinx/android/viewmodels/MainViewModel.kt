@@ -162,7 +162,7 @@ class MainViewModel(val activity: MainActivity) {
                 // We are only able to initialize the emulation context on the main thread
                 val tzId = TimeZone.getDefault().id
                 success = RyujinxNative.jnaInstance.deviceInitialize(
-                    settings.isHostMapped,
+                    settings.memoryManagerMode,  // 使用MemoryManagerMode参数
                     settings.useNce,
                     settings.systemLanguage,
                     settings.regionCode,
@@ -270,7 +270,7 @@ class MainViewModel(val activity: MainActivity) {
                 // We are only able to initialize the emulation context on the main thread
                 val tzId = TimeZone.getDefault().id
                 success = RyujinxNative.jnaInstance.deviceInitialize(
-                    settings.isHostMapped,
+                    settings.memoryManagerMode,  // 使用MemoryManagerMode参数
                     settings.useNce,
                     settings.systemLanguage,
                     settings.regionCode,
