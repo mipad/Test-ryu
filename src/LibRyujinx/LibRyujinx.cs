@@ -1960,6 +1960,55 @@ namespace LibRyujinx
             // 强制重新扫描文件系统
             var freshList = GetSaveDataList();
         }
+
+        // ==================== 新增：设备初始化方法，支持 MemoryManagerMode ====================
+
+        /// <summary>
+        /// 初始化设备，支持从 JNI 传递 MemoryManagerMode 参数
+        /// </summary>
+        public static bool InitializeDevice(bool isHostMapped,
+                                           bool useNce,
+                                           SystemLanguage systemLanguage,
+                                           RegionCode regionCode,
+                                           bool enableVsync,
+                                           bool enableDockedMode,
+                                           bool enablePtc,
+                                           bool enableJitCacheEviction,
+                                           bool enableInternetAccess,
+                                           string timeZone,
+                                           bool ignoreMissingServices,
+                                           MemoryConfiguration memoryConfiguration,
+                                           long systemTimeOffset,
+                                           MemoryManagerMode memoryManagerMode)  // 新增内存管理模式参数
+        {
+            if (SwitchDevice == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                return SwitchDevice.InitializeContext(isHostMapped,
+                                                    useNce,
+                                                    systemLanguage,
+                                                    regionCode,
+                                                    enableVsync,
+                                                    enableDockedMode,
+                                                    enablePtc,
+                                                    enableJitCacheEviction,
+                                                    enableInternetAccess,
+                                                    timeZone,
+                                                    ignoreMissingServices,
+                                                    memoryConfiguration,
+                                                    systemTimeOffset,
+                                                    memoryManagerMode);  // 传递内存管理模式参数
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Failed to initialize device: {ex}");
+                return false;
+            }
+        }
     }
 
     public class SwitchDevice : IDisposable
@@ -2020,7 +2069,8 @@ namespace LibRyujinx
                                       string? timeZone,
                                       bool ignoreMissingServices,
                                       MemoryConfiguration memoryConfiguration,
-                                      long systemTimeOffset)  // 新增系统时间偏移参数
+                                      long systemTimeOffset,
+                                      MemoryManagerMode memoryManagerMode)  // 新增内存管理模式参数
         {
             if (LibRyujinx.Renderer == null)
             {
@@ -2057,10 +2107,9 @@ namespace LibRyujinx
                                                                   0,
                                                                   systemTimeOffset,  // 传递系统时间偏移
                                                                   timeZone,
-                                                                 // isHostMapped ? MemoryManagerMode.HostMappedUnsafe : MemoryManagerMode.SoftwarePageTable,
-                                                                  MemoryManagerMode.HostMappedUnsafe,
+                                                                  memoryManagerMode,  // 使用传入的内存管理模式参数，不再硬编码
                                                                   ignoreMissingServices,
-                                                                   LibRyujinx.GetAspectRatio(),  // 使用 GetAspectRatio 方法获取当前画面比例
+                                                                  LibRyujinx.GetAspectRatio(),  // 使用 GetAspectRatio 方法获取当前画面比例
                                                                   100,
                                                                   useHypervisor,
                                                                   "",
