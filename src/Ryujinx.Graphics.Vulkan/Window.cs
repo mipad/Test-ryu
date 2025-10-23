@@ -351,7 +351,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        private static PresentModeKHR ChooseSwapPresentMode(PresentModeKHR[] availablePresentModes, VSyncMode vSyncMode)
+        private static PresentModeKHR ChooseSwapPresentMode(PresentModeKHR[] availablePresentModes, bool vsyncEnabled)
         {
             // 修复3: 添加空数组检查
             if (availablePresentModes.Length == 0)
@@ -359,7 +359,7 @@ namespace Ryujinx.Graphics.Vulkan
                 return PresentModeKHR.FifoKhr;
             }
 
-            if (vSyncMode == VSyncMode.Unbounded && availablePresentModes.Contains(PresentModeKHR.ImmediateKhr))
+            if (!vsyncEnabled && availablePresentModes.Contains(PresentModeKHR.ImmediateKhr))
             {
                 return PresentModeKHR.ImmediateKhr;
             }
