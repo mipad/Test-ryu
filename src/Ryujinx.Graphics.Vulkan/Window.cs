@@ -177,7 +177,7 @@ namespace Ryujinx.Graphics.Vulkan
                     ImageArrayLayers = 1,
                     PreTransform = PlatformInfo.IsBionic ? SurfaceTransformFlagsKHR.IdentityBitKhr : capabilities.CurrentTransform,
                     CompositeAlpha = ChooseCompositeAlpha(capabilities.SupportedCompositeAlpha),
-                    PresentMode = ChooseSwapPresentMode(presentModes, _vSyncMode),
+                    PresentMode = ChooseSwapPresentMode(presentModes, _vsyncEnabled),
                     Clipped = true,
                     OldSwapchain = oldSwapchain,
                 };
