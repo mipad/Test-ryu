@@ -644,12 +644,16 @@ namespace Ryujinx.Graphics.Vulkan
                     ImageLayout.General,
                     ImageLayout.PresentSrcKhr);
 
-                // Robuster: auf TOP_OF_PIPE warten (deckt Compute/Graphics gleichermaßen ab).
+                // 修复：使用传统的数组创建语法而不是集合表达式
+                var waitSemaphores = new[] { _imageAvailableSemaphores[semaphoreIndex] };
+                var waitStages = new[] { PipelineStageFlags.TopOfPipeBit };
+                var signalSemaphores = new[] { _renderFinishedSemaphores[semaphoreIndex] };
+
                 _gd.CommandBufferPool.Return(
                     cbs,
-                    [_imageAvailableSemaphores[semaphoreIndex]],
-                    [PipelineStageFlags.TopOfPipeBit],
-                    [_renderFinishedSemaphores[semaphoreIndex]]);
+                    waitSemaphores,
+                    waitStages,
+                    signalSemaphores);
 
                 // TODO: Present queue.
                 var semaphore = _renderFinishedSemaphores[semaphoreIndex];
