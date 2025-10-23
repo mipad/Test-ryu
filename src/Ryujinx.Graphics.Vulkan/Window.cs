@@ -801,9 +801,9 @@ namespace Ryujinx.Graphics.Vulkan
             _swapchainIsDirty = true;
         }
 
-        public override void ChangeVSyncMode(VSyncMode vSyncMode)
+        public override void ChangeVSyncMode(bool vsyncEnabled)
         {
-            _vSyncMode = vSyncMode;
+            _vsyncEnabled = vsyncEnabled;
             //present mode may change, so mark the swapchain for recreation
             _swapchainIsDirty = true;
         }
