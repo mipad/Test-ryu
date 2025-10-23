@@ -6,6 +6,7 @@ using Silk.NET.Vulkan.Extensions.KHR;
 using System;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using VkFormat = Silk.NET.Vulkan.Format;
 
 namespace Ryujinx.Graphics.Vulkan
@@ -48,6 +49,11 @@ namespace Ryujinx.Graphics.Vulkan
         private ScalingFilter _currentScalingFilter;
         private bool _colorSpacePassthroughEnabled;
 
+        // 添加同步锁和重试机制
+        private readonly object _swapchainLock = new object();
+        private const int MaxRetryCount = 3;
+        private const int RetryDelayMs = 16;
+
         public unsafe Window(VulkanRenderer gd, SurfaceKHR surface, PhysicalDevice physicalDevice, Device device)
         {
             _gd = gd;
@@ -58,35 +64,54 @@ namespace Ryujinx.Graphics.Vulkan
             CreateSwapchain();
         }
 
-        private void RecreateSwapchain()
+        private bool RecreateSwapchain()
         {
-            var oldSwapchain = _swapchain;
-            _swapchainIsDirty = false;
+            lock (_swapchainLock)
+            {
+                var oldSwapchain = _swapchain;
+                _swapchainIsDirty = false;
 
+                try
+                {
+                    // 清理现有资源
+                    CleanupSwapchainResources();
+
+                    // 等待设备空闲以确保安全
+                    _gd.Api.DeviceWaitIdle(_device);
+
+                    // 创建新交换链
+                    CreateSwapchainInternal();
+
+                    // 如果创建成功，销毁旧交换链
+                    if (oldSwapchain.Handle != 0)
+                    {
+                        _gd.SwapchainApi.DestroySwapchain(_device, oldSwapchain, Span<AllocationCallbacks>.Empty);
+                    }
+
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    // 重建失败，标记为脏并返回false
+                    _swapchainIsDirty = true;
+                    return false;
+                }
+            }
+        }
+
+        private unsafe void CleanupSwapchainResources()
+        {
+            // 清理图像视图
             if (_swapchainImageViews != null)
             {
                 for (int i = 0; i < _swapchainImageViews.Length; i++)
                 {
                     _swapchainImageViews[i]?.Dispose();
                 }
+                _swapchainImageViews = null;
             }
-
-            // 等待设备空闲以确保安全销毁
-            _gd.Api.DeviceWaitIdle(_device);
 
             // 清理信号量
-            CleanupSemaphores();
-
-            if (oldSwapchain.Handle != 0)
-            {
-                _gd.SwapchainApi.DestroySwapchain(_device, oldSwapchain, Span<AllocationCallbacks>.Empty);
-            }
-
-            CreateSwapchain();
-        }
-
-        private unsafe void CleanupSemaphores()
-        {
             if (_imageAvailableSemaphores != null)
             {
                 for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
@@ -110,16 +135,32 @@ namespace Ryujinx.Graphics.Vulkan
                 }
                 _renderFinishedSemaphores = null;
             }
+
+            _swapchainImages = null;
         }
 
         internal void SetSurface(SurfaceKHR surface)
         {
-            _surface = surface;
-            RecreateSwapchain();
+            lock (_swapchainLock)
+            {
+                _surface = surface;
+                RecreateSwapchain();
+            }
         }
 
         private unsafe void CreateSwapchain()
         {
+            lock (_swapchainLock)
+            {
+                CreateSwapchainInternal();
+            }
+        }
+
+        private unsafe void CreateSwapchainInternal()
+        {
+            int retryCount = 0;
+            
+            retry_create:
             try
             {
                 _gd.SurfaceApi.GetPhysicalDeviceSurfaceCapabilities(_physicalDevice, _surface, out var capabilities);
@@ -161,7 +202,6 @@ namespace Ryujinx.Graphics.Vulkan
                 _height = (int)extent.Height;
                 _format = surfaceFormat.Format;
 
-                var oldSwapchain = _swapchain;
                 CurrentTransform = capabilities.CurrentTransform;
 
                 var swapchainCreateInfo = new SwapchainCreateInfoKHR
@@ -179,7 +219,6 @@ namespace Ryujinx.Graphics.Vulkan
                     CompositeAlpha = ChooseCompositeAlpha(capabilities.SupportedCompositeAlpha),
                     PresentMode = ChooseSwapPresentMode(presentModes, _vsyncEnabled),
                     Clipped = true,
-                    OldSwapchain = oldSwapchain,
                 };
 
                 var textureCreateInfo = new TextureCreateInfo(
@@ -199,14 +238,20 @@ namespace Ryujinx.Graphics.Vulkan
                     SwizzleComponent.Blue,
                     SwizzleComponent.Alpha);
 
-                // 使用更健壮的错误处理
+                // 使用健壮的错误处理
                 var result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
-                if (result != Result.Success)
+                
+                if (result == Result.ErrorNativeWindowInUseKhr && retryCount < MaxRetryCount)
+                {
+                    retryCount++;
+                    Thread.Sleep(RetryDelayMs);
+                    goto retry_create;
+                }
+                else if (result != Result.Success)
                 {
                     if (result == Result.ErrorOutOfDateKhr || result == Result.ErrorSurfaceLostKhr)
                     {
                         _swapchainIsDirty = true;
-                        // 移除Logger调用
                         return;
                     }
                     result.ThrowOnError();
@@ -246,16 +291,15 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _renderFinishedSemaphores[i]).ThrowOnError();
                 }
-
-                // 如果创建成功，清理旧的交换链
-                if (oldSwapchain.Handle != 0)
-                {
-                    _gd.SwapchainApi.DestroySwapchain(_device, oldSwapchain, null);
-                }
+            }
+            catch (VulkanException ex) when (ex.Result == Result.ErrorNativeWindowInUseKhr && retryCount < MaxRetryCount)
+            {
+                retryCount++;
+                Thread.Sleep(RetryDelayMs);
+                goto retry_create;
             }
             catch (Exception ex)
             {
-                // 移除Logger调用
                 _swapchainIsDirty = true;
                 throw;
             }
@@ -388,239 +432,271 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe override void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback)
         {
-            // 如果交换链标记为脏，先重建
-            if (_swapchainIsDirty)
+            int retryCount = 0;
+            
+            retry_present:
+            try
             {
-                RecreateSwapchain();
-                if (_swapchainIsDirty) // 如果重建失败，跳过本次Present
+                // 如果交换链标记为脏，先重建
+                if (_swapchainIsDirty)
                 {
-                    // 移除Logger调用
-                    return;
-                }
-            }
-
-            _gd.PipelineInternal.AutoFlush.Present();
-
-            uint nextImage = 0;
-            int semaphoreIndex = _frameIndex++ % _imageAvailableSemaphores.Length;
-
-            while (true)
-            {
-                var acquireResult = _gd.SwapchainApi.AcquireNextImage(
-                    _device,
-                    _swapchain,
-                    ulong.MaxValue,
-                    _imageAvailableSemaphores[semaphoreIndex],
-                    new Fence(),
-                    ref nextImage);
-
-                if (acquireResult == Result.ErrorOutOfDateKhr ||
-                    acquireResult == Result.SuboptimalKhr ||
-                    _swapchainIsDirty)
-                {
-                    RecreateSwapchain();
-                    semaphoreIndex = (_frameIndex - 1) % _imageAvailableSemaphores.Length;
-                    
-                    // 如果重建后仍然有问题，退出
-                    if (_swapchainIsDirty)
+                    if (!RecreateSwapchain())
                     {
-                        // 移除Logger调用
+                        if (retryCount < MaxRetryCount)
+                        {
+                            retryCount++;
+                            Thread.Sleep(RetryDelayMs);
+                            goto retry_present;
+                        }
                         return;
                     }
                 }
-                else if (acquireResult == Result.ErrorSurfaceLostKhr)
+
+                _gd.PipelineInternal.AutoFlush.Present();
+
+                uint nextImage = 0;
+                int semaphoreIndex = _frameIndex++ % _imageAvailableSemaphores.Length;
+
+                while (true)
                 {
-                    _gd.RecreateSurface();
+                    var acquireResult = _gd.SwapchainApi.AcquireNextImage(
+                        _device,
+                        _swapchain,
+                        ulong.MaxValue,
+                        _imageAvailableSemaphores[semaphoreIndex],
+                        new Fence(),
+                        ref nextImage);
+
+                    if (acquireResult == Result.ErrorOutOfDateKhr ||
+                        acquireResult == Result.SuboptimalKhr ||
+                        _swapchainIsDirty)
+                    {
+                        if (!RecreateSwapchain() && retryCount < MaxRetryCount)
+                        {
+                            retryCount++;
+                            Thread.Sleep(RetryDelayMs);
+                            goto retry_present;
+                        }
+                        semaphoreIndex = (_frameIndex - 1) % _imageAvailableSemaphores.Length;
+                        
+                        // 如果重建后仍然有问题，退出
+                        if (_swapchainIsDirty)
+                        {
+                            return;
+                        }
+                    }
+                    else if (acquireResult == Result.ErrorSurfaceLostKhr)
+                    {
+                        _gd.RecreateSurface();
+                    }
+                    else if (acquireResult == Result.ErrorNativeWindowInUseKhr && retryCount < MaxRetryCount)
+                    {
+                        retryCount++;
+                        Thread.Sleep(RetryDelayMs);
+                        goto retry_present;
+                    }
+                    else
+                    {
+                        acquireResult.ThrowOnError();
+                        break;
+                    }
+                }
+
+                var swapchainImage = _swapchainImages[nextImage];
+
+                _gd.FlushAllCommands();
+
+                var cbs = _gd.CommandBufferPool.Rent();
+
+                // WICHTIG: Unser Renderpass erwartet die Attachments im Layout GENERAL.
+                // Also von Undefined/Present -> General mit ColorAttachmentWrite als Zielzugriff.
+#if DEBUG
+                ValidateTransition(
+                    PipelineStageFlags.TopOfPipeBit,
+                    PipelineStageFlags.ColorAttachmentOutputBit,
+                    0,
+                    AccessFlags.ColorAttachmentWriteBit,
+                    ImageLayout.Undefined,
+                    ImageLayout.General);
+#endif
+
+                Transition(
+                    cbs.CommandBuffer,
+                    swapchainImage,
+                    PipelineStageFlags.TopOfPipeBit,
+                    PipelineStageFlags.ColorAttachmentOutputBit,
+                    0,
+                    AccessFlags.ColorAttachmentWriteBit,
+                    ImageLayout.Undefined,
+                    ImageLayout.General);
+
+                var view = (TextureView)texture;
+
+                UpdateEffect();
+
+                if (_effect != null)
+                {
+                    view = _effect.Run(view, cbs, _width, _height);
+                }
+
+                int srcX0, srcX1, srcY0, srcY1;
+
+                if (crop.Left == 0 && crop.Right == 0)
+                {
+                    srcX0 = 0;
+                    srcX1 = view.Width;
                 }
                 else
                 {
-                    acquireResult.ThrowOnError();
-                    break;
+                    srcX0 = crop.Left;
+                    srcX1 = crop.Right;
                 }
-            }
 
-            var swapchainImage = _swapchainImages[nextImage];
-
-            _gd.FlushAllCommands();
-
-            var cbs = _gd.CommandBufferPool.Rent();
-
-            // WICHTIG: Unser Renderpass erwartet die Attachments im Layout GENERAL.
-            // Also von Undefined/Present -> General mit ColorAttachmentWrite als Zielzugriff.
-#if DEBUG
-            ValidateTransition(
-                PipelineStageFlags.TopOfPipeBit,
-                PipelineStageFlags.ColorAttachmentOutputBit,
-                0,
-                AccessFlags.ColorAttachmentWriteBit,
-                ImageLayout.Undefined,
-                ImageLayout.General);
-#endif
-
-            Transition(
-                cbs.CommandBuffer,
-                swapchainImage,
-                PipelineStageFlags.TopOfPipeBit,
-                PipelineStageFlags.ColorAttachmentOutputBit,
-                0,
-                AccessFlags.ColorAttachmentWriteBit,
-                ImageLayout.Undefined,
-                ImageLayout.General);
-
-            var view = (TextureView)texture;
-
-            UpdateEffect();
-
-            if (_effect != null)
-            {
-                view = _effect.Run(view, cbs, _width, _height);
-            }
-
-            int srcX0, srcX1, srcY0, srcY1;
-
-            if (crop.Left == 0 && crop.Right == 0)
-            {
-                srcX0 = 0;
-                srcX1 = view.Width;
-            }
-            else
-            {
-                srcX0 = crop.Left;
-                srcX1 = crop.Right;
-            }
-
-            if (crop.Top == 0 && crop.Bottom == 0)
-            {
-                srcY0 = 0;
-                srcY1 = view.Height;
-            }
-            else
-            {
-                srcY0 = crop.Top;
-                srcY1 = crop.Bottom;
-            }
-
-            if (ScreenCaptureRequested)
-            {
-                if (_effect != null)
+                if (crop.Top == 0 && crop.Bottom == 0)
                 {
-                    _gd.CommandBufferPool.Return(
-                        cbs,
-                        null,
-                        stackalloc[] { PipelineStageFlags.ColorAttachmentOutputBit },
-                        null);
-                    _gd.FlushAllCommands();
-                    cbs.GetFence().Wait();
-                    cbs = _gd.CommandBufferPool.Rent();
+                    srcY0 = 0;
+                    srcY1 = view.Height;
+                }
+                else
+                {
+                    srcY0 = crop.Top;
+                    srcY1 = crop.Bottom;
                 }
 
-                CaptureFrame(view, srcX0, srcY0, srcX1 - srcX0, srcY1 - srcY0, view.Info.Format.IsBgr(), crop.FlipX, crop.FlipY);
-                ScreenCaptureRequested = false;
-            }
+                if (ScreenCaptureRequested)
+                {
+                    if (_effect != null)
+                    {
+                        _gd.CommandBufferPool.Return(
+                            cbs,
+                            null,
+                            stackalloc[] { PipelineStageFlags.ColorAttachmentOutputBit },
+                            null);
+                        _gd.FlushAllCommands();
+                        cbs.GetFence().Wait();
+                        cbs = _gd.CommandBufferPool.Rent();
+                    }
 
-            float ratioX = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _height * crop.AspectRatioX / (_width * crop.AspectRatioY));
-            float ratioY = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _width * crop.AspectRatioY / (_height * crop.AspectRatioX));
+                    CaptureFrame(view, srcX0, srcY0, srcX1 - srcX0, srcY1 - srcY0, view.Info.Format.IsBgr(), crop.FlipX, crop.FlipY);
+                    ScreenCaptureRequested = false;
+                }
 
-            int dstWidth = (int)(_width * ratioX);
-            int dstHeight = (int)(_height * ratioY);
+                float ratioX = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _height * crop.AspectRatioX / (_width * crop.AspectRatioY));
+                float ratioY = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _width * crop.AspectRatioY / (_height * crop.AspectRatioX));
 
-            int dstPaddingX = (_width - dstWidth) / 2;
-            int dstPaddingY = (_height - dstHeight) / 2;
+                int dstWidth = (int)(_width * ratioX);
+                int dstHeight = (int)(_height * ratioY);
 
-            int dstX0 = crop.FlipX ? _width - dstPaddingX : dstPaddingX;
-            int dstX1 = crop.FlipX ? dstPaddingX : _width - dstPaddingX;
+                int dstPaddingX = (_width - dstWidth) / 2;
+                int dstPaddingY = (_height - dstHeight) / 2;
 
-            int dstY0 = crop.FlipY ? dstPaddingY : _height - dstPaddingY;
-            int dstY1 = crop.FlipY ? _height - dstPaddingY : dstPaddingY;
+                int dstX0 = crop.FlipX ? _width - dstPaddingX : dstPaddingX;
+                int dstX1 = crop.FlipX ? dstPaddingX : _width - dstPaddingX;
 
-            if (_scalingFilter != null)
-            {
-                _scalingFilter.Run(
-                    view,
-                    cbs,
-                    _swapchainImageViews[nextImage].GetImageViewForAttachment(),
-                    _format,
-                    _width,
-                    _height,
-                    new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                    new Extents2D(dstX0, dstY0, dstX1, dstY1)
-                    );
-            }
-            else
-            {
-                _gd.HelperShader.BlitColor(
-                    _gd,
-                    cbs,
-                    view,
-                    _swapchainImageViews[nextImage],
-                    new Extents2D(srcX0, srcY0, srcX1, srcY1),
-                    new Extents2D(dstX0, dstY1, dstX1, dstY0),
-                    _isLinear,
-                    true);
-            }
+                int dstY0 = crop.FlipY ? dstPaddingY : _height - dstPaddingY;
+                int dstY1 = crop.FlipY ? _height - dstPaddingY : dstPaddingY;
 
-            // Nach den ColorAttachment-Writes: General -> PresentSrcKhr
+                if (_scalingFilter != null)
+                {
+                    _scalingFilter.Run(
+                        view,
+                        cbs,
+                        _swapchainImageViews[nextImage].GetImageViewForAttachment(),
+                        _format,
+                        _width,
+                        _height,
+                        new Extents2D(srcX0, srcY0, srcX1, srcY1),
+                        new Extents2D(dstX0, dstY0, dstX1, dstY1)
+                        );
+                }
+                else
+                {
+                    _gd.HelperShader.BlitColor(
+                        _gd,
+                        cbs,
+                        view,
+                        _swapchainImageViews[nextImage],
+                        new Extents2D(srcX0, srcY0, srcX1, srcY1),
+                        new Extents2D(dstX0, dstY1, dstX1, dstY0),
+                        _isLinear,
+                        true);
+                }
+
+                // Nach den ColorAttachment-Writes: General -> PresentSrcKhr
 #if DEBUG
-            ValidateTransition(
-                PipelineStageFlags.ColorAttachmentOutputBit,
-                PipelineStageFlags.BottomOfPipeBit,
-                AccessFlags.ColorAttachmentWriteBit,
-                0,
-                ImageLayout.General,
-                ImageLayout.PresentSrcKhr);
+                ValidateTransition(
+                    PipelineStageFlags.ColorAttachmentOutputBit,
+                    PipelineStageFlags.BottomOfPipeBit,
+                    AccessFlags.ColorAttachmentWriteBit,
+                    0,
+                    ImageLayout.General,
+                    ImageLayout.PresentSrcKhr);
 #endif
 
-            Transition(
-                cbs.CommandBuffer,
-                swapchainImage,
-                PipelineStageFlags.ColorAttachmentOutputBit,
-                PipelineStageFlags.BottomOfPipeBit,
-                AccessFlags.ColorAttachmentWriteBit,
-                0,
-                ImageLayout.General,
-                ImageLayout.PresentSrcKhr);
+                Transition(
+                    cbs.CommandBuffer,
+                    swapchainImage,
+                    PipelineStageFlags.ColorAttachmentOutputBit,
+                    PipelineStageFlags.BottomOfPipeBit,
+                    AccessFlags.ColorAttachmentWriteBit,
+                    0,
+                    ImageLayout.General,
+                    ImageLayout.PresentSrcKhr);
 
-            // Robuster: auf TOP_OF_PIPE warten (deckt Compute/Graphics gleichermaßen ab).
-            _gd.CommandBufferPool.Return(
-                cbs,
-                [_imageAvailableSemaphores[semaphoreIndex]],
-                [PipelineStageFlags.TopOfPipeBit],
-                [_renderFinishedSemaphores[semaphoreIndex]]);
+                // Robuster: auf TOP_OF_PIPE warten (deckt Compute/Graphics gleichermaßen ab).
+                _gd.CommandBufferPool.Return(
+                    cbs,
+                    [_imageAvailableSemaphores[semaphoreIndex]],
+                    [PipelineStageFlags.TopOfPipeBit],
+                    [_renderFinishedSemaphores[semaphoreIndex]]);
 
-            // TODO: Present queue.
-            var semaphore = _renderFinishedSemaphores[semaphoreIndex];
-            var swapchain = _swapchain;
+                // TODO: Present queue.
+                var semaphore = _renderFinishedSemaphores[semaphoreIndex];
+                var swapchain = _swapchain;
 
-            Result result;
+                Result result;
 
-            var presentInfo = new PresentInfoKHR
-            {
-                SType = StructureType.PresentInfoKhr,
-                WaitSemaphoreCount = 1,
-                PWaitSemaphores = &semaphore,
-                SwapchainCount = 1,
-                PSwapchains = &swapchain,
-                PImageIndices = &nextImage,
-                PResults = &result,
-            };
+                var presentInfo = new PresentInfoKHR
+                {
+                    SType = StructureType.PresentInfoKhr,
+                    WaitSemaphoreCount = 1,
+                    PWaitSemaphores = &semaphore,
+                    SwapchainCount = 1,
+                    PSwapchains = &swapchain,
+                    PImageIndices = &nextImage,
+                    PResults = &result,
+                };
 
-            lock (_gd.QueueLock)
-            {
-                _gd.SwapchainApi.QueuePresent(_gd.Queue, in presentInfo);
+                lock (_gd.QueueLock)
+                {
+                    _gd.SwapchainApi.QueuePresent(_gd.Queue, in presentInfo);
+                }
+
+                // 检查呈现结果
+                if (result == Result.ErrorOutOfDateKhr || result == Result.SuboptimalKhr)
+                {
+                    _swapchainIsDirty = true;
+                }
+                else if (result == Result.ErrorNativeWindowInUseKhr && retryCount < MaxRetryCount)
+                {
+                    retryCount++;
+                    Thread.Sleep(RetryDelayMs);
+                    goto retry_present;
+                }
+                else if (result != Result.Success)
+                {
+                    // 记录错误但不抛出异常
+                }
+
+                //While this does nothing in most cases, it's useful to notify the end of the frame, and is used to handle native window in Android.
+                swapBuffersCallback?.Invoke();
             }
-
-            // 检查呈现结果
-            if (result == Result.ErrorOutOfDateKhr || result == Result.SuboptimalKhr)
+            catch (VulkanException ex) when (ex.Result == Result.ErrorNativeWindowInUseKhr && retryCount < MaxRetryCount)
             {
-                _swapchainIsDirty = true;
+                retryCount++;
+                Thread.Sleep(RetryDelayMs);
+                goto retry_present;
             }
-            else if (result != Result.Success)
-            {
-                // 移除Logger调用
-            }
-
-            //While this does nothing in most cases, it's useful to notify the end of the frame, and is used to handle native window in Android.
-            swapBuffersCallback?.Invoke();
         }
 
         public override void SetAntiAliasing(AntiAliasing effect)
@@ -819,26 +895,13 @@ namespace Ryujinx.Graphics.Vulkan
                 _scalingFilter = null;
                 
                 CleanupSwapchainResources();
-            }
-        }
 
-        private unsafe void CleanupSwapchainResources()
-        {
-            if (_swapchainImageViews != null)
-            {
-                for (int i = 0; i < _swapchainImageViews.Length; i++)
+                // 确保交换链被销毁
+                if (_swapchain.Handle != 0)
                 {
-                    _swapchainImageViews[i]?.Dispose();
+                    _gd.SwapchainApi.DestroySwapchain(_device, _swapchain, null);
+                    _swapchain = default;
                 }
-                _swapchainImageViews = null;
-            }
-
-            CleanupSemaphores();
-
-            if (_swapchain.Handle != 0)
-            {
-                _gd.SwapchainApi.DestroySwapchain(_device, _swapchain, null);
-                _swapchain = default;
             }
         }
 
