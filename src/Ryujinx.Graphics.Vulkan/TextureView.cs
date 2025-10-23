@@ -41,6 +41,9 @@ namespace Ryujinx.Graphics.Vulkan
         public VkFormat VkFormat { get; }
         private int _isValid;
         public bool Valid => Volatile.Read(ref _isValid) != 0;
+        
+        // 新增：帮助检查交换链纹理
+        private bool HasStorage => Storage != null;
 
         public TextureView(
             VulkanRenderer gd,
@@ -217,7 +220,8 @@ namespace Ryujinx.Graphics.Vulkan
             var src = this;
             var dst = (TextureView)destination;
 
-            if (!Valid || !dst.Valid)
+            // 新增有效性检查
+            if (!Valid || !dst.Valid || !src.HasStorage || !dst.HasStorage)
             {
                 return;
             }
@@ -277,7 +281,8 @@ namespace Ryujinx.Graphics.Vulkan
             var src = this;
             var dst = (TextureView)destination;
 
-            if (!Valid || !dst.Valid)
+            // 新增有效性检查
+            if (!Valid || !dst.Valid || !src.HasStorage || !dst.HasStorage)
             {
                 return;
             }
@@ -331,6 +336,12 @@ namespace Ryujinx.Graphics.Vulkan
         {
             var dst = (TextureView)destination;
 
+            // 新增保护检查
+            if (!Valid || !dst.Valid || !HasStorage || !dst.HasStorage)
+            {
+                return;
+            }
+
             if (_gd.CommandBufferPool.OwnedByCurrentThread)
             {
                 _gd.PipelineInternal.EndRenderPass();
@@ -352,6 +363,12 @@ namespace Ryujinx.Graphics.Vulkan
         private void CopyToImpl(CommandBufferScoped cbs, TextureView dst, Extents2D srcRegion, Extents2D dstRegion, bool linearFilter)
         {
             var src = this;
+
+            // 新增保护检查
+            if (!src.Valid || !dst.Valid || !src.HasStorage || !dst.HasStorage)
+            {
+                return;
+            }
 
             var srcFormat = GetCompatibleGalFormat(src.Info.Format);
             var dstFormat = GetCompatibleGalFormat(dst.Info.Format);
@@ -662,6 +679,12 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void CopyTo(BufferRange range, int layer, int level, int stride)
         {
+            // 防御性检查：如果 View/Storage 未准备好，直接退出
+            if (!Valid || !HasStorage)
+            {
+                return;
+            }
+
             _gd.PipelineInternal.EndRenderPass();
             var cbs = _gd.PipelineInternal.CurrentCommandBuffer;
 
@@ -674,9 +697,12 @@ namespace Ryujinx.Graphics.Vulkan
             Auto<DisposableBuffer> autoBuffer = _gd.BufferManager.GetBuffer(cbs.CommandBuffer, range.Handle, true);
             VkBuffer buffer = autoBuffer.Get(cbs, range.Offset, outSize).Value;
 
-            if (PrepareOutputBuffer(cbs, hostSize, buffer, out VkBuffer copyToBuffer, out BufferHolder tempCopyHolder))
+            VkBuffer copyToBuffer;
+            BufferHolder tempCopyHolder;
+
+            if (PrepareOutputBuffer(cbs, hostSize, buffer, out copyToBuffer, out tempCopyHolder))
             {
-                // No barrier necessary, as this is a temporary copy buffer.
+                // 临时复制缓冲区：不需要屏障，偏移量设为0
                 offset = 0;
             }
             else
@@ -693,6 +719,7 @@ namespace Ryujinx.Graphics.Vulkan
                     outSize);
             }
 
+            // 复制前：准备图像用于传输读取
             InsertImageBarrier(
                 _gd.Api,
                 cbs.CommandBuffer,
@@ -707,10 +734,25 @@ namespace Ryujinx.Graphics.Vulkan
                 1,
                 1);
 
-            CopyFromOrToBuffer(cbs.CommandBuffer, copyToBuffer, image, hostSize, true, layer, level, 1, 1, singleSlice: true, offset, stride);
+            // 图像 -> 缓冲区
+            CopyFromOrToBuffer(
+                cbs.CommandBuffer,
+                copyToBuffer,
+                image,
+                hostSize,
+                true,              // true = Image -> Buffer
+                layer,
+                level,
+                1,
+                1,
+                singleSlice: true,
+                offset,
+                stride);
 
+            // 复制后：缓冲区屏障恢复到默认状态（如果未使用临时缓冲区）
             if (tempCopyHolder != null)
             {
+                // 从临时缓冲区复制到实际目标缓冲区
                 CopyDataToOutputBuffer(cbs, tempCopyHolder, autoBuffer, hostSize, range.Offset);
                 tempCopyHolder.Dispose();
             }
@@ -727,6 +769,21 @@ namespace Ryujinx.Graphics.Vulkan
                     offset,
                     outSize);
             }
+
+            // 重要：将图像恢复为默认访问模式，避免下一帧与 TransferRead 冲突
+            InsertImageBarrier(
+                _gd.Api,
+                cbs.CommandBuffer,
+                image,
+                AccessFlags.TransferReadBit,
+                TextureStorage.DefaultAccessMask,
+                PipelineStageFlags.TransferBit,
+                PipelineStageFlags.AllCommandsBit,
+                Info.Format.ConvertAspectFlags(),
+                FirstLayer + layer,
+                FirstLevel + level,
+                1,
+                1);
         }
 
         private ReadOnlySpan<byte> GetData(CommandBufferPool cbp, PersistentFlushBuffer flushBuffer)
@@ -778,8 +835,8 @@ namespace Ryujinx.Graphics.Vulkan
            // +++ 新增保护代码 +++
            if (Storage == null)
            {
-           // 交换链纹理不需要数据写入
-              return;
+               // 交换链纹理不需要数据写入
+               return;
             }
     
             int bufferDataLength = GetBufferDataLength(data.Length);
