@@ -679,6 +679,13 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             var program = _program;
+            
+            if (program == null)
+            {
+                // 防御：如果在 SetProgram() 之前调用 Update，则不执行任何操作。
+                _dirty = DirtyFlags.None;
+                return;
+            }
 
             if (_dirty.HasFlag(DirtyFlags.Uniform))
             {
@@ -1188,3 +1195,6 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 }
+
+
+                    
