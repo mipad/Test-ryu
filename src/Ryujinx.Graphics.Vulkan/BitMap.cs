@@ -11,12 +11,18 @@ namespace Ryujinx.Graphics.Vulkan
 
         public BitMap(int count)
         {
+            if (count < 0) count = 0;
             _masks = new long[(count + IntMask) / IntSize];
         }
 
+        private int WordCount => _masks?.Length ?? 0;
+        private int MaxBit => (WordCount * IntSize) - 1;
+
+        private static int Clamp(int v, int min, int max) => v < min ? min : (v > max ? max : v);
+
         public bool AnySet()
         {
-            for (int i = 0; i < _masks.Length; i++)
+            for (int i = 0; i < WordCount; i++)
             {
                 if (_masks[i] != 0)
                 {
@@ -29,6 +35,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public bool IsSet(int bit)
         {
+            if (WordCount == 0) return false;
+            bit = Clamp(bit, 0, MaxBit);
+
             int wordIndex = bit >> IntShift;
             int wordBit = bit & IntMask;
 
@@ -39,6 +48,12 @@ namespace Ryujinx.Graphics.Vulkan
 
         public bool IsSet(int start, int end)
         {
+            if (WordCount == 0) return false;
+
+            if (start > end) { var t = start; start = end; end = t; }
+            start = Clamp(start, 0, MaxBit);
+            end = Clamp(end, 0, MaxBit);
+
             if (start == end)
             {
                 return IsSet(start);
@@ -62,7 +77,7 @@ namespace Ryujinx.Graphics.Vulkan
                 return true;
             }
 
-            for (int i = startIndex + 1; i < endIndex; i++)
+            for (int i = startIndex + 1; i < endIndex && i < WordCount; i++)
             {
                 if (_masks[i] != 0)
                 {
@@ -70,7 +85,7 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
 
-            if ((_masks[endIndex] & endMask) != 0)
+            if (endIndex < WordCount && (_masks[endIndex] & endMask) != 0)
             {
                 return true;
             }
@@ -80,6 +95,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public bool Set(int bit)
         {
+            if (WordCount == 0) return false;
+            bit = Clamp(bit, 0, MaxBit);
+
             int wordIndex = bit >> IntShift;
             int wordBit = bit & IntMask;
 
@@ -97,6 +115,12 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void SetRange(int start, int end)
         {
+            if (WordCount == 0) return;
+
+            if (start > end) { var t = start; start = end; end = t; }
+            start = Clamp(start, 0, MaxBit);
+            end = Clamp(end, 0, MaxBit);
+
             if (start == end)
             {
                 Set(start);
@@ -119,17 +143,23 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 _masks[startIndex] |= startMask;
 
-                for (int i = startIndex + 1; i < endIndex; i++)
+                for (int i = startIndex + 1; i < endIndex && i < WordCount; i++)
                 {
                     _masks[i] |= -1;
                 }
 
-                _masks[endIndex] |= endMask;
+                if (endIndex < WordCount)
+                {
+                    _masks[endIndex] |= endMask;
+                }
             }
         }
 
         public void Clear(int bit)
         {
+            if (WordCount == 0) return;
+            bit = Clamp(bit, 0, MaxBit);
+
             int wordIndex = bit >> IntShift;
             int wordBit = bit & IntMask;
 
@@ -140,7 +170,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void Clear()
         {
-            for (int i = 0; i < _masks.Length; i++)
+            for (int i = 0; i < WordCount; i++)
             {
                 _masks[i] = 0;
             }
@@ -148,6 +178,12 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void ClearInt(int start, int end)
         {
+            if (WordCount == 0) return;
+            if (start > end) { var t = start; start = end; end = t; }
+
+            start = Clamp(start, 0, WordCount - 1);
+            end = Clamp(end, 0, WordCount - 1);
+
             for (int i = start; i <= end; i++)
             {
                 _masks[i] = 0;
