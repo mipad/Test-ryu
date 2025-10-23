@@ -28,7 +28,8 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
                     }
                 }
 
-                if (numAcquiredBuffers > Core.MaxAcquiredBufferCount)
+                // 重要提示： // 许多 Android 管道至少使用双缓冲。 // 因此，最多允许 (MaxAcquiredBufferCount + 1) 个缓冲，类似于 AttachBuffer()
+                if (numAcquiredBuffers > Core.MaxAcquiredBufferCount + 1)
                 {
                     bufferItem = null;
 
@@ -239,6 +240,12 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
                 Core.ConsumerListener = consumerListener;
                 Core.ConsumerControlledByApp = controlledByApp;
+                // 提高 Android 默认值： 至少允许双缓冲。 
+                // 如果需要不同的限制，生产者/调用者可以稍后通过 SetMaxAcquiredBufferCount 覆盖它。
+                if (Core.MaxAcquiredBufferCount < 2)
+                {
+                    Core.MaxAcquiredBufferCount = 2;
+                }
             }
 
             return Status.Success;
@@ -418,3 +425,4 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         }
     }
 }
+
