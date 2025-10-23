@@ -29,8 +29,9 @@ namespace Ryujinx.Graphics.Vulkan
         private Image[] _swapchainImages;
         private TextureView[] _swapchainImageViews;
 
-        private Semaphore[] _imageAvailableSemaphores;
-        private Semaphore[] _renderFinishedSemaphores;
+        // 修复：明确指定使用 Vulkan 的 Semaphore 类型
+        private Silk.NET.Vulkan.Semaphore[] _imageAvailableSemaphores;
+        private Silk.NET.Vulkan.Semaphore[] _renderFinishedSemaphores;
 
         private int _frameIndex;
 
@@ -278,14 +279,14 @@ namespace Ryujinx.Graphics.Vulkan
                     SType = StructureType.SemaphoreCreateInfo,
                 };
 
-                _imageAvailableSemaphores = new Semaphore[imageCount];
+                _imageAvailableSemaphores = new Silk.NET.Vulkan.Semaphore[imageCount];
 
                 for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
                 {
                     _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _imageAvailableSemaphores[i]).ThrowOnError();
                 }
 
-                _renderFinishedSemaphores = new Semaphore[imageCount];
+                _renderFinishedSemaphores = new Silk.NET.Vulkan.Semaphore[imageCount];
 
                 for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
                 {
