@@ -75,7 +75,7 @@ namespace Ryujinx.Graphics.Vulkan
             _activeType = currentType;
 
             _flushLock = new ReaderWriterLockSlim();
-            _useMirrors = gd.IsTBDR && !OperatingSystem.IsAndroid(); // 整合：Android平台禁用mirrors
+            _useMirrors = gd.IsTBDR; 
         }
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, Auto<MemoryAllocation> allocation, int size, BufferAllocationType type, BufferAllocationType currentType, int offset)
