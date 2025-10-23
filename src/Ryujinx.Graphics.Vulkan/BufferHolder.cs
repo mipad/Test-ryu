@@ -75,7 +75,7 @@ namespace Ryujinx.Graphics.Vulkan
             _activeType = currentType;
 
             _flushLock = new ReaderWriterLockSlim();
-            _useMirrors = gd.IsTBDR;
+            _useMirrors = gd.IsTBDR && !OperatingSystem.IsAndroid(); // 整合：Android平台禁用mirrors
         }
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, Auto<MemoryAllocation> allocation, int size, BufferAllocationType type, BufferAllocationType currentType, int offset)
@@ -152,7 +152,7 @@ namespace Ryujinx.Graphics.Vulkan
                     commandBuffer,
                     PipelineStageFlags.AllCommandsBit,
                     PipelineStageFlags.AllCommandsBit,
-                    DependencyFlags.DeviceGroupBit,
+                    0,                  // 整合：使用0而不是DependencyFlags.DeviceGroupBit
                     1,
                     in memoryBarrier,
                     0,
@@ -265,7 +265,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetMirrorable(CommandBufferScoped cbs, ref int offset, int size, out bool mirrored)
         {
-            if (_pendingData != null && TryGetMirror(cbs, ref offset, size, out Auto<DisposableBuffer> result))
+            // 整合：添加_useMirrors检查
+            if (_useMirrors && _pendingData != null && TryGetMirror(cbs, ref offset, size, out Auto<DisposableBuffer> result))
             {
                 mirrored = true;
                 return result;
@@ -487,7 +488,7 @@ namespace Ryujinx.Graphics.Vulkan
                 (int keyOffset, int keySize) = FromMirrorKey(key);
                 if (!(offset + size <= keyOffset || offset >= keyOffset + keySize))
                 {
-                    toRemove ??= new List<ulong>();
+                    toRemove ??= new List<ulong>(); // 整合：保持原语法
 
                     toRemove.Add(key);
                 }
@@ -508,11 +509,20 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe void SetData(int offset, ReadOnlySpan<byte> data, CommandBufferScoped? cbs = null, Action endRenderPass = null, bool allowCbsWait = true)
         {
+            // 整合：添加边界保护，防止设备/交换链重置后的越界写入
+            if (offset < 0 || offset >= Size)
+            {
+                return;
+            }
+
             int dataSize = Math.Min(data.Length, Size - offset);
             if (dataSize == 0)
             {
                 return;
             }
+
+            // 从这里开始使用裁剪后的数据切片
+            ReadOnlySpan<byte> dataSlice = data[..dataSize];
 
             bool allowMirror = _useMirrors && allowCbsWait && cbs != null && _activeType <= BufferAllocationType.HostMapped;
 
@@ -528,7 +538,7 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     WaitForFences(offset, dataSize);
 
-                    data[..dataSize].CopyTo(new Span<byte>((void*)(_map + offset), dataSize));
+                    dataSlice.CopyTo(new Span<byte>((void*)(_map + offset), dataSize));
 
                     if (_pendingData != null)
                     {
@@ -555,7 +565,7 @@ namespace Ryujinx.Graphics.Vulkan
                     _mirrors = new Dictionary<ulong, StagingBufferReserved>();
                 }
 
-                data[..dataSize].CopyTo(_pendingData.AsSpan(offset, dataSize));
+                dataSlice.CopyTo(_pendingData.AsSpan(offset, dataSize));
                 _pendingDataRanges.Add(offset, dataSize);
 
                 // Remove any overlapping mirrors.
@@ -586,12 +596,12 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (cbs == null ||
                 !VulkanConfiguration.UseFastBufferUpdates ||
-                data.Length > MaxUpdateBufferSize ||
-                !TryPushData(cbs.Value, endRenderPass, offset, data))
+                dataSize > MaxUpdateBufferSize ||
+                !TryPushData(cbs.Value, endRenderPass, offset, dataSlice))
             {
                 if (allowCbsWait)
                 {
-                    _gd.BufferManager.StagingBuffer.PushData(_gd.CommandBufferPool, cbs, endRenderPass, this, offset, data);
+                    _gd.BufferManager.StagingBuffer.PushData(_gd.CommandBufferPool, cbs, endRenderPass, this, offset, dataSlice);
                 }
                 else
                 {
@@ -601,11 +611,11 @@ namespace Ryujinx.Graphics.Vulkan
                         cbs = _gd.CommandBufferPool.Rent();
                     }
 
-                    if (!_gd.BufferManager.StagingBuffer.TryPushData(cbs.Value, endRenderPass, this, offset, data))
+                    if (!_gd.BufferManager.StagingBuffer.TryPushData(cbs.Value, endRenderPass, this, offset, dataSlice))
                     {
                         // Need to do a slow upload.
                         BufferHolder srcHolder = _gd.BufferManager.Create(_gd, dataSize, baseType: BufferAllocationType.HostMapped);
-                        srcHolder.SetDataUnchecked(0, data);
+                        srcHolder.SetDataUnchecked(0, dataSlice);
 
                         var srcBuffer = srcHolder.GetBuffer();
                         var dstBuffer = this.GetBuffer(cbs.Value.CommandBuffer, true);
@@ -637,7 +647,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                _gd.BufferManager.StagingBuffer.PushData(_gd.CommandBufferPool, null, null, this, offset, data);
+                _gd.BufferManager.StagingBuffer.PushData(_gd.CommandBufferPool, null, null, this, offset, data[..dataSize]); // 整合：使用裁剪后的数据
             }
         }
 
@@ -648,9 +658,21 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void SetDataInline(CommandBufferScoped cbs, Action endRenderPass, int dstOffset, ReadOnlySpan<byte> data)
         {
-            if (!TryPushData(cbs, endRenderPass, dstOffset, data))
+            // 整合：为内联更新添加边界检查
+            if (dstOffset < 0 || dstOffset >= Size)
             {
-                throw new ArgumentException($"Invalid offset 0x{dstOffset:X} or data size 0x{data.Length:X}.");
+                return;
+            }
+
+            int dataSize = Math.Min(data.Length, Size - dstOffset);
+            if (dataSize <= 0)
+            {
+                return;
+            }
+
+            if (!TryPushData(cbs, endRenderPass, dstOffset, data[..dataSize]))
+            {
+                throw new ArgumentException($"Invalid offset 0x{dstOffset:X} or data size 0x{dataSize:X}.");
             }
         }
 
@@ -701,105 +723,110 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         public static unsafe void Copy(
-    VulkanRenderer gd,
-    CommandBufferScoped cbs,
-    Auto<DisposableBuffer> src,
-    Auto<DisposableBuffer> dst,
-    int srcOffset,
-    int dstOffset,
-    int size,
-    bool registerSrcUsage = true)
-{
-    // 参数验证
-    if (gd == null)
-    {
-        throw new ArgumentNullException(nameof(gd), "Graphics device is null.");
-    }
-    
-    if (cbs.CommandBuffer.Handle == 0)
-    {
-        throw new ArgumentException("Invalid command buffer.", nameof(cbs));
-    }
-
-    if (src == null)
-    {
-        throw new ArgumentNullException(nameof(src), "Source buffer is null.");
-    }
-
-    if (dst == null)
-    {
-        throw new ArgumentNullException(nameof(dst), "Destination buffer is null.");
-    }
-
-    if (srcOffset < 0)
-    {
-        throw new ArgumentOutOfRangeException(nameof(srcOffset), "Source offset cannot be negative.");
-    }
-
-    if (dstOffset < 0)
-    {
-        throw new ArgumentOutOfRangeException(nameof(dstOffset), "Destination offset cannot be negative.");
-    }
-
-    if (size <= 0)
-    {
-        throw new ArgumentOutOfRangeException(nameof(size), "Copy size must be greater than zero.");
-    }
-
-    try
-    {
-        // 获取缓冲区
-        var srcBuffer = registerSrcUsage ? 
-            src.Get(cbs, srcOffset, size).Value : 
-            src.GetUnsafe().Value;
-        
-        var dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
-
-        // 验证缓冲区句柄
-        if (srcBuffer.Handle == 0)
+            VulkanRenderer gd,
+            CommandBufferScoped cbs,
+            Auto<DisposableBuffer> src,
+            Auto<DisposableBuffer> dst,
+            int srcOffset,
+            int dstOffset,
+            int size,
+            bool registerSrcUsage = true)
         {
-            throw new InvalidOperationException("Invalid source buffer handle (VkBuffer is null).");
+            // 整合：增强的参数验证和错误处理
+            if (gd == null)
+            {
+                throw new ArgumentNullException(nameof(gd), "Graphics device is null.");
+            }
+            
+            if (cbs.CommandBuffer.Handle == 0)
+            {
+                throw new ArgumentException("Invalid command buffer.", nameof(cbs));
+            }
+
+            if (src == null)
+            {
+                throw new ArgumentNullException(nameof(src), "Source buffer is null.");
+            }
+
+            if (dst == null)
+            {
+                throw new ArgumentNullException(nameof(dst), "Destination buffer is null.");
+            }
+
+            if (srcOffset < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(srcOffset), "Source offset cannot be negative.");
+            }
+
+            if (dstOffset < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(dstOffset), "Destination offset cannot be negative.");
+            }
+
+            if (size <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(size), "Copy size must be greater than zero.");
+            }
+
+            try
+            {
+                // 获取缓冲区
+                var srcBuffer = registerSrcUsage ? 
+                    src.Get(cbs, srcOffset, size).Value : 
+                    src.GetUnsafe().Value;
+                
+                var dstBuffer = dst.Get(cbs, dstOffset, size, true).Value;
+
+                // 验证缓冲区句柄
+                if (srcBuffer.Handle == 0)
+                {
+                    throw new InvalidOperationException("Invalid source buffer handle (VkBuffer is null).");
+                }
+
+                if (dstBuffer.Handle == 0)
+                {
+                    throw new InvalidOperationException("Invalid destination buffer handle (VkBuffer is null).");
+                }
+
+                // 设置目标缓冲区屏障 (准备写入)
+                InsertBufferBarrier(
+                    gd,
+                    cbs.CommandBuffer,
+                    dstBuffer,
+                    DefaultAccessFlags,
+                    AccessFlags.TransferWriteBit,
+                    PipelineStageFlags.AllCommandsBit,
+                    PipelineStageFlags.TransferBit,
+                    dstOffset,
+                    size);
+
+                // 执行缓冲区复制
+                var region = new BufferCopy((ulong)srcOffset, (ulong)dstOffset, (ulong)size);
+                
+                gd.Api.CmdCopyBuffer(cbs.CommandBuffer, srcBuffer, dstBuffer, 1, &region);
+
+                // 设置目标缓冲区屏障 (完成写入)
+                InsertBufferBarrier(
+                    gd,
+                    cbs.CommandBuffer,
+                    dstBuffer,
+                    AccessFlags.TransferWriteBit,
+                    DefaultAccessFlags,
+                    PipelineStageFlags.TransferBit,
+                    PipelineStageFlags.AllCommandsBit,
+                    dstOffset,
+                    size);
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException)
+            {
+                throw new InvalidOperationException("Attempted to use a disposed buffer.", ex);
+            }
+            catch (NullReferenceException)
+            {
+                // 整合：处理设备/表面重置后的空引用异常
+                return;
+            }
         }
-
-        if (dstBuffer.Handle == 0)
-        {
-            throw new InvalidOperationException("Invalid destination buffer handle (VkBuffer is null).");
-        }
-
-        // 设置目标缓冲区屏障 (准备写入)
-        InsertBufferBarrier(
-            gd,
-            cbs.CommandBuffer,
-            dstBuffer,
-            DefaultAccessFlags,
-            AccessFlags.TransferWriteBit,
-            PipelineStageFlags.AllCommandsBit,
-            PipelineStageFlags.TransferBit,
-            dstOffset,
-            size);
-
-        // 执行缓冲区复制
-        var region = new BufferCopy((ulong)srcOffset, (ulong)dstOffset, (ulong)size);
-        
-        gd.Api.CmdCopyBuffer(cbs.CommandBuffer, srcBuffer, dstBuffer, 1, &region);
-
-        // 设置目标缓冲区屏障 (完成写入)
-        InsertBufferBarrier(
-            gd,
-            cbs.CommandBuffer,
-            dstBuffer,
-            AccessFlags.TransferWriteBit,
-            DefaultAccessFlags,
-            PipelineStageFlags.TransferBit,
-            PipelineStageFlags.AllCommandsBit,
-            dstOffset,
-            size);
-    }
-    catch (Exception ex) when (ex is ObjectDisposedException)
-    {
-        throw new InvalidOperationException("Attempted to use a disposed buffer.", ex);
-    }
-}
 
         public static unsafe void InsertBufferBarrier(
             VulkanRenderer gd,
