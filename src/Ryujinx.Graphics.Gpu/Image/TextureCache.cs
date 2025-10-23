@@ -8,7 +8,9 @@ using Ryujinx.Graphics.Texture;
 using Ryujinx.Memory.Range;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
+using System.Collections.Concurrent;
 
 namespace Ryujinx.Graphics.Gpu.Image
 {
@@ -47,6 +49,9 @@ namespace Ryujinx.Graphics.Gpu.Image
 
         private readonly AutoDeleteCache _cache;
 
+        // === Static registry of all TextureCache instances (weak) for broadcast resets ===
+        private static readonly ConcurrentBag<WeakReference<TextureCache>> _instances = new();
+
         /// <summary>
         /// Constructs a new instance of the texture manager.
         /// </summary>
@@ -66,6 +71,9 @@ namespace Ryujinx.Graphics.Gpu.Image
             _overlapInfo = new OverlapInfo[OverlapsBufferInitialCapacity];
 
             _cache = new AutoDeleteCache();
+
+            // Register this cache instance for global reset broadcast.
+            _instances.Add(new WeakReference<TextureCache>(this));
         }
 
         /// <summary>
@@ -738,7 +746,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                         // If the GPU VA for the texture has ever been unmapped, then the range must be checked regardless.
                         if ((overlap.Info.GpuAddress != info.GpuAddress || overlap.ChangedMapping) &&
                             !memoryManager.CompareRange(overlap.Range, info.GpuAddress))
-                                            {
+                        {
                             continue;
                         }
                     }
