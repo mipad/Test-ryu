@@ -35,7 +35,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         private int _width;
         private int _height;
-        private VSyncMode _vSyncMode;
+        private bool _vsyncEnabled;
         private bool _swapchainIsDirty;
         private VkFormat _format;
         private AntiAliasing _currentAntiAliasing;
