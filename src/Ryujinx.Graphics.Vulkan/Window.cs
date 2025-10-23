@@ -1,8 +1,10 @@
+using Ryujinx.Common;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Vulkan.Effects;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.KHR;
 using System;
+using System.Diagnostics;
 using System.Linq;
 using VkFormat = Silk.NET.Vulkan.Format;
 
@@ -12,12 +14,16 @@ namespace Ryujinx.Graphics.Vulkan
     {
         private const int SurfaceWidth = 1280;
         private const int SurfaceHeight = 720;
+        
+        // 标准颜色空间常量
+        private const ColorSpaceKHR StandardColorSpace = ColorSpaceKHR.SpaceSrgbNonlinearKhr;
+        private const VkFormat PreferredFormat = VkFormat.B8G8R8A8Unorm;
 
         private readonly VulkanRenderer _gd;
         private readonly PhysicalDevice _physicalDevice;
         private readonly Device _device;
-        private SwapchainKHR _swapchain;
         private SurfaceKHR _surface;
+        private SwapchainKHR _swapchain;
 
         private Image[] _swapchainImages;
         private TextureView[] _swapchainImageViews;
@@ -29,7 +35,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         private int _width;
         private int _height;
-        private bool _vsyncEnabled;
+        private VSyncMode _vSyncMode;
         private bool _swapchainIsDirty;
         private VkFormat _format;
         private AntiAliasing _currentAntiAliasing;
@@ -57,31 +63,53 @@ namespace Ryujinx.Graphics.Vulkan
             var oldSwapchain = _swapchain;
             _swapchainIsDirty = false;
 
-            for (int i = 0; i < _swapchainImageViews.Length; i++)
+            if (_swapchainImageViews != null)
             {
-                _swapchainImageViews[i].Dispose();
+                for (int i = 0; i < _swapchainImageViews.Length; i++)
+                {
+                    _swapchainImageViews[i]?.Dispose();
+                }
             }
 
-            // Destroy old Swapchain.
-
+            // 等待设备空闲以确保安全销毁
             _gd.Api.DeviceWaitIdle(_device);
 
-            unsafe
+            // 清理信号量
+            CleanupSemaphores();
+
+            if (oldSwapchain.Handle != 0)
+            {
+                _gd.SwapchainApi.DestroySwapchain(_device, oldSwapchain, Span<AllocationCallbacks>.Empty);
+            }
+
+            CreateSwapchain();
+        }
+
+        private unsafe void CleanupSemaphores()
+        {
+            if (_imageAvailableSemaphores != null)
             {
                 for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
                 {
-                    _gd.Api.DestroySemaphore(_device, _imageAvailableSemaphores[i], null);
+                    if (_imageAvailableSemaphores[i].Handle != 0)
+                    {
+                        _gd.Api.DestroySemaphore(_device, _imageAvailableSemaphores[i], null);
+                    }
                 }
-
-                for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
-                {
-                    _gd.Api.DestroySemaphore(_device, _renderFinishedSemaphores[i], null);
-                }
+                _imageAvailableSemaphores = null;
             }
 
-            _gd.SwapchainApi.DestroySwapchain(_device, oldSwapchain, Span<AllocationCallbacks>.Empty);
-
-            CreateSwapchain();
+            if (_renderFinishedSemaphores != null)
+            {
+                for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
+                {
+                    if (_renderFinishedSemaphores[i].Handle != 0)
+                    {
+                        _gd.Api.DestroySemaphore(_device, _renderFinishedSemaphores[i], null);
+                    }
+                }
+                _renderFinishedSemaphores = null;
+            }
         }
 
         internal void SetSurface(SurfaceKHR surface)
@@ -92,122 +120,144 @@ namespace Ryujinx.Graphics.Vulkan
 
         private unsafe void CreateSwapchain()
         {
-            _gd.SurfaceApi.GetPhysicalDeviceSurfaceCapabilities(_physicalDevice, _surface, out var capabilities);
-
-            uint surfaceFormatsCount;
-
-            _gd.SurfaceApi.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, &surfaceFormatsCount, null);
-
-            var surfaceFormats = new SurfaceFormatKHR[surfaceFormatsCount];
-
-            fixed (SurfaceFormatKHR* pSurfaceFormats = surfaceFormats)
+            try
             {
-                _gd.SurfaceApi.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, &surfaceFormatsCount, pSurfaceFormats);
+                _gd.SurfaceApi.GetPhysicalDeviceSurfaceCapabilities(_physicalDevice, _surface, out var capabilities);
+
+                uint surfaceFormatsCount;
+                _gd.SurfaceApi.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, &surfaceFormatsCount, null);
+
+                var surfaceFormats = new SurfaceFormatKHR[surfaceFormatsCount];
+                if (surfaceFormatsCount > 0)
+                {
+                    fixed (SurfaceFormatKHR* pSurfaceFormats = surfaceFormats)
+                    {
+                        _gd.SurfaceApi.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, &surfaceFormatsCount, pSurfaceFormats);
+                    }
+                }
+
+                uint presentModesCount;
+                _gd.SurfaceApi.GetPhysicalDeviceSurfacePresentModes(_physicalDevice, _surface, &presentModesCount, null);
+
+                var presentModes = new PresentModeKHR[presentModesCount];
+                if (presentModesCount > 0)
+                {
+                    fixed (PresentModeKHR* pPresentModes = presentModes)
+                    {
+                        _gd.SurfaceApi.GetPhysicalDeviceSurfacePresentModes(_physicalDevice, _surface, &presentModesCount, pPresentModes);
+                    }
+                }
+
+                uint imageCount = capabilities.MinImageCount + 1;
+                if (capabilities.MaxImageCount > 0 && imageCount > capabilities.MaxImageCount)
+                {
+                    imageCount = capabilities.MaxImageCount;
+                }
+
+                var surfaceFormat = ChooseSwapSurfaceFormat(surfaceFormats, _colorSpacePassthroughEnabled);
+                var extent = ChooseSwapExtent(capabilities);
+
+                _width = (int)extent.Width;
+                _height = (int)extent.Height;
+                _format = surfaceFormat.Format;
+
+                var oldSwapchain = _swapchain;
+                CurrentTransform = capabilities.CurrentTransform;
+
+                var swapchainCreateInfo = new SwapchainCreateInfoKHR
+                {
+                    SType = StructureType.SwapchainCreateInfoKhr,
+                    Surface = _surface,
+                    MinImageCount = imageCount,
+                    ImageFormat = surfaceFormat.Format,
+                    ImageColorSpace = surfaceFormat.ColorSpace,
+                    ImageExtent = extent,
+                    ImageUsage = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit | (PlatformInfo.IsBionic ? 0 : ImageUsageFlags.StorageBit),
+                    ImageSharingMode = SharingMode.Exclusive,
+                    ImageArrayLayers = 1,
+                    PreTransform = PlatformInfo.IsBionic ? SurfaceTransformFlagsKHR.IdentityBitKhr : capabilities.CurrentTransform,
+                    CompositeAlpha = ChooseCompositeAlpha(capabilities.SupportedCompositeAlpha),
+                    PresentMode = ChooseSwapPresentMode(presentModes, _vSyncMode),
+                    Clipped = true,
+                    OldSwapchain = oldSwapchain,
+                };
+
+                var textureCreateInfo = new TextureCreateInfo(
+                    _width,
+                    _height,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    FormatTable.GetFormat(surfaceFormat.Format),
+                    DepthStencilMode.Depth,
+                    Target.Texture2D,
+                    SwizzleComponent.Red,
+                    SwizzleComponent.Green,
+                    SwizzleComponent.Blue,
+                    SwizzleComponent.Alpha);
+
+                // 使用更健壮的错误处理
+                var result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
+                if (result != Result.Success)
+                {
+                    if (result == Result.ErrorOutOfDateKhr || result == Result.ErrorSurfaceLostKhr)
+                    {
+                        _swapchainIsDirty = true;
+                        Logger.Warn($"交换链创建失败: {result}，将在下次Present时重试");
+                        return;
+                    }
+                    result.ThrowOnError();
+                }
+
+                _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, null);
+
+                _swapchainImages = new Image[imageCount];
+
+                fixed (Image* pSwapchainImages = _swapchainImages)
+                {
+                    _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, pSwapchainImages);
+                }
+
+                _swapchainImageViews = new TextureView[imageCount];
+
+                for (int i = 0; i < _swapchainImageViews.Length; i++)
+                {
+                    _swapchainImageViews[i] = CreateSwapchainImageView(_swapchainImages[i], surfaceFormat.Format, textureCreateInfo);
+                }
+
+                var semaphoreCreateInfo = new SemaphoreCreateInfo
+                {
+                    SType = StructureType.SemaphoreCreateInfo,
+                };
+
+                _imageAvailableSemaphores = new Semaphore[imageCount];
+
+                for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
+                {
+                    _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _imageAvailableSemaphores[i]).ThrowOnError();
+                }
+
+                _renderFinishedSemaphores = new Semaphore[imageCount];
+
+                for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
+                {
+                    _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _renderFinishedSemaphores[i]).ThrowOnError();
+                }
+
+                // 如果创建成功，清理旧的交换链
+                if (oldSwapchain.Handle != 0)
+                {
+                    _gd.SwapchainApi.DestroySwapchain(_device, oldSwapchain, null);
+                }
             }
-
-            uint presentModesCount;
-
-            _gd.SurfaceApi.GetPhysicalDeviceSurfacePresentModes(_physicalDevice, _surface, &presentModesCount, null);
-
-            var presentModes = new PresentModeKHR[presentModesCount];
-
-            fixed (PresentModeKHR* pPresentModes = presentModes)
+            catch (Exception ex)
             {
-                _gd.SurfaceApi.GetPhysicalDeviceSurfacePresentModes(_physicalDevice, _surface, &presentModesCount, pPresentModes);
-            }
-
-            uint imageCount = capabilities.MinImageCount + 1;
-            if (capabilities.MaxImageCount > 0 && imageCount > capabilities.MaxImageCount)
-            {
-                imageCount = capabilities.MaxImageCount;
-            }
-
-            var surfaceFormat = ChooseSwapSurfaceFormat(surfaceFormats, _colorSpacePassthroughEnabled);
-
-            var extent = ChooseSwapExtent(capabilities);
-
-            _width = (int)extent.Width;
-            _height = (int)extent.Height;
-            _format = surfaceFormat.Format;
-
-            var oldSwapchain = _swapchain;
-
-            CurrentTransform = capabilities.CurrentTransform;
-
-            var swapchainCreateInfo = new SwapchainCreateInfoKHR
-            {
-                SType = StructureType.SwapchainCreateInfoKhr,
-                Surface = _surface,
-                MinImageCount = imageCount,
-                ImageFormat = surfaceFormat.Format,
-                ImageColorSpace = surfaceFormat.ColorSpace,
-                ImageExtent = extent,
-                ImageUsage = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit | (Ryujinx.Common.PlatformInfo.IsBionic ? 0 : ImageUsageFlags.StorageBit),
-                ImageSharingMode = SharingMode.Exclusive,
-                ImageArrayLayers = 1,
-                PreTransform = Ryujinx.Common.PlatformInfo.IsBionic ? SurfaceTransformFlagsKHR.IdentityBitKhr : capabilities.CurrentTransform,
-                CompositeAlpha = ChooseCompositeAlpha(capabilities.SupportedCompositeAlpha),
-                PresentMode = ChooseSwapPresentMode(presentModes, _vsyncEnabled),
-                Clipped = true,
-            };
-
-            var textureCreateInfo = new TextureCreateInfo(
-                _width,
-                _height,
-                1,
-                1,
-                1,
-                1,
-                1,
-                1,
-                FormatTable.GetFormat(surfaceFormat.Format),
-                DepthStencilMode.Depth,
-                Target.Texture2D,
-                SwizzleComponent.Red,
-                SwizzleComponent.Green,
-                SwizzleComponent.Blue,
-                SwizzleComponent.Alpha);
-
-            //_gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain).ThrowOnError();
-            Result result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
-            if (result != Result.Success)
-            {
-                result.ThrowOnError();
-            }
-            
-            _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, null);
-
-            _swapchainImages = new Image[imageCount];
-
-            fixed (Image* pSwapchainImages = _swapchainImages)
-            {
-                _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, pSwapchainImages);
-            }
-
-            _swapchainImageViews = new TextureView[imageCount];
-
-            for (int i = 0; i < _swapchainImageViews.Length; i++)
-            {
-                _swapchainImageViews[i] = CreateSwapchainImageView(_swapchainImages[i], surfaceFormat.Format, textureCreateInfo);
-            }
-
-            var semaphoreCreateInfo = new SemaphoreCreateInfo
-            {
-                SType = StructureType.SemaphoreCreateInfo,
-            };
-
-            _imageAvailableSemaphores = new Semaphore[imageCount];
-
-            for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
-            {
-                _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _imageAvailableSemaphores[i]).ThrowOnError();
-            }
-
-            _renderFinishedSemaphores = new Semaphore[imageCount];
-
-            for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
-            {
-                _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _renderFinishedSemaphores[i]).ThrowOnError();
+                Logger.Error($"创建交换链时发生错误: {ex.Message}");
+                _swapchainIsDirty = true;
+                throw;
             }
         }
 
@@ -240,11 +290,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         private static SurfaceFormatKHR ChooseSwapSurfaceFormat(SurfaceFormatKHR[] availableFormats, bool colorSpacePassthroughEnabled)
         {
-            // 定义标准颜色空间常量
-            const ColorSpaceKHR StandardColorSpace = ColorSpaceKHR.SpaceSrgbNonlinearKhr;
-            const VkFormat PreferredFormat = VkFormat.B8G8R8A8Unorm;
-
-            // 空数组检查 - 返回安全默认值
+            // 修复1: 添加空数组检查
             if (availableFormats.Length == 0)
             {
                 return new SurfaceFormatKHR(PreferredFormat, StandardColorSpace);
@@ -256,44 +302,37 @@ namespace Ryujinx.Graphics.Vulkan
                 return new SurfaceFormatKHR(PreferredFormat, StandardColorSpace);
             }
 
-            // 修复：使用正确的颜色空间枚举值
+            var formatToReturn = availableFormats[0];
+            
+            // 修复2: 使用正确的颜色空间枚举
             if (colorSpacePassthroughEnabled)
             {
-                // 优先选择PassThrough格式
                 foreach (var format in availableFormats)
                 {
-                    if (format.Format == PreferredFormat && 
-                        format.ColorSpace == ColorSpaceKHR.SpacePassThroughExt)
+                    if (format.Format == PreferredFormat && format.ColorSpace == ColorSpaceKHR.SpacePassThroughExt)
                     {
-                        return format;
+                        formatToReturn = format;
+                        break;
                     }
-                }
-                
-                // 其次选择标准SRGB格式
-                foreach (var format in availableFormats)
-                {
-                    if (format.Format == PreferredFormat && 
-                        format.ColorSpace == StandardColorSpace)
+                    else if (format.Format == PreferredFormat && format.ColorSpace == StandardColorSpace)
                     {
-                        return format;
+                        formatToReturn = format;
                     }
                 }
             }
             else
             {
-                // 标准模式下优先选择SRGB格式
                 foreach (var format in availableFormats)
                 {
-                    if (format.Format == PreferredFormat && 
-                        format.ColorSpace == StandardColorSpace)
+                    if (format.Format == PreferredFormat && format.ColorSpace == StandardColorSpace)
                     {
-                        return format;
+                        formatToReturn = format;
+                        break;
                     }
                 }
             }
 
-            // 没有匹配时返回第一个可用格式
-            return availableFormats[0];
+            return formatToReturn;
         }
 
         private static CompositeAlphaFlagsKHR ChooseCompositeAlpha(CompositeAlphaFlagsKHR supportedFlags)
@@ -312,14 +351,15 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        private static PresentModeKHR ChooseSwapPresentMode(PresentModeKHR[] availablePresentModes, bool vsyncEnabled)
+        private static PresentModeKHR ChooseSwapPresentMode(PresentModeKHR[] availablePresentModes, VSyncMode vSyncMode)
         {
+            // 修复3: 添加空数组检查
             if (availablePresentModes.Length == 0)
             {
-                return PresentModeKHR.FifoKhr; // 安全默认值
+                return PresentModeKHR.FifoKhr;
             }
-            
-            if (!vsyncEnabled && availablePresentModes.Contains(PresentModeKHR.ImmediateKhr))
+
+            if (vSyncMode == VSyncMode.Unbounded && availablePresentModes.Contains(PresentModeKHR.ImmediateKhr))
             {
                 return PresentModeKHR.ImmediateKhr;
             }
@@ -348,6 +388,17 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe override void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback)
         {
+            // 如果交换链标记为脏，先重建
+            if (_swapchainIsDirty)
+            {
+                RecreateSwapchain();
+                if (_swapchainIsDirty) // 如果重建失败，跳过本次Present
+                {
+                    Logger.Warn("交换链重建失败，跳过本次Present");
+                    return;
+                }
+            }
+
             _gd.PipelineInternal.AutoFlush.Present();
 
             uint nextImage = 0;
@@ -369,8 +420,15 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     RecreateSwapchain();
                     semaphoreIndex = (_frameIndex - 1) % _imageAvailableSemaphores.Length;
+                    
+                    // 如果重建后仍然有问题，退出
+                    if (_swapchainIsDirty)
+                    {
+                        Logger.Warn("获取交换链图像失败，跳过本次Present");
+                        return;
+                    }
                 }
-                else if(acquireResult == Result.ErrorSurfaceLostKhr)
+                else if (acquireResult == Result.ErrorSurfaceLostKhr)
                 {
                     _gd.RecreateSurface();
                 }
@@ -387,11 +445,25 @@ namespace Ryujinx.Graphics.Vulkan
 
             var cbs = _gd.CommandBufferPool.Rent();
 
+            // WICHTIG: Unser Renderpass erwartet die Attachments im Layout GENERAL.
+            // Also von Undefined/Present -> General mit ColorAttachmentWrite als Zielzugriff.
+#if DEBUG
+            ValidateTransition(
+                PipelineStageFlags.TopOfPipeBit,
+                PipelineStageFlags.ColorAttachmentOutputBit,
+                0,
+                AccessFlags.ColorAttachmentWriteBit,
+                ImageLayout.Undefined,
+                ImageLayout.General);
+#endif
+
             Transition(
                 cbs.CommandBuffer,
                 swapchainImage,
+                PipelineStageFlags.TopOfPipeBit,
+                PipelineStageFlags.ColorAttachmentOutputBit,
                 0,
-                AccessFlags.TransferWriteBit,
+                AccessFlags.ColorAttachmentWriteBit,
                 ImageLayout.Undefined,
                 ImageLayout.General);
 
@@ -443,7 +515,6 @@ namespace Ryujinx.Graphics.Vulkan
                 }
 
                 CaptureFrame(view, srcX0, srcY0, srcX1 - srcX0, srcY1 - srcY0, view.Info.Format.IsBgr(), crop.FlipX, crop.FlipY);
-
                 ScreenCaptureRequested = false;
             }
 
@@ -488,19 +559,33 @@ namespace Ryujinx.Graphics.Vulkan
                     true);
             }
 
+            // Nach den ColorAttachment-Writes: General -> PresentSrcKhr
+#if DEBUG
+            ValidateTransition(
+                PipelineStageFlags.ColorAttachmentOutputBit,
+                PipelineStageFlags.BottomOfPipeBit,
+                AccessFlags.ColorAttachmentWriteBit,
+                0,
+                ImageLayout.General,
+                ImageLayout.PresentSrcKhr);
+#endif
+
             Transition(
                 cbs.CommandBuffer,
                 swapchainImage,
-                0,
+                PipelineStageFlags.ColorAttachmentOutputBit,
+                PipelineStageFlags.BottomOfPipeBit,
+                AccessFlags.ColorAttachmentWriteBit,
                 0,
                 ImageLayout.General,
                 ImageLayout.PresentSrcKhr);
 
+            // Robuster: auf TOP_OF_PIPE warten (deckt Compute/Graphics gleichermaßen ab).
             _gd.CommandBufferPool.Return(
                 cbs,
-                stackalloc[] { _imageAvailableSemaphores[semaphoreIndex] },
-                stackalloc[] { PipelineStageFlags.ColorAttachmentOutputBit },
-                stackalloc[] { _renderFinishedSemaphores[semaphoreIndex] });
+                [_imageAvailableSemaphores[semaphoreIndex]],
+                [PipelineStageFlags.TopOfPipeBit],
+                [_renderFinishedSemaphores[semaphoreIndex]]);
 
             // TODO: Present queue.
             var semaphore = _renderFinishedSemaphores[semaphoreIndex];
@@ -524,7 +609,17 @@ namespace Ryujinx.Graphics.Vulkan
                 _gd.SwapchainApi.QueuePresent(_gd.Queue, in presentInfo);
             }
 
-            //While this does nothing in most cases, it's useful to notify the end of the frame.
+            // 检查呈现结果
+            if (result == Result.ErrorOutOfDateKhr || result == Result.SuboptimalKhr)
+            {
+                _swapchainIsDirty = true;
+            }
+            else if (result != Result.Success)
+            {
+                Logger.Warn($"QueuePresent返回非成功结果: {result}");
+            }
+
+            //While this does nothing in most cases, it's useful to notify the end of the frame, and is used to handle native window in Android.
             swapBuffersCallback?.Invoke();
         }
 
@@ -633,6 +728,8 @@ namespace Ryujinx.Graphics.Vulkan
         private unsafe void Transition(
             CommandBuffer commandBuffer,
             Image image,
+            PipelineStageFlags srcStage,
+            PipelineStageFlags dstStage,
             AccessFlags srcAccess,
             AccessFlags dstAccess,
             ImageLayout srcLayout,
@@ -655,8 +752,8 @@ namespace Ryujinx.Graphics.Vulkan
 
             _gd.Api.CmdPipelineBarrier(
                 commandBuffer,
-                PipelineStageFlags.TopOfPipeBit,
-                PipelineStageFlags.AllCommandsBit,
+                srcStage,
+                dstStage,
                 0,
                 0,
                 null,
@@ -665,6 +762,31 @@ namespace Ryujinx.Graphics.Vulkan
                 1,
                 in barrier);
         }
+
+#if DEBUG
+        [Conditional("DEBUG")]
+        private void ValidateTransition(PipelineStageFlags srcStage, PipelineStageFlags dstStage, 
+                                       AccessFlags srcAccess, AccessFlags dstAccess,
+                                       ImageLayout oldLayout, ImageLayout newLayout)
+        {
+            // 验证布局转换的合理性
+            if (oldLayout == ImageLayout.Undefined && newLayout == ImageLayout.General)
+            {
+                // 这是初始转换，应该使用TopOfPipe
+                Debug.Assert(srcStage == PipelineStageFlags.TopOfPipeBit, 
+                    "从Undefined到General的转换应该使用TopOfPipe作为源阶段");
+            }
+            
+            if (oldLayout == ImageLayout.General && newLayout == ImageLayout.PresentSrcKhr)
+            {
+                // 这是显示前转换，应该等待颜色附件输出完成
+                Debug.Assert(srcStage.HasFlag(PipelineStageFlags.ColorAttachmentOutputBit),
+                    "从General到PresentSrcKhr的转换应该等待颜色附件输出完成");
+                Debug.Assert(srcAccess.HasFlag(AccessFlags.ColorAttachmentWriteBit),
+                    "从General到PresentSrcKhr的转换应该等待颜色附件写入完成");
+            }
+        }
+#endif
 
         private void CaptureFrame(TextureView texture, int x, int y, int width, int height, bool isBgra, bool flipX, bool flipY)
         {
@@ -679,9 +801,10 @@ namespace Ryujinx.Graphics.Vulkan
             _swapchainIsDirty = true;
         }
 
-        public override void ChangeVSyncMode(bool vsyncEnabled)
+        public override void ChangeVSyncMode(VSyncMode vSyncMode)
         {
-            _vsyncEnabled = vsyncEnabled;
+            _vSyncMode = vSyncMode;
+            //present mode may change, so mark the swapchain for recreation
             _swapchainIsDirty = true;
         }
 
@@ -689,34 +812,45 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (disposing)
             {
-                unsafe
-                {
-                    for (int i = 0; i < _swapchainImageViews.Length; i++)
-                    {
-                        _swapchainImageViews[i].Dispose();
-                    }
-
-                    for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
-                    {
-                        _gd.Api.DestroySemaphore(_device, _imageAvailableSemaphores[i], null);
-                    }
-
-                    for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
-                    {
-                        _gd.Api.DestroySemaphore(_device, _renderFinishedSemaphores[i], null);
-                    }
-
-                    _gd.SwapchainApi.DestroySwapchain(_device, _swapchain, null);
-                }
-
                 _effect?.Dispose();
+                _effect = null;
+                
                 _scalingFilter?.Dispose();
+                _scalingFilter = null;
+                
+                CleanupSwapchainResources();
+            }
+        }
+
+        private unsafe void CleanupSwapchainResources()
+        {
+            if (_swapchainImageViews != null)
+            {
+                for (int i = 0; i < _swapchainImageViews.Length; i++)
+                {
+                    _swapchainImageViews[i]?.Dispose();
+                }
+                _swapchainImageViews = null;
+            }
+
+            CleanupSemaphores();
+
+            if (_swapchain.Handle != 0)
+            {
+                _gd.SwapchainApi.DestroySwapchain(_device, _swapchain, null);
+                _swapchain = default;
             }
         }
 
         public override void Dispose()
         {
             Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        ~Window()
+        {
+            Dispose(false);
         }
     }
 }
