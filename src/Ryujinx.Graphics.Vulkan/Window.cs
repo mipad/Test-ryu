@@ -206,7 +206,7 @@ namespace Ryujinx.Graphics.Vulkan
                     if (result == Result.ErrorOutOfDateKhr || result == Result.ErrorSurfaceLostKhr)
                     {
                         _swapchainIsDirty = true;
-                        Logger.Warn($"交换链创建失败: {result}，将在下次Present时重试");
+                        // 移除Logger调用
                         return;
                     }
                     result.ThrowOnError();
@@ -255,7 +255,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             catch (Exception ex)
             {
-                Logger.Error($"创建交换链时发生错误: {ex.Message}");
+                // 移除Logger调用
                 _swapchainIsDirty = true;
                 throw;
             }
@@ -394,7 +394,7 @@ namespace Ryujinx.Graphics.Vulkan
                 RecreateSwapchain();
                 if (_swapchainIsDirty) // 如果重建失败，跳过本次Present
                 {
-                    Logger.Warn("交换链重建失败，跳过本次Present");
+                    // 移除Logger调用
                     return;
                 }
             }
@@ -424,7 +424,7 @@ namespace Ryujinx.Graphics.Vulkan
                     // 如果重建后仍然有问题，退出
                     if (_swapchainIsDirty)
                     {
-                        Logger.Warn("获取交换链图像失败，跳过本次Present");
+                        // 移除Logger调用
                         return;
                     }
                 }
@@ -616,7 +616,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else if (result != Result.Success)
             {
-                Logger.Warn($"QueuePresent返回非成功结果: {result}");
+                // 移除Logger调用
             }
 
             //While this does nothing in most cases, it's useful to notify the end of the frame, and is used to handle native window in Android.
