@@ -257,7 +257,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         {
             bool dirty = false;
 
-            EvaluateRelevantHandles(texture, (baseHandle, regionCount, split) =>
+            EvaluateRelevantHandles(texture, (baseHandle, regionCount, _) =>
             {
                 for (int i = 0; i < regionCount; i++)
                 {
@@ -288,7 +288,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="texture">The texture being discarded</param>
         public void DiscardData(Texture texture)
         {
-            EvaluateRelevantHandles(texture, (baseHandle, regionCount, split) =>
+            EvaluateRelevantHandles(texture, (baseHandle, regionCount, _) =>
             {
                 for (int i = 0; i < regionCount; i++)
                 {
@@ -461,7 +461,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="texture">The texture to synchronize dependents of</param>
         public void SynchronizeDependents(Texture texture)
         {
-            EvaluateRelevantHandles(texture, (baseHandle, regionCount, split) =>
+            EvaluateRelevantHandles(texture, (baseHandle, regionCount, _) =>
             {
                 for (int i = 0; i < regionCount; i++)
                 {
@@ -619,48 +619,95 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="handle">Handle of the texture group to flush slices of</param>
         public void FlushIntoBuffer(TextureGroupHandle handle)
         {
-            // Ensure that the buffer exists.
-
-            if (_flushBufferInvalid && _flushBuffer != BufferHandle.Null)
+            try
             {
-                _flushBufferInvalid = false;
-                _context.Renderer.DeleteBuffer(_flushBuffer);
-                _flushBuffer = BufferHandle.Null;
-            }
-
-            if (_flushBuffer == BufferHandle.Null)
-            {
-                if (!TextureCompatibility.CanTextureFlush(Storage.Info, _context.Capabilities))
+                // Clean up imported flush buffer if invalid
+                if (_flushBufferInvalid && _flushBuffer != BufferHandle.Null)
                 {
+                    _flushBufferInvalid = false;
+                    _context.Renderer.DeleteBuffer(_flushBuffer);
+                    _flushBuffer = BufferHandle.Null;
+                }
+
+                // Early exit if hardware/format combination doesn't support texture flush
+                if (_flushBuffer == BufferHandle.Null)
+                {
+                    if (!TextureCompatibility.CanTextureFlush(Storage.Info, _context.Capabilities))
+                    {
+                        return;
+                    }
+
+                    bool canImport = Storage.Info.IsLinear &&
+                                     Storage.Info.Stride >= Storage.Info.Width * Storage.Info.FormatInfo.BytesPerPixel;
+
+                    var hostPointer = canImport ? _physicalMemory.GetHostPointer(Storage.Range) : 0;
+
+                    if (hostPointer != 0 && _context.Renderer.PrepareHostMapping(hostPointer, Storage.Size))
+                    {
+                        _flushBuffer = _context.Renderer.CreateBuffer(hostPointer, (int)Storage.Size);
+                        _flushBufferImported = true;
+                    }
+                    else
+                    {
+                        _flushBuffer = _context.Renderer.CreateBuffer((int)Storage.Size, BufferAccess.HostMemory);
+                        _flushBufferImported = false;
+                    }
+
+                    Storage.BlacklistScale();
+                }
+
+                // NEW: defensively check if a valid host texture for flushing exists
+                var flushTex = Storage.GetFlushTexture();
+                if (flushTex == null)
+                {
+                    // Can be missing right after device/surface reset → skip quietly
                     return;
                 }
 
-                bool canImport = Storage.Info.IsLinear && Storage.Info.Stride >= Storage.Info.Width * Storage.Info.FormatInfo.BytesPerPixel;
+                int sliceStart = handle.BaseSlice;
+                int sliceEnd = sliceStart + handle.SliceCount;
 
-                var hostPointer = canImport ? _physicalMemory.GetHostPointer(Storage.Range) : 0;
-
-                if (hostPointer != 0 && _context.Renderer.PrepareHostMapping(hostPointer, Storage.Size))
+                for (int i = sliceStart; i < sliceEnd; i++)
                 {
-                    _flushBuffer = _context.Renderer.CreateBuffer(hostPointer, (int)Storage.Size);
-                    _flushBufferImported = true;
-                }
-                else
-                {
-                    _flushBuffer = _context.Renderer.CreateBuffer((int)Storage.Size, BufferAccess.HostMemory);
-                    _flushBufferImported = false;
-                }
+                    (int layer, int level) = GetLayerLevelForView(i);
 
-                Storage.BlacklistScale();
+                    // NEW: bounds checks to avoid indexing outside offsets/slice sizes
+                    if ((uint)i >= (uint)_allOffsets.Length)
+                    {
+                        continue;
+                    }
+                    if ((uint)level >= (uint)_sliceSizes.Length)
+                    {
+                        continue;
+                    }
+
+                    int dstStride = _flushBufferImported ? Storage.Info.Stride : 0;
+
+                    // NEW: wrap individual slice flush defensively
+                    try
+                    {
+                        flushTex.CopyTo(
+                            new BufferRange(_flushBuffer, _allOffsets[i], _sliceSizes[level]),
+                            layer,
+                            level,
+                            dstStride);
+                    }
+                    catch (NullReferenceException)
+                    {
+                        // Single slice became invalid (e.g. during recreate) → skip
+                        continue;
+                    }
+                    catch (ArgumentOutOfRangeException)
+                    {
+                        // Unexpected range – skip instead of crash
+                        continue;
+                    }
+                }
             }
-
-            int sliceStart = handle.BaseSlice;
-            int sliceEnd = sliceStart + handle.SliceCount;
-
-            for (int i = sliceStart; i < sliceEnd; i++)
+            catch (NullReferenceException)
             {
-                (int layer, int level) = GetLayerLevelForView(i);
-
-                Storage.GetFlushTexture().CopyTo(new BufferRange(_flushBuffer, _allOffsets[i], _sliceSizes[level]), layer, level, _flushBufferImported ? Storage.Info.Stride : 0);
+                // Entire flush path temporarily invalid → exit safely
+                return;
             }
         }
 
@@ -694,7 +741,7 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             ClearIncompatibleOverlaps(texture);
 
-            EvaluateRelevantHandles(texture, (baseHandle, regionCount, split) =>
+            EvaluateRelevantHandles(texture, (baseHandle, regionCount, _) =>
             {
                 for (int i = 0; i < regionCount; i++)
                 {
@@ -716,7 +763,7 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             ClearIncompatibleOverlaps(texture);
 
-            EvaluateRelevantHandles(texture, (baseHandle, regionCount, split) =>
+            EvaluateRelevantHandles(texture, (baseHandle, regionCount, _) =>
             {
                 for (int i = 0; i < regionCount; i++)
                 {
@@ -1441,8 +1488,8 @@ namespace Ryujinx.Graphics.Gpu.Image
             var targetRange = new List<(int BaseHandle, int RegionCount)>();
             var otherRange = new List<(int BaseHandle, int RegionCount)>();
 
-            EvaluateRelevantHandles(firstLayer, firstLevel, other.Info.GetSlices(), other.Info.Levels, (baseHandle, regionCount, split) => targetRange.Add((baseHandle, regionCount)));
-            otherGroup.EvaluateRelevantHandles(other, (baseHandle, regionCount, split) => otherRange.Add((baseHandle, regionCount)));
+            EvaluateRelevantHandles(firstLayer, firstLevel, other.Info.GetSlices(), other.Info.Levels, (baseHandle, regionCount, _) => targetRange.Add((baseHandle, regionCount)));
+            otherGroup.EvaluateRelevantHandles(other, (baseHandle, regionCount, _) => otherRange.Add((baseHandle, regionCount)));
 
             int targetIndex = 0;
             int otherIndex = 0;
