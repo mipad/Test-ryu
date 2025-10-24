@@ -3,6 +3,7 @@ using Ryujinx.Graphics.GAL;
 using Silk.NET.Vulkan;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using Format = Ryujinx.Graphics.GAL.Format;
@@ -66,6 +67,10 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly TextureSliceInfo[] _slices;
 
         public VkFormat VkFormat { get; }
+
+        // 添加简单的使用跟踪
+        private long _lastUsedTime;
+        private bool _isRecentlyUsed;
 
         public unsafe TextureStorage(
             VulkanRenderer gd,
@@ -164,6 +169,31 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             _slices = new TextureSliceInfo[levels * _depthOrLayers];
+            
+            // 初始化使用时间
+            UpdateLastUsedTime();
+        }
+
+        /// <summary>
+        /// 更新最后使用时间
+        /// </summary>
+        public void UpdateLastUsedTime()
+        {
+            _lastUsedTime = Stopwatch.GetTimestamp();
+            _isRecentlyUsed = true;
+        }
+
+        /// <summary>
+        /// 检查纹理是否可以被安全回收（仅在紧急情况下使用）
+        /// </summary>
+        public bool CanBeEmergencyReclaimed(long currentTime)
+        {
+            if (Disposed || _bindCount > 0 || _viewsCount > 0)
+                return false;
+
+            // 只有长时间未使用且没有绑定的纹理才考虑回收
+            long timeSinceLastUse = currentTime - _lastUsedTime;
+            return timeSinceLastUse > (long)(Stopwatch.Frequency * 60); // 60秒未使用
         }
 
         public TextureStorage CreateAliasedColorForDepthStorageUnsafe(Format format)
@@ -534,6 +564,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void AddBinding(TextureView view)
         {
+            UpdateLastUsedTime();
+            
             // Assumes a view only has a first level.
 
             int index = view.FirstLevel * _depthOrLayers + view.FirstLayer;
@@ -602,6 +634,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void Dispose()
         {
+            if (Disposed)
+                return;
+                
             Disposed = true;
 
             if (_aliasedStorages != null)

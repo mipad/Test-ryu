@@ -11,7 +11,9 @@ using Silk.NET.Vulkan.Extensions.KHR;
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Format = Ryujinx.Graphics.GAL.Format;
 using PrimitiveTopology = Ryujinx.Graphics.GAL.PrimitiveTopology;
 using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
@@ -110,6 +112,12 @@ namespace Ryujinx.Graphics.Vulkan
         public bool PreferThreading => true;
 
         public event EventHandler<ScreenCaptureImageInfo> ScreenCaptured;
+
+        // 添加简单的纹理跟踪（不缓存，只用于紧急回收）
+        private readonly List<TextureStorage> _activeTextures = new List<TextureStorage>();
+        private readonly ReaderWriterLockSlim _texturesLock = new ReaderWriterLockSlim();
+        private static readonly long MemoryCheckInterval = (long)(Stopwatch.Frequency * 30); // 每30秒检查一次
+        private long _lastMemoryCheckTime = 0;
 
         public VulkanRenderer(Vk api, Func<Instance, Vk, SurfaceKHR> surfaceFunc, Func<string[]> requiredExtensionsFunc, string preferredGpuId)
         {
@@ -477,6 +485,9 @@ namespace Ryujinx.Graphics.Vulkan
             IsSharedMemory = MemoryAllocator.IsDeviceMemoryShared(_physicalDevice);
 
             MemoryAllocator = new MemoryAllocator(Api, _physicalDevice, _device);
+            
+            // 订阅内存压力事件
+            MemoryAllocator.OnMemoryPressure += OnMemoryPressure;
 
             Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtExternalMemoryHost hostMemoryApi);
             HostMemoryAllocator = new HostMemoryAllocator(MemoryAllocator, Api, hostMemoryApi, _device);
@@ -498,6 +509,99 @@ namespace Ryujinx.Graphics.Vulkan
             Barriers = new BarrierBatch(this);
 
             _counters = new Counters(this, _device, _pipeline);
+        }
+
+        /// <summary>
+        /// 内存压力事件处理
+        /// </summary>
+        private void OnMemoryPressure()
+        {
+            // 在内存压力时尝试紧急回收
+            EmergencyTextureReclaim();
+        }
+
+        /// <summary>
+        /// 紧急纹理回收（仅在内存不足时使用）
+        /// </summary>
+        private void EmergencyTextureReclaim()
+        {
+            _texturesLock.EnterWriteLock();
+            try
+            {
+                var currentTime = Stopwatch.GetTimestamp();
+                var texturesToRemove = new List<TextureStorage>();
+                ulong reclaimedMemory = 0;
+                int reclaimedCount = 0;
+
+                foreach (var texture in _activeTextures)
+                {
+                    if (texture.Disposed)
+                    {
+                        texturesToRemove.Add(texture);
+                        continue;
+                    }
+
+                    // 只有在极端情况下才回收纹理
+                    if (texture.CanBeEmergencyReclaimed(currentTime))
+                    {
+                        texturesToRemove.Add(texture);
+                        reclaimedCount++;
+                        
+                        // 限制单次回收数量，避免影响性能
+                        if (reclaimedCount >= 2)
+                        {
+                            break;
+                        }
+                    }
+                }
+
+                // 移除被标记的纹理
+                foreach (var texture in texturesToRemove)
+                {
+                    _activeTextures.Remove(texture);
+                    try
+                    {
+                        texture.Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warning?.Print(LogClass.Gpu, $"Error disposing texture during emergency reclaim: {ex.Message}");
+                    }
+                }
+
+                if (reclaimedCount > 0)
+                {
+                    Logger.Info?.Print(LogClass.Gpu, $"Emergency reclaimed {reclaimedCount} textures due to memory pressure");
+                }
+            }
+            finally
+            {
+                _texturesLock.ExitWriteLock();
+            }
+        }
+
+        // 内存使用检查
+        private void CheckMemoryUsage()
+        {
+            try
+            {
+                MemoryAllocator?.LogMemoryStats();
+                
+                // 如果内存使用率很高，主动回收一些纹理
+                var stats = MemoryAllocator?.GetMemoryStats();
+                if (stats.HasValue && stats.Value.totalSize > 0)
+                {
+                    float usagePercent = (float)stats.Value.usedSize / stats.Value.totalSize * 100;
+                    if (usagePercent > 85) // 内存使用率超过85%时触发紧急回收
+                    {
+                        EmergencyTextureReclaim();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, $"Memory check failed: {ex.Message}");
+            }
         }
 
         private uint FindComputeQueueFamily()
@@ -650,7 +754,21 @@ namespace Ryujinx.Graphics.Vulkan
                 Logger.Error?.Print(LogClass.Gpu, $"Invalid texture dimensions: {info.Width}x{info.Height}x{info.Depth}");
                 throw new ArgumentException("Invalid texture dimensions");
             }
-            return new TextureStorage(this, _device, info);
+            
+            var storage = new TextureStorage(this, _device, info);
+            
+            // 跟踪活跃纹理（用于紧急回收）
+            _texturesLock.EnterWriteLock();
+            try
+            {
+                _activeTextures.Add(storage);
+            }
+            finally
+            {
+                _texturesLock.ExitWriteLock();
+            }
+            
+            return storage;
         }
 
         public void DeleteBuffer(BufferHandle buffer)
@@ -971,6 +1089,14 @@ namespace Ryujinx.Graphics.Vulkan
         public void PreFrame()
         {
             SyncManager.Cleanup();
+            
+            // 定期内存检查
+            long currentTime = Stopwatch.GetTimestamp();
+            if (currentTime - _lastMemoryCheckTime > MemoryCheckInterval)
+            {
+                _lastMemoryCheckTime = currentTime;
+                CheckMemoryUsage();
+            }
         }
 
         public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
@@ -1060,6 +1186,24 @@ namespace Ryujinx.Graphics.Vulkan
             if (!_initialized)
             {
                 return;
+            }
+
+            // 清理活跃纹理列表
+            _texturesLock.EnterWriteLock();
+            try
+            {
+                foreach (var texture in _activeTextures)
+                {
+                    if (!texture.Disposed)
+                    {
+                        texture.Dispose();
+                    }
+                }
+                _activeTextures.Clear();
+            }
+            finally
+            {
+                _texturesLock.ExitWriteLock();
             }
 
             CommandBufferPool.Dispose();
