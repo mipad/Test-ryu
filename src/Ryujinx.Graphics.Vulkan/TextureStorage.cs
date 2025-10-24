@@ -3,7 +3,6 @@ using Ryujinx.Graphics.GAL;
 using Silk.NET.Vulkan;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using Format = Ryujinx.Graphics.GAL.Format;
@@ -67,13 +66,6 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly TextureSliceInfo[] _slices;
 
         public VkFormat VkFormat { get; }
-
-        // 添加回收相关字段
-        private long _lastUsedTime;
-        private int _useCount;
-        private readonly ulong _estimatedMemoryUsage;
-
-        public ulong EstimatedMemoryUsage => _estimatedMemoryUsage;
 
         public unsafe TextureStorage(
             VulkanRenderer gd,
@@ -172,72 +164,6 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             _slices = new TextureSliceInfo[levels * _depthOrLayers];
-
-            // 估算内存使用量
-            _estimatedMemoryUsage = CalculateEstimatedMemoryUsage(info);
-            
-            // 初始化使用时间
-            UpdateLastUsedTime();
-        }
-
-        /// <summary>
-        /// 估算纹理内存使用量
-        /// </summary>
-        private ulong CalculateEstimatedMemoryUsage(TextureCreateInfo info)
-        {
-            ulong size = 0;
-            int width = info.Width;
-            int height = info.Height;
-            int depth = info.Depth;
-            
-            for (int level = 0; level < info.Levels; level++)
-            {
-                int mipSize = info.GetMipSize(level);
-                size += (ulong)mipSize;
-                
-                width = Math.Max(1, width >> 1);
-                height = Math.Max(1, height >> 1);
-                
-                if (info.Target == Target.Texture3D)
-                {
-                    depth = Math.Max(1, depth >> 1);
-                }
-            }
-            
-            // 考虑多重采样
-            if (info.Samples > 1)
-            {
-                size *= (ulong)info.Samples;
-            }
-            
-            return size;
-        }
-
-        /// <summary>
-        /// 更新最后使用时间
-        /// </summary>
-        public void UpdateLastUsedTime()
-        {
-            _lastUsedTime = Stopwatch.GetTimestamp();
-            _useCount++;
-        }
-
-        /// <summary>
-        /// 检查纹理是否可以被回收
-        /// </summary>
-        public bool CanBeReclaimed(long currentTime, bool aggressive)
-        {
-            if (Disposed || _bindCount > 0 || _viewsCount > 0)
-            {
-                return false;
-            }
-            
-            long timeSinceLastUse = currentTime - _lastUsedTime;
-            long timeoutTicks = aggressive ? 
-                (long)(Stopwatch.Frequency * 30) :  // 激进模式：30秒未使用
-                (long)(Stopwatch.Frequency * 120);  // 普通模式：120秒未使用
-                
-            return timeSinceLastUse > timeoutTicks && _useCount < 5; // 使用次数很少的纹理优先回收
         }
 
         public TextureStorage CreateAliasedColorForDepthStorageUnsafe(Format format)
@@ -608,8 +534,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void AddBinding(TextureView view)
         {
-            UpdateLastUsedTime();
-            
             // Assumes a view only has a first level.
 
             int index = view.FirstLevel * _depthOrLayers + view.FirstLayer;
@@ -678,9 +602,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void Dispose()
         {
-            if (Disposed)
-                return;
-                
             Disposed = true;
 
             if (_aliasedStorages != null)
