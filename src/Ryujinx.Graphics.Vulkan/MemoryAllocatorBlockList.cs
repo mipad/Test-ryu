@@ -17,6 +17,8 @@ namespace Ryujinx.Graphics.Vulkan
             public IntPtr HostPointer { get; private set; }
             public ulong Size { get; }
             public bool Mapped => HostPointer != IntPtr.Zero;
+            public ulong LastUsedTime { get; private set; }
+            public ulong UsedSize { get; private set; }
 
             private readonly struct Range : IComparable<Range>
             {
@@ -42,6 +44,8 @@ namespace Ryujinx.Graphics.Vulkan
                 Memory = memory;
                 HostPointer = hostPointer;
                 Size = size;
+                LastUsedTime = GetCurrentTimestamp();
+                UsedSize = 0;
                 _freeRanges = new List<Range>
                 {
                     new Range(0, size),
@@ -50,6 +54,8 @@ namespace Ryujinx.Graphics.Vulkan
 
             public ulong Allocate(ulong size, ulong alignment)
             {
+                LastUsedTime = GetCurrentTimestamp();
+                
                 for (int i = 0; i < _freeRanges.Count; i++)
                 {
                     var range = _freeRanges[i];
@@ -74,6 +80,7 @@ namespace Ryujinx.Graphics.Vulkan
                             InsertFreeRange(endOffset - remainingSize, remainingSize);
                         }
 
+                        UsedSize += size;
                         return alignedOffset;
                     }
                 }
@@ -83,6 +90,8 @@ namespace Ryujinx.Graphics.Vulkan
 
             public void Free(ulong offset, ulong size)
             {
+                LastUsedTime = GetCurrentTimestamp();
+                UsedSize -= size;
                 InsertFreeRangeComingled(offset, size);
             }
 
@@ -136,6 +145,20 @@ namespace Ryujinx.Graphics.Vulkan
                 return false;
             }
 
+            public float GetUsageRatio()
+            {
+                return (float)UsedSize / Size;
+            }
+
+            public bool ShouldReclaim(float threshold, ulong currentTime, ulong timeout)
+            {
+                if (IsTotallyFree())
+                    return true;
+
+                float usageRatio = GetUsageRatio();
+                return usageRatio < threshold && (currentTime - LastUsedTime) > timeout;
+            }
+
             public int CompareTo(Block other)
             {
                 return Size.CompareTo(other.Size);
@@ -155,6 +178,11 @@ namespace Ryujinx.Graphics.Vulkan
                     Memory = default;
                 }
             }
+
+            private static ulong GetCurrentTimestamp()
+            {
+                return (ulong)Stopwatch.GetTimestamp();
+            }
         }
 
         private readonly List<Block> _blocks;
@@ -169,6 +197,10 @@ namespace Ryujinx.Graphics.Vulkan
 
         private readonly ReaderWriterLockSlim _lock;
 
+        // 内存回收配置
+        private readonly float _reclaimThreshold = 0.92f; // 92% 内存使用率时触发回收
+        private readonly ulong _reclaimTimeout = (ulong)(Stopwatch.Frequency * 5); // 5秒超时
+
         public MemoryAllocatorBlockList(Vk api, Device device, int memoryTypeIndex, int blockAlignment, bool forBuffer)
         {
             _blocks = new List<Block>();
@@ -182,6 +214,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe MemoryAllocation Allocate(ulong size, ulong alignment, bool map)
         {
+            // 在分配前尝试回收内存
+            TryReclaimMemory();
+
             // Ensure we have a sane alignment value.
             if ((ulong)(int)alignment != alignment || (int)alignment <= 0)
             {
@@ -190,6 +225,31 @@ namespace Ryujinx.Graphics.Vulkan
 
             _lock.EnterReadLock();
 
+            try
+            {
+                for (int i = 0; i < _blocks.Count; i++)
+                {
+                    var block = _blocks[i];
+
+                    if (block.Mapped == map && block.Size >= size)
+                    {
+                        ulong offset = block.Allocate(size, alignment);
+                        if (offset != InvalidOffset)
+                        {
+                            return new MemoryAllocation(this, block, block.Memory, GetHostPointer(block, offset), offset, size);
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                _lock.ExitReadLock();
+            }
+
+            // 如果分配失败，再次尝试回收内存并重试
+            ForceReclaimMemory();
+            
+            _lock.EnterReadLock();
             try
             {
                 for (int i = 0; i < _blocks.Count; i++)
@@ -220,7 +280,12 @@ namespace Ryujinx.Graphics.Vulkan
                 MemoryTypeIndex = (uint)MemoryTypeIndex,
             };
 
-            _api.AllocateMemory(_device, in memoryAllocateInfo, null, out var deviceMemory).ThrowOnError();
+            Result result = _api.AllocateMemory(_device, in memoryAllocateInfo, null, out var deviceMemory);
+            if (result != Result.Success)
+            {
+                // 如果分配仍然失败，抛出具体错误
+                throw new VulkanException(result);
+            }
 
             IntPtr hostPointer = IntPtr.Zero;
 
@@ -296,6 +361,74 @@ namespace Ryujinx.Graphics.Vulkan
             finally
             {
                 _lock.ExitWriteLock();
+            }
+        }
+
+        /// <summary>
+        /// 尝试回收内存，基于使用率和时间阈值
+        /// </summary>
+        public void TryReclaimMemory()
+        {
+            _lock.EnterWriteLock();
+            try
+            {
+                ulong currentTime = (ulong)Stopwatch.GetTimestamp();
+                ReclaimInternal(currentTime, _reclaimThreshold);
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
+        }
+
+        /// <summary>
+        /// 强制回收内存，使用更激进的策略
+        /// </summary>
+        public void ForceReclaimMemory()
+        {
+            _lock.EnterWriteLock();
+            try
+            {
+                ulong currentTime = (ulong)Stopwatch.GetTimestamp();
+                // 使用更低的阈值和更短的超时时间来强制回收
+                ReclaimInternal(currentTime, 0.5f, (ulong)(Stopwatch.Frequency * 1)); // 50% 使用率，1秒超时
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
+        }
+
+        /// <summary>
+        /// 手动触发内存整理
+        /// </summary>
+        public void ManualReclaim()
+        {
+            _lock.EnterWriteLock();
+            try
+            {
+                ulong currentTime = (ulong)Stopwatch.GetTimestamp();
+                // 手动回收时使用中等策略
+                ReclaimInternal(currentTime, 0.7f, (ulong)(Stopwatch.Frequency * 2)); // 70% 使用率，2秒超时
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
+        }
+
+        private void ReclaimInternal(ulong currentTime, float threshold, ulong? timeout = null)
+        {
+            timeout ??= _reclaimTimeout;
+
+            for (int i = _blocks.Count - 1; i >= 0; i--)
+            {
+                var block = _blocks[i];
+                if (block.ShouldReclaim(threshold, currentTime, timeout.Value))
+                {
+                    _blocks.RemoveAt(i);
+                    block.Destroy(_api, _device);
+                }
             }
         }
 
