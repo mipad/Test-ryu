@@ -179,6 +179,34 @@ namespace Ryujinx.Graphics.Vulkan
         /// <summary>
         /// 获取内存使用统计
         /// </summary>
+        public (ulong totalSize, ulong usedSize, int blockCount) GetMemoryStats()
+        {
+            _lock.EnterReadLock();
+            try
+            {
+                ulong totalMemory = 0;
+                ulong usedMemory = 0;
+                int totalBlocks = 0;
+
+                foreach (var blockList in _blockLists)
+                {
+                    var stats = blockList.GetMemoryStats();
+                    totalMemory += stats.totalSize;
+                    usedMemory += stats.usedSize;
+                    totalBlocks += stats.blockCount;
+                }
+
+                return (totalMemory, usedMemory, totalBlocks);
+            }
+            finally
+            {
+                _lock.ExitReadLock();
+            }
+        }
+
+        /// <summary>
+        /// 记录内存统计信息到日志
+        /// </summary>
         public void LogMemoryStats()
         {
             _lock.EnterReadLock();
