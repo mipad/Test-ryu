@@ -19,6 +19,8 @@ namespace Ryujinx.Graphics.Vulkan
             public bool Mapped => HostPointer != IntPtr.Zero;
             public ulong LastUsedTime { get; private set; }
             public ulong UsedSize { get; private set; }
+            public int AllocationCount { get; private set; }
+            public bool IsDestroyed { get; private set; }
 
             private readonly struct Range : IComparable<Range>
             {
@@ -46,6 +48,8 @@ namespace Ryujinx.Graphics.Vulkan
                 Size = size;
                 LastUsedTime = GetCurrentTimestamp();
                 UsedSize = 0;
+                AllocationCount = 0;
+                IsDestroyed = false;
                 _freeRanges = new List<Range>
                 {
                     new Range(0, size),
@@ -54,6 +58,9 @@ namespace Ryujinx.Graphics.Vulkan
 
             public ulong Allocate(ulong size, ulong alignment)
             {
+                if (IsDestroyed)
+                    return InvalidOffset;
+
                 LastUsedTime = GetCurrentTimestamp();
                 
                 for (int i = 0; i < _freeRanges.Count; i++)
@@ -81,6 +88,7 @@ namespace Ryujinx.Graphics.Vulkan
                         }
 
                         UsedSize += size;
+                        AllocationCount++;
                         return alignedOffset;
                     }
                 }
@@ -90,8 +98,12 @@ namespace Ryujinx.Graphics.Vulkan
 
             public void Free(ulong offset, ulong size)
             {
+                if (IsDestroyed)
+                    return;
+
                 LastUsedTime = GetCurrentTimestamp();
                 UsedSize -= size;
+                AllocationCount--;
                 InsertFreeRangeComingled(offset, size);
             }
 
@@ -136,6 +148,9 @@ namespace Ryujinx.Graphics.Vulkan
 
             public bool IsTotallyFree()
             {
+                if (IsDestroyed)
+                    return true;
+
                 if (_freeRanges.Count == 1 && _freeRanges[0].Size == Size)
                 {
                     Debug.Assert(_freeRanges[0].Offset == 0);
@@ -152,11 +167,11 @@ namespace Ryujinx.Graphics.Vulkan
 
             public bool ShouldReclaim(float threshold, ulong currentTime, ulong timeout)
             {
-                if (IsTotallyFree())
-                    return true;
+                if (IsDestroyed)
+                    return false;
 
-                float usageRatio = GetUsageRatio();
-                return usageRatio < threshold && (currentTime - LastUsedTime) > timeout;
+                // 只回收完全空闲的块，避免破坏正在使用的内存
+                return IsTotallyFree() && (currentTime - LastUsedTime) > timeout;
             }
 
             public int CompareTo(Block other)
@@ -166,6 +181,9 @@ namespace Ryujinx.Graphics.Vulkan
 
             public unsafe void Destroy(Vk api, Device device)
             {
+                if (IsDestroyed)
+                    return;
+
                 if (Mapped)
                 {
                     api.UnmapMemory(device, Memory);
@@ -177,6 +195,8 @@ namespace Ryujinx.Graphics.Vulkan
                     api.FreeMemory(device, Memory, null);
                     Memory = default;
                 }
+
+                IsDestroyed = true;
             }
 
             private static ulong GetCurrentTimestamp()
@@ -197,9 +217,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         private readonly ReaderWriterLockSlim _lock;
 
-        // 内存回收配置
-        private readonly float _reclaimThreshold = 0.92f; // 92% 内存使用率时触发回收
-        private readonly ulong _reclaimTimeout = (ulong)(Stopwatch.Frequency * 5); // 5秒超时
+        // 更保守的内存回收配置
+        private readonly float _reclaimThreshold = 0.95f; // 95% 内存使用率时触发回收
+        private readonly ulong _reclaimTimeout = (ulong)(Stopwatch.Frequency * 10); // 10秒超时
 
         public MemoryAllocatorBlockList(Vk api, Device device, int memoryTypeIndex, int blockAlignment, bool forBuffer)
         {
@@ -231,7 +251,7 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     var block = _blocks[i];
 
-                    if (block.Mapped == map && block.Size >= size)
+                    if (!block.IsDestroyed && block.Mapped == map && block.Size >= size)
                     {
                         ulong offset = block.Allocate(size, alignment);
                         if (offset != InvalidOffset)
@@ -256,7 +276,7 @@ namespace Ryujinx.Graphics.Vulkan
                 {
                     var block = _blocks[i];
 
-                    if (block.Mapped == map && block.Size >= size)
+                    if (!block.IsDestroyed && block.Mapped == map && block.Size >= size)
                     {
                         ulong offset = block.Allocate(size, alignment);
                         if (offset != InvalidOffset)
@@ -283,8 +303,16 @@ namespace Ryujinx.Graphics.Vulkan
             Result result = _api.AllocateMemory(_device, in memoryAllocateInfo, null, out var deviceMemory);
             if (result != Result.Success)
             {
-                // 如果分配仍然失败，抛出具体错误
-                throw new VulkanException(result);
+                // 如果分配仍然失败，尝试更激进的回收
+                AggressiveReclaimMemory();
+                
+                // 最后一次尝试分配
+                result = _api.AllocateMemory(_device, in memoryAllocateInfo, null, out deviceMemory);
+                if (result != Result.Success)
+                {
+                    // 如果还是失败，抛出具体错误
+                    throw new VulkanException(result);
+                }
             }
 
             IntPtr hostPointer = IntPtr.Zero;
@@ -308,7 +336,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         private static IntPtr GetHostPointer(Block block, ulong offset)
         {
-            if (block.HostPointer == IntPtr.Zero)
+            if (block.HostPointer == IntPtr.Zero || block.IsDestroyed)
             {
                 return IntPtr.Zero;
             }
@@ -318,6 +346,9 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void Free(Block block, ulong offset, ulong size)
         {
+            if (block.IsDestroyed)
+                return;
+
             block.Free(offset, size);
 
             if (block.IsTotallyFree())
@@ -390,8 +421,26 @@ namespace Ryujinx.Graphics.Vulkan
             try
             {
                 ulong currentTime = (ulong)Stopwatch.GetTimestamp();
-                // 使用更低的阈值和更短的超时时间来强制回收
-                ReclaimInternal(currentTime, 0.5f, (ulong)(Stopwatch.Frequency * 1)); // 50% 使用率，1秒超时
+                // 使用更短的超时时间来强制回收完全空闲的块
+                ReclaimInternal(currentTime, 1.0f, (ulong)(Stopwatch.Frequency * 2)); // 2秒超时
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
+        }
+
+        /// <summary>
+        /// 激进的内存回收，只回收完全空闲的块
+        /// </summary>
+        public void AggressiveReclaimMemory()
+        {
+            _lock.EnterWriteLock();
+            try
+            {
+                ulong currentTime = (ulong)Stopwatch.GetTimestamp();
+                // 立即回收所有完全空闲的块
+                ReclaimInternal(currentTime, 1.0f, 0);
             }
             finally
             {
@@ -409,11 +458,41 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 ulong currentTime = (ulong)Stopwatch.GetTimestamp();
                 // 手动回收时使用中等策略
-                ReclaimInternal(currentTime, 0.7f, (ulong)(Stopwatch.Frequency * 2)); // 70% 使用率，2秒超时
+                ReclaimInternal(currentTime, 1.0f, (ulong)(Stopwatch.Frequency * 5)); // 5秒超时
             }
             finally
             {
                 _lock.ExitWriteLock();
+            }
+        }
+
+        /// <summary>
+        /// 获取内存使用统计
+        /// </summary>
+        public (ulong totalSize, ulong usedSize, int blockCount) GetMemoryStats()
+        {
+            _lock.EnterReadLock();
+            try
+            {
+                ulong total = 0;
+                ulong used = 0;
+                int count = 0;
+
+                foreach (var block in _blocks)
+                {
+                    if (!block.IsDestroyed)
+                    {
+                        total += block.Size;
+                        used += block.UsedSize;
+                        count++;
+                    }
+                }
+
+                return (total, used, count);
+            }
+            finally
+            {
+                _lock.ExitReadLock();
             }
         }
 
@@ -424,7 +503,7 @@ namespace Ryujinx.Graphics.Vulkan
             for (int i = _blocks.Count - 1; i >= 0; i--)
             {
                 var block = _blocks[i];
-                if (block.ShouldReclaim(threshold, currentTime, timeout.Value))
+                if (!block.IsDestroyed && block.ShouldReclaim(threshold, currentTime, timeout.Value))
                 {
                     _blocks.RemoveAt(i);
                     block.Destroy(_api, _device);
@@ -438,6 +517,7 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 _blocks[i].Destroy(_api, _device);
             }
+            _blocks.Clear();
         }
     }
 }
