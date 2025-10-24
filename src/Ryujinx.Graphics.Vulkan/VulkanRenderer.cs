@@ -119,10 +119,10 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly List<TextureStorage> _disposableTextures = new List<TextureStorage>();
         private readonly ReaderWriterLockSlim _textureCacheLock = new ReaderWriterLockSlim();
         private ulong _lastMemoryPressureTime = 0;
-        private const ulong MemoryPressureCooldown = (ulong)(Stopwatch.Frequency * 2); // 2秒冷却时间
+        private static readonly ulong MemoryPressureCooldown = (ulong)(Stopwatch.Frequency * 2); // 2秒冷却时间
         
         private long _lastMemoryCheckTime = 0;
-        private const long MemoryCheckInterval = (long)(Stopwatch.Frequency * 10); // 每10秒检查一次
+        private static readonly long MemoryCheckInterval = (long)(Stopwatch.Frequency * 10); // 每10秒检查一次
 
         public VulkanRenderer(Vk api, Func<Instance, Vk, SurfaceKHR> surfaceFunc, Func<string[]> requiredExtensionsFunc, string preferredGpuId)
         {
