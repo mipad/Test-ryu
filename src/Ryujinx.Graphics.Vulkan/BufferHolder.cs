@@ -59,11 +59,6 @@ namespace Ryujinx.Graphics.Vulkan
         private Dictionary<ulong, StagingBufferReserved> _mirrors;
         private bool _useMirrors;
 
-        // 新增：缓冲区使用统计
-        private int _accessCount;
-        private DateTime _lastAccessTime;
-        private bool _isMarkedForCleanup;
-
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, MemoryAllocation allocation, int size, BufferAllocationType type, BufferAllocationType currentType)
         {
             _gd = gd;
@@ -81,9 +76,6 @@ namespace Ryujinx.Graphics.Vulkan
 
             _flushLock = new ReaderWriterLockSlim();
             _useMirrors = gd.IsTBDR;
-
-            // 初始化统计信息
-            _lastAccessTime = DateTime.Now;
         }
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, Auto<MemoryAllocation> allocation, int size, BufferAllocationType type, BufferAllocationType currentType, int offset)
@@ -103,7 +95,6 @@ namespace Ryujinx.Graphics.Vulkan
             _activeType = currentType;
 
             _flushLock = new ReaderWriterLockSlim();
-            _lastAccessTime = DateTime.Now;
         }
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, int size, Auto<MemoryAllocation>[] storageAllocations)
@@ -119,44 +110,10 @@ namespace Ryujinx.Graphics.Vulkan
             _activeType = BufferAllocationType.Sparse;
 
             _flushLock = new ReaderWriterLockSlim();
-            _lastAccessTime = DateTime.Now;
-        }
-
-        // 新增：记录缓冲区访问
-        private void RecordAccess()
-        {
-            _accessCount++;
-            _lastAccessTime = DateTime.Now;
-            _isMarkedForCleanup = false;
-        }
-
-        // 新增：检查缓冲区是否可以被清理
-        public bool CanBeCleanedUp()
-        {
-            // 如果标记为清理，直接返回true
-            if (_isMarkedForCleanup)
-                return true;
-
-            // 长时间未使用的缓冲区可以考虑清理
-            TimeSpan timeSinceLastAccess = DateTime.Now - _lastAccessTime;
-            if (timeSinceLastAccess.TotalMinutes > 5 && _accessCount < 10) // 5分钟内访问次数少于10次
-            {
-                return true;
-            }
-
-            return false;
-        }
-
-        // 新增：标记缓冲区为可清理状态
-        public void MarkForCleanup()
-        {
-            _isMarkedForCleanup = true;
         }
 
         public unsafe Auto<DisposableBufferView> CreateView(VkFormat format, int offset, int size, Action invalidateView)
         {
-            RecordAccess(); // 记录访问
-
             var bufferViewCreateInfo = new BufferViewCreateInfo
             {
                 SType = StructureType.BufferViewCreateInfo,
@@ -173,8 +130,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe void InsertBarrier(CommandBuffer commandBuffer, bool isWrite)
         {
-            RecordAccess(); // 记录访问
-
             // If the last access is write, we always need a barrier to be sure we will read or modify
             // the correct data.
             // If the last access is read, and current one is a write, we need to wait until the
@@ -197,7 +152,7 @@ namespace Ryujinx.Graphics.Vulkan
                     commandBuffer,
                     PipelineStageFlags.AllCommandsBit,
                     PipelineStageFlags.AllCommandsBit,
-                    0,                  // 整合：使用0而不是DependencyFlags.DeviceGroupBit
+                    0,
                     1,
                     in memoryBarrier,
                     0,
@@ -219,8 +174,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         private unsafe bool TryGetMirror(CommandBufferScoped cbs, ref int offset, int size, out Auto<DisposableBuffer> buffer)
         {
-            RecordAccess(); // 记录访问
-
             size = Math.Min(size, Size - offset);
 
             // Does this binding need to be mirrored?
@@ -287,14 +240,11 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetBuffer()
         {
-            RecordAccess(); // 记录访问
             return _buffer;
         }
 
         public Auto<DisposableBuffer> GetBuffer(CommandBuffer commandBuffer, bool isWrite = false, bool isSSBO = false)
         {
-            RecordAccess(); // 记录访问
-
             if (isWrite)
             {
                 SignalWrite(0, Size);
@@ -305,8 +255,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetBuffer(CommandBuffer commandBuffer, int offset, int size, bool isWrite = false)
         {
-            RecordAccess(); // 记录访问
-
             if (isWrite)
             {
                 SignalWrite(offset, size);
@@ -317,8 +265,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetMirrorable(CommandBufferScoped cbs, ref int offset, int size, out bool mirrored)
         {
-            RecordAccess(); // 记录访问
-
             // 整合：添加_useMirrors检查
             if (_useMirrors && _pendingData != null && TryGetMirror(cbs, ref offset, size, out Auto<DisposableBuffer> result))
             {
@@ -332,8 +278,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         Auto<DisposableBufferView> IMirrorable<DisposableBufferView>.GetMirrorable(CommandBufferScoped cbs, ref int offset, int size, out bool mirrored)
         {
-            RecordAccess(); // 记录访问
-
             // Cannot mirror buffer views right now.
 
             throw new NotImplementedException();
@@ -341,8 +285,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void ClearMirrors()
         {
-            RecordAccess(); // 记录访问
-
             // Clear mirrors without forcing a flush. This happens when the command buffer is switched,
             // as all reserved areas on the staging buffer are released.
 
@@ -354,8 +296,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public void ClearMirrors(CommandBufferScoped cbs, int offset, int size)
         {
-            RecordAccess(); // 记录访问
-
             // Clear mirrors in the given range, and submit overlapping pending data.
 
             if (_pendingData != null)
@@ -406,20 +346,16 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<MemoryAllocation> GetAllocation()
         {
-            RecordAccess(); // 记录访问
             return _allocationAuto;
         }
 
         public (DeviceMemory, ulong) GetDeviceMemoryAndOffset()
         {
-            RecordAccess(); // 记录访问
             return (_allocation.Memory, _allocation.Offset);
         }
 
         public void SignalWrite(int offset, int size)
         {
-            RecordAccess(); // 记录访问
-
             if (offset == 0 && size == Size)
             {
                 _cachedConvertedBuffers.Clear();
@@ -432,14 +368,12 @@ namespace Ryujinx.Graphics.Vulkan
 
         public BufferHandle GetHandle()
         {
-            RecordAccess(); // 记录访问
             var handle = _bufferHandle;
             return Unsafe.As<ulong, BufferHandle>(ref handle);
         }
 
         public IntPtr Map(int offset, int mappingSize)
         {
-            RecordAccess(); // 记录访问
             return _map;
         }
 
@@ -497,8 +431,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public PinnedSpan<byte> GetData(int offset, int size)
         {
-            RecordAccess(); // 记录访问
-
             _flushLock.EnterReadLock();
 
             WaitForFlushFence();
@@ -538,8 +470,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe Span<byte> GetDataStorage(int offset, int size)
         {
-            RecordAccess(); // 记录访问
-
             int mappingSize = Math.Min(size, Size - offset);
 
             if (_map != IntPtr.Zero)
@@ -552,15 +482,13 @@ namespace Ryujinx.Graphics.Vulkan
 
         public bool RemoveOverlappingMirrors(int offset, int size)
         {
-            RecordAccess(); // 记录访问
-
             List<ulong> toRemove = null;
             foreach (var key in _mirrors.Keys)
             {
                 (int keyOffset, int keySize) = FromMirrorKey(key);
                 if (!(offset + size <= keyOffset || offset >= keyOffset + keySize))
                 {
-                    toRemove ??= new List<ulong>(); // 整合：保持原语法
+                    toRemove ??= new List<ulong>();
 
                     toRemove.Add(key);
                 }
@@ -581,8 +509,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe void SetData(int offset, ReadOnlySpan<byte> data, CommandBufferScoped? cbs = null, Action endRenderPass = null, bool allowCbsWait = true)
         {
-            RecordAccess(); // 记录访问
-
             // 整合：添加边界保护，防止设备/交换链重置后的越界写入
             if (offset < 0 || offset >= Size)
             {
@@ -709,8 +635,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe void SetDataUnchecked(int offset, ReadOnlySpan<byte> data)
         {
-            RecordAccess(); // 记录访问
-
             int dataSize = Math.Min(data.Length, Size - offset);
             if (dataSize == 0)
             {
@@ -723,20 +647,17 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                _gd.BufferManager.StagingBuffer.PushData(_gd.CommandBufferPool, null, null, this, offset, data[..dataSize]); // 整合：使用裁剪后的数据
+                _gd.BufferManager.StagingBuffer.PushData(_gd.CommandBufferPool, null, null, this, offset, data[..dataSize]);
             }
         }
 
         public unsafe void SetDataUnchecked<T>(int offset, ReadOnlySpan<T> data) where T : unmanaged
         {
-            RecordAccess(); // 记录访问
             SetDataUnchecked(offset, MemoryMarshal.AsBytes(data));
         }
 
         public void SetDataInline(CommandBufferScoped cbs, Action endRenderPass, int dstOffset, ReadOnlySpan<byte> data)
         {
-            RecordAccess(); // 记录访问
-
             // 整合：为内联更新添加边界检查
             if (dstOffset < 0 || dstOffset >= Size)
             {
@@ -757,8 +678,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         private unsafe bool TryPushData(CommandBufferScoped cbs, Action endRenderPass, int dstOffset, ReadOnlySpan<byte> data)
         {
-            RecordAccess(); // 记录访问
-
             if ((dstOffset & 3) != 0 || (data.Length & 3) != 0)
             {
                 return false;
@@ -969,8 +888,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetBufferI8ToI16(CommandBufferScoped cbs, int offset, int size)
         {
-            RecordAccess(); // 记录访问
-
             if (!BoundToRange(offset, ref size))
             {
                 return null;
@@ -995,8 +912,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetAlignedVertexBuffer(CommandBufferScoped cbs, int offset, int size, int stride, int alignment)
         {
-            RecordAccess(); // 记录访问
-
             if (!BoundToRange(offset, ref size))
             {
                 return null;
@@ -1023,8 +938,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public Auto<DisposableBuffer> GetBufferTopologyConversion(CommandBufferScoped cbs, int offset, int size, IndexBufferPattern pattern, int indexSize)
         {
-            RecordAccess(); // 记录访问
-
             if (!BoundToRange(offset, ref size))
             {
                 return null;
@@ -1055,25 +968,21 @@ namespace Ryujinx.Graphics.Vulkan
 
         public bool TryGetCachedConvertedBuffer(int offset, int size, ICacheKey key, out BufferHolder holder)
         {
-            RecordAccess(); // 记录访问
             return _cachedConvertedBuffers.TryGetValue(offset, size, key, out holder);
         }
 
         public void AddCachedConvertedBuffer(int offset, int size, ICacheKey key, BufferHolder holder)
         {
-            RecordAccess(); // 记录访问
             _cachedConvertedBuffers.Add(offset, size, key, holder);
         }
 
         public void AddCachedConvertedBufferDependency(int offset, int size, ICacheKey key, Dependency dependency)
         {
-            RecordAccess(); // 记录访问
             _cachedConvertedBuffers.AddDependency(offset, size, key, dependency);
         }
 
         public void RemoveCachedConvertedBuffer(int offset, int size, ICacheKey key)
         {
-            RecordAccess(); // 记录访问
             _cachedConvertedBuffers.Remove(offset, size, key);
         }
 
