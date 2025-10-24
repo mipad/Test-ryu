@@ -37,7 +37,7 @@ FetchContent_MakeAvailable(adrenotools)
 FetchContent_Declare(
     oboe
     GIT_REPOSITORY https://github.com/google/oboe.git
-    GIT_TAG        1.9.3  # 使用与 Gradle 依赖相同的版本
+    GIT_TAG        1.10.0  # 使用与 Gradle 依赖相同的版本
 )
 
 FetchContent_MakeAvailable(oboe)
