@@ -227,17 +227,17 @@ namespace Ryujinx.Graphics.Vulkan
         /// </summary>
         public bool CanBeReclaimed(long currentTime, bool aggressive)
         {
-            if (Disposed || _bindCount > 0)
+            if (Disposed || _bindCount > 0 || _viewsCount > 0)
             {
                 return false;
             }
             
             long timeSinceLastUse = currentTime - _lastUsedTime;
             long timeoutTicks = aggressive ? 
-                (long)(Stopwatch.Frequency * 5) :  // 激进模式：5秒未使用
-                (long)(Stopwatch.Frequency * 30);  // 普通模式：30秒未使用
+                (long)(Stopwatch.Frequency * 30) :  // 激进模式：30秒未使用
+                (long)(Stopwatch.Frequency * 120);  // 普通模式：120秒未使用
                 
-            return timeSinceLastUse > timeoutTicks;
+            return timeSinceLastUse > timeoutTicks && _useCount < 5; // 使用次数很少的纹理优先回收
         }
 
         public TextureStorage CreateAliasedColorForDepthStorageUnsafe(Format format)

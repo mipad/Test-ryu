@@ -118,11 +118,11 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly Dictionary<long, TextureStorage> _textureCache = new Dictionary<long, TextureStorage>();
         private readonly List<TextureStorage> _disposableTextures = new List<TextureStorage>();
         private readonly ReaderWriterLockSlim _textureCacheLock = new ReaderWriterLockSlim();
+        private static readonly ulong MemoryPressureCooldown = (ulong)(Stopwatch.Frequency * 5); // 5秒冷却时间
         private ulong _lastMemoryPressureTime = 0;
-        private static readonly ulong MemoryPressureCooldown = (ulong)(Stopwatch.Frequency * 2); // 2秒冷却时间
         
         private long _lastMemoryCheckTime = 0;
-        private static readonly long MemoryCheckInterval = (long)(Stopwatch.Frequency * 10); // 每10秒检查一次
+        private static readonly long MemoryCheckInterval = (long)(Stopwatch.Frequency * 30); // 每30秒检查一次
 
         public VulkanRenderer(Vk api, Func<Instance, Vk, SurfaceKHR> surfaceFunc, Func<string[]> requiredExtensionsFunc, string preferredGpuId)
         {
@@ -570,8 +570,8 @@ namespace Ryujinx.Graphics.Vulkan
                         reclaimedMemory += texture.EstimatedMemoryUsage;
                         reclaimedCount++;
                         
-                        // 如果是非激进模式，限制单次回收的纹理数量
-                        if (!aggressive && reclaimedCount >= 5)
+                        // 限制单次回收的纹理数量，避免影响性能
+                        if (!aggressive && reclaimedCount >= 3)
                         {
                             break;
                         }
@@ -640,7 +640,15 @@ namespace Ryujinx.Graphics.Vulkan
                 MemoryAllocator?.LogMemoryStats();
                 
                 // 如果内存使用率很高，主动回收一些纹理
-                ReclaimTextureMemory(aggressive: false);
+                var stats = MemoryAllocator?.GetMemoryStats();
+                if (stats.HasValue && stats.Value.totalSize > 0)
+                {
+                    float usagePercent = (float)stats.Value.usedSize / stats.Value.totalSize * 100;
+                    if (usagePercent > 80) // 内存使用率超过80%时触发回收
+                    {
+                        ReclaimTextureMemory(aggressive: false);
+                    }
+                }
             }
             catch (Exception ex)
             {
