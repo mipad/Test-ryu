@@ -876,7 +876,7 @@ namespace Ryujinx.Graphics.Vulkan
                 float savingRatio = storage.GetMemorySavingRatio();
                 ulong originalSize = storage.CalculateEstimatedMemoryUsage(storage.OriginalFormat);
                 ulong saved = (ulong)(originalSize * (1.0f - savingRatio));
-                _totalTextureMemorySaved += saved;
+                _totalTextureMemorySaved = (long)((ulong)_totalTextureMemorySaved + saved);
             }
             
             // 跟踪活跃纹理

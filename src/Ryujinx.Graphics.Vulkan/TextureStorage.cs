@@ -1,4 +1,5 @@
 using Ryujinx.Common;
+using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
 using Silk.NET.Vulkan;
 using System;
@@ -254,7 +255,7 @@ namespace Ryujinx.Graphics.Vulkan
         /// <summary>
         /// 估算纹理内存使用量
         /// </summary>
-        private ulong CalculateEstimatedMemoryUsage(TextureCreateInfo info)
+        internal ulong CalculateEstimatedMemoryUsage(TextureCreateInfo info)
         {
             ulong size = 0;
             int width = info.Width;
@@ -282,6 +283,15 @@ namespace Ryujinx.Graphics.Vulkan
             }
             
             return size;
+        }
+
+        /// <summary>
+        /// 计算指定格式的估算内存使用量
+        /// </summary>
+        internal ulong CalculateEstimatedMemoryUsage(Format format)
+        {
+            var tempInfo = NewCreateInfoWith(ref _originalInfo, format, _originalInfo.BytesPerPixel);
+            return CalculateEstimatedMemoryUsage(tempInfo);
         }
 
         /// <summary>
@@ -319,7 +329,7 @@ namespace Ryujinx.Graphics.Vulkan
             if (!_isCompressed)
                 return 1.0f;
                 
-            ulong originalSize = CalculateEstimatedMemoryUsage(_originalInfo);
+            ulong originalSize = CalculateEstimatedMemoryUsage(_originalFormat);
             ulong currentSize = _estimatedMemoryUsage;
             
             return originalSize > 0 ? (float)currentSize / originalSize : 1.0f;
