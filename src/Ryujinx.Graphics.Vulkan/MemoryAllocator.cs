@@ -16,6 +16,9 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly int _blockAlignment;
         private readonly ReaderWriterLockSlim _lock;
 
+        // 资源回收回调
+        public event Action OnMemoryPressure;
+
         public MemoryAllocator(Vk api, VulkanPhysicalDevice physicalDevice, Device device)
         {
             _api = api;
@@ -66,6 +69,13 @@ namespace Ryujinx.Graphics.Vulkan
             try
             {
                 var newBl = new MemoryAllocatorBlockList(_api, _device, memoryTypeIndex, _blockAlignment, isBuffer);
+                
+                // 订阅内存压力事件
+                newBl.OnMemoryPressure += (blockList) => 
+                {
+                    OnMemoryPressure?.Invoke();
+                };
+                
                 _blockLists.Add(newBl);
 
                 return newBl.Allocate(size, alignment, map);
@@ -194,6 +204,14 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 _lock.ExitReadLock();
             }
+        }
+
+        /// <summary>
+        /// 触发内存压力，让上层释放资源
+        /// </summary>
+        public void TriggerMemoryPressure()
+        {
+            OnMemoryPressure?.Invoke();
         }
 
         public void Dispose()

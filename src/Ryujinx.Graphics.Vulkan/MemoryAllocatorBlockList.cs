@@ -21,6 +21,7 @@ namespace Ryujinx.Graphics.Vulkan
             public ulong UsedSize { get; private set; }
             public int AllocationCount { get; private set; }
             public bool IsDestroyed { get; private set; }
+            public MemoryAllocatorBlockList ParentList { get; set; }
 
             private readonly struct Range : IComparable<Range>
             {
@@ -41,11 +42,12 @@ namespace Ryujinx.Graphics.Vulkan
 
             private readonly List<Range> _freeRanges;
 
-            public Block(DeviceMemory memory, IntPtr hostPointer, ulong size)
+            public Block(DeviceMemory memory, IntPtr hostPointer, ulong size, MemoryAllocatorBlockList parent)
             {
                 Memory = memory;
                 HostPointer = hostPointer;
                 Size = size;
+                ParentList = parent;
                 LastUsedTime = GetCurrentTimestamp();
                 UsedSize = 0;
                 AllocationCount = 0;
@@ -105,6 +107,9 @@ namespace Ryujinx.Graphics.Vulkan
                 UsedSize -= size;
                 AllocationCount--;
                 InsertFreeRangeComingled(offset, size);
+
+                // 通知父列表有内存被释放
+                ParentList?.NotifyMemoryFreed();
             }
 
             private void InsertFreeRange(ulong offset, ulong size)
@@ -217,9 +222,12 @@ namespace Ryujinx.Graphics.Vulkan
 
         private readonly ReaderWriterLockSlim _lock;
 
-        // 更保守的内存回收配置
+        // 内存回收配置
         private readonly float _reclaimThreshold = 0.95f; // 95% 内存使用率时触发回收
         private readonly ulong _reclaimTimeout = (ulong)(Stopwatch.Frequency * 10); // 10秒超时
+
+        // 内存压力事件
+        public event Action<MemoryAllocatorBlockList> OnMemoryPressure;
 
         public MemoryAllocatorBlockList(Vk api, Device device, int memoryTypeIndex, int blockAlignment, bool forBuffer)
         {
@@ -234,104 +242,111 @@ namespace Ryujinx.Graphics.Vulkan
 
         public unsafe MemoryAllocation Allocate(ulong size, ulong alignment, bool map)
         {
-            // 在分配前尝试回收内存
-            TryReclaimMemory();
+            int retryCount = 0;
+            const int maxRetries = 3;
 
-            // Ensure we have a sane alignment value.
-            if ((ulong)(int)alignment != alignment || (int)alignment <= 0)
+            while (retryCount < maxRetries)
             {
-                throw new ArgumentOutOfRangeException(nameof(alignment), $"Invalid alignment 0x{alignment:X}.");
-            }
+                // 在分配前尝试回收内存
+                TryReclaimMemory();
 
-            _lock.EnterReadLock();
-
-            try
-            {
-                for (int i = 0; i < _blocks.Count; i++)
+                // Ensure we have a sane alignment value.
+                if ((ulong)(int)alignment != alignment || (int)alignment <= 0)
                 {
-                    var block = _blocks[i];
+                    throw new ArgumentOutOfRangeException(nameof(alignment), $"Invalid alignment 0x{alignment:X}.");
+                }
 
-                    if (!block.IsDestroyed && block.Mapped == map && block.Size >= size)
+                _lock.EnterReadLock();
+
+                try
+                {
+                    for (int i = 0; i < _blocks.Count; i++)
                     {
-                        ulong offset = block.Allocate(size, alignment);
-                        if (offset != InvalidOffset)
+                        var block = _blocks[i];
+
+                        if (!block.IsDestroyed && block.Mapped == map && block.Size >= size)
                         {
-                            return new MemoryAllocation(this, block, block.Memory, GetHostPointer(block, offset), offset, size);
+                            ulong offset = block.Allocate(size, alignment);
+                            if (offset != InvalidOffset)
+                            {
+                                return new MemoryAllocation(this, block, block.Memory, GetHostPointer(block, offset), offset, size);
+                            }
                         }
                     }
                 }
-            }
-            finally
-            {
-                _lock.ExitReadLock();
-            }
-
-            // 如果分配失败，再次尝试回收内存并重试
-            ForceReclaimMemory();
-            
-            _lock.EnterReadLock();
-            try
-            {
-                for (int i = 0; i < _blocks.Count; i++)
+                finally
                 {
-                    var block = _blocks[i];
+                    _lock.ExitReadLock();
+                }
 
-                    if (!block.IsDestroyed && block.Mapped == map && block.Size >= size)
+                // 尝试分配新块
+                ulong blockAlignedSize = BitUtils.AlignUp(size, (ulong)_blockAlignment);
+
+                var memoryAllocateInfo = new MemoryAllocateInfo
+                {
+                    SType = StructureType.MemoryAllocateInfo,
+                    AllocationSize = blockAlignedSize,
+                    MemoryTypeIndex = (uint)MemoryTypeIndex,
+                };
+
+                Result result = _api.AllocateMemory(_device, in memoryAllocateInfo, null, out var deviceMemory);
+                if (result == Result.Success)
+                {
+                    IntPtr hostPointer = IntPtr.Zero;
+
+                    if (map)
                     {
-                        ulong offset = block.Allocate(size, alignment);
-                        if (offset != InvalidOffset)
+                        void* pointer = null;
+                        _api.MapMemory(_device, deviceMemory, 0, blockAlignedSize, 0, ref pointer).ThrowOnError();
+                        hostPointer = (IntPtr)pointer;
+                    }
+
+                    var newBlock = new Block(deviceMemory, hostPointer, blockAlignedSize, this);
+
+                    InsertBlock(newBlock);
+
+                    ulong newBlockOffset = newBlock.Allocate(size, alignment);
+                    Debug.Assert(newBlockOffset != InvalidOffset);
+
+                    return new MemoryAllocation(this, newBlock, deviceMemory, GetHostPointer(newBlock, newBlockOffset), newBlockOffset, size);
+                }
+                else if (result == Result.ErrorOutOfDeviceMemory)
+                {
+                    retryCount++;
+                    
+                    if (retryCount < maxRetries)
+                    {
+                        // 触发内存压力事件，让上层释放资源
+                        OnMemoryPressure?.Invoke(this);
+                        
+                        // 强制回收内存
+                        switch (retryCount)
                         {
-                            return new MemoryAllocation(this, block, block.Memory, GetHostPointer(block, offset), offset, size);
+                            case 1:
+                                ForceReclaimMemory();
+                                break;
+                            case 2:
+                                AggressiveReclaimMemory();
+                                break;
                         }
+                        
+                        // 等待一下让资源释放完成
+                        Thread.Sleep(10);
                     }
                 }
-            }
-            finally
-            {
-                _lock.ExitReadLock();
-            }
-
-            ulong blockAlignedSize = BitUtils.AlignUp(size, (ulong)_blockAlignment);
-
-            var memoryAllocateInfo = new MemoryAllocateInfo
-            {
-                SType = StructureType.MemoryAllocateInfo,
-                AllocationSize = blockAlignedSize,
-                MemoryTypeIndex = (uint)MemoryTypeIndex,
-            };
-
-            Result result = _api.AllocateMemory(_device, in memoryAllocateInfo, null, out var deviceMemory);
-            if (result != Result.Success)
-            {
-                // 如果分配仍然失败，尝试更激进的回收
-                AggressiveReclaimMemory();
-                
-                // 最后一次尝试分配
-                result = _api.AllocateMemory(_device, in memoryAllocateInfo, null, out deviceMemory);
-                if (result != Result.Success)
+                else
                 {
-                    // 如果还是失败，抛出具体错误
                     throw new VulkanException(result);
                 }
             }
 
-            IntPtr hostPointer = IntPtr.Zero;
+            throw new VulkanException(Result.ErrorOutOfDeviceMemory);
+        }
 
-            if (map)
-            {
-                void* pointer = null;
-                _api.MapMemory(_device, deviceMemory, 0, blockAlignedSize, 0, ref pointer).ThrowOnError();
-                hostPointer = (IntPtr)pointer;
-            }
-
-            var newBlock = new Block(deviceMemory, hostPointer, blockAlignedSize);
-
-            InsertBlock(newBlock);
-
-            ulong newBlockOffset = newBlock.Allocate(size, alignment);
-            Debug.Assert(newBlockOffset != InvalidOffset);
-
-            return new MemoryAllocation(this, newBlock, deviceMemory, GetHostPointer(newBlock, newBlockOffset), newBlockOffset, size);
+        internal void NotifyMemoryFreed()
+        {
+            // 当内存被释放时，检查是否可以回收块
+            TryReclaimMemory();
         }
 
         private static IntPtr GetHostPointer(Block block, ulong offset)
