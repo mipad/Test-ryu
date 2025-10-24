@@ -2,7 +2,6 @@ using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
 using Silk.NET.Vulkan;
 using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using VkBuffer = Silk.NET.Vulkan.Buffer;
@@ -86,11 +85,6 @@ namespace Ryujinx.Graphics.Vulkan
 
         public MemoryRequirements HostImportedBufferMemoryRequirements { get; }
 
-        // 新增：内存管理相关字段
-        private readonly object _memoryCompactLock = new object();
-        private int _lastCompactTime;
-        private const int CompactCooldownMs = 2000; // 2秒冷却时间
-
         public BufferManager(VulkanRenderer gd, Device device)
         {
             _device = device;
@@ -98,48 +92,6 @@ namespace Ryujinx.Graphics.Vulkan
             StagingBuffer = new StagingBuffer(gd, this);
 
             HostImportedBufferMemoryRequirements = GetHostImportedUsageRequirements(gd);
-        }
-
-        // 新增：紧急内存清理
-        private bool PerformEmergencyMemoryCleanup(VulkanRenderer gd)
-        {
-            try
-            {
-                Logger.Info?.Print(LogClass.Gpu, "执行紧急内存清理...");
-                
-                int freedCount = 0;
-                
-                // 强制垃圾回收
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                
-                // 尝试清理 staging buffer
-                try
-                {
-                    // 通过创建一个小缓冲区来触发 staging buffer 清理
-                    var tempBuffer = Create(gd, 1024, false, false, BufferAllocationType.HostMapped);
-                    if (tempBuffer != null)
-                    {
-                        tempBuffer.Dispose();
-                    }
-                }
-                catch
-                {
-                    // 忽略错误
-                }
-                
-                // 再次垃圾回收
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                
-                Logger.Info?.Print(LogClass.Gpu, "紧急内存清理完成");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning?.Print(LogClass.Gpu, $"紧急内存清理失败: {ex.Message}");
-                return false;
-            }
         }
 
         public unsafe BufferHandle CreateHostImported(VulkanRenderer gd, nint pointer, int size)
@@ -299,40 +251,22 @@ namespace Ryujinx.Graphics.Vulkan
             BufferAllocationType baseType = BufferAllocationType.HostMapped,
             bool forceMirrors = false)
         {
-            // 修改：添加重试机制
-            const int maxRetries = 3;
-            
-            for (int retry = 0; retry < maxRetries; retry++)
+            holder = Create(gd, size, forConditionalRendering: false, sparseCompatible, baseType);
+            if (holder == null)
             {
-                holder = Create(gd, size, forConditionalRendering: false, sparseCompatible, baseType);
-                if (holder != null)
-                {
-                    if (forceMirrors)
-                    {
-                        holder.UseMirrors();
-                    }
-
-                    BufferCount++;
-                    ulong handle64 = (uint)_buffers.Add(holder);
-                    return Unsafe.As<ulong, BufferHandle>(ref handle64);
-                }
-
-                // 如果创建失败且还有重试机会
-                if (retry < maxRetries - 1)
-                {
-                    Logger.Warning?.Print(LogClass.Gpu, 
-                        $"缓冲区创建失败，尝试紧急内存清理 (重试 {retry + 1}/{maxRetries})");
-                    
-                    PerformEmergencyMemoryCleanup(gd);
-                    
-                    // 等待一小段时间让系统回收内存
-                    System.Threading.Thread.Sleep(100);
-                }
+                return BufferHandle.Null;
             }
 
-            holder = null;
-            Logger.Error?.Print(LogClass.Gpu, $"无法创建缓冲区，大小: 0x{size:X}, 类型: {baseType}");
-            return BufferHandle.Null;
+            if (forceMirrors)
+            {
+                holder.UseMirrors();
+            }
+
+            BufferCount++;
+
+            ulong handle64 = (uint)_buffers.Add(holder);
+
+            return Unsafe.As<ulong, BufferHandle>(ref handle64);
         }
 
         public ScopedTemporaryBuffer ReserveOrCreate(VulkanRenderer gd, CommandBufferScoped cbs, int size)
@@ -473,14 +407,7 @@ namespace Ryujinx.Graphics.Vulkan
                 return holder;
             }
 
-            // 修改：在创建失败时记录更详细的信息
             Logger.Error?.Print(LogClass.Gpu, $"Failed to create buffer with size 0x{size:X} and type \"{baseType}\".");
-            
-            // 检查是否是内存不足导致的失败
-            if (size > 0)
-            {
-                Logger.Warning?.Print(LogClass.Gpu, $"可能是GPU内存不足，当前缓冲区大小: {size / 1024 / 1024}MB");
-            }
 
             return null;
         }
@@ -737,7 +664,7 @@ namespace Ryujinx.Graphics.Vulkan
 
                 foreach (BufferHolder buffer in _buffers)
                 {
-                    buffer?.Dispose();
+                    buffer.Dispose();
                 }
 
                 _buffers.Clear();
