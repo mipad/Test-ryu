@@ -109,6 +109,44 @@ namespace Ryujinx.Graphics.Vulkan
             return true;
         }
 
+        /// <summary>
+        /// 手动触发全局内存回收
+        /// </summary>
+        public void ManualReclaim()
+        {
+            _lock.EnterReadLock();
+            try
+            {
+                foreach (var blockList in _blockLists)
+                {
+                    blockList.ManualReclaim();
+                }
+            }
+            finally
+            {
+                _lock.ExitReadLock();
+            }
+        }
+
+        /// <summary>
+        /// 强制全局内存回收
+        /// </summary>
+        public void ForceReclaim()
+        {
+            _lock.EnterReadLock();
+            try
+            {
+                foreach (var blockList in _blockLists)
+                {
+                    blockList.ForceReclaimMemory();
+                }
+            }
+            finally
+            {
+                _lock.ExitReadLock();
+            }
+        }
+
         public void Dispose()
         {
             for (int i = 0; i < _blockLists.Count; i++)
