@@ -42,6 +42,7 @@ namespace Ryujinx.Graphics.Vulkan
         private readonly Device _device;
 
         private TextureCreateInfo _info;
+        private TextureCreateInfo _originalInfo; // 保存原始格式信息
 
         public TextureCreateInfo Info => _info;
 
@@ -68,44 +69,66 @@ namespace Ryujinx.Graphics.Vulkan
 
         public VkFormat VkFormat { get; }
 
-        // 添加简单的使用跟踪
+        // 添加回收相关字段
         private long _lastUsedTime;
-        private bool _isRecentlyUsed;
+        private int _useCount;
+        private readonly ulong _estimatedMemoryUsage;
+        private bool _isCompressed; // 标记是否已被压缩
+        private Format _originalFormat; // 原始格式
+
+        public ulong EstimatedMemoryUsage => _estimatedMemoryUsage;
+        public bool IsCompressed => _isCompressed;
+        public Format OriginalFormat => _originalFormat;
 
         public unsafe TextureStorage(
             VulkanRenderer gd,
             Device device,
             TextureCreateInfo info,
-            Auto<MemoryAllocation> foreignAllocation = null)
+            Auto<MemoryAllocation> foreignAllocation = null,
+            bool tryCompress = true) // 添加压缩尝试参数
         {
             _gd = gd;
             _device = device;
             _info = info;
+            _originalInfo = info; // 保存原始信息
+            _originalFormat = info.Format;
 
-            var format = _gd.FormatCapabilities.ConvertToVkFormat(info.Format, true);
-            var levels = (uint)info.Levels;
-            var layers = (uint)info.GetLayers();
-            var depth = (uint)(info.Target == Target.Texture3D ? info.Depth : 1);
+            // 尝试自动压缩纹理格式以节省内存
+            if (tryCompress && ShouldCompressTexture(info))
+            {
+                var compressedFormat = GetCompressedFormat(info.Format);
+                if (compressedFormat != info.Format)
+                {
+                    _info = NewCreateInfoWith(ref info, compressedFormat, info.BytesPerPixel);
+                    _isCompressed = true;
+                    Logger.Info?.Print(LogClass.Gpu, $"Texture compressed from {info.Format} to {compressedFormat}");
+                }
+            }
+
+            var format = _gd.FormatCapabilities.ConvertToVkFormat(_info.Format, true);
+            var levels = (uint)_info.Levels;
+            var layers = (uint)_info.GetLayers();
+            var depth = (uint)(_info.Target == Target.Texture3D ? _info.Depth : 1);
 
             VkFormat = format;
-            _depthOrLayers = info.GetDepthOrLayers();
+            _depthOrLayers = _info.GetDepthOrLayers();
 
-            var type = info.Target.Convert();
+            var type = _info.Target.Convert();
 
-            var extent = new Extent3D((uint)info.Width, (uint)info.Height, depth);
+            var extent = new Extent3D((uint)_info.Width, (uint)_info.Height, depth);
 
-            var sampleCountFlags = ConvertToSampleCountFlags(gd.Capabilities.SupportedSampleCounts, (uint)info.Samples);
+            var sampleCountFlags = ConvertToSampleCountFlags(gd.Capabilities.SupportedSampleCounts, (uint)_info.Samples);
 
             // 修改调用处，传递 isNotMsOrSupportsStorage 和 supportsAttachmentFeedbackLoop 参数
-            bool isNotMsOrSupportsStorage = !info.Target.IsMultisample() || gd.Capabilities.SupportsShaderStorageImageMultisample;
+            bool isNotMsOrSupportsStorage = !_info.Target.IsMultisample() || gd.Capabilities.SupportsShaderStorageImageMultisample;
             bool supportsAttachmentFeedbackLoop = gd.Capabilities.SupportsAttachmentFeedbackLoop;
-            var usage = GetImageUsage(info.Format, isNotMsOrSupportsStorage, supportsAttachmentFeedbackLoop);
+            var usage = GetImageUsage(_info.Format, isNotMsOrSupportsStorage, supportsAttachmentFeedbackLoop);
 
             var flags = ImageCreateFlags.CreateMutableFormatBit | ImageCreateFlags.CreateExtendedUsageBit;
 
             // This flag causes mipmapped texture arrays to break on AMD GCN, so for that copy dependencies are forced for aliasing as cube.
-            bool isCube = info.Target == Target.Cubemap || info.Target == Target.CubemapArray;
-            bool cubeCompatible = gd.IsAmdGcn ? isCube : (info.Width == info.Height && layers >= 6);
+            bool isCube = _info.Target == Target.Cubemap || _info.Target == Target.CubemapArray;
+            bool cubeCompatible = gd.IsAmdGcn ? isCube : (_info.Width == _info.Height && layers >= 6);
 
             if (type == ImageType.Type2D && cubeCompatible)
             {
@@ -169,9 +192,96 @@ namespace Ryujinx.Graphics.Vulkan
             }
 
             _slices = new TextureSliceInfo[levels * _depthOrLayers];
+
+            // 估算内存使用量
+            _estimatedMemoryUsage = CalculateEstimatedMemoryUsage(_info);
             
             // 初始化使用时间
             UpdateLastUsedTime();
+        }
+
+        /// <summary>
+        /// 检查纹理是否应该被压缩
+        /// </summary>
+        private bool ShouldCompressTexture(TextureCreateInfo info)
+        {
+            // 不压缩小纹理
+            if (info.Width <= 64 && info.Height <= 64)
+                return false;
+                
+            // 不压缩深度/模板格式
+            if (info.Format.IsDepthOrStencil())
+                return false;
+                
+            // 不压缩已经压缩的格式
+            if (info.Format.IsCompressed())
+                return false;
+                
+            return true;
+        }
+
+        /// <summary>
+        /// 获取压缩后的格式
+        /// </summary>
+        private Format GetCompressedFormat(Format originalFormat)
+        {
+            return originalFormat switch
+            {
+                // RGBA -> 压缩格式
+                Format.R8G8B8A8Unorm or Format.R8G8B8A8Srgb or Format.B8G8R8A8Unorm => 
+                    _gd.Capabilities.SupportsBc123Compression ? Format.Bc3Unorm : originalFormat,
+                    
+                // RGB -> 压缩格式  
+                Format.R8G8B8Unorm => 
+                    _gd.Capabilities.SupportsBc123Compression ? Format.Bc1RgbaUnorm : originalFormat,
+                    
+                // 高精度格式 -> 中等精度
+                Format.R16G16B16A16Unorm or Format.R16G16B16A16Float =>
+                    Format.R8G8B8A8Unorm,
+                    
+                // 单通道 -> 保持原样或使用BC4
+                Format.R8Unorm => 
+                    _gd.Capabilities.SupportsBc45Compression ? Format.Bc4Unorm : originalFormat,
+                    
+                // 双通道 -> 保持原样或使用BC5  
+                Format.R8G8Unorm =>
+                    _gd.Capabilities.SupportsBc45Compression ? Format.Bc5Unorm : originalFormat,
+                    
+                _ => originalFormat
+            };
+        }
+
+        /// <summary>
+        /// 估算纹理内存使用量
+        /// </summary>
+        private ulong CalculateEstimatedMemoryUsage(TextureCreateInfo info)
+        {
+            ulong size = 0;
+            int width = info.Width;
+            int height = info.Height;
+            int depth = info.Depth;
+            
+            for (int level = 0; level < info.Levels; level++)
+            {
+                int mipSize = info.GetMipSize(level);
+                size += (ulong)mipSize;
+                
+                width = Math.Max(1, width >> 1);
+                height = Math.Max(1, height >> 1);
+                
+                if (info.Target == Target.Texture3D)
+                {
+                    depth = Math.Max(1, depth >> 1);
+                }
+            }
+            
+            // 考虑多重采样
+            if (info.Samples > 1)
+            {
+                size *= (ulong)info.Samples;
+            }
+            
+            return size;
         }
 
         /// <summary>
@@ -180,20 +290,39 @@ namespace Ryujinx.Graphics.Vulkan
         public void UpdateLastUsedTime()
         {
             _lastUsedTime = Stopwatch.GetTimestamp();
-            _isRecentlyUsed = true;
+            _useCount++;
         }
 
         /// <summary>
-        /// 检查纹理是否可以被安全回收（仅在紧急情况下使用）
+        /// 检查纹理是否可以被回收
         /// </summary>
-        public bool CanBeEmergencyReclaimed(long currentTime)
+        public bool CanBeReclaimed(long currentTime, bool aggressive)
         {
             if (Disposed || _bindCount > 0 || _viewsCount > 0)
+            {
                 return false;
-
-            // 只有长时间未使用且没有绑定的纹理才考虑回收
+            }
+            
             long timeSinceLastUse = currentTime - _lastUsedTime;
-            return timeSinceLastUse > (long)(Stopwatch.Frequency * 60); // 60秒未使用
+            long timeoutTicks = aggressive ? 
+                (long)(Stopwatch.Frequency * 15) :  // 激进模式：15秒未使用
+                (long)(Stopwatch.Frequency * 60);   // 普通模式：60秒未使用
+                
+            return timeSinceLastUse > timeoutTicks;
+        }
+
+        /// <summary>
+        /// 获取内存节省比例
+        /// </summary>
+        public float GetMemorySavingRatio()
+        {
+            if (!_isCompressed)
+                return 1.0f;
+                
+            ulong originalSize = CalculateEstimatedMemoryUsage(_originalInfo);
+            ulong currentSize = _estimatedMemoryUsage;
+            
+            return originalSize > 0 ? (float)currentSize / originalSize : 1.0f;
         }
 
         public TextureStorage CreateAliasedColorForDepthStorageUnsafe(Format format)

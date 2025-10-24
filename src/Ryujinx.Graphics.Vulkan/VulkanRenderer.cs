@@ -14,6 +14,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Format = Ryujinx.Graphics.GAL.Format;
 using PrimitiveTopology = Ryujinx.Graphics.GAL.PrimitiveTopology;
 using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
@@ -113,11 +114,19 @@ namespace Ryujinx.Graphics.Vulkan
 
         public event EventHandler<ScreenCaptureImageInfo> ScreenCaptured;
 
-        // 添加简单的纹理跟踪（不缓存，只用于紧急回收）
+        // 内存管理相关字段
         private readonly List<TextureStorage> _activeTextures = new List<TextureStorage>();
         private readonly ReaderWriterLockSlim _texturesLock = new ReaderWriterLockSlim();
-        private static readonly long MemoryCheckInterval = (long)(Stopwatch.Frequency * 30); // 每30秒检查一次
+        private static readonly long MemoryCheckInterval = (long)(Stopwatch.Frequency * 20); // 每20秒检查一次
         private long _lastMemoryCheckTime = 0;
+        private static readonly ulong MemoryPressureCooldown = (ulong)(Stopwatch.Frequency * 3); // 3秒冷却时间
+        private ulong _lastMemoryPressureTime = 0;
+        private int _textureCreationFailures = 0;
+        private bool _enableAggressiveCompression = false;
+
+        // 纹理压缩统计
+        private long _totalTextureMemorySaved = 0;
+        private int _compressedTextureCount = 0;
 
         public VulkanRenderer(Vk api, Func<Instance, Vk, SurfaceKHR> surfaceFunc, Func<string[]> requiredExtensionsFunc, string preferredGpuId)
         {
@@ -516,12 +525,29 @@ namespace Ryujinx.Graphics.Vulkan
         /// </summary>
         private void OnMemoryPressure()
         {
-            // 在内存压力时尝试紧急回收
-            EmergencyTextureReclaim();
+            ulong currentTime = (ulong)Stopwatch.GetTimestamp();
+            
+            // 防止过于频繁的内存回收
+            if (currentTime - _lastMemoryPressureTime < MemoryPressureCooldown)
+            {
+                return;
+            }
+            
+            _lastMemoryPressureTime = currentTime;
+            
+            // 启用激进压缩模式
+            _enableAggressiveCompression = true;
+            Logger.Info?.Print(LogClass.Gpu, "Enabling aggressive texture compression due to memory pressure");
+            
+            // 在后台线程执行内存回收，避免阻塞渲染
+            Task.Run(() =>
+            {
+                EmergencyTextureReclaim();
+            });
         }
 
         /// <summary>
-        /// 紧急纹理回收（仅在内存不足时使用）
+        /// 紧急纹理回收
         /// </summary>
         private void EmergencyTextureReclaim()
         {
@@ -541,20 +567,21 @@ namespace Ryujinx.Graphics.Vulkan
                         continue;
                     }
 
-                    // 只有在极端情况下才回收纹理
-                    if (texture.CanBeEmergencyReclaimed(currentTime))
+                    // 检查纹理是否可以被回收
+                    if (texture.CanBeReclaimed(currentTime, aggressive: true))
                     {
                         texturesToRemove.Add(texture);
+                        reclaimedMemory += texture.EstimatedMemoryUsage;
                         reclaimedCount++;
                         
                         // 限制单次回收数量，避免影响性能
-                        if (reclaimedCount >= 2)
+                        if (reclaimedCount >= 8)
                         {
                             break;
                         }
                     }
                 }
-
+                
                 // 移除被标记的纹理
                 foreach (var texture in texturesToRemove)
                 {
@@ -568,16 +595,36 @@ namespace Ryujinx.Graphics.Vulkan
                         Logger.Warning?.Print(LogClass.Gpu, $"Error disposing texture during emergency reclaim: {ex.Message}");
                     }
                 }
-
+                
+                // 记录回收统计
                 if (reclaimedCount > 0)
                 {
-                    Logger.Info?.Print(LogClass.Gpu, $"Emergency reclaimed {reclaimedCount} textures due to memory pressure");
+                    Logger.Info?.Print(LogClass.Gpu, 
+                        $"Emergency reclaimed {reclaimedCount} textures, estimated memory: {reclaimedMemory / (1024 * 1024)} MB");
                 }
             }
             finally
             {
                 _texturesLock.ExitWriteLock();
             }
+        }
+
+        /// <summary>
+        /// 手动触发内存回收
+        /// </summary>
+        public void ManualMemoryReclaim()
+        {
+            // 强制内存分配器回收内存
+            MemoryAllocator?.ForceReclaim();
+            
+            // 回收纹理内存
+            EmergencyTextureReclaim();
+            
+            // 记录内存统计
+            MemoryAllocator?.LogMemoryStats();
+            
+            // 记录压缩统计
+            LogCompressionStats();
         }
 
         // 内存使用检查
@@ -592,15 +639,35 @@ namespace Ryujinx.Graphics.Vulkan
                 if (stats.HasValue && stats.Value.totalSize > 0)
                 {
                     float usagePercent = (float)stats.Value.usedSize / stats.Value.totalSize * 100;
-                    if (usagePercent > 85) // 内存使用率超过85%时触发紧急回收
+                    if (usagePercent > 75) // 内存使用率超过75%时触发回收
                     {
                         EmergencyTextureReclaim();
+                    }
+                    
+                    // 如果连续创建失败，启用激进压缩
+                    if (_textureCreationFailures > 2 && !_enableAggressiveCompression)
+                    {
+                        _enableAggressiveCompression = true;
+                        Logger.Info?.Print(LogClass.Gpu, "Enabling aggressive compression due to repeated allocation failures");
                     }
                 }
             }
             catch (Exception ex)
             {
                 Logger.Warning?.Print(LogClass.Gpu, $"Memory check failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 记录压缩统计信息
+        /// </summary>
+        private void LogCompressionStats()
+        {
+            if (_compressedTextureCount > 0)
+            {
+                Logger.Info?.Print(LogClass.Gpu, 
+                    $"Texture compression: {_compressedTextureCount} textures compressed, " +
+                    $"estimated memory saved: {_totalTextureMemorySaved / (1024 * 1024)} MB");
             }
         }
 
@@ -755,9 +822,64 @@ namespace Ryujinx.Graphics.Vulkan
                 throw new ArgumentException("Invalid texture dimensions");
             }
             
-            var storage = new TextureStorage(this, _device, info);
+            bool tryCompress = true;
+            if (_enableAggressiveCompression)
+            {
+                tryCompress = true;
+            }
             
-            // 跟踪活跃纹理（用于紧急回收）
+            TextureStorage storage = null;
+            int retryCount = 0;
+            const int maxRetries = 2;
+            
+            while (retryCount <= maxRetries)
+            {
+                try
+                {
+                    storage = new TextureStorage(this, _device, info, null, tryCompress);
+                    _textureCreationFailures = 0; // 重置失败计数
+                    break;
+                }
+                catch (VulkanException ex) when (ex.Result == Result.ErrorOutOfDeviceMemory && retryCount < maxRetries)
+                {
+                    retryCount++;
+                    _textureCreationFailures++;
+                    
+                    Logger.Warning?.Print(LogClass.Gpu, $"Texture allocation failed, retrying ({retryCount}/{maxRetries})");
+                    
+                    // 触发紧急内存回收
+                    EmergencyTextureReclaim();
+                    
+                    // 等待一下让回收完成
+                    Thread.Sleep(10);
+                    
+                    // 在重试时强制启用压缩
+                    tryCompress = true;
+                }
+                catch (Exception ex)
+                {
+                    _textureCreationFailures++;
+                    Logger.Error?.Print(LogClass.Gpu, $"Failed to create texture storage: {ex.Message}");
+                    throw;
+                }
+            }
+            
+            if (storage == null)
+            {
+                throw new VulkanException(Result.ErrorOutOfDeviceMemory);
+            }
+            
+            // 跟踪压缩统计
+            if (storage.IsCompressed)
+            {
+                _compressedTextureCount++;
+                float savingRatio = storage.GetMemorySavingRatio();
+                ulong originalSize = storage.CalculateEstimatedMemoryUsage(storage.OriginalFormat);
+                ulong saved = (ulong)(originalSize * (1.0f - savingRatio));
+                _totalTextureMemorySaved += saved;
+            }
+            
+            // 跟踪活跃纹理
             _texturesLock.EnterWriteLock();
             try
             {
@@ -1205,6 +1327,9 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 _texturesLock.ExitWriteLock();
             }
+
+            // 记录最终压缩统计
+            LogCompressionStats();
 
             CommandBufferPool.Dispose();
             BackgroundResources.Dispose();
