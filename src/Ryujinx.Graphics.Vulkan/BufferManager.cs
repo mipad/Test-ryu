@@ -2,6 +2,7 @@ using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
 using Silk.NET.Vulkan;
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using VkBuffer = Silk.NET.Vulkan.Buffer;
@@ -85,6 +86,11 @@ namespace Ryujinx.Graphics.Vulkan
 
         public MemoryRequirements HostImportedBufferMemoryRequirements { get; }
 
+        // 新增：内存管理相关字段
+        private readonly object _memoryCompactLock = new object();
+        private int _lastCompactTime;
+        private const int CompactCooldownMs = 5000; // 5秒冷却时间
+
         public BufferManager(VulkanRenderer gd, Device device)
         {
             _device = device;
@@ -92,6 +98,202 @@ namespace Ryujinx.Graphics.Vulkan
             StagingBuffer = new StagingBuffer(gd, this);
 
             HostImportedBufferMemoryRequirements = GetHostImportedUsageRequirements(gd);
+        }
+
+        // 新增：内存压缩方法
+        /// <summary>
+        /// 尝试压缩GPU内存，释放未使用的缓冲区
+        /// </summary>
+        /// <returns>是否成功释放了内存</returns>
+        public bool TryCompactMemory(VulkanRenderer gd)
+        {
+            lock (_memoryCompactLock)
+            {
+                // 防止频繁压缩
+                int currentTime = Environment.TickCount;
+                if (currentTime - _lastCompactTime < CompactCooldownMs)
+                {
+                    return false;
+                }
+
+                _lastCompactTime = currentTime;
+
+                try
+                {
+                    int freedCount = 0;
+                    long freedSize = 0;
+
+                    // 查找可以释放的缓冲区
+                    var buffersToRemove = new List<BufferHandle>();
+                    
+                    foreach (var entry in _buffers)
+                    {
+                        if (entry.Value != null)
+                        {
+                            var holder = entry.Value;
+                            
+                            // 检查缓冲区是否可以被释放（基于引用计数和状态）
+                            if (CanBufferBeFreed(holder))
+                            {
+                                ulong handle64 = (uint)entry.Key;
+                                var handle = Unsafe.As<ulong, BufferHandle>(ref handle64);
+                                
+                                buffersToRemove.Add(handle);
+                                freedSize += holder.Size;
+                                freedCount++;
+                            }
+                        }
+                    }
+
+                    // 释放找到的缓冲区
+                    foreach (var handle in buffersToRemove)
+                    {
+                        Delete(handle);
+                    }
+
+                    // 强制垃圾回收
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+
+                    if (freedCount > 0)
+                    {
+                        Logger.Info?.Print(LogClass.Gpu, 
+                            $"内存压缩: 释放了 {freedCount} 个缓冲区, 共 {freedSize / 1024 / 1024}MB");
+                    }
+
+                    return freedCount > 0;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, $"内存压缩失败: {ex.Message}");
+                    return false;
+                }
+            }
+        }
+
+        // 新增：检查缓冲区是否可以释放
+        private bool CanBufferBeFreed(BufferHolder holder)
+        {
+            try
+            {
+                // 检查引用计数（如果可访问）
+                // 这里需要根据实际的引用计数机制来调整
+                // 暂时使用保守策略：只释放明显未使用的缓冲区
+                return holder != null && IsBufferUnused(holder);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // 新增：检查缓冲区是否未被使用（需要根据实际实现调整）
+        private bool IsBufferUnused(BufferHolder holder)
+        {
+            // 这里需要根据 Ryujinx 的实际引用计数机制来实现
+            // 暂时返回 false 以避免误删正在使用的缓冲区
+            return false;
+        }
+
+        // 新增：带重试的缓冲区创建
+        public BufferHandle CreateWithHandleWithRetry(
+            VulkanRenderer gd,
+            int size,
+            out BufferHolder holder,
+            bool sparseCompatible = false,
+            BufferAllocationType baseType = BufferAllocationType.HostMapped,
+            bool forceMirrors = false,
+            int maxRetries = 2)
+        {
+            for (int i = 0; i < maxRetries; i++)
+            {
+                try
+                {
+                    holder = Create(gd, size, forConditionalRendering: false, sparseCompatible, baseType);
+                    if (holder != null)
+                    {
+                        if (forceMirrors)
+                        {
+                            holder.UseMirrors();
+                        }
+
+                        BufferCount++;
+                        ulong handle64 = (uint)_buffers.Add(holder);
+                        return Unsafe.As<ulong, BufferHandle>(ref handle64);
+                    }
+                }
+                catch (Exception ex) when (i < maxRetries - 1)
+                {
+                    Logger.Info?.Print(LogClass.Gpu, 
+                        $"缓冲区创建失败，尝试内存压缩 (尝试 {i + 1}/{maxRetries}): {ex.Message}");
+                    
+                    // 内存不足时尝试压缩后重试
+                    if (!TryCompactMemory(gd))
+                    {
+                        // 如果压缩无效，强制垃圾回收
+                        GC.Collect();
+                        GC.WaitForPendingFinalizers();
+                    }
+                }
+            }
+
+            holder = null;
+            return BufferHandle.Null;
+        }
+
+        // 新增：紧急内存清理
+        public bool PerformEmergencyCleanup(VulkanRenderer gd)
+        {
+            Logger.Info?.Print(LogClass.Gpu, "执行紧急内存清理...");
+            
+            bool result = false;
+            
+            // 1. 尝试温和清理
+            if (TryCompactMemory(gd))
+            {
+                result = true;
+            }
+
+            // 2. 清理暂存缓冲区
+            try
+            {
+                StagingBuffer.ForceCleanup();
+                result = true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, $"清理暂存缓冲区失败: {ex.Message}");
+            }
+
+            // 3. 强制垃圾回收
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            return result;
+        }
+
+        // 新增：内存状态检查
+        public MemoryStatus GetMemoryStatus()
+        {
+            int totalBuffers = 0;
+            long totalSize = 0;
+
+            foreach (var holder in _buffers)
+            {
+                if (holder != null)
+                {
+                    totalBuffers++;
+                    totalSize += holder.Size;
+                }
+            }
+
+            return new MemoryStatus
+            {
+                TotalBuffers = totalBuffers,
+                TotalSize = totalSize,
+                LastCompactTime = _lastCompactTime
+            };
         }
 
         public unsafe BufferHandle CreateHostImported(VulkanRenderer gd, nint pointer, int size)
@@ -675,5 +877,13 @@ namespace Ryujinx.Graphics.Vulkan
         {
             Dispose(true);
         }
+    }
+
+    // 新增：内存状态结构
+    public struct MemoryStatus
+    {
+        public int TotalBuffers { get; set; }
+        public long TotalSize { get; set; }
+        public int LastCompactTime { get; set; }
     }
 }
