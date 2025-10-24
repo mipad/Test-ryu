@@ -147,12 +147,62 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
+        /// <summary>
+        /// 激进的内存回收
+        /// </summary>
+        public void AggressiveReclaim()
+        {
+            _lock.EnterReadLock();
+            try
+            {
+                foreach (var blockList in _blockLists)
+                {
+                    blockList.AggressiveReclaimMemory();
+                }
+            }
+            finally
+            {
+                _lock.ExitReadLock();
+            }
+        }
+
+        /// <summary>
+        /// 获取内存使用统计
+        /// </summary>
+        public void LogMemoryStats()
+        {
+            _lock.EnterReadLock();
+            try
+            {
+                ulong totalMemory = 0;
+                ulong usedMemory = 0;
+                int totalBlocks = 0;
+
+                foreach (var blockList in _blockLists)
+                {
+                    var stats = blockList.GetMemoryStats();
+                    totalMemory += stats.totalSize;
+                    usedMemory += stats.usedSize;
+                    totalBlocks += stats.blockCount;
+                }
+
+                float usagePercent = totalMemory > 0 ? (float)usedMemory / totalMemory * 100 : 0;
+                // 这里可以记录到日志系统
+                Console.WriteLine($"Memory Stats: {usedMemory}/{totalMemory} bytes ({usagePercent:F1}% used), {totalBlocks} blocks");
+            }
+            finally
+            {
+                _lock.ExitReadLock();
+            }
+        }
+
         public void Dispose()
         {
             for (int i = 0; i < _blockLists.Count; i++)
             {
                 _blockLists[i].Dispose();
             }
+            _blockLists.Clear();
         }
     }
 }
