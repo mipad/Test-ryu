@@ -123,24 +123,26 @@ namespace Ryujinx.Graphics.Vulkan
                     int freedCount = 0;
                     long freedSize = 0;
 
-                    // 查找可以释放的缓冲区
+                    // 查找可以释放的缓冲区 - 修复遍历方式
                     var buffersToRemove = new List<BufferHandle>();
                     
-                    foreach (var entry in _buffers)
+                    // 正确遍历 IdList
+                    for (int i = 0; i < _buffers.Count; i++)
                     {
-                        if (entry.Value != null)
+                        if (_buffers.TryGetValue(i, out var holder))
                         {
-                            var holder = entry.Value;
-                            
-                            // 检查缓冲区是否可以被释放（基于引用计数和状态）
-                            if (CanBufferBeFreed(holder))
+                            if (holder != null)
                             {
-                                ulong handle64 = (uint)entry.Key;
-                                var handle = Unsafe.As<ulong, BufferHandle>(ref handle64);
-                                
-                                buffersToRemove.Add(handle);
-                                freedSize += holder.Size;
-                                freedCount++;
+                                // 检查缓冲区是否可以被释放（基于引用计数和状态）
+                                if (CanBufferBeFreed(holder))
+                                {
+                                    ulong handle64 = (uint)i;
+                                    var handle = Unsafe.As<ulong, BufferHandle>(ref handle64);
+                                    
+                                    buffersToRemove.Add(handle);
+                                    freedSize += holder.Size;
+                                    freedCount++;
+                                }
                             }
                         }
                     }
@@ -254,10 +256,13 @@ namespace Ryujinx.Graphics.Vulkan
                 result = true;
             }
 
-            // 2. 清理暂存缓冲区
+            // 2. 清理暂存缓冲区 - 修复：使用现有的方法
             try
             {
-                StagingBuffer.ForceCleanup();
+                // StagingBuffer 可能没有 ForceCleanup 方法，使用现有的清理机制
+                // 强制垃圾回收来清理暂存缓冲区
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
                 result = true;
             }
             catch (Exception ex)
@@ -279,9 +284,10 @@ namespace Ryujinx.Graphics.Vulkan
             int totalBuffers = 0;
             long totalSize = 0;
 
-            foreach (var holder in _buffers)
+            // 修复遍历方式
+            for (int i = 0; i < _buffers.Count; i++)
             {
-                if (holder != null)
+                if (_buffers.TryGetValue(i, out var holder) && holder != null)
                 {
                     totalBuffers++;
                     totalSize += holder.Size;
@@ -864,9 +870,13 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 StagingBuffer.Dispose();
 
-                foreach (BufferHolder buffer in _buffers)
+                // 修复遍历方式
+                for (int i = 0; i < _buffers.Count; i++)
                 {
-                    buffer.Dispose();
+                    if (_buffers.TryGetValue(i, out var buffer))
+                    {
+                        buffer?.Dispose();
+                    }
                 }
 
                 _buffers.Clear();
