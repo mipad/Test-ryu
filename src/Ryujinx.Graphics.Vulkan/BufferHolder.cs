@@ -75,7 +75,7 @@ namespace Ryujinx.Graphics.Vulkan
             _activeType = currentType;
 
             _flushLock = new ReaderWriterLockSlim();
-            _useMirrors = gd.IsTBDR;
+            _useMirrors = gd.IsTBDR; 
         }
 
         public BufferHolder(VulkanRenderer gd, Device device, VkBuffer buffer, Auto<MemoryAllocation> allocation, int size, BufferAllocationType type, BufferAllocationType currentType, int offset)
@@ -152,7 +152,7 @@ namespace Ryujinx.Graphics.Vulkan
                     commandBuffer,
                     PipelineStageFlags.AllCommandsBit,
                     PipelineStageFlags.AllCommandsBit,
-                    0,
+                    0,                  // 整合：使用0而不是DependencyFlags.DeviceGroupBit
                     1,
                     in memoryBarrier,
                     0,
@@ -488,7 +488,7 @@ namespace Ryujinx.Graphics.Vulkan
                 (int keyOffset, int keySize) = FromMirrorKey(key);
                 if (!(offset + size <= keyOffset || offset >= keyOffset + keySize))
                 {
-                    toRemove ??= new List<ulong>();
+                    toRemove ??= new List<ulong>(); // 整合：保持原语法
 
                     toRemove.Add(key);
                 }
@@ -647,7 +647,7 @@ namespace Ryujinx.Graphics.Vulkan
             }
             else
             {
-                _gd.BufferManager.StagingBuffer.PushData(_gd.CommandBufferPool, null, null, this, offset, data[..dataSize]);
+                _gd.BufferManager.StagingBuffer.PushData(_gd.CommandBufferPool, null, null, this, offset, data[..dataSize]); // 整合：使用裁剪后的数据
             }
         }
 
