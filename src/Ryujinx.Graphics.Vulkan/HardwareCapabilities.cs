@@ -55,13 +55,6 @@ namespace Ryujinx.Graphics.Vulkan
         public readonly uint SubTexelPrecisionBits;
         public readonly ulong MinResourceAlignment;
 
-        // 添加压缩格式支持属性
-        public readonly bool SupportsBc123Compression;
-        public readonly bool SupportsBc45Compression;
-        public readonly bool SupportsBc67Compression;
-        public readonly bool SupportsEtc2Compression;
-        public readonly bool SupportsAstcCompression;
-
         public HardwareCapabilities(
             bool supportsIndexTypeUint8,
             bool supportsCustomBorderColor,
@@ -100,12 +93,7 @@ namespace Ryujinx.Graphics.Vulkan
             PortabilitySubsetFlags portabilitySubset,
             uint vertexBufferAlignment,
             uint subTexelPrecisionBits,
-            ulong minResourceAlignment,
-            bool supportsBc123Compression = false,
-            bool supportsBc45Compression = false,
-            bool supportsBc67Compression = false,
-            bool supportsEtc2Compression = false,
-            bool supportsAstcCompression = false)
+            ulong minResourceAlignment)
         {
             SupportsIndexTypeUint8 = supportsIndexTypeUint8;
             SupportsCustomBorderColor = supportsCustomBorderColor;
@@ -145,11 +133,6 @@ namespace Ryujinx.Graphics.Vulkan
             VertexBufferAlignment = vertexBufferAlignment;
             SubTexelPrecisionBits = subTexelPrecisionBits;
             MinResourceAlignment = minResourceAlignment;
-            SupportsBc123Compression = supportsBc123Compression;
-            SupportsBc45Compression = supportsBc45Compression;
-            SupportsBc67Compression = supportsBc67Compression;
-            SupportsEtc2Compression = supportsEtc2Compression;
-            SupportsAstcCompression = supportsAstcCompression;
         }
     }
 }
