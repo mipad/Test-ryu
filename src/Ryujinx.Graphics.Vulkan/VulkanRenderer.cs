@@ -11,10 +11,7 @@ using Silk.NET.Vulkan.Extensions.KHR;
 using System;
 using System.Linq;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
 using Format = Ryujinx.Graphics.GAL.Format;
 using PrimitiveTopology = Ryujinx.Graphics.GAL.PrimitiveTopology;
 using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
@@ -113,16 +110,6 @@ namespace Ryujinx.Graphics.Vulkan
         public bool PreferThreading => true;
 
         public event EventHandler<ScreenCaptureImageInfo> ScreenCaptured;
-
-        // 添加纹理缓存和内存管理相关字段
-        private readonly Dictionary<long, TextureStorage> _textureCache = new Dictionary<long, TextureStorage>();
-        private readonly List<TextureStorage> _disposableTextures = new List<TextureStorage>();
-        private readonly ReaderWriterLockSlim _textureCacheLock = new ReaderWriterLockSlim();
-        private static readonly ulong MemoryPressureCooldown = (ulong)(Stopwatch.Frequency * 5); // 5秒冷却时间
-        private ulong _lastMemoryPressureTime = 0;
-        
-        private long _lastMemoryCheckTime = 0;
-        private static readonly long MemoryCheckInterval = (long)(Stopwatch.Frequency * 30); // 每30秒检查一次
 
         public VulkanRenderer(Vk api, Func<Instance, Vk, SurfaceKHR> surfaceFunc, Func<string[]> requiredExtensionsFunc, string preferredGpuId)
         {
@@ -490,9 +477,6 @@ namespace Ryujinx.Graphics.Vulkan
             IsSharedMemory = MemoryAllocator.IsDeviceMemoryShared(_physicalDevice);
 
             MemoryAllocator = new MemoryAllocator(Api, _physicalDevice, _device);
-            
-            // 订阅内存压力事件
-            MemoryAllocator.OnMemoryPressure += OnMemoryPressure;
 
             Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtExternalMemoryHost hostMemoryApi);
             HostMemoryAllocator = new HostMemoryAllocator(MemoryAllocator, Api, hostMemoryApi, _device);
@@ -514,146 +498,6 @@ namespace Ryujinx.Graphics.Vulkan
             Barriers = new BarrierBatch(this);
 
             _counters = new Counters(this, _device, _pipeline);
-        }
-
-        /// <summary>
-        /// 内存压力事件处理
-        /// </summary>
-        private void OnMemoryPressure()
-        {
-            ulong currentTime = (ulong)Stopwatch.GetTimestamp();
-            
-            // 防止过于频繁的内存回收
-            if (currentTime - _lastMemoryPressureTime < MemoryPressureCooldown)
-            {
-                return;
-            }
-            
-            _lastMemoryPressureTime = currentTime;
-            
-            // 在后台线程执行内存回收，避免阻塞渲染
-            Task.Run(() =>
-            {
-                ReclaimTextureMemory(aggressive: false);
-            });
-        }
-
-        /// <summary>
-        /// 回收纹理内存
-        /// </summary>
-        /// <param name="aggressive">是否使用激进的回收策略</param>
-        public void ReclaimTextureMemory(bool aggressive = false)
-        {
-            _textureCacheLock.EnterWriteLock();
-            try
-            {
-                var texturesToRemove = new List<long>();
-                var currentTime = Stopwatch.GetTimestamp();
-                ulong reclaimedMemory = 0;
-                int reclaimedCount = 0;
-
-                foreach (var kvp in _textureCache)
-                {
-                    var texture = kvp.Value;
-                    
-                    if (texture.Disposed) 
-                    {
-                        texturesToRemove.Add(kvp.Key);
-                        continue;
-                    }
-
-                    // 检查纹理是否可以被回收
-                    if (texture.CanBeReclaimed(currentTime, aggressive))
-                    {
-                        texturesToRemove.Add(kvp.Key);
-                        _disposableTextures.Add(texture);
-                        reclaimedMemory += texture.EstimatedMemoryUsage;
-                        reclaimedCount++;
-                        
-                        // 限制单次回收的纹理数量，避免影响性能
-                        if (!aggressive && reclaimedCount >= 3)
-                        {
-                            break;
-                        }
-                    }
-                }
-                
-                // 移除被标记的纹理
-                foreach (var id in texturesToRemove)
-                {
-                    _textureCache.Remove(id);
-                }
-                
-                // 记录回收统计
-                if (reclaimedCount > 0)
-                {
-                    Logger.Info?.Print(LogClass.Gpu, 
-                        $"Reclaimed {reclaimedCount} textures, estimated memory: {reclaimedMemory / (1024 * 1024)} MB");
-                }
-                
-                // 异步释放纹理资源
-                if (_disposableTextures.Count > 0)
-                {
-                    Task.Run(() =>
-                    {
-                        foreach (var texture in _disposableTextures)
-                        {
-                            try
-                            {
-                                texture.Dispose();
-                            }
-                            catch (Exception ex)
-                            {
-                                Logger.Warning?.Print(LogClass.Gpu, $"Error disposing texture: {ex.Message}");
-                            }
-                        }
-                        _disposableTextures.Clear();
-                    });
-                }
-            }
-            finally
-            {
-                _textureCacheLock.ExitWriteLock();
-            }
-        }
-
-        /// <summary>
-        /// 手动触发内存回收
-        /// </summary>
-        public void ManualMemoryReclaim()
-        {
-            // 强制内存分配器回收内存
-            MemoryAllocator?.ForceReclaim();
-            
-            // 回收纹理内存
-            ReclaimTextureMemory(aggressive: true);
-            
-            // 记录内存统计
-            MemoryAllocator?.LogMemoryStats();
-        }
-
-        // 内存使用检查
-        private void CheckMemoryUsage()
-        {
-            try
-            {
-                MemoryAllocator?.LogMemoryStats();
-                
-                // 如果内存使用率很高，主动回收一些纹理
-                var stats = MemoryAllocator?.GetMemoryStats();
-                if (stats.HasValue && stats.Value.totalSize > 0)
-                {
-                    float usagePercent = (float)stats.Value.usedSize / stats.Value.totalSize * 100;
-                    if (usagePercent > 80) // 内存使用率超过80%时触发回收
-                    {
-                        ReclaimTextureMemory(aggressive: false);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning?.Print(LogClass.Gpu, $"Memory check failed: {ex.Message}");
-            }
         }
 
         private uint FindComputeQueueFamily()
@@ -806,59 +650,7 @@ namespace Ryujinx.Graphics.Vulkan
                 Logger.Error?.Print(LogClass.Gpu, $"Invalid texture dimensions: {info.Width}x{info.Height}x{info.Depth}");
                 throw new ArgumentException("Invalid texture dimensions");
             }
-            
-            // 计算纹理的唯一ID
-            long textureId = CalculateTextureId(info);
-            
-            _textureCacheLock.EnterUpgradeableReadLock();
-            try
-            {
-                // 检查缓存中是否已有相同参数的纹理
-                if (_textureCache.TryGetValue(textureId, out var existingTexture) && !existingTexture.Disposed)
-                {
-                    existingTexture.UpdateLastUsedTime();
-                    return existingTexture;
-                }
-                
-                _textureCacheLock.EnterWriteLock();
-                try
-                {
-                    // 创建新纹理
-                    var newTexture = new TextureStorage(this, _device, info);
-                    newTexture.UpdateLastUsedTime();
-                    _textureCache[textureId] = newTexture;
-                    return newTexture;
-                }
-                finally
-                {
-                    _textureCacheLock.ExitWriteLock();
-                }
-            }
-            finally
-            {
-                _textureCacheLock.ExitUpgradeableReadLock();
-            }
-        }
-
-        // 计算纹理ID的辅助方法
-        private long CalculateTextureId(TextureCreateInfo info)
-        {
-            unchecked
-            {
-                long hash = 17;
-                hash = hash * 31 + info.Width.GetHashCode();
-                hash = hash * 31 + info.Height.GetHashCode();
-                hash = hash * 31 + info.Depth.GetHashCode();
-                hash = hash * 31 + info.Levels.GetHashCode();
-                hash = hash * 31 + info.Samples.GetHashCode();
-                hash = hash * 31 + info.Format.GetHashCode();
-                hash = hash * 31 + info.Target.GetHashCode();
-                hash = hash * 31 + info.SwizzleR.GetHashCode();
-                hash = hash * 31 + info.SwizzleG.GetHashCode();
-                hash = hash * 31 + info.SwizzleB.GetHashCode();
-                hash = hash * 31 + info.SwizzleA.GetHashCode();
-                return hash;
-            }
+            return new TextureStorage(this, _device, info);
         }
 
         public void DeleteBuffer(BufferHandle buffer)
@@ -1179,14 +971,6 @@ namespace Ryujinx.Graphics.Vulkan
         public void PreFrame()
         {
             SyncManager.Cleanup();
-            
-            // 定期内存检查
-            long currentTime = Stopwatch.GetTimestamp();
-            if (currentTime - _lastMemoryCheckTime > MemoryCheckInterval)
-            {
-                _lastMemoryCheckTime = currentTime;
-                CheckMemoryUsage();
-            }
         }
 
         public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
@@ -1276,30 +1060,6 @@ namespace Ryujinx.Graphics.Vulkan
             if (!_initialized)
             {
                 return;
-            }
-
-            // 清理纹理缓存
-            _textureCacheLock.EnterWriteLock();
-            try
-            {
-                foreach (var texture in _textureCache.Values)
-                {
-                    if (!texture.Disposed)
-                    {
-                        texture.Dispose();
-                    }
-                }
-                _textureCache.Clear();
-                
-                foreach (var texture in _disposableTextures)
-                {
-                    texture.Dispose();
-                }
-                _disposableTextures.Clear();
-            }
-            finally
-            {
-                _textureCacheLock.ExitWriteLock();
             }
 
             CommandBufferPool.Dispose();
