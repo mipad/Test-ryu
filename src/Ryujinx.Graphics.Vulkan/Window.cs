@@ -146,9 +146,10 @@ namespace Ryujinx.Graphics.Vulkan
                 compressionControl.CompressionControlPlaneCount = 1;
                 
                 // 启用AFBC压缩 - 使用正确的枚举值
+                // 根据Vulkan规范，使用4BPC作为AFBC的压缩率
                 var fixedRateFlags = new ImageCompressionFixedRateFlagsEXT[] 
                 { 
-                    ImageCompressionFixedRateFlagsEXT.Bit1Ext // 使用AFBC压缩
+                    ImageCompressionFixedRateFlagsEXT.Bit4BpcExt
                 };
                 
                 fixed (ImageCompressionFixedRateFlagsEXT* pFixedRateFlags = fixedRateFlags)
