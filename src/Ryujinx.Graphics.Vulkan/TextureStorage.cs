@@ -112,6 +112,17 @@ namespace Ryujinx.Graphics.Vulkan
                 flags |= ImageCreateFlags.Create2DArrayCompatibleBit;
             }
 
+            // 对于压缩格式，确保图像创建参数正确
+            if (info.Format.IsAstc() || info.Format.IsEtc2() || info.Format.IsBcFormat())
+            {
+                // 压缩格式通常不支持某些特性，确保设置合理
+                if (info.Target != Target.Texture2D && info.Target != Target.Texture2DArray)
+                {
+                    // 压缩格式通常只支持2D纹理
+                    throw new NotSupportedException($"Compressed format {info.Format} is only supported for 2D textures");
+                }
+            }
+
             var imageCreateInfo = new ImageCreateInfo
             {
                 SType = StructureType.ImageCreateInfo,
@@ -330,6 +341,13 @@ namespace Ryujinx.Graphics.Vulkan
                 (usage & (ImageUsageFlags.DepthStencilAttachmentBit | ImageUsageFlags.ColorAttachmentBit)) != 0)
             {
                 usage |= ImageUsageFlags.AttachmentFeedbackLoopBitExt;
+            }
+
+            // 压缩格式不支持某些用途
+            if (format.IsAstc() || format.IsEtc2() || format.IsBcFormat())
+            {
+                // 压缩格式通常不能用作存储图像或附件
+                usage &= ~(ImageUsageFlags.StorageBit | ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.DepthStencilAttachmentBit);
             }
 
             return usage;

@@ -650,7 +650,41 @@ namespace Ryujinx.Graphics.Vulkan
                 Logger.Error?.Print(LogClass.Gpu, $"Invalid texture dimensions: {info.Width}x{info.Height}x{info.Depth}");
                 throw new ArgumentException("Invalid texture dimensions");
             }
+
+            // 检查压缩格式的尺寸要求
+            if (info.Format.IsAstc() || info.Format.IsEtc2() || info.Format.IsBcFormat())
+            {
+                if (!ValidateCompressedTextureDimensions(info))
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, $"Compressed texture dimensions may not be optimal for format {info.Format}");
+                }
+            }
+
             return new TextureStorage(this, _device, info);
+        }
+
+        private bool ValidateCompressedTextureDimensions(TextureCreateInfo info)
+        {
+            int blockWidth = info.BlockWidth;
+            int blockHeight = info.BlockHeight;
+
+            if (blockWidth == 0 || blockHeight == 0)
+            {
+                return true; // 无法验证，假设有效
+            }
+
+            // 检查宽度和高度是否是块大小的整数倍
+            bool widthValid = (info.Width % blockWidth) == 0;
+            bool heightValid = (info.Height % blockHeight) == 0;
+
+            if (!widthValid || !heightValid)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, 
+                    $"Compressed texture dimensions {info.Width}x{info.Height} may need to be multiples of block size {blockWidth}x{blockHeight} for format {info.Format}");
+                return false;
+            }
+
+            return true;
         }
 
         public void DeleteBuffer(BufferHandle buffer)
