@@ -146,10 +146,11 @@ namespace Ryujinx.Graphics.Vulkan
                 compressionControl.CompressionControlPlaneCount = 1;
                 
                 // 启用AFBC压缩 - 使用正确的枚举值
-                // 根据Vulkan规范，使用4BPC作为AFBC的压缩率
+                // 在Silk.NET 2.22.0中，枚举值可能使用不同的命名
+                // 尝试使用不同的命名变体
                 var fixedRateFlags = new ImageCompressionFixedRateFlagsEXT[] 
                 { 
-                    ImageCompressionFixedRateFlagsEXT.Bit4BpcExt
+                    (ImageCompressionFixedRateFlagsEXT)0x00000008 // 直接使用数值对应 VK_IMAGE_COMPRESSION_FIXED_RATE_4BPC_BIT_EXT
                 };
                 
                 fixed (ImageCompressionFixedRateFlagsEXT* pFixedRateFlags = fixedRateFlags)
@@ -747,3 +748,4 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 }
+
