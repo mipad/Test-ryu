@@ -1,5 +1,6 @@
 using Ryujinx.Memory;
 using System;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Cpu
 {
@@ -49,6 +50,47 @@ namespace Ryujinx.Cpu
         {
             addressSpace = null;
 
+            // Android 特定优化：不减少地址空间大小，直接使用请求的大小
+            if (OperatingSystem.IsAndroid() && asSize >= 0x8000000000UL)
+            {
+                Logger.Warning?.Print(LogClass.Cpu, 
+                    $"Android address space override: Attempting to allocate full requested size 0x{asSize:X}");
+
+                try
+                {
+                    MemoryBlock baseMemory = new MemoryBlock(asSize, AsFlags);
+                    addressSpace = baseMemory;
+                    Logger.Info?.Print(LogClass.Cpu, 
+                        $"Android address space allocation successful: 0x{asSize:X}");
+                }
+                catch (SystemException ex)
+                {
+                    Logger.Warning?.Print(LogClass.Cpu, 
+                        $"Android address space allocation failed for 0x{asSize:X}: {ex.Message}");
+                    
+                    // 如果直接分配失败，尝试使用较大的分配而不是逐步减小
+                    ulong fallbackSize = 0x4000000000UL; // 256GB
+                    Logger.Warning?.Print(LogClass.Cpu, 
+                        $"Trying fallback size: 0x{fallbackSize:X}");
+                    
+                    try
+                    {
+                        MemoryBlock baseMemory = new MemoryBlock(fallbackSize, AsFlags);
+                        addressSpace = baseMemory;
+                        Logger.Info?.Print(LogClass.Cpu, 
+                            $"Android address space fallback allocation successful: 0x{fallbackSize:X}");
+                    }
+                    catch (SystemException ex2)
+                    {
+                        Logger.Error?.Print(LogClass.Cpu, 
+                            $"Android address space fallback allocation also failed: {ex2.Message}");
+                    }
+                }
+
+                return addressSpace != null;
+            }
+
+            // 原有逻辑（非Android平台）
             ulong minAddressSpaceSize = Math.Min(asSize, 1UL << 36);
 
             // Attempt to create the address space with expected size or try to reduce it until it succeed.
