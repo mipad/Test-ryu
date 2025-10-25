@@ -80,7 +80,10 @@ namespace Ryujinx.Graphics.Vulkan
                 }
             }
 
-            _gd.SwapchainApi.DestroySwapchain(_device, oldSwapchain, Span<AllocationCallbacks>.Empty);
+            if (oldSwapchain.Handle != 0)
+            {
+                _gd.SwapchainApi.DestroySwapchain(_device, oldSwapchain, Span<AllocationCallbacks>.Empty);
+            }
 
             CreateSwapchain();
         }
@@ -95,189 +98,214 @@ namespace Ryujinx.Graphics.Vulkan
         {
             Logger.Info?.Print(LogClass.Gpu, "Creating swapchain...");
 
-            _gd.SurfaceApi.GetPhysicalDeviceSurfaceCapabilities(_physicalDevice, _surface, out var capabilities);
-
-            // 修正：确保表面能力有效
-            if (capabilities.MaxImageExtent.Width == 0 || capabilities.MaxImageExtent.Height == 0)
+            // 检查表面是否有效
+            if (_surface.Handle == 0)
             {
-                Logger.Warning?.Print(LogClass.Gpu, "Invalid surface capabilities, using fallback dimensions");
-                capabilities.MaxImageExtent = new Extent2D { Width = Math.Max(1, capabilities.MaxImageExtent.Width), Height = Math.Max(1, capabilities.MaxImageExtent.Height) };
-                capabilities.MinImageExtent = new Extent2D { Width = Math.Max(1, capabilities.MinImageExtent.Width), Height = Math.Max(1, capabilities.MinImageExtent.Height) };
+                Logger.Error?.Print(LogClass.Gpu, "Surface is invalid, cannot create swapchain");
+                return;
             }
 
-            uint surfaceFormatsCount;
-
-            _gd.SurfaceApi.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, &surfaceFormatsCount, null);
-
-            var surfaceFormats = new SurfaceFormatKHR[surfaceFormatsCount];
-
-            fixed (SurfaceFormatKHR* pSurfaceFormats = surfaceFormats)
+            try
             {
-                _gd.SurfaceApi.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, &surfaceFormatsCount, pSurfaceFormats);
-            }
-
-            uint presentModesCount;
-
-            _gd.SurfaceApi.GetPhysicalDeviceSurfacePresentModes(_physicalDevice, _surface, &presentModesCount, null);
-
-            var presentModes = new PresentModeKHR[presentModesCount];
-
-            fixed (PresentModeKHR* pPresentModes = presentModes)
-            {
-                _gd.SurfaceApi.GetPhysicalDeviceSurfacePresentModes(_physicalDevice, _surface, &presentModesCount, pPresentModes);
-            }
-
-            uint imageCount = capabilities.MinImageCount + 1;
-            if (capabilities.MaxImageCount > 0 && imageCount > capabilities.MaxImageCount)
-            {
-                imageCount = capabilities.MaxImageCount;
-            }
-
-            var surfaceFormat = ChooseSwapSurfaceFormat(surfaceFormats, _colorSpacePassthroughEnabled);
-
-            var extent = ChooseSwapExtent(capabilities);
-
-            // 修正：确保交换链尺寸有效
-            if (extent.Width == 0 || extent.Height == 0)
-            {
-                Logger.Warning?.Print(LogClass.Gpu, "Invalid swapchain extent, using fallback dimensions");
-                extent = new Extent2D { Width = Math.Max(1, extent.Width), Height = Math.Max(1, extent.Height) };
-            }
-
-            _width = (int)extent.Width;
-            _height = (int)extent.Height;
-            _format = surfaceFormat.Format;
-
-            var oldSwapchain = _swapchain;
-
-            CurrentTransform = capabilities.CurrentTransform;
-
-            // 对于 Mali GPU，优化图像用法以支持 AFBC
-            ImageUsageFlags imageUsage = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit;
-            
-            // 根据 ARM 文档，避免使用会禁用 AFBC 的标志
-            // 特别是 VK_IMAGE_USAGE_STORAGE_BIT
-            if (!_gd.IsArmMali)
-            {
-                // 非 Mali GPU 可以继续使用 STORAGE_BIT
-                if (!Ryujinx.Common.PlatformInfo.IsBionic)
-                {
-                    imageUsage |= ImageUsageFlags.StorageBit;
-                }
-            }
-            else
-            {
-                Logger.Info?.Print(LogClass.Gpu, "Mali GPU: Avoiding VK_IMAGE_USAGE_STORAGE_BIT to allow AFBC compression");
-            }
-
-            var swapchainCreateInfo = new SwapchainCreateInfoKHR
-            {
-                SType = StructureType.SwapchainCreateInfoKhr,
-                Surface = _surface,
-                MinImageCount = imageCount,
-                ImageFormat = surfaceFormat.Format,
-                ImageColorSpace = surfaceFormat.ColorSpace,
-                ImageExtent = extent,
-                ImageUsage = imageUsage, // 使用优化的图像用法
-                ImageArrayLayers = 1,
-                ImageSharingMode = SharingMode.Exclusive,
-                PreTransform = Ryujinx.Common.PlatformInfo.IsBionic ? SurfaceTransformFlagsKHR.IdentityBitKhr : capabilities.CurrentTransform,
-                CompositeAlpha = ChooseCompositeAlpha(capabilities.SupportedCompositeAlpha),
-                PresentMode = ChooseSwapPresentMode(presentModes, _vsyncEnabled),
-                Clipped = true,
-            };
-
-            var textureCreateInfo = new TextureCreateInfo(
-                _width,
-                _height,
-                1,
-                1,
-                1,
-                1,
-                1,
-                1,
-                FormatTable.GetFormat(surfaceFormat.Format),
-                DepthStencilMode.Depth,
-                Target.Texture2D,
-                SwizzleComponent.Red,
-                SwizzleComponent.Green,
-                SwizzleComponent.Blue,
-                SwizzleComponent.Alpha);
-
-            Logger.Info?.Print(LogClass.Gpu, $"Creating swapchain with {imageCount} images, format: {surfaceFormat.Format}, " +
-                            $"size: {_width}x{_height}, usage: {imageUsage}");
-
-            Result result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
-            
-            if (result != Result.Success)
-            {
-                Logger.Error?.Print(LogClass.Gpu, $"Failed to create swapchain: {result}");
+                _gd.SurfaceApi.GetPhysicalDeviceSurfaceCapabilities(_physicalDevice, _surface, out var capabilities);
                 
-                // 如果创建失败，尝试使用更保守的设置
+                // 修正：确保表面能力有效
+                if (capabilities.MaxImageExtent.Width == 0 || capabilities.MaxImageExtent.Height == 0)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, "Invalid surface capabilities, using fallback dimensions");
+                    capabilities.MaxImageExtent = new Extent2D { Width = Math.Max(1, capabilities.MaxImageExtent.Width), Height = Math.Max(1, capabilities.MaxImageExtent.Height) };
+                    capabilities.MinImageExtent = new Extent2D { Width = Math.Max(1, capabilities.MinImageExtent.Width), Height = Math.Max(1, capabilities.MinImageExtent.Height) };
+                }
+
+                uint surfaceFormatsCount;
+
+                _gd.SurfaceApi.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, &surfaceFormatsCount, null);
+
+                var surfaceFormats = new SurfaceFormatKHR[surfaceFormatsCount];
+
+                fixed (SurfaceFormatKHR* pSurfaceFormats = surfaceFormats)
+                {
+                    _gd.SurfaceApi.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, &surfaceFormatsCount, pSurfaceFormats);
+                }
+
+                uint presentModesCount;
+
+                _gd.SurfaceApi.GetPhysicalDeviceSurfacePresentModes(_physicalDevice, _surface, &presentModesCount, null);
+
+                var presentModes = new PresentModeKHR[presentModesCount];
+
+                fixed (PresentModeKHR* pPresentModes = presentModes)
+                {
+                    _gd.SurfaceApi.GetPhysicalDeviceSurfacePresentModes(_physicalDevice, _surface, &presentModesCount, pPresentModes);
+                }
+
+                uint imageCount = capabilities.MinImageCount + 1;
+                if (capabilities.MaxImageCount > 0 && imageCount > capabilities.MaxImageCount)
+                {
+                    imageCount = capabilities.MaxImageCount;
+                }
+
+                var surfaceFormat = ChooseSwapSurfaceFormat(surfaceFormats, _colorSpacePassthroughEnabled);
+
+                var extent = ChooseSwapExtent(capabilities);
+
+                // 修正：确保交换链尺寸有效
                 if (extent.Width == 0 || extent.Height == 0)
                 {
-                    Logger.Warning?.Print(LogClass.Gpu, "Retrying with safe dimensions");
-                    extent = new Extent2D { Width = 1280, Height = 720 };
-                    swapchainCreateInfo.ImageExtent = extent;
-                    _width = (int)extent.Width;
-                    _height = (int)extent.Height;
+                    Logger.Warning?.Print(LogClass.Gpu, "Invalid swapchain extent, using fallback dimensions");
+                    extent = new Extent2D { Width = Math.Max(1, extent.Width), Height = Math.Max(1, extent.Height) };
+                }
+
+                _width = (int)extent.Width;
+                _height = (int)extent.Height;
+                _format = surfaceFormat.Format;
+
+                var oldSwapchain = _swapchain;
+
+                CurrentTransform = capabilities.CurrentTransform;
+
+                // 对于 Mali GPU，优化图像用法以支持 AFBC
+                ImageUsageFlags imageUsage = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit;
+                
+                // 根据 ARM 文档，避免使用会禁用 AFBC 的标志
+                // 特别是 VK_IMAGE_USAGE_STORAGE_BIT
+                if (!_gd.IsArmMali)
+                {
+                    // 非 Mali GPU 可以继续使用 STORAGE_BIT
+                    if (!Ryujinx.Common.PlatformInfo.IsBionic)
+                    {
+                        imageUsage |= ImageUsageFlags.StorageBit;
+                    }
+                }
+                else
+                {
+                    Logger.Info?.Print(LogClass.Gpu, "Mali GPU: Avoiding VK_IMAGE_USAGE_STORAGE_BIT to allow AFBC compression");
+                }
+
+                var swapchainCreateInfo = new SwapchainCreateInfoKHR
+                {
+                    SType = StructureType.SwapchainCreateInfoKhr,
+                    Surface = _surface,
+                    MinImageCount = imageCount,
+                    ImageFormat = surfaceFormat.Format,
+                    ImageColorSpace = surfaceFormat.ColorSpace,
+                    ImageExtent = extent,
+                    ImageUsage = imageUsage, // 使用优化的图像用法
+                    ImageArrayLayers = 1,
+                    ImageSharingMode = SharingMode.Exclusive,
+                    PreTransform = Ryujinx.Common.PlatformInfo.IsBionic ? SurfaceTransformFlagsKHR.IdentityBitKhr : capabilities.CurrentTransform,
+                    CompositeAlpha = ChooseCompositeAlpha(capabilities.SupportedCompositeAlpha),
+                    PresentMode = ChooseSwapPresentMode(presentModes, _vsyncEnabled),
+                    Clipped = true,
+                };
+
+                var textureCreateInfo = new TextureCreateInfo(
+                    _width,
+                    _height,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    FormatTable.GetFormat(surfaceFormat.Format),
+                    DepthStencilMode.Depth,
+                    Target.Texture2D,
+                    SwizzleComponent.Red,
+                    SwizzleComponent.Green,
+                    SwizzleComponent.Blue,
+                    SwizzleComponent.Alpha);
+
+                Logger.Info?.Print(LogClass.Gpu, $"Creating swapchain with {imageCount} images, format: {surfaceFormat.Format}, " +
+                                $"size: {_width}x{_height}, usage: {imageUsage}");
+
+                Result result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
+                
+                if (result == Result.ErrorSurfaceLostKhr)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, "Surface lost during swapchain creation, recreating surface...");
+                    _gd.RecreateSurface();
                     
+                    // 重试创建交换链
                     result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
                 }
                 
                 if (result != Result.Success)
                 {
-                    result.ThrowOnError();
+                    Logger.Error?.Print(LogClass.Gpu, $"Failed to create swapchain: {result}");
+                    
+                    // 如果创建失败，尝试使用更保守的设置
+                    if (extent.Width == 0 || extent.Height == 0)
+                    {
+                        Logger.Warning?.Print(LogClass.Gpu, "Retrying with safe dimensions");
+                        extent = new Extent2D { Width = 1280, Height = 720 };
+                        swapchainCreateInfo.ImageExtent = extent;
+                        _width = (int)extent.Width;
+                        _height = (int)extent.Height;
+                        
+                        result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
+                    }
+                    
+                    if (result != Result.Success)
+                    {
+                        Logger.Error?.Print(LogClass.Gpu, $"Failed to create swapchain even with fallback: {result}");
+                        return;
+                    }
                 }
+
+                Logger.Info?.Print(LogClass.Gpu, "Swapchain created successfully");
+                
+                if (_gd.IsArmMali)
+                {
+                    Logger.Info?.Print(LogClass.Gpu, "Mali GPU: AFBC may be automatically applied by driver if usage flags and image properties allow");
+                }
+                
+                _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, null);
+
+                _swapchainImages = new Image[imageCount];
+
+                fixed (Image* pSwapchainImages = _swapchainImages)
+                {
+                    _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, pSwapchainImages);
+                }
+
+                Logger.Info?.Print(LogClass.Gpu, $"Retrieved {_swapchainImages.Length} swapchain images");
+
+                _swapchainImageViews = new TextureView[imageCount];
+
+                for (int i = 0; i < _swapchainImageViews.Length; i++)
+                {
+                    _swapchainImageViews[i] = CreateSwapchainImageView(_swapchainImages[i], surfaceFormat.Format, textureCreateInfo);
+                }
+
+                Logger.Info?.Print(LogClass.Gpu, "Created swapchain image views");
+
+                var semaphoreCreateInfo = new SemaphoreCreateInfo
+                {
+                    SType = StructureType.SemaphoreCreateInfo,
+                };
+
+                _imageAvailableSemaphores = new Semaphore[imageCount];
+
+                for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
+                {
+                    _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _imageAvailableSemaphores[i]).ThrowOnError();
+                }
+
+                _renderFinishedSemaphores = new Semaphore[imageCount];
+
+                for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
+                {
+                    _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _renderFinishedSemaphores[i]).ThrowOnError();
+                }
+
+                Logger.Info?.Print(LogClass.Gpu, "Swapchain creation completed");
             }
-
-            Logger.Info?.Print(LogClass.Gpu, "Swapchain created successfully");
-            
-            if (_gd.IsArmMali)
+            catch (Exception ex)
             {
-                Logger.Info?.Print(LogClass.Gpu, "Mali GPU: AFBC may be automatically applied by driver if usage flags and image properties allow");
+                Logger.Error?.Print(LogClass.Gpu, $"Exception during swapchain creation: {ex}");
+                throw;
             }
-            
-            _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, null);
-
-            _swapchainImages = new Image[imageCount];
-
-            fixed (Image* pSwapchainImages = _swapchainImages)
-            {
-                _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, pSwapchainImages);
-            }
-
-            Logger.Info?.Print(LogClass.Gpu, $"Retrieved {_swapchainImages.Length} swapchain images");
-
-            _swapchainImageViews = new TextureView[imageCount];
-
-            for (int i = 0; i < _swapchainImageViews.Length; i++)
-            {
-                _swapchainImageViews[i] = CreateSwapchainImageView(_swapchainImages[i], surfaceFormat.Format, textureCreateInfo);
-            }
-
-            Logger.Info?.Print(LogClass.Gpu, "Created swapchain image views");
-
-            var semaphoreCreateInfo = new SemaphoreCreateInfo
-            {
-                SType = StructureType.SemaphoreCreateInfo,
-            };
-
-            _imageAvailableSemaphores = new Semaphore[imageCount];
-
-            for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
-            {
-                _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _imageAvailableSemaphores[i]).ThrowOnError();
-            }
-
-            _renderFinishedSemaphores = new Semaphore[imageCount];
-
-            for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
-            {
-                _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _renderFinishedSemaphores[i]).ThrowOnError();
-            }
-
-            Logger.Info?.Print(LogClass.Gpu, "Swapchain creation completed");
         }
 
         private unsafe TextureView CreateSwapchainImageView(Image swapchainImage, VkFormat format, TextureCreateInfo info)
@@ -784,7 +812,10 @@ namespace Ryujinx.Graphics.Vulkan
                         _gd.Api.DestroySemaphore(_device, _renderFinishedSemaphores[i], null);
                     }
 
-                    _gd.SwapchainApi.DestroySwapchain(_device, _swapchain, null);
+                    if (_swapchain.Handle != 0)
+                    {
+                        _gd.SwapchainApi.DestroySwapchain(_device, _swapchain, null);
+                    }
                 }
 
                 _effect?.Dispose();
