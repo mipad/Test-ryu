@@ -2,7 +2,6 @@ using ARMeilleure.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using Ryujinx.Common.Logging;
 
 namespace ARMeilleure.Common
 {
@@ -116,13 +115,13 @@ namespace ARMeilleure.Common
             }
 
             // Android 特定优化：限制掩码大小
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Create("ANDROID")))
+            if (OperatingSystem.IsAndroid())
             {
                 ulong androidLimit = 0x7FFFFFFFF; // 扩展到32GB范围
                 if (Mask >= androidLimit)
                 {
-                    Logger.Warning?.Print(LogClass.Cpu, 
-                        $"Android AddressTable mask limited from 0x{Mask:X} to 0x{androidLimit:X}");
+                    // 使用完全限定的日志类名避免冲突
+                    ARMeilleure.Diagnostics.Logger?.WriteLine($"Android AddressTable mask limited from 0x{Mask:X} to 0x{androidLimit:X}");
                     Mask = androidLimit;
                 }
             }
@@ -137,7 +136,7 @@ namespace ARMeilleure.Common
         public bool IsValid(ulong address)
         {
             // Android 放宽验证：接受更大的地址范围
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Create("ANDROID")))
+            if (OperatingSystem.IsAndroid())
             {
                 // 方法1: 完全接受所有地址
                 return true;
@@ -162,7 +161,7 @@ namespace ARMeilleure.Common
             ObjectDisposedException.ThrowIf(_disposed, this);
 
             // Android 放宽验证
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Create("ANDROID")) && !IsValid(address))
+            if (!OperatingSystem.IsAndroid() && !IsValid(address))
             {
                 throw new ArgumentException($"Address 0x{address:X} is not mapped onto the table.", nameof(address));
             }
@@ -171,13 +170,12 @@ namespace ARMeilleure.Common
             {
                 // Android 地址包装
                 ulong effectiveAddress = address;
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Create("ANDROID")))
+                if (OperatingSystem.IsAndroid())
                 {
                     effectiveAddress = address & 0x7FFFFFFFF; // 包装到32GB范围内
                     if (address != effectiveAddress)
                     {
-                        Logger.Debug?.Print(LogClass.Cpu, 
-                            $"Address wrapped: 0x{address:X} -> 0x{effectiveAddress:X}");
+                        ARMeilleure.Diagnostics.Logger?.WriteLine($"Address wrapped: 0x{address:X} -> 0x{effectiveAddress:X}");
                     }
                 }
                 
