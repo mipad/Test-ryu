@@ -120,8 +120,8 @@ namespace ARMeilleure.Common
                 ulong androidLimit = 0x7FFFFFFFF; // 扩展到32GB范围
                 if (Mask >= androidLimit)
                 {
-                    // 使用完全限定的日志类名避免冲突
-                    ARMeilleure.Diagnostics.Logger?.WriteLine($"Android AddressTable mask limited from 0x{Mask:X} to 0x{androidLimit:X}");
+                    // 使用简单的控制台输出作为调试
+                    System.Diagnostics.Debug.WriteLine($"Android AddressTable mask limited from 0x{Mask:X} to 0x{androidLimit:X}");
                     Mask = androidLimit;
                 }
             }
@@ -175,7 +175,8 @@ namespace ARMeilleure.Common
                     effectiveAddress = address & 0x7FFFFFFFF; // 包装到32GB范围内
                     if (address != effectiveAddress)
                     {
-                        ARMeilleure.Diagnostics.Logger?.WriteLine($"Address wrapped: 0x{address:X} -> 0x{effectiveAddress:X}");
+                        // 使用简单的控制台输出作为调试
+                        System.Diagnostics.Debug.WriteLine($"Address wrapped: 0x{address:X} -> 0x{effectiveAddress:X}");
                     }
                 }
                 
