@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using System.Threading;
 using Ryujinx.Common.Logging;
+using System.Runtime.InteropServices;
 
 namespace Ryujinx.Memory
 {
@@ -37,20 +38,24 @@ namespace Ryujinx.Memory
         /// </summary>
         public MemoryBlock(ulong size, MemoryAllocationFlags flags = MemoryAllocationFlags.None)
         {
+            Logger.Info?.Print(LogClass.Cpu, 
+                $"Creating MemoryBlock: Size=0x{size:X}, Flags={flags}, OS={RuntimeInformation.OSDescription}");
+
             // 欺骗方案：对于大内存请求，实际分配较小空间但保持接口兼容
             ulong actualSize = size;
             if (size >= 0x8000000000UL) // 512GB
             {
-                // 在Android上限制为128GB或更小
+                // 在Android上尝试更大的分配
                 if (OperatingSystem.IsAndroid())
                 {
-                    actualSize = 0x2000000000UL; // 128GB
+                    // 尝试384GB分配
+                    actualSize = 0x6000000000UL; // 384GB
                     Logger.Warning?.Print(LogClass.Cpu, 
-                        $"Android memory override: Requested 0x{size:X} (512GB), using 0x{actualSize:X} (128GB) instead");
+                        $"Android memory override: Requested 0x{size:X} (512GB), using 0x{actualSize:X} (384GB) instead");
                 }
-                else if (size > 0x4000000000UL) // 其他平台也限制在256GB
+                else
                 {
-                    actualSize = 0x2000000000UL; // 128GB
+                    actualSize = 0x6000000000UL; // 384GB
                     Logger.Warning?.Print(LogClass.Cpu, 
                         $"Memory size override: Requested 0x{size:X}, using 0x{actualSize:X} instead");
                 }
@@ -100,6 +105,9 @@ namespace Ryujinx.Memory
                 Logger.Debug?.Print(LogClass.Cpu, 
                     $"MemoryBlock created: Reported size = 0x{Size:X}, Actual allocation = 0x{actualSize:X}");
             }
+
+            Logger.Info?.Print(LogClass.Cpu, 
+                $"MemoryBlock created successfully: Pointer=0x{_pointer:X}, SharedMemory=0x{_sharedMemory:X}, UsesSharedMemory={_usesSharedMemory}");
         }
 
         /// <summary>

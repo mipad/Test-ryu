@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.Versioning;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Memory
 {
@@ -11,6 +12,9 @@ namespace Ryujinx.Memory
     {
         public static IntPtr Allocate(ulong size, bool forJit)
         {
+            // Android 特定优化
+            size = AdjustSizeForAndroid(size, "Allocate");
+            
             if (OperatingSystem.IsWindows())
             {
                 return MemoryManagementWindows.Allocate((IntPtr)size);
@@ -27,6 +31,9 @@ namespace Ryujinx.Memory
 
         public static IntPtr Reserve(ulong size, bool forJit, bool viewCompatible)
         {
+            // Android 特定优化
+            size = AdjustSizeForAndroid(size, "Reserve");
+            
             if (OperatingSystem.IsWindows())
             {
                 return MemoryManagementWindows.Reserve((IntPtr)size, viewCompatible);
@@ -146,6 +153,9 @@ namespace Ryujinx.Memory
 
         public static IntPtr CreateSharedMemory(ulong size, bool reserve)
         {
+            // Android 特定优化
+            size = AdjustSizeForAndroid(size, "CreateSharedMemory");
+            
             if (OperatingSystem.IsWindows())
             {
                 return MemoryManagementWindows.CreateSharedMemory((IntPtr)size, reserve);
@@ -206,6 +216,21 @@ namespace Ryujinx.Memory
             {
                 throw new PlatformNotSupportedException();
             }
+        }
+
+        /// <summary>
+        /// Android 特定的内存大小调整
+        /// </summary>
+        private static ulong AdjustSizeForAndroid(ulong size, string operation)
+        {
+            if (OperatingSystem.IsAndroid() && size >= 0x8000000000UL) // 512GB
+            {
+                ulong adjustedSize = 0x6000000000UL; // 384GB
+                Logger.Warning?.Print(LogClass.Cpu, 
+                    $"Android {operation}: Adjusted size from 0x{size:X} to 0x{adjustedSize:X}");
+                return adjustedSize;
+            }
+            return size;
         }
     }
 }
