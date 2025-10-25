@@ -190,6 +190,8 @@ namespace Ryujinx.Graphics.OpenGL
                 supportsDepthClipControl: true,
                 supportsFragmentDensityMap: false, // OpenGL does not support fragment density mapping
                 supportsFragmentDensityMap2: false, // OpenGL does not support fragment density mapping 2
+                supportsImageCompressionControl: false, // OpenGL does not support image compression control
+                supportsAfbc: false, // OpenGL does not support AFBC
                 uniformBufferSetIndex: 0,
                 storageBufferSetIndex: 1,
                 textureSetIndex: 2,
