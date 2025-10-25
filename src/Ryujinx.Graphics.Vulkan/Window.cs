@@ -1,3 +1,4 @@
+using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Vulkan.Effects;
 using Silk.NET.Vulkan;
@@ -144,10 +145,10 @@ namespace Ryujinx.Graphics.Vulkan
                 compressionControl.Flags = ImageCompressionFlagsEXT.FixedRateExplicitExt;
                 compressionControl.CompressionControlPlaneCount = 1;
                 
-                // 启用AFBC压缩
+                // 启用AFBC压缩 - 使用正确的枚举值
                 var fixedRateFlags = new ImageCompressionFixedRateFlagsEXT[] 
                 { 
-                    ImageCompressionFixedRateFlagsEXT.None | ImageCompressionFixedRateFlagsEXT.Afbcext 
+                    ImageCompressionFixedRateFlagsEXT.Bit1Ext // 使用AFBC压缩
                 };
                 
                 fixed (ImageCompressionFixedRateFlagsEXT* pFixedRateFlags = fixedRateFlags)
