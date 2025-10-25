@@ -41,9 +41,12 @@ namespace Ryujinx.Graphics.Vulkan
         internal ExtTransformFeedback TransformFeedbackApi { get; private set; }
         internal KhrDrawIndirectCount DrawIndirectCountApi { get; private set; }
         internal ExtAttachmentFeedbackLoopDynamicState DynamicFeedbackLoopApi { get; private set; }
+        internal ExtImageCompressionControl ImageCompressionControlApi { get; private set; }
         
         internal bool SupportsFragmentDensityMap { get; private set; }
         internal bool SupportsFragmentDensityMap2 { get; private set; }
+        internal bool SupportsImageCompressionControl { get; private set; }
+        internal bool SupportsAfbc { get; private set; }
 
         internal uint QueueFamilyIndex { get; private set; }
         internal Queue Queue { get; private set; }
@@ -184,8 +187,17 @@ namespace Ryujinx.Graphics.Vulkan
                 DynamicFeedbackLoopApi = dynamicFeedbackLoopApi;
             }
 
+            if (Api.TryGetDeviceExtension(_instance.Instance, _device, out ExtImageCompressionControl imageCompressionControlApi))
+            {
+                ImageCompressionControlApi = imageCompressionControlApi;
+                SupportsImageCompressionControl = true;
+            }
+
             SupportsFragmentDensityMap = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map");
             SupportsFragmentDensityMap2 = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map2");
+
+            // 检测AFBC支持
+            SupportsAfbc = IsTBDR && SupportsImageCompressionControl;
 
             if (maxQueueCount >= 2)
             {
@@ -472,7 +484,9 @@ namespace Ryujinx.Graphics.Vulkan
                 portabilityFlags,
                 vertexBufferAlignment,
                 properties.Limits.SubTexelPrecisionBits,
-                minResourceAlignment);
+                minResourceAlignment,
+                SupportsImageCompressionControl,
+                SupportsAfbc);
 
             IsSharedMemory = MemoryAllocator.IsDeviceMemoryShared(_physicalDevice);
 
@@ -866,6 +880,8 @@ namespace Ryujinx.Graphics.Vulkan
                 supportsDepthClipControl: Capabilities.SupportsDepthClipControl,
                 supportsFragmentDensityMap: supportsFragmentDensityMap,
                 supportsFragmentDensityMap2: supportsFragmentDensityMap2,
+                supportsImageCompressionControl: Capabilities.SupportsImageCompressionControl,
+                supportsAfbc: Capabilities.SupportsAfbc,
                 uniformBufferSetIndex: PipelineBase.UniformSetIndex,
                 storageBufferSetIndex: PipelineBase.StorageSetIndex,
                 textureSetIndex: PipelineBase.TextureSetIndex,
@@ -977,6 +993,10 @@ namespace Ryujinx.Graphics.Vulkan
         {
             Logger.Notice.Print(LogClass.Gpu, $"{GpuVendor} {GpuRenderer} ({GpuVersion})");
             Logger.Notice.Print(LogClass.Gpu, $"GPU Memory: {GetTotalGPUMemory() / (1024 * 1024)} MiB");
+            if (SupportsAfbc)
+            {
+                Logger.Notice.Print(LogClass.Gpu, "AFBC compression: Supported and enabled for swapchain");
+            }
         }
 
         public void Initialize(GraphicsDebugLevel logLevel)

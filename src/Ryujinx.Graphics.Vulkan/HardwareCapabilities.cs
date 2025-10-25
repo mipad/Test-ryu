@@ -54,6 +54,8 @@ namespace Ryujinx.Graphics.Vulkan
         public readonly uint VertexBufferAlignment;
         public readonly uint SubTexelPrecisionBits;
         public readonly ulong MinResourceAlignment;
+        public readonly bool SupportsImageCompressionControl;
+        public readonly bool SupportsAfbc;
 
         public HardwareCapabilities(
             bool supportsIndexTypeUint8,
@@ -93,7 +95,9 @@ namespace Ryujinx.Graphics.Vulkan
             PortabilitySubsetFlags portabilitySubset,
             uint vertexBufferAlignment,
             uint subTexelPrecisionBits,
-            ulong minResourceAlignment)
+            ulong minResourceAlignment,
+            bool supportsImageCompressionControl = false,
+            bool supportsAfbc = false)
         {
             SupportsIndexTypeUint8 = supportsIndexTypeUint8;
             SupportsCustomBorderColor = supportsCustomBorderColor;
@@ -133,6 +137,8 @@ namespace Ryujinx.Graphics.Vulkan
             VertexBufferAlignment = vertexBufferAlignment;
             SubTexelPrecisionBits = subTexelPrecisionBits;
             MinResourceAlignment = minResourceAlignment;
+            SupportsImageCompressionControl = supportsImageCompressionControl;
+            SupportsAfbc = supportsAfbc;
         }
     }
 }

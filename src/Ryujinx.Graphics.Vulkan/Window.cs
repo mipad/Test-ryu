@@ -134,9 +134,35 @@ namespace Ryujinx.Graphics.Vulkan
 
             CurrentTransform = capabilities.CurrentTransform;
 
+            // 准备AFBC压缩控制结构
+            ImageCompressionControlEXT compressionControl = new ImageCompressionControlEXT();
+            void* pNext = null;
+
+            if (_gd.SupportsAfbc)
+            {
+                compressionControl.SType = StructureType.ImageCompressionControlExt;
+                compressionControl.Flags = ImageCompressionFlagsEXT.FixedRateExplicitExt;
+                compressionControl.CompressionControlPlaneCount = 1;
+                
+                // 启用AFBC压缩
+                var fixedRateFlags = new ImageCompressionFixedRateFlagsEXT[] 
+                { 
+                    ImageCompressionFixedRateFlagsEXT.None | ImageCompressionFixedRateFlagsEXT.Afbcext 
+                };
+                
+                fixed (ImageCompressionFixedRateFlagsEXT* pFixedRateFlags = fixedRateFlags)
+                {
+                    compressionControl.PFixedRateFlags = pFixedRateFlags;
+                    pNext = &compressionControl;
+                }
+
+                Logger.Info?.Print(LogClass.Gpu, "Enabling AFBC compression for swapchain images");
+            }
+
             var swapchainCreateInfo = new SwapchainCreateInfoKHR
             {
                 SType = StructureType.SwapchainCreateInfoKhr,
+                PNext = pNext,
                 Surface = _surface,
                 MinImageCount = imageCount,
                 ImageFormat = surfaceFormat.Format,
@@ -168,7 +194,6 @@ namespace Ryujinx.Graphics.Vulkan
                 SwizzleComponent.Blue,
                 SwizzleComponent.Alpha);
 
-            //_gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain).ThrowOnError();
             Result result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
             if (result != Result.Success)
             {

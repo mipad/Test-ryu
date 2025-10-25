@@ -48,7 +48,8 @@ namespace Ryujinx.Graphics.Vulkan
             "VK_EXT_attachment_feedback_loop_layout",
             "VK_EXT_attachment_feedback_loop_dynamic_state",
              "VK_KHR_timeline_semaphore", //添加时间线信号量功能
-             "VK_KHR_multiview" // 添加
+             "VK_KHR_multiview", // 添加多视图
+             "VK_EXT_image_compression_control" // 添加图像压缩控制扩展
         ];
 
         private static readonly string[] _requiredExtensions =
@@ -411,6 +412,18 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_timeline_semaphore"))
                 features2.PNext = &supportedFeaturesDynamicAttachmentFeedbackLoopLayout;
             }
 
+            // 添加图像压缩控制特性
+            PhysicalDeviceImageCompressionControlFeaturesEXT supportedFeaturesImageCompressionControl = new()
+            {
+                SType = StructureType.PhysicalDeviceImageCompressionControlFeaturesExt,
+                PNext = features2.PNext,
+            };
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_image_compression_control"))
+            {
+                features2.PNext = &supportedFeaturesImageCompressionControl;
+            }
+
             PhysicalDeviceVulkan12Features supportedPhysicalDeviceVulkan12Features = new()
             {
                 SType = StructureType.PhysicalDeviceVulkan12Features,
@@ -468,6 +481,22 @@ if (physicalDevice.IsDeviceExtensionPresent("VK_KHR_multiview"))
     pExtendedFeatures = &featuresMultiview;
 }
 // 添加结束 
+
+            // 添加图像压缩控制特性启用
+            PhysicalDeviceImageCompressionControlFeaturesEXT featuresImageCompressionControl;
+
+            if (physicalDevice.IsDeviceExtensionPresent("VK_EXT_image_compression_control"))
+            {
+                featuresImageCompressionControl = new PhysicalDeviceImageCompressionControlFeaturesEXT
+                {
+                    SType = StructureType.PhysicalDeviceImageCompressionControlFeaturesExt,
+                    PNext = pExtendedFeatures,
+                    ImageCompressionControl = supportedFeaturesImageCompressionControl.ImageCompressionControl,
+                };
+
+                pExtendedFeatures = &featuresImageCompressionControl;
+            }
+
             PhysicalDeviceTransformFeedbackFeaturesEXT featuresTransformFeedback;
 
             if (physicalDevice.IsDeviceExtensionPresent(ExtTransformFeedback.ExtensionName))
