@@ -93,6 +93,8 @@ namespace Ryujinx.Graphics.Vulkan
 
         private unsafe void CreateSwapchain()
         {
+            Logger.Info?.Print(LogClass.Gpu, "Creating swapchain...");
+
             _gd.SurfaceApi.GetPhysicalDeviceSurfaceCapabilities(_physicalDevice, _surface, out var capabilities);
 
             uint surfaceFormatsCount;
@@ -141,6 +143,8 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (_gd.SupportsAfbc)
             {
+                Logger.Info?.Print(LogClass.Gpu, "AFBC supported, enabling compression for swapchain images");
+                
                 compressionControl.SType = StructureType.ImageCompressionControlExt;
                 compressionControl.Flags = ImageCompressionFlagsEXT.FixedRateExplicitExt;
                 compressionControl.CompressionControlPlaneCount = 1;
@@ -159,7 +163,11 @@ namespace Ryujinx.Graphics.Vulkan
                     pNext = &compressionControl;
                 }
 
-                Logger.Info?.Print(LogClass.Gpu, "Enabling AFBC compression for swapchain images");
+                Logger.Info?.Print(LogClass.Gpu, "AFBC compression control structure prepared with 4BPC fixed rate");
+            }
+            else
+            {
+                Logger.Info?.Print(LogClass.Gpu, "AFBC not supported, creating swapchain without compression");
             }
 
             var swapchainCreateInfo = new SwapchainCreateInfoKHR
@@ -197,10 +205,22 @@ namespace Ryujinx.Graphics.Vulkan
                 SwizzleComponent.Blue,
                 SwizzleComponent.Alpha);
 
+            Logger.Info?.Print(LogClass.Gpu, $"Creating swapchain with {imageCount} images, format: {surfaceFormat.Format}, size: {_width}x{_height}");
+
             Result result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
             if (result != Result.Success)
             {
+                Logger.Error?.Print(LogClass.Gpu, $"Failed to create swapchain: {result}");
                 result.ThrowOnError();
+            }
+            else
+            {
+                Logger.Info?.Print(LogClass.Gpu, "Swapchain created successfully");
+                
+                if (_gd.SupportsAfbc)
+                {
+                    Logger.Info?.Print(LogClass.Gpu, "AFBC compression should be active for swapchain images");
+                }
             }
             
             _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, null);
@@ -212,12 +232,16 @@ namespace Ryujinx.Graphics.Vulkan
                 _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, pSwapchainImages);
             }
 
+            Logger.Info?.Print(LogClass.Gpu, $"Retrieved {_swapchainImages.Length} swapchain images");
+
             _swapchainImageViews = new TextureView[imageCount];
 
             for (int i = 0; i < _swapchainImageViews.Length; i++)
             {
                 _swapchainImageViews[i] = CreateSwapchainImageView(_swapchainImages[i], surfaceFormat.Format, textureCreateInfo);
             }
+
+            Logger.Info?.Print(LogClass.Gpu, "Created swapchain image views");
 
             var semaphoreCreateInfo = new SemaphoreCreateInfo
             {
@@ -237,6 +261,8 @@ namespace Ryujinx.Graphics.Vulkan
             {
                 _gd.Api.CreateSemaphore(_device, in semaphoreCreateInfo, null, out _renderFinishedSemaphores[i]).ThrowOnError();
             }
+
+            Logger.Info?.Print(LogClass.Gpu, "Swapchain creation completed");
         }
 
         private unsafe TextureView CreateSwapchainImageView(Image swapchainImage, VkFormat format, TextureCreateInfo info)
@@ -395,11 +421,13 @@ namespace Ryujinx.Graphics.Vulkan
                     acquireResult == Result.SuboptimalKhr ||
                     _swapchainIsDirty)
                 {
+                    Logger.Info?.Print(LogClass.Gpu, "Swapchain out of date or suboptimal, recreating...");
                     RecreateSwapchain();
                     semaphoreIndex = (_frameIndex - 1) % _imageAvailableSemaphores.Length;
                 }
                 else if(acquireResult == Result.ErrorSurfaceLostKhr)
                 {
+                    Logger.Warning?.Print(LogClass.Gpu, "Surface lost, recreating surface...");
                     _gd.RecreateSurface();
                 }
                 else
@@ -748,4 +776,3 @@ namespace Ryujinx.Graphics.Vulkan
         }
     }
 }
-
