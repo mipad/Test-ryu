@@ -626,6 +626,35 @@ namespace Ryujinx.Graphics.GAL
         }
 
         /// <summary>
+        /// Checks if the texture format is a BC format.
+        /// </summary>
+        /// <param name="format">Texture format</param>
+        /// <returns>True if the texture format is a BC format, false otherwise</returns>
+        public static bool IsBcFormat(this Format format)
+        {
+            switch (format)
+            {
+                case Format.Bc1RgbaUnorm:
+                case Format.Bc1RgbaSrgb:
+                case Format.Bc2Unorm:
+                case Format.Bc2Srgb:
+                case Format.Bc3Unorm:
+                case Format.Bc3Srgb:
+                case Format.Bc4Unorm:
+                case Format.Bc4Snorm:
+                case Format.Bc5Unorm:
+                case Format.Bc5Snorm:
+                case Format.Bc6HSfloat:
+                case Format.Bc6HUfloat:
+                case Format.Bc7Unorm:
+                case Format.Bc7Srgb:
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Checks if the texture format is a depth, stencil or depth-stencil format.
         /// </summary>
         /// <param name="format">Texture format</param>
