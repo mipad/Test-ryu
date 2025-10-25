@@ -45,13 +45,13 @@ namespace Ryujinx.Memory
                 if (OperatingSystem.IsAndroid())
                 {
                     actualSize = 0x2000000000UL; // 128GB
-                    Logger.Warning?.Print(LogClass.Memory, 
+                    Logger.Warning?.Print(LogClass.Cpu, 
                         $"Android memory override: Requested 0x{size:X} (512GB), using 0x{actualSize:X} (128GB) instead");
                 }
                 else if (size > 0x4000000000UL) // 其他平台也限制在256GB
                 {
                     actualSize = 0x2000000000UL; // 128GB
-                    Logger.Warning?.Print(LogClass.Memory, 
+                    Logger.Warning?.Print(LogClass.Cpu, 
                         $"Memory size override: Requested 0x{size:X}, using 0x{actualSize:X} instead");
                 }
             }
@@ -97,7 +97,7 @@ namespace Ryujinx.Memory
             // 记录实际分配情况用于调试
             if (actualSize != size)
             {
-                Logger.Debug?.Print(LogClass.Memory, 
+                Logger.Debug?.Print(LogClass.Cpu, 
                     $"MemoryBlock created: Reported size = 0x{Size:X}, Actual allocation = 0x{actualSize:X}");
             }
         }
