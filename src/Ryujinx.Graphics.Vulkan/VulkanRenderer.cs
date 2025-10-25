@@ -202,28 +202,20 @@ namespace Ryujinx.Graphics.Vulkan
             SupportsFragmentDensityMap = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map");
             SupportsFragmentDensityMap2 = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map2");
 
-            // 更准确的 Mali GPU 检测
-            IsArmMali = Vendor == Vendor.ARM && 
-                       (GpuRenderer?.Contains("Mali") == true || 
-                        GpuRenderer?.Contains("Immortalis") == true ||
-                        _physicalDevice.PhysicalDeviceProperties.VendorID == 0x13B5); // 明确的 ARM Vendor ID
+            // 修正 Mali GPU 检测逻辑 - 基于 Vendor ID 和更宽松的条件
+            IsArmMali = Vendor == Vendor.ARM || _physicalDevice.PhysicalDeviceProperties.VendorID == 0x13B5;
 
             // 对于 Mali GPU，AFBC 是驱动程序自动应用的
-            // 我们只需要确保不违反 AFBC 的要求
-            SupportsAfbc = IsArmMali;
+            // 我们不需要检测AFBC支持，因为驱动程序会自动决定
+            SupportsAfbc = false; // 不报告AFBC支持，让驱动程序自动处理
 
-            Logger.Info?.Print(LogClass.Gpu, $"Mali GPU AFBC detection: IsArmMali={IsArmMali}, DriverVersion={GpuDriver}, SupportsAfbc={SupportsAfbc}");
+            Logger.Info?.Print(LogClass.Gpu, $"GPU Vendor Detection: Vendor={Vendor}, VendorID=0x{_physicalDevice.PhysicalDeviceProperties.VendorID:X}, IsArmMali={IsArmMali}");
 
             if (IsArmMali)
             {
                 Logger.Info?.Print(LogClass.Gpu, "ARM Mali GPU detected - AFBC will be automatically applied by driver when conditions are met");
-                Logger.Info?.Print(LogClass.Gpu, "To enable AFBC: avoid VK_IMAGE_USAGE_STORAGE_BIT, use VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL");
-                
-                // 根据驱动版本调整行为
-                if (GpuDriver?.Contains("r32p1") == true)
-                {
-                    Logger.Info?.Print(LogClass.Gpu, "Mali r32p1 driver detected - AFBC should be automatically applied");
-                }
+                Logger.Info?.Print(LogClass.Gpu, "AFBC requirements: VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL");
+                Logger.Info?.Print(LogClass.Gpu, "Avoid: VK_IMAGE_USAGE_STORAGE_BIT, VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT");
                 
                 // 设置 Mali 特定的优化标志
                 IsTBDR = true; // Mali 使用 TBDR 架构
@@ -431,8 +423,8 @@ namespace Ryujinx.Graphics.Vulkan
                 Vendor == Vendor.Broadcom ||
                 Vendor == Vendor.ImgTec;
 
-            // 检测ARM Mali GPU
-            IsArmMali = Vendor == Vendor.ARM && (GpuRenderer?.Contains("Mali") == true || GpuRenderer?.Contains("Immortalis") == true);
+            // 重新检测ARM Mali GPU，确保在获取所有属性后
+            IsArmMali = Vendor == Vendor.ARM || properties.VendorID == 0x13B5;
 
             GpuVendor = VendorUtils.GetNameFromId(properties.VendorID);
             GpuDriver = hasDriverProperties && !OperatingSystem.IsMacOS() ?
@@ -865,12 +857,12 @@ namespace Ryujinx.Graphics.Vulkan
             bool supportsFragmentDensityMap = SupportsFragmentDensityMap;
             bool supportsFragmentDensityMap2 = SupportsFragmentDensityMap2;
 
-            // 更新 AFBC 支持报告
-            bool supportsAfbc = Capabilities.SupportsAfbc;
-            
+            // 对于 Mali GPU，不报告 AFBC 支持，因为它是驱动程序自动应用的
+            bool supportsAfbc = false;
+
             if (IsArmMali)
             {
-                Logger.Info?.Print(LogClass.Gpu, "Mali GPU: AFBC support depends on driver automatically applying compression when conditions are met");
+                Logger.Info?.Print(LogClass.Gpu, "Mali GPU: AFBC is automatically applied by driver when conditions are met");
             }
 
             return new Capabilities(
@@ -1045,17 +1037,14 @@ namespace Ryujinx.Graphics.Vulkan
             
             if (IsArmMali)
             {
-                Logger.Notice.Print(LogClass.Gpu, "ARM Mali GPU - AFBC compression will be automatically applied by driver");
+                Logger.Notice.Print(LogClass.Gpu, "ARM Mali GPU detected");
+                Logger.Notice.Print(LogClass.Gpu, "AFBC: Automatically applied by driver when conditions are met");
                 Logger.Notice.Print(LogClass.Gpu, "AFBC requirements: VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL");
                 Logger.Notice.Print(LogClass.Gpu, "Avoid: VK_IMAGE_USAGE_STORAGE_BIT, VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT");
             }
-            else if (SupportsAfbc)
-            {
-                Logger.Notice.Print(LogClass.Gpu, "AFBC compression: Supported and will be attempted for swapchain");
-            }
             else
             {
-                Logger.Notice.Print(LogClass.Gpu, "AFBC compression: Not supported");
+                Logger.Notice.Print(LogClass.Gpu, "AFBC compression: Not supported or not applicable");
             }
         }
 

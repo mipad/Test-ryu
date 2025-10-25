@@ -97,6 +97,14 @@ namespace Ryujinx.Graphics.Vulkan
 
             _gd.SurfaceApi.GetPhysicalDeviceSurfaceCapabilities(_physicalDevice, _surface, out var capabilities);
 
+            // 修正：确保表面能力有效
+            if (capabilities.MaxImageExtent.Width == 0 || capabilities.MaxImageExtent.Height == 0)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, "Invalid surface capabilities, using fallback dimensions");
+                capabilities.MaxImageExtent = new Extent2D { Width = Math.Max(1, capabilities.MaxImageExtent.Width), Height = Math.Max(1, capabilities.MaxImageExtent.Height) };
+                capabilities.MinImageExtent = new Extent2D { Width = Math.Max(1, capabilities.MinImageExtent.Width), Height = Math.Max(1, capabilities.MinImageExtent.Height) };
+            }
+
             uint surfaceFormatsCount;
 
             _gd.SurfaceApi.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, &surfaceFormatsCount, null);
@@ -129,6 +137,13 @@ namespace Ryujinx.Graphics.Vulkan
 
             var extent = ChooseSwapExtent(capabilities);
 
+            // 修正：确保交换链尺寸有效
+            if (extent.Width == 0 || extent.Height == 0)
+            {
+                Logger.Warning?.Print(LogClass.Gpu, "Invalid swapchain extent, using fallback dimensions");
+                extent = new Extent2D { Width = Math.Max(1, extent.Width), Height = Math.Max(1, extent.Height) };
+            }
+
             _width = (int)extent.Width;
             _height = (int)extent.Height;
             _format = surfaceFormat.Format;
@@ -153,11 +168,6 @@ namespace Ryujinx.Graphics.Vulkan
             else
             {
                 Logger.Info?.Print(LogClass.Gpu, "Mali GPU: Avoiding VK_IMAGE_USAGE_STORAGE_BIT to allow AFBC compression");
-                
-                // 对于某些 Mali 驱动版本，还需要避免 TRANSFER_DST_BIT
-                // 但通常交换链需要这个标志，所以保留它
-                // 如果遇到问题，可以尝试注释掉下一行：
-                // imageUsage &= ~ImageUsageFlags.TransferDstBit;
             }
 
             var swapchainCreateInfo = new SwapchainCreateInfoKHR
@@ -176,15 +186,6 @@ namespace Ryujinx.Graphics.Vulkan
                 PresentMode = ChooseSwapPresentMode(presentModes, _vsyncEnabled),
                 Clipped = true,
             };
-
-            // 对于 Mali GPU，不再尝试使用显式的压缩控制
-            // 因为 AFBC 是驱动程序自动应用的
-            if (_gd.IsArmMali)
-            {
-                Logger.Info?.Print(LogClass.Gpu, "Mali GPU: Allowing driver to automatically apply AFBC when conditions are met");
-                // 不设置 PNext，让驱动程序自动决定
-                swapchainCreateInfo.PNext = null;
-            }
 
             var textureCreateInfo = new TextureCreateInfo(
                 _width,
@@ -211,7 +212,23 @@ namespace Ryujinx.Graphics.Vulkan
             if (result != Result.Success)
             {
                 Logger.Error?.Print(LogClass.Gpu, $"Failed to create swapchain: {result}");
-                result.ThrowOnError();
+                
+                // 如果创建失败，尝试使用更保守的设置
+                if (extent.Width == 0 || extent.Height == 0)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, "Retrying with safe dimensions");
+                    extent = new Extent2D { Width = 1280, Height = 720 };
+                    swapchainCreateInfo.ImageExtent = extent;
+                    _width = (int)extent.Width;
+                    _height = (int)extent.Height;
+                    
+                    result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
+                }
+                
+                if (result != Result.Success)
+                {
+                    result.ThrowOnError();
+                }
             }
 
             Logger.Info?.Print(LogClass.Gpu, "Swapchain created successfully");
@@ -389,13 +406,20 @@ namespace Ryujinx.Graphics.Vulkan
         {
             if (capabilities.CurrentExtent.Width != uint.MaxValue)
             {
-                return capabilities.CurrentExtent;
+                // 确保当前范围有效
+                uint width = Math.Max(1, capabilities.CurrentExtent.Width);
+                uint height = Math.Max(1, capabilities.CurrentExtent.Height);
+                return new Extent2D(width, height);
             }
 
-            uint width = Math.Max(capabilities.MinImageExtent.Width, Math.Min(capabilities.MaxImageExtent.Width, SurfaceWidth));
-            uint height = Math.Max(capabilities.MinImageExtent.Height, Math.Min(capabilities.MaxImageExtent.Height, SurfaceHeight));
-
-            return new Extent2D(width, height);
+            uint width2 = Math.Max(capabilities.MinImageExtent.Width, Math.Min(capabilities.MaxImageExtent.Width, SurfaceWidth));
+            uint height2 = Math.Max(capabilities.MinImageExtent.Height, Math.Min(capabilities.MaxImageExtent.Height, SurfaceHeight));
+            
+            // 确保最小尺寸有效
+            width2 = Math.Max(1, width2);
+            height2 = Math.Max(1, height2);
+            
+            return new Extent2D(width2, height2);
         }
 
         public unsafe override void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback)
