@@ -143,7 +143,7 @@ namespace Ryujinx.Graphics.Vulkan
 
             if (_gd.SupportsAfbc)
             {
-                Logger.Info?.Print(LogClass.Gpu, "AFBC supported, enabling compression for swapchain images");
+                Logger.Info?.Print(LogClass.Gpu, "AFBC supported, attempting to enable compression for swapchain images");
                 
                 compressionControl.SType = StructureType.ImageCompressionControlExt;
                 compressionControl.Flags = ImageCompressionFlagsEXT.FixedRateExplicitExt;
@@ -211,7 +211,30 @@ namespace Ryujinx.Graphics.Vulkan
             if (result != Result.Success)
             {
                 Logger.Error?.Print(LogClass.Gpu, $"Failed to create swapchain: {result}");
-                result.ThrowOnError();
+                
+                // 如果启用AFBC失败，尝试不使用压缩重新创建
+                if (_gd.SupportsAfbc)
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, "AFBC compression may not be supported, retrying without compression");
+                    
+                    // 移除压缩控制结构重新创建
+                    swapchainCreateInfo.PNext = null;
+                    result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
+                    
+                    if (result == Result.Success)
+                    {
+                        Logger.Info?.Print(LogClass.Gpu, "Swapchain created successfully without AFBC compression");
+                    }
+                    else
+                    {
+                        Logger.Error?.Print(LogClass.Gpu, $"Failed to create swapchain even without compression: {result}");
+                        result.ThrowOnError();
+                    }
+                }
+                else
+                {
+                    result.ThrowOnError();
+                }
             }
             else
             {
