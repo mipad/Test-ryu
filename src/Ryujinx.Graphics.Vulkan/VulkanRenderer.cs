@@ -196,9 +196,28 @@ namespace Ryujinx.Graphics.Vulkan
             SupportsFragmentDensityMap = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map");
             SupportsFragmentDensityMap2 = _physicalDevice.IsDeviceExtensionPresent("VK_EXT_fragment_density_map2");
 
+            
             // 检测AFBC支持
-            SupportsAfbc = IsTBDR && SupportsImageCompressionControl;
-
+    SupportsAfbc = IsTBDR && SupportsImageCompressionControl;
+    
+    Logger.Info?.Print(LogClass.Gpu, $"AFBC support detection: IsTBDR={IsTBDR}, SupportsImageCompressionControl={SupportsImageCompressionControl}, SupportsAfbc={SupportsAfbc}");
+    
+    if (SupportsAfbc)
+    {
+        Logger.Info?.Print(LogClass.Gpu, "AFBC compression will be enabled for swapchain images");
+    }
+    else
+    {
+        if (!IsTBDR)
+        {
+            Logger.Info?.Print(LogClass.Gpu, "AFBC not supported: Not a TBDR device");
+        }
+        if (!SupportsImageCompressionControl)
+        {
+            Logger.Info?.Print(LogClass.Gpu, "AFBC not supported: VK_EXT_image_compression_control extension not available");
+        }
+    }
+    
             if (maxQueueCount >= 2)
             {
                 Api.GetDeviceQueue(_device, queueFamilyIndex, 1, out var backgroundQueue);
@@ -990,14 +1009,22 @@ namespace Ryujinx.Graphics.Vulkan
         }
 
         private void PrintGpuInformation()
-        {
-            Logger.Notice.Print(LogClass.Gpu, $"{GpuVendor} {GpuRenderer} ({GpuVersion})");
-            Logger.Notice.Print(LogClass.Gpu, $"GPU Memory: {GetTotalGPUMemory() / (1024 * 1024)} MiB");
-            if (SupportsAfbc)
-            {
-                Logger.Notice.Print(LogClass.Gpu, "AFBC compression: Supported and enabled for swapchain");
-            }
-        }
+{
+    Logger.Notice.Print(LogClass.Gpu, $"{GpuVendor} {GpuRenderer} ({GpuVersion})");
+    Logger.Notice.Print(LogClass.Gpu, $"GPU Memory: {GetTotalGPUMemory() / (1024 * 1024)} MiB");
+    if (SupportsAfbc)
+    {
+        Logger.Notice.Print(LogClass.Gpu, "AFBC compression: Supported and enabled for swapchain");
+    }
+    else
+    {
+        Logger.Notice.Print(LogClass.Gpu, "AFBC compression: Not supported");
+    }
+    
+    // 添加更多设备信息
+    Logger.Info?.Print(LogClass.Gpu, $"Vendor: {Vendor}, IsTBDR: {IsTBDR}");
+    Logger.Info?.Print(LogClass.Gpu, $"Supports Image Compression Control: {SupportsImageCompressionControl}");
+}
 
         public void Initialize(GraphicsDebugLevel logLevel)
         {
