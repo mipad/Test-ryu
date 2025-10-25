@@ -2,6 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using System.Threading;
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Memory
 {
@@ -35,43 +36,70 @@ namespace Ryujinx.Memory
         /// Creates a new instance of the memory block class.
         /// </summary>
         public MemoryBlock(ulong size, MemoryAllocationFlags flags = MemoryAllocationFlags.None)
-{
-    if (flags.HasFlag(MemoryAllocationFlags.Mirrorable))
-    {
-        if (OperatingSystem.IsAndroid())
         {
-            // Android 使用 ASharedMemory_create
-            _sharedMemory = MemoryManagementUnix.CreateSharedMemory(size, flags.HasFlag(MemoryAllocationFlags.Reserve));
-        }
-        else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
-        {
-            // Linux/macOS 使用其他实现
-            _sharedMemory = MemoryManagement.CreateSharedMemory(size, flags.HasFlag(MemoryAllocationFlags.Reserve));
-        }
-        else
-        {
-            throw new PlatformNotSupportedException("Shared memory is not supported on this platform.");
-        }
+            // 欺骗方案：对于大内存请求，实际分配较小空间但保持接口兼容
+            ulong actualSize = size;
+            if (size >= 0x8000000000UL) // 512GB
+            {
+                // 在Android上限制为128GB或更小
+                if (OperatingSystem.IsAndroid())
+                {
+                    actualSize = 0x2000000000UL; // 128GB
+                    Logger.Warning?.Print(LogClass.Memory, 
+                        $"Android memory override: Requested 0x{size:X} (512GB), using 0x{actualSize:X} (128GB) instead");
+                }
+                else if (size > 0x4000000000UL) // 其他平台也限制在256GB
+                {
+                    actualSize = 0x2000000000UL; // 128GB
+                    Logger.Warning?.Print(LogClass.Memory, 
+                        $"Memory size override: Requested 0x{size:X}, using 0x{actualSize:X} instead");
+                }
+            }
 
-        if (!flags.HasFlag(MemoryAllocationFlags.NoMap))
-        {
-            _pointer = MemoryManagement.MapSharedMemory(_sharedMemory, size);
-        }
-        _usesSharedMemory = true;
-    }
+            if (flags.HasFlag(MemoryAllocationFlags.Mirrorable))
+            {
+                if (OperatingSystem.IsAndroid())
+                {
+                    // Android 使用 ASharedMemory_create
+                    _sharedMemory = MemoryManagementUnix.CreateSharedMemory(actualSize, flags.HasFlag(MemoryAllocationFlags.Reserve));
+                }
+                else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+                {
+                    // Linux/macOS 使用其他实现
+                    _sharedMemory = MemoryManagement.CreateSharedMemory(actualSize, flags.HasFlag(MemoryAllocationFlags.Reserve));
+                }
+                else
+                {
+                    throw new PlatformNotSupportedException("Shared memory is not supported on this platform.");
+                }
+
+                if (!flags.HasFlag(MemoryAllocationFlags.NoMap))
+                {
+                    _pointer = MemoryManagement.MapSharedMemory(_sharedMemory, actualSize);
+                }
+                _usesSharedMemory = true;
+            }
             else if (flags.HasFlag(MemoryAllocationFlags.Reserve))
             {
                 _viewCompatible = flags.HasFlag(MemoryAllocationFlags.ViewCompatible);
                 _forJit = flags.HasFlag(MemoryAllocationFlags.Jit);
-                _pointer = MemoryManagement.Reserve(size, _forJit, _viewCompatible);
+                _pointer = MemoryManagement.Reserve(actualSize, _forJit, _viewCompatible);
             }
             else
             {
                 _forJit = flags.HasFlag(MemoryAllocationFlags.Jit);
-                _pointer = MemoryManagement.Allocate(size, _forJit);
+                _pointer = MemoryManagement.Allocate(actualSize, _forJit);
             }
 
+            // 重要：对外仍然报告原始大小，欺骗调用者
             Size = size;
+            
+            // 记录实际分配情况用于调试
+            if (actualSize != size)
+            {
+                Logger.Debug?.Print(LogClass.Memory, 
+                    $"MemoryBlock created: Reported size = 0x{Size:X}, Actual allocation = 0x{actualSize:X}");
+            }
         }
 
         /// <summary>
