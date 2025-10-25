@@ -137,56 +137,54 @@ namespace Ryujinx.Graphics.Vulkan
 
             CurrentTransform = capabilities.CurrentTransform;
 
-            // 准备AFBC压缩控制结构
-            ImageCompressionControlEXT compressionControl = new ImageCompressionControlEXT();
-            void* pNext = null;
-
-            if (_gd.SupportsAfbc)
+            // 对于 Mali GPU，优化图像用法以支持 AFBC
+            ImageUsageFlags imageUsage = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit;
+            
+            // 根据 ARM 文档，避免使用会禁用 AFBC 的标志
+            // 特别是 VK_IMAGE_USAGE_STORAGE_BIT
+            if (!_gd.IsArmMali)
             {
-                Logger.Info?.Print(LogClass.Gpu, "AFBC supported, attempting to enable compression for swapchain images");
-                
-                compressionControl.SType = StructureType.ImageCompressionControlExt;
-                compressionControl.Flags = ImageCompressionFlagsEXT.FixedRateExplicitExt;
-                compressionControl.CompressionControlPlaneCount = 1;
-                
-                // 启用AFBC压缩 - 使用正确的枚举值
-                // 在Silk.NET 2.22.0中，枚举值可能使用不同的命名
-                // 尝试使用不同的命名变体
-                var fixedRateFlags = new ImageCompressionFixedRateFlagsEXT[] 
-                { 
-                    (ImageCompressionFixedRateFlagsEXT)0x00000008 // 直接使用数值对应 VK_IMAGE_COMPRESSION_FIXED_RATE_4BPC_BIT_EXT
-                };
-                
-                fixed (ImageCompressionFixedRateFlagsEXT* pFixedRateFlags = fixedRateFlags)
+                // 非 Mali GPU 可以继续使用 STORAGE_BIT
+                if (!Ryujinx.Common.PlatformInfo.IsBionic)
                 {
-                    compressionControl.PFixedRateFlags = pFixedRateFlags;
-                    pNext = &compressionControl;
+                    imageUsage |= ImageUsageFlags.StorageBit;
                 }
-
-                Logger.Info?.Print(LogClass.Gpu, "AFBC compression control structure prepared with 4BPC fixed rate");
             }
             else
             {
-                Logger.Info?.Print(LogClass.Gpu, "AFBC not supported, creating swapchain without compression");
+                Logger.Info?.Print(LogClass.Gpu, "Mali GPU: Avoiding VK_IMAGE_USAGE_STORAGE_BIT to allow AFBC compression");
+                
+                // 对于某些 Mali 驱动版本，还需要避免 TRANSFER_DST_BIT
+                // 但通常交换链需要这个标志，所以保留它
+                // 如果遇到问题，可以尝试注释掉下一行：
+                // imageUsage &= ~ImageUsageFlags.TransferDstBit;
             }
 
             var swapchainCreateInfo = new SwapchainCreateInfoKHR
             {
                 SType = StructureType.SwapchainCreateInfoKhr,
-                PNext = pNext,
                 Surface = _surface,
                 MinImageCount = imageCount,
                 ImageFormat = surfaceFormat.Format,
                 ImageColorSpace = surfaceFormat.ColorSpace,
                 ImageExtent = extent,
-                ImageUsage = ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit | (Ryujinx.Common.PlatformInfo.IsBionic ? 0 : ImageUsageFlags.StorageBit),
-                ImageSharingMode = SharingMode.Exclusive,
+                ImageUsage = imageUsage, // 使用优化的图像用法
                 ImageArrayLayers = 1,
+                ImageSharingMode = SharingMode.Exclusive,
                 PreTransform = Ryujinx.Common.PlatformInfo.IsBionic ? SurfaceTransformFlagsKHR.IdentityBitKhr : capabilities.CurrentTransform,
                 CompositeAlpha = ChooseCompositeAlpha(capabilities.SupportedCompositeAlpha),
                 PresentMode = ChooseSwapPresentMode(presentModes, _vsyncEnabled),
                 Clipped = true,
             };
+
+            // 对于 Mali GPU，不再尝试使用显式的压缩控制
+            // 因为 AFBC 是驱动程序自动应用的
+            if (_gd.IsArmMali)
+            {
+                Logger.Info?.Print(LogClass.Gpu, "Mali GPU: Allowing driver to automatically apply AFBC when conditions are met");
+                // 不设置 PNext，让驱动程序自动决定
+                swapchainCreateInfo.PNext = null;
+            }
 
             var textureCreateInfo = new TextureCreateInfo(
                 _width,
@@ -205,45 +203,22 @@ namespace Ryujinx.Graphics.Vulkan
                 SwizzleComponent.Blue,
                 SwizzleComponent.Alpha);
 
-            Logger.Info?.Print(LogClass.Gpu, $"Creating swapchain with {imageCount} images, format: {surfaceFormat.Format}, size: {_width}x{_height}");
+            Logger.Info?.Print(LogClass.Gpu, $"Creating swapchain with {imageCount} images, format: {surfaceFormat.Format}, " +
+                            $"size: {_width}x{_height}, usage: {imageUsage}");
 
             Result result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
+            
             if (result != Result.Success)
             {
                 Logger.Error?.Print(LogClass.Gpu, $"Failed to create swapchain: {result}");
-                
-                // 如果启用AFBC失败，尝试不使用压缩重新创建
-                if (_gd.SupportsAfbc)
-                {
-                    Logger.Warning?.Print(LogClass.Gpu, "AFBC compression may not be supported, retrying without compression");
-                    
-                    // 移除压缩控制结构重新创建
-                    swapchainCreateInfo.PNext = null;
-                    result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
-                    
-                    if (result == Result.Success)
-                    {
-                        Logger.Info?.Print(LogClass.Gpu, "Swapchain created successfully without AFBC compression");
-                    }
-                    else
-                    {
-                        Logger.Error?.Print(LogClass.Gpu, $"Failed to create swapchain even without compression: {result}");
-                        result.ThrowOnError();
-                    }
-                }
-                else
-                {
-                    result.ThrowOnError();
-                }
+                result.ThrowOnError();
             }
-            else
+
+            Logger.Info?.Print(LogClass.Gpu, "Swapchain created successfully");
+            
+            if (_gd.IsArmMali)
             {
-                Logger.Info?.Print(LogClass.Gpu, "Swapchain created successfully");
-                
-                if (_gd.SupportsAfbc)
-                {
-                    Logger.Info?.Print(LogClass.Gpu, "AFBC compression should be active for swapchain images");
-                }
+                Logger.Info?.Print(LogClass.Gpu, "Mali GPU: AFBC may be automatically applied by driver if usage flags and image properties allow");
             }
             
             _gd.SwapchainApi.GetSwapchainImages(_device, _swapchain, &imageCount, null);
