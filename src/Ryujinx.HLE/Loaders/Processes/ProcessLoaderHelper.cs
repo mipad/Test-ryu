@@ -371,11 +371,14 @@ namespace Ryujinx.HLE.Loaders.Processes
                 result = resourceLimit.SetLimitValue(LimitableResource.Session, 894);
             }
 
-            // 安卓平台：放宽资源限制
+            // 安卓平台：放宽其他资源限制
             if (isAndroid && result.IsSuccess)
             {
-                result = resourceLimit.SetLimitValue(LimitableResource.MapPhysicalMemoryCount, 4096);
-                result = resourceLimit.SetLimitValue(LimitableResource.MapPhysicalMemorySize, 0x10000000000UL);
+                // 增加内存限制以适应Android平台
+                result = resourceLimit.SetLimitValue(LimitableResource.Memory, applicationRgSize * 2);
+                
+                // 增加线程数量限制
+                result = resourceLimit.SetLimitValue(LimitableResource.Thread, 800);
             }
 
             if (result != Result.Success)
