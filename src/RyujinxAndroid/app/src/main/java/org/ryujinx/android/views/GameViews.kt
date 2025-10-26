@@ -5,7 +5,7 @@ package org.ryujinx.android.views
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.background
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -705,17 +705,19 @@ class GameViews {
                                 .fillMaxWidth()
                                 .height(400.dp) // 增加高度
                         ) {
-                            items(getControlItems()) { control ->
+                            itemsIndexed(getControlItems()) { index, control ->
                                 ControlListItem(
                                     control = control,
                                     mainViewModel = mainViewModel,
                                     onClick = { selectedControl.value = control }
                                 )
-                                HorizontalDivider(
-                                    modifier = Modifier.padding(horizontal = 8.dp),
-                                    thickness = 0.5.dp,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-                                )
+                                if (index < getControlItems().size - 1) {
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(horizontal = 8.dp),
+                                        thickness = 0.5.dp,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                                    )
+                                }
                             }
                         }
                     }
@@ -1104,33 +1106,24 @@ class GameViews {
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Button(
-                                onClick = onDismiss,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                                )
+                            TextButton(
+                                onClick = onDismiss
                             ) {
                                 Text(text = "取消")
                             }
                             
                             Button(
                                 onClick = {
-                                    if (combinationName.value.isNotEmpty() && selectedKeys.value.isNotEmpty()) {
-                                        val newId = mainViewModel.controller?.createCombination(
+                                    if (combinationName.value.isNotBlank() && selectedKeys.value.isNotEmpty()) {
+                                        mainViewModel.controller?.createCombination(
                                             combinationName.value,
                                             selectedKeys.value
                                         )
-                                        if (newId != null && newId != -1) {
-                                            onCombinationCreated()
-                                        }
+                                        onCombinationCreated()
+                                        onDismiss()
                                     }
                                 },
-                                enabled = combinationName.value.isNotEmpty() && selectedKeys.value.isNotEmpty(),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = Color.White
-                                )
+                                enabled = combinationName.value.isNotBlank() && selectedKeys.value.isNotEmpty()
                             ) {
                                 Text(text = "创建")
                             }
@@ -1146,7 +1139,7 @@ class GameViews {
             onKeysSelected: (List<Int>) -> Unit,
             onDismiss: () -> Unit
         ) {
-            val selectedKeys = remember { mutableStateOf(initialSelectedKeys.toMutableList()) }
+            val tempSelectedKeys = remember { mutableStateOf(initialSelectedKeys.toMutableList()) }
 
             BasicAlertDialog(onDismissRequest = onDismiss) {
                 Surface(
@@ -1162,110 +1155,217 @@ class GameViews {
                             .fillMaxWidth()
                             .padding(16.dp)
                     ) {
-                        // 标题
-                        Text(
-                            text = "选择按键 (${selectedKeys.value.size}/4)",
-                            style = MaterialTheme.typography.headlineSmall,
-                            modifier = Modifier
-                                .padding(bottom = 16.dp)
-                                .align(Alignment.CenterHorizontally)
-                        )
-
-                        // 按键网格 - 2列
-                        val buttonKeys = listOf(
-                            0 to "A",
-                            1 to "B", 
-                            2 to "X",
-                            3 to "Y",
-                            4 to "L",
-                            5 to "R",
-                            6 to "ZL",
-                            7 to "ZR",
-                            8 to "+",
-                            9 to "-",
-                            10 to "L3",
-                            11 to "R3",
-                            12 to "上",
-                            13 to "下", 
-                            14 to "左",
-                            15 to "右"
-                        )
-
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(300.dp)
-                        ) {
-                            items(buttonKeys.chunked(2)) { row ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceEvenly
-                                ) {
-                                    row.forEach { (keyCode, keyName) ->
-                                        val isSelected = selectedKeys.value.contains(keyCode)
-                                        Button(
-                                            onClick = {
-                                                if (isSelected) {
-                                                    selectedKeys.value.remove(keyCode)
-                                                } else if (selectedKeys.value.size < 4) {
-                                                    selectedKeys.value.add(keyCode)
-                                                }
-                                            },
-                                            enabled = !isSelected && selectedKeys.value.size < 4 || isSelected,
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = if (isSelected) 
-                                                    MaterialTheme.colorScheme.primary 
-                                                else 
-                                                    MaterialTheme.colorScheme.secondaryContainer,
-                                                contentColor = if (isSelected) 
-                                                    Color.White 
-                                                else 
-                                                    MaterialTheme.colorScheme.onSecondaryContainer
-                                            ),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .padding(4.dp)
-                                        ) {
-                                            Text(text = keyName)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // 按钮行
+                        // 顶部按钮行 - 添加确定按钮
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Button(
-                                onClick = onDismiss,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                                )
+                            TextButton(
+                                onClick = onDismiss
                             ) {
                                 Text(text = "取消")
                             }
                             
+                            // 标题
+                            Text(
+                                text = "选择按键 (${tempSelectedKeys.value.size}/4)",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            
                             Button(
-                                onClick = { onKeysSelected(selectedKeys.value) },
+                                onClick = {
+                                    onKeysSelected(tempSelectedKeys.value.toList())
+                                },
+                                enabled = tempSelectedKeys.value.isNotEmpty(),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = Color.White
+                                    disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                                    disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                                 )
                             ) {
                                 Text(text = "确定")
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // 按键列表 - 排除摇杆按键
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(400.dp)
+                        ) {
+                            itemsIndexed(getAvailableKeys()) { index, keyItem ->
+                                val isSelected = tempSelectedKeys.value.contains(keyItem.keyCode)
+                                KeySelectionItem(
+                                    keyItem = keyItem,
+                                    isSelected = isSelected,
+                                    onClick = {
+                                        val currentList = tempSelectedKeys.value.toMutableList()
+                                        if (isSelected) {
+                                            currentList.remove(keyItem.keyCode)
+                                        } else {
+                                            if (currentList.size < 4) {
+                                                currentList.add(keyItem.keyCode)
+                                            }
+                                        }
+                                        tempSelectedKeys.value = currentList
+                                    },
+                                    enabled = tempSelectedKeys.value.size < 4 || isSelected
+                                )
+                                
+                                if (index < getAvailableKeys().size - 1) {
+                                    HorizontalDivider(
+                                        thickness = 0.5.dp,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                                    )
+                                }
+                            }
+                        }
+
+                        // 底部说明
+                        Text(
+                            text = "最多可选择4个按键",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                                .align(Alignment.CenterHorizontally)
+                        )
                     }
                 }
             }
         }
 
-        private fun getKeyName(keyCode: Int): String {
+        @Composable
+        fun KeySelectionItem(
+            keyItem: KeyItem,
+            isSelected: Boolean,
+            onClick: () -> Unit,
+            enabled: Boolean = true
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp),
+                color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) 
+                       else Color.Transparent,
+                onClick = onClick
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = keyItem.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (enabled) MaterialTheme.colorScheme.onSurface 
+                               else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    )
+                    if (isSelected) {
+                        Text(
+                            text = "✓",
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 16.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        // 控件数据类
+        data class ControlItem(
+            val id: Int,
+            val name: String,
+            val description: String,
+            val emoji: String,
+            val type: ControlType
+        )
+
+        data class KeyItem(
+            val keyCode: Int,
+            val name: String
+        )
+
+        enum class ControlType {
+            BUTTON, JOYSTICK, DPAD, COMBINATION
+        }
+
+        // 获取所有控件列表 - 添加组合按键
+        fun getControlItems(): List<ControlItem> {
+            val baseItems = listOf(
+                // 按钮
+                ControlItem(1, "A 按钮", "确认/主要动作", "🅰️", ControlType.BUTTON),
+                ControlItem(2, "B 按钮", "取消/次要动作", "🅱️", ControlType.BUTTON),
+                ControlItem(3, "X 按钮", "特殊功能", "❎", ControlType.BUTTON),
+                ControlItem(4, "Y 按钮", "特殊功能", "💠", ControlType.BUTTON),
+                ControlItem(5, "L 肩键", "左肩部按键", "🔗", ControlType.BUTTON),
+                ControlItem(6, "R 肩键", "右肩部按键", "🔗", ControlType.BUTTON),
+                ControlItem(7, "ZL 扳机", "左扳机键", "🎯", ControlType.BUTTON),
+                ControlItem(8, "ZR 扳机", "右扳机键", "🎯", ControlType.BUTTON),
+                ControlItem(9, "+ 按钮", "开始/菜单", "➕", ControlType.BUTTON),
+                ControlItem(10, "- 按钮", "选择/返回", "➖", ControlType.BUTTON),
+                ControlItem(11, "L3 按钮", "左摇杆按下", "🎮", ControlType.BUTTON),
+                ControlItem(12, "R3 按钮", "右摇杆按下", "🎮", ControlType.BUTTON),
+                
+                // 摇杆
+                ControlItem(101, "左摇杆", "移动/方向控制", "🕹️", ControlType.JOYSTICK),
+                ControlItem(102, "右摇杆", "视角/镜头控制", "🕹️", ControlType.JOYSTICK),
+                
+                // 方向键 
+                ControlItem(201, "方向键", "方向选择", "✛", ControlType.DPAD)
+            )
+            
+            // 添加组合按键
+            val combinations = MainActivity.mainViewModel?.controller?.getAllCombinations() ?: emptyList()
+            val combinationItems = combinations.map { config ->
+                ControlItem(
+                    config.id,
+                    config.name,  // 使用自定义名称而不是固定描述
+                    "组合按键: ${config.keyCodes.joinToString("+") { getKeyName(it) }}",
+                    "🔣",
+                    ControlType.COMBINATION
+                )
+            }
+            
+            return baseItems + combinationItems
+        }
+
+        // 获取可用的按键列表 - 排除摇杆按键
+        fun getAvailableKeys(): List<KeyItem> {
+            return listOf(
+                // 基础按钮
+                KeyItem(0, "A 按钮"),
+                KeyItem(1, "B 按钮"),
+                KeyItem(2, "X 按钮"),
+                KeyItem(3, "Y 按钮"),
+                
+                // 肩键和扳机
+                KeyItem(4, "L 肩键"),
+                KeyItem(5, "R 肩键"),
+                KeyItem(6, "ZL 扳机"),
+                KeyItem(7, "ZR 扳机"),
+                
+                // 功能按钮
+                KeyItem(8, "+ 按钮"),
+                KeyItem(9, "- 按钮"),
+                KeyItem(10, "L3 按钮"),
+                KeyItem(11, "R3 按钮"),
+                
+                // 方向键
+                KeyItem(12, "上方向键"),
+                KeyItem(13, "下方向键"),
+                KeyItem(14, "左方向键"),
+                KeyItem(15, "右方向键")
+            )
+        }
+
+        // 获取按键名称
+        fun getKeyName(keyCode: Int): String {
             return when (keyCode) {
                 0 -> "A"
                 1 -> "B"
@@ -1285,66 +1385,6 @@ class GameViews {
                 15 -> "右"
                 else -> "未知"
             }
-        }
-
-        // 控件类型枚举
-        enum class ControlType {
-            BUTTON, JOYSTICK, DPAD, COMBINATION
-        }
-
-        // 控件数据类
-        data class ControlItem(
-            val id: Int,
-            val name: String,
-            val description: String,
-            val emoji: String,
-            val type: ControlType
-        )
-
-        // 获取所有可调整的控件列表
-        private fun getControlItems(): List<ControlItem> {
-            val items = mutableListOf<ControlItem>()
-
-            // 按钮
-            items.addAll(listOf(
-                ControlItem(1, "A按钮", "主要动作按键", "🅰️", ControlType.BUTTON),
-                ControlItem(2, "B按钮", "次要动作按键", "🅱️", ControlType.BUTTON),
-                ControlItem(3, "X按钮", "功能按键1", "❌", ControlType.BUTTON),
-                ControlItem(4, "Y按钮", "功能按键2", "💡", ControlType.BUTTON),
-                ControlItem(5, "L肩键", "左肩部按键", "L", ControlType.BUTTON),
-                ControlItem(6, "R肩键", "右肩部按键", "R", ControlType.BUTTON),
-                ControlItem(7, "ZL扳机", "左扳机键", "ZL", ControlType.BUTTON),
-                ControlItem(8, "ZR扳机", "右扳机键", "ZR", ControlType.BUTTON),
-                ControlItem(9, "+按钮", "开始/菜单", "➕", ControlType.BUTTON),
-                ControlItem(10, "-按钮", "选择/返回", "➖", ControlType.BUTTON),
-                ControlItem(11, "L3按钮", "左摇杆按下", "L3", ControlType.BUTTON),
-                ControlItem(12, "R3按钮", "右摇杆按下", "R3", ControlType.BUTTON)
-            ))
-
-            // 摇杆
-            items.addAll(listOf(
-                ControlItem(101, "左摇杆", "移动/方向控制", "🕹️", ControlType.JOYSTICK),
-                ControlItem(102, "右摇杆", "视角/镜头控制", "🎮", ControlType.JOYSTICK)
-            ))
-
-            // 方向键
-            items.add(ControlItem(201, "方向键", "方向控制", "➕", ControlType.DPAD))
-
-            // 组合按键 - 动态从控制器获取
-            val controller = MainActivity.mainViewModel?.controller
-            controller?.getAllCombinations()?.forEach { combination ->
-                items.add(
-                    ControlItem(
-                        combination.id,
-                        combination.name, // 使用自定义名称而不是"组合键1"
-                        "组合按键: ${combination.keyCodes.joinToString("+") { getKeyName(it) }}",
-                        "🎛️",
-                        ControlType.COMBINATION
-                    )
-                )
-            }
-
-            return items
         }
 
         @Composable
@@ -1413,7 +1453,7 @@ class GameViews {
                                             color = Color.Black.copy(alpha = 0.26f),
                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                                         )
-                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                        //.padding(horizontal = 4.dp, vertical = 2.dp)
                                 )
                             }
                         }
@@ -1430,7 +1470,7 @@ class GameViews {
                                             color = Color.Black.copy(alpha = 0.26f),
                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                                         )
-                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                        //.padding(horizontal = 4.dp, vertical = 2.dp)
                                 )
                             }
                         }
@@ -1441,13 +1481,13 @@ class GameViews {
                                 modifier = Modifier.align(Alignment.Start)
                             ) {
                                 Text(
-                                    text = "${usedMem.value}/${totalMem.value} MB",
+                                    text = "${totalMem.value}/${usedMem.value} MB",
                                     modifier = Modifier
                                         .background(
                                             color = Color.Black.copy(alpha = 0.26f),
                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                                         )
-                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                        //.padding(horizontal = 4.dp, vertical = 2.dp)
                                 )
                             }
                         }
@@ -1470,7 +1510,7 @@ class GameViews {
                                             color = Color.Black.copy(alpha = 0.26f),
                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                                         )
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        //.padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
                                     Text(
                                         text = "${String.format("%.1f", batteryTemperature.value)}°C",
@@ -1492,7 +1532,7 @@ class GameViews {
                                             color = Color.Black.copy(alpha = 0.26f),
                                             shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                                         )
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        //.padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
                                     Text(
                                         text = if (isCharging.value) {
