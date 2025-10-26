@@ -1325,7 +1325,7 @@ class GameViews {
             val combinationItems = combinations.map { config ->
                 ControlItem(
                     config.id,
-                    config.name,
+                    config.name,  // 使用自定义名称而不是固定描述
                     "组合按键: ${config.keyCodes.joinToString("+") { getKeyName(it) }}",
                     "🔣",
                     ControlType.COMBINATION
