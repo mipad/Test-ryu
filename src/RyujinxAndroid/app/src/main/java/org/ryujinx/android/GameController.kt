@@ -942,9 +942,15 @@ class ButtonLayoutManager(private val context: Context) {
         prefs.edit().putInt("combination_${combinationId}_scale", scale.coerceIn(10, 200)).apply()
     }
     
-    // 组合按键管理方法
+    // 组合按键管理方法 - 修复ID生成和存储问题
     fun createCombination(name: String, keyCodes: List<Int>): Int {
-        val newId = 300 + combinationConfigs.size + 1
+        // 使用递增的ID，确保每次重启后ID不重复
+        val nextId = prefs.getInt("next_combination_id", 301)
+        val newId = nextId
+        
+        // 保存下一个可用的ID
+        prefs.edit().putInt("next_combination_id", nextId + 1).apply()
+        
         val config = CombinationConfig(
             newId, 
             name, 
@@ -957,9 +963,12 @@ class ButtonLayoutManager(private val context: Context) {
         )
         combinationConfigs.add(config)
         
+        // 保存组合按键数量
+        val combinationCount = combinationConfigs.size
+        prefs.edit().putInt("combination_count", combinationCount).apply()
+        
         // 保存到 SharedPreferences
         val editor = prefs.edit()
-        editor.putInt("combination_count", combinationConfigs.size)
         editor.putString("combination_${newId}_name", name)
         editor.putInt("combination_${newId}_key_count", keyCodes.size)
         keyCodes.forEachIndexed { index, keyCode ->
@@ -978,9 +987,12 @@ class ButtonLayoutManager(private val context: Context) {
     fun deleteCombination(combinationId: Int) {
         combinationConfigs.removeAll { it.id == combinationId }
         
+        // 更新组合按键数量
+        val combinationCount = combinationConfigs.size
+        prefs.edit().putInt("combination_count", combinationCount).apply()
+        
         // 更新 SharedPreferences
         val editor = prefs.edit()
-        editor.putInt("combination_count", combinationConfigs.size)
         
         // 移除该组合的所有数据
         for (i in 0 until 10) { // 假设最多10个按键
@@ -1729,7 +1741,7 @@ class GameController(var activity: Activity) {
                 dpadView?.let { dpad ->
                     val parent = dpad.parent as? ViewGroup ?: return@let
                     val x = event.rawX.toInt() - parent.left
-                    val y = event.rawX.toInt() - parent.top
+                    val y = event.rawY.toInt() - parent.top
                     
                     val clampedX = MathUtils.clamp(x, 0, parent.width)
                     val clampedY = MathUtils.clamp(y, 0, parent.height)
@@ -1902,7 +1914,7 @@ class GameController(var activity: Activity) {
         return true
     }
     
-    // 新增方法：处理组合按键事件
+    // 新增方法：处理组合按键事件 - 修复按键代码映射问题
     private fun handleCombinationEvent(event: MotionEvent, keyCodes: List<Int>, combinationId: Int): Boolean {
         if (controllerId == -1) {
             controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
@@ -1911,16 +1923,54 @@ class GameController(var activity: Activity) {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 virtualCombinations[combinationId]?.setPressedState(true)
-                // 按下所有组合按键
+                // 按下所有组合按键 - 修复：使用正确的按键代码映射
                 keyCodes.forEach { keyCode ->
-                    RyujinxNative.jnaInstance.inputSetButtonPressed(keyCode, controllerId)
+                    val actualKeyCode = when (keyCode) {
+                        0 -> GamePadButtonInputId.A.ordinal
+                        1 -> GamePadButtonInputId.B.ordinal
+                        2 -> GamePadButtonInputId.X.ordinal
+                        3 -> GamePadButtonInputId.Y.ordinal
+                        4 -> GamePadButtonInputId.LeftShoulder.ordinal
+                        5 -> GamePadButtonInputId.RightShoulder.ordinal
+                        6 -> GamePadButtonInputId.LeftTrigger.ordinal
+                        7 -> GamePadButtonInputId.RightTrigger.ordinal
+                        8 -> GamePadButtonInputId.Plus.ordinal
+                        9 -> GamePadButtonInputId.Minus.ordinal
+                        10 -> GamePadButtonInputId.LeftStickButton.ordinal
+                        11 -> GamePadButtonInputId.RightStickButton.ordinal
+                        12 -> GamePadButtonInputId.DpadUp.ordinal
+                        13 -> GamePadButtonInputId.DpadDown.ordinal
+                        14 -> GamePadButtonInputId.DpadLeft.ordinal
+                        15 -> GamePadButtonInputId.DpadRight.ordinal
+                        else -> keyCode
+                    }
+                    RyujinxNative.jnaInstance.inputSetButtonPressed(actualKeyCode, controllerId)
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 virtualCombinations[combinationId]?.setPressedState(false)
-                // 释放所有组合按键
+                // 释放所有组合按键 - 修复：使用正确的按键代码映射
                 keyCodes.forEach { keyCode ->
-                    RyujinxNative.jnaInstance.inputSetButtonReleased(keyCode, controllerId)
+                    val actualKeyCode = when (keyCode) {
+                        0 -> GamePadButtonInputId.A.ordinal
+                        1 -> GamePadButtonInputId.B.ordinal
+                        2 -> GamePadButtonInputId.X.ordinal
+                        3 -> GamePadButtonInputId.Y.ordinal
+                        4 -> GamePadButtonInputId.LeftShoulder.ordinal
+                        5 -> GamePadButtonInputId.RightShoulder.ordinal
+                        6 -> GamePadButtonInputId.LeftTrigger.ordinal
+                        7 -> GamePadButtonInputId.RightTrigger.ordinal
+                        8 -> GamePadButtonInputId.Plus.ordinal
+                        9 -> GamePadButtonInputId.Minus.ordinal
+                        10 -> GamePadButtonInputId.LeftStickButton.ordinal
+                        11 -> GamePadButtonInputId.RightStickButton.ordinal
+                        12 -> GamePadButtonInputId.DpadUp.ordinal
+                        13 -> GamePadButtonInputId.DpadDown.ordinal
+                        14 -> GamePadButtonInputId.DpadLeft.ordinal
+                        15 -> GamePadButtonInputId.DpadRight.ordinal
+                        else -> keyCode
+                    }
+                    RyujinxNative.jnaInstance.inputSetButtonReleased(actualKeyCode, controllerId)
                 }
             }
         }
