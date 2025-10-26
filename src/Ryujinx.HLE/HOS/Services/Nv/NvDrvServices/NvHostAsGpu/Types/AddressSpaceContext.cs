@@ -1,5 +1,7 @@
 using Ryujinx.Graphics.Gpu.Memory;
+using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
 namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu.Types
 {
@@ -45,7 +47,7 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu.Types
             _reservations = new SortedList<ulong, Range>();
             
             // 检测安卓平台
-            _isAndroid = OperatingSystem.IsAndroid();
+            _isAndroid = RuntimeInformation.IsOSPlatform(OSPlatform.Create("ANDROID"));
         }
 
         public bool ValidateFixedBuffer(ulong address, ulong size, ulong alignment)
