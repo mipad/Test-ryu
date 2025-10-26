@@ -5,7 +5,7 @@ package org.ryujinx.android.views
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.background
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -705,19 +705,17 @@ class GameViews {
                                 .fillMaxWidth()
                                 .height(400.dp) // 增加高度
                         ) {
-                            itemsIndexed(getControlItems()) { index, control ->
+                            items(getControlItems()) { control ->
                                 ControlListItem(
                                     control = control,
                                     mainViewModel = mainViewModel,
                                     onClick = { selectedControl.value = control }
                                 )
-                                if (index < getControlItems().size - 1) {
-                                    HorizontalDivider(
-                                        modifier = Modifier.padding(horizontal = 8.dp),
-                                        thickness = 0.5.dp,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-                                    )
-                                }
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                    thickness = 0.5.dp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                                )
                             }
                         }
                     }
@@ -1347,6 +1345,184 @@ class GameViews {
             }
 
             return items
+        }
+
+        @Composable
+        fun GameStats(
+            mainViewModel: MainViewModel,
+            showFps: Boolean,
+            showRam: Boolean,
+            showBatteryTemperature: Boolean,
+            showBatteryLevel: Boolean,
+            showFifo: Boolean
+        ) {
+            val fifo = remember {
+                mutableDoubleStateOf(0.0)
+            }
+            val gameFps = remember {
+                mutableDoubleStateOf(0.0)
+            }
+            val gameTime = remember {
+                mutableDoubleStateOf(0.0)
+            }
+            val usedMem = remember {
+                mutableIntStateOf(0)
+            }
+            val totalMem = remember {
+                mutableIntStateOf(0)
+            }
+            // 电池温度状态
+            val batteryTemperature = remember {
+                mutableDoubleStateOf(0.0)
+            }
+            // 电池电量状态
+            val batteryLevel = remember {
+                mutableIntStateOf(-1)
+            }
+            // 充电状态
+            val isCharging = remember {
+                mutableStateOf(false)
+            }
+
+            // 完全透明的文字面板
+            CompositionLocalProvider(
+                LocalTextStyle provides TextStyle(
+                    fontSize = 10.sp,
+                    color = Color.White // 确保文字在游戏画面上可见
+                )
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    // 左上角的性能指标
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(16.dp)
+                            .background(Color.Transparent) // 完全透明背景
+                    ) {
+                        val gameTimeVal = if (!gameTime.value.isInfinite()) gameTime.value else 0.0
+                        
+                        // FIFO显示（根据设置决定是否显示）
+                        if (showFifo) {
+                            Box(
+                                modifier = Modifier.align(Alignment.Start)
+                            ) {
+                                Text(
+                                    text = "${String.format("%.1f", fifo.value)}%",
+                                    modifier = Modifier
+                                        .background(
+                                            color = Color.Black.copy(alpha = 0.26f),
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        
+                        // FPS显示（根据设置决定是否显示）
+                        if (showFps) {
+                            Box(
+                                modifier = Modifier.align(Alignment.Start)
+                            ) {
+                                Text(
+                                    text = "${String.format("%.1f", gameFps.value)} FPS",
+                                    modifier = Modifier
+                                        .background(
+                                            color = Color.Black.copy(alpha = 0.26f),
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        
+                        // 内存使用（根据设置决定是否显示）
+                        if (showRam) {
+                            Box(
+                                modifier = Modifier.align(Alignment.Start)
+                            ) {
+                                Text(
+                                    text = "${usedMem.value}/${totalMem.value} MB",
+                                    modifier = Modifier
+                                        .background(
+                                            color = Color.Black.copy(alpha = 0.26f),
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // 右上角的电池信息显示
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(16.dp)
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.End
+                        ) {
+                            // 电池温度显示（根据设置决定是否显示）
+                            if (showBatteryTemperature && batteryTemperature.value > 0) {
+                                Box(
+                                    modifier = Modifier
+                                        .background(
+                                            color = Color.Black.copy(alpha = 0.26f),
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "${String.format("%.1f", batteryTemperature.value)}°C",
+                                        color = when {
+                                            batteryTemperature.value > 40 -> Color.Red
+                                            batteryTemperature.value > 35 -> Color.Yellow
+                                            else -> Color.White
+                                        }
+                                    )
+                                }
+                            }
+                            
+                            // 电池电量显示（根据设置决定是否显示）
+                            if (showBatteryLevel && batteryLevel.value >= 0) {
+                                Spacer(modifier = Modifier.padding(2.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .background(
+                                            color = Color.Black.copy(alpha = 0.26f),
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = if (isCharging.value) {
+                                            "${batteryLevel.value}% ⚡"
+                                        } else {
+                                            "${batteryLevel.value}%"
+                                        },
+                                        color = when {
+                                            batteryLevel.value < 15 -> Color.Red
+                                            batteryLevel.value < 40 -> Color.Yellow
+                                            else -> Color.White
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            mainViewModel.setStatStates(
+                fifo, 
+                gameFps, 
+                gameTime, 
+                usedMem, 
+                totalMem, 
+                batteryTemperature,
+                batteryLevel,
+                isCharging
+            )
         }
     }
 }
