@@ -726,29 +726,32 @@ class ButtonLayoutManager(private val context: Context) {
     
     private fun loadCombinationConfigs() {
         combinationConfigs.clear()
-        val combinationCount = prefs.getInt("combination_count", 0)
+        val combinationIds = prefs.getString("combination_ids", "") ?: ""
         
-        for (i in 1..combinationCount) {
-            val name = prefs.getString("combination_${i}_name", "组合${i}") ?: "组合${i}"
-            val keyCount = prefs.getInt("combination_${i}_key_count", 0)
-            val keyCodes = mutableListOf<Int>()
-            
-            for (j in 0 until keyCount) {
-                val keyCode = prefs.getInt("combination_${i}_key_${j}", -1)
-                if (keyCode != -1) {
-                    keyCodes.add(keyCode)
+        if (combinationIds.isNotEmpty()) {
+            val ids = combinationIds.split(",").mapNotNull { it.toIntOrNull() }
+            for (id in ids) {
+                val name = prefs.getString("combination_${id}_name", "组合${id}") ?: "组合${id}"
+                val keyCount = prefs.getInt("combination_${id}_key_count", 0)
+                val keyCodes = mutableListOf<Int>()
+                
+                for (j in 0 until keyCount) {
+                    val keyCode = prefs.getInt("combination_${id}_key_${j}", -1)
+                    if (keyCode != -1) {
+                        keyCodes.add(keyCode)
+                    }
                 }
+                
+                val defaultX = prefs.getFloat("combination_${id}_default_x", 0.5f)
+                val defaultY = prefs.getFloat("combination_${id}_default_y", 0.3f)
+                val enabled = prefs.getBoolean("combination_${id}_enabled", true)
+                val opacity = prefs.getInt("combination_${id}_opacity", 100)
+                val scale = prefs.getInt("combination_${id}_scale", 50)
+                
+                combinationConfigs.add(
+                    CombinationConfig(id, name, keyCodes, defaultX, defaultY, enabled, opacity, scale)
+                )
             }
-            
-            val defaultX = prefs.getFloat("combination_${i}_default_x", 0.5f)
-            val defaultY = prefs.getFloat("combination_${i}_default_y", 0.3f)
-            val enabled = prefs.getBoolean("combination_${i}_enabled", true)
-            val opacity = prefs.getInt("combination_${i}_opacity", 100)
-            val scale = prefs.getInt("combination_${i}_scale", 50)
-            
-            combinationConfigs.add(
-                CombinationConfig(300 + i, name, keyCodes, defaultX, defaultY, enabled, opacity, scale)
-            )
         }
     }
     
@@ -951,6 +954,16 @@ class ButtonLayoutManager(private val context: Context) {
         // 保存下一个可用的ID
         prefs.edit().putInt("next_combination_id", nextId + 1).apply()
         
+        // 获取现有的组合按键ID列表
+        val existingIds = prefs.getString("combination_ids", "") ?: ""
+        val idList = if (existingIds.isEmpty()) {
+            mutableListOf<String>()
+        } else {
+            existingIds.split(",").toMutableList()
+        }
+        idList.add(newId.toString())
+        prefs.edit().putString("combination_ids", idList.joinToString(",")).apply()
+
         val config = CombinationConfig(
             newId, 
             name, 
@@ -963,10 +976,6 @@ class ButtonLayoutManager(private val context: Context) {
         )
         combinationConfigs.add(config)
         
-        // 保存组合按键数量
-        val combinationCount = combinationConfigs.size
-        prefs.edit().putInt("combination_count", combinationCount).apply()
-        
         // 保存到 SharedPreferences
         val editor = prefs.edit()
         editor.putString("combination_${newId}_name", name)
@@ -976,6 +985,8 @@ class ButtonLayoutManager(private val context: Context) {
         }
         editor.putFloat("combination_${newId}_default_x", 0.5f)
         editor.putFloat("combination_${newId}_default_y", 0.3f)
+        editor.putFloat("combination_${newId}_x", 0.5f) // 保存初始位置
+        editor.putFloat("combination_${newId}_y", 0.3f) // 保存初始位置
         editor.putBoolean("combination_${newId}_enabled", true)
         editor.putInt("combination_${newId}_opacity", 100)
         editor.putInt("combination_${newId}_scale", 50)
@@ -987,9 +998,15 @@ class ButtonLayoutManager(private val context: Context) {
     fun deleteCombination(combinationId: Int) {
         combinationConfigs.removeAll { it.id == combinationId }
         
-        // 更新组合按键数量
-        val combinationCount = combinationConfigs.size
-        prefs.edit().putInt("combination_count", combinationCount).apply()
+        // 从ID列表中移除
+        val existingIds = prefs.getString("combination_ids", "") ?: ""
+        val idList = if (existingIds.isEmpty()) {
+            mutableListOf<String>()
+        } else {
+            existingIds.split(",").toMutableList()
+        }
+        idList.remove(combinationId.toString())
+        prefs.edit().putString("combination_ids", idList.joinToString(",")).apply()
         
         // 更新 SharedPreferences
         val editor = prefs.edit()
@@ -1002,6 +1019,8 @@ class ButtonLayoutManager(private val context: Context) {
         editor.remove("combination_${combinationId}_key_count")
         editor.remove("combination_${combinationId}_x")
         editor.remove("combination_${combinationId}_y")
+        editor.remove("combination_${combinationId}_default_x")
+        editor.remove("combination_${combinationId}_default_y")
         editor.remove("combination_${combinationId}_enabled")
         editor.remove("combination_${combinationId}_opacity")
         editor.remove("combination_${combinationId}_scale")
@@ -1096,7 +1115,6 @@ class GameController(var activity: Activity) {
         
         // 创建摇杆 - 传递 individualScale 参数
         manager.getAllJoystickConfigs().forEach { config ->
-            // 修复：不再跳过禁用的控件，而是创建所有控件然后设置可见性
             val joystick = JoystickOverlayView(
                 buttonContainer.context,
                 individualScale = manager.getJoystickScale(config.id) // 传递 individualScale
@@ -1105,8 +1123,9 @@ class GameController(var activity: Activity) {
                 isLeftStick = config.isLeft
                 opacity = (manager.getJoystickOpacity(config.id) * 255 / 100)
                 
-                // 设置初始可见性 - 修复：根据保存的状态设置可见性
-                isVisible = manager.isJoystickEnabled(config.id)
+                // 修复：正确设置初始可见性
+                val isEnabled = manager.isJoystickEnabled(config.id)
+                isVisible = isEnabled
                 
                 // 不在这里设置位置，统一在 refreshControlPositions 中设置
                 
@@ -1125,15 +1144,15 @@ class GameController(var activity: Activity) {
         }
         
         // 创建方向键 - 传递 individualScale 参数
-        // 修复：不再跳过禁用的控件，而是创建所有控件然后设置可见性
         dpadView = DpadOverlayView(
             buttonContainer.context,
             individualScale = manager.getDpadScale() // 传递 individualScale
         ).apply {
             opacity = (manager.getDpadOpacity() * 255 / 100)
             
-            // 设置初始可见性 - 修复：根据保存的状态设置可见性
-            isVisible = manager.isDpadEnabled()
+            // 修复：正确设置初始可见性
+            val isEnabled = manager.isDpadEnabled()
+            isVisible = isEnabled
             
             // 不在这里设置位置，统一在 refreshControlPositions 中设置
             
@@ -1150,7 +1169,6 @@ class GameController(var activity: Activity) {
         
         // 创建按钮 - 传递 individualScale 参数
         manager.getAllButtonConfigs().forEach { config ->
-            // 修复：不再跳过禁用的控件，而是创建所有控件然后设置可见性
             val button = ButtonOverlayView(
                 buttonContainer.context,
                 individualScale = manager.getButtonScale(config.id) // 传递 individualScale
@@ -1159,8 +1177,9 @@ class GameController(var activity: Activity) {
                 buttonText = config.text
                 opacity = (manager.getButtonOpacity(config.id) * 255 / 100)
                 
-                // 设置初始可见性 - 修复：根据保存的状态设置可见性
-                isVisible = manager.isButtonEnabled(config.id)
+                // 修复：正确设置初始可见性
+                val isEnabled = manager.isButtonEnabled(config.id)
+                isVisible = isEnabled
                 
                 when (config.id) {
                     1 -> setBitmaps(R.drawable.facebutton_a, R.drawable.facebutton_a_depressed)
@@ -1195,7 +1214,6 @@ class GameController(var activity: Activity) {
         
         // 创建组合按键
         manager.getAllCombinationConfigs().forEach { config ->
-            // 修复：不再跳过禁用的控件，而是创建所有控件然后设置可见性
             val combination = CombinationOverlayView(
                 buttonContainer.context,
                 individualScale = manager.getCombinationScale(config.id)
@@ -1205,8 +1223,9 @@ class GameController(var activity: Activity) {
                 combinationKeys = config.keyCodes
                 opacity = (manager.getCombinationOpacity(config.id) * 255 / 100)
                 
-                // 设置初始可见性 - 修复：根据保存的状态设置可见性
-                isVisible = manager.isCombinationEnabled(config.id)
+                // 修复：正确设置初始可见性
+                val isEnabled = manager.isCombinationEnabled(config.id)
+                isVisible = isEnabled
                 
                 // 不在这里设置位置，统一在 refreshControlPositions 中设置
                 
