@@ -182,6 +182,15 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
 
             AliasRegionExtraSize = 0;
 
+            // Android 特定优化：欺骗地址空间大小
+            ulong reportedAddressSpaceSize = _reservedAddressSpaceSize;
+            if (OperatingSystem.IsAndroid() && _reservedAddressSpaceSize < addrSpaceEnd)
+            {
+                // 在 Android 上，我们报告更大的地址空间但实际上使用较小的空间
+                reportedAddressSpaceSize = addrSpaceEnd; // 报告完整的512GB
+                System.Diagnostics.Debug.WriteLine($"Android address space override: Reporting 0x{reportedAddressSpaceSize:X} instead of actual 0x{_reservedAddressSpaceSize:X}");
+            }
+
             switch (flags & ProcessCreationFlags.AddressSpaceMask)
             {
                 case ProcessCreationFlags.AddressSpace32Bit:
@@ -224,8 +233,8 @@ namespace Ryujinx.HLE.HOS.Kernel.Memory
                     break;
 
                 case ProcessCreationFlags.AddressSpace64Bit:
-                    ulong reservedAddressSpaceSize = _reservedAddressSpaceSize;
-                    if (_reservedAddressSpaceSize < addrSpaceEnd)
+                    ulong reservedAddressSpaceSize = reportedAddressSpaceSize; // 使用报告的大小而不是实际大小
+                    if (reportedAddressSpaceSize < addrSpaceEnd)
                     {
                         int addressSpaceWidth = (int)ulong.Log2(reservedAddressSpaceSize);
 
