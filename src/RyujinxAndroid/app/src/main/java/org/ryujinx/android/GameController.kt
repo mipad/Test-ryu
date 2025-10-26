@@ -50,14 +50,17 @@ class CombinationOverlayView @JvmOverloads constructor(
     private var defaultBitmap: Bitmap? = null
     private var pressedBitmap: Bitmap? = null
     
+    // 修改：将组合按键的基础缩放从0.45改为1.0
+    private val combinationBaseScale = 1.0f
+    
     init {
         setBackgroundResource(0)
         loadBitmaps()
     }
     
     fun loadBitmaps() {
-        defaultBitmap = getBitmapFromVectorDrawable(R.drawable.combination_default, 0.45f)
-        pressedBitmap = getBitmapFromVectorDrawable(R.drawable.combination_pressed, 0.45f)
+        defaultBitmap = getBitmapFromVectorDrawable(R.drawable.combination_default, combinationBaseScale)
+        pressedBitmap = getBitmapFromVectorDrawable(R.drawable.combination_pressed, combinationBaseScale)
     }
     
     private fun getBitmapFromVectorDrawable(drawableId: Int, baseScale: Float): Bitmap {
@@ -124,7 +127,7 @@ class CombinationOverlayView @JvmOverloads constructor(
             canvas.drawBitmap(it, left, top, paint)
         }
         
-        // 绘制组合按键名称
+        // 绘制组合按键名称 - 确保使用自定义名称
         val textPaint = Paint().apply {
             color = Color.WHITE
             textSize = 16f
@@ -1186,7 +1189,7 @@ class GameController(var activity: Activity) {
                 individualScale = manager.getCombinationScale(config.id)
             ).apply {
                 combinationId = config.id
-                combinationName = config.name
+                combinationName = config.name  // 使用自定义名称
                 combinationKeys = config.keyCodes
                 opacity = (manager.getCombinationOpacity(config.id) * 255 / 100)
                 
@@ -1726,7 +1729,7 @@ class GameController(var activity: Activity) {
                 dpadView?.let { dpad ->
                     val parent = dpad.parent as? ViewGroup ?: return@let
                     val x = event.rawX.toInt() - parent.left
-                    val y = event.rawY.toInt() - parent.top
+                    val y = event.rawX.toInt() - parent.top
                     
                     val clampedX = MathUtils.clamp(x, 0, parent.width)
                     val clampedY = MathUtils.clamp(y, 0, parent.height)
