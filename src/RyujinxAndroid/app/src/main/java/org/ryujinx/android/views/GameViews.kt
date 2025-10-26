@@ -570,6 +570,7 @@ class GameViews {
             onDismiss: () -> Unit
         ) {
             val selectedControl = remember { mutableStateOf<ControlItem?>(null) }
+            val showCreateCombination = remember { mutableStateOf(false) }
 
             // 如果选择了具体控件，显示控件调整对话框
             if (selectedControl.value != null) {
@@ -577,6 +578,19 @@ class GameViews {
                     control = selectedControl.value!!,
                     onDismiss = { selectedControl.value = null },
                     mainViewModel = mainViewModel
+                )
+                return
+            }
+
+            // 创建组合按键对话框
+            if (showCreateCombination.value) {
+                CreateCombinationDialog(
+                    mainViewModel = mainViewModel,
+                    onDismiss = { showCreateCombination.value = false },
+                    onCombinationCreated = {
+                        showCreateCombination.value = false
+                        // 刷新控件列表以显示新创建的组合按键
+                    }
                 )
                 return
             }
@@ -623,6 +637,9 @@ class GameViews {
                                                 mainViewModel.controller?.setControlOpacity(control.id, 100)
                                                 mainViewModel.controller?.setControlEnabled(control.id, true)
                                             }
+                                            ControlType.COMBINATION -> {
+                                                // 不重置组合按键，让用户单独管理
+                                            }
                                         }
                                     }
                                     // 不需要调用 refreshControls()，因为单个更新方法已经优化
@@ -652,6 +669,29 @@ class GameViews {
                         }
 
                         Spacer(modifier = Modifier.height(16.dp))
+
+                        // 创建组合按键按钮
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Button(
+                                onClick = { showCreateCombination.value = true },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = Color.White
+                                ),
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(text = "➕", fontSize = 18.sp, modifier = Modifier.padding(end = 8.dp))
+                                    Text(text = "创建组合按键")
+                                }
+                            }
+                        }
 
                         Text(
                             text = "单个按键设置",
@@ -789,22 +829,36 @@ class GameViews {
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // 左侧：重置按钮
-                            TextButton(
-                                onClick = {
-                                    scale.value = 50
-                                    opacity.value = 100
-                                    enabled.value = true
-                                    mainViewModel.controller?.setControlScale(control.id, 50)
-                                    mainViewModel.controller?.setControlOpacity(control.id, 100)
-                                    mainViewModel.controller?.setControlEnabled(control.id, true)
-                                    // 不需要调用 refreshControls()，因为单个更新方法已经优化
-                                },
-                                colors = ButtonDefaults.textButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.secondary
-                                )
-                            ) {
-                                Text(text = "重置")
+                            // 左侧：重置按钮（组合按键显示删除按钮）
+                            if (control.type == ControlType.COMBINATION) {
+                                TextButton(
+                                    onClick = {
+                                        mainViewModel.controller?.deleteCombination(control.id)
+                                        onDismiss()
+                                    },
+                                    colors = ButtonDefaults.textButtonColors(
+                                        contentColor = Color.Red
+                                    )
+                                ) {
+                                    Text(text = "🗑️ 删除")
+                                }
+                            } else {
+                                TextButton(
+                                    onClick = {
+                                        scale.value = 50
+                                        opacity.value = 100
+                                        enabled.value = true
+                                        mainViewModel.controller?.setControlScale(control.id, 50)
+                                        mainViewModel.controller?.setControlOpacity(control.id, 100)
+                                        mainViewModel.controller?.setControlEnabled(control.id, true)
+                                        // 不需要调用 refreshControls()，因为单个更新方法已经优化
+                                    },
+                                    colors = ButtonDefaults.textButtonColors(
+                                        contentColor = MaterialTheme.colorScheme.secondary
+                                    )
+                                ) {
+                                    Text(text = "重置")
+                                }
                             }
 
                             // 中间：标题
@@ -917,6 +971,266 @@ class GameViews {
             }
         }
 
+        @Composable
+        fun CreateCombinationDialog(
+            mainViewModel: MainViewModel,
+            onDismiss: () -> Unit,
+            onCombinationCreated: () -> Unit
+        ) {
+            val combinationName = remember { mutableStateOf("") }
+            val selectedKeys = remember { mutableStateOf(mutableListOf<Int>()) }
+            val showKeySelection = remember { mutableStateOf(false) }
+
+            // 按键选择对话框
+            if (showKeySelection.value) {
+                KeySelectionDialog(
+                    selectedKeys = selectedKeys.value,
+                    onKeysSelected = { keys ->
+                        selectedKeys.value = keys.toMutableList()
+                        showKeySelection.value = false
+                    },
+                    onDismiss = { showKeySelection.value = false }
+                )
+                return
+            }
+
+            BasicAlertDialog(onDismissRequest = onDismiss) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .wrapContentHeight(),
+                    shape = MaterialTheme.shapes.large,
+                    tonalElevation = AlertDialogDefaults.TonalElevation,
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        // 标题
+                        Text(
+                            text = "创建组合按键",
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier
+                                .padding(bottom = 16.dp)
+                                .align(Alignment.CenterHorizontally)
+                        )
+
+                        // 组合按键名称输入
+                        Text(
+                            text = "组合按键名称",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        OutlinedTextField(
+                            value = combinationName.value,
+                            onValueChange = { combinationName.value = it },
+                            placeholder = { Text("输入组合按键名称") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 16.dp)
+                        )
+
+                        // 选择的按键显示
+                        Text(
+                            text = "选择的按键 (${selectedKeys.value.size}/4)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        
+                        if (selectedKeys.value.isEmpty()) {
+                            Text(
+                                text = "暂无选择的按键",
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 16.dp)
+                                    .background(
+                                        Color.LightGray.copy(alpha = 0.2f),
+                                        MaterialTheme.shapes.small
+                                    )
+                                    .padding(16.dp)
+                            )
+                        } else {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp)
+                            ) {
+                                selectedKeys.value.forEachIndexed { index, keyCode ->
+                                    val keyName = getKeyName(keyCode)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(text = "${index + 1}. $keyName")
+                                        IconButton(
+                                            onClick = {
+                                                selectedKeys.value.removeAt(index)
+                                            },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Text(text = "❌", fontSize = 12.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 添加按键按钮
+                        Button(
+                            onClick = { 
+                                if (selectedKeys.value.size < 4) {
+                                    showKeySelection.value = true 
+                                }
+                            },
+                            enabled = selectedKeys.value.size < 4,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Text(text = "➕ 添加按键")
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // 按钮行
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            TextButton(
+                                onClick = onDismiss
+                            ) {
+                                Text(text = "取消")
+                            }
+                            
+                            Button(
+                                onClick = {
+                                    if (combinationName.value.isNotBlank() && selectedKeys.value.isNotEmpty()) {
+                                        mainViewModel.controller?.createCombination(
+                                            combinationName.value,
+                                            selectedKeys.value
+                                        )
+                                        onCombinationCreated()
+                                    }
+                                },
+                                enabled = combinationName.value.isNotBlank() && selectedKeys.value.isNotEmpty()
+                            ) {
+                                Text(text = "创建")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        @Composable
+        fun KeySelectionDialog(
+            selectedKeys: List<Int>,
+            onKeysSelected: (List<Int>) -> Unit,
+            onDismiss: () -> Unit
+        ) {
+            val tempSelectedKeys = remember { mutableStateOf(selectedKeys.toMutableList()) }
+
+            BasicAlertDialog(onDismissRequest = onDismiss) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .wrapContentHeight(),
+                    shape = MaterialTheme.shapes.large,
+                    tonalElevation = AlertDialogDefaults.TonalElevation,
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        // 标题
+                        Text(
+                            text = "选择按键 (${tempSelectedKeys.value.size}/4)",
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier
+                                .padding(bottom = 16.dp)
+                                .align(Alignment.CenterHorizontally)
+                        )
+
+                        // 按键列表 - 排除摇杆按键
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(300.dp)
+                        ) {
+                            itemsIndexed(getAvailableKeys()) { index, keyItem ->
+                                val isSelected = tempSelectedKeys.value.contains(keyItem.keyCode)
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else Color.Transparent,
+                                    onClick = {
+                                        if (isSelected) {
+                                            tempSelectedKeys.value.remove(keyItem.keyCode)
+                                        } else if (tempSelectedKeys.value.size < 4) {
+                                            tempSelectedKeys.value.add(keyItem.keyCode)
+                                        }
+                                    }
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(text = keyItem.name)
+                                        if (isSelected) {
+                                            Text(text = "✅", fontSize = 16.sp)
+                                        }
+                                    }
+                                }
+                                
+                                if (index < getAvailableKeys().size - 1) {
+                                    HorizontalDivider(
+                                        thickness = 0.5.dp,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // 按钮行
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            TextButton(
+                                onClick = onDismiss
+                            ) {
+                                Text(text = "取消")
+                            }
+                            
+                            Button(
+                                onClick = {
+                                    onKeysSelected(tempSelectedKeys.value)
+                                },
+                                enabled = tempSelectedKeys.value.isNotEmpty()
+                            ) {
+                                Text(text = "确定")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // 控件数据类
         data class ControlItem(
             val id: Int,
@@ -926,13 +1240,18 @@ class GameViews {
             val type: ControlType
         )
 
+        data class KeyItem(
+            val keyCode: Int,
+            val name: String
+        )
+
         enum class ControlType {
-            BUTTON, JOYSTICK, DPAD
+            BUTTON, JOYSTICK, DPAD, COMBINATION
         }
 
-        // 获取所有控件列表
+        // 获取所有控件列表 - 添加组合按键
         fun getControlItems(): List<ControlItem> {
-            return listOf(
+            val baseItems = listOf(
                 // 按钮
                 ControlItem(1, "A 按钮", "确认/主要动作", "🅰️", ControlType.BUTTON),
                 ControlItem(2, "B 按钮", "取消/次要动作", "🅱️", ControlType.BUTTON),
@@ -951,9 +1270,78 @@ class GameViews {
                 ControlItem(101, "左摇杆", "移动/方向控制", "🕹️", ControlType.JOYSTICK),
                 ControlItem(102, "右摇杆", "视角/镜头控制", "🕹️", ControlType.JOYSTICK),
                 
-                // 方向键
-                ControlItem(201, "方向键", "方向选择", "✛", ControlType.DPAD)
+                // 方向键 - 单独的上下左右
+                ControlItem(201, "上方向键", "向上移动", "⬆️", ControlType.DPAD),
+                ControlItem(202, "下方向键", "向下移动", "⬇️", ControlType.DPAD),
+                ControlItem(203, "左方向键", "向左移动", "⬅️", ControlType.DPAD),
+                ControlItem(204, "右方向键", "向右移动", "➡️", ControlType.DPAD)
             )
+            
+            // 添加组合按键
+            val combinations = MainActivity.mainViewModel?.controller?.getAllCombinations() ?: emptyList()
+            val combinationItems = combinations.map { config ->
+                ControlItem(
+                    config.id,
+                    config.name,
+                    "组合按键: ${config.keyCodes.joinToString("+") { getKeyName(it) }}",
+                    "🔣",
+                    ControlType.COMBINATION
+                )
+            }
+            
+            return baseItems + combinationItems
+        }
+
+        // 获取可用的按键列表 - 排除摇杆按键
+        fun getAvailableKeys(): List<KeyItem> {
+            return listOf(
+                // 基础按钮
+                KeyItem(0, "A 按钮"),
+                KeyItem(1, "B 按钮"),
+                KeyItem(2, "X 按钮"),
+                KeyItem(3, "Y 按钮"),
+                
+                // 肩键和扳机
+                KeyItem(4, "L 肩键"),
+                KeyItem(5, "R 肩键"),
+                KeyItem(6, "ZL 扳机"),
+                KeyItem(7, "ZR 扳机"),
+                
+                // 功能按钮
+                KeyItem(8, "+ 按钮"),
+                KeyItem(9, "- 按钮"),
+                KeyItem(10, "L3 按钮"),
+                KeyItem(11, "R3 按钮"),
+                
+                // 方向键
+                KeyItem(12, "上方向键"),
+                KeyItem(13, "下方向键"),
+                KeyItem(14, "左方向键"),
+                KeyItem(15, "右方向键")
+            )
+        }
+
+        // 获取按键名称
+        fun getKeyName(keyCode: Int): String {
+            return when (keyCode) {
+                0 -> "A"
+                1 -> "B"
+                2 -> "X"
+                3 -> "Y"
+                4 -> "L"
+                5 -> "R"
+                6 -> "ZL"
+                7 -> "ZR"
+                8 -> "+"
+                9 -> "-"
+                10 -> "L3"
+                11 -> "R3"
+                12 -> "上"
+                13 -> "下"
+                14 -> "左"
+                15 -> "右"
+                else -> "未知"
+            }
         }
 
         @Composable
