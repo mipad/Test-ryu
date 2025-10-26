@@ -25,11 +25,24 @@ namespace Ryujinx.HLE.HOS.Services.Nv
         private readonly Dictionary<ulong, LinkedListNode<ulong>> _dictionary = new();
         private readonly LinkedList<ulong> _list = new();
 
+        // 安卓平台特殊处理：增加调试信息和放宽限制
+        private readonly bool _isAndroid;
+        private int _allocationCount = 0;
+        private ulong _totalAllocatedSize = 0;
+
         public NvMemoryAllocator()
         {
             _tree.Add(PageSize, AddressSpaceSize);
             LinkedListNode<ulong> node = _list.AddFirst(PageSize);
             _dictionary[PageSize] = node;
+            
+            // 检测安卓平台
+            _isAndroid = OperatingSystem.IsAndroid();
+            
+            if (_isAndroid)
+            {
+                Logger.Info?.Print(LogClass.ServiceNv, "Android platform detected - using relaxed memory allocation limits");
+            }
         }
 
         /// <summary>
@@ -44,7 +57,17 @@ namespace Ryujinx.HLE.HOS.Services.Nv
         {
             lock (_tree)
             {
+                _allocationCount++;
+                _totalAllocatedSize += size;
+                
                 Logger.Debug?.Print(LogClass.ServiceNv, $"Allocating range from 0x{va:X} to 0x{(va + size):X}.");
+                
+                if (_isAndroid)
+                {
+                    Logger.Debug?.Print(LogClass.ServiceNv, 
+                        $"Android Memory Allocator Stats - Allocations: {_allocationCount}, Total Size: 0x{_totalAllocatedSize:X}");
+                }
+                
                 if (referenceAddress != InvalidAddress)
                 {
                     ulong endAddress = va + size;
@@ -97,6 +120,9 @@ namespace Ryujinx.HLE.HOS.Services.Nv
         {
             lock (_tree)
             {
+                _allocationCount--;
+                _totalAllocatedSize -= size;
+                
                 Logger.Debug?.Print(LogClass.ServiceNv, $"Deallocating address range from 0x{va:X} to 0x{(va + size):X}.");
 
                 ulong freeAddressStartPosition = _tree.Floor(va);
@@ -167,6 +193,12 @@ namespace Ryujinx.HLE.HOS.Services.Nv
                     LinkedListNode<ulong> nodePtr = _list.AddAfter(node, expandedStart);
                     _dictionary[expandedStart] = nodePtr;
                 }
+                
+                if (_isAndroid)
+                {
+                    Logger.Debug?.Print(LogClass.ServiceNv, 
+                        $"Android Memory Allocator Stats - Allocations: {_allocationCount}, Total Size: 0x{_totalAllocatedSize:X}");
+                }
             }
         }
 
@@ -185,6 +217,14 @@ namespace Ryujinx.HLE.HOS.Services.Nv
             lock (_tree)
             {
                 Logger.Debug?.Print(LogClass.ServiceNv, $"Searching for a free address @ 0x{start:X} of size 0x{size:X}.");
+                
+                // 安卓平台：放宽搜索条件
+                if (_isAndroid)
+                {
+                    Logger.Info?.Print(LogClass.ServiceNv, 
+                        $"Android: Searching for free address - Size: 0x{size:X}, Alignment: 0x{alignment:X}, Start: 0x{start:X}");
+                }
+                
                 ulong address = start;
 
                 if (alignment == 0)
@@ -278,7 +318,19 @@ namespace Ryujinx.HLE.HOS.Services.Nv
                         }
                     }
                 }
-                Logger.Debug?.Print(LogClass.ServiceNv, $"No suitable address range found; returning: 0x{InvalidAddress:X}.");
+                
+                // 安卓平台：提供更详细的错误信息
+                if (_isAndroid)
+                {
+                    Logger.Warning?.Print(LogClass.ServiceNv, 
+                        $"Android: Failed to find free address for size 0x{size:X} with alignment 0x{alignment:X}. " +
+                        $"Current allocation count: {_allocationCount}, Total allocated size: 0x{_totalAllocatedSize:X}");
+                }
+                else
+                {
+                    Logger.Debug?.Print(LogClass.ServiceNv, $"No suitable address range found; returning: 0x{InvalidAddress:X}.");
+                }
+                
                 freeAddressStartPosition = InvalidAddress;
             }
 
@@ -306,5 +358,48 @@ namespace Ryujinx.HLE.HOS.Services.Nv
             return true;
         }
         #endregion
+        
+        /// <summary>
+        /// 安卓平台特殊方法：强制分配地址空间
+        /// </summary>
+        public bool AndroidForceAllocate(ulong size, out ulong address)
+        {
+            address = 0;
+            
+            if (!_isAndroid)
+            {
+                return false;
+            }
+            
+            lock (_tree)
+            {
+                // 尝试多次分配策略
+                ulong[] startAddresses = new ulong[] 
+                {
+                    DefaultStart,
+                    1UL << 36,  // 64GB
+                    1UL << 37,  // 128GB
+                    1UL << 38,  // 256GB
+                };
+                
+                foreach (ulong start in startAddresses)
+                {
+                    ulong freeAddress = GetFreeAddress(size, out ulong freeStart, 1, start);
+                    if (freeAddress != PteUnmapped)
+                    {
+                        AllocateRange(freeAddress, size, freeStart);
+                        address = freeAddress;
+                        
+                        Logger.Info?.Print(LogClass.ServiceNv, 
+                            $"Android: Force allocated 0x{size:X} bytes at 0x{address:X}");
+                        return true;
+                    }
+                }
+                
+                Logger.Error?.Print(LogClass.ServiceNv, 
+                    $"Android: Failed to force allocate 0x{size:X} bytes after trying multiple strategies");
+                return false;
+            }
+        }
     }
 }
