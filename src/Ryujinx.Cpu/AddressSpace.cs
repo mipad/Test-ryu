@@ -1,5 +1,6 @@
 using Ryujinx.Memory;
 using System;
+using Ryujinx.Common.Logging;  // 添加这个命名空间
 
 namespace Ryujinx.Cpu
 {
@@ -53,6 +54,7 @@ namespace Ryujinx.Cpu
             
             if (isAndroid)
             {
+                // 使用 Ryujinx 的日志系统
                 Logger.Info?.Print(LogClass.Cpu, $"Android: Attempting to allocate address space 0x{asSize:X}");
             }
 
@@ -122,3 +124,4 @@ namespace Ryujinx.Cpu
         }
     }
 }
+
