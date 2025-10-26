@@ -1,6 +1,5 @@
 using Ryujinx.Memory;
 using System;
-using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Cpu
 {
@@ -50,61 +49,52 @@ namespace Ryujinx.Cpu
         {
             addressSpace = null;
 
-            // Android 特定优化：不减少地址空间大小，直接使用请求的大小
-            if (OperatingSystem.IsAndroid() && asSize >= 0x8000000000UL)
+            bool isAndroid = OperatingSystem.IsAndroid();
+            
+            if (isAndroid)
             {
-                Logger.Warning?.Print(LogClass.Cpu, 
-                    $"Android address space override: Attempting to allocate full requested size 0x{asSize:X}");
-
-                try
-                {
-                    MemoryBlock baseMemory = new MemoryBlock(asSize, AsFlags);
-                    addressSpace = baseMemory;
-                    Logger.Info?.Print(LogClass.Cpu, 
-                        $"Android address space allocation successful: 0x{asSize:X}");
-                }
-                catch (SystemException ex)
-                {
-                    Logger.Warning?.Print(LogClass.Cpu, 
-                        $"Android address space allocation failed for 0x{asSize:X}: {ex.Message}");
-                    
-                    // 如果直接分配失败，尝试使用较大的分配而不是逐步减小
-                    ulong fallbackSize = 0x4000000000UL; // 256GB
-                    Logger.Warning?.Print(LogClass.Cpu, 
-                        $"Trying fallback size: 0x{fallbackSize:X}");
-                    
-                    try
-                    {
-                        MemoryBlock baseMemory = new MemoryBlock(fallbackSize, AsFlags);
-                        addressSpace = baseMemory;
-                        Logger.Info?.Print(LogClass.Cpu, 
-                            $"Android address space fallback allocation successful: 0x{fallbackSize:X}");
-                    }
-                    catch (SystemException ex2)
-                    {
-                        Logger.Error?.Print(LogClass.Cpu, 
-                            $"Android address space fallback allocation also failed: {ex2.Message}");
-                    }
-                }
-
-                return addressSpace != null;
+                Logger.Info?.Print(LogClass.Cpu, $"Android: Attempting to allocate address space 0x{asSize:X}");
             }
 
-            // 原有逻辑（非Android平台）
-            ulong minAddressSpaceSize = Math.Min(asSize, 1UL << 36);
+            // 安卓平台：使用更积极的分配策略
+            ulong[] sizesToTry = isAndroid ? 
+                new ulong[] { asSize, 0x4000000000UL, 0x3000000000UL, 0x2100000000UL, 0x1000000000UL } :
+                new ulong[] { asSize, 0x2100000000UL, 0x1000000000UL };
 
-            // Attempt to create the address space with expected size or try to reduce it until it succeed.
-            for (ulong addressSpaceSize = asSize; addressSpaceSize >= minAddressSpaceSize; addressSpaceSize -= 0x100000000UL)
+            foreach (ulong addressSpaceSize in sizesToTry)
             {
                 try
                 {
                     MemoryBlock baseMemory = new MemoryBlock(addressSpaceSize, AsFlags);
                     addressSpace = baseMemory;
-
+                    
+                    if (isAndroid)
+                    {
+                        Logger.Info?.Print(LogClass.Cpu, 
+                            $"Android: Successfully allocated address space: 0x{addressSpaceSize:X} " +
+                            $"(requested: 0x{asSize:X})");
+                    }
+                    else
+                    {
+                        Logger.Info?.Print(LogClass.Cpu, 
+                            $"Successfully allocated address space: 0x{addressSpaceSize:X} " +
+                            $"(requested: 0x{asSize:X})");
+                    }
+                    
                     break;
                 }
-                catch (SystemException)
+                catch (SystemException ex)
                 {
+                    if (isAndroid)
+                    {
+                        Logger.Debug?.Print(LogClass.Cpu, 
+                            $"Android: Failed to allocate 0x{addressSpaceSize:X} address space: {ex.Message}");
+                    }
+                    else
+                    {
+                        Logger.Debug?.Print(LogClass.Cpu, 
+                            $"Failed to allocate 0x{addressSpaceSize:X} address space: {ex.Message}");
+                    }
                 }
             }
 
