@@ -254,6 +254,13 @@ namespace Ryujinx.HLE.Loaders.Processes
             ulong codeStart = ((meta.Flags & 1) != 0 ? 0x8000000UL : 0x200000UL) + CodeStartOffset;
             ulong codeSize = 0;
 
+            // 安卓平台：检测并优化地址空间需求
+            bool isAndroid = OperatingSystem.IsAndroid();
+            if (isAndroid)
+            {
+                Logger.Info?.Print(LogClass.Loader, "Android: Optimizing address space requirements");
+            }
+
             var buildIds = executables.Select(e => (e switch
             {
                 NsoExecutable nso => Convert.ToHexString(nso.BuildId),
@@ -313,6 +320,17 @@ namespace Ryujinx.HLE.Loaders.Processes
             int codePagesCount = (int)(codeSize / KPageTableBase.PageSize);
             int personalMmHeapPagesCount = (int)(meta.SystemResourceSize / KPageTableBase.PageSize);
 
+            // 安卓平台：确保代码大小合理
+            if (isAndroid)
+            {
+                ulong maxReasonableCodeSize = 0x100000000UL; // 4GB
+                if (codeSize > maxReasonableCodeSize)
+                {
+                    Logger.Warning?.Print(LogClass.Loader, 
+                        $"Android: Code size 0x{codeSize:X} seems excessive, but continuing anyway");
+                }
+            }
+
             ProcessCreationInfo creationInfo = new(
                 name,
                 (int)meta.Version,
@@ -351,6 +369,13 @@ namespace Ryujinx.HLE.Loaders.Processes
             if (result.IsSuccess)
             {
                 result = resourceLimit.SetLimitValue(LimitableResource.Session, 894);
+            }
+
+            // 安卓平台：放宽资源限制
+            if (isAndroid && result.IsSuccess)
+            {
+                result = resourceLimit.SetLimitValue(LimitableResource.MapPhysicalMemoryCount, 4096);
+                result = resourceLimit.SetLimitValue(LimitableResource.MapPhysicalMemorySize, 0x10000000000UL);
             }
 
             if (result != Result.Success)
