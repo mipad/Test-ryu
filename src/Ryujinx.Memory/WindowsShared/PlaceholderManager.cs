@@ -1,4 +1,3 @@
-using Ryujinx.Common;
 using Ryujinx.Common.Collections;
 using Ryujinx.Common.Memory.PartialUnmaps;
 using System;
@@ -19,7 +18,6 @@ namespace Ryujinx.Memory.WindowsShared
 
         private readonly MappingTree<ulong> _mappings;
         private readonly MappingTree<MemoryPermission> _protections;
-        private readonly ObjectPool<RangeNode<MemoryPermission>> _protectionObjectPool;
         private readonly IntPtr _partialUnmapStatePtr;
         private readonly Thread _partialUnmapTrimThread;
 
@@ -30,8 +28,6 @@ namespace Ryujinx.Memory.WindowsShared
         {
             _mappings = new MappingTree<ulong>();
             _protections = new MappingTree<MemoryPermission>();
-            
-            _protectionObjectPool = new ObjectPool<RangeNode<MemoryPermission>>(() => new RangeNode<MemoryPermission>());
 
             _partialUnmapStatePtr = PartialUnmapState.GlobalState;
 
@@ -79,11 +75,7 @@ namespace Ryujinx.Memory.WindowsShared
 
             lock (_protections)
             {
-                var node = _protectionObjectPool.Allocate();
-                node.Start = address;
-                node.End = address + size;
-                node.Value = MemoryPermission.None;
-                _protections.Add(node);
+                _protections.Add(new RangeNode<MemoryPermission>(address, address + size, MemoryPermission.None));
             }
         }
 
@@ -636,24 +628,14 @@ namespace Ryujinx.Memory.WindowsShared
                     {
                         if (startAddress > protAddress)
                         {
-                            var newNode = _protectionObjectPool.Allocate();
-                            newNode.Start = protAddress;
-                            newNode.End = startAddress;
-                            newNode.Value = protPermission;
-                            _protections.Add(newNode);
+                            _protections.Add(new RangeNode<MemoryPermission>(protAddress, startAddress, protPermission));
                         }
 
                         if (endAddress < protEndAddress)
                         {
-                            var newNode = _protectionObjectPool.Allocate();
-                            newNode.Start = endAddress;
-                            newNode.End = protEndAddress;
-                            newNode.Value = protPermission;
-                            _protections.Add(newNode);
+                            _protections.Add(new RangeNode<MemoryPermission>(endAddress, protEndAddress, protPermission));
                         }
                     }
-                    
-                    _protectionObjectPool.Release(protection);
 
                     if (node.End >= endAddress)
                     {
@@ -661,11 +643,7 @@ namespace Ryujinx.Memory.WindowsShared
                     }
                 }
 
-                var finalNode = _protectionObjectPool.Allocate();
-                finalNode.Start = startAddress;
-                finalNode.End = endAddress;
-                finalNode.Value = permission;
-                _protections.Add(finalNode);
+                _protections.Add(new RangeNode<MemoryPermission>(startAddress, endAddress, permission));
             }
         }
 
@@ -696,24 +674,14 @@ namespace Ryujinx.Memory.WindowsShared
 
                     if (address > protAddress)
                     {
-                        var newNode = _protectionObjectPool.Allocate();
-                        newNode.Start = protAddress;
-                        newNode.End = address;
-                        newNode.Value = protPermission;
-                        _protections.Add(newNode);
+                        _protections.Add(new RangeNode<MemoryPermission>(protAddress, address, protPermission));
                     }
 
                     if (endAddress < protEndAddress)
                     {
-                        var newNode = _protectionObjectPool.Allocate();
-                        newNode.Start = endAddress;
-                        newNode.End = protEndAddress;
-                        newNode.Value = protPermission;
-                        _protections.Add(newNode);
+                        _protections.Add(new RangeNode<MemoryPermission>(endAddress, protEndAddress, protPermission));
                     }
 
-                    _protectionObjectPool.Release(protection);
-                    
                     if (node.End >= endAddress)
                     {
                         break;
