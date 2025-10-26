@@ -1177,7 +1177,11 @@ class GameViews {
                                 onClick = {
                                     onKeysSelected(tempSelectedKeys.value.toList())
                                 },
-                                enabled = tempSelectedKeys.value.isNotEmpty()
+                                enabled = tempSelectedKeys.value.isNotEmpty(),
+                                colors = ButtonDefaults.buttonColors(
+                                    disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                                    disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                )
                             ) {
                                 Text(text = "确定")
                             }
@@ -1197,11 +1201,15 @@ class GameViews {
                                     keyItem = keyItem,
                                     isSelected = isSelected,
                                     onClick = {
+                                        val currentList = tempSelectedKeys.value.toMutableList()
                                         if (isSelected) {
-                                            tempSelectedKeys.value.remove(keyItem.keyCode)
-                                        } else if (tempSelectedKeys.value.size < 4) {
-                                            tempSelectedKeys.value.add(keyItem.keyCode)
+                                            currentList.remove(keyItem.keyCode)
+                                        } else {
+                                            if (currentList.size < 4) {
+                                                currentList.add(keyItem.keyCode)
+                                            }
                                         }
+                                        tempSelectedKeys.value = currentList
                                     },
                                     enabled = tempSelectedKeys.value.size < 4 || isSelected
                                 )
