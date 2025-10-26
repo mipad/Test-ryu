@@ -34,12 +34,18 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu.Types
         private readonly SortedList<ulong, Range> _maps;
         private readonly SortedList<ulong, Range> _reservations;
 
+        // 安卓平台特殊处理
+        private readonly bool _isAndroid;
+
         public AddressSpaceContext(MemoryManager gmm)
         {
             Gmm = gmm;
 
             _maps = new SortedList<ulong, Range>();
             _reservations = new SortedList<ulong, Range>();
+            
+            // 检测安卓平台
+            _isAndroid = OperatingSystem.IsAndroid();
         }
 
         public bool ValidateFixedBuffer(ulong address, ulong size, ulong alignment)
@@ -185,6 +191,36 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu.Types
             }
 
             return ltRg;
+        }
+        
+        // 安卓平台特殊方法：宽松的内存验证
+        public bool AndroidValidateBuffer(ulong address, ulong size, ulong alignment)
+        {
+            if (_isAndroid)
+            {
+                // 安卓平台：放宽验证条件
+                ulong mapEnd = address + size;
+
+                // 基本大小检查
+                if (mapEnd <= address)
+                {
+                    return false;
+                }
+
+                // 对齐检查
+                if ((address & (alignment - 1)) != 0)
+                {
+                    return false;
+                }
+
+                // 在安卓上，即使区域未明确保留也允许映射
+                // 这可以处理某些游戏的特殊内存需求
+                return true;
+            }
+            else
+            {
+                return ValidateFixedBuffer(address, size, alignment);
+            }
         }
     }
 }
