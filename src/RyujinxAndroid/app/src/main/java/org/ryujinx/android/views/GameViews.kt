@@ -984,11 +984,7 @@ class GameViews {
             // 按键选择对话框
             if (showKeySelection.value) {
                 KeySelectionDialog(
-                    selectedKeys = selectedKeys.value,
-                    onKeysSelected = { keys ->
-                        selectedKeys.value = keys.toMutableList()
-                        showKeySelection.value = false
-                    },
+                    selectedKeys = selectedKeys,
                     onDismiss = { showKeySelection.value = false }
                 )
                 return
@@ -1117,6 +1113,7 @@ class GameViews {
                                             selectedKeys.value
                                         )
                                         onCombinationCreated()
+                                        onDismiss()
                                     }
                                 },
                                 enabled = combinationName.value.isNotBlank() && selectedKeys.value.isNotEmpty()
@@ -1131,11 +1128,10 @@ class GameViews {
 
         @Composable
         fun KeySelectionDialog(
-            selectedKeys: List<Int>,
-            onKeysSelected: (List<Int>) -> Unit,
+            selectedKeys: androidx.compose.runtime.MutableState<MutableList<Int>>,
             onDismiss: () -> Unit
         ) {
-            val tempSelectedKeys = remember { mutableStateOf(selectedKeys.toMutableList()) }
+            val tempSelectedKeys = remember { mutableStateOf(selectedKeys.value.toMutableList()) }
 
             BasicAlertDialog(onDismissRequest = onDismiss) {
                 Surface(
@@ -1177,7 +1173,8 @@ class GameViews {
                                         } else if (tempSelectedKeys.value.size < 4) {
                                             tempSelectedKeys.value.add(keyItem.keyCode)
                                         }
-                                    }
+                                    },
+                                    enabled = tempSelectedKeys.value.size < 4 || isSelected
                                 )
                                 
                                 if (index < getAvailableKeys().size - 1) {
@@ -1204,9 +1201,9 @@ class GameViews {
                             
                             Button(
                                 onClick = {
-                                    onKeysSelected(tempSelectedKeys.value)
-                                },
-                                enabled = tempSelectedKeys.value.isNotEmpty()
+                                    selectedKeys.value = tempSelectedKeys.value.toMutableList()
+                                    onDismiss()
+                                }
                             ) {
                                 Text(text = "确定")
                             }
@@ -1220,7 +1217,8 @@ class GameViews {
         fun KeySelectionItem(
             keyItem: KeyItem,
             isSelected: Boolean,
-            onClick: () -> Unit
+            onClick: () -> Unit,
+            enabled: Boolean = true
         ) {
             Surface(
                 modifier = Modifier
@@ -1239,7 +1237,9 @@ class GameViews {
                 ) {
                     Text(
                         text = keyItem.name,
-                        style = MaterialTheme.typography.bodyMedium
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (enabled) MaterialTheme.colorScheme.onSurface 
+                               else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                     )
                     if (isSelected) {
                         Text(
