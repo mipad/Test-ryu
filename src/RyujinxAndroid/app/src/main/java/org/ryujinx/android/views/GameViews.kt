@@ -1106,24 +1106,33 @@ class GameViews {
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            TextButton(
-                                onClick = onDismiss
+                            Button(
+                                onClick = onDismiss,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
                             ) {
                                 Text(text = "取消")
                             }
                             
                             Button(
                                 onClick = {
-                                    if (combinationName.value.isNotBlank() && selectedKeys.value.isNotEmpty()) {
-                                        mainViewModel.controller?.createCombination(
+                                    if (combinationName.value.isNotEmpty() && selectedKeys.value.isNotEmpty()) {
+                                        val newId = mainViewModel.controller?.createCombination(
                                             combinationName.value,
                                             selectedKeys.value
                                         )
-                                        onCombinationCreated()
-                                        onDismiss()
+                                        if (newId != null && newId != -1) {
+                                            onCombinationCreated()
+                                        }
                                     }
                                 },
-                                enabled = combinationName.value.isNotBlank() && selectedKeys.value.isNotEmpty()
+                                enabled = combinationName.value.isNotEmpty() && selectedKeys.value.isNotEmpty(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = Color.White
+                                )
                             ) {
                                 Text(text = "创建")
                             }
@@ -1139,7 +1148,7 @@ class GameViews {
             onKeysSelected: (List<Int>) -> Unit,
             onDismiss: () -> Unit
         ) {
-            val tempSelectedKeys = remember { mutableStateOf(initialSelectedKeys.toMutableList()) }
+            val selectedKeys = remember { mutableStateOf(initialSelectedKeys.toMutableList()) }
 
             BasicAlertDialog(onDismissRequest = onDismiss) {
                 Surface(
@@ -1155,217 +1164,110 @@ class GameViews {
                             .fillMaxWidth()
                             .padding(16.dp)
                     ) {
-                        // 顶部按钮行 - 添加确定按钮
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        // 标题
+                        Text(
+                            text = "选择按键 (${selectedKeys.value.size}/4)",
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier
+                                .padding(bottom = 16.dp)
+                                .align(Alignment.CenterHorizontally)
+                        )
+
+                        // 按键网格 - 2列
+                        val buttonKeys = listOf(
+                            0 to "A",
+                            1 to "B", 
+                            2 to "X",
+                            3 to "Y",
+                            4 to "L",
+                            5 to "R",
+                            6 to "ZL",
+                            7 to "ZR",
+                            8 to "+",
+                            9 to "-",
+                            10 to "L3",
+                            11 to "R3",
+                            12 to "上",
+                            13 to "下", 
+                            14 to "左",
+                            15 to "右"
+                        )
+
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(300.dp)
                         ) {
-                            TextButton(
-                                onClick = onDismiss
-                            ) {
-                                Text(text = "取消")
-                            }
-                            
-                            // 标题
-                            Text(
-                                text = "选择按键 (${tempSelectedKeys.value.size}/4)",
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            
-                            Button(
-                                onClick = {
-                                    onKeysSelected(tempSelectedKeys.value.toList())
-                                },
-                                enabled = tempSelectedKeys.value.isNotEmpty(),
-                                colors = ButtonDefaults.buttonColors(
-                                    disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
-                                    disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                                )
-                            ) {
-                                Text(text = "确定")
+                            items(buttonKeys.chunked(2)) { row ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceEvenly
+                                ) {
+                                    row.forEach { (keyCode, keyName) ->
+                                        val isSelected = selectedKeys.value.contains(keyCode)
+                                        Button(
+                                            onClick = {
+                                                if (isSelected) {
+                                                    selectedKeys.value.remove(keyCode)
+                                                } else if (selectedKeys.value.size < 4) {
+                                                    selectedKeys.value.add(keyCode)
+                                                }
+                                            },
+                                            enabled = !isSelected && selectedKeys.value.size < 4 || isSelected,
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (isSelected) 
+                                                    MaterialTheme.colorScheme.primary 
+                                                else 
+                                                    MaterialTheme.colorScheme.secondaryContainer,
+                                                contentColor = if (isSelected) 
+                                                    Color.White 
+                                                else 
+                                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                            ),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .padding(4.dp)
+                                        ) {
+                                            Text(text = keyName)
+                                        }
+                                    }
+                                }
                             }
                         }
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // 按键列表 - 排除摇杆按键
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(400.dp)
+                        // 按钮行
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            itemsIndexed(getAvailableKeys()) { index, keyItem ->
-                                val isSelected = tempSelectedKeys.value.contains(keyItem.keyCode)
-                                KeySelectionItem(
-                                    keyItem = keyItem,
-                                    isSelected = isSelected,
-                                    onClick = {
-                                        val currentList = tempSelectedKeys.value.toMutableList()
-                                        if (isSelected) {
-                                            currentList.remove(keyItem.keyCode)
-                                        } else {
-                                            if (currentList.size < 4) {
-                                                currentList.add(keyItem.keyCode)
-                                            }
-                                        }
-                                        tempSelectedKeys.value = currentList
-                                    },
-                                    enabled = tempSelectedKeys.value.size < 4 || isSelected
+                            Button(
+                                onClick = onDismiss,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                                 )
-                                
-                                if (index < getAvailableKeys().size - 1) {
-                                    HorizontalDivider(
-                                        thickness = 0.5.dp,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-                                    )
-                                }
+                            ) {
+                                Text(text = "取消")
+                            }
+                            
+                            Button(
+                                onClick = { onKeysSelected(selectedKeys.value) },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = Color.White
+                                )
+                            ) {
+                                Text(text = "确定")
                             }
                         }
-
-                        // 底部说明
-                        Text(
-                            text = "最多可选择4个按键",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp)
-                                .align(Alignment.CenterHorizontally)
-                        )
                     }
                 }
             }
         }
 
-        @Composable
-        fun KeySelectionItem(
-            keyItem: KeyItem,
-            isSelected: Boolean,
-            onClick: () -> Unit,
-            enabled: Boolean = true
-        ) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 2.dp),
-                color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) 
-                       else Color.Transparent,
-                onClick = onClick
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = keyItem.name,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (enabled) MaterialTheme.colorScheme.onSurface 
-                               else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                    )
-                    if (isSelected) {
-                        Text(
-                            text = "✓",
-                            color = MaterialTheme.colorScheme.primary,
-                            fontSize = 16.sp
-                        )
-                    }
-                }
-            }
-        }
-
-        // 控件数据类
-        data class ControlItem(
-            val id: Int,
-            val name: String,
-            val description: String,
-            val emoji: String,
-            val type: ControlType
-        )
-
-        data class KeyItem(
-            val keyCode: Int,
-            val name: String
-        )
-
-        enum class ControlType {
-            BUTTON, JOYSTICK, DPAD, COMBINATION
-        }
-
-        // 获取所有控件列表 - 添加组合按键
-        fun getControlItems(): List<ControlItem> {
-            val baseItems = listOf(
-                // 按钮
-                ControlItem(1, "A 按钮", "确认/主要动作", "🅰️", ControlType.BUTTON),
-                ControlItem(2, "B 按钮", "取消/次要动作", "🅱️", ControlType.BUTTON),
-                ControlItem(3, "X 按钮", "特殊功能", "❎", ControlType.BUTTON),
-                ControlItem(4, "Y 按钮", "特殊功能", "💠", ControlType.BUTTON),
-                ControlItem(5, "L 肩键", "左肩部按键", "🔗", ControlType.BUTTON),
-                ControlItem(6, "R 肩键", "右肩部按键", "🔗", ControlType.BUTTON),
-                ControlItem(7, "ZL 扳机", "左扳机键", "🎯", ControlType.BUTTON),
-                ControlItem(8, "ZR 扳机", "右扳机键", "🎯", ControlType.BUTTON),
-                ControlItem(9, "+ 按钮", "开始/菜单", "➕", ControlType.BUTTON),
-                ControlItem(10, "- 按钮", "选择/返回", "➖", ControlType.BUTTON),
-                ControlItem(11, "L3 按钮", "左摇杆按下", "🎮", ControlType.BUTTON),
-                ControlItem(12, "R3 按钮", "右摇杆按下", "🎮", ControlType.BUTTON),
-                
-                // 摇杆
-                ControlItem(101, "左摇杆", "移动/方向控制", "🕹️", ControlType.JOYSTICK),
-                ControlItem(102, "右摇杆", "视角/镜头控制", "🕹️", ControlType.JOYSTICK),
-                
-                // 方向键 
-                ControlItem(201, "方向键", "方向选择", "✛", ControlType.DPAD)
-            )
-            
-            // 添加组合按键
-            val combinations = MainActivity.mainViewModel?.controller?.getAllCombinations() ?: emptyList()
-            val combinationItems = combinations.map { config ->
-                ControlItem(
-                    config.id,
-                    config.name,  // 使用自定义名称而不是固定描述
-                    "组合按键: ${config.keyCodes.joinToString("+") { getKeyName(it) }}",
-                    "🔣",
-                    ControlType.COMBINATION
-                )
-            }
-            
-            return baseItems + combinationItems
-        }
-
-        // 获取可用的按键列表 - 排除摇杆按键
-        fun getAvailableKeys(): List<KeyItem> {
-            return listOf(
-                // 基础按钮
-                KeyItem(0, "A 按钮"),
-                KeyItem(1, "B 按钮"),
-                KeyItem(2, "X 按钮"),
-                KeyItem(3, "Y 按钮"),
-                
-                // 肩键和扳机
-                KeyItem(4, "L 肩键"),
-                KeyItem(5, "R 肩键"),
-                KeyItem(6, "ZL 扳机"),
-                KeyItem(7, "ZR 扳机"),
-                
-                // 功能按钮
-                KeyItem(8, "+ 按钮"),
-                KeyItem(9, "- 按钮"),
-                KeyItem(10, "L3 按钮"),
-                KeyItem(11, "R3 按钮"),
-                
-                // 方向键
-                KeyItem(12, "上方向键"),
-                KeyItem(13, "下方向键"),
-                KeyItem(14, "左方向键"),
-                KeyItem(15, "右方向键")
-            )
-        }
-
-        // 获取按键名称
-        fun getKeyName(keyCode: Int): String {
+        private fun getKeyName(keyCode: Int): String {
             return when (keyCode) {
                 0 -> "A"
                 1 -> "B"
@@ -1387,182 +1289,64 @@ class GameViews {
             }
         }
 
-        @Composable
-        fun GameStats(
-            mainViewModel: MainViewModel,
-            showFps: Boolean,
-            showRam: Boolean,
-            showBatteryTemperature: Boolean,
-            showBatteryLevel: Boolean,
-            showFifo: Boolean
-        ) {
-            val fifo = remember {
-                mutableDoubleStateOf(0.0)
-            }
-            val gameFps = remember {
-                mutableDoubleStateOf(0.0)
-            }
-            val gameTime = remember {
-                mutableDoubleStateOf(0.0)
-            }
-            val usedMem = remember {
-                mutableIntStateOf(0)
-            }
-            val totalMem = remember {
-                mutableIntStateOf(0)
-            }
-            // 电池温度状态
-            val batteryTemperature = remember {
-                mutableDoubleStateOf(0.0)
-            }
-            // 电池电量状态
-            val batteryLevel = remember {
-                mutableIntStateOf(-1)
-            }
-            // 充电状态
-            val isCharging = remember {
-                mutableStateOf(false)
-            }
+        // 控件类型枚举
+        enum class ControlType {
+            BUTTON, JOYSTICK, DPAD, COMBINATION
+        }
 
-            // 完全透明的文字面板
-            CompositionLocalProvider(
-                LocalTextStyle provides TextStyle(
-                    fontSize = 10.sp,
-                    color = Color.White // 确保文字在游戏画面上可见
+        // 控件数据类
+        data class ControlItem(
+            val id: Int,
+            val name: String,
+            val description: String,
+            val emoji: String,
+            val type: ControlType
+        )
+
+        // 获取所有可调整的控件列表
+        private fun getControlItems(): List<ControlItem> {
+            val items = mutableListOf<ControlItem>()
+
+            // 按钮
+            items.addAll(listOf(
+                ControlItem(1, "A按钮", "主要动作按键", "🅰️", ControlType.BUTTON),
+                ControlItem(2, "B按钮", "次要动作按键", "🅱️", ControlType.BUTTON),
+                ControlItem(3, "X按钮", "功能按键1", "❌", ControlType.BUTTON),
+                ControlItem(4, "Y按钮", "功能按键2", "💡", ControlType.BUTTON),
+                ControlItem(5, "L肩键", "左肩部按键", "L", ControlType.BUTTON),
+                ControlItem(6, "R肩键", "右肩部按键", "R", ControlType.BUTTON),
+                ControlItem(7, "ZL扳机", "左扳机键", "ZL", ControlType.BUTTON),
+                ControlItem(8, "ZR扳机", "右扳机键", "ZR", ControlType.BUTTON),
+                ControlItem(9, "+按钮", "开始/菜单", "➕", ControlType.BUTTON),
+                ControlItem(10, "-按钮", "选择/返回", "➖", ControlType.BUTTON),
+                ControlItem(11, "L3按钮", "左摇杆按下", "L3", ControlType.BUTTON),
+                ControlItem(12, "R3按钮", "右摇杆按下", "R3", ControlType.BUTTON)
+            ))
+
+            // 摇杆
+            items.addAll(listOf(
+                ControlItem(101, "左摇杆", "移动/方向控制", "🕹️", ControlType.JOYSTICK),
+                ControlItem(102, "右摇杆", "视角/镜头控制", "🎮", ControlType.JOYSTICK)
+            ))
+
+            // 方向键
+            items.add(ControlItem(201, "方向键", "方向控制", "➕", ControlType.DPAD))
+
+            // 组合按键 - 动态从控制器获取
+            val controller = MainActivity.mainViewModel?.controller
+            controller?.getAllCombinations()?.forEach { combination ->
+                items.add(
+                    ControlItem(
+                        combination.id,
+                        combination.name, // 使用自定义名称而不是"组合键1"
+                        "组合按键: ${combination.keyCodes.joinToString("+") { getKeyName(it) }}",
+                        "🎛️",
+                        ControlType.COMBINATION
+                    )
                 )
-            ) {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    // 左上角的性能指标
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(16.dp)
-                            .background(Color.Transparent) // 完全透明背景
-                    ) {
-                        val gameTimeVal = if (!gameTime.value.isInfinite()) gameTime.value else 0.0
-                        
-                        // FIFO显示（根据设置决定是否显示）
-                        if (showFifo) {
-                            Box(
-                                modifier = Modifier.align(Alignment.Start)
-                            ) {
-                                Text(
-                                    text = "${String.format("%.1f", fifo.value)}%",
-                                    modifier = Modifier
-                                        .background(
-                                            color = Color.Black.copy(alpha = 0.26f),
-                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-                                        )
-                                        //.padding(horizontal = 4.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                        
-                        // FPS显示（根据设置决定是否显示）
-                        if (showFps) {
-                            Box(
-                                modifier = Modifier.align(Alignment.Start)
-                            ) {
-                                Text(
-                                    text = "${String.format("%.1f", gameFps.value)} FPS",
-                                    modifier = Modifier
-                                        .background(
-                                            color = Color.Black.copy(alpha = 0.26f),
-                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-                                        )
-                                        //.padding(horizontal = 4.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                        
-                        // 内存使用（根据设置决定是否显示）
-                        if (showRam) {
-                            Box(
-                                modifier = Modifier.align(Alignment.Start)
-                            ) {
-                                Text(
-                                    text = "${totalMem.value}/${usedMem.value} MB",
-                                    modifier = Modifier
-                                        .background(
-                                            color = Color.Black.copy(alpha = 0.26f),
-                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-                                        )
-                                        //.padding(horizontal = 4.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    // 右上角的电池信息显示
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(16.dp)
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.End
-                        ) {
-                            // 电池温度显示（根据设置决定是否显示）
-                            if (showBatteryTemperature && batteryTemperature.value > 0) {
-                                Box(
-                                    modifier = Modifier
-                                        .background(
-                                            color = Color.Black.copy(alpha = 0.26f),
-                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-                                        )
-                                        //.padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = "${String.format("%.1f", batteryTemperature.value)}°C",
-                                        color = when {
-                                            batteryTemperature.value > 40 -> Color.Red
-                                            batteryTemperature.value > 35 -> Color.Yellow
-                                            else -> Color.White
-                                        }
-                                    )
-                                }
-                            }
-                            
-                            // 电池电量显示（根据设置决定是否显示）
-                            if (showBatteryLevel && batteryLevel.value >= 0) {
-                                Spacer(modifier = Modifier.padding(2.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .background(
-                                            color = Color.Black.copy(alpha = 0.26f),
-                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-                                        )
-                                        //.padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = if (isCharging.value) {
-                                            "${batteryLevel.value}% ⚡"
-                                        } else {
-                                            "${batteryLevel.value}%"
-                                        },
-                                        color = when {
-                                            batteryLevel.value < 15 -> Color.Red
-                                            batteryLevel.value < 40 -> Color.Yellow
-                                            else -> Color.White
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
             }
 
-            mainViewModel.setStatStates(
-                fifo, 
-                gameFps, 
-                gameTime, 
-                usedMem, 
-                totalMem, 
-                batteryTemperature,
-                batteryLevel,
-                isCharging
-            )
+            return items
         }
     }
 }
