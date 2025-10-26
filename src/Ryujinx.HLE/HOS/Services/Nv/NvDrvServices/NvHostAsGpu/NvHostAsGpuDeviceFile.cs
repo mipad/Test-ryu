@@ -39,11 +39,22 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
 
         private readonly AddressSpaceContext _asContext;
         private readonly NvMemoryAllocator _memoryAllocator;
+        
+        // 安卓平台特殊处理
+        private readonly bool _isAndroid;
 
         public NvHostAsGpuDeviceFile(ServiceCtx context, IVirtualMemoryManager memory, ulong owner) : base(context, owner)
         {
             _asContext = new AddressSpaceContext(context.Device.Gpu.CreateMemoryManager(owner, context.Device.Memory.Size));
             _memoryAllocator = new NvMemoryAllocator();
+            
+            // 检测安卓平台
+            _isAndroid = OperatingSystem.IsAndroid();
+            
+            if (_isAndroid)
+            {
+                Logger.Info?.Print(LogClass.ServiceNv, "Android NvHostAsGpu initialized with relaxed memory limits");
+            }
         }
 
         public override NvInternalResult Ioctl(NvIoctl command, Span<byte> arguments)
@@ -123,6 +134,14 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
 
             lock (_asContext)
             {
+                // 安卓平台：记录分配信息
+                if (_isAndroid)
+                {
+                    Logger.Info?.Print(LogClass.ServiceNv, 
+                        $"Android AllocSpace - Pages: {arguments.Pages}, PageSize: 0x{arguments.PageSize:X}, " +
+                        $"Total Size: 0x{size:X}, Flags: {arguments.Flags}");
+                }
+                
                 // Note: When the fixed offset flag is not set,
                 // the Offset field holds the alignment size instead.
                 if ((arguments.Flags & AddressSpaceFlags.FixedOffset) != 0)
@@ -155,11 +174,33 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
 
                 if (arguments.Offset == NvMemoryAllocator.PteUnmapped)
                 {
-                    arguments.Offset = 0;
-
-                    Logger.Warning?.Print(LogClass.ServiceNv, $"Failed to allocate size {size:x16}!");
-
-                    result = NvInternalResult.OutOfMemory;
+                    // 安卓平台：尝试强制分配
+                    if (_isAndroid)
+                    {
+                        Logger.Warning?.Print(LogClass.ServiceNv, 
+                            $"Android: Normal allocation failed for size 0x{size:X}, attempting force allocation");
+                        
+                        if (_memoryAllocator.AndroidForceAllocate(size, out ulong forcedAddress))
+                        {
+                            arguments.Offset = forcedAddress;
+                            result = NvInternalResult.Success;
+                            
+                            Logger.Info?.Print(LogClass.ServiceNv, 
+                                $"Android: Force allocation successful at 0x{forcedAddress:X}");
+                        }
+                        else
+                        {
+                            arguments.Offset = 0;
+                            Logger.Error?.Print(LogClass.ServiceNv, $"Failed to allocate size {size:x16}!");
+                            result = NvInternalResult.OutOfMemory;
+                        }
+                    }
+                    else
+                    {
+                        arguments.Offset = 0;
+                        Logger.Warning?.Print(LogClass.ServiceNv, $"Failed to allocate size {size:x16}!");
+                        result = NvInternalResult.OutOfMemory;
+                    }
                 }
                 else
                 {
@@ -273,13 +314,32 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
 
             lock (_asContext)
             {
+                // 安卓平台：记录映射信息
+                if (_isAndroid)
+                {
+                    Logger.Info?.Print(LogClass.ServiceNv, 
+                        $"Android MapBufferEx - Size: 0x{size:X}, PageSize: 0x{pageSize:X}, " +
+                        $"Flags: {arguments.Flags}, NvMapHandle: 0x{arguments.NvMapHandle:X}");
+                }
+                
                 // Note: When the fixed offset flag is not set,
                 // the Offset field holds the alignment size instead.
                 bool virtualAddressAllocated = (arguments.Flags & AddressSpaceFlags.FixedOffset) == 0;
 
                 if (!virtualAddressAllocated)
                 {
-                    if (_asContext.ValidateFixedBuffer(arguments.Offset, size, pageSize))
+                    // 安卓平台：使用宽松的验证
+                    bool isValidBuffer;
+                    if (_isAndroid)
+                    {
+                        isValidBuffer = _asContext.AndroidValidateBuffer(arguments.Offset, size, pageSize);
+                    }
+                    else
+                    {
+                        isValidBuffer = _asContext.ValidateFixedBuffer(arguments.Offset, size, pageSize);
+                    }
+                    
+                    if (isValidBuffer)
                     {
                         _asContext.Gmm.Map(physicalAddress, arguments.Offset, size, (PteKind)arguments.Kind);
                     }
@@ -298,6 +358,18 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostAsGpu
                     if (va != NvMemoryAllocator.PteUnmapped)
                     {
                         _memoryAllocator.AllocateRange(va, size, freeAddressStartPosition);
+                    }
+                    else
+                    {
+                        // 安卓平台：尝试强制分配
+                        if (_isAndroid && _memoryAllocator.AndroidForceAllocate(size, out va))
+                        {
+                            // 强制分配成功，继续执行
+                        }
+                        else
+                        {
+                            va = NvMemoryAllocator.PteUnmapped;
+                        }
                     }
 
                     _asContext.Gmm.Map(physicalAddress, va, size, (PteKind)arguments.Kind);
