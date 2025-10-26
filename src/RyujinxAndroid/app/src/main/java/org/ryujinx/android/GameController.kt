@@ -1081,8 +1081,7 @@ class GameController(var activity: Activity) {
         
         // 创建摇杆 - 传递 individualScale 参数
         manager.getAllJoystickConfigs().forEach { config ->
-            if (!manager.isJoystickEnabled(config.id)) return@forEach
-            
+            // 修复：不再跳过禁用的控件，而是创建所有控件然后设置可见性
             val joystick = JoystickOverlayView(
                 buttonContainer.context,
                 individualScale = manager.getJoystickScale(config.id) // 传递 individualScale
@@ -1090,6 +1089,9 @@ class GameController(var activity: Activity) {
                 stickId = config.id
                 isLeftStick = config.isLeft
                 opacity = (manager.getJoystickOpacity(config.id) * 255 / 100)
+                
+                // 设置初始可见性 - 修复：根据保存的状态设置可见性
+                isVisible = manager.isJoystickEnabled(config.id)
                 
                 // 不在这里设置位置，统一在 refreshControlPositions 中设置
                 
@@ -1108,31 +1110,32 @@ class GameController(var activity: Activity) {
         }
         
         // 创建方向键 - 传递 individualScale 参数
-        if (manager.isDpadEnabled()) {
-            dpadView = DpadOverlayView(
-                buttonContainer.context,
-                individualScale = manager.getDpadScale() // 传递 individualScale
-            ).apply {
-                opacity = (manager.getDpadOpacity() * 255 / 100)
-                
-                // 不在这里设置位置，统一在 refreshControlPositions 中设置
-                
-                setOnTouchListener { _, event ->
-                    if (isEditing) {
-                        handleDpadDragEvent(event)
-                    } else {
-                        handleDpadEvent(event)
-                    }
-                    true
+        // 修复：不再跳过禁用的控件，而是创建所有控件然后设置可见性
+        dpadView = DpadOverlayView(
+            buttonContainer.context,
+            individualScale = manager.getDpadScale() // 传递 individualScale
+        ).apply {
+            opacity = (manager.getDpadOpacity() * 255 / 100)
+            
+            // 设置初始可见性 - 修复：根据保存的状态设置可见性
+            isVisible = manager.isDpadEnabled()
+            
+            // 不在这里设置位置，统一在 refreshControlPositions 中设置
+            
+            setOnTouchListener { _, event ->
+                if (isEditing) {
+                    handleDpadDragEvent(event)
+                } else {
+                    handleDpadEvent(event)
                 }
+                true
             }
-            buttonContainer.addView(dpadView)
         }
+        buttonContainer.addView(dpadView)
         
         // 创建按钮 - 传递 individualScale 参数
         manager.getAllButtonConfigs().forEach { config ->
-            if (!manager.isButtonEnabled(config.id)) return@forEach
-            
+            // 修复：不再跳过禁用的控件，而是创建所有控件然后设置可见性
             val button = ButtonOverlayView(
                 buttonContainer.context,
                 individualScale = manager.getButtonScale(config.id) // 传递 individualScale
@@ -1140,6 +1143,9 @@ class GameController(var activity: Activity) {
                 buttonId = config.id
                 buttonText = config.text
                 opacity = (manager.getButtonOpacity(config.id) * 255 / 100)
+                
+                // 设置初始可见性 - 修复：根据保存的状态设置可见性
+                isVisible = manager.isButtonEnabled(config.id)
                 
                 when (config.id) {
                     1 -> setBitmaps(R.drawable.facebutton_a, R.drawable.facebutton_a_depressed)
@@ -1174,8 +1180,7 @@ class GameController(var activity: Activity) {
         
         // 创建组合按键
         manager.getAllCombinationConfigs().forEach { config ->
-            if (!manager.isCombinationEnabled(config.id)) return@forEach
-            
+            // 修复：不再跳过禁用的控件，而是创建所有控件然后设置可见性
             val combination = CombinationOverlayView(
                 buttonContainer.context,
                 individualScale = manager.getCombinationScale(config.id)
@@ -1184,6 +1189,9 @@ class GameController(var activity: Activity) {
                 combinationName = config.name
                 combinationKeys = config.keyCodes
                 opacity = (manager.getCombinationOpacity(config.id) * 255 / 100)
+                
+                // 设置初始可见性 - 修复：根据保存的状态设置可见性
+                isVisible = manager.isCombinationEnabled(config.id)
                 
                 // 不在这里设置位置，统一在 refreshControlPositions 中设置
                 
