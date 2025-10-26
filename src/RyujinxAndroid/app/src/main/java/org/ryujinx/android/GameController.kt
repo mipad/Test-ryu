@@ -29,6 +29,123 @@ import org.ryujinx.android.viewmodels.MainViewModel
 import org.ryujinx.android.viewmodels.QuickSettings
 import android.graphics.drawable.GradientDrawable
 
+// 组合按键视图
+class CombinationOverlayView @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = 0,
+    var individualScale: Int = 50
+) : View(context, attrs, defStyleAttr) {
+    
+    var combinationId: Int = 0
+    var combinationName: String = ""
+    var combinationKeys: List<Int> = emptyList()
+    var combinationPressed: Boolean = false
+    var opacity: Int = 255
+        set(value) {
+            field = value
+            invalidate()
+        }
+    
+    private var defaultBitmap: Bitmap? = null
+    private var pressedBitmap: Bitmap? = null
+    
+    init {
+        setBackgroundResource(0)
+        loadBitmaps()
+    }
+    
+    fun loadBitmaps() {
+        defaultBitmap = getBitmapFromVectorDrawable(R.drawable.combination_default, 0.45f)
+        pressedBitmap = getBitmapFromVectorDrawable(R.drawable.combination_pressed, 0.45f)
+    }
+    
+    private fun getBitmapFromVectorDrawable(drawableId: Int, baseScale: Float): Bitmap {
+        val drawable = ContextCompat.getDrawable(context, drawableId) ?: 
+            throw IllegalArgumentException("Drawable not found: $drawableId")
+        
+        val userScale = (individualScale.toFloat() + 50) / 100f
+        val finalScale = baseScale * userScale
+        
+        val width = (drawable.intrinsicWidth * finalScale).toInt().takeIf { it > 0 } ?: 100
+        val height = (drawable.intrinsicHeight * finalScale).toInt().takeIf { it > 0 } ?: 100
+        
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, width, height)
+        drawable.draw(canvas)
+        return bitmap
+    }
+    
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val desiredWidth = defaultBitmap?.width ?: dpToPx(80)
+        val desiredHeight = defaultBitmap?.height ?: dpToPx(80)
+        
+        val minSize = dpToPx(70)
+        val width = Math.max(desiredWidth, minSize)
+        val height = Math.max(desiredHeight, minSize)
+        
+        setMeasuredDimension(width, height)
+    }
+    
+    fun setPosition(x: Int, y: Int) {
+        val params = layoutParams as? FrameLayout.LayoutParams ?: FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+        params.leftMargin = x - width / 2
+        params.topMargin = y - height / 2
+        layoutParams = params
+    }
+    
+    fun getPosition(): Pair<Int, Int> {
+        val params = layoutParams as? FrameLayout.LayoutParams ?: return Pair(0, 0)
+        return Pair(params.leftMargin + width / 2, params.topMargin + height / 2)
+    }
+    
+    fun setPressedState(pressed: Boolean) {
+        combinationPressed = pressed
+        invalidate()
+    }
+    
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        
+        val paint = Paint().apply {
+            alpha = opacity
+            isFilterBitmap = true
+        }
+        
+        val bitmap = if (combinationPressed) pressedBitmap else defaultBitmap
+        bitmap?.let {
+            val left = (width - it.width) / 2f
+            val top = (height - it.height) / 2f
+            canvas.drawBitmap(it, left, top, paint)
+        }
+        
+        // 绘制组合按键名称
+        val textPaint = Paint().apply {
+            color = Color.WHITE
+            textSize = 16f
+            textAlign = Paint.Align.CENTER
+            alpha = opacity
+        }
+        
+        val textX = width / 2f
+        val textY = height / 2f - (textPaint.descent() + textPaint.ascent()) / 2
+        canvas.drawText(combinationName, textX, textY, textPaint)
+    }
+    
+    private fun dpToPx(dp: Int): Int {
+        return TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP, 
+            dp.toFloat(), 
+            resources.displayMetrics
+        ).toInt()
+    }
+}
+
 // 修正的摇杆视图 - 修复尺寸计算和绘制问题
 class JoystickOverlayView @JvmOverloads constructor(
     context: Context,
@@ -528,7 +645,7 @@ class ButtonOverlayView @JvmOverloads constructor(
     }
 }
 
-// 数据类保持不变...
+// 数据类 - 添加组合按键配置
 data class ButtonConfig(
     val id: Int,
     val text: String,
@@ -559,7 +676,18 @@ data class DpadConfig(
     var scale: Int = 50
 )
 
-// 按键管理器 - 修改按钮初始位置
+data class CombinationConfig(
+    val id: Int,
+    val name: String,
+    val keyCodes: List<Int>,
+    val defaultX: Float,
+    val defaultY: Float,
+    var enabled: Boolean = true,
+    var opacity: Int = 100,
+    var scale: Int = 50
+)
+
+// 按键管理器 - 修改按钮初始位置，添加组合按键管理
 class ButtonLayoutManager(private val context: Context) {
     private val prefs = context.getSharedPreferences("virtual_controls", Context.MODE_PRIVATE)
     
@@ -585,6 +713,41 @@ class ButtonLayoutManager(private val context: Context) {
     )
     
     private val dpadConfig = DpadConfig(201, 0.1f, 0.5f)
+    
+    // 组合按键配置 - 动态加载
+    private val combinationConfigs = mutableListOf<CombinationConfig>()
+    
+    init {
+        loadCombinationConfigs()
+    }
+    
+    private fun loadCombinationConfigs() {
+        combinationConfigs.clear()
+        val combinationCount = prefs.getInt("combination_count", 0)
+        
+        for (i in 1..combinationCount) {
+            val name = prefs.getString("combination_${i}_name", "组合${i}") ?: "组合${i}"
+            val keyCount = prefs.getInt("combination_${i}_key_count", 0)
+            val keyCodes = mutableListOf<Int>()
+            
+            for (j in 0 until keyCount) {
+                val keyCode = prefs.getInt("combination_${i}_key_${j}", -1)
+                if (keyCode != -1) {
+                    keyCodes.add(keyCode)
+                }
+            }
+            
+            val defaultX = prefs.getFloat("combination_${i}_default_x", 0.5f)
+            val defaultY = prefs.getFloat("combination_${i}_default_y", 0.3f)
+            val enabled = prefs.getBoolean("combination_${i}_enabled", true)
+            val opacity = prefs.getInt("combination_${i}_opacity", 100)
+            val scale = prefs.getInt("combination_${i}_scale", 50)
+            
+            combinationConfigs.add(
+                CombinationConfig(300 + i, name, keyCodes, defaultX, defaultY, enabled, opacity, scale)
+            )
+        }
+    }
     
     fun getButtonPosition(buttonId: Int, containerWidth: Int, containerHeight: Int): Pair<Int, Int> {
         val xPref = prefs.getFloat("button_${buttonId}_x", -1f)
@@ -620,6 +783,18 @@ class ButtonLayoutManager(private val context: Context) {
         return Pair(x.toInt(), y.toInt())
     }
     
+    fun getCombinationPosition(combinationId: Int, containerWidth: Int, containerHeight: Int): Pair<Int, Int> {
+        val xPref = prefs.getFloat("combination_${combinationId}_x", -1f)
+        val yPref = prefs.getFloat("combination_${combinationId}_y", -1f)
+        
+        val config = combinationConfigs.find { it.id == combinationId } ?: return Pair(0, 0)
+        
+        val x = if (xPref != -1f) (xPref * containerWidth) else (config.defaultX * containerWidth)
+        val y = if (yPref != -1f) (yPref * containerHeight) else (config.defaultY * containerHeight)
+        
+        return Pair(x.toInt(), y.toInt())
+    }
+    
     fun isButtonEnabled(buttonId: Int): Boolean {
         return prefs.getBoolean("button_${buttonId}_enabled", true)
     }
@@ -630,6 +805,10 @@ class ButtonLayoutManager(private val context: Context) {
     
     fun isDpadEnabled(): Boolean {
         return prefs.getBoolean("dpad_enabled", true)
+    }
+    
+    fun isCombinationEnabled(combinationId: Int): Boolean {
+        return prefs.getBoolean("combination_${combinationId}_enabled", true)
     }
     
     fun getButtonOpacity(buttonId: Int): Int {
@@ -644,6 +823,10 @@ class ButtonLayoutManager(private val context: Context) {
         return prefs.getInt("dpad_opacity", 100)
     }
     
+    fun getCombinationOpacity(combinationId: Int): Int {
+        return prefs.getInt("combination_${combinationId}_opacity", 100)
+    }
+    
     fun getButtonScale(buttonId: Int): Int {
         return prefs.getInt("button_${buttonId}_scale", 50)
     }
@@ -654,6 +837,10 @@ class ButtonLayoutManager(private val context: Context) {
     
     fun getDpadScale(): Int {
         return prefs.getInt("dpad_scale", 50)
+    }
+    
+    fun getCombinationScale(combinationId: Int): Int {
+        return prefs.getInt("combination_${combinationId}_scale", 50)
     }
     
     fun saveButtonPosition(buttonId: Int, x: Int, y: Int, containerWidth: Int, containerHeight: Int) {
@@ -692,6 +879,18 @@ class ButtonLayoutManager(private val context: Context) {
             .apply()
     }
     
+    fun saveCombinationPosition(combinationId: Int, x: Int, y: Int, containerWidth: Int, containerHeight: Int) {
+        if (containerWidth <= 0 || containerHeight <= 0) return
+        
+        val xNormalized = x.toFloat() / containerWidth
+        val yNormalized = y.toFloat() / containerHeight
+        
+        prefs.edit()
+            .putFloat("combination_${combinationId}_x", xNormalized)
+            .putFloat("combination_${combinationId}_y", yNormalized)
+            .apply()
+    }
+    
     fun setButtonEnabled(buttonId: Int, enabled: Boolean) {
         prefs.edit().putBoolean("button_${buttonId}_enabled", enabled).apply()
     }
@@ -702,6 +901,10 @@ class ButtonLayoutManager(private val context: Context) {
     
     fun setDpadEnabled(enabled: Boolean) {
         prefs.edit().putBoolean("dpad_enabled", enabled).apply()
+    }
+    
+    fun setCombinationEnabled(combinationId: Int, enabled: Boolean) {
+        prefs.edit().putBoolean("combination_${combinationId}_enabled", enabled).apply()
     }
     
     fun setButtonOpacity(buttonId: Int, opacity: Int) {
@@ -716,6 +919,10 @@ class ButtonLayoutManager(private val context: Context) {
         prefs.edit().putInt("dpad_opacity", opacity.coerceIn(0, 100)).apply()
     }
     
+    fun setCombinationOpacity(combinationId: Int, opacity: Int) {
+        prefs.edit().putInt("combination_${combinationId}_opacity", opacity.coerceIn(0, 100)).apply()
+    }
+    
     fun setButtonScale(buttonId: Int, scale: Int) {
         prefs.edit().putInt("button_${buttonId}_scale", scale.coerceIn(10, 200)).apply()
     }
@@ -728,9 +935,68 @@ class ButtonLayoutManager(private val context: Context) {
         prefs.edit().putInt("dpad_scale", scale.coerceIn(10, 200)).apply()
     }
     
+    fun setCombinationScale(combinationId: Int, scale: Int) {
+        prefs.edit().putInt("combination_${combinationId}_scale", scale.coerceIn(10, 200)).apply()
+    }
+    
+    // 组合按键管理方法
+    fun createCombination(name: String, keyCodes: List<Int>): Int {
+        val newId = 300 + combinationConfigs.size + 1
+        val config = CombinationConfig(
+            newId, 
+            name, 
+            keyCodes, 
+            0.5f, 
+            0.3f, 
+            true, 
+            100, 
+            50
+        )
+        combinationConfigs.add(config)
+        
+        // 保存到 SharedPreferences
+        val editor = prefs.edit()
+        editor.putInt("combination_count", combinationConfigs.size)
+        editor.putString("combination_${newId}_name", name)
+        editor.putInt("combination_${newId}_key_count", keyCodes.size)
+        keyCodes.forEachIndexed { index, keyCode ->
+            editor.putInt("combination_${newId}_key_${index}", keyCode)
+        }
+        editor.putFloat("combination_${newId}_default_x", 0.5f)
+        editor.putFloat("combination_${newId}_default_y", 0.3f)
+        editor.putBoolean("combination_${newId}_enabled", true)
+        editor.putInt("combination_${newId}_opacity", 100)
+        editor.putInt("combination_${newId}_scale", 50)
+        editor.apply()
+        
+        return newId
+    }
+    
+    fun deleteCombination(combinationId: Int) {
+        combinationConfigs.removeAll { it.id == combinationId }
+        
+        // 更新 SharedPreferences
+        val editor = prefs.edit()
+        editor.putInt("combination_count", combinationConfigs.size)
+        
+        // 移除该组合的所有数据
+        for (i in 0 until 10) { // 假设最多10个按键
+            editor.remove("combination_${combinationId}_key_${i}")
+        }
+        editor.remove("combination_${combinationId}_name")
+        editor.remove("combination_${combinationId}_key_count")
+        editor.remove("combination_${combinationId}_x")
+        editor.remove("combination_${combinationId}_y")
+        editor.remove("combination_${combinationId}_enabled")
+        editor.remove("combination_${combinationId}_opacity")
+        editor.remove("combination_${combinationId}_scale")
+        editor.apply()
+    }
+    
     fun getAllButtonConfigs(): List<ButtonConfig> = buttonConfigs
     fun getAllJoystickConfigs(): List<JoystickConfig> = joystickConfigs
     fun getDpadConfig(): DpadConfig = dpadConfig
+    fun getAllCombinationConfigs(): List<CombinationConfig> = combinationConfigs
 }
 
 // 修正的 GameController 类
@@ -790,6 +1056,7 @@ class GameController(var activity: Activity) {
     var buttonLayoutManager: ButtonLayoutManager? = null
     private val virtualButtons = mutableMapOf<Int, ButtonOverlayView>()
     private val virtualJoysticks = mutableMapOf<Int, JoystickOverlayView>()
+    private val virtualCombinations = mutableMapOf<Int, CombinationOverlayView>()
     private var dpadView: DpadOverlayView? = null
     var controllerId: Int = -1
     private var isEditing = false
@@ -905,6 +1172,35 @@ class GameController(var activity: Activity) {
             virtualButtons[config.id] = button
         }
         
+        // 创建组合按键
+        manager.getAllCombinationConfigs().forEach { config ->
+            if (!manager.isCombinationEnabled(config.id)) return@forEach
+            
+            val combination = CombinationOverlayView(
+                buttonContainer.context,
+                individualScale = manager.getCombinationScale(config.id)
+            ).apply {
+                combinationId = config.id
+                combinationName = config.name
+                combinationKeys = config.keyCodes
+                opacity = (manager.getCombinationOpacity(config.id) * 255 / 100)
+                
+                // 不在这里设置位置，统一在 refreshControlPositions 中设置
+                
+                setOnTouchListener { _, event ->
+                    if (isEditing) {
+                        handleCombinationDragEvent(event, config.id)
+                    } else {
+                        handleCombinationEvent(event, config.keyCodes, config.id)
+                    }
+                    true
+                }
+            }
+            
+            buttonContainer.addView(combination)
+            virtualCombinations[config.id] = combination
+        }
+        
         // 统一设置位置
         refreshControlPositions()
         
@@ -927,10 +1223,12 @@ class GameController(var activity: Activity) {
         // 清除现有控件
         virtualButtons.values.forEach { buttonContainer.removeView(it) }
         virtualJoysticks.values.forEach { buttonContainer.removeView(it) }
+        virtualCombinations.values.forEach { buttonContainer.removeView(it) }
         dpadView?.let { buttonContainer.removeView(it) }
         
         virtualButtons.clear()
         virtualJoysticks.clear()
+        virtualCombinations.clear()
         dpadView = null
         
         // 重新创建控件，使用相同的逻辑
@@ -954,6 +1252,11 @@ class GameController(var activity: Activity) {
                 buttonLayoutManager?.setDpadEnabled(enabled)
                 // 只更新方向键
                 updateSingleDpadEnabled(enabled)
+            }
+            controlId >= 300 -> {
+                buttonLayoutManager?.setCombinationEnabled(controlId, enabled)
+                // 只更新组合按键
+                updateSingleCombinationEnabled(controlId, enabled)
             }
         }
     }
@@ -1017,6 +1320,24 @@ class GameController(var activity: Activity) {
         }
     }
     
+    // 新增方法：更新单个组合按键的启用状态
+    private fun updateSingleCombinationEnabled(combinationId: Int, enabled: Boolean) {
+        val combination = virtualCombinations[combinationId] ?: return
+        
+        // 更新组合按键的可见性
+        combination.isVisible = enabled
+        
+        // 如果禁用组合按键，确保状态重置
+        if (!enabled) {
+            combination.setPressedState(false)
+            // 发送释放所有按键的事件
+            val config = buttonLayoutManager?.getAllCombinationConfigs()?.find { it.id == combinationId }
+            config?.keyCodes?.forEach { keyCode ->
+                RyujinxNative.jnaInstance.inputSetButtonReleased(keyCode, controllerId)
+            }
+        }
+    }
+    
     fun setControlOpacity(controlId: Int, opacity: Int) {
         when {
             controlId in 1..12 -> {
@@ -1036,6 +1357,12 @@ class GameController(var activity: Activity) {
                 // 只更新方向键的透明度
                 dpadView?.opacity = (opacity * 255 / 100)
                 dpadView?.invalidate()
+            }
+            controlId >= 300 -> {
+                buttonLayoutManager?.setCombinationOpacity(controlId, opacity)
+                // 只更新组合按键的透明度
+                virtualCombinations[controlId]?.opacity = (opacity * 255 / 100)
+                virtualCombinations[controlId]?.invalidate()
             }
         }
     }
@@ -1057,6 +1384,11 @@ class GameController(var activity: Activity) {
                 buttonLayoutManager?.setDpadScale(scale)
                 // 只更新方向键
                 updateSingleDpadScale(scale)
+            }
+            controlId >= 300 -> {
+                buttonLayoutManager?.setCombinationScale(controlId, scale)
+                // 只更新组合按键
+                updateSingleCombinationScale(controlId, scale)
             }
         }
         // 刷新位置确保控件正确布局
@@ -1122,11 +1454,27 @@ class GameController(var activity: Activity) {
         dpad.invalidate()
     }
     
+    // 新增方法：更新单个组合按键的缩放
+    private fun updateSingleCombinationScale(combinationId: Int, scale: Int) {
+        val combination = virtualCombinations[combinationId] ?: return
+        
+        // 更新组合按键的缩放
+        combination.individualScale = scale
+        
+        // 重新加载位图
+        combination.loadBitmaps()
+        
+        // 请求重新测量和绘制
+        combination.requestLayout()
+        combination.invalidate()
+    }
+    
     fun getControlScale(controlId: Int): Int {
         return when {
             controlId in 1..12 -> buttonLayoutManager?.getButtonScale(controlId) ?: 50
             controlId in 101..102 -> buttonLayoutManager?.getJoystickScale(controlId) ?: 50
             controlId == 201 -> buttonLayoutManager?.getDpadScale() ?: 50
+            controlId >= 300 -> buttonLayoutManager?.getCombinationScale(controlId) ?: 50
             else -> 50
         }
     }
@@ -1136,6 +1484,7 @@ class GameController(var activity: Activity) {
             controlId in 1..12 -> buttonLayoutManager?.getButtonOpacity(controlId) ?: 100
             controlId in 101..102 -> buttonLayoutManager?.getJoystickOpacity(controlId) ?: 100
             controlId == 201 -> buttonLayoutManager?.getDpadOpacity() ?: 100
+            controlId >= 300 -> buttonLayoutManager?.getCombinationOpacity(controlId) ?: 100
             else -> 100
         }
     }
@@ -1145,8 +1494,32 @@ class GameController(var activity: Activity) {
             controlId in 1..12 -> buttonLayoutManager?.isButtonEnabled(controlId) ?: true
             controlId in 101..102 -> buttonLayoutManager?.isJoystickEnabled(controlId) ?: true
             controlId == 201 -> buttonLayoutManager?.isDpadEnabled() ?: true
+            controlId >= 300 -> buttonLayoutManager?.isCombinationEnabled(controlId) ?: true
             else -> true
         }
+    }
+    
+    // 组合按键管理方法
+    fun createCombination(name: String, keyCodes: List<Int>): Int {
+        val manager = buttonLayoutManager ?: return -1
+        val newId = manager.createCombination(name, keyCodes)
+        
+        // 刷新控件以显示新的组合按键
+        refreshControls()
+        
+        return newId
+    }
+    
+    fun deleteCombination(combinationId: Int) {
+        val manager = buttonLayoutManager ?: return
+        manager.deleteCombination(combinationId)
+        
+        // 刷新控件以移除组合按键
+        refreshControls()
+    }
+    
+    fun getAllCombinations(): List<CombinationConfig> {
+        return buttonLayoutManager?.getAllCombinationConfigs() ?: emptyList()
     }
     
     private fun refreshControlPositions() {
@@ -1172,6 +1545,11 @@ class GameController(var activity: Activity) {
         virtualButtons.forEach { (buttonId, button) ->
             val (x, y) = manager.getButtonPosition(buttonId, containerWidth, containerHeight)
             button.setPosition(x, y)
+        }
+        
+        virtualCombinations.forEach { (combinationId, combination) ->
+            val (x, y) = manager.getCombinationPosition(combinationId, containerWidth, containerHeight)
+            combination.setPosition(x, y)
         }
     }
     
@@ -1263,7 +1641,7 @@ class GameController(var activity: Activity) {
         ).toInt()
     }
     
-    // 事件处理方法保持不变...
+    // 事件处理方法 - 添加组合按键事件处理
     private fun handleJoystickDragEvent(event: MotionEvent, joystickId: Int): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {}
@@ -1492,6 +1870,52 @@ class GameController(var activity: Activity) {
         return true
     }
     
+    // 新增方法：处理组合按键拖拽事件
+    private fun handleCombinationDragEvent(event: MotionEvent, combinationId: Int): Boolean {
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {}
+            MotionEvent.ACTION_MOVE -> {
+                virtualCombinations[combinationId]?.let { combination ->
+                    val parent = combination.parent as? ViewGroup ?: return@let
+                    val x = event.rawX.toInt() - parent.left
+                    val y = event.rawY.toInt() - parent.top
+                    
+                    val clampedX = MathUtils.clamp(x, 0, parent.width)
+                    val clampedY = MathUtils.clamp(y, 0, parent.height)
+                    
+                    combination.setPosition(clampedX, clampedY)
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {}
+        }
+        return true
+    }
+    
+    // 新增方法：处理组合按键事件
+    private fun handleCombinationEvent(event: MotionEvent, keyCodes: List<Int>, combinationId: Int): Boolean {
+        if (controllerId == -1) {
+            controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
+        }
+        
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                virtualCombinations[combinationId]?.setPressedState(true)
+                // 按下所有组合按键
+                keyCodes.forEach { keyCode ->
+                    RyujinxNative.jnaInstance.inputSetButtonPressed(keyCode, controllerId)
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                virtualCombinations[combinationId]?.setPressedState(false)
+                // 释放所有组合按键
+                keyCodes.forEach { keyCode ->
+                    RyujinxNative.jnaInstance.inputSetButtonReleased(keyCode, controllerId)
+                }
+            }
+        }
+        return true
+    }
+    
     fun setEditingMode(editing: Boolean) {
         isEditing = editing
         editModeContainer?.isVisible = editing
@@ -1501,6 +1925,9 @@ class GameController(var activity: Activity) {
         }
         virtualJoysticks.values.forEach { joystick ->
             joystick.updateStickPosition(0f, 0f, false)
+        }
+        virtualCombinations.values.forEach { combination ->
+            combination.setPressedState(false)
         }
         dpadView?.currentDirection = DpadOverlayView.DpadDirection.NONE
         dpadView?.updateDirection(DpadOverlayView.DpadDirection.NONE)
@@ -1525,6 +1952,11 @@ class GameController(var activity: Activity) {
             manager.saveJoystickPosition(joystickId, x, y, containerWidth, containerHeight)
         }
         
+        virtualCombinations.forEach { (combinationId, combination) ->
+            val (x, y) = combination.getPosition()
+            manager.saveCombinationPosition(combinationId, x, y, containerWidth, containerHeight)
+        }
+        
         dpadView?.let { dpad ->
             val (x, y) = dpad.getPosition()
             manager.saveDpadPosition(x, y, containerWidth, containerHeight)
@@ -1536,6 +1968,7 @@ class GameController(var activity: Activity) {
             this.isVisible = isVisible
             virtualButtons.values.forEach { it.isVisible = isVisible }
             virtualJoysticks.values.forEach { it.isVisible = isVisible }
+            virtualCombinations.values.forEach { it.isVisible = isVisible }
             dpadView?.isVisible = isVisible
 
             if (isVisible)
@@ -1548,4 +1981,3 @@ class GameController(var activity: Activity) {
             controllerId = RyujinxNative.jnaInstance.inputConnectGamepad(0)
     }
 }
-
