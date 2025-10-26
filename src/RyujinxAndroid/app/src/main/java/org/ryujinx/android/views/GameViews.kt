@@ -1168,11 +1168,9 @@ class GameViews {
                         ) {
                             itemsIndexed(getAvailableKeys()) { index, keyItem ->
                                 val isSelected = tempSelectedKeys.value.contains(keyItem.keyCode)
-                                Surface(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp),
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else Color.Transparent,
+                                KeySelectionItem(
+                                    keyItem = keyItem,
+                                    isSelected = isSelected,
                                     onClick = {
                                         if (isSelected) {
                                             tempSelectedKeys.value.remove(keyItem.keyCode)
@@ -1180,20 +1178,7 @@ class GameViews {
                                             tempSelectedKeys.value.add(keyItem.keyCode)
                                         }
                                     }
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(16.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(text = keyItem.name)
-                                        if (isSelected) {
-                                            Text(text = "✅", fontSize = 16.sp)
-                                        }
-                                    }
-                                }
+                                )
                                 
                                 if (index < getAvailableKeys().size - 1) {
                                     HorizontalDivider(
@@ -1226,6 +1211,42 @@ class GameViews {
                                 Text(text = "确定")
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        @Composable
+        fun KeySelectionItem(
+            keyItem: KeyItem,
+            isSelected: Boolean,
+            onClick: () -> Unit
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp),
+                color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) 
+                       else Color.Transparent,
+                onClick = onClick
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = keyItem.name,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    if (isSelected) {
+                        Text(
+                            text = "✓",
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 16.sp
+                        )
                     }
                 }
             }
