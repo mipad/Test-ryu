@@ -1270,11 +1270,8 @@ class GameViews {
                 ControlItem(101, "左摇杆", "移动/方向控制", "🕹️", ControlType.JOYSTICK),
                 ControlItem(102, "右摇杆", "视角/镜头控制", "🕹️", ControlType.JOYSTICK),
                 
-                // 方向键 - 单独的上下左右
-                ControlItem(201, "上方向键", "向上移动", "⬆️", ControlType.DPAD),
-                ControlItem(202, "下方向键", "向下移动", "⬇️", ControlType.DPAD),
-                ControlItem(203, "左方向键", "向左移动", "⬅️", ControlType.DPAD),
-                ControlItem(204, "右方向键", "向右移动", "➡️", ControlType.DPAD)
+                // 方向键 
+                ControlItem(201, "方向键", "方向选择", "✛", ControlType.DPAD)
             )
             
             // 添加组合按键
