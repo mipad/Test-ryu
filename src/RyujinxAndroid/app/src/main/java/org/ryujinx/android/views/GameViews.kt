@@ -1147,20 +1147,42 @@ class GameViews {
                             .fillMaxWidth()
                             .padding(16.dp)
                     ) {
-                        // 标题
-                        Text(
-                            text = "选择按键 (${tempSelectedKeys.value.size}/4)",
-                            style = MaterialTheme.typography.headlineSmall,
-                            modifier = Modifier
-                                .padding(bottom = 16.dp)
-                                .align(Alignment.CenterHorizontally)
-                        )
+                        // 顶部按钮行 - 添加确定按钮
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(
+                                onClick = onDismiss
+                            ) {
+                                Text(text = "取消")
+                            }
+                            
+                            // 标题
+                            Text(
+                                text = "选择按键 (${tempSelectedKeys.value.size}/4)",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            
+                            Button(
+                                onClick = {
+                                    selectedKeys.value = tempSelectedKeys.value.toMutableList()
+                                    onDismiss()
+                                },
+                                enabled = tempSelectedKeys.value.isNotEmpty()
+                            ) {
+                                Text(text = "确定")
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
 
                         // 按键列表 - 排除摇杆按键
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(300.dp)
+                                .height(400.dp)
                         ) {
                             itemsIndexed(getAvailableKeys()) { index, keyItem ->
                                 val isSelected = tempSelectedKeys.value.contains(keyItem.keyCode)
@@ -1186,28 +1208,16 @@ class GameViews {
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // 按钮行
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            TextButton(
-                                onClick = onDismiss
-                            ) {
-                                Text(text = "取消")
-                            }
-                            
-                            Button(
-                                onClick = {
-                                    selectedKeys.value = tempSelectedKeys.value.toMutableList()
-                                    onDismiss()
-                                }
-                            ) {
-                                Text(text = "确定")
-                            }
-                        }
+                        // 底部说明
+                        Text(
+                            text = "最多可选择4个按键",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                                .align(Alignment.CenterHorizontally)
+                        )
                     }
                 }
             }
