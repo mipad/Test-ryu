@@ -1115,6 +1115,7 @@ class GameController(var activity: Activity) {
         
         // 创建摇杆 - 传递 individualScale 参数
         manager.getAllJoystickConfigs().forEach { config ->
+            val isEnabled = manager.isJoystickEnabled(config.id)
             val joystick = JoystickOverlayView(
                 buttonContainer.context,
                 individualScale = manager.getJoystickScale(config.id) // 传递 individualScale
@@ -1123,8 +1124,7 @@ class GameController(var activity: Activity) {
                 isLeftStick = config.isLeft
                 opacity = (manager.getJoystickOpacity(config.id) * 255 / 100)
                 
-                // 修复：正确设置初始可见性
-                val isEnabled = manager.isJoystickEnabled(config.id)
+                // 修复：确保启用状态正确应用
                 isVisible = isEnabled
                 
                 // 不在这里设置位置，统一在 refreshControlPositions 中设置
@@ -1144,15 +1144,15 @@ class GameController(var activity: Activity) {
         }
         
         // 创建方向键 - 传递 individualScale 参数
+        val isDpadEnabled = manager.isDpadEnabled()
         dpadView = DpadOverlayView(
             buttonContainer.context,
             individualScale = manager.getDpadScale() // 传递 individualScale
         ).apply {
             opacity = (manager.getDpadOpacity() * 255 / 100)
             
-            // 修复：正确设置初始可见性
-            val isEnabled = manager.isDpadEnabled()
-            isVisible = isEnabled
+            // 修复：确保启用状态正确应用
+            isVisible = isDpadEnabled
             
             // 不在这里设置位置，统一在 refreshControlPositions 中设置
             
@@ -1169,6 +1169,7 @@ class GameController(var activity: Activity) {
         
         // 创建按钮 - 传递 individualScale 参数
         manager.getAllButtonConfigs().forEach { config ->
+            val isEnabled = manager.isButtonEnabled(config.id)
             val button = ButtonOverlayView(
                 buttonContainer.context,
                 individualScale = manager.getButtonScale(config.id) // 传递 individualScale
@@ -1177,8 +1178,7 @@ class GameController(var activity: Activity) {
                 buttonText = config.text
                 opacity = (manager.getButtonOpacity(config.id) * 255 / 100)
                 
-                // 修复：正确设置初始可见性
-                val isEnabled = manager.isButtonEnabled(config.id)
+                // 修复：确保启用状态正确应用
                 isVisible = isEnabled
                 
                 when (config.id) {
@@ -1214,6 +1214,7 @@ class GameController(var activity: Activity) {
         
         // 创建组合按键
         manager.getAllCombinationConfigs().forEach { config ->
+            val isEnabled = manager.isCombinationEnabled(config.id)
             val combination = CombinationOverlayView(
                 buttonContainer.context,
                 individualScale = manager.getCombinationScale(config.id)
@@ -1223,8 +1224,7 @@ class GameController(var activity: Activity) {
                 combinationKeys = config.keyCodes
                 opacity = (manager.getCombinationOpacity(config.id) * 255 / 100)
                 
-                // 修复：正确设置初始可见性
-                val isEnabled = manager.isCombinationEnabled(config.id)
+                // 修复：确保启用状态正确应用
                 isVisible = isEnabled
                 
                 // 不在这里设置位置，统一在 refreshControlPositions 中设置
@@ -2046,10 +2046,25 @@ class GameController(var activity: Activity) {
     fun setVisible(isVisible: Boolean) {
         controllerView?.apply {
             this.isVisible = isVisible
-            virtualButtons.values.forEach { it.isVisible = isVisible }
-            virtualJoysticks.values.forEach { it.isVisible = isVisible }
-            virtualCombinations.values.forEach { it.isVisible = isVisible }
-            dpadView?.isVisible = isVisible
+            
+            // 确保所有控件的可见性正确设置，考虑其启用状态
+            val manager = buttonLayoutManager
+            virtualButtons.values.forEach { button ->
+                val isButtonEnabled = manager?.isButtonEnabled(button.buttonId) ?: true
+                button.isVisible = isVisible && isButtonEnabled
+            }
+            virtualJoysticks.values.forEach { joystick ->
+                val isJoystickEnabled = manager?.isJoystickEnabled(joystick.stickId) ?: true
+                joystick.isVisible = isVisible && isJoystickEnabled
+            }
+            virtualCombinations.values.forEach { combination ->
+                val isCombinationEnabled = manager?.isCombinationEnabled(combination.combinationId) ?: true
+                combination.isVisible = isVisible && isCombinationEnabled
+            }
+            dpadView?.let { dpad ->
+                val isDpadEnabled = manager?.isDpadEnabled() ?: true
+                dpad.isVisible = isVisible && isDpadEnabled
+            }
 
             if (isVisible)
                 connect()
