@@ -59,6 +59,16 @@ namespace Ryujinx.HLE.HOS
             IArmProcessContext processContext;
 
             bool isArm64Host = RuntimeInformation.ProcessArchitecture == Architecture.Arm64;
+            bool isAndroid = OperatingSystem.IsAndroid();
+
+            // 安卓平台特殊处理：使用更大的地址空间
+            if (isAndroid)
+            {
+                Logger.Info?.Print(LogClass.Cpu, "Android platform detected, applying address space optimizations");
+                
+                // 在安卓上，尝试分配更大的地址空间
+                addressSpaceSize = GetAndroidAddressSpaceSize(addressSpaceSize);
+            }
 
             if (isArm64Host && for64Bit && context.Device.Configuration.UseHypervisor)
             {
@@ -72,7 +82,31 @@ namespace Ryujinx.HLE.HOS
                 {
                     if (!AddressSpace.TryCreateWithoutMirror(addressSpaceSize, out var addressSpace))
                     {
-                        throw new Exception("Address space creation failed");
+                        // 如果分配失败，尝试更小的回退大小
+                        Logger.Warning?.Print(LogClass.Cpu, $"Failed to allocate 0x{addressSpaceSize:X} address space, trying fallback sizes");
+                        
+                        ulong[] fallbackSizes = isAndroid ? 
+                            new ulong[] { 0x4000000000UL, 0x3000000000UL, 0x2100000000UL } : // 256GB, 192GB, 132GB
+                            new ulong[] { 0x2100000000UL, 0x1000000000UL }; // 132GB, 64GB
+                        
+                        foreach (ulong fallbackSize in fallbackSizes)
+                        {
+                            if (AddressSpace.TryCreateWithoutMirror(fallbackSize, out addressSpace))
+                            {
+                                Logger.Info?.Print(LogClass.Cpu, $"Successfully allocated fallback address space: 0x{fallbackSize:X}");
+                                addressSpaceSize = fallbackSize;
+                                break;
+                            }
+                        }
+                        
+                        if (addressSpace == null)
+                        {
+                            throw new Exception($"Address space creation failed for all sizes. Requested: 0x{addressSpaceSize:X}");
+                        }
+                    }
+                    else
+                    {
+                        Logger.Info?.Print(LogClass.Cpu, $"Successfully allocated address space: 0x{addressSpace.Size:X}");
                     }
 
                     Logger.Info?.Print(LogClass.Cpu, $"NCE Base AS Address: 0x{addressSpace.Pointer.ToInt64():X} Size: 0x{addressSpace.Size:X}");
@@ -86,10 +120,20 @@ namespace Ryujinx.HLE.HOS
             {
                 MemoryManagerMode mode = context.Device.Configuration.MemoryManagerMode;
 
+                // 安卓平台：优化内存管理器选择
+                if (isAndroid)
+                {
+                    // 在安卓上优先使用 SoftwarePageTable，因为它对地址空间要求较低
+                    if (mode == MemoryManagerMode.HostMapped || mode == MemoryManagerMode.HostMappedUnsafe)
+                    {
+                        Logger.Info?.Print(LogClass.Cpu, "Android: Switching to SoftwarePageTable for better compatibility");
+                        mode = MemoryManagerMode.SoftwarePageTable;
+                    }
+                }
+
                 if (!MemoryBlock.SupportsFlags(MemoryAllocationFlags.ViewCompatible))
                 {
                     Logger.Warning?.Print(LogClass.Cpu, "Host system doesn't support views, falling back to software page table");
-
                     mode = MemoryManagerMode.SoftwarePageTable;
                 }
 
@@ -100,14 +144,13 @@ namespace Ryujinx.HLE.HOS
                 AddressSpace addressSpace = null;
                 MemoryBlock asNoMirror = null;
 
-                // We want to use host tracked mode if the host page size is > 4KB.
+                // 我们想要使用 host tracked 模式，如果主机页面大小 > 4KB
                 if ((mode == MemoryManagerMode.HostMapped || mode == MemoryManagerMode.HostMappedUnsafe) && MemoryBlock.GetPageSize() <= 0x1000)
                 {
                     if (!AddressSpace.TryCreate(context.Memory, addressSpaceSize, out addressSpace) &&
                         !AddressSpace.TryCreateWithoutMirror(addressSpaceSize, out asNoMirror))
                     {
                         Logger.Warning?.Print(LogClass.Cpu, "Address space creation failed, falling back to software page table");
-
                         mode = MemoryManagerMode.SoftwarePageTable;
                     }
                 }
@@ -152,12 +195,36 @@ namespace Ryujinx.HLE.HOS
                 if (addressSpaceSize != processContext.AddressSpaceSize)
                 {
                     Logger.Warning?.Print(LogClass.Emulation, $"Allocated address space (0x{processContext.AddressSpaceSize:X}) is smaller than guest application requirements (0x{addressSpaceSize:X})");
+                    
+                    // 安卓平台：这通常不是致命错误，只是警告
+                    if (isAndroid)
+                    {
+                        Logger.Info?.Print(LogClass.Cpu, "Android: Smaller address space is acceptable, continuing execution");
+                    }
                 }
             }
 
             DiskCacheLoadState = processContext.Initialize(_titleIdText, _displayVersion, _diskCacheEnabled, _codeAddress, _codeSize);
 
             return processContext;
+        }
+
+        /// <summary>
+        /// 为安卓平台获取合适的地址空间大小
+        /// </summary>
+        private ulong GetAndroidAddressSpaceSize(ulong requestedSize)
+        {
+            // 在安卓上，我们尝试使用请求的大小，但如果太大则使用合理的最大值
+            ulong maxAndroidSize = 0x4000000000UL; // 256GB
+            
+            if (requestedSize > maxAndroidSize)
+            {
+                Logger.Info?.Print(LogClass.Cpu, 
+                    $"Android: Reducing requested address space from 0x{requestedSize:X} to 0x{maxAndroidSize:X}");
+                return maxAndroidSize;
+            }
+            
+            return requestedSize;
         }
     }
 }
