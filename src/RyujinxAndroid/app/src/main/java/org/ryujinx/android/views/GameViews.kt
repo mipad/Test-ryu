@@ -978,13 +978,17 @@ class GameViews {
             onCombinationCreated: () -> Unit
         ) {
             val combinationName = remember { mutableStateOf("") }
-            val selectedKeys = remember { mutableStateOf(mutableListOf<Int>()) }
+            val selectedKeys = remember { mutableStateOf<List<Int>>(emptyList()) }
             val showKeySelection = remember { mutableStateOf(false) }
 
             // 按键选择对话框
             if (showKeySelection.value) {
                 KeySelectionDialog(
-                    selectedKeys = selectedKeys,
+                    initialSelectedKeys = selectedKeys.value,
+                    onKeysSelected = { keys ->
+                        selectedKeys.value = keys
+                        showKeySelection.value = false
+                    },
                     onDismiss = { showKeySelection.value = false }
                 )
                 return
@@ -1066,7 +1070,10 @@ class GameViews {
                                         Text(text = "${index + 1}. $keyName")
                                         IconButton(
                                             onClick = {
-                                                selectedKeys.value.removeAt(index)
+                                                // 创建新的列表并移除对应项
+                                                val newList = selectedKeys.value.toMutableList()
+                                                newList.removeAt(index)
+                                                selectedKeys.value = newList
                                             },
                                             modifier = Modifier.size(24.dp)
                                         ) {
@@ -1128,10 +1135,11 @@ class GameViews {
 
         @Composable
         fun KeySelectionDialog(
-            selectedKeys: androidx.compose.runtime.MutableState<MutableList<Int>>,
+            initialSelectedKeys: List<Int>,
+            onKeysSelected: (List<Int>) -> Unit,
             onDismiss: () -> Unit
         ) {
-            val tempSelectedKeys = remember { mutableStateOf(selectedKeys.value.toMutableList()) }
+            val tempSelectedKeys = remember { mutableStateOf(initialSelectedKeys.toMutableList()) }
 
             BasicAlertDialog(onDismissRequest = onDismiss) {
                 Surface(
@@ -1167,8 +1175,7 @@ class GameViews {
                             
                             Button(
                                 onClick = {
-                                    selectedKeys.value = tempSelectedKeys.value.toMutableList()
-                                    onDismiss()
+                                    onKeysSelected(tempSelectedKeys.value.toList())
                                 },
                                 enabled = tempSelectedKeys.value.isNotEmpty()
                             ) {
