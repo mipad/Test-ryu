@@ -344,6 +344,9 @@ namespace Ryujinx.HLE.HOS.Services.Nv
 
                 if (errorCode == NvResult.Success)
                 {
+                    // 记录 QueryEvent 调用详情
+                    Logger.Debug?.Print(LogClass.ServiceNv, $"QueryEvent: Process {context.Process.Pid}, fd={fd}, deviceFile={deviceFile.GetType().Name}, eventId={eventId}");
+
                     NvInternalResult internalResult = deviceFile.QueryEvent(out int eventHandle, eventId);
 
                     if (internalResult == NvInternalResult.NotImplemented)
@@ -355,9 +358,31 @@ namespace Ryujinx.HLE.HOS.Services.Nv
 
                     if (errorCode == NvResult.Success)
                     {
+                        // 记录特定句柄的创建
+                        if (eventHandle == 1671214)
+                        {
+                            Logger.Debug?.Print(LogClass.ServiceNv, $"QueryEvent: *** CREATED handle 1671214 *** in Process {context.Process.Pid}, deviceFile={deviceFile.GetType().Name}, eventId={eventId}");
+                        }
+                        else
+                        {
+                            Logger.Debug?.Print(LogClass.ServiceNv, $"QueryEvent: Created event handle {eventHandle} in Process {context.Process.Pid}, deviceFile={deviceFile.GetType().Name}, eventId={eventId}");
+                        }
+
                         context.Response.HandleDesc = IpcHandleDesc.MakeCopy(eventHandle);
                     }
+                    else
+                    {
+                        Logger.Warning?.Print(LogClass.ServiceNv, $"QueryEvent: Failed to create event in Process {context.Process.Pid}, fd={fd}, eventId={eventId}, error={errorCode}");
+                    }
                 }
+                else
+                {
+                    Logger.Warning?.Print(LogClass.ServiceNv, $"QueryEvent: GetDeviceFileFromFd failed in Process {context.Process.Pid}, fd={fd}, error={errorCode}");
+                }
+            }
+            else
+            {
+                Logger.Warning?.Print(LogClass.ServiceNv, $"QueryEvent: EnsureInitialized failed in Process {context.Process.Pid}, error={errorCode}");
             }
 
             context.ResponseData.Write((uint)errorCode);
