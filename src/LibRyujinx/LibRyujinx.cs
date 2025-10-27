@@ -1,5 +1,5 @@
 using Ryujinx.HLE.FileSystem;
-using Ryujinx.HLE.HOS.Services.Account.Acc;
+using Ryujinx.HLE.HOS.Services.Account.Acc; 
 using Ryujinx.HLE.HOS;
 using Ryujinx.Input.HLE;
 using Ryujinx.HLE;
@@ -41,6 +41,9 @@ using LibHac.FsSrv;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Ryujinx.Graphics.Vulkan;
+using Silk.NET.Vulkan;
+using VkFormat = Silk.NET.Vulkan.Format;
 
 namespace LibRyujinx
 {
@@ -223,6 +226,82 @@ namespace LibRyujinx
                 GameFps = context.Statistics.GetGameFrameRate(),
                 GameTime = context.Statistics.GetGameFrameTime()
             };
+        }
+
+        // ==================== 表面格式管理功能 ====================
+
+        /// <summary>
+        /// 获取设备支持的表面格式列表
+        /// </summary>
+        public static string[] GetAvailableSurfaceFormats()
+        {
+            try
+            {
+                var formats = Window.GetAvailableSurfaceFormats();
+                var result = new List<string>();
+                
+                foreach (var format in formats)
+                {
+                    string displayName = Window.GetFormatDisplayName(format.Format, format.ColorSpace);
+                    string formatInfo = $"{(int)format.Format}:{(int)format.ColorSpace}:{displayName}";
+                    result.Add(formatInfo);
+                }
+                
+                Logger.Info?.Print(LogClass.Application, $"Found {result.Count} available surface formats");
+                return result.ToArray();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error getting available surface formats: {ex.Message}");
+                return new string[0];
+            }
+        }
+
+        /// <summary>
+        /// 设置自定义表面格式
+        /// </summary>
+        public static void SetCustomSurfaceFormat(int format, int colorSpace)
+        {
+            try
+            {
+                // 将整数参数转换为 Vulkan 枚举
+                VkFormat vkFormat = (VkFormat)format;
+                ColorSpaceKHR vkColorSpace = (ColorSpaceKHR)colorSpace;
+                
+                // 调用 Window 类的方法设置自定义格式
+                Window.SetCustomSurfaceFormat(vkFormat, vkColorSpace);
+                
+                Logger.Info?.Print(LogClass.Application, $"Custom surface format set: Format={vkFormat}, ColorSpace={vkColorSpace}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error setting custom surface format: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 清除自定义表面格式设置
+        /// </summary>
+        public static void ClearCustomSurfaceFormat()
+        {
+            Window.ClearCustomSurfaceFormat();
+            Logger.Info?.Print(LogClass.Application, "Custom surface format cleared");
+        }
+
+        /// <summary>
+        /// 检查自定义表面格式是否有效
+        /// </summary>
+        public static bool IsCustomSurfaceFormatValid()
+        {
+            return Window.IsCustomSurfaceFormatValid();
+        }
+
+        /// <summary>
+        /// 获取当前表面格式信息
+        /// </summary>
+        public static string GetCurrentSurfaceFormatInfo()
+        {
+            return Window.GetCurrentSurfaceFormatInfo();
         }
 
         // ==================== Mod 管理功能 ====================
