@@ -1793,6 +1793,12 @@ namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
         {
             KProcess process = KernelStatic.GetCurrentProcess();
 
+            // 添加特定句柄的日志
+            if (handle == 1671214)
+            {
+                Logger.Debug?.Print(LogClass.KernelSvc, $"SignalEvent: SIGNALING handle 1671214 (KReadableEvent) from Process {process.Pid}, Thread {KernelStatic.GetCurrentThread().ThreadUid}");
+            }
+
             KWritableEvent writableEvent = process.HandleTable.GetObject<KWritableEvent>(handle);
 
             Result result;
@@ -1802,10 +1808,22 @@ namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
                 writableEvent.Signal();
 
                 result = Result.Success;
+                
+                // 记录信号成功
+                if (handle == 1671214)
+                {
+                    Logger.Debug?.Print(LogClass.KernelSvc, $"SignalEvent: Successfully signaled handle 1671214");
+                }
             }
             else
             {
                 result = KernelResult.InvalidHandle;
+                
+                // 记录无效句柄
+                if (handle == 1671214)
+                {
+                    Logger.Warning?.Print(LogClass.KernelSvc, $"SignalEvent: Handle 1671214 is INVALID or not a KWritableEvent");
+                }
             }
 
             return result;
@@ -1817,6 +1835,12 @@ namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
             Result result;
 
             KProcess process = KernelStatic.GetCurrentProcess();
+            
+            // 添加特定句柄的日志
+            if (handle == 1671214)
+            {
+                Logger.Debug?.Print(LogClass.KernelSvc, $"ClearEvent: CLEARING handle 1671214 from Process {process.Pid}, Thread {KernelStatic.GetCurrentThread().ThreadUid}");
+            }
 
             KWritableEvent writableEvent = process.HandleTable.GetObject<KWritableEvent>(handle);
 
@@ -1825,10 +1849,27 @@ namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
                 KReadableEvent readableEvent = process.HandleTable.GetObject<KReadableEvent>(handle);
 
                 result = readableEvent?.Clear() ?? KernelResult.InvalidHandle;
+                
+                if (handle == 1671214)
+                {
+                    if (readableEvent != null)
+                    {
+                        Logger.Debug?.Print(LogClass.KernelSvc, $"ClearEvent: Cleared KReadableEvent 1671214");
+                    }
+                    else
+                    {
+                        Logger.Warning?.Print(LogClass.KernelSvc, $"ClearEvent: Handle 1671214 is INVALID");
+                    }
+                }
             }
             else
             {
                 result = writableEvent.Clear();
+                
+                if (handle == 1671214)
+                {
+                    Logger.Debug?.Print(LogClass.KernelSvc, $"ClearEvent: Cleared KWritableEvent 1671214");
+                }
             }
 
             return result;
@@ -1839,6 +1880,12 @@ namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
         {
             KProcess currentProcess = KernelStatic.GetCurrentProcess();
 
+            // 记录特定句柄的关闭
+            if (handle == 1671214)
+            {
+                Logger.Debug?.Print(LogClass.KernelSvc, $"CloseHandle: Closing handle 1671214 from Process {currentProcess.Pid}, Thread {KernelStatic.GetCurrentThread().ThreadUid}");
+            }
+
             return currentProcess.HandleTable.CloseHandle(handle) ? Result.Success : KernelResult.InvalidHandle;
         }
 
@@ -1847,6 +1894,12 @@ namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
         {
             KProcess currentProcess = KernelStatic.GetCurrentProcess();
 
+            // 记录特定句柄的重置
+            if (handle == 1671214)
+            {
+                Logger.Debug?.Print(LogClass.KernelSvc, $"ResetSignal: Resetting signal for handle 1671214 from Process {currentProcess.Pid}, Thread {KernelStatic.GetCurrentThread().ThreadUid}");
+            }
+
             KReadableEvent readableEvent = currentProcess.HandleTable.GetObject<KReadableEvent>(handle);
 
             Result result;
@@ -1854,6 +1907,18 @@ namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
             if (readableEvent != null)
             {
                 result = readableEvent.ClearIfSignaled();
+                
+                if (handle == 1671214)
+                {
+                    if (result == Result.Success)
+                    {
+                        Logger.Debug?.Print(LogClass.KernelSvc, $"ResetSignal: Successfully reset handle 1671214");
+                    }
+                    else
+                    {
+                        Logger.Debug?.Print(LogClass.KernelSvc, $"ResetSignal: Failed to reset handle 1671214, result: {result}");
+                    }
+                }
             }
             else
             {
@@ -1866,6 +1931,11 @@ namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
                 else
                 {
                     result = KernelResult.InvalidHandle;
+                }
+                
+                if (handle == 1671214)
+                {
+                    Logger.Warning?.Print(LogClass.KernelSvc, $"ResetSignal: Handle 1671214 is not a KReadableEvent or KProcess");
                 }
             }
 
@@ -2245,6 +2315,17 @@ namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
                 if (result != Result.Success)
                 {
                     process.HandleTable.CloseHandle(wEventHandle);
+                }
+                else
+                {
+                    // 记录事件创建
+                    Logger.Debug?.Print(LogClass.KernelSvc, $"CreateEvent: Created event pair - writable: {wEventHandle}, readable: {rEventHandle} in Process {process.Pid}");
+                    
+                    // 特别记录如果创建了句柄1671214
+                    if (rEventHandle == 1671214 || wEventHandle == 1671214)
+                    {
+                        Logger.Debug?.Print(LogClass.KernelSvc, $"CreateEvent: *** Created handle 1671214 *** - Type: {(rEventHandle == 1671214 ? "KReadableEvent" : "KWritableEvent")}");
+                    }
                 }
             }
             else
