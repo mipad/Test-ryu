@@ -89,6 +89,75 @@ import org.ryujinx.android.viewmodels.SettingsViewModel
 import org.ryujinx.android.viewmodels.VulkanDriverViewModel
 import kotlin.concurrent.thread
 
+// 表面格式相关的数据类 - 移动到 SettingViews.kt 文件中
+data class SurfaceFormatInfo(
+    val format: Int,
+    val colorSpace: Int,
+    val displayName: String
+) {
+    companion object {
+        /**
+         * 从字符串解析表面格式信息
+         * 字符串格式："format:colorSpace:displayName"
+         */
+        fun fromString(formatString: String): SurfaceFormatInfo? {
+            return try {
+                val parts = formatString.split(":")
+                if (parts.size >= 3) {
+                    SurfaceFormatInfo(
+                        format = parts[0].toInt(),
+                        colorSpace = parts[1].toInt(),
+                        displayName = parts[2]
+                    )
+                } else {
+                    null
+                }
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+    
+    override fun toString(): String {
+        return displayName
+    }
+}
+
+// 常用的Vulkan格式常量（可以根据需要扩展）
+object VulkanFormats {
+    // 常用格式
+    const val FORMAT_B8G8R8A8_UNORM = 44  // VK_FORMAT_B8G8R8A8_UNORM
+    const val FORMAT_R8G8B8A8_UNORM = 37  // VK_FORMAT_R8G8B8A8_UNORM
+    const val FORMAT_R8G8B8A8_SRGB = 43   // VK_FORMAT_R8G8B8A8_SRGB
+    const val FORMAT_B8G8R8A8_SRGB = 50   // VK_FORMAT_B8G8R8A8_SRGB
+    
+    // 常用颜色空间
+    const val COLOR_SPACE_SRGB_NONLINEAR = 0      // VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+    const val COLOR_SPACE_PASSTHROUGH_EXT = 1000021004  // VK_COLOR_SPACE_PASS_THROUGH_EXT
+    const val COLOR_SPACE_DISPLAY_P3_NONLINEAR = 1000104001  // VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT
+    
+    // 获取格式的友好名称
+    fun getFormatName(format: Int): String {
+        return when (format) {
+            FORMAT_B8G8R8A8_UNORM -> "BGRA8"
+            FORMAT_R8G8B8A8_UNORM -> "RGBA8"
+            FORMAT_R8G8B8A8_SRGB -> "RGBA8 SRGB"
+            FORMAT_B8G8R8A8_SRGB -> "BGRA8 SRGB"
+            else -> "Format $format"
+        }
+    }
+    
+    // 获取颜色空间的友好名称
+    fun getColorSpaceName(colorSpace: Int): String {
+        return when (colorSpace) {
+            COLOR_SPACE_SRGB_NONLINEAR -> "sRGB"
+            COLOR_SPACE_PASSTHROUGH_EXT -> "PassThrough"
+            COLOR_SPACE_DISPLAY_P3_NONLINEAR -> "Display P3"
+            else -> "ColorSpace $colorSpace"
+        }
+    }
+}
+
 class SettingViews {
     companion object {
         const val EXPANSTION_TRANSITION_DURATION = 450
