@@ -9,7 +9,50 @@ using VkFormat = Silk.NET.Vulkan.Format;
 
 namespace Ryujinx.Graphics.Vulkan
 {
-    class Window : WindowBase, IDisposable
+    public abstract class WindowBase : IDisposable
+    {
+        public bool ScreenCaptureRequested { get; set; }
+        public SurfaceTransformFlagsKHR CurrentTransform { get; protected set; }
+
+        public abstract void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback);
+        public abstract void SetSize(int width, int height);
+        public abstract void ChangeVSyncMode(bool vsyncEnabled);
+        public abstract void SetAntiAliasing(AntiAliasing effect);
+        public abstract void SetScalingFilter(ScalingFilter type);
+        public abstract void SetScalingFilterLevel(float level);
+        public abstract void SetColorSpacePassthrough(bool colorSpacePassthroughEnabled);
+
+        public event Action<ScreenCaptureImageInfo> OnScreenCaptured;
+
+        protected void CaptureFrame(ScreenCaptureImageInfo imageInfo)
+        {
+            OnScreenCaptured?.Invoke(imageInfo);
+        }
+
+        public abstract void Dispose();
+    }
+
+    public class ScreenCaptureImageInfo
+    {
+        public int Width { get; }
+        public int Height { get; }
+        public bool IsBgra { get; }
+        public byte[] Data { get; }
+        public bool FlipX { get; }
+        public bool FlipY { get; }
+
+        public ScreenCaptureImageInfo(int width, int height, bool isBgra, byte[] data, bool flipX, bool flipY)
+        {
+            Width = width;
+            Height = height;
+            IsBgra = isBgra;
+            Data = data;
+            FlipX = flipX;
+            FlipY = flipY;
+        }
+    }
+
+    public class Window : WindowBase, IDisposable
     {
         private const int SurfaceWidth = 1280;
         private const int SurfaceHeight = 720;
@@ -180,8 +223,8 @@ namespace Ryujinx.Graphics.Vulkan
                 SwizzleComponent.Blue,
                 SwizzleComponent.Alpha);
 
-            Result result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
-            if (result != Result.Success)
+            Silk.NET.Vulkan.Result result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
+            if (result != Silk.NET.Vulkan.Result.Success)
             {
                 result.ThrowOnError();
             }
@@ -448,14 +491,14 @@ namespace Ryujinx.Graphics.Vulkan
                     new Fence(),
                     ref nextImage);
 
-                if (acquireResult == Result.ErrorOutOfDateKhr ||
-                    acquireResult == Result.SuboptimalKhr ||
+                if (acquireResult == Silk.NET.Vulkan.Result.ErrorOutOfDateKhr ||
+                    acquireResult == Silk.NET.Vulkan.Result.SuboptimalKhr ||
                     _swapchainIsDirty)
                 {
                     RecreateSwapchain();
                     semaphoreIndex = (_frameIndex - 1) % _imageAvailableSemaphores.Length;
                 }
-                else if(acquireResult == Result.ErrorSurfaceLostKhr)
+                else if(acquireResult == Silk.NET.Vulkan.Result.ErrorSurfaceLostKhr)
                 {
                     _gd.RecreateSurface();
                 }
@@ -591,7 +634,7 @@ namespace Ryujinx.Graphics.Vulkan
             var semaphore = _renderFinishedSemaphores[semaphoreIndex];
             var swapchain = _swapchain;
 
-            Result result;
+            Silk.NET.Vulkan.Result result;
 
             var presentInfo = new PresentInfoKHR
             {
@@ -755,7 +798,7 @@ namespace Ryujinx.Graphics.Vulkan
         {
             byte[] bitmap = texture.GetData(x, y, width, height);
 
-            _gd.OnScreenCaptured(new ScreenCaptureImageInfo(width, height, isBgra, bitmap, flipX, flipY));
+            CaptureFrame(new ScreenCaptureImageInfo(width, height, isBgra, bitmap, flipX, flipY));
         }
 
         public override void SetSize(int width, int height)
