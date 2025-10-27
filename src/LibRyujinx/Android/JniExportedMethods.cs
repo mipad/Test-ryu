@@ -657,6 +657,73 @@ namespace LibRyujinx
             }
         }
 
+        // ==================== 表面格式管理的JNI方法 ====================
+
+        [UnmanagedCallersOnly(EntryPoint = "surfaceGetAvailableFormats")]
+        public static IntPtr JnaGetAvailableSurfaceFormats()
+        {
+            try
+            {
+                var formats = GetAvailableSurfaceFormats();
+                return CreateStringArray(formats.ToList());
+            }
+            catch (Exception ex)
+            {
+                return IntPtr.Zero;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "surfaceSetCustomFormat")]
+        public static void JnaSetCustomSurfaceFormat(int format, int colorSpace)
+        {
+            try
+            {
+                SetCustomSurfaceFormat(format, colorSpace);
+            }
+            catch (Exception ex)
+            {
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "surfaceClearCustomFormat")]
+        public static void JnaClearCustomSurfaceFormat()
+        {
+            try
+            {
+                ClearCustomSurfaceFormat();
+            }
+            catch (Exception ex)
+            {
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "surfaceIsCustomFormatValid")]
+        public static bool JnaIsCustomSurfaceFormatValid()
+        {
+            try
+            {
+                return IsCustomSurfaceFormatValid();
+            }
+            catch (Exception ex)
+            {
+                return false;
+            }
+        }
+
+        [UnmanagedCallersOnly(EntryPoint = "surfaceGetCurrentFormatInfo")]
+        public static IntPtr JnaGetCurrentSurfaceFormatInfo()
+        {
+            try
+            {
+                var info = GetCurrentSurfaceFormatInfo();
+                return Marshal.StringToHGlobalAnsi(info ?? "Unknown");
+            }
+            catch (Exception ex)
+            {
+                return IntPtr.Zero;
+            }
+        }
+
         // ==================== 存档管理的JNI方法 ====================
 
         [UnmanagedCallersOnly(EntryPoint = "saveDataExport")]
@@ -791,6 +858,26 @@ namespace LibRyujinx
             {
                 return IntPtr.Zero;
             }
+        }
+
+        // 辅助方法：创建字符串数组
+        private static IntPtr CreateStringArray(List<string> strings)
+        {
+            if (strings == null || strings.Count == 0)
+            {
+                return IntPtr.Zero;
+            }
+
+            IntPtr[] stringHandles = new IntPtr[strings.Count];
+            for (int i = 0; i < strings.Count; i++)
+            {
+                stringHandles[i] = Marshal.StringToHGlobalAnsi(strings[i]);
+            }
+
+            IntPtr arrayHandle = Marshal.AllocHGlobal(strings.Count * IntPtr.Size);
+            Marshal.Copy(stringHandles, 0, arrayHandle, strings.Count);
+
+            return arrayHandle;
         }
     }
 
