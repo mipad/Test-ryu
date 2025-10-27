@@ -755,9 +755,10 @@ namespace Ryujinx.Graphics.Vulkan
         {
             byte[] bitmap = texture.GetData(x, y, width, height);
 
-            CaptureFrame(new ScreenCaptureImageInfo(width, height, isBgra, bitmap, flipX, flipY));
-        }
+            _gd.OnScreenCaptured(new ScreenCaptureImageInfo(width, height, isBgra, bitmap, flipX, flipY));
 
+         }
+         
         public override void SetSize(int width, int height)
         {
             // We don't need to use width and height as we can get the size from the surface.
