@@ -180,8 +180,8 @@ namespace Ryujinx.Graphics.Vulkan
                 SwizzleComponent.Blue,
                 SwizzleComponent.Alpha);
 
-            Silk.NET.Vulkan.Result result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
-            if (result != Silk.NET.Vulkan.Result.Success)
+            Result result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
+            if (result != Result.Success)
             {
                 result.ThrowOnError();
             }
@@ -448,14 +448,14 @@ namespace Ryujinx.Graphics.Vulkan
                     new Fence(),
                     ref nextImage);
 
-                if (acquireResult == Silk.NET.Vulkan.Result.ErrorOutOfDateKhr ||
-                    acquireResult == Silk.NET.Vulkan.Result.SuboptimalKhr ||
+                if (acquireResult == Result.ErrorOutOfDateKhr ||
+                    acquireResult == Result.SuboptimalKhr ||
                     _swapchainIsDirty)
                 {
                     RecreateSwapchain();
                     semaphoreIndex = (_frameIndex - 1) % _imageAvailableSemaphores.Length;
                 }
-                else if(acquireResult == Silk.NET.Vulkan.Result.ErrorSurfaceLostKhr)
+                else if(acquireResult == Result.ErrorSurfaceLostKhr)
                 {
                     _gd.RecreateSurface();
                 }
@@ -591,7 +591,7 @@ namespace Ryujinx.Graphics.Vulkan
             var semaphore = _renderFinishedSemaphores[semaphoreIndex];
             var swapchain = _swapchain;
 
-            Silk.NET.Vulkan.Result result;
+            Result result;
 
             var presentInfo = new PresentInfoKHR
             {
@@ -756,9 +756,8 @@ namespace Ryujinx.Graphics.Vulkan
             byte[] bitmap = texture.GetData(x, y, width, height);
 
             _gd.OnScreenCaptured(new ScreenCaptureImageInfo(width, height, isBgra, bitmap, flipX, flipY));
+        }
 
-         }
-         
         public override void SetSize(int width, int height)
         {
             // We don't need to use width and height as we can get the size from the surface.
