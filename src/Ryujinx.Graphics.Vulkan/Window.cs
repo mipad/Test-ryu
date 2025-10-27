@@ -9,49 +9,6 @@ using VkFormat = Silk.NET.Vulkan.Format;
 
 namespace Ryujinx.Graphics.Vulkan
 {
-    public abstract class WindowBase : IDisposable
-    {
-        public bool ScreenCaptureRequested { get; set; }
-        public SurfaceTransformFlagsKHR CurrentTransform { get; protected set; }
-
-        public abstract void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback);
-        public abstract void SetSize(int width, int height);
-        public abstract void ChangeVSyncMode(bool vsyncEnabled);
-        public abstract void SetAntiAliasing(AntiAliasing effect);
-        public abstract void SetScalingFilter(ScalingFilter type);
-        public abstract void SetScalingFilterLevel(float level);
-        public abstract void SetColorSpacePassthrough(bool colorSpacePassthroughEnabled);
-
-        public event Action<ScreenCaptureImageInfo> OnScreenCaptured;
-
-        protected void CaptureFrame(ScreenCaptureImageInfo imageInfo)
-        {
-            OnScreenCaptured?.Invoke(imageInfo);
-        }
-
-        public abstract void Dispose();
-    }
-
-    public class ScreenCaptureImageInfo
-    {
-        public int Width { get; }
-        public int Height { get; }
-        public bool IsBgra { get; }
-        public byte[] Data { get; }
-        public bool FlipX { get; }
-        public bool FlipY { get; }
-
-        public ScreenCaptureImageInfo(int width, int height, bool isBgra, byte[] data, bool flipX, bool flipY)
-        {
-            Width = width;
-            Height = height;
-            IsBgra = isBgra;
-            Data = data;
-            FlipX = flipX;
-            FlipY = flipY;
-        }
-    }
-
     public class Window : WindowBase, IDisposable
     {
         private const int SurfaceWidth = 1280;
