@@ -6,7 +6,7 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using VkFormat = Silk.NET.Vulkan.Format;
-using Ryujinx.Common.Logging; // 添加日志命名空间
+using Ryujinx.Common.Logging;
 
 namespace Ryujinx.Graphics.Vulkan
 {
@@ -501,17 +501,372 @@ namespace Ryujinx.Graphics.Vulkan
             return $"{formatName} ({colorSpaceName})";
         }
 
-        // 其余方法保持不变...
         public unsafe override void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback)
         {
-            // ... 现有代码保持不变 ...
+            _gd.PipelineInternal.AutoFlush.Present();
+
+            uint nextImage = 0;
+            int semaphoreIndex = _frameIndex++ % _imageAvailableSemaphores.Length;
+
+            while (true)
+            {
+                var acquireResult = _gd.SwapchainApi.AcquireNextImage(
+                    _device,
+                    _swapchain,
+                    ulong.MaxValue,
+                    _imageAvailableSemaphores[semaphoreIndex],
+                    new Fence(),
+                    ref nextImage);
+
+                if (acquireResult == Result.ErrorOutOfDateKhr ||
+                    acquireResult == Result.SuboptimalKhr ||
+                    _swapchainIsDirty)
+                {
+                    RecreateSwapchain();
+                    semaphoreIndex = (_frameIndex - 1) % _imageAvailableSemaphores.Length;
+                }
+                else if(acquireResult == Result.ErrorSurfaceLostKhr)
+                {
+                    _gd.RecreateSurface();
+                }
+                else
+                {
+                    acquireResult.ThrowOnError();
+                    break;
+                }
+            }
+
+            var swapchainImage = _swapchainImages[nextImage];
+
+            _gd.FlushAllCommands();
+
+            var cbs = _gd.CommandBufferPool.Rent();
+
+            Transition(
+                cbs.CommandBuffer,
+                swapchainImage,
+                0,
+                AccessFlags.TransferWriteBit,
+                ImageLayout.Undefined,
+                ImageLayout.General);
+
+            var view = (TextureView)texture;
+
+            UpdateEffect();
+
+            if (_effect != null)
+            {
+                view = _effect.Run(view, cbs, _width, _height);
+            }
+
+            int srcX0, srcX1, srcY0, srcY1;
+
+            if (crop.Left == 0 && crop.Right == 0)
+            {
+                srcX0 = 0;
+                srcX1 = view.Width;
+            }
+            else
+            {
+                srcX0 = crop.Left;
+                srcX1 = crop.Right;
+            }
+
+            if (crop.Top == 0 && crop.Bottom == 0)
+            {
+                srcY0 = 0;
+                srcY1 = view.Height;
+            }
+            else
+            {
+                srcY0 = crop.Top;
+                srcY1 = crop.Bottom;
+            }
+
+            if (ScreenCaptureRequested)
+            {
+                if (_effect != null)
+                {
+                    _gd.CommandBufferPool.Return(
+                        cbs,
+                        null,
+                        stackalloc[] { PipelineStageFlags.ColorAttachmentOutputBit },
+                        null);
+                    _gd.FlushAllCommands();
+                    cbs.GetFence().Wait();
+                    cbs = _gd.CommandBufferPool.Rent();
+                }
+
+                CaptureFrame(view, srcX0, srcY0, srcX1 - srcX0, srcY1 - srcY0, view.Info.Format.IsBgr(), crop.FlipX, crop.FlipY);
+
+                ScreenCaptureRequested = false;
+            }
+
+            float ratioX = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _height * crop.AspectRatioX / (_width * crop.AspectRatioY));
+            float ratioY = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _width * crop.AspectRatioY / (_height * crop.AspectRatioX));
+
+            int dstWidth = (int)(_width * ratioX);
+            int dstHeight = (int)(_height * ratioY);
+
+            int dstPaddingX = (_width - dstWidth) / 2;
+            int dstPaddingY = (_height - dstHeight) / 2;
+
+            int dstX0 = crop.FlipX ? _width - dstPaddingX : dstPaddingX;
+            int dstX1 = crop.FlipX ? dstPaddingX : _width - dstPaddingX;
+
+            int dstY0 = crop.FlipY ? dstPaddingY : _height - dstPaddingY;
+            int dstY1 = crop.FlipY ? _height - dstPaddingY : dstPaddingY;
+
+            if (_scalingFilter != null)
+            {
+                _scalingFilter.Run(
+                    view,
+                    cbs,
+                    _swapchainImageViews[nextImage].GetImageViewForAttachment(),
+                    _format,
+                    _width,
+                    _height,
+                    new Extents2D(srcX0, srcY0, srcX1, srcY1),
+                    new Extents2D(dstX0, dstY0, dstX1, dstY1)
+                    );
+            }
+            else
+            {
+                _gd.HelperShader.BlitColor(
+                    _gd,
+                    cbs,
+                    view,
+                    _swapchainImageViews[nextImage],
+                    new Extents2D(srcX0, srcY0, srcX1, srcY1),
+                    new Extents2D(dstX0, dstY1, dstX1, dstY0),
+                    _isLinear,
+                    true);
+            }
+
+            Transition(
+                cbs.CommandBuffer,
+                swapchainImage,
+                0,
+                0,
+                ImageLayout.General,
+                ImageLayout.PresentSrcKhr);
+
+            _gd.CommandBufferPool.Return(
+                cbs,
+                stackalloc[] { _imageAvailableSemaphores[semaphoreIndex] },
+                stackalloc[] { PipelineStageFlags.ColorAttachmentOutputBit },
+                stackalloc[] { _renderFinishedSemaphores[semaphoreIndex] });
+
+            // TODO: Present queue.
+            var semaphore = _renderFinishedSemaphores[semaphoreIndex];
+            var swapchain = _swapchain;
+
+            Result result;
+
+            var presentInfo = new PresentInfoKHR
+            {
+                SType = StructureType.PresentInfoKhr,
+                WaitSemaphoreCount = 1,
+                PWaitSemaphores = &semaphore,
+                SwapchainCount = 1,
+                PSwapchains = &swapchain,
+                PImageIndices = &nextImage,
+                PResults = &result,
+            };
+
+            lock (_gd.QueueLock)
+            {
+                _gd.SwapchainApi.QueuePresent(_gd.Queue, in presentInfo);
+            }
+
+            //While this does nothing in most cases, it's useful to notify the end of the frame.
+            swapBuffersCallback?.Invoke();
         }
 
-        // ... 其他现有方法保持不变 ...
+        public override void SetAntiAliasing(AntiAliasing effect)
+        {
+            if (_currentAntiAliasing == effect && _effect != null)
+            {
+                return;
+            }
+
+            _currentAntiAliasing = effect;
+
+            _updateEffect = true;
+        }
+
+        public override void SetScalingFilter(ScalingFilter type)
+        {
+            if (_currentScalingFilter == type && _effect != null)
+            {
+                return;
+            }
+
+            _currentScalingFilter = type;
+
+            _updateScalingFilter = true;
+        }
+
+        public override void SetColorSpacePassthrough(bool colorSpacePassthroughEnabled)
+        {
+            _colorSpacePassthroughEnabled = colorSpacePassthroughEnabled;
+            _swapchainIsDirty = true;
+        }
+
+        private void UpdateEffect()
+        {
+            if (_updateEffect)
+            {
+                _updateEffect = false;
+
+                switch (_currentAntiAliasing)
+                {
+                    case AntiAliasing.Fxaa:
+                        _effect?.Dispose();
+                        _effect = new FxaaPostProcessingEffect(_gd, _device);
+                        break;
+                    case AntiAliasing.None:
+                        _effect?.Dispose();
+                        _effect = null;
+                        break;
+                    case AntiAliasing.SmaaLow:
+                    case AntiAliasing.SmaaMedium:
+                    case AntiAliasing.SmaaHigh:
+                    case AntiAliasing.SmaaUltra:
+                        var quality = _currentAntiAliasing - AntiAliasing.SmaaLow;
+                        if (_effect is SmaaPostProcessingEffect smaa)
+                        {
+                            smaa.Quality = quality;
+                        }
+                        else
+                        {
+                            _effect?.Dispose();
+                            _effect = new SmaaPostProcessingEffect(_gd, _device, quality);
+                        }
+                        break;
+                }
+            }
+
+            if (_updateScalingFilter)
+            {
+                _updateScalingFilter = false;
+
+                switch (_currentScalingFilter)
+                {
+                    case ScalingFilter.Bilinear:
+                    case ScalingFilter.Nearest:
+                        _scalingFilter?.Dispose();
+                        _scalingFilter = null;
+                        _isLinear = _currentScalingFilter == ScalingFilter.Bilinear;
+                        break;
+                    case ScalingFilter.Fsr:
+                        if (_scalingFilter is not FsrScalingFilter)
+                        {
+                            _scalingFilter?.Dispose();
+                            _scalingFilter = new FsrScalingFilter(_gd, _device);
+                        }
+
+                        _scalingFilter.Level = _scalingFilterLevel;
+                        break;
+                    case ScalingFilter.Area:
+                        if (_scalingFilter is not AreaScalingFilter)
+                        {
+                            _scalingFilter?.Dispose();
+                            _scalingFilter = new AreaScalingFilter(_gd, _device);
+                        }
+                        break;
+                }
+            }
+        }
+
+        public override void SetScalingFilterLevel(float level)
+        {
+            _scalingFilterLevel = level;
+            _updateScalingFilter = true;
+        }
+
+        private unsafe void Transition(
+            CommandBuffer commandBuffer,
+            Image image,
+            AccessFlags srcAccess,
+            AccessFlags dstAccess,
+            ImageLayout srcLayout,
+            ImageLayout dstLayout)
+        {
+            var subresourceRange = new ImageSubresourceRange(ImageAspectFlags.ColorBit, 0, 1, 0, 1);
+
+            var barrier = new ImageMemoryBarrier
+            {
+                SType = StructureType.ImageMemoryBarrier,
+                SrcAccessMask = srcAccess,
+                DstAccessMask = dstAccess,
+                OldLayout = srcLayout,
+                NewLayout = dstLayout,
+                SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
+                Image = image,
+                SubresourceRange = subresourceRange,
+            };
+
+            _gd.Api.CmdPipelineBarrier(
+                commandBuffer,
+                PipelineStageFlags.TopOfPipeBit,
+                PipelineStageFlags.AllCommandsBit,
+                0,
+                0,
+                null,
+                0,
+                null,
+                1,
+                in barrier);
+        }
+
+        private void CaptureFrame(TextureView texture, int x, int y, int width, int height, bool isBgra, bool flipX, bool flipY)
+        {
+            byte[] bitmap = texture.GetData(x, y, width, height);
+
+            _gd.OnScreenCaptured(new ScreenCaptureImageInfo(width, height, isBgra, bitmap, flipX, flipY));
+        }
+
+        public override void SetSize(int width, int height)
+        {
+            // We don't need to use width and height as we can get the size from the surface.
+            _swapchainIsDirty = true;
+        }
+
+        public override void ChangeVSyncMode(bool vsyncEnabled)
+        {
+            _vsyncEnabled = vsyncEnabled;
+            _swapchainIsDirty = true;
+        }
 
         protected virtual void Dispose(bool disposing)
         {
-            // ... 现有代码保持不变 ...
+            if (disposing)
+            {
+                unsafe
+                {
+                    for (int i = 0; i < _swapchainImageViews.Length; i++)
+                    {
+                        _swapchainImageViews[i].Dispose();
+                    }
+
+                    for (int i = 0; i < _imageAvailableSemaphores.Length; i++)
+                    {
+                        _gd.Api.DestroySemaphore(_device, _imageAvailableSemaphores[i], null);
+                    }
+
+                    for (int i = 0; i < _renderFinishedSemaphores.Length; i++)
+                    {
+                        _gd.Api.DestroySemaphore(_device, _renderFinishedSemaphores[i], null);
+                    }
+
+                    _gd.SwapchainApi.DestroySwapchain(_device, _swapchain, null);
+                }
+
+                _effect?.Dispose();
+                _scalingFilter?.Dispose();
+            }
         }
 
         public override void Dispose()
