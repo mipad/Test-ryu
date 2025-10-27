@@ -237,12 +237,12 @@ namespace LibRyujinx
         {
             try
             {
-                var formats = Window.GetAvailableSurfaceFormats();
+                var formats = Ryujinx.Graphics.Vulkan.Window.GetAvailableSurfaceFormats();
                 var result = new List<string>();
                 
                 foreach (var format in formats)
                 {
-                    string displayName = Window.GetFormatDisplayName(format.Format, format.ColorSpace);
+                    string displayName = Ryujinx.Graphics.Vulkan.Window.GetFormatDisplayName(format.Format, format.ColorSpace);
                     string formatInfo = $"{(int)format.Format}:{(int)format.ColorSpace}:{displayName}";
                     result.Add(formatInfo);
                 }
@@ -269,7 +269,7 @@ namespace LibRyujinx
                 ColorSpaceKHR vkColorSpace = (ColorSpaceKHR)colorSpace;
                 
                 // 调用 Window 类的方法设置自定义格式
-                Window.SetCustomSurfaceFormat(vkFormat, vkColorSpace);
+                Ryujinx.Graphics.Vulkan.Window.SetCustomSurfaceFormat(vkFormat, vkColorSpace);
                 
                 Logger.Info?.Print(LogClass.Application, $"Custom surface format set: Format={vkFormat}, ColorSpace={vkColorSpace}");
             }
@@ -284,7 +284,7 @@ namespace LibRyujinx
         /// </summary>
         public static void ClearCustomSurfaceFormat()
         {
-            Window.ClearCustomSurfaceFormat();
+            Ryujinx.Graphics.Vulkan.Window.ClearCustomSurfaceFormat();
             Logger.Info?.Print(LogClass.Application, "Custom surface format cleared");
         }
 
@@ -293,7 +293,7 @@ namespace LibRyujinx
         /// </summary>
         public static bool IsCustomSurfaceFormatValid()
         {
-            return Window.IsCustomSurfaceFormatValid();
+            return Ryujinx.Graphics.Vulkan.Window.IsCustomSurfaceFormatValid();
         }
 
         /// <summary>
@@ -301,7 +301,7 @@ namespace LibRyujinx
         /// </summary>
         public static string GetCurrentSurfaceFormatInfo()
         {
-            return Window.GetCurrentSurfaceFormatInfo();
+            return Ryujinx.Graphics.Vulkan.Window.GetCurrentSurfaceFormatInfo();
         }
 
         // ==================== Mod 管理功能 ====================
@@ -867,9 +867,9 @@ namespace LibRyujinx
                         {
                             using UniqueRef<IFile> npdmFile = new();
 
-                            Result result = pfs.OpenFile(ref npdmFile.Ref, "/main.npdm".ToU8Span(), OpenMode.Read);
+                            LibHac.Result result = pfs.OpenFile(ref npdmFile.Ref, "/main.npdm".ToU8Span(), OpenMode.Read);
 
-                            if (ResultFs.PathNotFound.Includes(result))
+                            if (LibHac.ResultFs.PathNotFound.Includes(result))
                             {
                                 Npdm npdm = new(npdmFile.Get.AsStream());
 
@@ -2007,7 +2007,7 @@ namespace LibRyujinx
             Logger.Info?.Print(LogClass.Application, $"Found {saveDirs.Count} save directories:");
             
             foreach (var saveDir in saveDirs)
-            {
+                {
                 string saveId = Path.GetFileName(saveDir);
                 
                 // 检查 saveMeta
