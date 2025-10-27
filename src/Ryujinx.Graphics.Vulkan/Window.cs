@@ -4,6 +4,7 @@ using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.KHR;
 using System;
 using System.Linq;
+using System.Collections.Generic;
 using VkFormat = Silk.NET.Vulkan.Format;
 
 namespace Ryujinx.Graphics.Vulkan
@@ -41,6 +42,12 @@ namespace Ryujinx.Graphics.Vulkan
         private bool _updateScalingFilter;
         private ScalingFilter _currentScalingFilter;
         private bool _colorSpacePassthroughEnabled;
+
+        // 新增：自定义表面格式相关字段
+        private static bool _useCustomSurfaceFormat = false;
+        private static SurfaceFormatKHR _customSurfaceFormat;
+        private static bool _customFormatValid = false;
+        private static List<SurfaceFormatKHR> _availableSurfaceFormats = new List<SurfaceFormatKHR>();
 
         public unsafe Window(VulkanRenderer gd, SurfaceKHR surface, PhysicalDevice physicalDevice, Device device)
         {
@@ -105,6 +112,10 @@ namespace Ryujinx.Graphics.Vulkan
                 _gd.SurfaceApi.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, &surfaceFormatsCount, pSurfaceFormats);
             }
 
+            // 保存可用的表面格式列表
+            _availableSurfaceFormats.Clear();
+            _availableSurfaceFormats.AddRange(surfaceFormats);
+
             uint presentModesCount;
 
             _gd.SurfaceApi.GetPhysicalDeviceSurfacePresentModes(_physicalDevice, _surface, &presentModesCount, null);
@@ -122,6 +133,7 @@ namespace Ryujinx.Graphics.Vulkan
                 imageCount = capabilities.MaxImageCount;
             }
 
+            // 修改：使用新的表面格式选择方法
             var surfaceFormat = ChooseSwapSurfaceFormat(surfaceFormats, _colorSpacePassthroughEnabled);
 
             var extent = ChooseSwapExtent(capabilities);
@@ -168,7 +180,6 @@ namespace Ryujinx.Graphics.Vulkan
                 SwizzleComponent.Blue,
                 SwizzleComponent.Alpha);
 
-            //_gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain).ThrowOnError();
             Result result = _gd.SwapchainApi.CreateSwapchain(_device, in swapchainCreateInfo, null, out _swapchain);
             if (result != Result.Success)
             {
@@ -238,8 +249,27 @@ namespace Ryujinx.Graphics.Vulkan
             return new TextureView(_gd, _device, new DisposableImageView(_gd.Api, _device, imageView), info, format);
         }
 
+        // 修改：增强的表面格式选择方法，支持自定义格式
         private static SurfaceFormatKHR ChooseSwapSurfaceFormat(SurfaceFormatKHR[] availableFormats, bool colorSpacePassthroughEnabled)
         {
+            // 如果启用了自定义表面格式且格式有效，优先使用自定义格式
+            if (_useCustomSurfaceFormat && _customFormatValid)
+            {
+                // 检查自定义格式是否在可用格式列表中
+                foreach (var format in availableFormats)
+                {
+                    if (format.Format == _customSurfaceFormat.Format && 
+                        format.ColorSpace == _customSurfaceFormat.ColorSpace)
+                    {
+                        return format;
+                    }
+                }
+                
+                // 如果自定义格式不可用，回退到自动选择并记录警告
+                System.Diagnostics.Debug.WriteLine($"Warning: Custom surface format not available, falling back to automatic selection");
+                _customFormatValid = false;
+            }
+
             // 定义标准颜色空间常量
             const ColorSpaceKHR StandardColorSpace = ColorSpaceKHR.SpaceSrgbNonlinearKhr;
             const VkFormat PreferredFormat = VkFormat.B8G8R8A8Unorm;
@@ -344,6 +374,61 @@ namespace Ryujinx.Graphics.Vulkan
             uint height = Math.Max(capabilities.MinImageExtent.Height, Math.Min(capabilities.MaxImageExtent.Height, SurfaceHeight));
 
             return new Extent2D(width, height);
+        }
+
+        // 新增：设置自定义表面格式的方法
+        public static void SetCustomSurfaceFormat(VkFormat format, ColorSpaceKHR colorSpace)
+        {
+            _customSurfaceFormat = new SurfaceFormatKHR(format, colorSpace);
+            _useCustomSurfaceFormat = true;
+            _customFormatValid = true;
+        }
+
+        // 新增：清除自定义表面格式设置
+        public static void ClearCustomSurfaceFormat()
+        {
+            _useCustomSurfaceFormat = false;
+            _customFormatValid = false;
+        }
+
+        // 新增：检查自定义表面格式是否可用
+        public static bool IsCustomSurfaceFormatValid()
+        {
+            return _customFormatValid;
+        }
+
+        // 新增：获取当前使用的表面格式信息
+        public static string GetCurrentSurfaceFormatInfo()
+        {
+            if (_useCustomSurfaceFormat && _customFormatValid)
+            {
+                return $"Custom: Format={_customSurfaceFormat.Format}, ColorSpace={_customSurfaceFormat.ColorSpace}";
+            }
+            else
+            {
+                return "Auto-selected surface format";
+            }
+        }
+
+        // 新增：获取设备支持的表面格式列表
+        public static List<SurfaceFormatKHR> GetAvailableSurfaceFormats()
+        {
+            return new List<SurfaceFormatKHR>(_availableSurfaceFormats);
+        }
+
+        // 新增：获取格式名称的友好显示
+        public static string GetFormatDisplayName(VkFormat format, ColorSpaceKHR colorSpace)
+        {
+            string formatName = format.ToString();
+            string colorSpaceName = colorSpace.ToString();
+            
+            // 简化格式名称显示
+            if (formatName.StartsWith("B8G8R8A8"))
+                formatName = "BGRA8";
+            else if (formatName.StartsWith("R8G8B8A8"))
+                formatName = "RGBA8";
+                
+            return $"{formatName} ({colorSpaceName})";
         }
 
         public unsafe override void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback)
