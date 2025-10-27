@@ -137,6 +137,22 @@ interface RyujinxNativeJna : Library {
     fun modsEnableAll(titleId: String): Boolean
     fun modsDisableAll(titleId: String): Boolean
     fun modsAddMod(titleId: String, sourcePath: String, modName: String): Boolean
+
+    // ==================== 表面格式管理相关方法 ====================
+    // 获取设备支持的表面格式列表
+    fun surfaceGetAvailableFormats(): Array<String>
+    
+    // 设置自定义表面格式
+    fun surfaceSetCustomFormat(format: Int, colorSpace: Int)
+    
+    // 清除自定义表面格式设置
+    fun surfaceClearCustomFormat()
+    
+    // 检查自定义表面格式是否有效
+    fun surfaceIsCustomFormatValid(): Boolean
+    
+    // 获取当前表面格式信息
+    fun surfaceGetCurrentFormatInfo(): String
 }
 
 class RyujinxNative {
@@ -340,6 +356,123 @@ class RyujinxNative {
         @JvmStatic
         fun addMod(titleId: String, sourcePath: String, modName: String): Boolean {
             return jnaInstance.modsAddMod(titleId, sourcePath, modName)
+        }
+
+        // ==================== 表面格式管理相关静态方法 ====================
+        
+        /**
+         * 获取设备支持的表面格式列表
+         * 返回格式：Array<String>，每个字符串格式为 "format:colorSpace:displayName"
+         * 例如：["44:0:BGRA8 (SpaceSrgbNonlinearKhr)", "50:1:RGBA8 (SpacePassThroughExt)"]
+         */
+        @JvmStatic
+        fun getAvailableSurfaceFormats(): Array<String> {
+            return jnaInstance.surfaceGetAvailableFormats()
+        }
+        
+        /**
+         * 设置自定义表面格式
+         * @param format Vulkan格式枚举值
+         * @param colorSpace 颜色空间枚举值
+         */
+        @JvmStatic
+        fun setCustomSurfaceFormat(format: Int, colorSpace: Int) {
+            jnaInstance.surfaceSetCustomFormat(format, colorSpace)
+        }
+        
+        /**
+         * 清除自定义表面格式设置，恢复为自动选择
+         */
+        @JvmStatic
+        fun clearCustomSurfaceFormat() {
+            jnaInstance.surfaceClearCustomFormat()
+        }
+        
+        /**
+         * 检查自定义表面格式是否有效
+         * @return true表示自定义格式有效且正在使用，false表示使用自动选择
+         */
+        @JvmStatic
+        fun isCustomSurfaceFormatValid(): Boolean {
+            return jnaInstance.surfaceIsCustomFormatValid()
+        }
+        
+        /**
+         * 获取当前表面格式信息
+         * @return 当前使用的表面格式信息字符串
+         */
+        @JvmStatic
+        fun getCurrentSurfaceFormatInfo(): String {
+            return jnaInstance.surfaceGetCurrentFormatInfo()
+        }
+    }
+}
+
+// 表面格式相关的数据类
+data class SurfaceFormatInfo(
+    val format: Int,
+    val colorSpace: Int,
+    val displayName: String
+) {
+    companion object {
+        /**
+         * 从字符串解析表面格式信息
+         * 字符串格式："format:colorSpace:displayName"
+         */
+        fun fromString(formatString: String): SurfaceFormatInfo? {
+            return try {
+                val parts = formatString.split(":")
+                if (parts.size >= 3) {
+                    SurfaceFormatInfo(
+                        format = parts[0].toInt(),
+                        colorSpace = parts[1].toInt(),
+                        displayName = parts[2]
+                    )
+                } else {
+                    null
+                }
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+    
+    override fun toString(): String {
+        return displayName
+    }
+}
+
+// 常用的Vulkan格式常量（可以根据需要扩展）
+object VulkanFormats {
+    // 常用格式
+    const val FORMAT_B8G8R8A8_UNORM = 44  // VK_FORMAT_B8G8R8A8_UNORM
+    const val FORMAT_R8G8B8A8_UNORM = 37  // VK_FORMAT_R8G8B8A8_UNORM
+    const val FORMAT_R8G8B8A8_SRGB = 43   // VK_FORMAT_R8G8B8A8_SRGB
+    const val FORMAT_B8G8R8A8_SRGB = 50   // VK_FORMAT_B8G8R8A8_SRGB
+    
+    // 常用颜色空间
+    const val COLOR_SPACE_SRGB_NONLINEAR = 0      // VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+    const val COLOR_SPACE_PASSTHROUGH_EXT = 1000021004  // VK_COLOR_SPACE_PASS_THROUGH_EXT
+    const val COLOR_SPACE_DISPLAY_P3_NONLINEAR = 1000104001  // VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT
+    
+    // 获取格式的友好名称
+    fun getFormatName(format: Int): String {
+        return when (format) {
+            FORMAT_B8G8R8A8_UNORM -> "BGRA8"
+            FORMAT_R8G8B8A8_UNORM -> "RGBA8"
+            FORMAT_R8G8B8A8_SRGB -> "RGBA8 SRGB"
+            FORMAT_B8G8R8A8_SRGB -> "BGRA8 SRGB"
+            else -> "Format $format"
+        }
+    }
+    
+    // 获取颜色空间的友好名称
+    fun getColorSpaceName(colorSpace: Int): String {
+        return when (colorSpace) {
+            COLOR_SPACE_SRGB_NONLINEAR -> "sRGB"
+            COLOR_SPACE_PASSTHROUGH_EXT -> "PassThrough"
+            COLOR_SPACE_DISPLAY_P3_NONLINEAR -> "Display P3"
+            else -> "ColorSpace $colorSpace"
         }
     }
 }
