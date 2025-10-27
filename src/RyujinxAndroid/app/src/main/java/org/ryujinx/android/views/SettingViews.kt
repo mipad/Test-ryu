@@ -80,6 +80,7 @@ import com.anggrayudi.storage.file.extension
 import org.ryujinx.android.Helpers
 import org.ryujinx.android.MainActivity
 import org.ryujinx.android.RegionCode
+import org.ryujinx.android.RyujinxNative
 import org.ryujinx.android.SystemLanguage
 import org.ryujinx.android.providers.DocumentProvider
 import org.ryujinx.android.viewmodels.FirmwareInstallState
@@ -185,6 +186,11 @@ class SettingViews {
             val showMemoryConfigDialog = remember { mutableStateOf(false) } // 控制内存配置对话框显示
             val showMemoryManagerDialog = remember { mutableStateOf(false) } // 控制内存管理器对话框显示
 
+            // 新增：表面格式相关状态变量
+            val showSurfaceFormatDialog = remember { mutableStateOf(false) }
+            val isCustomSurfaceFormatValid = remember { mutableStateOf(false) }
+            val availableSurfaceFormats = remember { mutableStateOf(emptyArray<String>()) }
+
             if (!loaded.value) {
                 settingsViewModel.initializeState(
                     memoryManagerMode,  // 修改：传递memoryManagerMode参数
@@ -226,6 +232,10 @@ class SettingViews {
         customTimeMinute,
         customTimeSecond
                 )
+                
+                // 检查自定义表面格式状态
+                isCustomSurfaceFormatValid.value = RyujinxNative.isCustomSurfaceFormatValid()
+                
                 loaded.value = true
             }
             
@@ -781,6 +791,30 @@ class SettingViews {
                                 })
                             }
                             
+                            // 表面格式设置
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp)
+                                    .clickable { 
+                                        // 获取可用的表面格式列表
+                                        availableSurfaceFormats.value = RyujinxNative.getAvailableSurfaceFormats()
+                                        showSurfaceFormatDialog.value = true 
+                                    },
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Surface Format")
+                                Text(
+                                    text = if (isCustomSurfaceFormatValid.value) {
+                                        "Custom"
+                                    } else {
+                                        "Auto"
+                                    },
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+
                             // 分辨率比例显示
                             Row(
                                 modifier = Modifier
@@ -1119,6 +1153,122 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                 }
                             }
 
+                        }
+                    }
+
+                    // 表面格式选择对话框
+                    if (showSurfaceFormatDialog.value) {
+                        BasicAlertDialog(
+                            onDismissRequest = { showSurfaceFormatDialog.value = false }
+                        ) {
+                            Surface(
+                                modifier = Modifier
+                                    .wrapContentWidth()
+                                    .wrapContentHeight(),
+                                shape = MaterialTheme.shapes.large,
+                                tonalElevation = AlertDialogDefaults.TonalElevation
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp)
+                                ) {
+                                    Text(
+                                        text = "Select Surface Format",
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        modifier = Modifier.padding(bottom = 16.dp)
+                                    )
+                                    
+                                    // 自动选择选项
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                RyujinxNative.clearCustomSurfaceFormat()
+                                                isCustomSurfaceFormatValid.value = false
+                                                showSurfaceFormatDialog.value = false
+                                            }
+                                            .padding(vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        RadioButton(
+                                            selected = !isCustomSurfaceFormatValid.value,
+                                            onClick = {
+                                                RyujinxNative.clearCustomSurfaceFormat()
+                                                isCustomSurfaceFormatValid.value = false
+                                                showSurfaceFormatDialog.value = false
+                                            }
+                                        )
+                                        Text(
+                                            text = "Auto (Recommended)",
+                                            modifier = Modifier.padding(start = 16.dp)
+                                        )
+                                    }
+                                    
+                                    // 可用表面格式列表
+                                    LazyColumn(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(max = 400.dp)
+                                    ) {
+                                        itemsIndexed(availableSurfaceFormats.value) { index, formatString ->
+                                            val formatInfo = SurfaceFormatInfo.fromString(formatString)
+                                            if (formatInfo != null) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clickable {
+                                                            RyujinxNative.setCustomSurfaceFormat(formatInfo.format, formatInfo.colorSpace)
+                                                            isCustomSurfaceFormatValid.value = true
+                                                            showSurfaceFormatDialog.value = false
+                                                        }
+                                                        .padding(vertical = 12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    RadioButton(
+                                                        selected = isCustomSurfaceFormatValid.value,
+                                                        onClick = {
+                                                            RyujinxNative.setCustomSurfaceFormat(formatInfo.format, formatInfo.colorSpace)
+                                                            isCustomSurfaceFormatValid.value = true
+                                                            showSurfaceFormatDialog.value = false
+                                                        }
+                                                    )
+                                                    Text(
+                                                        text = formatInfo.displayName,
+                                                        modifier = Modifier.padding(start = 16.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
+                                    // 当前格式信息
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 16.dp),
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Text(
+                                            text = RyujinxNative.getCurrentSurfaceFormatInfo(),
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                    
+                                    // 添加取消按钮
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 16.dp),
+                                        horizontalArrangement = Arrangement.End
+                                    ) {
+                                        TextButton(
+                                            onClick = { showSurfaceFormatDialog.value = false }
+                                        ) {
+                                            Text("Cancel")
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                     
@@ -2475,4 +2625,3 @@ if (showMemoryConfigDialog.value) {
         }
     }
 }
-
