@@ -2840,8 +2840,29 @@ namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
                     return KernelResult.UserCopyFailed;
                 }
 
+                // 添加详细日志：打印线程等待的句柄值
+                KProcess process = KernelStatic.GetCurrentProcess();
+                KThread thread = KernelStatic.GetCurrentThread();
+                Logger.Debug?.Print(LogClass.KernelSvc, $"WaitSynchronization: Process {process.Pid}, Thread {thread.ThreadUid} waiting for {handlesCount} handle(s): {string.Join(", ", handles.ToArray())}, timeout: {timeout}");
+
+                // 记录每个句柄对应的对象类型
+                for (int i = 0; i < handles.Length; i++)
+                {
+                    var obj = currentProcess.HandleTable.GetObject<KAutoObject>(handles[i]);
+                    if (obj != null)
+                    {
+                        Logger.Debug?.Print(LogClass.KernelSvc, $"  Handle {handles[i]} -> {obj.GetType().Name}");
+                    }
+                    else
+                    {
+                        Logger.Warning?.Print(LogClass.KernelSvc, $"  Handle {handles[i]} -> INVALID");
+                    }
+                }
+
                 return WaitSynchronization(out handleIndex, handles, timeout);
             }
+
+            Logger.Debug?.Print(LogClass.KernelSvc, $"WaitSynchronization: Process {KernelStatic.GetCurrentProcess().Pid}, Thread {KernelStatic.GetCurrentThread().ThreadUid} waiting for 0 handles, timeout: {timeout}");
 
             return WaitSynchronization(out handleIndex, ReadOnlySpan<int>.Empty, timeout);
         }
@@ -2887,6 +2908,7 @@ namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
                         currentThread.WaitSyncObjects[index].DecrementReferenceCount();
                     }
 
+                    Logger.Warning?.Print(LogClass.KernelSvc, $"WaitSynchronization: Invalid handle detected at index {processedHandles}, handle value: {handles[processedHandles]}");
                     return KernelResult.InvalidHandle;
                 }
             }
@@ -2897,6 +2919,24 @@ namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
             }
 
             Result result = _context.Synchronization.WaitFor(syncObjs, timeout, out handleIndex);
+
+            // 记录等待结果
+            if (result == Result.Success)
+            {
+                Logger.Debug?.Print(LogClass.KernelSvc, $"WaitSynchronization: Success, signaled handle index: {handleIndex}, handle value: {(handleIndex < handles.Length ? handles[handleIndex] : -1)}");
+            }
+            else if (result == KernelResult.TimedOut)
+            {
+                Logger.Debug?.Print(LogClass.KernelSvc, $"WaitSynchronization: TimedOut after {timeout}ns");
+            }
+            else if (result == KernelResult.Cancelled)
+            {
+                Logger.Debug?.Print(LogClass.KernelSvc, $"WaitSynchronization: Cancelled");
+            }
+            else
+            {
+                Logger.Debug?.Print(LogClass.KernelSvc, $"WaitSynchronization: Result = {result}");
+            }
 
             if (result == KernelResult.PortRemoteClosed)
             {
@@ -2922,6 +2962,8 @@ namespace Ryujinx.HLE.HOS.Kernel.SupervisorCall
             {
                 return KernelResult.InvalidHandle;
             }
+
+            Logger.Debug?.Print(LogClass.KernelSvc, $"CancelSynchronization: Cancelling synchronization for thread handle {handle}");
 
             thread.CancelSynchronization();
 
