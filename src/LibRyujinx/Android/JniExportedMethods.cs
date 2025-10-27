@@ -858,27 +858,7 @@ namespace LibRyujinx
             {
                 return IntPtr.Zero;
             }
-        }
-
-        // 辅助方法：创建字符串数组
-        private static IntPtr CreateStringArray(List<string> strings)
-        {
-            if (strings == null || strings.Count == 0)
-            {
-                return IntPtr.Zero;
-            }
-
-            IntPtr[] stringHandles = new IntPtr[strings.Count];
-            for (int i = 0; i < strings.Count; i++)
-            {
-                stringHandles[i] = Marshal.StringToHGlobalAnsi(strings[i]);
-            }
-
-            IntPtr arrayHandle = Marshal.AllocHGlobal(strings.Count * IntPtr.Size);
-            Marshal.Copy(stringHandles, 0, arrayHandle, strings.Count);
-
-            return arrayHandle;
-        }
+        }        
     }
 
     internal static partial class Logcat
