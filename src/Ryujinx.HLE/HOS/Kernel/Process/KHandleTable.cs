@@ -1,6 +1,7 @@
 using Ryujinx.HLE.HOS.Kernel.Common;
 using Ryujinx.HLE.HOS.Kernel.Threading;
 using Ryujinx.Horizon.Common;
+using Ryujinx.Common.Logging;
 using System;
 
 namespace Ryujinx.HLE.HOS.Kernel.Process
@@ -83,6 +84,13 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
 
                 obj.IncrementReferenceCount();
 
+                // 记录特定句柄的创建
+                if (handle == 1671214)
+                {
+                    KProcess currentProcess = KernelStatic.GetCurrentProcess();
+                    Logger.Debug?.Print(LogClass.Kernel, $"KHandleTable.GenerateHandle: *** CREATED handle 1671214 *** in Process {currentProcess.Pid}, Object Type: {obj.GetType().Name}, Object Hash: {obj.GetHashCode()}");
+                }
+
                 if ((short)(_idCounter + 1) >= 0)
                 {
                     _idCounter++;
@@ -115,6 +123,13 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
 
                 handle = (_idCounter << 15) | entry.Index;
 
+                // 记录特定句柄的保留
+                if (handle == 1671214)
+                {
+                    KProcess currentProcess = KernelStatic.GetCurrentProcess();
+                    Logger.Debug?.Print(LogClass.Kernel, $"KHandleTable.ReserveHandle: *** RESERVED handle 1671214 *** in Process {currentProcess.Pid}");
+                }
+
                 if ((short)(_idCounter + 1) >= 0)
                 {
                     _idCounter++;
@@ -131,6 +146,13 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
         public void CancelHandleReservation(int handle)
         {
             int index = handle & 0x7fff;
+
+            // 记录特定句柄的取消保留
+            if (handle == 1671214)
+            {
+                KProcess currentProcess = KernelStatic.GetCurrentProcess();
+                Logger.Debug?.Print(LogClass.Kernel, $"KHandleTable.CancelHandleReservation: *** CANCELLED RESERVATION for handle 1671214 *** in Process {currentProcess.Pid}");
+            }
 
             lock (_table)
             {
@@ -149,6 +171,13 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
         {
             int index = (handle >> 0) & 0x7fff;
             int handleId = (handle >> 15);
+
+            // 记录特定句柄的对象设置
+            if (handle == 1671214)
+            {
+                KProcess currentProcess = KernelStatic.GetCurrentProcess();
+                Logger.Debug?.Print(LogClass.Kernel, $"KHandleTable.SetReservedHandleObj: *** SET OBJECT for handle 1671214 *** in Process {currentProcess.Pid}, Object Type: {obj.GetType().Name}, Object Hash: {obj.GetHashCode()}");
+            }
 
             lock (_table)
             {
@@ -177,6 +206,13 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
 
             bool result = false;
 
+            // 记录特定句柄的关闭
+            if (handle == 1671214)
+            {
+                KProcess currentProcess = KernelStatic.GetCurrentProcess();
+                Logger.Debug?.Print(LogClass.Kernel, $"KHandleTable.CloseHandle: *** CLOSING handle 1671214 *** in Process {currentProcess.Pid}");
+            }
+
             lock (_table)
             {
                 if (handleId != 0 && index < _size)
@@ -200,6 +236,18 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
             if (result)
             {
                 obj.DecrementReferenceCount();
+                
+                // 记录特定句柄成功关闭
+                if (handle == 1671214)
+                {
+                    KProcess currentProcess = KernelStatic.GetCurrentProcess();
+                    Logger.Debug?.Print(LogClass.Kernel, $"KHandleTable.CloseHandle: *** SUCCESSFULLY CLOSED handle 1671214 *** in Process {currentProcess.Pid}, Object Type: {obj.GetType().Name}");
+                }
+            }
+            else if (handle == 1671214)
+            {
+                KProcess currentProcess = KernelStatic.GetCurrentProcess();
+                Logger.Warning?.Print(LogClass.Kernel, $"KHandleTable.CloseHandle: *** FAILED to close handle 1671214 *** in Process {currentProcess.Pid}");
             }
 
             return result;
@@ -210,6 +258,13 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
             int index = (handle >> 0) & 0x7fff;
             int handleId = (handle >> 15);
 
+            // 记录特定句柄的对象获取
+            if (handle == 1671214)
+            {
+                KProcess currentProcess = KernelStatic.GetCurrentProcess();
+                Logger.Debug?.Print(LogClass.Kernel, $"KHandleTable.GetObject: *** GETTING OBJECT for handle 1671214 *** in Process {currentProcess.Pid}, Requested Type: {typeof(T).Name}");
+            }
+
             lock (_table)
             {
                 if ((handle >> 30) == 0 && handleId != 0 && index < _size)
@@ -218,8 +273,31 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
 
                     if (entry.HandleId == handleId && entry.Obj is T obj)
                     {
+                        // 记录特定句柄成功获取对象
+                        if (handle == 1671214)
+                        {
+                            KProcess currentProcess = KernelStatic.GetCurrentProcess();
+                            Logger.Debug?.Print(LogClass.Kernel, $"KHandleTable.GetObject: *** SUCCESSFULLY GOT OBJECT for handle 1671214 *** in Process {currentProcess.Pid}, Actual Type: {obj.GetType().Name}");
+                        }
                         return obj;
                     }
+                    else if (handle == 1671214)
+                    {
+                        KProcess currentProcess = KernelStatic.GetCurrentProcess();
+                        if (entry.Obj != null)
+                        {
+                            Logger.Warning?.Print(LogClass.Kernel, $"KHandleTable.GetObject: *** TYPE MISMATCH for handle 1671214 *** in Process {currentProcess.Pid}, Actual Type: {entry.Obj.GetType().Name}, Requested Type: {typeof(T).Name}");
+                        }
+                        else
+                        {
+                            Logger.Warning?.Print(LogClass.Kernel, $"KHandleTable.GetObject: *** NULL OBJECT for handle 1671214 *** in Process {currentProcess.Pid}");
+                        }
+                    }
+                }
+                else if (handle == 1671214)
+                {
+                    KProcess currentProcess = KernelStatic.GetCurrentProcess();
+                    Logger.Warning?.Print(LogClass.Kernel, $"KHandleTable.GetObject: *** INVALID HANDLE 1671214 *** in Process {currentProcess.Pid}, index: {index}, handleId: {handleId}");
                 }
             }
 
@@ -260,6 +338,14 @@ namespace Ryujinx.HLE.HOS.Kernel.Process
 
                     if (entry.Obj != null)
                     {
+                        // 记录特定句柄在销毁时的处理
+                        int handle = (entry.HandleId << 15) | entry.Index;
+                        if (handle == 1671214)
+                        {
+                            KProcess currentProcess = KernelStatic.GetCurrentProcess();
+                            Logger.Debug?.Print(LogClass.Kernel, $"KHandleTable.Destroy: *** DESTROYING handle 1671214 *** in Process {currentProcess.Pid}, Object Type: {entry.Obj.GetType().Name}");
+                        }
+
                         if (entry.Obj is IDisposable disposableObj)
                         {
                             disposableObj.Dispose();
