@@ -51,6 +51,12 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// Cache of GPU counters.
         /// </summary>
         internal CounterCache CounterCache { get; }
+        
+        private delegate void WriteCallback(ulong address, ReadOnlySpan<byte> data);
+
+        private WriteCallback _write;
+        private WriteCallback _writeTrackedResource;
+        private WriteCallback _writeUntracked;
 
         /// <summary>
         /// Creates a new instance of the GPU memory manager.
@@ -60,6 +66,10 @@ namespace Ryujinx.Graphics.Gpu.Memory
         internal MemoryManager(PhysicalMemory physicalMemory, ulong cpuMemorySize)
         {
             Physical = physicalMemory;
+            _write = physicalMemory.Write;
+            _writeTrackedResource = physicalMemory.WriteTrackedResource;
+            _writeUntracked = physicalMemory.WriteUntracked;
+
             _pageManager = new PageMemoryManager(1UL << AddressSpaceBits);
             VirtualRangeCache = new VirtualRangeCache(this);
             CounterCache = new CounterCache();
@@ -286,7 +296,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="data">The data to be written</param>
         public void Write(ulong va, ReadOnlySpan<byte> data)
         {
-            WriteImpl(va, data, Physical.Write);
+            WriteImpl(va, data, _write);
         }
 
         /// <summary>
@@ -296,7 +306,7 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="data">The data to be written</param>
         public void WriteTrackedResource(ulong va, ReadOnlySpan<byte> data)
         {
-            WriteImpl(va, data, Physical.WriteTrackedResource);
+            WriteImpl(va, data, _writeTrackedResource);
         }
 
         /// <summary>
@@ -306,10 +316,10 @@ namespace Ryujinx.Graphics.Gpu.Memory
         /// <param name="data">The data to be written</param>
         public void WriteUntracked(ulong va, ReadOnlySpan<byte> data)
         {
-            WriteImpl(va, data, Physical.WriteUntracked);
+            WriteImpl(va, data, _writeUntracked);
         }
 
-        private delegate void WriteCallback(ulong address, ReadOnlySpan<byte> data);
+        
 
         /// <summary>
         /// Writes data to possibly non-contiguous GPU mapped memory.
