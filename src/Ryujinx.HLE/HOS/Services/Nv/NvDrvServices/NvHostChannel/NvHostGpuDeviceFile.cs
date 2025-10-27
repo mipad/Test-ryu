@@ -2,6 +2,7 @@ using Ryujinx.HLE.HOS.Kernel.Threading;
 using Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel.Types;
 using Ryujinx.Horizon.Common;
 using Ryujinx.Memory;
+using Ryujinx.Common.Logging;
 using System;
 
 namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
@@ -23,6 +24,9 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
             _smExceptionBptIntReportEvent = CreateEvent(context, out _smExceptionBptIntReportEventHandle);
             _smExceptionBptPauseReportEvent = CreateEvent(context, out _smExceptionBptPauseReportEventHandle);
             _errorNotifierEvent = CreateEvent(context, out _errorNotifierEventHandle);
+
+            // 记录事件创建
+            Logger.Debug?.Print(LogClass.ServiceNv, $"NvHostGpuDeviceFile: Created events - ErrorNotifier: {_errorNotifierEventHandle}, ExceptionBptInt: {_smExceptionBptIntReportEventHandle}, ExceptionBptPause: {_smExceptionBptPauseReportEventHandle}");
         }
 
         private KEvent CreateEvent(ServiceCtx context, out int handle)
@@ -64,16 +68,75 @@ namespace Ryujinx.HLE.HOS.Services.Nv.NvDrvServices.NvHostChannel
                 0x3 => _errorNotifierEventHandle,
                 _ => 0,
             };
+
+            // 记录特定句柄的查询
+            if (eventHandle == 1671214)
+            {
+                Logger.Debug?.Print(LogClass.ServiceNv, $"NvHostGpuDeviceFile.QueryEvent: *** Returning handle 1671214 *** for eventId={eventId}");
+            }
+
             return eventHandle != 0 ? NvInternalResult.Success : NvInternalResult.InvalidInput;
         }
 
         private NvInternalResult SubmitGpfifoEx(ref SubmitGpfifoArguments arguments, Span<ulong> inlineData)
         {
+            // 在GPU命令提交时触发错误通知事件（模拟）
+            // TODO: 这应该在实际发生错误时触发，而不是每次都触发
+            TriggerErrorNotifierEvent();
+            
             return SubmitGpfifo(ref arguments, inlineData);
+        }
+
+        /// <summary>
+        /// 触发错误通知事件
+        /// </summary>
+        public void TriggerErrorNotifierEvent()
+        {
+            if (_errorNotifierEventHandle != 0)
+            {
+                try 
+                {
+                    // 记录事件触发
+                    Logger.Debug?.Print(LogClass.ServiceNv, $"NvHostGpuDeviceFile: *** SIGNALING ErrorNotifierEvent *** handle={_errorNotifierEventHandle}");
+                    
+                    _errorNotifierEvent.WritableEvent.Signal();
+                    
+                    Logger.Debug?.Print(LogClass.ServiceNv, $"NvHostGpuDeviceFile: *** SUCCESSFULLY SIGNALED ErrorNotifierEvent *** handle={_errorNotifierEventHandle}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning?.Print(LogClass.ServiceNv, $"NvHostGpuDeviceFile: Failed to signal ErrorNotifierEvent handle={_errorNotifierEventHandle}, error: {ex.Message}");
+                }
+            }
+            else
+            {
+                Logger.Warning?.Print(LogClass.ServiceNv, "NvHostGpuDeviceFile: Cannot signal ErrorNotifierEvent - handle is 0");
+            }
+        }
+
+        /// <summary>
+        /// 清除错误通知事件
+        /// </summary>
+        public void ClearErrorNotifierEvent()
+        {
+            if (_errorNotifierEventHandle != 0)
+            {
+                try 
+                {
+                    _errorNotifierEvent.WritableEvent.Clear();
+                    Logger.Debug?.Print(LogClass.ServiceNv, $"NvHostGpuDeviceFile: Cleared ErrorNotifierEvent handle={_errorNotifierEventHandle}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning?.Print(LogClass.ServiceNv, $"NvHostGpuDeviceFile: Failed to clear ErrorNotifierEvent handle={_errorNotifierEventHandle}, error: {ex.Message}");
+                }
+            }
         }
 
         public override void Close()
         {
+            Logger.Debug?.Print(LogClass.ServiceNv, $"NvHostGpuDeviceFile.Close: Closing events - ErrorNotifier: {_errorNotifierEventHandle}");
+
             if (_smExceptionBptIntReportEventHandle != 0)
             {
                 Context.Process.HandleTable.CloseHandle(_smExceptionBptIntReportEventHandle);
