@@ -863,12 +863,15 @@ class SettingViews {
                                 })
                             }
                             
-                            // 表面格式设置 - 修改点击事件
+                            // 表面格式设置 - 修复点击事件
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(8.dp)
-                                    .clickable { 
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) { 
                                         // 修改：使用已加载的表面格式列表，不再实时获取
                                         if (availableSurfaceFormats.value.isNotEmpty()) {
                                             showSurfaceFormatDialog.value = true 
@@ -1232,14 +1235,14 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                         }
                     }
 
-                    // 表面格式选择对话框
+                    // 表面格式选择对话框 - 修复对话框显示问题
                     if (showSurfaceFormatDialog.value) {
                         BasicAlertDialog(
                             onDismissRequest = { showSurfaceFormatDialog.value = false }
                         ) {
                             Surface(
                                 modifier = Modifier
-                                    .wrapContentWidth()
+                                    .fillMaxWidth(0.9f)
                                     .wrapContentHeight(),
                                 shape = MaterialTheme.shapes.large,
                                 tonalElevation = AlertDialogDefaults.TonalElevation
@@ -1278,7 +1281,10 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .clickable {
+                                                .clickable(
+                                                    interactionSource = remember { MutableInteractionSource() },
+                                                    indication = null
+                                                ) {
                                                     RyujinxNative.clearCustomSurfaceFormat()
                                                     isCustomSurfaceFormatValid.value = false
                                                     showSurfaceFormatDialog.value = false
@@ -1312,7 +1318,10 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                                     Row(
                                                         modifier = Modifier
                                                             .fillMaxWidth()
-                                                            .clickable {
+                                                            .clickable(
+                                                                interactionSource = remember { MutableInteractionSource() },
+                                                                indication = null
+                                                            ) {
                                                                 RyujinxNative.setCustomSurfaceFormat(formatInfo.format, formatInfo.colorSpace)
                                                                 isCustomSurfaceFormatValid.value = true
                                                                 showSurfaceFormatDialog.value = false
