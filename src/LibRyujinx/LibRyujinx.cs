@@ -231,12 +231,69 @@ namespace LibRyujinx
         // ==================== 表面格式管理功能 ====================
 
         /// <summary>
+        /// 保存表面格式列表到文件（新增方法）
+        /// </summary>
+        private static void SaveSurfaceFormatsToFile(string[] formats)
+        {
+            try
+            {
+                string surfaceFormatsPath = Path.Combine(AppDataManager.BaseDirPath, "surface_formats.txt");
+                Logger.Info?.Print(LogClass.Application, $"Saving surface formats to file: {surfaceFormatsPath}");
+                
+                // 将格式列表写入文件
+                File.WriteAllLines(surfaceFormatsPath, formats);
+                Logger.Info?.Print(LogClass.Application, $"Successfully saved {formats.Length} surface formats to file");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error saving surface formats to file: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 从文件加载表面格式列表（新增方法）
+        /// </summary>
+        private static string[] LoadSurfaceFormatsFromFile()
+        {
+            try
+            {
+                string surfaceFormatsPath = Path.Combine(AppDataManager.BaseDirPath, "surface_formats.txt");
+                
+                if (File.Exists(surfaceFormatsPath))
+                {
+                    var formats = File.ReadAllLines(surfaceFormatsPath);
+                    Logger.Info?.Print(LogClass.Application, $"Loaded {formats.Length} surface formats from file");
+                    return formats;
+                }
+                else
+                {
+                    Logger.Info?.Print(LogClass.Application, "Surface formats file does not exist");
+                    return new string[0];
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error loading surface formats from file: {ex.Message}");
+                return new string[0];
+            }
+        }
+
+        /// <summary>
         /// 获取设备支持的表面格式列表
         /// </summary>
         public static string[] GetAvailableSurfaceFormats()
         {
             try
             {
+                // 首先尝试从文件加载缓存的格式列表
+                var cachedFormats = LoadSurfaceFormatsFromFile();
+                if (cachedFormats.Length > 0)
+                {
+                    Logger.Info?.Print(LogClass.Application, $"Using cached surface formats from file: {cachedFormats.Length} formats");
+                    return cachedFormats;
+                }
+
+                // 如果没有缓存，再尝试从渲染器获取
                 // 确保渲染器已经初始化
                 if (Renderer == null)
                 {
@@ -258,13 +315,22 @@ namespace LibRyujinx
                 }
                 
                 Logger.Info?.Print(LogClass.Application, $"Total available surface formats: {result.Count}");
+                
+                // 保存到文件供后续使用
+                if (result.Count > 0)
+                {
+                    SaveSurfaceFormatsToFile(result.ToArray());
+                }
+                
                 return result.ToArray();
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Error getting available surface formats: {ex.Message}");
                 Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
-                return new string[0];
+                
+                // 出错时尝试从文件加载
+                return LoadSurfaceFormatsFromFile();
             }
         }
 
