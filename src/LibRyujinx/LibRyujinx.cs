@@ -237,22 +237,33 @@ namespace LibRyujinx
         {
             try
             {
+                // 确保渲染器已经初始化
+                if (Renderer == null)
+                {
+                    Logger.Warning?.Print(LogClass.Application, "Renderer not initialized, cannot get surface formats");
+                    return new string[0];
+                }
+
                 var formats = Ryujinx.Graphics.Vulkan.Window.GetAvailableSurfaceFormats();
                 var result = new List<string>();
+                
+                Logger.Info?.Print(LogClass.Application, $"Window.GetAvailableSurfaceFormats returned {formats.Count} formats");
                 
                 foreach (var format in formats)
                 {
                     string displayName = Ryujinx.Graphics.Vulkan.Window.GetFormatDisplayName(format.Format, format.ColorSpace);
                     string formatInfo = $"{(int)format.Format}:{(int)format.ColorSpace}:{displayName}";
                     result.Add(formatInfo);
+                    Logger.Info?.Print(LogClass.Application, $"  - {formatInfo}");
                 }
                 
-                Logger.Info?.Print(LogClass.Application, $"Found {result.Count} available surface formats");
+                Logger.Info?.Print(LogClass.Application, $"Total available surface formats: {result.Count}");
                 return result.ToArray();
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Error getting available surface formats: {ex.Message}");
+                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
                 return new string[0];
             }
         }
