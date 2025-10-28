@@ -113,7 +113,7 @@ namespace Ryujinx.Graphics.Vulkan
                 _gd.SurfaceApi.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, &surfaceFormatsCount, pSurfaceFormats);
             }
 
-            // 保存可用的表面格式列表
+            // 保存可用的表面格式列表 - 确保这是最新的
             _availableSurfaceFormats.Clear();
             _availableSurfaceFormats.AddRange(surfaceFormats);
 
@@ -527,10 +527,28 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        // 新增：获取设备支持的表面格式列表
+        // 修改：获取设备支持的表面格式列表（改进版本）
         public static List<SurfaceFormatKHR> GetAvailableSurfaceFormats()
         {
-            return new List<SurfaceFormatKHR>(_availableSurfaceFormats);
+            try
+            {
+                // 返回保存的可用格式列表
+                if (_availableSurfaceFormats != null && _availableSurfaceFormats.Count > 0)
+                {
+                    Logger.Info?.Print(LogClass.Gpu, $"Returning {_availableSurfaceFormats.Count} cached surface formats");
+                    return new List<SurfaceFormatKHR>(_availableSurfaceFormats);
+                }
+                else
+                {
+                    Logger.Warning?.Print(LogClass.Gpu, "No cached surface formats available");
+                    return new List<SurfaceFormatKHR>();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Gpu, $"Error in GetAvailableSurfaceFormats: {ex.Message}");
+                return new List<SurfaceFormatKHR>();
+            }
         }
 
         // 新增：获取格式名称的友好显示
