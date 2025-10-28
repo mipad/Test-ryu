@@ -828,19 +828,15 @@ class SettingViews {
                                 })
                             }
                             
-                            // 表面格式设置 - 修改点击事件
+                            // 表面格式设置 - 修复点击事件
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(8.dp)
                                     .clickable { 
-                                        // 修改：使用已加载的表面格式列表，不再实时获取
-                                        if (availableSurfaceFormats.value.isNotEmpty()) {
-                                            showSurfaceFormatDialog.value = true 
-                                        } else {
-                                            // 如果没有可用的格式列表，显示提示
-                                            android.util.Log.i("Ryujinx", "No surface formats available. Please run a game first.")
-                                        }
+                                        // 修复：直接显示对话框，不检查列表是否为空
+                                        // 因为列表可能为空但用户仍然需要查看或选择Auto选项
+                                        showSurfaceFormatDialog.value = true
                                     },
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
@@ -1218,54 +1214,34 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                         modifier = Modifier.padding(bottom = 16.dp)
                                     )
                                     
-                                    if (availableSurfaceFormats.value.isEmpty()) {
-                                        // 没有可用格式时的提示
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(16.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally
-                                        ) {
-                                            Text(
-                                                text = "No surface formats available",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                            )
-                                            Text(
-                                                text = "Run a game first to detect available formats",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                                                modifier = Modifier.padding(top = 8.dp)
-                                            )
-                                        }
-                                    } else {
-                                        // 自动选择选项
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clickable {
-                                                    RyujinxNative.clearCustomSurfaceFormat()
-                                                    isCustomSurfaceFormatValid.value = false
-                                                    showSurfaceFormatDialog.value = false
-                                                }
-                                                .padding(vertical = 12.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            RadioButton(
-                                                selected = !isCustomSurfaceFormatValid.value,
-                                                onClick = {
-                                                    RyujinxNative.clearCustomSurfaceFormat()
-                                                    isCustomSurfaceFormatValid.value = false
-                                                    showSurfaceFormatDialog.value = false
-                                                }
-                                            )
-                                            Text(
-                                                text = "Auto (Recommended)",
-                                                modifier = Modifier.padding(start = 16.dp)
-                                            )
-                                        }
-                                        
-                                        // 可用表面格式列表
+                                    // 自动选择选项 - 总是显示
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                RyujinxNative.clearCustomSurfaceFormat()
+                                                isCustomSurfaceFormatValid.value = false
+                                                showSurfaceFormatDialog.value = false
+                                            }
+                                            .padding(vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        RadioButton(
+                                            selected = !isCustomSurfaceFormatValid.value,
+                                            onClick = {
+                                                RyujinxNative.clearCustomSurfaceFormat()
+                                                isCustomSurfaceFormatValid.value = false
+                                                showSurfaceFormatDialog.value = false
+                                            }
+                                        )
+                                        Text(
+                                            text = "Auto (Recommended)",
+                                            modifier = Modifier.padding(start = 16.dp)
+                                        )
+                                    }
+                                    
+                                    // 可用表面格式列表
+                                    if (availableSurfaceFormats.value.isNotEmpty()) {
                                         LazyColumn(
                                             modifier = Modifier
                                                 .fillMaxWidth()
@@ -1300,6 +1276,26 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                                     }
                                                 }
                                             }
+                                        }
+                                    } else {
+                                        // 没有可用格式时的提示
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(16.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = "No surface formats available",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                            )
+                                            Text(
+                                                text = "Run a game first to detect available formats",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                                                modifier = Modifier.padding(top = 8.dp)
+                                            )
                                         }
                                     }
                                     
@@ -2683,6 +2679,162 @@ if (showMemoryConfigDialog.value) {
             ) {
                 Column(modifier = Modifier.padding(8.dp)) {
                     content()
+                }
+            }
+        }
+        
+        @Composable
+        fun CustomTimeDialog(
+            currentYear: Int,
+            currentMonth: Int,
+            currentDay: Int,
+            currentHour: Int,
+            currentMinute: Int,
+            currentSecond: Int,
+            onDismiss: () -> Unit,
+            onTimeSet: (Int, Int, Int, Int, Int, Int) -> Unit
+        ) {
+            var year by remember { mutableStateOf(currentYear) }
+            var month by remember { mutableStateOf(currentMonth) }
+            var day by remember { mutableStateOf(currentDay) }
+            var hour by remember { mutableStateOf(currentHour) }
+            var minute by remember { mutableStateOf(currentMinute) }
+            var second by remember { mutableStateOf(currentSecond) }
+
+            BasicAlertDialog(
+                onDismissRequest = onDismiss
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .wrapContentWidth()
+                        .wrapContentHeight(),
+                    shape = MaterialTheme.shapes.large,
+                    tonalElevation = AlertDialogDefaults.TonalElevation
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Text(
+                            text = "Set Custom Time",
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
+                        
+                        // 时间设置控件
+                        // 这里可以添加具体的日期时间选择器
+                        // 由于Compose没有内置的DateTimePicker，可以使用多个TextField或自定义组件
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            // 年份
+                            Column {
+                                Text("Year")
+                                androidx.compose.material3.TextField(
+                                    value = year.toString(),
+                                    onValueChange = { 
+                                        val newValue = it.toIntOrNull() ?: year
+                                        if (newValue in 2000..2100) year = newValue 
+                                    },
+                                    modifier = Modifier.width(80.dp)
+                                )
+                            }
+                            
+                            // 月份
+                            Column {
+                                Text("Month")
+                                androidx.compose.material3.TextField(
+                                    value = month.toString(),
+                                    onValueChange = { 
+                                        val newValue = it.toIntOrNull() ?: month
+                                        if (newValue in 1..12) month = newValue 
+                                    },
+                                    modifier = Modifier.width(60.dp)
+                                )
+                            }
+                            
+                            // 日期
+                            Column {
+                                Text("Day")
+                                androidx.compose.material3.TextField(
+                                    value = day.toString(),
+                                    onValueChange = { 
+                                        val newValue = it.toIntOrNull() ?: day
+                                        if (newValue in 1..31) day = newValue 
+                                    },
+                                    modifier = Modifier.width(60.dp)
+                                )
+                            }
+                        }
+                        
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            // 小时
+                            Column {
+                                Text("Hour")
+                                androidx.compose.material3.TextField(
+                                    value = hour.toString(),
+                                    onValueChange = { 
+                                        val newValue = it.toIntOrNull() ?: hour
+                                        if (newValue in 0..23) hour = newValue 
+                                    },
+                                    modifier = Modifier.width(60.dp)
+                                )
+                            }
+                            
+                            // 分钟
+                            Column {
+                                Text("Minute")
+                                androidx.compose.material3.TextField(
+                                    value = minute.toString(),
+                                    onValueChange = { 
+                                        val newValue = it.toIntOrNull() ?: minute
+                                        if (newValue in 0..59) minute = newValue 
+                                    },
+                                    modifier = Modifier.width(60.dp)
+                                )
+                            }
+                            
+                            // 秒钟
+                            Column {
+                                Text("Second")
+                                androidx.compose.material3.TextField(
+                                    value = second.toString(),
+                                    onValueChange = { 
+                                        val newValue = it.toIntOrNull() ?: second
+                                        if (newValue in 0..59) second = newValue 
+                                    },
+                                    modifier = Modifier.width(60.dp)
+                                )
+                            }
+                        }
+                        
+                        // 按钮行
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(
+                                onClick = onDismiss
+                            ) {
+                                Text("Cancel")
+                            }
+                            TextButton(
+                                onClick = {
+                                    onTimeSet(year, month, day, hour, minute, second)
+                                }
+                            ) {
+                                Text("OK")
+                            }
+                        }
+                    }
                 }
             }
         }
