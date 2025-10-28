@@ -1,9 +1,13 @@
 package org.ryujinx.android.viewmodels
 
 import android.annotation.SuppressLint
+import android.content.Context
+import android.content.SharedPreferences
 import androidx.compose.runtime.MutableState
 import androidx.navigation.NavHostController
 import com.anggrayudi.storage.extension.launchOnUiThread
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Semaphore
 import org.ryujinx.android.GameController
@@ -58,6 +62,52 @@ class MainViewModel(val activity: MainActivity) {
 
     init {
         performanceManager = PerformanceManager(activity)
+    }
+
+    /**
+     * 保存表面格式列表到 SharedPreferences
+     */
+    private fun saveSurfaceFormats() {
+        try {
+            val formats = RyujinxNative.getAvailableSurfaceFormats()
+            val prefs = activity.getSharedPreferences("RyujinxSettings", Context.MODE_PRIVATE)
+            val editor = prefs.edit()
+            
+            // 将格式列表转换为 JSON 字符串保存
+            val formatList = formats.toList()
+            val gson = Gson()
+            val jsonFormats = gson.toJson(formatList)
+            
+            editor.putString("surface_formats", jsonFormats)
+            editor.putLong("surface_formats_timestamp", System.currentTimeMillis())
+            editor.apply()
+            
+            android.util.Log.i("Ryujinx", "Saved ${formats.size} surface formats to preferences")
+        } catch (e: Exception) {
+            android.util.Log.e("Ryujinx", "Failed to save surface formats: ${e.message}")
+        }
+    }
+
+    /**
+     * 从 SharedPreferences 加载表面格式列表
+     */
+    fun loadSurfaceFormats(): Array<String> {
+        return try {
+            val prefs = activity.getSharedPreferences("RyujinxSettings", Context.MODE_PRIVATE)
+            val jsonFormats = prefs.getString("surface_formats", null)
+            
+            if (jsonFormats != null) {
+                val gson = Gson()
+                val type = object : TypeToken<List<String>>() {}.type
+                val formatList: List<String> = gson.fromJson(jsonFormats, type)
+                formatList.toTypedArray()
+            } else {
+                emptyArray()
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("Ryujinx", "Failed to load surface formats: ${e.message}")
+            emptyArray()
+        }
     }
 
     fun closeGame() {
@@ -154,6 +204,9 @@ class MainViewModel(val activity: MainActivity) {
         )
         if (!success)
             return 0
+
+        // 新增：保存表面格式列表
+        saveSurfaceFormats()
 
         val semaphore = Semaphore(1, 0)
         runBlocking {
@@ -262,6 +315,9 @@ class MainViewModel(val activity: MainActivity) {
         )
         if (!success)
             return false
+
+        // 新增：保存表面格式列表
+        saveSurfaceFormats()
 
         val semaphore = Semaphore(1, 0)
         runBlocking {
