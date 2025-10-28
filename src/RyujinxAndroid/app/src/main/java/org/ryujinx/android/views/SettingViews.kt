@@ -302,8 +302,8 @@ class SettingViews {
         customTimeSecond
                 )
                 
-                // 修改：从 MainViewModel 加载表面格式列表
-                availableSurfaceFormats.value = mainViewModel.loadSurfaceFormats()
+                // 修改：从 MainViewModel 获取表面格式列表 - 修复这里
+                availableSurfaceFormats.value = mainViewModel.getSurfaceFormats()
                 
                 // 检查自定义表面格式状态
                 isCustomSurfaceFormatValid.value = RyujinxNative.isCustomSurfaceFormatValid()
