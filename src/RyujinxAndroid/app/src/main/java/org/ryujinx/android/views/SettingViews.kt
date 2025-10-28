@@ -267,8 +267,9 @@ class SettingViews {
         customTimeSecond
                 )
                 
-                // 修改：从 MainViewModel 获取表面格式列表
+                // 修改：直接从MainViewModel获取已保存的表面格式列表，不重新获取
                 availableSurfaceFormats.value = mainViewModel.getSurfaceFormats()
+                android.util.Log.i("Ryujinx", "Settings: Loaded ${availableSurfaceFormats.value.size} surface formats from MainViewModel cache")
                 
                 // 检查自定义表面格式状态
                 isCustomSurfaceFormatValid.value = RyujinxNative.isCustomSurfaceFormatValid()
@@ -551,7 +552,6 @@ class SettingViews {
                                         }
                                     }
                                 }
-
                             }
                         }
                     }
@@ -835,8 +835,7 @@ class SettingViews {
                                     .fillMaxWidth()
                                     .padding(8.dp)
                                     .clickable { 
-                                        // 修复：直接显示对话框，不检查列表是否为空
-                                        // 因为列表可能为空但用户仍然需要查看或选择Auto选项
+                                        // 修复：直接显示对话框，从MainViewModel缓存中读取列表
                                         showSurfaceFormatDialog.value = true
                                     },
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1241,8 +1240,14 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                         )
                                     }
                                     
-                                    // 可用表面格式列表 - 直接使用缓存的列表
+                                    // 可用表面格式列表 - 直接从MainViewModel缓存中读取
                                     if (availableSurfaceFormats.value.isNotEmpty()) {
+                                        Text(
+                                            text = "Available Formats (${availableSurfaceFormats.value.size}):",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.padding(vertical = 8.dp)
+                                        )
+                                        
                                         LazyColumn(
                                             modifier = Modifier
                                                 .fillMaxWidth()
@@ -1259,21 +1264,30 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                                                 isCustomSurfaceFormatValid.value = true
                                                                 showSurfaceFormatDialog.value = false
                                                             }
-                                                            .padding(vertical = 12.dp),
+                                                            .padding(vertical = 8.dp),
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
                                                         RadioButton(
-                                                            selected = isCustomSurfaceFormatValid.value,
+                                                            selected = false, // 不显示单选按钮选中状态，因为自定义格式可能有多个
                                                             onClick = {
                                                                 RyujinxNative.setCustomSurfaceFormat(formatInfo.format, formatInfo.colorSpace)
                                                                 isCustomSurfaceFormatValid.value = true
                                                                 showSurfaceFormatDialog.value = false
                                                             }
                                                         )
-                                                        Text(
-                                                            text = formatInfo.displayName,
+                                                        Column(
                                                             modifier = Modifier.padding(start = 16.dp)
-                                                        )
+                                                        ) {
+                                                            Text(
+                                                                text = formatInfo.displayName,
+                                                                style = MaterialTheme.typography.bodyMedium
+                                                            )
+                                                            Text(
+                                                                text = "Format: ${formatInfo.format}, ColorSpace: ${formatInfo.colorSpace}",
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }
@@ -1308,7 +1322,7 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                         horizontalArrangement = Arrangement.Center
                                     ) {
                                         Text(
-                                            text = RyujinxNative.getCurrentSurfaceFormatInfo(),
+                                            text = "Current: ${RyujinxNative.getCurrentSurfaceFormatInfo()}",
                                             fontSize = 12.sp,
                                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                                         )
