@@ -551,6 +551,7 @@ class SettingViews {
                                         }
                                     }
                                 }
+
                             }
                         }
                     }
@@ -1240,7 +1241,7 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                         )
                                     }
                                     
-                                    // 可用表面格式列表
+                                    // 可用表面格式列表 - 直接使用缓存的列表
                                     if (availableSurfaceFormats.value.isNotEmpty()) {
                                         LazyColumn(
                                             modifier = Modifier
@@ -2684,4 +2685,3 @@ if (showMemoryConfigDialog.value) {
         }
     }
 }
-
