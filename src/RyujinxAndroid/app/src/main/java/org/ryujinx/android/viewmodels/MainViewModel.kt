@@ -69,6 +69,9 @@ class MainViewModel(val activity: MainActivity) {
      */
     private fun saveSurfaceFormats() {
         try {
+            // 延迟一段时间确保渲染器已经完全初始化
+            Thread.sleep(100)
+            
             val formats = RyujinxNative.getAvailableSurfaceFormats()
             val prefs = activity.getSharedPreferences("RyujinxSettings", Context.MODE_PRIVATE)
             val editor = prefs.edit()
@@ -102,7 +105,15 @@ class MainViewModel(val activity: MainActivity) {
                 val formatList: List<String> = gson.fromJson(jsonFormats, type)
                 formatList.toTypedArray()
             } else {
-                emptyArray()
+                // 如果没有保存的格式，尝试实时获取
+                try {
+                    val formats = RyujinxNative.getAvailableSurfaceFormats()
+                    android.util.Log.i("Ryujinx", "Loaded ${formats.size} surface formats in real-time")
+                    formats
+                } catch (e: Exception) {
+                    android.util.Log.e("Ryujinx", "Failed to load surface formats in real-time: ${e.message}")
+                    emptyArray()
+                }
             }
         } catch (e: Exception) {
             android.util.Log.e("Ryujinx", "Failed to load surface formats: ${e.message}")
@@ -205,9 +216,7 @@ class MainViewModel(val activity: MainActivity) {
         if (!success)
             return 0
 
-        // 新增：保存表面格式列表
-        saveSurfaceFormats()
-
+        // 新增：在设备初始化完成后保存表面格式
         val semaphore = Semaphore(1, 0)
         runBlocking {
             semaphore.acquire()
@@ -230,6 +239,13 @@ class MainViewModel(val activity: MainActivity) {
                     settings.memoryConfiguration, // 内存配置
                     settings.systemTimeOffset // 新增系统时间偏移参数
                 )
+
+                // 在设备初始化完成后保存表面格式
+                if (success) {
+                    Thread {
+                        saveSurfaceFormats()
+                    }.start()
+                }
 
                 semaphore.release()
             }
@@ -316,9 +332,7 @@ class MainViewModel(val activity: MainActivity) {
         if (!success)
             return false
 
-        // 新增：保存表面格式列表
-        saveSurfaceFormats()
-
+        // 新增：在设备初始化完成后保存表面格式
         val semaphore = Semaphore(1, 0)
         runBlocking {
             semaphore.acquire()
@@ -341,6 +355,13 @@ class MainViewModel(val activity: MainActivity) {
                     settings.memoryConfiguration, // 内存配置
                     settings.systemTimeOffset // 新增系统时间偏移参数
                 )
+
+                // 在设备初始化完成后保存表面格式
+                if (success) {
+                    Thread {
+                        saveSurfaceFormats()
+                    }.start()
+                }
 
                 semaphore.release()
             }
@@ -500,3 +521,4 @@ class MainViewModel(val activity: MainActivity) {
         gameHost?.setProgressStates(showLoading, progressValue, progress)
     }
 }
+
