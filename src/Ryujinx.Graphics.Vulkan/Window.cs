@@ -119,6 +119,9 @@ namespace Ryujinx.Graphics.Vulkan
 
             // 新增：记录可用的表面格式到日志
             LogAvailableSurfaceFormats(surfaceFormats);
+            
+            // 新增：记录详细的格式信息
+            LogDetailedFormatInfo();
 
             uint presentModesCount;
 
@@ -258,6 +261,45 @@ namespace Ryujinx.Graphics.Vulkan
                 Logger.Info?.Print(LogClass.Gpu, formatInfo);
             }
         }
+        
+        // 新增：详细的格式信息显示
+        private void LogDetailedFormatInfo()
+        {
+            Logger.Info?.Print(LogClass.Gpu, "=== Detailed Surface Format Information ===");
+            
+            if (_availableSurfaceFormats.Count == 0)
+            {
+                Logger.Info?.Print(LogClass.Gpu, "No surface formats available");
+                return;
+            }
+            
+            foreach (var format in _availableSurfaceFormats)
+            {
+                string formatInfo = $"Format: {format.Format}, ColorSpace: {format.ColorSpace}";
+                
+                // 添加格式描述
+                switch (format.Format)
+                {
+                    case VkFormat.B8G8R8A8Unorm:
+                        formatInfo += " (BGRA8 Unorm - Most Common Windows Format)";
+                        break;
+                    case VkFormat.R8G8B8A8Unorm:
+                        formatInfo += " (RGBA8 Unorm - Common Linux/Android Format)";
+                        break;
+                    case VkFormat.R5G6B5UnormPack16:
+                        formatInfo += " (RGB565 - 16-bit)";
+                        break;
+                    case VkFormat.R16G16B16A16Sfloat:
+                        formatInfo += " (RGBA16 Float - HDR)";
+                        break;
+                    case VkFormat.A2B10G10R10UnormPack32:
+                        formatInfo += " (A2B10G10R10 - 10-bit per channel)";
+                        break;
+                }
+                
+                Logger.Info?.Print(LogClass.Gpu, formatInfo);
+            }
+        }
 
         private unsafe TextureView CreateSwapchainImageView(Image swapchainImage, VkFormat format, TextureCreateInfo info)
         {
@@ -286,7 +328,7 @@ namespace Ryujinx.Graphics.Vulkan
             return new TextureView(_gd, _device, new DisposableImageView(_gd.Api, _device, imageView), info, format);
         }
 
-        // 修改：增强的表面格式选择方法，支持自定义格式
+        // 修改：增强的表面格式选择方法，支持多种首选格式
         private static SurfaceFormatKHR ChooseSwapSurfaceFormat(SurfaceFormatKHR[] availableFormats, bool colorSpacePassthroughEnabled)
         {
             // 如果启用了自定义表面格式且格式有效，优先使用自定义格式
@@ -310,20 +352,30 @@ namespace Ryujinx.Graphics.Vulkan
 
             // 定义标准颜色空间常量
             const ColorSpaceKHR StandardColorSpace = ColorSpaceKHR.SpaceSrgbNonlinearKhr;
-            const VkFormat PreferredFormat = VkFormat.B8G8R8A8Unorm;
+            
+            // 定义首选格式列表，按优先级排序
+            var preferredFormats = new[]
+            {
+                VkFormat.B8G8R8A8Unorm,    // 最高优先级 - 最常见的格式
+                VkFormat.R8G8B8A8Unorm,    // 次高优先级 - 也很常见
+                VkFormat.B8G8R8A8Srgb,     // SRGB版本的BGRA
+                VkFormat.R8G8B8A8Srgb,     // SRGB版本的RGBA
+                VkFormat.A2B10G10R10UnormPack32, // 10位格式
+                VkFormat.A2R10G10B10UnormPack32, // 另一种10位格式
+            };
 
             // 空数组检查 - 返回安全默认值
             if (availableFormats.Length == 0)
             {
                 Logger.Warning?.Print(LogClass.Gpu, "No available surface formats, using fallback format");
-                return new SurfaceFormatKHR(PreferredFormat, StandardColorSpace);
+                return new SurfaceFormatKHR(VkFormat.B8G8R8A8Unorm, StandardColorSpace);
             }
 
             // 特殊格式处理
             if (availableFormats.Length == 1 && availableFormats[0].Format == VkFormat.Undefined)
             {
                 Logger.Info?.Print(LogClass.Gpu, "Surface format undefined, using default format");
-                return new SurfaceFormatKHR(PreferredFormat, StandardColorSpace);
+                return new SurfaceFormatKHR(VkFormat.B8G8R8A8Unorm, StandardColorSpace);
             }
 
             // 修复：使用正确的颜色空间枚举值
@@ -332,24 +384,30 @@ namespace Ryujinx.Graphics.Vulkan
                 Logger.Info?.Print(LogClass.Gpu, "Color space passthrough enabled, looking for compatible formats...");
                 
                 // 优先选择PassThrough格式
-                foreach (var format in availableFormats)
+                foreach (var preferredFormat in preferredFormats)
                 {
-                    if (format.Format == PreferredFormat && 
-                        format.ColorSpace == ColorSpaceKHR.SpacePassThroughExt)
+                    foreach (var format in availableFormats)
                     {
-                        Logger.Info?.Print(LogClass.Gpu, $"Found preferred format with PassThrough color space: {GetFormatDisplayName(format.Format, format.ColorSpace)}");
-                        return format;
+                        if (format.Format == preferredFormat && 
+                            format.ColorSpace == ColorSpaceKHR.SpacePassThroughExt)
+                        {
+                            Logger.Info?.Print(LogClass.Gpu, $"Found preferred format with PassThrough color space: {GetFormatDisplayName(format.Format, format.ColorSpace)}");
+                            return format;
+                        }
                     }
                 }
                 
                 // 其次选择标准SRGB格式
-                foreach (var format in availableFormats)
+                foreach (var preferredFormat in preferredFormats)
                 {
-                    if (format.Format == PreferredFormat && 
-                        format.ColorSpace == StandardColorSpace)
+                    foreach (var format in availableFormats)
                     {
-                        Logger.Info?.Print(LogClass.Gpu, $"Found preferred format with SRGB color space: {GetFormatDisplayName(format.Format, format.ColorSpace)}");
-                        return format;
+                        if (format.Format == preferredFormat && 
+                            format.ColorSpace == StandardColorSpace)
+                        {
+                            Logger.Info?.Print(LogClass.Gpu, $"Found preferred format with SRGB color space: {GetFormatDisplayName(format.Format, format.ColorSpace)}");
+                            return format;
+                        }
                     }
                 }
             }
@@ -358,13 +416,16 @@ namespace Ryujinx.Graphics.Vulkan
                 Logger.Info?.Print(LogClass.Gpu, "Standard color space mode, looking for SRGB formats...");
                 
                 // 标准模式下优先选择SRGB格式
-                foreach (var format in availableFormats)
+                foreach (var preferredFormat in preferredFormats)
                 {
-                    if (format.Format == PreferredFormat && 
-                        format.ColorSpace == StandardColorSpace)
+                    foreach (var format in availableFormats)
                     {
-                        Logger.Info?.Print(LogClass.Gpu, $"Found preferred format: {GetFormatDisplayName(format.Format, format.ColorSpace)}");
-                        return format;
+                        if (format.Format == preferredFormat && 
+                            format.ColorSpace == StandardColorSpace)
+                        {
+                            Logger.Info?.Print(LogClass.Gpu, $"Found preferred format: {GetFormatDisplayName(format.Format, format.ColorSpace)}");
+                            return format;
+                        }
                     }
                 }
             }
@@ -487,6 +548,10 @@ namespace Ryujinx.Graphics.Vulkan
                 formatName = "A2B10G10R10";
             else if (formatName.StartsWith("A2R10G10B10"))
                 formatName = "A2R10G10B10";
+            else if (formatName.StartsWith("R5G6B5"))
+                formatName = "RGB565";
+            else if (formatName.StartsWith("R16G16B16A16"))
+                formatName = "RGBA16F";
                 
             // 简化色彩空间名称显示
             if (colorSpaceName.Contains("SrgbNonlinear"))
