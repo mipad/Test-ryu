@@ -51,7 +51,7 @@ class MainViewModel(val activity: MainActivity) {
     private var showLoading: MutableState<Boolean>? = null
     private var refreshUser: MutableState<Boolean>? = null
 
-    // 新增：表面格式相关字段
+    // 修改：表面格式相关字段 - 使用文件缓存
     private var surfaceFormatsCache: Array<String>? = null
     private var lastSurfaceFormatsUpdate: Long = 0
     private val surfaceFormatsLock = Any()
@@ -72,36 +72,34 @@ class MainViewModel(val activity: MainActivity) {
     }
 
     /**
-     * 初始加载表面格式（延迟执行）
+     * 初始加载表面格式（从文件缓存）
      */
     private fun loadInitialSurfaceFormats() {
         CoroutineScope(Dispatchers.IO).launch {
-            // 延迟25秒确保图形初始化完成
-            delay(25000)
+            // 延迟5秒确保应用初始化完成
+            delay(5000)
             refreshSurfaceFormats()
         }
     }
 
     /**
-     * 刷新表面格式列表（强制从Native获取最新）
+     * 刷新表面格式列表（从文件缓存读取）
      */
     fun refreshSurfaceFormats(): Array<String> {
         return try {
-            android.util.Log.i("Ryujinx", "Refreshing surface formats from native...")
-            val formats = RyujinxNative.getAvailableSurfaceFormats()
-            android.util.Log.i("Ryujinx", "Successfully refreshed ${formats.size} surface formats from native")
+            android.util.Log.i("Ryujinx", "Refreshing surface formats from file cache...")
+            val formats = loadSurfaceFormatsFromFile()
+            android.util.Log.i("Ryujinx", "Successfully refreshed ${formats.size} surface formats from file cache")
             
             synchronized(surfaceFormatsLock) {
                 surfaceFormatsCache = formats
                 lastSurfaceFormatsUpdate = System.currentTimeMillis()
-                // 同时保存到SharedPreferences作为备份
-                saveSurfaceFormatsToPreferences(formats)
             }
             formats
         } catch (e: Exception) {
-            android.util.Log.e("Ryujinx", "Failed to refresh surface formats: ${e.message}")
-            // 失败时尝试从缓存或SharedPreferences加载
-            loadSurfaceFormatsFromCacheOrPreferences()
+            android.util.Log.e("Ryujinx", "Failed to refresh surface formats from file: ${e.message}")
+            // 失败时返回空数组
+            emptyArray()
         }
     }
 
@@ -110,10 +108,9 @@ class MainViewModel(val activity: MainActivity) {
      */
     fun getSurfaceFormats(): Array<String> {
         synchronized(surfaceFormatsLock) {
-            // 如果缓存为空或超过30秒没有更新，则刷新
-            if (surfaceFormatsCache == null || 
-                System.currentTimeMillis() - lastSurfaceFormatsUpdate > 30000) {
-                android.util.Log.i("Ryujinx", "Surface formats cache is stale, refreshing...")
+            // 如果缓存为空，则从文件加载
+            if (surfaceFormatsCache == null) {
+                android.util.Log.i("Ryujinx", "Surface formats cache is empty, loading from file...")
                 return refreshSurfaceFormats()
             }
             
@@ -123,81 +120,22 @@ class MainViewModel(val activity: MainActivity) {
     }
 
     /**
-     * 从缓存或SharedPreferences加载表面格式
+     * 从文件加载表面格式列表
      */
-    private fun loadSurfaceFormatsFromCacheOrPreferences(): Array<String> {
-        synchronized(surfaceFormatsLock) {
-            // 首先尝试缓存
-            surfaceFormatsCache?.let {
-                android.util.Log.i("Ryujinx", "Using memory cache for surface formats")
-                return it
-            }
-
-            // 然后尝试SharedPreferences
-            val prefsFormats = loadSurfaceFormatsFromPreferences()
-            if (prefsFormats.isNotEmpty()) {
-                android.util.Log.i("Ryujinx", "Using SharedPreferences cache for surface formats: ${prefsFormats.size} formats")
-                surfaceFormatsCache = prefsFormats
-                lastSurfaceFormatsUpdate = System.currentTimeMillis()
-                return prefsFormats
-            }
-
-            // 最后返回空数组
-            android.util.Log.w("Ryujinx", "No surface formats available in cache or preferences")
-            return emptyArray()
-        }
-    }
-
-    /**
-     * 保存表面格式列表到 SharedPreferences
-     */
-    private fun saveSurfaceFormatsToPreferences(formats: Array<String>) {
-        try {
-            val prefs = activity.getSharedPreferences("RyujinxSettings", Context.MODE_PRIVATE)
-            val editor = prefs.edit()
-            
-            // 将格式列表转换为 JSON 字符串保存
-            val formatList = formats.toList()
-            val gson = Gson()
-            val jsonFormats = gson.toJson(formatList)
-            
-            editor.putString("surface_formats", jsonFormats)
-            editor.putLong("surface_formats_timestamp", System.currentTimeMillis())
-            editor.apply()
-            
-            android.util.Log.i("Ryujinx", "Saved ${formats.size} surface formats to preferences")
-        } catch (e: Exception) {
-            android.util.Log.e("Ryujinx", "Failed to save surface formats: ${e.message}")
-        }
-    }
-
-    /**
-     * 从 SharedPreferences 加载表面格式列表
-     */
-    private fun loadSurfaceFormatsFromPreferences(): Array<String> {
+    private fun loadSurfaceFormatsFromFile(): Array<String> {
         return try {
-            val prefs = activity.getSharedPreferences("RyujinxSettings", Context.MODE_PRIVATE)
-            val timestamp = prefs.getLong("surface_formats_timestamp", 0)
+            val surfaceFormatsFile = File(activity.filesDir, "surface_formats.txt")
             
-            // 检查缓存是否过期（1小时）
-            if (System.currentTimeMillis() - timestamp > 3600000) {
-                android.util.Log.i("Ryujinx", "Surface formats cache expired")
-                return emptyArray()
-            }
-            
-            val jsonFormats = prefs.getString("surface_formats", null)
-            
-            if (jsonFormats != null) {
-                val gson = Gson()
-                val type = object : TypeToken<List<String>>() {}.type
-                val formatList: List<String> = gson.fromJson(jsonFormats, type)
-                android.util.Log.i("Ryujinx", "Loaded ${formatList.size} surface formats from preferences")
-                formatList.toTypedArray()
+            if (surfaceFormatsFile.exists()) {
+                val formats = surfaceFormatsFile.readLines().toTypedArray()
+                android.util.Log.i("Ryujinx", "Loaded ${formats.size} surface formats from file")
+                formats
             } else {
+                android.util.Log.w("Ryujinx", "Surface formats file does not exist")
                 emptyArray()
             }
         } catch (e: Exception) {
-            android.util.Log.e("Ryujinx", "Failed to load surface formats: ${e.message}")
+            android.util.Log.e("Ryujinx", "Failed to load surface formats from file: ${e.message}")
             emptyArray()
         }
     }
@@ -345,11 +283,8 @@ class MainViewModel(val activity: MainActivity) {
         if (!success)
             return 0
 
-        // 新增：在图形初始化后延迟获取表面格式
-        CoroutineScope(Dispatchers.IO).launch {
-            delay(20000) // 延迟20秒确保交换链创建完成
-            refreshSurfaceFormats()
-        }
+        // 修改：不再需要延迟获取表面格式，因为现在使用文件缓存
+        // 表面格式会在LibRyujinx.cs中自动保存到文件
 
         val semaphore = Semaphore(1, 0)
         runBlocking {
@@ -459,11 +394,7 @@ class MainViewModel(val activity: MainActivity) {
         if (!success)
             return false
 
-        // 新增：在图形初始化后延迟获取表面格式
-        CoroutineScope(Dispatchers.IO).launch {
-            delay(20000) // 延迟20秒确保交换链创建完成
-            refreshSurfaceFormats()
-        }
+        // 修改：不再需要延迟获取表面格式，因为现在使用文件缓存
 
         val semaphore = Semaphore(1, 0)
         runBlocking {
