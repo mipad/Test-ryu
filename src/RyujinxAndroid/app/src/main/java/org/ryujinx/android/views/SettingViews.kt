@@ -89,7 +89,7 @@ import org.ryujinx.android.viewmodels.SettingsViewModel
 import org.ryujinx.android.viewmodels.VulkanDriverViewModel
 import kotlin.concurrent.thread
 
-// 表面格式相关的数据类 - 移动到 SettingViews.kt 文件中
+// 表面格式相关的数据类
 data class SurfaceFormatInfo(
     val format: Int,
     val colorSpace: Int,
@@ -120,41 +120,6 @@ data class SurfaceFormatInfo(
     
     override fun toString(): String {
         return displayName
-    }
-}
-
-// 常用的Vulkan格式常量（可以根据需要扩展）
-object VulkanFormats {
-    // 常用格式
-    const val FORMAT_B8G8R8A8_UNORM = 44  // VK_FORMAT_B8G8R8A8_UNORM
-    const val FORMAT_R8G8B8A8_UNORM = 37  // VK_FORMAT_R8G8B8A8_UNORM
-    const val FORMAT_R8G8B8A8_SRGB = 43   // VK_FORMAT_R8G8B8A8_SRGB
-    const val FORMAT_B8G8R8A8_SRGB = 50   // VK_FORMAT_B8G8R8A8_SRGB
-    
-    // 常用颜色空间
-    const val COLOR_SPACE_SRGB_NONLINEAR = 0      // VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
-    const val COLOR_SPACE_PASSTHROUGH_EXT = 1000021004  // VK_COLOR_SPACE_PASS_THROUGH_EXT
-    const val COLOR_SPACE_DISPLAY_P3_NONLINEAR = 1000104001  // VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT
-    
-    // 获取格式的友好名称
-    fun getFormatName(format: Int): String {
-        return when (format) {
-            FORMAT_B8G8R8A8_UNORM -> "BGRA8"
-            FORMAT_R8G8B8A8_UNORM -> "RGBA8"
-            FORMAT_R8G8B8A8_SRGB -> "RGBA8 SRGB"
-            FORMAT_B8G8R8A8_SRGB -> "BGRA8 SRGB"
-            else -> "Format $format"
-        }
-    }
-    
-    // 获取颜色空间的友好名称
-    fun getColorSpaceName(colorSpace: Int): String {
-        return when (colorSpace) {
-            COLOR_SPACE_SRGB_NONLINEAR -> "sRGB"
-            COLOR_SPACE_PASSTHROUGH_EXT -> "PassThrough"
-            COLOR_SPACE_DISPLAY_P3_NONLINEAR -> "Display P3"
-            else -> "ColorSpace $colorSpace"
-        }
     }
 }
 
@@ -302,7 +267,7 @@ class SettingViews {
         customTimeSecond
                 )
                 
-                // 修改：从 MainViewModel 获取表面格式列表 - 修复这里
+                // 修改：从 MainViewModel 获取表面格式列表
                 availableSurfaceFormats.value = mainViewModel.getSurfaceFormats()
                 
                 // 检查自定义表面格式状态
@@ -863,15 +828,12 @@ class SettingViews {
                                 })
                             }
                             
-                            // 表面格式设置 - 修复点击事件
+                            // 表面格式设置 - 修改点击事件
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(8.dp)
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null
-                                    ) { 
+                                    .clickable { 
                                         // 修改：使用已加载的表面格式列表，不再实时获取
                                         if (availableSurfaceFormats.value.isNotEmpty()) {
                                             showSurfaceFormatDialog.value = true 
@@ -1235,14 +1197,14 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                         }
                     }
 
-                    // 表面格式选择对话框 - 修复对话框显示问题
+                    // 表面格式选择对话框
                     if (showSurfaceFormatDialog.value) {
                         BasicAlertDialog(
                             onDismissRequest = { showSurfaceFormatDialog.value = false }
                         ) {
                             Surface(
                                 modifier = Modifier
-                                    .fillMaxWidth(0.9f)
+                                    .wrapContentWidth()
                                     .wrapContentHeight(),
                                 shape = MaterialTheme.shapes.large,
                                 tonalElevation = AlertDialogDefaults.TonalElevation
@@ -1281,10 +1243,7 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .clickable(
-                                                    interactionSource = remember { MutableInteractionSource() },
-                                                    indication = null
-                                                ) {
+                                                .clickable {
                                                     RyujinxNative.clearCustomSurfaceFormat()
                                                     isCustomSurfaceFormatValid.value = false
                                                     showSurfaceFormatDialog.value = false
@@ -1318,10 +1277,7 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                                     Row(
                                                         modifier = Modifier
                                                             .fillMaxWidth()
-                                                            .clickable(
-                                                                interactionSource = remember { MutableInteractionSource() },
-                                                                indication = null
-                                                            ) {
+                                                            .clickable {
                                                                 RyujinxNative.setCustomSurfaceFormat(formatInfo.format, formatInfo.colorSpace)
                                                                 isCustomSurfaceFormatValid.value = true
                                                                 showSurfaceFormatDialog.value = false
