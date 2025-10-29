@@ -724,6 +724,21 @@ namespace LibRyujinx
             }
         }
 
+        // 新增：游戏启动时触发表面格式保存的JNI方法
+        [UnmanagedCallersOnly(EntryPoint = "surfaceOnGameStarted")]
+        public static void JnaOnGameStarted()
+        {
+            try
+            {
+                Logger.Info?.Print(LogClass.Application, "Game started, triggering surface formats save");
+                OnGameStarted();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error triggering surface formats save: {ex.Message}");
+            }
+        }
+
         // ==================== 存档管理的JNI方法 ====================
 
         [UnmanagedCallersOnly(EntryPoint = "saveDataExport")]
