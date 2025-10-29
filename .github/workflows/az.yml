@@ -2,9 +2,9 @@ name: Android CI  Fix
 
 on:
   push:
-    branches: [ "表面格式" ]
+    branches: [ "表格" ]
   pull_request:
-    branches: [ "表面格式" ]
+    branches: [ "表格" ]
 
 jobs:
   build:
@@ -25,7 +25,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: mipad/Test-ryu
-        ref: 表面格式
+        ref: 表格
         path: Test-ryu
 
     # ========== 2. 环境配置 ==========
