@@ -32,7 +32,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         /// <summary>
         /// ARM优化模式
         /// </summary>
-        private enum ArmOptimizationMode
+        public enum ArmOptimizationMode  // 改为 public
         {
             Auto,
             Performance,    // 最大性能，可能降低精度
@@ -158,7 +158,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Dma
         /// <summary>
         /// 设置ARM优化模式
         /// </summary>
-        public void SetArmOptimizationMode(ArmOptimizationMode mode)
+        public void SetArmOptimizationMode(ArmOptimizationMode mode)  // 现在这个方法可以正常工作了
         {
             _optimizationMode = mode;
         }
