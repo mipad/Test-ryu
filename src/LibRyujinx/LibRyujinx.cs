@@ -31,7 +31,7 @@ using OpenTK.Audio.OpenAL;
 using Ryujinx.HLE.Loaders.Npdm;
 using System.Globalization;
 using Ryujinx.UI.Common.Configuration.System;
-using Ryujinx.Common.Logging.Targets;
+using Ryujinx.UI.Common.Configuration.Targets;
 using System.Collections.Generic;
 using System.Text;
 using Ryujinx.HLE.UI;
@@ -44,6 +44,7 @@ using System.Text.Json.Serialization;
 using Ryujinx.Graphics.Vulkan;
 using Silk.NET.Vulkan;
 using VkFormat = Silk.NET.Vulkan.Format;
+using System.Threading.Tasks;
 
 namespace LibRyujinx
 {
@@ -73,6 +74,10 @@ namespace LibRyujinx
 
         // 添加静态字段来存储系统时间偏移
         private static long _systemTimeOffset = 0;
+
+        // 添加静态字段来跟踪表面格式保存状态
+        private static bool _surfaceFormatsSaved = false;
+        private static object _saveLock = new object();
 
         // Mod 相关类型定义
         public class ModInfo
@@ -279,6 +284,91 @@ namespace LibRyujinx
         }
 
         /// <summary>
+        /// 延迟保存表面格式列表到文件
+        /// </summary>
+        public static void ScheduleSurfaceFormatsSave(int delaySeconds = 20)
+        {
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(delaySeconds * 1000); // 延迟指定秒数
+                    
+                    lock (_saveLock)
+                    {
+                        if (_surfaceFormatsSaved)
+                        {
+                            Logger.Info?.Print(LogClass.Application, "Surface formats already saved, skipping");
+                            return;
+                        }
+
+                        // 检查缓存文件是否已存在
+                        string surfaceFormatsPath = Path.Combine(AppDataManager.BaseDirPath, "surface_formats.txt");
+                        if (File.Exists(surfaceFormatsPath))
+                        {
+                            Logger.Info?.Print(LogClass.Application, "Surface formats cache file already exists, skipping save");
+                            _surfaceFormatsSaved = true;
+                            return;
+                        }
+
+                        // 尝试获取表面格式列表
+                        var formats = GetAvailableSurfaceFormatsForSave();
+                        if (formats.Length > 0)
+                        {
+                            SaveSurfaceFormatsToFile(formats);
+                            _surfaceFormatsSaved = true;
+                            Logger.Info?.Print(LogClass.Application, $"Successfully saved {formats.Length} surface formats to file after delay");
+                        }
+                        else
+                        {
+                            Logger.Warning?.Print(LogClass.Application, "No surface formats available to save after delay");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error?.Print(LogClass.Application, $"Error in delayed surface formats save: {ex.Message}");
+                }
+            });
+        }
+
+        /// <summary>
+        /// 专门用于保存的表面格式获取方法（不依赖缓存）
+        /// </summary>
+        private static string[] GetAvailableSurfaceFormatsForSave()
+        {
+            try
+            {
+                // 确保渲染器已经初始化
+                if (Renderer == null)
+                {
+                    Logger.Warning?.Print(LogClass.Application, "Renderer not initialized, cannot get surface formats for save");
+                    return new string[0];
+                }
+
+                var formats = Ryujinx.Graphics.Vulkan.Window.GetAvailableSurfaceFormats();
+                var result = new List<string>();
+                
+                Logger.Info?.Print(LogClass.Application, $"Window.GetAvailableSurfaceFormats returned {formats.Count} formats for saving");
+                
+                foreach (var format in formats)
+                {
+                    string displayName = Ryujinx.Graphics.Vulkan.Window.GetFormatDisplayName(format.Format, format.ColorSpace);
+                    string formatInfo = $"{(int)format.Format}:{(int)format.ColorSpace}:{displayName}";
+                    result.Add(formatInfo);
+                    Logger.Info?.Print(LogClass.Application, $"  - {formatInfo}");
+                }
+                
+                return result.ToArray();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error?.Print(LogClass.Application, $"Error getting surface formats for save: {ex.Message}");
+                return new string[0];
+            }
+        }
+
+        /// <summary>
         /// 获取设备支持的表面格式列表
         /// </summary>
         public static string[] GetAvailableSurfaceFormats()
@@ -294,43 +384,27 @@ namespace LibRyujinx
                 }
 
                 // 如果没有缓存，再尝试从渲染器获取
-                // 确保渲染器已经初始化
-                if (Renderer == null)
-                {
-                    Logger.Warning?.Print(LogClass.Application, "Renderer not initialized, cannot get surface formats");
-                    return new string[0];
-                }
-
-                var formats = Ryujinx.Graphics.Vulkan.Window.GetAvailableSurfaceFormats();
-                var result = new List<string>();
+                var formats = GetAvailableSurfaceFormatsForSave();
                 
-                Logger.Info?.Print(LogClass.Application, $"Window.GetAvailableSurfaceFormats returned {formats.Count} formats");
-                
-                foreach (var format in formats)
+                // 立即保存到文件（如果获取成功）
+                if (formats.Length > 0 && !_surfaceFormatsSaved)
                 {
-                    string displayName = Ryujinx.Graphics.Vulkan.Window.GetFormatDisplayName(format.Format, format.ColorSpace);
-                    string formatInfo = $"{(int)format.Format}:{(int)format.ColorSpace}:{displayName}";
-                    result.Add(formatInfo);
-                    Logger.Info?.Print(LogClass.Application, $"  - {formatInfo}");
+                    lock (_saveLock)
+                    {
+                        if (!_surfaceFormatsSaved)
+                        {
+                            SaveSurfaceFormatsToFile(formats);
+                            _surfaceFormatsSaved = true;
+                        }
+                    }
                 }
                 
-                Logger.Info?.Print(LogClass.Application, $"Total available surface formats: {result.Count}");
-                
-                // 保存到文件供后续使用
-                if (result.Count > 0)
-                {
-                    SaveSurfaceFormatsToFile(result.ToArray());
-                }
-                
-                return result.ToArray();
+                return formats;
             }
             catch (Exception ex)
             {
                 Logger.Error?.Print(LogClass.Application, $"Error getting available surface formats: {ex.Message}");
-                Logger.Error?.Print(LogClass.Application, $"Stack trace: {ex.StackTrace}");
-                
-                // 出错时尝试从文件加载
-                return LoadSurfaceFormatsFromFile();
+                return new string[0];
             }
         }
 
@@ -379,6 +453,15 @@ namespace LibRyujinx
         public static string GetCurrentSurfaceFormatInfo()
         {
             return Ryujinx.Graphics.Vulkan.Window.GetCurrentSurfaceFormatInfo();
+        }
+
+        /// <summary>
+        /// 启动游戏时调用，安排表面格式保存
+        /// </summary>
+        public static void OnGameStarted()
+        {
+            Logger.Info?.Print(LogClass.Application, "Game started, scheduling surface formats save");
+            ScheduleSurfaceFormatsSave(20); // 20秒后保存
         }
 
         // ==================== Mod 管理功能 ====================
