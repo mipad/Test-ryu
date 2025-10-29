@@ -224,6 +224,11 @@ class SettingViews {
             val showSurfaceFormatDialog = remember { mutableStateOf(false) }
             val isCustomSurfaceFormatValid = remember { mutableStateOf(false) }
             val availableSurfaceFormats = remember { mutableStateOf(emptyArray<String>()) }
+            
+            // 新增：表面格式持久化相关状态变量
+            val customSurfaceFormatEnabled = remember { mutableStateOf(false) }
+            val surfaceFormat = remember { mutableStateOf(-1) }
+            val surfaceColorSpace = remember { mutableStateOf(-1) }
 
             if (!loaded.value) {
                 settingsViewModel.initializeState(
@@ -259,12 +264,16 @@ class SettingViews {
                     memoryConfiguration, // 新增DRAM参数
                     systemTimeOffset,
                     customTimeEnabled,
-        customTimeYear,
-        customTimeMonth,
-        customTimeDay,
-        customTimeHour,
-        customTimeMinute,
-        customTimeSecond
+                    customTimeYear,
+                    customTimeMonth,
+                    customTimeDay,
+                    customTimeHour,
+                    customTimeMinute,
+                    customTimeSecond,
+                    // 新增：表面格式相关参数
+                    customSurfaceFormatEnabled,
+                    surfaceFormat,
+                    surfaceColorSpace
                 )
                 
                 // 修改：直接从MainViewModel获取已保存的表面格式列表，不重新获取
@@ -305,38 +314,42 @@ class SettingViews {
                                     enableShaderCache,
                                     enableTextureRecompression,
                                     resScale,
-                    aspectRatio, // 新增参数
-                    useVirtualController,
-                    isGrid,
-                    useSwitchLayout,
-                    enableMotion,
-                    enablePerformanceMode,
-                    controllerStickSensitivity,
-                    enableDebugLogs,
-                    enableStubLogs,
-                    enableInfoLogs,
-                    enableWarningLogs,
-                    enableErrorLogs,
-                    enableGuestLogs,
-                    enableAccessLogs,
-                    enableTraceLogs,
-                    enableGraphicsLogs,
-                    skipMemoryBarriers, // 新增参数
-                    regionCode, // 新增参数
-                    systemLanguage, // 新增参数
-                    audioEngineType, // 新增参数
-                    scalingFilter, // 新增：缩放过滤器
-                    scalingFilterLevel, // 新增：缩放过滤器级别
-                    antiAliasing, // 新增：抗锯齿模式
-                    memoryConfiguration, // 新增DRAM参数
-                    systemTimeOffset,
-                    customTimeEnabled,
-        customTimeYear,
-        customTimeMonth,
-        customTimeDay,
-        customTimeHour,
-        customTimeMinute,
-        customTimeSecond
+                                    aspectRatio, // 新增参数
+                                    useVirtualController,
+                                    isGrid,
+                                    useSwitchLayout,
+                                    enableMotion,
+                                    enablePerformanceMode,
+                                    controllerStickSensitivity,
+                                    enableDebugLogs,
+                                    enableStubLogs,
+                                    enableInfoLogs,
+                                    enableWarningLogs,
+                                    enableErrorLogs,
+                                    enableGuestLogs,
+                                    enableAccessLogs,
+                                    enableTraceLogs,
+                                    enableGraphicsLogs,
+                                    skipMemoryBarriers, // 新增参数
+                                    regionCode, // 新增参数
+                                    systemLanguage, // 新增参数
+                                    audioEngineType, // 新增参数
+                                    scalingFilter, // 新增：缩放过滤器
+                                    scalingFilterLevel, // 新增：缩放过滤器级别
+                                    antiAliasing, // 新增：抗锯齿模式
+                                    memoryConfiguration, // 新增DRAM参数
+                                    systemTimeOffset,
+                                    customTimeEnabled,
+                                    customTimeYear,
+                                    customTimeMonth,
+                                    customTimeDay,
+                                    customTimeHour,
+                                    customTimeMinute,
+                                    customTimeSecond,
+                                    // 新增：表面格式相关参数
+                                    customSurfaceFormatEnabled,
+                                    surfaceFormat,
+                                    surfaceColorSpace
                                 )
                                 settingsViewModel.navController.popBackStack()
                             }) {
@@ -1221,6 +1234,9 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                             .clickable {
                                                 RyujinxNative.clearCustomSurfaceFormat()
                                                 isCustomSurfaceFormatValid.value = false
+                                                customSurfaceFormatEnabled.value = false
+                                                surfaceFormat.value = -1
+                                                surfaceColorSpace.value = -1
                                                 showSurfaceFormatDialog.value = false
                                             }
                                             .padding(vertical = 12.dp),
@@ -1231,6 +1247,9 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                             onClick = {
                                                 RyujinxNative.clearCustomSurfaceFormat()
                                                 isCustomSurfaceFormatValid.value = false
+                                                customSurfaceFormatEnabled.value = false
+                                                surfaceFormat.value = -1
+                                                surfaceColorSpace.value = -1
                                                 showSurfaceFormatDialog.value = false
                                             }
                                         )
@@ -1262,6 +1281,9 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                                             .clickable {
                                                                 RyujinxNative.setCustomSurfaceFormat(formatInfo.format, formatInfo.colorSpace)
                                                                 isCustomSurfaceFormatValid.value = true
+                                                                customSurfaceFormatEnabled.value = true
+                                                                surfaceFormat.value = formatInfo.format
+                                                                surfaceColorSpace.value = formatInfo.colorSpace
                                                                 showSurfaceFormatDialog.value = false
                                                             }
                                                             .padding(vertical = 8.dp),
@@ -1272,6 +1294,9 @@ AnimatedVisibility(visible = showAspectRatioOptions.value) {
                                                             onClick = {
                                                                 RyujinxNative.setCustomSurfaceFormat(formatInfo.format, formatInfo.colorSpace)
                                                                 isCustomSurfaceFormatValid.value = true
+                                                                customSurfaceFormatEnabled.value = true
+                                                                surfaceFormat.value = formatInfo.format
+                                                                surfaceColorSpace.value = formatInfo.colorSpace
                                                                 showSurfaceFormatDialog.value = false
                                                             }
                                                         )
@@ -2571,12 +2596,16 @@ if (showMemoryConfigDialog.value) {
                         memoryConfiguration, // 新增DRAM参数
                         systemTimeOffset,
                         customTimeEnabled,
-    customTimeYear,
-    customTimeMonth,
-    customTimeDay,
-    customTimeHour,
-    customTimeMinute,
-    customTimeSecond
+                        customTimeYear,
+                        customTimeMonth,
+                        customTimeDay,
+                        customTimeHour,
+                        customTimeMinute,
+                        customTimeSecond,
+                        // 新增：表面格式相关参数
+                        customSurfaceFormatEnabled,
+                        surfaceFormat,
+                        surfaceColorSpace
                     )
                     settingsViewModel.navController.popBackStack()
                 }
@@ -2699,4 +2728,3 @@ if (showMemoryConfigDialog.value) {
         }
     }
 }
-
