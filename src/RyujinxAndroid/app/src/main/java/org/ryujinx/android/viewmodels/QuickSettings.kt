@@ -43,6 +43,11 @@ class QuickSettings(val activity: Activity) {
     var customTimeMinute: Int // 新增：自定义时间-分
     var customTimeSecond: Int // 新增：自定义时间-秒
 
+    // 新增：表面格式相关字段
+    var customSurfaceFormatEnabled: Boolean // 是否启用自定义表面格式
+    var surfaceFormat: Int // 表面格式值
+    var surfaceColorSpace: Int // 颜色空间值
+
     // Logs
     var enableDebugLogs: Boolean
     var enableStubLogs: Boolean
@@ -94,6 +99,11 @@ class QuickSettings(val activity: Activity) {
         customTimeMinute = sharedPref.getInt("customTimeMinute", 27)
         customTimeSecond = sharedPref.getInt("customTimeSecond", 0)
 
+        // 初始化表面格式字段
+        customSurfaceFormatEnabled = sharedPref.getBoolean("customSurfaceFormatEnabled", false)
+        surfaceFormat = sharedPref.getInt("surfaceFormat", -1)
+        surfaceColorSpace = sharedPref.getInt("surfaceColorSpace", -1)
+
         enableDebugLogs = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs = sharedPref.getBoolean("enableStubLogs", false)
         enableInfoLogs = sharedPref.getBoolean("enableInfoLogs", true)
@@ -143,6 +153,11 @@ class QuickSettings(val activity: Activity) {
         editor.putInt("customTimeHour", customTimeHour)
         editor.putInt("customTimeMinute", customTimeMinute)
         editor.putInt("customTimeSecond", customTimeSecond)
+
+        // 保存表面格式字段
+        editor.putBoolean("customSurfaceFormatEnabled", customSurfaceFormatEnabled)
+        editor.putInt("surfaceFormat", surfaceFormat)
+        editor.putInt("surfaceColorSpace", surfaceColorSpace)
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs)
         editor.putBoolean("enableStubLogs", enableStubLogs)

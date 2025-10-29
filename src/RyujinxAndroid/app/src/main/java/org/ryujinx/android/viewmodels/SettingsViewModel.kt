@@ -86,7 +86,11 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         customTimeDay: MutableState<Int>,
         customTimeHour: MutableState<Int>,
         customTimeMinute: MutableState<Int>,
-        customTimeSecond: MutableState<Int>
+        customTimeSecond: MutableState<Int>,
+        // 新增：表面格式相关参数
+        customSurfaceFormatEnabled: MutableState<Boolean>,
+        surfaceFormat: MutableState<Int>,
+        surfaceColorSpace: MutableState<Int>
     ) {
 
         memoryManagerMode.value = sharedPref.getInt("memoryManagerMode", 2)  // 默认使用HostMappedUnsafe
@@ -125,6 +129,18 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         customTimeHour.value = sharedPref.getInt("customTimeHour", 10)
         customTimeMinute.value = sharedPref.getInt("customTimeMinute", 27)
         customTimeSecond.value = sharedPref.getInt("customTimeSecond", 0)
+
+        // 初始化表面格式设置
+        customSurfaceFormatEnabled.value = sharedPref.getBoolean("customSurfaceFormatEnabled", false)
+        surfaceFormat.value = sharedPref.getInt("surfaceFormat", -1)
+        surfaceColorSpace.value = sharedPref.getInt("surfaceColorSpace", -1)
+        
+        // 如果之前保存了自定义表面格式，则恢复设置
+        if (customSurfaceFormatEnabled.value && surfaceFormat.value != -1 && surfaceColorSpace.value != -1) {
+            RyujinxNative.setCustomSurfaceFormat(surfaceFormat.value, surfaceColorSpace.value)
+        } else {
+            RyujinxNative.clearCustomSurfaceFormat()
+        }
 
         enableDebugLogs.value = sharedPref.getBoolean("enableDebugLogs", false)
         enableStubLogs.value = sharedPref.getBoolean("enableStubLogs", false)
@@ -179,7 +195,11 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         customTimeDay: MutableState<Int>,
         customTimeHour: MutableState<Int>,
         customTimeMinute: MutableState<Int>,
-        customTimeSecond: MutableState<Int>
+        customTimeSecond: MutableState<Int>,
+        // 新增：表面格式相关参数
+        customSurfaceFormatEnabled: MutableState<Boolean>,
+        surfaceFormat: MutableState<Int>,
+        surfaceColorSpace: MutableState<Int>
     ) {
         val editor = sharedPref.edit()
 
@@ -217,6 +237,11 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
         editor.putInt("customTimeHour", customTimeHour.value)
         editor.putInt("customTimeMinute", customTimeMinute.value)
         editor.putInt("customTimeSecond", customTimeSecond.value)
+
+        // 保存表面格式设置
+        editor.putBoolean("customSurfaceFormatEnabled", customSurfaceFormatEnabled.value)
+        editor.putInt("surfaceFormat", surfaceFormat.value)
+        editor.putInt("surfaceColorSpace", surfaceColorSpace.value)
 
         editor.putBoolean("enableDebugLogs", enableDebugLogs.value)
         editor.putBoolean("enableStubLogs", enableStubLogs.value)
@@ -275,6 +300,13 @@ class SettingsViewModel(var navController: NavHostController, val activity: Main
 
         // 设置系统时间偏移
         RyujinxNative.jnaInstance.setSystemTimeOffset(calculatedTimeOffset)
+
+        // 设置表面格式
+        if (customSurfaceFormatEnabled.value && surfaceFormat.value != -1 && surfaceColorSpace.value != -1) {
+            RyujinxNative.setCustomSurfaceFormat(surfaceFormat.value, surfaceColorSpace.value)
+        } else {
+            RyujinxNative.clearCustomSurfaceFormat()
+        }
 
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Debug.ordinal, enableDebugLogs.value)
         RyujinxNative.jnaInstance.loggingSetEnabled(LogLevel.Info.ordinal, enableInfoLogs.value)
