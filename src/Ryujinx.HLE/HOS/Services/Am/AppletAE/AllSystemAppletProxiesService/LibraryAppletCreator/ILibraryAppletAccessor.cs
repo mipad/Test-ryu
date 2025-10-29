@@ -118,6 +118,24 @@ namespace Ryujinx.HLE.HOS.Services.Am.AppletAE.AllSystemAppletProxiesService.Lib
             return ResultCode.Success;
         }
 
+        [CommandCmif(90)]
+        // Unknown90(ulong[4])
+        public ResultCode Unknown90(ServiceCtx context)
+        {
+            // NOTE: This call is performed on SDK 20+ when applet is called.
+            //       Since we don't support most applets for now, it's fine to stub it.
+            //       Throw if values are not 0 to learn more about what this function does.
+
+            if (context.RequestData.ReadUInt64() != 0 || context.RequestData.ReadUInt64() != 0 ||
+                context.RequestData.ReadUInt64() != 0 || context.RequestData.ReadUInt64() != 0)
+            {
+                throw new ArgumentException("Invalid data: values are not 0");
+            }
+            
+            Logger.Stub?.PrintStub(LogClass.ServiceAm);
+            return ResultCode.Success;
+        }
+
         [CommandCmif(100)]
         // PushInData(object<nn::am::service::IStorage>)
         public ResultCode PushInData(ServiceCtx context)
