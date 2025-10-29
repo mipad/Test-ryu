@@ -31,7 +31,7 @@ using OpenTK.Audio.OpenAL;
 using Ryujinx.HLE.Loaders.Npdm;
 using System.Globalization;
 using Ryujinx.UI.Common.Configuration.System;
-using Ryujinx.UI.Common.Configuration.Targets;
+using Ryujinx.Common.Logging.Targets;
 using System.Collections.Generic;
 using System.Text;
 using Ryujinx.HLE.UI;
