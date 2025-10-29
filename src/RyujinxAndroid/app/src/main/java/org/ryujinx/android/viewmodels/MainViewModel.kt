@@ -25,6 +25,40 @@ import org.ryujinx.android.SystemLanguage
 import java.io.File
 import java.util.TimeZone
 
+// 在文件开头添加 SurfaceFormatInfo 类的定义
+data class SurfaceFormatInfo(
+    val format: Int,
+    val colorSpace: Int,
+    val displayName: String
+) {
+    companion object {
+        /**
+         * 从字符串解析表面格式信息
+         * 字符串格式："format:colorSpace:displayName"
+         */
+        fun fromString(formatString: String): SurfaceFormatInfo? {
+            return try {
+                val parts = formatString.split(":")
+                if (parts.size >= 3) {
+                    SurfaceFormatInfo(
+                        format = parts[0].toInt(),
+                        colorSpace = parts[1].toInt(),
+                        displayName = parts[2]
+                    )
+                } else {
+                    null
+                }
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+    
+    override fun toString(): String {
+        return displayName
+    }
+}
+
 @SuppressLint("WrongConstant")
 class MainViewModel(val activity: MainActivity) {
     var physicalControllerManager: PhysicalControllerManager? = null
